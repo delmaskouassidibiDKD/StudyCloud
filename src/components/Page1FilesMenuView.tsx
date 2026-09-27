@@ -306,6 +306,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // ÉTAT DE LA DIVISION EN DEUX (SPLIT SCREEN) & LECTEUR GRAND FORMAT
   // =========================================================================
   const [splitSelectedFile, setSplitSelectedFile] = useState<FileItem | null>(null);
+
+  // =========================================================================
+  // ÉTATS INDÉPENDANTS POUR CHAQUE LECTEUR (IMAGE 1 À 5)
+  // =========================================================================
+  const [selectedDocFile, setSelectedDocFile] = useState<FileItem | null>(null);
+  const [selectedAudioTrack, setSelectedAudioTrack] = useState<FileItem | null>(null);
+  const [selectedVideoFile, setSelectedVideoFile] = useState<FileItem | null>(null);
+  const [selectedImageFile, setSelectedImageFile] = useState<FileItem | null>(null);
+  const [selectedDownloadFile, setSelectedDownloadFile] = useState<FileItem | DownloadedItem | null>(null);
+  const [selectedClasseurFile, setSelectedClasseurFile] = useState<FileItem | null>(null);
+  const [selectedCollectionFile, setSelectedCollectionFile] = useState<FileItem | null>(null);
+
   const [splitResolvedPdfUrl, setSplitResolvedPdfUrl] = useState<string>('');
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
   const [viewerZoom, setViewerZoom] = useState(1);
@@ -3291,6 +3303,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // SÉLECTION D'UN ÉLÉMENT : DÉCLENCHE LA DIVISION EN DEUX (SPLIT SCREEN)
   const handleSelectFile = (file: FileItem) => {
+    const isAud = Boolean(file.category === 'audio' || (file as any).isAudio || Boolean((file as any).audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name));
+    const isVid = Boolean(file.category === 'videos' || (file as any).isVideo || Boolean((file as any).videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(file.name));
+    const isImg = Boolean(file.category === 'images' || (file as any).isImage || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name));
+    const isDoc = file.category === 'documents' || (!isAud && !isVid && !isImg);
+
+    if (isDoc) setSelectedDocFile(file);
+    if (isAud) setSelectedAudioTrack(file);
+    if (isVid) setSelectedVideoFile(file);
+    if (isImg) setSelectedImageFile(file);
+    if (opened3DFolder) setSelectedClasseurFile(file);
+    setSelectedCollectionFile(file);
+
     setSplitSelectedFile(file);
     setViewerZoom(1);
     setViewerRotation(0);
@@ -9123,6 +9147,883 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
 
 
+
+
+  // Auto-sélection du premier élément pour Documents, Vidéos, Images si aucun fichier sélectionné
+  useEffect(() => {
+    if ((currentSubView.id === 'studycloud-category-documents' || (isCloudView && cloudActiveTab === 'documents')) && !selectedDocFile && filteredDocuments.length > 0) {
+      setSelectedDocFile(filteredDocuments[0]);
+    }
+  }, [currentSubView.id, isCloudView, cloudActiveTab, filteredDocuments, selectedDocFile]);
+
+  useEffect(() => {
+    if ((currentSubView.id === 'studycloud-category-videos' || (isCloudView && cloudActiveTab === 'videos')) && !selectedVideoFile && filteredVideos.length > 0) {
+      setSelectedVideoFile(filteredVideos[0]);
+    }
+  }, [currentSubView.id, isCloudView, cloudActiveTab, filteredVideos, selectedVideoFile]);
+
+  useEffect(() => {
+    if ((currentSubView.id === 'studycloud-category-images' || (isCloudView && cloudActiveTab === 'images')) && !selectedImageFile && filteredImages.length > 0) {
+      setSelectedImageFile(filteredImages[0]);
+    }
+  }, [currentSubView.id, isCloudView, cloudActiveTab, filteredImages, selectedImageFile]);
+
+
+  // =========================================================================
+  // FONCTIONS DE LECTEURS ET NAVIGATION STRICTEMENT INDÉPENDANTS (IMAGES 1 À 5)
+  // =========================================================================
+
+  const toggleAudioPlayPause = () => {
+    setIsAudioPlaying(prev => !prev);
+    if (audioRef.current) {
+      if (isAudioPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play().catch(() => {});
+      }
+    }
+  };
+
+  const handleNavigateDoc = (direction: 'prev' | 'next') => {
+    if (filteredDocuments.length === 0) return;
+    const currentIndex = selectedDocFile 
+      ? filteredDocuments.findIndex(d => d.id === selectedDocFile.id)
+      : 0;
+    let newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
+    if (newIndex < 0) newIndex = filteredDocuments.length - 1;
+    if (newIndex >= filteredDocuments.length) newIndex = 0;
+    const nextDoc = filteredDocuments[newIndex];
+    if (nextDoc) {
+      setSelectedDocFile(nextDoc);
+      setSplitSelectedFile(nextDoc);
+      setViewerZoom(1);
+      setViewerRotation(0);
+      setDocCurrentPage(1);
+    }
+  };
+
+  const handleNavigateVideo = (direction: 'prev' | 'next') => {
+    if (filteredVideos.length === 0) return;
+    const currentIndex = selectedVideoFile 
+      ? filteredVideos.findIndex(v => v.id === selectedVideoFile.id)
+      : 0;
+    let newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
+    if (newIndex < 0) newIndex = filteredVideos.length - 1;
+    if (newIndex >= filteredVideos.length) newIndex = 0;
+    const nextVideo = filteredVideos[newIndex];
+    if (nextVideo) {
+      setSelectedVideoFile(nextVideo);
+      setSplitSelectedFile(nextVideo);
+    }
+  };
+
+  const handleNavigateImage = (direction: 'prev' | 'next') => {
+    if (filteredImages.length === 0) return;
+    const currentIndex = selectedImageFile 
+      ? filteredImages.findIndex(img => img.id === selectedImageFile.id)
+      : 0;
+    let newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
+    if (newIndex < 0) newIndex = filteredImages.length - 1;
+    if (newIndex >= filteredImages.length) newIndex = 0;
+    const nextImage = filteredImages[newIndex];
+    if (nextImage) {
+      setSelectedImageFile(nextImage);
+      setSplitSelectedFile(nextImage);
+    }
+  };
+
+  // 1. LECTEUR DOCUMENT DÉDIÉ (IMAGE 1)
+  const renderDocumentReader = (file: FileItem) => {
+    const isPdf = file.extension === 'pdf' || file.name.toLowerCase().endsWith('.pdf') || (file.url && file.url.toLowerCase().includes('.pdf')) || Boolean(file.type?.includes('pdf'));
+    const pdfUrl = splitResolvedPdfUrl || file.url || '';
+    const cleanPdfBase = pdfUrl.split('#')[0];
+    const nativePdfUrl = cleanPdfBase ? cleanPdfBase + '#toolbar=1&navpanes=0&view=FitH' : '';
+
+    return (
+      <div className="w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none">
+        {/* Barre supérieure du lecteur document (Image 1) */}
+        <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => handleNavigateDoc('prev')}
+              className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
+              title="Document précédent"
+            >
+              <ChevronLeft className="w-4 h-4 stroke-[2.2]" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleNavigateDoc('next')}
+              className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
+              title="Document suivant"
+            >
+              <ChevronRight className="w-4 h-4 stroke-[2.2]" />
+            </button>
+
+            <div className="min-w-0 ml-1">
+              <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-[220px]" title={file.name}>
+                {file.name}
+              </p>
+              {file.size && (
+                <p className="text-[10px] text-slate-400 font-semibold truncate">
+                  {file.size}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-wrap justify-end">
+            <button
+              type="button"
+              onClick={() => setViewerZoom(prev => Math.max(0.5, prev - 0.25))}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Zoom arrière (-)"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewerZoom(prev => Math.min(3, prev + 0.25))}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Zoom avant (+)"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewerRotation(prev => (prev + 90) % 360)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Faire pivoter"
+            >
+              <RotateCw className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Bouton Mode Vertical / Horizontal (Image 1) */}
+            <button
+              type="button"
+              onClick={() => {
+                const nextMode = docLayoutMode === 'vertical' ? 'horizontal' : 'vertical';
+                setDocLayoutMode(nextMode);
+                setDocCurrentPage(1);
+                showToast(nextMode === 'horizontal' ? 'Mode défilement horizontal activé' : 'Mode défilement vertical activé');
+              }}
+              className={'h-7 sm:h-8 px-2.5 sm:px-3 rounded-full flex items-center gap-1.5 text-xs font-bold border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
+                docLayoutMode === 'horizontal'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30 ring-1 ring-amber-400/40'
+                  : 'bg-blue-500/20 text-blue-300 border-blue-500/50 hover:bg-blue-500/30 ring-1 ring-blue-400/40'
+              )}
+              title={docLayoutMode === 'vertical' ? "Défilement vertical (Cliquer pour passer en horizontal)" : "Défilement horizontal (Cliquer pour passer en vertical)"}
+            >
+              <SlidersHorizontal className={'w-3.5 h-3.5 ' + (docLayoutMode === 'vertical' ? 'rotate-90 text-blue-400' : 'text-amber-400')} />
+              <span className="text-[11px] font-black">{docLayoutMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleShareFile(file)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Partager"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleDownloadFile(file)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Télécharger"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleOpenStudySpaceForCurrentMenu(true)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50"
+              title="Ouvrir dans l'Espace d'étude"
+            >
+              <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              className={'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
+                isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+              )}
+              title={isViewerMaximized ? "Réduire la vue" : "Agrandir dans l'espace"}
+            >
+              {isViewerMaximized ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedDocFile(null);
+                setSplitSelectedFile(null);
+                setIsViewerMaximized(false);
+              }}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
+              title="Fermer le lecteur de document"
+            >
+              <X className="w-4 h-4 stroke-[2.5]" />
+            </button>
+          </div>
+        </div>
+
+        {/* Corps du Document (Image 1) */}
+        <div className="flex-1 w-full h-full flex flex-col overflow-hidden bg-stone-100 dark:bg-stone-900 select-text">
+          {isPdf ? (
+            docLayoutMode === 'horizontal' ? (
+              <PdfHorizontalViewer
+                fileId={file.id}
+                file={file}
+                url={splitResolvedPdfUrl || file.url}
+                docZoom={Math.round(viewerZoom * 100)}
+                layoutMode="horizontal"
+                currentPage={docCurrentPage}
+                onPageChange={setDocCurrentPage}
+                isFullscreen={isViewerMaximized}
+              />
+            ) : (
+              nativePdfUrl ? (
+                <div className="w-full h-full flex-1 flex flex-col items-center overflow-hidden bg-stone-100 dark:bg-stone-900">
+                  <object
+                    key={'pdf-native-' + (file.id || cleanPdfBase)}
+                    data={nativePdfUrl}
+                    type="application/pdf"
+                    className="w-full h-full border-0 block flex-1"
+                    style={{ width: '100%', height: '100%' }}
+                  >
+                    <iframe
+                      key={'iframe-pdf-native-' + (file.id || cleanPdfBase)}
+                      src={nativePdfUrl}
+                      title={file.name || 'Document PDF'}
+                      className="w-full h-full border-0 block flex-1"
+                      style={{ width: '100%', height: '100%' }}
+                    />
+                  </object>
+                </div>
+              ) : (
+                <PdfHorizontalViewer
+                  fileId={file.id}
+                  file={file}
+                  url={file.url}
+                  docZoom={Math.round(viewerZoom * 100)}
+                  layoutMode="vertical"
+                  currentPage={docCurrentPage}
+                  onPageChange={setDocCurrentPage}
+                  isFullscreen={isViewerMaximized}
+                />
+              )
+            )
+          ) : (
+            <ModernDocumentViewer
+              fileId={file.id}
+              url={file.url}
+              fileName={file.name}
+              fileSize={file.size}
+              className="w-full h-full border-0 rounded-none shadow-none"
+            />
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderDocumentEmptyState = () => (
+    <div className="hidden md:flex flex-1 flex-col items-center justify-center p-8 text-center bg-[#0C111D] border-t md:border-t-0 md:border-l border-white/10 select-none">
+      <div className="w-20 h-20 rounded-3xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mb-4 shadow-sm">
+        <FileText className="w-10 h-10 stroke-[1.8]" />
+      </div>
+      <h3 className="text-base sm:text-lg font-bold text-slate-200">
+        Aucun document sélectionné
+      </h3>
+      <p className="text-xs text-slate-400 mt-1 max-w-xs">
+        Sélectionnez un document dans la liste de gauche pour l'afficher dans le lecteur.
+      </p>
+    </div>
+  );
+
+  // 2. LECTEUR AUDIO DÉDIÉ (IMAGE 2 & IMAGE 3)
+  const renderAudioPlayer = (track: FileItem) => {
+    return (
+      <div className="relative w-full h-full flex-1 flex flex-col justify-between p-3 sm:p-6 md:p-8 bg-[#090D1A] text-white overflow-hidden select-none">
+        <audio
+          ref={audioRef}
+          src={track.audioUrl || (track as any).url || ''}
+          autoPlay={isAudioPlaying}
+          loop={isAudioRepeat === 'one'}
+          onEnded={() => {
+            if (isAudioRepeat === 'one') {
+              if (audioRef.current) {
+                audioRef.current.currentTime = 0;
+                audioRef.current.play().catch(() => {});
+              }
+              setAudioCurrentTime(0);
+            } else {
+              handleAudioNext();
+            }
+          }}
+          onTimeUpdate={() => {
+            if (audioRef.current && isAudioPlaying) {
+              setAudioCurrentTime(Math.floor(audioRef.current.currentTime));
+              if (audioRef.current.duration && !isNaN(audioRef.current.duration)) {
+                setAudioDuration(Math.floor(audioRef.current.duration));
+              }
+            }
+          }}
+        />
+
+        {/* Halo ambré chaleureux */}
+        <div 
+          className="absolute inset-0 pointer-events-none opacity-35"
+          style={{
+            background: 'radial-gradient(circle at 45% 30%, rgba(245, 158, 11, 0.45) 0%, rgba(217, 119, 6, 0.18) 40%, transparent 75%)'
+          }}
+        />
+
+        {/* Bouton retour mobile */}
+        <div className="md:hidden flex items-center justify-between pb-2 relative z-10 shrink-0">
+          <button
+            type="button"
+            onClick={() => setIsMobilePlayerOpen(false)}
+            className="flex items-center gap-1 text-xs text-slate-400 hover:text-white"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span>Retour à la liste</span>
+          </button>
+        </div>
+
+        {/* En-tête du lecteur audio */}
+        <div className="w-full flex items-center justify-between pb-3 border-b border-white/10 relative z-10 shrink-0">
+          <div className="min-w-0 pr-2">
+            <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[200px] sm:max-w-xs" title={track.name}>
+              {track.name}
+            </p>
+            <p className="text-[10px] text-amber-400 font-semibold truncate">
+              {track.artist || track.size || 'StudyCloud Audio'}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => handleShareFile(track)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Partager"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDownloadFile(track)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Télécharger"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOpenStudySpaceForCurrentMenu(true)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50"
+              title="Ouvrir dans l'Espace d'étude"
+            >
+              <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
+            </button>
+            
+            {/* Options 3 traits */}
+            <div className="relative studycloud-menu-trigger">
+              <button
+                type="button"
+                onClick={() => setIsPlayerMenuOpen(!isPlayerMenuOpen)}
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center bg-black/60 hover:bg-white/20 text-white border border-white/15 transition-all cursor-pointer shadow-sm active:scale-95"
+                title="Options de lecture"
+              >
+                <Menu className="w-4 h-4 stroke-[2.2]" />
+              </button>
+              {isPlayerMenuOpen && (
+                <div 
+                  className="studycloud-file-menu-panel absolute right-0 top-9 z-50 w-52 bg-[#0D1527] border border-slate-700/80 rounded-xl shadow-2xl py-1 text-xs text-white divide-y divide-white/10 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button type="button" onClick={() => { handleDownloadFile(track); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer">
+                    <Download className="w-4 h-4 text-blue-400" /> Télécharger ce son
+                  </button>
+                  <button type="button" onClick={() => { handleShareFile(track); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer">
+                    <Share2 className="w-4 h-4 text-emerald-400" /> Partager
+                  </button>
+                  <button type="button" onClick={() => { toggleAudioRepeat(); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer">
+                    <Repeat className="w-4 h-4 text-amber-400" /> <span>{isAudioRepeat === 'one' ? "Désactiver la boucle" : "Lire en boucle"}</span>
+                  </button>
+                  <button type="button" onClick={() => { setIsAudioShuffle(!isAudioShuffle); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer">
+                    <Shuffle className="w-4 h-4 text-amber-400" /> <span>{isAudioShuffle ? "Désactiver mode aléatoire" : "Mode aléatoire"}</span>
+                  </button>
+                  <button type="button" onClick={() => { handleDeleteAudio(track); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-rose-950/40 text-rose-400 flex items-center gap-2.5 cursor-pointer">
+                    <Trash2 className="w-4 h-4 text-rose-500" /> Supprimer ce son
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Bouton Fermer */}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedAudioTrack(null);
+                setSplitSelectedFile(null);
+                setIsAudioPlaying(false);
+                setIsMobilePlayerOpen(false);
+              }}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
+              title="Fermer le lecteur audio"
+            >
+              <X className="w-4 h-4 stroke-[2.5]" />
+            </button>
+          </div>
+        </div>
+
+        {/* Centre : Pochette MESSAGE, waveform et détails (Image 3) */}
+        <div className="relative z-10 w-full flex items-center justify-center max-w-sm mx-auto my-auto pt-2 sm:pt-4">
+          <div className="relative w-44 sm:w-56 md:w-64 aspect-square rounded-2xl overflow-hidden shrink-0 shadow-[0_20px_45px_rgba(0,0,0,0.85)] border border-white/20 bg-black group">
+            <AudioCardPreview track={track} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+            <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/85 border border-white/25 rounded text-[7px] font-black uppercase tracking-wider text-white">
+              Parental Advisory
+            </div>
+          </div>
+        </div>
+
+        <div className="relative z-10 w-full text-center space-y-1 my-2 sm:my-3">
+          <h2 className="text-lg sm:text-2xl md:text-3xl font-black text-white tracking-tight drop-shadow-md truncate px-2">
+            {track.name}
+          </h2>
+          <p className="text-xs sm:text-sm font-semibold text-slate-300 truncate px-2">
+            {track.artist || track.source || 'StudyCloud Audio'}
+          </p>
+        </div>
+
+        {/* Section temporelle */}
+        <div className="relative z-10 w-full max-w-md mx-auto space-y-1.5 py-1">
+          <div className="flex items-center justify-between px-3">
+            <button
+              type="button"
+              onClick={() => handleSeekDelta(-10)}
+              className="relative w-8 h-8 rounded-full flex items-center justify-center text-white/90 hover:text-white hover:bg-white/10 transition-all active:scale-90 cursor-pointer"
+              title="Reculer de 10s"
+            >
+              <RotateCcw className="w-5 h-5 stroke-[2]" />
+              <span className="absolute text-[8px] font-black text-white">10</span>
+            </button>
+
+            <div className="px-3.5 py-1 rounded-full bg-white text-stone-950 font-black text-xs shadow-md tracking-wider">
+              {formatTime(audioCurrentTime)} / {formatTime(audioDuration)}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleSeekDelta(10)}
+              className="relative w-8 h-8 rounded-full flex items-center justify-center text-white/90 hover:text-white hover:bg-white/10 transition-all active:scale-90 cursor-pointer"
+              title="Avancer de 10s"
+            >
+              <RotateCw className="w-5 h-5 stroke-[2]" />
+              <span className="absolute text-[8px] font-black text-white">10</span>
+            </button>
+          </div>
+
+          <div className="w-full px-2">
+            <input
+              type="range"
+              min="0"
+              max={audioDuration || 1}
+              value={audioCurrentTime}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                setAudioCurrentTime(val);
+                if (audioRef.current) audioRef.current.currentTime = val;
+              }}
+              className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-white hover:accent-amber-400 transition-all"
+            />
+          </div>
+        </div>
+
+        {/* Contrôles principaux (Image 3) */}
+        <div className="relative z-10 w-full max-w-sm mx-auto flex items-center justify-between px-2 pt-1 pb-2 sm:pb-3">
+          <button
+            type="button"
+            onClick={() => {
+              setIsAudioShuffle(!isAudioShuffle);
+              showToast(!isAudioShuffle ? "Lecture aléatoire activée" : "Lecture aléatoire désactivée");
+            }}
+            className={'p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer ' + (
+              isAudioShuffle ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
+            )}
+            title={isAudioShuffle ? "Désactiver mode aléatoire" : "Mode aléatoire"}
+          >
+            <Shuffle className="w-5 h-5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={handleAudioPrev}
+            className="p-2 text-white hover:text-amber-400 transition-all active:scale-90 cursor-pointer"
+            title="Piste précédente"
+          >
+            <SkipBack className="w-6 h-6 fill-current" />
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleAudioPlayPause}
+            className="w-14 h-14 rounded-full bg-white text-stone-950 flex items-center justify-center hover:scale-105 active:scale-95 shadow-[0_8px_25px_rgba(255,255,255,0.3)] transition-all cursor-pointer"
+            title={isAudioPlaying ? "Mettre en pause" : "Lire"}
+          >
+            {isAudioPlaying ? (
+              <Pause className="w-7 h-7 fill-current" />
+            ) : (
+              <Play className="w-7 h-7 fill-current ml-1" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleAudioNext}
+            className="p-2 text-white hover:text-amber-400 transition-all active:scale-90 cursor-pointer"
+            title="Piste suivante"
+          >
+            <SkipForward className="w-6 h-6 fill-current" />
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleAudioRepeat}
+            className={'p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer relative ' + (
+              isAudioRepeat !== 'off' ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
+            )}
+            title={isAudioRepeat === 'one' ? "Boucle 1 titre" : isAudioRepeat === 'all' ? "Boucle tous les titres" : "Boucle désactivée"}
+          >
+            <Repeat className="w-5 h-5" />
+            {isAudioRepeat === 'one' && (
+              <span className="absolute -top-0.5 -right-0.5 text-[9px] font-black text-amber-400">1</span>
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderAudioEmptyState = () => (
+    <div className="flex flex-1 flex-col items-center justify-center p-8 text-center select-none bg-[#090D1A] border-t md:border-t-0 md:border-l border-white/10 animate-in fade-in duration-200">
+      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 flex items-center justify-center shadow-[0_8px_30px_rgba(245,158,11,0.45)] border-2 border-white/30 ring-4 ring-black/40 relative mb-4">
+        <div className="absolute inset-2 rounded-full border border-white/20 pointer-events-none" />
+        <svg className="w-10 h-10 sm:w-12 sm:h-12 text-white filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] relative z-10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M2.5 10.5C2.5 7.8 4.2 5.5 6.5 4.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.8" />
+          <path d="M21.5 10.5C21.5 7.8 19.8 5.5 17.5 4.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.8" />
+          <path d="M9 16.5V5.5L20 3.5V14.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M9 9.5L20 7.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <ellipse cx="6" cy="16.5" rx="3" ry="2.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.8" transform="rotate(-15 6 16.5)" />
+          <ellipse cx="17" cy="14.5" rx="3" ry="2.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.8" transform="rotate(-15 17 14.5)" />
+        </svg>
+      </div>
+
+      <h3 className="text-base sm:text-lg font-bold text-slate-200">
+        Aucun son sélectionné
+      </h3>
+      <p className="text-xs text-slate-400 mt-1 max-w-xs">
+        Sélectionnez une piste musicale dans la liste de gauche pour lancer la lecture.
+      </p>
+    </div>
+  );
+
+  // 3. LECTEUR VIDÉO DÉDIÉ (IMAGE 4)
+  const renderVideoPlayer = (file: FileItem) => {
+    const videoSrc = (file.videoUrl && !file.videoUrl.startsWith('blob:'))
+      ? file.videoUrl
+      : (file.url && !file.url.startsWith('blob:'))
+      ? file.url
+      : getWorkerApiUrl().replace(/\/+$/, '') + '/api/cloud/stream/' + file.id;
+
+    return (
+      <div className="w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none">
+        {/* Barre supérieure du lecteur vidéo (Image 4) */}
+        <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => handleNavigateVideo('prev')}
+              className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
+              title="Vidéo précédente"
+            >
+              <ChevronLeft className="w-4 h-4 stroke-[2.2]" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleNavigateVideo('next')}
+              className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
+              title="Vidéo suivante"
+            >
+              <ChevronRight className="w-4 h-4 stroke-[2.2]" />
+            </button>
+
+            <div className="min-w-0 ml-1">
+              <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[200px] sm:max-w-xs" title={file.name}>
+                {file.name}
+              </p>
+              <p className="text-[10px] text-purple-400 font-semibold truncate">
+                {file.size || 'Vidéo'} • 1080P HD
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => handleShareFile(file)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Partager"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDownloadFile(file)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Télécharger"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOpenStudySpaceForCurrentMenu(true)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50"
+              title="Ouvrir dans l'Espace d'étude"
+            >
+              <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              className={'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
+                isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+              )}
+              title={isViewerMaximized ? "Réduire la vue" : "Plein écran"}
+            >
+              {isViewerMaximized ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedVideoFile(null);
+                setSplitSelectedFile(null);
+                setIsViewerMaximized(false);
+              }}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
+              title="Fermer le lecteur vidéo"
+            >
+              <X className="w-4 h-4 stroke-[2.5]" />
+            </button>
+          </div>
+        </div>
+
+        {/* Corps du lecteur vidéo (Image 4) */}
+        <div className="flex-1 w-full h-full flex items-center justify-center relative p-1 sm:p-2 overflow-hidden">
+          <ModernVideoPlayer
+            src={videoSrc}
+            poster={file.previewUrl}
+            fileName={file.name}
+            fileId={file.id}
+            fileSize={file.size}
+            autoPlay={true}
+            className="w-full h-full max-h-[calc(100vh-180px)] rounded-2xl"
+          />
+        </div>
+      </div>
+    );
+  };
+
+  const renderVideoEmptyState = () => (
+    <div className="hidden md:flex flex-1 flex-col items-center justify-center p-8 text-center bg-[#04060A] border-t md:border-t-0 md:border-l border-white/10 select-none animate-in fade-in duration-200">
+      <div className="w-20 h-20 rounded-3xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center mb-4 shadow-sm">
+        <Film className="w-10 h-10 stroke-[1.8]" />
+      </div>
+      <h3 className="text-base sm:text-lg font-bold text-slate-200">
+        Aucune vidéo sélectionnée
+      </h3>
+      <p className="text-xs text-slate-400 mt-1 max-w-xs">
+        Sélectionnez une vidéo dans la liste de gauche pour lancer la lecture.
+      </p>
+    </div>
+  );
+
+  // 4. LECTEUR IMAGE DÉDIÉ (IMAGE 5)
+  const renderImageViewer = (file: FileItem) => {
+    return (
+      <div className="w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none">
+        {/* Barre supérieure du lecteur image (Image 5) */}
+        <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => handleNavigateImage('prev')}
+              className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
+              title="Image précédente"
+            >
+              <ChevronLeft className="w-4 h-4 stroke-[2.2]" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleNavigateImage('next')}
+              className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
+              title="Image suivante"
+            >
+              <ChevronRight className="w-4 h-4 stroke-[2.2]" />
+            </button>
+
+            <div className="min-w-0 ml-1">
+              <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[200px] sm:max-w-xs" title={file.name}>
+                {file.name}
+              </p>
+              <p className="text-[10px] text-emerald-400 font-semibold truncate">
+                {file.size || 'Image'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => handleShareFile(file)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Partager"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDownloadFile(file)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Télécharger"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOpenStudySpaceForCurrentMenu(true)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50"
+              title="Ouvrir dans l'Espace d'étude"
+            >
+              <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              className={'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
+                isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+              )}
+              title={isViewerMaximized ? "Réduire la vue" : "Plein écran"}
+            >
+              {isViewerMaximized ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedImageFile(null);
+                setSplitSelectedFile(null);
+                setIsViewerMaximized(false);
+              }}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
+              title="Fermer le lecteur d'image"
+            >
+              <X className="w-4 h-4 stroke-[2.5]" />
+            </button>
+          </div>
+        </div>
+
+        {/* Corps du lecteur d'image (Image 5) */}
+        <div className="flex-1 w-full h-full flex flex-col items-center justify-center relative overflow-hidden p-1 sm:p-2">
+          <ModernImageViewer
+            src={file.previewUrl || (file as any).url}
+            alt={file.name}
+            fileName={file.name}
+            fileId={file.id}
+            fileSize={file.size}
+            className="w-full h-full max-h-[calc(100vh-180px)] rounded-2xl"
+          />
+        </div>
+      </div>
+    );
+  };
+
+  const renderImageEmptyState = () => (
+    <div className="hidden md:flex flex-1 flex-col items-center justify-center p-8 text-center bg-[#04060A] border-t md:border-t-0 md:border-l border-white/10 select-none animate-in fade-in duration-200">
+      <div className="w-20 h-20 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mb-4 shadow-sm">
+        <ImageIcon className="w-10 h-10 stroke-[1.8]" />
+      </div>
+      <h3 className="text-base sm:text-lg font-bold text-slate-200">
+        Aucune image sélectionnée
+      </h3>
+      <p className="text-xs text-slate-400 mt-1 max-w-xs">
+        Sélectionnez une image dans la liste de gauche pour l'afficher.
+      </p>
+    </div>
+  );
+
+  // 5. LECTEUR TÉLÉCHARGEMENT DÉDIÉ
+  const renderDownloadReader = (file: FileItem | DownloadedItem) => {
+    const isVid = file.category === 'videos' || Boolean((file as any).videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(file.name);
+    const isAud = file.category === 'audio' || Boolean((file as any).audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name);
+    const isImg = file.category === 'images' || Boolean((file as any).isImage) || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name);
+    
+    if (isVid) return renderVideoPlayer(file as FileItem);
+    if (isAud) return renderAudioPlayer(file as FileItem);
+    if (isImg) return renderImageViewer(file as FileItem);
+    return renderDocumentReader(file as FileItem);
+  };
+
+  const renderDownloadEmptyState = () => (
+    <div className="hidden md:flex flex-1 flex-col items-center justify-center p-8 text-center bg-[#04060A] border-t md:border-t-0 md:border-l border-white/10 select-none">
+      <div className="w-20 h-20 rounded-3xl bg-sky-500/10 border border-sky-500/20 text-sky-400 flex items-center justify-center mb-4 shadow-sm">
+        <Download className="w-10 h-10 stroke-[1.8]" />
+      </div>
+      <h3 className="text-base sm:text-lg font-bold text-slate-200">
+        Aucun fichier sélectionné
+      </h3>
+      <p className="text-xs text-slate-400 mt-1 max-w-xs">
+        Sélectionnez un élément téléchargé pour l'ouvrir.
+      </p>
+    </div>
+  );
+
+  // 6. LECTEUR CLASSEUR & COLLECTIONS DÉDIÉ
+  const renderClasseurFileReader = (file: FileItem) => {
+    const isVid = file.category === 'videos' || Boolean(file.videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(file.name);
+    const isAud = file.category === 'audio' || Boolean(file.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name);
+    const isImg = file.category === 'images' || Boolean(file.isImage) || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name);
+
+    if (isVid) return renderVideoPlayer(file);
+    if (isAud) return renderAudioPlayer(file);
+    if (isImg) return renderImageViewer(file);
+    return renderDocumentReader(file);
+  };
+
+  const renderCollectionReader = (file: FileItem) => {
+    return renderClasseurFileReader(file);
+  };
+
+  const renderCollectionEmptyState = (title: string) => (
+    <div className="hidden md:flex flex-1 flex-col items-center justify-center p-8 text-center bg-[#04060A] border-t md:border-t-0 md:border-l border-white/10 select-none">
+      <div className="w-20 h-20 rounded-3xl bg-slate-800 border border-white/10 text-slate-400 flex items-center justify-center mb-4 shadow-sm">
+        <FolderArchive className="w-10 h-10 stroke-[1.8]" />
+      </div>
+      <h3 className="text-base sm:text-lg font-bold text-slate-200">
+        Aucun élément sélectionné dans {' ' + title}
+      </h3>
+      <p className="text-xs text-slate-400 mt-1 max-w-xs">
+        Sélectionnez un élément dans la liste de gauche pour l'afficher.
+      </p>
+    </div>
+  );
+
   return (
     <div className={`transition-colors duration-300 bg-[#F4F6F8] dark:bg-[#0C111D] text-stone-900 dark:text-slate-100 flex flex-col overflow-y-auto selection:bg-blue-600 selection:text-white ${
       isFullscreen
@@ -9577,28 +10478,524 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             </div>
           )}
 
+                    {/* ========================================================================= */}
+          {/* ZONE PRINCIPALE : LECTEURS ET VUES STRICTEMENT INDÉPENDANTS PAR MENU      */}
           {/* ========================================================================= */}
-          {/* ZONE PRINCIPALE : VUE DIVISÉE EN DEUX (SPLIT SCREEN) OU PLEINE LARGEUR    */}
-          {/* ========================================================================= */}
-          <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${
-            isViewerMaximized ? 'min-h-[calc(100vh-68px)] h-[calc(100vh-68px)]' : 'min-h-[calc(100vh-120px)]'
-          }`}>
-            
-            {/* --------------------------------------------------------------------- */}
-            {/* PANNEAU DE GAUCHE : LE RESTE DES FICHIERS                            */}
-            {/* Si un élément est sélectionné, prend 50% de l'écran avec scroll       */}
-            {/* --------------------------------------------------------------------- */}
-            <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-              isViewerMaximized 
-                ? 'hidden' 
-                : (currentSubView.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio') || splitSelectedFile?.category === 'audio')
-                  ? `${isMobilePlayerOpen ? 'hidden md:block' : 'w-full'} md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80`
-                  : splitSelectedFile 
+
+          {/* 1. MENU DOCUMENTS : LAYOUT ET LECTEUR DOCUMENT DÉDIÉ (IMAGE 1) */}
+          {(currentSubView.id === 'studycloud-category-documents' || (isCloudView && cloudActiveTab === 'documents')) && (
+            <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+              {/* PANNEAU DE GAUCHE : LISTE DES DOCUMENTS */}
+              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+                isViewerMaximized 
+                  ? 'hidden' 
+                  : 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+              }`}>
+                <div className="space-y-3 sm:space-y-4">
+                  {/* Compteur */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
+                      {filteredDocuments.length} document{filteredDocuments.length > 1 ? 's' : ''} publié{filteredDocuments.length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  {/* Bandeau d'action de sélection multiple si activé */}
+                  {renderSelectionBanner(filteredDocuments)}
+
+                  {loadingCategories.documents ? (
+                    renderCategoryProgressiveSkeleton('Documents', 'grid', 'text-blue-400')
+                  ) : filteredDocuments.length === 0 ? (
+                    <div className="py-20 text-center text-stone-500 dark:text-slate-400">
+                      <FileText className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-blue-400" />
+                      <p className="text-sm font-semibold">Aucun document disponible</p>
+                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                        Ce dossier ne contient aucun document pour le moment.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className={`grid gap-2.5 sm:gap-3.5 ${
+                      splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
+                      {filteredDocuments.map((doc, idx) => renderDocumentCard(doc, idx))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* PANNEAU DE DROITE : LECTEUR DOCUMENT INDÉPENDANT (IMAGE 1) */}
+              <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                isViewerMaximized 
+                  ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+              }`}>
+                {selectedDocFile ? (
+                  renderDocumentReader(selectedDocFile)
+                ) : (
+                  renderDocumentEmptyState()
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 2. MENU AUDIO : LAYOUT ET LECTEUR AUDIO DÉDIÉ (IMAGE 2 & IMAGE 3) */}
+          {(currentSubView.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio')) && (
+            <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+              {/* PANNEAU DE GAUCHE : LISTE DES SONS */}
+              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+                isMobilePlayerOpen ? 'hidden md:block' : 'w-full'
+              } md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80`}>
+                <div className="w-full space-y-3">
+                  {/* En-tête de la liste */}
+                  <div className="flex items-center justify-between px-1 py-0.5">
+                    <div className="flex items-center gap-2">
+                      <Music className="w-4 h-4 text-amber-500 dark:text-amber-400 stroke-[2.2]" />
+                      <span className="text-xs sm:text-sm font-bold text-stone-900 dark:text-white tracking-wide">
+                        Tous les sons ({filteredAudio.length})
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider">
+                      StudyCloud Audio
+                    </span>
+                  </div>
+
+                  {/* Bandeau d'action de sélection multiple si activé */}
+                  {renderSelectionBanner(filteredAudio)}
+
+                  {/* Liste des pistes ou état vide */}
+                  {loadingCategories.audio ? (
+                    renderCategoryProgressiveSkeleton('Audio', 'audio-list', 'text-amber-400')
+                  ) : filteredAudio.length === 0 ? (
+                    <div className="py-20 text-center text-stone-500 dark:text-slate-400">
+                      <Music className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
+                      <p className="text-sm font-semibold">Aucun son disponible</p>
+                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                        Ce dossier ne contient aucun fichier audio pour le moment.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                    {filteredAudio.map((track) => {
+                      const isSelected = splitSelectedFile?.id === track.id;
+                      const isChecked = selectedItemIds.includes(track.id);
+                      const isMenuOpen = activeMenuFileId === track.id || audioMenuSongId === track.id;
+
+                      return (
+                        <div
+                          key={track.id}
+                          onClick={() => {
+                            if (isSelectionMode) {
+                              toggleItemSelection(track.id);
+                            } else {
+                              handleSelectFile(track);
+                              setIsMobilePlayerOpen(true);
+                            }
+                          }}
+                          className={`group flex items-center justify-between gap-3 p-3 rounded-2xl transition-all cursor-pointer select-none border ${
+                            isMenuOpen ? 'z-50 relative' : 'relative z-10'
+                          } ${
+                            isChecked
+                              ? 'bg-amber-500/15 border-amber-400 ring-2 ring-amber-400/40 shadow-sm'
+                              : isSelected 
+                                ? 'bg-amber-500/10 dark:bg-amber-950/30 border-amber-400 dark:border-amber-500 shadow-sm ring-1 ring-amber-400/30' 
+                                : 'bg-white dark:bg-slate-900/80 border-stone-200/90 dark:border-slate-800 hover:border-amber-400/60 hover:shadow-md'
+                          }`}
+                        >
+                          {/* Case à cocher en mode sélection */}
+                          {isSelectionMode && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleItemSelection(track.id);
+                              }}
+                              className="p-1 text-amber-500 hover:text-amber-600 cursor-pointer shrink-0"
+                            >
+                              {isChecked ? (
+                                <CheckSquare className="w-5 h-5 fill-amber-500/20 text-amber-500" />
+                              ) : (
+                                <Square className="w-5 h-5 text-stone-400 dark:text-slate-500" />
+                              )}
+                            </button>
+                          )}
+
+                          {/* Gauche : Vignette album carrée + Titre + Artiste + Détails */}
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-stone-900 border border-stone-200 dark:border-white/10 relative shadow-sm">
+                              <AudioCardPreview track={track} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <h4 className={`text-xs sm:text-sm font-bold truncate leading-tight ${
+                                isSelected ? 'text-amber-600 dark:text-amber-300 font-black' : 'text-stone-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors'
+                              }`}>
+                                {track.name}
+                              </h4>
+                              <p className="text-[11px] sm:text-xs text-stone-500 dark:text-slate-400 font-medium truncate mt-0.5">
+                                {track.artist || track.source}
+                              </p>
+                              <div className="flex items-center gap-2 mt-0.5 text-[10px] text-stone-400 dark:text-slate-500 font-medium">
+                                <span>{track.size}</span>
+                                <span>•</span>
+                                <span>{formatTime(track.durationSec || 0)}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Droite : Bouton Play/Pause + Bâtons animés + Date + Bouton 3 traits */}
+                          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+                            {/* Si morceau sélectionné : bâtons animés ET bouton Play/Pause juste à côté */}
+                            {isSelected && (
+                              <div className="flex items-center gap-2 shrink-0">
+                                {/* Les 4 bâtons qui bougent quand la musique chante, et s'arrêtent en pause */}
+                                <div 
+                                  className="flex items-end gap-1 h-5 px-1 py-0.5 shrink-0" 
+                                  title={isAudioPlaying ? "Lecture en cours" : "En pause"}
+                                >
+                                  <span 
+                                    className={`w-1 rounded-full bg-amber-500 dark:bg-amber-400 ${isAudioPlaying ? 'music-bar-1' : ''}`}
+                                    style={{ 
+                                      height: isAudioPlaying ? undefined : '5px',
+                                      animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                                    }} 
+                                  />
+                                  <span 
+                                    className={`w-1 rounded-full bg-amber-400 dark:bg-amber-300 ${isAudioPlaying ? 'music-bar-2' : ''}`}
+                                    style={{ 
+                                      height: isAudioPlaying ? undefined : '14px',
+                                      animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                                    }} 
+                                  />
+                                  <span 
+                                    className={`w-1 rounded-full bg-yellow-500 dark:bg-yellow-400 ${isAudioPlaying ? 'music-bar-3' : ''}`}
+                                    style={{ 
+                                      height: isAudioPlaying ? undefined : '9px',
+                                      animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                                    }} 
+                                  />
+                                  <span 
+                                    className={`w-1 rounded-full bg-amber-500 dark:bg-amber-400 ${isAudioPlaying ? 'music-bar-4' : ''}`}
+                                    style={{ 
+                                      height: isAudioPlaying ? undefined : '4px',
+                                      animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                                    }} 
+                                  />
+                                </div>
+
+                                {/* BOUTON POUR METTRE PAUSE / PLAY A CÔTÉ DU BÂTON QUI BOUGE */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsAudioPlaying(!isAudioPlaying);
+                                  }}
+                                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-amber-500 hover:bg-amber-600 text-stone-950 flex items-center justify-center transition-transform active:scale-95 shadow-sm cursor-pointer"
+                                  title={isAudioPlaying ? "Mettre en pause" : "Reprendre la lecture"}
+                                >
+                                  {isAudioPlaying ? (
+                                    <Pause className="w-3.5 h-3.5 fill-current" />
+                                  ) : (
+                                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                                  )}
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Si morceau non sélectionné : bouton lecture directe au survol */}
+                            {!isSelected && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSelectFile(track);
+                                  setIsAudioPlaying(true);
+                                  setIsMobilePlayerOpen(true);
+                                }}
+                                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full text-stone-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-slate-800 flex items-center justify-center transition-all cursor-pointer opacity-70 group-hover:opacity-100"
+                                title="Lire ce son"
+                              >
+                                <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                              </button>
+                            )}
+
+                            {/* Date */}
+                            <span className="text-xs font-semibold text-stone-400 dark:text-slate-400 shrink-0 hidden sm:inline-block">
+                              {track.date}
+                            </span>
+
+                            {/* Bouton 3 traits sur chaque musique avec toutes les propositions */}
+                            <div className="relative shrink-0 studycloud-menu-trigger">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveMenuFileId(activeMenuFileId === track.id ? null : track.id);
+                                  setAudioMenuSongId(audioMenuSongId === track.id ? null : track.id);
+                                }}
+                                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full text-stone-500 hover:text-stone-900 dark:text-slate-400 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-white/10 flex items-center justify-center transition-colors cursor-pointer"
+                                title="Options de la musique (3 traits)"
+                              >
+                                <Menu className="w-4 h-4 stroke-[2.2]" />
+                              </button>
+
+                              {renderFileOptionsMenu(track, filteredAudio, 'right')}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              </div>
+
+              {/* PANNEAU DE DROITE : LECTEUR AUDIO INDÉPENDANT (IMAGE 2 & IMAGE 3) */}
+              <div className={`transition-all duration-300 ${
+                isMobilePlayerOpen ? 'flex w-full min-h-[calc(100vh-120px)]' : 'hidden md:flex'
+              } md:w-7/12 lg:w-7/12 xl:w-7/12 flex-col bg-[#090D1A] border-t md:border-t-0 md:border-l border-white/10`}>
+                {selectedAudioTrack ? (
+                  renderAudioPlayer(selectedAudioTrack)
+                ) : (
+                  renderAudioEmptyState()
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 3. MENU VIDÉOS : LAYOUT ET LECTEUR VIDÉO DÉDIÉ (IMAGE 4) */}
+          {(currentSubView.id === 'studycloud-category-videos' || (isCloudView && cloudActiveTab === 'videos')) && (
+            <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+              {/* PANNEAU DE GAUCHE : LISTE DES VIDÉOS */}
+              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+                isViewerMaximized 
+                  ? 'hidden' 
+                  : 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+              }`}>
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
+                      {filteredVideos.length} vidéo{filteredVideos.length > 1 ? 's' : ''} disponible{filteredVideos.length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  {/* Bandeau d'action de sélection multiple si activé */}
+                  {renderSelectionBanner(filteredVideos)}
+
+                  {loadingCategories.videos ? (
+                    renderCategoryProgressiveSkeleton('Vidéos', 'grid', 'text-purple-400')
+                  ) : filteredVideos.length === 0 ? (
+                    <div className="py-20 text-center text-stone-500 dark:text-slate-400">
+                      <Film className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-purple-400" />
+                      <p className="text-sm font-semibold">Aucune vidéo disponible</p>
+                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                        Ce dossier ne contient aucune vidéo pour le moment.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className={`grid gap-2 sm:gap-3 ${
+                      splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
+                      {filteredVideos.map((vid, idx) => renderVideoCard(vid, idx))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* PANNEAU DE DROITE : LECTEUR VIDÉO INDÉPENDANT (IMAGE 4) */}
+              <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                isViewerMaximized 
+                  ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+              }`}>
+                {selectedVideoFile ? (
+                  renderVideoPlayer(selectedVideoFile)
+                ) : (
+                  renderVideoEmptyState()
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 4. MENU IMAGES : LAYOUT ET LECTEUR IMAGE DÉDIÉ (IMAGE 5) */}
+          {(currentSubView.id === 'studycloud-category-images' || (isCloudView && cloudActiveTab === 'images')) && (
+            <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+              {/* PANNEAU DE GAUCHE : LISTE DES IMAGES */}
+              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+                isViewerMaximized 
+                  ? 'hidden' 
+                  : 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+              }`}>
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
+                      {filteredImages.length} image{filteredImages.length > 1 ? 's' : ''} disponible{filteredImages.length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  {/* Bandeau d'action de sélection multiple si activé */}
+                  {renderSelectionBanner(filteredImages)}
+
+                  {loadingCategories.images ? (
+                    renderCategoryProgressiveSkeleton('Images', 'grid', 'text-emerald-400')
+                  ) : filteredImages.length === 0 ? (
+                    <div className="py-20 text-center text-stone-500 dark:text-slate-400">
+                      <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-emerald-400" />
+                      <p className="text-sm font-semibold">Aucune image disponible</p>
+                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                        Ce dossier ne contient aucune image pour le moment.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className={`grid gap-2 sm:gap-3 ${
+                      splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
+                      {filteredImages.map((img, idx) => renderImageCard(img, idx))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* PANNEAU DE DROITE : LECTEUR IMAGE INDÉPENDANT (IMAGE 5) */}
+              <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                isViewerMaximized 
+                  ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+              }`}>
+                {selectedImageFile ? (
+                  renderImageViewer(selectedImageFile)
+                ) : (
+                  renderImageEmptyState()
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 5. MENU TÉLÉCHARGEMENTS : LAYOUT ET LECTEUR INDÉPENDANT */}
+          {(currentSubView.id === 'studycloud-category-downloads' || (isCloudView && cloudActiveTab === 'downloads')) && (
+            <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+              {/* PANNEAU DE GAUCHE : LISTE DES TÉLÉCHARGEMENTS */}
+              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+                isViewerMaximized 
+                  ? 'hidden' 
+                  : 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+              }`}>
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
+                      {filteredDownloads.length} fichier{filteredDownloads.length > 1 ? 's' : ''} téléchargé{filteredDownloads.length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  {/* Bandeau d'action de sélection multiple si activé */}
+                  {renderSelectionBanner(filteredDownloads.map(toFileItem))}
+
+                  {loadingCategories.downloads ? (
+                    renderCategoryProgressiveSkeleton('Téléchargements', 'grid', 'text-sky-400')
+                  ) : filteredDownloads.length === 0 ? (
+                    <div className="py-16 text-center text-stone-500 dark:text-slate-400">
+                      <Download className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5]" />
+                      <p className="text-sm font-semibold">Aucun fichier téléchargé</p>
+                      <p className="text-xs opacity-70 mt-1">Les fichiers téléchargés s'afficheront ici avec leur vue dédiée.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {/* Documents téléchargés */}
+                      {downloadDocs.length > 0 && (
+                        <div className="space-y-2.5">
+                          <div className="flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-blue-400" />
+                            <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
+                              Documents ({downloadDocs.length})
+                            </h3>
+                          </div>
+                          <div className={`grid gap-2.5 sm:gap-3.5 ${
+                            splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                          }`}>
+                            {downloadDocs.map((doc, idx) => renderDocumentCard(doc, idx, downloadDocs))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Images téléchargées */}
+                      {downloadImages.length > 0 && (
+                        <div className="space-y-2.5">
+                          <div className="flex items-center gap-2">
+                            <ImageIcon className="w-4 h-4 text-emerald-400" />
+                            <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
+                              Images ({downloadImages.length})
+                            </h3>
+                          </div>
+                          <div className={`grid gap-2 sm:gap-3 ${
+                            splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                          }`}>
+                            {downloadImages.map((img, idx) => renderImageCard(img, idx))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Vidéos téléchargées */}
+                      {downloadVideos.length > 0 && (
+                        <div className="space-y-2.5">
+                          <div className="flex items-center gap-2">
+                            <Film className="w-4 h-4 text-purple-400" />
+                            <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
+                              Vidéos ({downloadVideos.length})
+                            </h3>
+                          </div>
+                          <div className={`grid gap-2 sm:gap-3 ${
+                            splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                          }`}>
+                            {downloadVideos.map((vid, idx) => renderVideoCard(vid, idx))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Audio téléchargé */}
+                      {downloadAudio.length > 0 && (
+                        <div className="space-y-2.5">
+                          <div className="flex items-center gap-2">
+                            <Music className="w-4 h-4 text-amber-400" />
+                            <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
+                              Fichiers Audio ({downloadAudio.length})
+                            </h3>
+                          </div>
+                          <div className={`grid gap-2 sm:gap-3 ${
+                            splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                          }`}>
+                            {downloadAudio.map((aud, idx) => renderAudioSquareCard(aud, idx, downloadAudio))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* PANNEAU DE DROITE : LECTEUR INDÉPENDANT */}
+              <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                isViewerMaximized 
+                  ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+              }`}>
+                {selectedDownloadFile ? (
+                  renderDownloadReader(selectedDownloadFile)
+                ) : (
+                  renderDownloadEmptyState()
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 6. CLASSEUR : DOSSIERS 3D ET FICHIERS DU DOSSIER OUVERT */}
+          {(currentSubView.id === 'studycloud-classeur-classeur' || (isCloudView && cloudActiveTab === 'classeur')) && (
+            <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+              {/* PANNEAU DE GAUCHE : ARBORESCENCE & FICHIERS */}
+              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+                isViewerMaximized 
+                  ? 'hidden' 
+                  : opened3DFolder && selectedClasseurFile 
                     ? 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
-                    : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
-            }`}>
-              {/* 0. CLASSEUR PRINCIPAL (BOUTON DE LA PAGE 1 ET ONGLE CLASSEUR DANS ESPACE CLOUD) */}
-              {(currentSubView.id === 'studycloud-classeur-classeur' || (isCloudView && cloudActiveTab === 'classeur')) && (
+                    : 'w-full'
+              }`}>
                 <div className="w-full">
                   {opened3DFolder ? (
                     renderOpened3DFolderView(opened3DFolder)
@@ -9824,416 +11221,44 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </div>
                   )}
                 </div>
-              )}
-
-              {/* 1. DOCUMENTS (IMAGE 1) */}
-              {(currentSubView.id === 'studycloud-category-documents' || (isCloudView && cloudActiveTab === 'documents')) && (
-                <div className="space-y-3 sm:space-y-4">
-                  {/* Compteur */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
-                      {filteredDocuments.length} document{filteredDocuments.length > 1 ? 's' : ''} publié{filteredDocuments.length > 1 ? 's' : ''}
-                    </span>
-                  </div>
-
-                  {/* Bandeau d'action de sélection multiple si activé */}
-                  {renderSelectionBanner(filteredDocuments)}
-
-                  {loadingCategories.documents ? (
-                    renderCategoryProgressiveSkeleton('Documents', 'grid', 'text-blue-400')
-                  ) : filteredDocuments.length === 0 ? (
-                    <div className="py-20 text-center text-stone-500 dark:text-slate-400">
-                      <FileText className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-blue-400" />
-                      <p className="text-sm font-semibold">Aucun document disponible</p>
-                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                        Ce dossier ne contient aucun document pour le moment.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className={`grid gap-2.5 sm:gap-3.5 ${
-                      splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                    }`}>
-                      {filteredDocuments.map((doc, idx) => renderDocumentCard(doc, idx))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 2. IMAGES (IMAGE 2) */}
-              {(currentSubView.id === 'studycloud-category-images' || (isCloudView && cloudActiveTab === 'images')) && (
-                <div className="space-y-3 sm:space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
-                      {filteredImages.length} image{filteredImages.length > 1 ? 's' : ''} disponible{filteredImages.length > 1 ? 's' : ''}
-                    </span>
-                  </div>
-
-                  {/* Bandeau d'action de sélection multiple si activé */}
-                  {renderSelectionBanner(filteredImages)}
-
-                  {loadingCategories.images ? (
-                    renderCategoryProgressiveSkeleton('Images', 'grid', 'text-emerald-400')
-                  ) : filteredImages.length === 0 ? (
-                    <div className="py-20 text-center text-stone-500 dark:text-slate-400">
-                      <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-emerald-400" />
-                      <p className="text-sm font-semibold">Aucune image disponible</p>
-                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                        Ce dossier ne contient aucune image pour le moment.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className={`grid gap-2 sm:gap-3 ${
-                      splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                    }`}>
-                      {filteredImages.map((img, idx) => renderImageCard(img, idx))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 3. VIDÉOS (IMAGE 3) */}
-              {(currentSubView.id === 'studycloud-category-videos' || (isCloudView && cloudActiveTab === 'videos')) && (
-                <div className="space-y-3 sm:space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
-                      {filteredVideos.length} vidéo{filteredVideos.length > 1 ? 's' : ''} disponible{filteredVideos.length > 1 ? 's' : ''}
-                    </span>
-                  </div>
-
-                  {/* Bandeau d'action de sélection multiple si activé */}
-                  {renderSelectionBanner(filteredVideos)}
-
-                  {loadingCategories.videos ? (
-                    renderCategoryProgressiveSkeleton('Vidéos', 'grid', 'text-purple-400')
-                  ) : filteredVideos.length === 0 ? (
-                    <div className="py-20 text-center text-stone-500 dark:text-slate-400">
-                      <Film className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-purple-400" />
-                      <p className="text-sm font-semibold">Aucune vidéo disponible</p>
-                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                        Ce dossier ne contient aucune vidéo pour le moment.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className={`grid gap-2 sm:gap-3 ${
-                      splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                    }`}>
-                      {filteredVideos.map((vid, idx) => renderVideoCard(vid, idx))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 4. AUDIO / MUSIQUE */}
-              {(currentSubView.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio')) && (
-                <div className="w-full space-y-3">
-                  {/* En-tête de la liste */}
-                  <div className="flex items-center justify-between px-1 py-0.5">
-                    <div className="flex items-center gap-2">
-                      <Music className="w-4 h-4 text-amber-500 dark:text-amber-400 stroke-[2.2]" />
-                      <span className="text-xs sm:text-sm font-bold text-stone-900 dark:text-white tracking-wide">
-                        Tous les sons ({filteredAudio.length})
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider">
-                      StudyCloud Audio
-                    </span>
-                  </div>
-
-                  {/* Bandeau d'action de sélection multiple si activé */}
-                  {renderSelectionBanner(filteredAudio)}
-
-                  {/* Liste des pistes ou état vide */}
-                  {loadingCategories.audio ? (
-                    renderCategoryProgressiveSkeleton('Audio', 'audio-list', 'text-amber-400')
-                  ) : filteredAudio.length === 0 ? (
-                    <div className="py-20 text-center text-stone-500 dark:text-slate-400">
-                      <Music className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
-                      <p className="text-sm font-semibold">Aucun son disponible</p>
-                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                        Ce dossier ne contient aucun fichier audio pour le moment.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                    {filteredAudio.map((track) => {
-                      const isSelected = splitSelectedFile?.id === track.id;
-                      const isChecked = selectedItemIds.includes(track.id);
-                      const isMenuOpen = activeMenuFileId === track.id || audioMenuSongId === track.id;
-
-                      return (
-                        <div
-                          key={track.id}
-                          onClick={() => {
-                            if (isSelectionMode) {
-                              toggleItemSelection(track.id);
-                            } else {
-                              handleSelectFile(track);
-                              setIsMobilePlayerOpen(true);
-                            }
-                          }}
-                          className={`group flex items-center justify-between gap-3 p-3 rounded-2xl transition-all cursor-pointer select-none border ${
-                            isMenuOpen ? 'z-50 relative' : 'relative z-10'
-                          } ${
-                            isChecked
-                              ? 'bg-amber-500/15 border-amber-400 ring-2 ring-amber-400/40 shadow-sm'
-                              : isSelected 
-                                ? 'bg-amber-500/10 dark:bg-amber-950/30 border-amber-400 dark:border-amber-500 shadow-sm ring-1 ring-amber-400/30' 
-                                : 'bg-white dark:bg-slate-900/80 border-stone-200/90 dark:border-slate-800 hover:border-amber-400/60 hover:shadow-md'
-                          }`}
-                        >
-                          {/* Case à cocher en mode sélection */}
-                          {isSelectionMode && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleItemSelection(track.id);
-                              }}
-                              className="p-1 text-amber-500 hover:text-amber-600 cursor-pointer shrink-0"
-                            >
-                              {isChecked ? (
-                                <CheckSquare className="w-5 h-5 fill-amber-500/20 text-amber-500" />
-                              ) : (
-                                <Square className="w-5 h-5 text-stone-400 dark:text-slate-500" />
-                              )}
-                            </button>
-                          )}
-
-                          {/* Gauche : Vignette album carrée + Titre + Artiste + Détails */}
-                          <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-stone-900 border border-stone-200 dark:border-white/10 relative shadow-sm">
-                              <AudioCardPreview track={track} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
-                            </div>
-
-                            <div className="min-w-0 flex-1">
-                              <h4 className={`text-xs sm:text-sm font-bold truncate leading-tight ${
-                                isSelected ? 'text-amber-600 dark:text-amber-300 font-black' : 'text-stone-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors'
-                              }`}>
-                                {track.name}
-                              </h4>
-                              <p className="text-[11px] sm:text-xs text-stone-500 dark:text-slate-400 font-medium truncate mt-0.5">
-                                {track.artist || track.source}
-                              </p>
-                              <div className="flex items-center gap-2 mt-0.5 text-[10px] text-stone-400 dark:text-slate-500 font-medium">
-                                <span>{track.size}</span>
-                                <span>•</span>
-                                <span>{formatTime(track.durationSec || 0)}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Droite : Bouton Play/Pause + Bâtons animés + Date + Bouton 3 traits */}
-                          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-                            {/* Si morceau sélectionné : bâtons animés ET bouton Play/Pause juste à côté */}
-                            {isSelected && (
-                              <div className="flex items-center gap-2 shrink-0">
-                                {/* Les 4 bâtons qui bougent quand la musique chante, et s'arrêtent en pause */}
-                                <div 
-                                  className="flex items-end gap-1 h-5 px-1 py-0.5 shrink-0" 
-                                  title={isAudioPlaying ? "Lecture en cours" : "En pause"}
-                                >
-                                  <span 
-                                    className={`w-1 rounded-full bg-amber-500 dark:bg-amber-400 ${isAudioPlaying ? 'music-bar-1' : ''}`}
-                                    style={{ 
-                                      height: isAudioPlaying ? undefined : '5px',
-                                      animationPlayState: isAudioPlaying ? 'running' : 'paused' 
-                                    }} 
-                                  />
-                                  <span 
-                                    className={`w-1 rounded-full bg-amber-400 dark:bg-amber-300 ${isAudioPlaying ? 'music-bar-2' : ''}`}
-                                    style={{ 
-                                      height: isAudioPlaying ? undefined : '14px',
-                                      animationPlayState: isAudioPlaying ? 'running' : 'paused' 
-                                    }} 
-                                  />
-                                  <span 
-                                    className={`w-1 rounded-full bg-yellow-500 dark:bg-yellow-400 ${isAudioPlaying ? 'music-bar-3' : ''}`}
-                                    style={{ 
-                                      height: isAudioPlaying ? undefined : '9px',
-                                      animationPlayState: isAudioPlaying ? 'running' : 'paused' 
-                                    }} 
-                                  />
-                                  <span 
-                                    className={`w-1 rounded-full bg-amber-500 dark:bg-amber-400 ${isAudioPlaying ? 'music-bar-4' : ''}`}
-                                    style={{ 
-                                      height: isAudioPlaying ? undefined : '4px',
-                                      animationPlayState: isAudioPlaying ? 'running' : 'paused' 
-                                    }} 
-                                  />
-                                </div>
-
-                                {/* BOUTON POUR METTRE PAUSE / PLAY A CÔTÉ DU BÂTON QUI BOUGE */}
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setIsAudioPlaying(!isAudioPlaying);
-                                  }}
-                                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-amber-500 hover:bg-amber-600 text-stone-950 flex items-center justify-center transition-transform active:scale-95 shadow-sm cursor-pointer"
-                                  title={isAudioPlaying ? "Mettre en pause" : "Reprendre la lecture"}
-                                >
-                                  {isAudioPlaying ? (
-                                    <Pause className="w-3.5 h-3.5 fill-current" />
-                                  ) : (
-                                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
-                                  )}
-                                </button>
-                              </div>
-                            )}
-
-                            {/* Si morceau non sélectionné : bouton lecture directe au survol */}
-                            {!isSelected && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSelectFile(track);
-                                  setIsAudioPlaying(true);
-                                  setIsMobilePlayerOpen(true);
-                                }}
-                                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full text-stone-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-slate-800 flex items-center justify-center transition-all cursor-pointer opacity-70 group-hover:opacity-100"
-                                title="Lire ce son"
-                              >
-                                <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
-                              </button>
-                            )}
-
-                            {/* Date */}
-                            <span className="text-xs font-semibold text-stone-400 dark:text-slate-400 shrink-0 hidden sm:inline-block">
-                              {track.date}
-                            </span>
-
-                            {/* Bouton 3 traits sur chaque musique avec toutes les propositions */}
-                            <div className="relative shrink-0 studycloud-menu-trigger">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveMenuFileId(activeMenuFileId === track.id ? null : track.id);
-                                  setAudioMenuSongId(audioMenuSongId === track.id ? null : track.id);
-                                }}
-                                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full text-stone-500 hover:text-stone-900 dark:text-slate-400 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-white/10 flex items-center justify-center transition-colors cursor-pointer"
-                                title="Options de la musique (3 traits)"
-                              >
-                                <Menu className="w-4 h-4 stroke-[2.2]" />
-                              </button>
-
-                              {renderFileOptionsMenu(track, filteredAudio, 'right')}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
-            )}
 
-              {/* 5. TÉLÉCHARGEMENTS */}
-              {(currentSubView.id === 'studycloud-category-downloads' || (isCloudView && cloudActiveTab === 'downloads')) && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
-                      {filteredDownloads.length} fichier{filteredDownloads.length > 1 ? 's' : ''} téléchargé{filteredDownloads.length > 1 ? 's' : ''}
-                    </span>
-                  </div>
-
-                  {/* Bandeau d'action de sélection multiple si activé */}
-                  {renderSelectionBanner(filteredDownloads.map(toFileItem))}
-
-                  {loadingCategories.downloads ? (
-                    renderCategoryProgressiveSkeleton('Téléchargements', 'grid', 'text-sky-400')
-                  ) : filteredDownloads.length === 0 ? (
-                    <div className="py-16 text-center text-stone-500 dark:text-slate-400">
-                      <Download className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5]" />
-                      <p className="text-sm font-semibold">Aucun fichier téléchargé</p>
-                      <p className="text-xs opacity-70 mt-1">Les fichiers téléchargés s'afficheront ici avec leur vue dédiée.</p>
-                    </div>
+              {/* PANNEAU DE DROITE : LECTEUR LORSQU'UN FICHIER DU DOSSIER EST OUVERT */}
+              {opened3DFolder && (
+                <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                  isViewerMaximized 
+                    ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+                }`}>
+                  {selectedClasseurFile ? (
+                    renderClasseurFileReader(selectedClasseurFile)
                   ) : (
-                    <div className="space-y-6">
-                      {/* Documents téléchargés */}
-                      {downloadDocs.length > 0 && (
-                        <div className="space-y-2.5">
-                          <div className="flex items-center gap-2">
-                            <FileText className="w-4 h-4 text-blue-400" />
-                            <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
-                              Documents ({downloadDocs.length})
-                            </h3>
-                          </div>
-                          <div className={`grid gap-2.5 sm:gap-3.5 ${
-                            splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                          }`}>
-                            {downloadDocs.map((doc, idx) => renderDocumentCard(doc, idx, downloadDocs))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Images téléchargées */}
-                      {downloadImages.length > 0 && (
-                        <div className="space-y-2.5">
-                          <div className="flex items-center gap-2">
-                            <ImageIcon className="w-4 h-4 text-emerald-400" />
-                            <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
-                              Images ({downloadImages.length})
-                            </h3>
-                          </div>
-                          <div className={`grid gap-2 sm:gap-3 ${
-                            splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                          }`}>
-                            {downloadImages.map((img, idx) => renderImageCard(img, idx))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Vidéos téléchargées */}
-                      {downloadVideos.length > 0 && (
-                        <div className="space-y-2.5">
-                          <div className="flex items-center gap-2">
-                            <Film className="w-4 h-4 text-purple-400" />
-                            <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
-                              Vidéos ({downloadVideos.length})
-                            </h3>
-                          </div>
-                          <div className={`grid gap-2 sm:gap-3 ${
-                            splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                          }`}>
-                            {downloadVideos.map((vid, idx) => renderVideoCard(vid, idx))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Audio téléchargé */}
-                      {downloadAudio.length > 0 && (
-                        <div className="space-y-2.5">
-                          <div className="flex items-center gap-2">
-                            <Music className="w-4 h-4 text-amber-400" />
-                            <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
-                              Fichiers Audio ({downloadAudio.length})
-                            </h3>
-                          </div>
-                          <div className={`grid gap-2 sm:gap-3 ${
-                            splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                          }`}>
-                            {downloadAudio.map((aud, idx) => renderAudioSquareCard(aud, idx, downloadAudio))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    renderCollectionEmptyState('le Classeur')
                   )}
                 </div>
               )}
+            </div>
+          )}
 
-              {/* 6. APPLICATIONS */}
-              {(currentSubView.id === 'studycloud-category-apps' || (isCloudView && cloudActiveTab === 'apps')) && (
+          {/* 7. APPLICATIONS */}
+          {(currentSubView.id === 'studycloud-category-apps' || (isCloudView && cloudActiveTab === 'apps')) && (
+            <div className="flex-1 w-full overflow-y-auto px-3 sm:px-6 md:px-10 lg:px-12 py-3 sm:py-4 pb-64 sm:pb-80">
                 <div className="py-28 text-center animate-in fade-in duration-200">
                   <p className="text-sm sm:text-base font-semibold text-stone-600 dark:text-slate-300">
                     Cette fonctionnalité n'est pas disponible pour le moment.
                   </p>
                 </div>
-              )}
+            </div>
+          )}
 
-              {/* 7. DOSSIER SÉCURISÉ (COLLECTION) */}
-              {(currentSubView.id === 'studycloud-collection-secure-folder' || (isCloudView && cloudActiveTab === 'secure-folder')) && (
+          {/* 8. DOSSIER SÉCURISÉ */}
+          {(currentSubView.id === 'studycloud-collection-secure-folder' || (isCloudView && cloudActiveTab === 'secure-folder')) && (
+            <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+                isViewerMaximized 
+                  ? 'hidden' 
+                  : 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+              }`}>
                 <div className="space-y-4">
                   {!isSecureFolderUnlocked ? (
                     <div className="py-20 text-center text-stone-500 dark:text-slate-400">
@@ -10280,10 +11305,29 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </>
                   )}
                 </div>
-              )}
+              </div>
+              <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                isViewerMaximized 
+                  ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+              }`}>
+                {selectedCollectionFile ? (
+                  renderCollectionReader(selectedCollectionFile)
+                ) : (
+                  renderCollectionEmptyState('le Dossier Sécurisé')
+                )}
+              </div>
+            </div>
+          )}
 
-              {/* 8. FAVORIS (COLLECTION) */}
-              {(currentSubView?.id === 'studycloud-collection-favorites' || (isCloudView && cloudActiveTab === 'favorites')) && (
+          {/* 9. FAVORIS */}
+          {(currentSubView?.id === 'studycloud-collection-favorites' || (isCloudView && cloudActiveTab === 'favorites')) && (
+            <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+                isViewerMaximized 
+                  ? 'hidden' 
+                  : 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+              }`}>
                 <div className="space-y-4 animate-in fade-in duration-200">
                   {loadingCategories.favorites ? (
                     renderCategoryProgressiveSkeleton('Favoris', 'grid', 'text-amber-400')
@@ -10348,10 +11392,29 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </>
                   )}
                 </div>
-              )}
+              </div>
+              <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                isViewerMaximized 
+                  ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+              }`}>
+                {selectedCollectionFile ? (
+                  renderCollectionReader(selectedCollectionFile)
+                ) : (
+                  renderCollectionEmptyState('les Favoris')
+                )}
+              </div>
+            </div>
+          )}
 
-              {/* 9. CORBEILLE (COLLECTION) */}
-              {(currentSubView?.id === 'studycloud-collection-trash' || (isCloudView && cloudActiveTab === 'trash')) && (
+          {/* 10. CORBEILLE */}
+          {(currentSubView?.id === 'studycloud-collection-trash' || (isCloudView && cloudActiveTab === 'trash')) && (
+            <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+                isViewerMaximized 
+                  ? 'hidden' 
+                  : 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+              }`}>
                 <div className="space-y-4 animate-in fade-in duration-200">
                   {loadingCategories.trash ? (
                     renderCategoryProgressiveSkeleton('Corbeille', 'grid', 'text-rose-400')
@@ -10445,811 +11508,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </>
                   )}
                 </div>
-              )}
-
-            </div>
-
-            {/* --------------------------------------------------------------------- */}
-            {/* PANNEAU DE DROITE : L'ÉLÉMENT SÉLECTIONNÉ AFFICHÉ BIEN GRAND         */}
-            {/* Avec barre de boutons supérieurs (zoom, agrandir, fermer, nav...)     */}
-            {/* --------------------------------------------------------------------- */}
-            {splitSelectedFile ? (
+              </div>
               <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
                 isViewerMaximized 
                   ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
-                  : (currentSubView.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio') || isSelectedAudio)
-                    ? `${isMobilePlayerOpen ? 'flex w-full min-h-[calc(100vh-120px)]' : 'hidden md:flex'} md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10`
-                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[500px] border-t md:border-t-0 md:border-l border-white/10'
+                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
               }`}>
-                
-                {/* BARRE SUPÉRIEURE DE BOUTONS DU LECTEUR GRAND FORMAT (Images 2 et 3) */}
-                <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
-                  
-                  {/* GAUCHE : Flèches de navigation < > et titre */}
-                  <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-                    <button
-                      type="button"
-                      disabled={!canNavigatePrev}
-                      onClick={() => handleNavigateSplit('prev')}
-                      className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 disabled:opacity-20 disabled:pointer-events-none disabled:cursor-not-allowed text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-                      title={canNavigatePrev ? "Élément précédent" : "Aucun élément précédent"}
-                    >
-                      <ChevronLeft className="w-4 h-4 stroke-[2.2]" />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!canNavigateNext}
-                      onClick={() => handleNavigateSplit('next')}
-                      className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 disabled:opacity-20 disabled:pointer-events-none disabled:cursor-not-allowed text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-                      title={canNavigateNext ? "Élément suivant" : "Aucun élément suivant"}
-                    >
-                      <ChevronRight className="w-4 h-4 stroke-[2.2]" />
-                    </button>
-
-                    <div className="min-w-0 ml-1">
-                      <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-[220px]" title={splitSelectedFile.name}>
-                        {splitSelectedFile.name}
-                      </p>
-                      {splitSelectedFile.size && (
-                        <p className="text-[10px] text-slate-400 font-semibold truncate">
-                          {splitSelectedFile.size}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* DROITE : PETITS BOUTONS D'ACTIONS (Zoom, Rotation, Partage, Agrandir, Fermer) */}
-                  <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-wrap justify-end">
-                    
-                    {/* Zoom & Rotation (pour images et documents) - PLACÉS DEVANT */}
-                    {(isSelectedImage || isSelectedDoc) && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setViewerZoom(prev => Math.max(0.5, prev - 0.25))}
-                          className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-                          title="Zoom arrière (-)"
-                        >
-                          <ZoomOut className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setViewerZoom(prev => Math.min(3, prev + 0.25))}
-                          className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-                          title="Zoom avant (+)"
-                        >
-                          <ZoomIn className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setViewerRotation(prev => (prev + 90) % 360)}
-                          className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-                          title="Faire pivoter"
-                        >
-                          <RotateCw className="w-3.5 h-3.5" />
-                        </button>
-                      </>
-                    )}
-
-                    {/* BOUTON DÉFILEMENT HORIZONTAL / VERTICAL (UNIQUEMENT POUR LES DOCUMENTS) */}
-                    {isSelectedDoc && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const nextMode = docLayoutMode === 'vertical' ? 'horizontal' : 'vertical';
-                          setDocLayoutMode(nextMode);
-                          setDocCurrentPage(1);
-                          showToast(nextMode === 'horizontal' ? 'Mode défilement horizontal activé' : 'Mode défilement vertical activé');
-                        }}
-                        className={`h-7 sm:h-8 px-2.5 sm:px-3 rounded-full flex items-center gap-1.5 text-xs font-bold border transition-all cursor-pointer shadow-sm active:scale-95 ${
-                          docLayoutMode === 'horizontal'
-                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30 ring-1 ring-amber-400/40'
-                            : 'bg-blue-500/20 text-blue-300 border-blue-500/50 hover:bg-blue-500/30 ring-1 ring-blue-400/40'
-                        }`}
-                        title={docLayoutMode === 'vertical' ? "Défilement vertical (Cliquer pour passer en défilement horizontal)" : "Défilement horizontal (Cliquer pour passer en défilement vertical)"}
-                      >
-                        {docLayoutMode === 'vertical' ? (
-                          <>
-                            <SlidersHorizontal className="w-3.5 h-3.5 rotate-90 text-blue-400" />
-                            <span className="text-[11px] font-black">Vertical</span>
-                          </>
-                        ) : (
-                          <>
-                            <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
-                            <span className="text-[11px] font-black">Horizontal</span>
-                          </>
-                        )}
-                      </button>
-                    )}
-
-                    {/* Partager */}
-                    <button
-                      type="button"
-                      onClick={() => handleShareFile(splitSelectedFile)}
-                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-                      title="Partager le fichier"
-                    >
-                      <Share2 className="w-3.5 h-3.5" />
-                    </button>
-
-                    {/* Télécharger */}
-                    <button
-                      type="button"
-                      onClick={() => handleDownloadFile(splitSelectedFile)}
-                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-                      title="Télécharger"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                    </button>
-
-                    {/* BOUTON ESPACE D'ÉTUDE DEVANT LE BOUTON ZOOM / OPTIONS */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenStudySpaceForCurrentMenu(true)}
-                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50"
-                      title="Ouvrir dans l'Espace d'étude"
-                    >
-                      <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
-                    </button>
-
-                    {/* BOUTON 3 TRAITS D'OPTIONS AUDIO OU AGRANDIR POUR AUTRES FORMATS */}
-                    {isSelectedAudio ? (
-                      <div className="relative studycloud-menu-trigger">
-                        <button
-                          type="button"
-                          onClick={() => setIsPlayerMenuOpen(!isPlayerMenuOpen)}
-                          className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center bg-black/60 hover:bg-white/20 text-white border border-white/15 transition-all cursor-pointer shadow-sm active:scale-95"
-                          title="Options de lecture (3 traits)"
-                        >
-                          <Menu className="w-4 h-4 stroke-[2.2]" />
-                        </button>
-
-                        {isPlayerMenuOpen && (
-                          <div 
-                            className="studycloud-file-menu-panel absolute right-0 top-9 z-50 w-52 bg-[#0D1527] border border-slate-700/80 rounded-xl shadow-2xl py-1 text-xs text-white divide-y divide-white/10 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                              <button 
-                                type="button" 
-                                onClick={() => { handleDownloadFile(splitSelectedFile); setIsPlayerMenuOpen(false); }} 
-                                className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
-                              >
-                                <Download className="w-4 h-4 text-blue-400" /> Télécharger ce son
-                              </button>
-                              <button 
-                                type="button" 
-                                onClick={() => { handleShareFile(splitSelectedFile); setIsPlayerMenuOpen(false); }} 
-                                className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
-                              >
-                                <Share2 className="w-4 h-4 text-emerald-400" /> Partager
-                              </button>
-                              <button 
-                                type="button" 
-                                onClick={() => {
-                                  const url = `${window.location.origin}/share/audio/${splitSelectedFile.id}`;
-                                  navigator.clipboard?.writeText(url);
-                                  showToast("Lien copié dans le presse-papiers !");
-                                  setIsPlayerMenuOpen(false);
-                                }} 
-                                className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
-                              >
-                                <Link className="w-4 h-4 text-purple-400" /> Créer un lien
-                              </button>
-                              <button 
-                                type="button" 
-                                onClick={() => {
-                                  handleGenericFileAction('secure_folder', splitSelectedFile, audioList);
-                                  setIsPlayerMenuOpen(false);
-                                }} 
-                                className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer text-amber-300"
-                              >
-                                <Lock className="w-4 h-4 text-amber-400" /> Transporter vers le dossier sécurisé
-                              </button>
-                              <button 
-                                type="button" 
-                                onClick={() => {
-                                  toggleAudioRepeat();
-                                  setIsPlayerMenuOpen(false);
-                                }} 
-                                className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
-                              >
-                                <Repeat className="w-4 h-4 text-amber-400" />
-                                <span>{isAudioRepeat === 'one' ? "Désactiver la boucle" : "Lire en boucle"}</span>
-                              </button>
-                              <button 
-                                type="button" 
-                                onClick={() => {
-                                  setIsAudioShuffle(!isAudioShuffle);
-                                  showToast(!isAudioShuffle ? "Lecture aléatoire activée" : "Lecture aléatoire désactivée");
-                                  setIsPlayerMenuOpen(false);
-                                }} 
-                                className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
-                              >
-                                <Shuffle className="w-4 h-4 text-amber-400" />
-                                <span>{isAudioShuffle ? "Désactiver mode aléatoire" : "Mode aléatoire"}</span>
-                              </button>
-                              <button 
-                                type="button" 
-                                onClick={() => {
-                                  handleDeleteAudio(splitSelectedFile);
-                                  setIsPlayerMenuOpen(false);
-                                }} 
-                                className="w-full px-3.5 py-2.5 text-left hover:bg-rose-950/40 text-rose-400 flex items-center gap-2.5 transition-colors cursor-pointer"
-                              >
-                                <Trash2 className="w-4 h-4 text-rose-500" /> Supprimer ce son
-                              </button>
-                            </div>
-                        )}
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setIsViewerMaximized(!isViewerMaximized)}
-                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
-                          isViewerMaximized 
-                            ? 'bg-blue-600 text-white border-blue-400' 
-                            : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
-                        }`}
-                        title={isViewerMaximized ? "Réduire la vue" : "Agrandir dans l'espace"}
-                      >
-                        {isViewerMaximized ? (
-                          <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" />
-                        ) : (
-                          <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />
-                        )}
-                      </button>
-                    )}
-
-                    {/* BOUTON POUR FERMER CETTE VUE - DEMANDÉ PAR L'UTILISATEUR */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (noteSaveTimeoutRef.current) {
-                          clearTimeout(noteSaveTimeoutRef.current);
-                        }
-                        if (isSelectedNotepad && splitSelectedFile) {
-                          CloudStorageAPI.updateClasseurFile(splitSelectedFile.id, {
-                            noteTitle: noteTitleContent,
-                            content: noteTextContent,
-                          }).catch(() => {});
-                        }
-                        setSplitSelectedFile(null);
-                        setIsAudioPlaying(false);
-                        setIsMobilePlayerOpen(false);
-                        setIsViewerMaximized(false);
-                      }}
-                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
-                      title="Fermer la vue grand format"
-                    >
-                      <X className="w-4 h-4 stroke-[2.5]" />
-                    </button>
-
-                  </div>
-
-                </div>
-
-                {/* CORPS DU LECTEUR GRAND FORMAT SELON LE TYPE DE MÉDIA (Prend tout l'espace disponible) */}
-                <div className={`flex-1 w-full h-full flex flex-col items-center justify-center ${isSelectedDoc ? 'p-0 overflow-hidden bg-white' : 'p-1 sm:p-2 sm:px-4 overflow-hidden'} relative`}>
-
-                  {/* 1. LECTEUR IMAGE GRAND FORMAT AVANCÉ */}
-                  {isSelectedImage && !isSelectedVideo && !isSelectedAudio && (
-                    <div className="w-full h-full flex-1 flex flex-col items-center justify-center relative overflow-hidden rounded-2xl shadow-2xl">
-                      <ModernImageViewer
-                        src={splitSelectedFile.previewUrl || (splitSelectedFile as any).url}
-                        alt={splitSelectedFile.name}
-                        fileName={splitSelectedFile.name}
-                        fileId={splitSelectedFile.id}
-                        fileSize={splitSelectedFile.size}
-                        className={`w-full h-full ${
-                          isViewerMaximized 
-                            ? 'max-h-[calc(100vh-125px)]' 
-                            : 'max-h-[calc(100vh-180px)]'
-                        }`}
-                      />
-                    </div>
-                  )}
-
-                  {/* 2. LECTEUR VIDÉO GRAND FORMAT INTERACTIF AVANCÉ */}
-                  {isSelectedVideo && !isSelectedAudio && (
-                    <div className="w-full h-full flex-1 flex items-center justify-center relative p-1 sm:p-2 overflow-hidden rounded-2xl shadow-2xl">
-                      <ModernVideoPlayer
-                        src={
-                          (splitSelectedFile.videoUrl && !splitSelectedFile.videoUrl.startsWith('blob:'))
-                            ? splitSelectedFile.videoUrl
-                            : (splitSelectedFile.url && !splitSelectedFile.url.startsWith('blob:'))
-                            ? splitSelectedFile.url
-                            : `${getWorkerApiUrl().replace(/\/+$/, '')}/api/cloud/stream/${splitSelectedFile.id}`
-                        }
-                        poster={splitSelectedFile.previewUrl}
-                        fileName={splitSelectedFile.name}
-                        fileId={splitSelectedFile.id}
-                        fileSize={splitSelectedFile.size}
-                        autoPlay={true}
-                        className={`w-full h-full ${
-                          isViewerMaximized 
-                            ? 'max-h-[calc(100vh-125px)]' 
-                            : 'max-h-[calc(100vh-180px)]'
-                        }`}
-                      />
-                    </div>
-                  )}
-
-                  {/* 3. LECTEUR AUDIO GRAND FORMAT INTERACTIF (IMAGE 2 : LECTEUR MUSICAL DESIGN PREMIUM) */}
-                  {isSelectedAudio && (
-                    <div className="relative w-full h-full flex-1 flex flex-col justify-between p-3 sm:p-6 md:p-8 bg-[#090D1A] text-white overflow-hidden select-none rounded-2xl">
-                      
-                      {/* Élément audio HTML5 natif invisible pour la lecture réelle */}
-                      <audio
-                        ref={audioRef}
-                        src={splitSelectedFile.audioUrl || (splitSelectedFile as any).url || ''}
-                        autoPlay={isAudioPlaying}
-                        loop={isAudioRepeat === 'one'}
-                        onEnded={() => {
-                          if (isAudioRepeat === 'one') {
-                            if (audioRef.current) {
-                              audioRef.current.currentTime = 0;
-                              audioRef.current.play().catch(() => {});
-                            }
-                            setAudioCurrentTime(0);
-                          } else {
-                            handleAudioNext();
-                          }
-                        }}
-                        onTimeUpdate={() => {
-                          if (audioRef.current && isAudioPlaying) {
-                            setAudioCurrentTime(Math.floor(audioRef.current.currentTime));
-                            if (audioRef.current.duration && !isNaN(audioRef.current.duration)) {
-                              setAudioDuration(Math.floor(audioRef.current.duration));
-                            }
-                          }
-                        }}
-                      />
-
-                      {/* Halo lumineux d'ambiance dorée / ambrée chaleureuse (Image 2) */}
-                      <div 
-                        className="absolute inset-0 pointer-events-none opacity-35"
-                        style={{
-                          background: 'radial-gradient(circle at 45% 30%, rgba(245, 158, 11, 0.45) 0%, rgba(217, 119, 6, 0.18) 40%, transparent 75%)'
-                        }}
-                      />
-
-                      {/* Bouton retour mobile (< md) : Permet de revenir à la liste sur téléphone */}
-                      <div className="md:hidden flex items-center justify-between pb-2 relative z-10 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setIsMobilePlayerOpen(false)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold text-xs backdrop-blur-md border border-white/15 transition-all active:scale-95 cursor-pointer shadow-sm"
-                        >
-                          <ChevronLeft className="w-4 h-4 stroke-[2.2]" />
-                          <span>Retour à la liste</span>
-                        </button>
-                        <span className="text-[11px] font-bold text-amber-300">En cours de lecture</span>
-                      </div>
-
-                      {/* PARTIE SUPÉRIEURE : Pochette album centrée (paroles supprimées comme entouré en rouge) */}
-                      <div className="relative z-10 w-full flex items-center justify-center max-w-sm mx-auto my-auto pt-2 sm:pt-4">
-                        <div className="relative w-44 sm:w-56 md:w-64 aspect-square rounded-2xl overflow-hidden shrink-0 shadow-[0_20px_45px_rgba(0,0,0,0.85)] border border-white/20 bg-black group">
-                          <AudioCardPreview track={splitSelectedFile} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
-
-                          {/* Badge Parental Advisory */}
-                          <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/85 border border-white/25 rounded text-[7px] font-black uppercase tracking-wider text-white">
-                            Parental Advisory
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* MILIEU : Titre et Artiste (Image 2) */}
-                      <div className="relative z-10 w-full text-center space-y-1 my-2 sm:my-3">
-                        <h2 className="text-lg sm:text-2xl md:text-3xl font-black text-white tracking-tight drop-shadow-md truncate px-2">
-                          {splitSelectedFile.name}
-                        </h2>
-                        <p className="text-xs sm:text-sm font-semibold text-slate-300 truncate px-2">
-                          {splitSelectedFile.artist || splitSelectedFile.source || 'Dave & Tems'}
-                        </p>
-                      </div>
-
-                      {/* SECTION TEMPORELLE : -10s, Pillule de temps 0:11 / 3:39, +10s et Barre de progression (Image 2) */}
-                      <div className="relative z-10 w-full max-w-md mx-auto space-y-1.5 py-1">
-                        {/* Ligne avec boutons -10, Badge temps au centre, et +10 */}
-                        <div className="flex items-center justify-between px-3">
-                          {/* Bouton -10s fonctionnel */}
-                          <button
-                            type="button"
-                            onClick={() => handleSeekDelta(-10)}
-                            className="relative w-8 h-8 rounded-full flex items-center justify-center text-white/90 hover:text-white hover:bg-white/10 transition-all active:scale-90 cursor-pointer"
-                            title="Reculer de 10s"
-                          >
-                            <RotateCcw className="w-5 h-5 stroke-[2]" />
-                            <span className="absolute text-[8px] font-black text-white">10</span>
-                          </button>
-
-                          {/* Pillule blanche avec temps exact (ex: 0:11 / 3:39) */}
-                          <div className="px-3.5 py-1 rounded-full bg-white text-stone-950 font-black text-xs shadow-md tracking-wider">
-                            {formatTime(audioCurrentTime)} / {formatTime(audioDuration)}
-                          </div>
-
-                          {/* Bouton +10s fonctionnel */}
-                          <button
-                            type="button"
-                            onClick={() => handleSeekDelta(10)}
-                            className="relative w-8 h-8 rounded-full flex items-center justify-center text-white/90 hover:text-white hover:bg-white/10 transition-all active:scale-90 cursor-pointer"
-                            title="Avancer de 10s"
-                          >
-                            <RotateCw className="w-5 h-5 stroke-[2]" />
-                            <span className="absolute text-[8px] font-black text-white">10</span>
-                          </button>
-                        </div>
-
-                        {/* Slider interactif */}
-                        <div className="w-full px-2">
-                          <input
-                            type="range"
-                            min="0"
-                            max={audioDuration || 1}
-                            value={audioCurrentTime}
-                            onChange={(e) => {
-                              const val = Number(e.target.value);
-                              setAudioCurrentTime(val);
-                              if (audioRef.current) audioRef.current.currentTime = val;
-                            }}
-                            className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-white hover:accent-amber-400 transition-all"
-                          />
-                        </div>
-                      </div>
-
-                      {/* CONTRÔLES PRINCIPAUX : Aléatoire, Précédent, Grand Bouton Rond Blanc Play/Pause, Suivant, Répéter (Image 2) */}
-                      <div className="relative z-10 w-full max-w-sm mx-auto flex items-center justify-between px-2 pt-1 pb-2 sm:pb-3">
-                        {/* Lecture Aléatoire (Shuffle fonctionnel) */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsAudioShuffle(!isAudioShuffle);
-                            showToast(!isAudioShuffle ? "Lecture aléatoire activée" : "Lecture aléatoire désactivée");
-                          }}
-                          className={`p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer ${
-                            isAudioShuffle ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
-                          }`}
-                          title={isAudioShuffle ? "Désactiver mode aléatoire" : "Mode aléatoire"}
-                        >
-                          <Shuffle className="w-5 h-5" />
-                        </button>
-
-                        {/* Morceau précédent */}
-                        <button
-                          type="button"
-                          onClick={handleAudioPrev}
-                          className="p-2 rounded-full hover:bg-white/10 text-white hover:scale-110 active:scale-90 transition-all cursor-pointer"
-                          title="Son précédent"
-                        >
-                          <SkipBack className="w-6 h-6 fill-white" />
-                        </button>
-
-                        {/* GRAND BOUTON ROND BLANC PLAY / PAUSE (Image 2) */}
-                        <button
-                          type="button"
-                          onClick={() => setIsAudioPlaying(!isAudioPlaying)}
-                          className="w-16 h-16 rounded-full bg-white text-stone-950 flex items-center justify-center shadow-[0_6px_25px_rgba(255,255,255,0.35)] hover:scale-105 active:scale-95 transition-all cursor-pointer"
-                          title={isAudioPlaying ? "Mettre en pause" : "Lancer la lecture"}
-                        >
-                          {isAudioPlaying ? (
-                            <Pause className="w-7 h-7 fill-stone-950 stroke-stone-950" />
-                          ) : (
-                            <Play className="w-7 h-7 fill-stone-950 stroke-stone-950 translate-x-0.5" />
-                          )}
-                        </button>
-
-                        {/* Morceau suivant */}
-                        <button
-                          type="button"
-                          onClick={handleAudioNext}
-                          className="p-2 rounded-full hover:bg-white/10 text-white hover:scale-110 active:scale-90 transition-all cursor-pointer"
-                          title="Son suivant"
-                        >
-                          <SkipForward className="w-6 h-6 fill-white" />
-                        </button>
-
-                        {/* Répéter en boucle (Boucle continue fonctionnelle) */}
-                        <button
-                          type="button"
-                          onClick={toggleAudioRepeat}
-                          className={`relative p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer ${
-                            isAudioRepeat !== 'off' ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
-                          }`}
-                          title={isAudioRepeat !== 'off' ? "Désactiver la boucle" : "Lire en boucle (reprend seul)"}
-                        >
-                          <Repeat className="w-5 h-5" />
-                          {isAudioRepeat === 'one' && (
-                            <span className="absolute bottom-1 right-1 text-[8px] font-black text-amber-400">1</span>
-                          )}
-                        </button>
-                      </div>
-
-                      {/* Modal Paroles Complètes si activé */}
-                      {showLyricsModal && (
-                        <div className="absolute inset-0 z-40 bg-[#070B16]/95 backdrop-blur-xl p-5 sm:p-6 flex flex-col justify-between animate-in fade-in duration-200">
-                          <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                            <div>
-                              <h3 className="text-sm sm:text-base font-black text-white">{splitSelectedFile.name}</h3>
-                              <p className="text-xs text-amber-300 font-semibold">{splitSelectedFile.artist || 'Paroles complètes'}</p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setShowLyricsModal(false)}
-                              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-                          <div className="flex-1 overflow-y-auto py-6 space-y-4 text-center">
-                            {(splitSelectedFile.fullLyrics || [
-                              "And really when I think of it",
-                              "Growing up, I didn't ever see marriages",
-                              "No weddings, no horse, no carriages",
-                              "I wanna do things different and right",
-                              "Pray for me through the day and the night",
-                              "When the rain falls on our souls",
-                              "We will dance and we will heal..."
-                            ]).map((line, idx) => (
-                              <p key={idx} className={`text-sm sm:text-base font-bold leading-relaxed ${idx === 0 ? 'text-amber-300 scale-105 font-black' : 'text-white/70'}`}>
-                                {line}
-                              </p>
-                            ))}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setShowLyricsModal(false)}
-                            className="w-full py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors cursor-pointer"
-                          >
-                            Fermer les paroles
-                          </button>
-                        </div>
-                      )}
-
-                    </div>
-                  )}
-
-                  {/* 4. LECTEUR / ÉDITEUR BLOC-NOTES TXT GRAND FORMAT (Prend tout l'espace, design soigné, lecture et écriture synchronisée) */}
-                  {isSelectedNotepad && (
-                    <div className="w-full h-full flex-1 flex flex-col overflow-hidden bg-[#0A0F1D] text-white rounded-2xl border border-white/10 shadow-2xl animate-in fade-in duration-150">
-                      {/* Barre d'outils du bloc-notes */}
-                      <div className="px-3 sm:px-4 py-2 bg-slate-900/90 border-b border-white/10 flex items-center justify-between gap-2 shrink-0">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shrink-0">
-                            TXT
-                          </span>
-                          <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
-                            {noteTextContent.length} car. • {noteTextContent.trim() ? noteTextContent.trim().split(/\s+/).length : 0} mots
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const fullText = (noteTitleContent ? `${noteTitleContent.toUpperCase()}\n\n` : '') + noteTextContent;
-                              navigator.clipboard?.writeText(fullText);
-                              showToast('Texte copié dans le presse-papiers !');
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
-                            title="Copier tout le texte"
-                          >
-                            <Copy className="w-3.5 h-3.5 text-cyan-400" />
-                            <span className="hidden sm:inline">Copier</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const fullText = (noteTitleContent ? `${noteTitleContent.toUpperCase()}\n\n` : '') + noteTextContent;
-                              const blob = new Blob([fullText], { type: 'text/plain;charset=utf-8' });
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement('a');
-                              a.href = url;
-                              a.download = splitSelectedFile.name;
-                              document.body.appendChild(a);
-                              a.click();
-                              document.body.removeChild(a);
-                              URL.revokeObjectURL(url);
-                              showToast(`"${splitSelectedFile.name}" téléchargé !`);
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
-                            title="Télécharger le fichier .txt"
-                          >
-                            <Download className="w-3.5 h-3.5 text-amber-400" />
-                            <span className="hidden sm:inline">Télécharger</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Zone de saisie du Titre et du Contenu */}
-                      <div className="flex-1 w-full p-3 sm:p-5 overflow-y-auto flex flex-col space-y-3">
-                        {/* Espace Titre dédié en haut : sort en majuscules et limité à deux lignes */}
-                        <div className="w-full relative">
-                          <textarea
-                            value={noteTitleContent}
-                            rows={2}
-                            placeholder="TITRE DE LA NOTE (EN MAJUSCULES)..."
-                            onChange={(e) => {
-                              const val = e.target.value.toUpperCase();
-                              const lines = val.split('\n');
-                              const limitedVal = lines.slice(0, 2).join('\n');
-                              setNoteTitleContent(limitedVal);
-                              handleUpdateNoteContent(noteTextContent, limitedVal);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                const currentLines = noteTitleContent.split('\n');
-                                if (currentLines.length >= 2) {
-                                  e.preventDefault();
-                                }
-                              }
-                            }}
-                            className="w-full uppercase font-black text-sm sm:text-base md:text-lg text-cyan-300 placeholder:text-slate-500 placeholder:normal-case bg-transparent border-b border-white/10 pb-2 outline-none resize-none tracking-wide break-all [overflow-wrap:anywhere] [word-break:break-word] leading-snug selection:bg-cyan-500/30"
-                            style={{
-                              maxHeight: '4.2rem',
-                              lineHeight: '1.4'
-                            }}
-                          />
-                        </div>
-
-                        {/* Zone de contenu de la note : break-all pour remplir toute la ligne sans blocage */}
-                        <textarea
-                          value={noteTextContent}
-                          onChange={(e) => {
-                            const newText = e.target.value;
-                            setNoteTextContent(newText);
-                            handleUpdateNoteContent(newText, noteTitleContent);
-                          }}
-                          placeholder="Commencez à écrire votre note ici..."
-                          className="w-full flex-1 min-h-[350px] bg-transparent text-slate-100 placeholder-slate-500 text-xs sm:text-sm font-sans leading-relaxed border-none outline-none resize-none focus:ring-0 selection:bg-cyan-500/30 break-all [overflow-wrap:anywhere] [word-break:break-word]"
-                          style={{
-                            fontSize: `${Math.max(12, Math.round(14 * viewerZoom))}px`
-                          }}
-                        />
-                      </div>
-
-                      {/* Bas de page du lecteur */}
-                      <div className="px-4 py-2 bg-slate-900/60 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                        <span className="flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse" />
-                          Sauvegarde automatique activée
-                        </span>
-                        <span>{splitSelectedFile.name}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 5. LECTEUR DOCUMENT GRAND FORMAT (Prend tout l'espace disponible, sans bandes noires ni creux) */}
-                  {isSelectedDoc && (
-                    <div className="w-full h-full flex-1 flex flex-col overflow-hidden bg-stone-100 dark:bg-stone-900 select-text">
-                      {isSelectedDocPdf ? (
-                        docLayoutMode === 'horizontal' ? (
-                          <PdfHorizontalViewer
-                            fileId={splitSelectedFile.id}
-                            file={splitSelectedFile}
-                            url={splitResolvedPdfUrl || splitSelectedFile.url}
-                            docZoom={Math.round(viewerZoom * 100)}
-                            layoutMode="horizontal"
-                            currentPage={docCurrentPage}
-                            onPageChange={setDocCurrentPage}
-                            isFullscreen={isViewerMaximized}
-                          />
-                        ) : (
-                          // Mode Vertical Natif Chromium (la barre supérieure noire complète avec zoom, dessin, compteur de pages, etc. comme dans Espace d'étude)
-                          (() => {
-                            const pdfUrl = splitResolvedPdfUrl || splitSelectedFile.url || '';
-                            const cleanPdfBase = pdfUrl.split('#')[0];
-                            const nativePdfUrl = cleanPdfBase ? `${cleanPdfBase}#toolbar=1&navpanes=0&view=FitH` : '';
-
-                            if (nativePdfUrl) {
-                              return (
-                                <div className="w-full h-full flex-1 flex flex-col items-center overflow-hidden bg-stone-100 dark:bg-stone-900">
-                                  <object
-                                    key={`pdf-native-${splitSelectedFile.id || cleanPdfBase}`}
-                                    data={nativePdfUrl}
-                                    type="application/pdf"
-                                    className="w-full h-full border-0 block flex-1"
-                                    style={{ width: '100%', height: '100%' }}
-                                  >
-                                    <iframe
-                                      key={`iframe-pdf-native-${splitSelectedFile.id || cleanPdfBase}`}
-                                      src={nativePdfUrl}
-                                      title={splitSelectedFile.name || 'Document PDF'}
-                                      className="w-full h-full border-0 block flex-1"
-                                      style={{ width: '100%', height: '100%' }}
-                                    />
-                                  </object>
-                                </div>
-                              );
-                            }
-
-                            return (
-                              <PdfHorizontalViewer
-                                fileId={splitSelectedFile.id}
-                                file={splitSelectedFile}
-                                url={splitSelectedFile.url}
-                                docZoom={Math.round(viewerZoom * 100)}
-                                layoutMode="vertical"
-                                currentPage={docCurrentPage}
-                                onPageChange={setDocCurrentPage}
-                                isFullscreen={isViewerMaximized}
-                              />
-                            );
-                          })()
-                        )
-                      ) : (
-                        <ModernDocumentViewer
-                          fileId={splitSelectedFile.id}
-                          url={splitSelectedFile.url}
-                          fileName={splitSelectedFile.name}
-                          fileSize={splitSelectedFile.size}
-                          className="w-full h-full border-0 rounded-none shadow-none"
-                        />
-                      )}
-                    </div>
-                  )}
-
-                  {/* 6. FICHIERS DIVERS / ARCHIVES */}
-                  {!isSelectedImage && !isSelectedVideo && !isSelectedAudio && !isSelectedNotepad && !isSelectedDoc && (
-                    <div className={`w-full bg-[#121826] border border-white/10 rounded-3xl p-8 text-center space-y-5 ${
-                      isViewerMaximized ? 'max-w-xl my-auto' : 'max-w-md my-auto'
-                    }`}>
-                      <div className="w-16 h-16 rounded-2xl bg-black border border-sky-400/40 text-sky-400 flex items-center justify-center mx-auto shadow-xl">
-                        <Archive className="w-8 h-8" />
-                      </div>
-                      <div>
-                        <h3 className="text-base font-bold text-white">{splitSelectedFile.name}</h3>
-                        <p className="text-xs text-slate-400 mt-1">{splitSelectedFile.size} • Archive / Paquet StudyCloud</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDownloadFile(splitSelectedFile)}
-                        className="px-6 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-stone-950 font-bold text-xs flex items-center justify-center gap-2 mx-auto shadow-md"
-                      >
-                        <Download className="w-4 h-4" /> Télécharger le fichier
-                      </button>
-                    </div>
-                  )}
-
-                </div>
-
+                {selectedCollectionFile ? (
+                  renderCollectionReader(selectedCollectionFile)
+                ) : (
+                  renderCollectionEmptyState('la Corbeille')
+                )}
               </div>
-            ) : (
-              (currentSubView.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio')) && (
-                <div className="hidden md:flex flex-1 flex-col items-center justify-center md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] p-8 text-center select-none bg-[#111622] dark:bg-[#0c101b] border-t md:border-t-0 md:border-l border-white/10 animate-in fade-in duration-200">
-                  {/* Logo de mélodie très détaillé : double croche avec notes blanches illuminées, stems et ondes sonores */}
-                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 flex items-center justify-center shadow-[0_8px_30px_rgba(245,158,11,0.45)] border-2 border-white/30 ring-4 ring-black/40 relative mb-4">
-                    {/* Cercle vinyle intérieur discret */}
-                    <div className="absolute inset-2 rounded-full border border-white/20 pointer-events-none" />
-                    
-                    <svg className="w-10 h-10 sm:w-12 sm:h-12 text-white filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] relative z-10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      {/* Ondes de mélodie acoustique fines */}
-                      <path d="M2.5 10.5C2.5 7.8 4.2 5.5 6.5 4.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.8" />
-                      <path d="M21.5 10.5C21.5 7.8 19.8 5.5 17.5 4.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.8" />
-                      
-                      {/* Tiges et double liaison musicale */}
-                      <path d="M9 16.5V5.5L20 3.5V14.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M9 9.5L20 7.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      
-                      {/* Tête de note 1 (gauche) blanche avec contour net */}
-                      <ellipse cx="6" cy="16.5" rx="3" ry="2.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.8" transform="rotate(-15 6 16.5)" />
-                      {/* Tête de note 2 (droite) blanche avec contour net */}
-                      <ellipse cx="17" cy="14.5" rx="3" ry="2.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.8" transform="rotate(-15 17 14.5)" />
-                    </svg>
-                  </div>
-
-                  <h3 className="text-base sm:text-lg font-bold text-slate-200">
-                    Aucun son sélectionné
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                    Sélectionnez une piste musicale dans la liste de gauche pour lancer la lecture.
-                  </p>
-                </div>
-              )
-            )}
-
-          </div>
-
+            </div>
+          )}
         </div>
       ) : (
         /* ========================================================================= */
