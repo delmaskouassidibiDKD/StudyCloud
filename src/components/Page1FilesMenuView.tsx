@@ -1370,14 +1370,39 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     // d'appeler notify(), donc les données n'apparaissent jamais.
     const cached = CloudDataStore.getState();
     if (CloudDataStore.hasData()) {
+      const delIds = getLocallyDeletedFileIds();
+      const delRecent = getDeletedRecentIds();
+      const cleanList = (list: FileItem[]) => {
+        const seenIds = new Set<string>();
+        const seenNames = new Set<string>();
+        return list.filter(f => {
+          if (delIds.has(f.id) || (f.name && delIds.has(f.name))) return false;
+          if (seenIds.has(f.id)) return false;
+          const nameLower = (f.name || '').toLowerCase();
+          if (nameLower && seenNames.has(nameLower)) return false;
+          seenIds.add(f.id);
+          if (nameLower) seenNames.add(nameLower);
+          return true;
+        });
+      };
+      const cleanRecent = (list: FileItem[]) => {
+        const seenIds = new Set<string>();
+        return list.filter(f => {
+          if (delIds.has(f.id) || (f.name && delIds.has(f.name))) return false;
+          if (delRecent.has(f.id) || (f.name && delRecent.has(f.name))) return false;
+          if (seenIds.has(f.id)) return false;
+          seenIds.add(f.id);
+          return true;
+        });
+      };
       setClasseur3DFolders(cached.classeurFolders);
       setFolderFilesMap(cached.folderFilesMap);
       setDownloadedItems(cached.downloads as any);
-      setDocumentsList(cached.documents);
-      setImagesList(cached.images);
-      setVideosList(cached.videos);
-      setAudioList(cached.audio);
-      setCloudRecentFiles(cached.recentFiles);
+      setDocumentsList(cleanList(cached.documents as any[]) as any);
+      setImagesList(cleanList(cached.images as any[]) as any);
+      setVideosList(cleanList(cached.videos as any[]) as any);
+      setAudioList(cleanList(cached.audio as any[]) as any);
+      setCloudRecentFiles(cleanRecent(cached.recentFiles as any[]) as any);
       setSecureFolderFiles(cached.secure);
       setTrashFiles(cached.trash);
       setCloudOverview(cached.overview);
@@ -1394,27 +1419,44 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       setClasseur3DFolders(state.classeurFolders);
       setFolderFilesMap(state.folderFilesMap);
       setDownloadedItems(state.downloads as any);
+      const _delIds = getLocallyDeletedFileIds();
+      const _delRecent = getDeletedRecentIds();
+      const _isNotDeleted = (f: { id: string; name?: string }) => !_delIds.has(f.id) && !(f.name && _delIds.has(f.name));
+      const _isNotDeletedRecent = (f: { id: string; name?: string }) => _isNotDeleted(f) && !_delRecent.has(f.id) && !(f.name && _delRecent.has(f.name));
       setDocumentsList(prev => {
         const stateIds = new Set(state.documents.map(d => d.id));
-        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || p.isUploading));
-        return [...pending, ...state.documents];
+        const stateNames = new Set(state.documents.map(d => (d.name || '').toLowerCase()));
+        const pending = prev.filter(p => !stateIds.has(p.id) && !stateNames.has((p.name || '').toLowerCase()) && (p.id.startsWith('cf-') || p.isUploading) && _isNotDeleted(p));
+        // Final dedup by ID to ensure no duplicates in the merged result
+        const merged = [...pending, ...(state.documents as any[]).filter(_isNotDeleted)];
+        const seen = new Set<string>();
+        return merged.filter(f => { if (seen.has(f.id)) return false; seen.add(f.id); return true; });
       });
       setImagesList(prev => {
         const stateIds = new Set(state.images.map(img => img.id));
-        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || p.isUploading));
-        return [...pending, ...state.images];
+        const stateNames = new Set(state.images.map(img => (img.name || '').toLowerCase()));
+        const pending = prev.filter(p => !stateIds.has(p.id) && !stateNames.has((p.name || '').toLowerCase()) && (p.id.startsWith('cf-') || p.isUploading) && _isNotDeleted(p));
+        const merged = [...pending, ...(state.images as any[]).filter(_isNotDeleted)];
+        const seen = new Set<string>();
+        return merged.filter(f => { if (seen.has(f.id)) return false; seen.add(f.id); return true; });
       });
       setVideosList(prev => {
         const stateIds = new Set(state.videos.map(v => v.id));
-        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || p.isUploading));
-        return [...pending, ...state.videos];
+        const stateNames = new Set(state.videos.map(v => (v.name || '').toLowerCase()));
+        const pending = prev.filter(p => !stateIds.has(p.id) && !stateNames.has((p.name || '').toLowerCase()) && (p.id.startsWith('cf-') || p.isUploading) && _isNotDeleted(p));
+        const merged = [...pending, ...(state.videos as any[]).filter(_isNotDeleted)];
+        const seen = new Set<string>();
+        return merged.filter(f => { if (seen.has(f.id)) return false; seen.add(f.id); return true; });
       });
       setAudioList(prev => {
         const stateIds = new Set(state.audio.map(a => a.id));
-        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || p.isUploading));
-        return [...pending, ...state.audio];
+        const stateNames = new Set(state.audio.map(a => (a.name || '').toLowerCase()));
+        const pending = prev.filter(p => !stateIds.has(p.id) && !stateNames.has((p.name || '').toLowerCase()) && (p.id.startsWith('cf-') || p.isUploading) && _isNotDeleted(p));
+        const merged = [...pending, ...(state.audio as any[]).filter(_isNotDeleted)];
+        const seen = new Set<string>();
+        return merged.filter(f => { if (seen.has(f.id)) return false; seen.add(f.id); return true; });
       });
-      setCloudRecentFiles(state.recentFiles);
+      setCloudRecentFiles((state.recentFiles as any[]).filter(_isNotDeletedRecent));
       setSecureFolderFiles(state.secure);
       setTrashFiles(state.trash);
       setCloudOverview(state.overview);
@@ -1618,6 +1660,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     removeDownloadedFile(id);
     markFileLocallyDeleted(id);
     markRecentLocallyDeleted(id);
+    CloudDataStore.removeFile(id);
     setCloudRecentFiles(prev => prev.filter(f => f.id !== id));
     CloudStorageAPI.deleteTrashPermanently([id]).catch(() => {});
     showToast('Fichier définitivement supprimé.');
@@ -1636,6 +1679,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       removeDownloadedFile(id);
       markFileLocallyDeleted(id);
       markRecentLocallyDeleted(id);
+      CloudDataStore.removeFile(id);
     });
     setCloudRecentFiles(prev => prev.filter(f => !ids.includes(f.id)));
     CloudStorageAPI.deleteTrashPermanently(ids).catch(() => {});
@@ -2613,6 +2657,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         setCloudRecentFiles(prev => prev.filter(f => f.id !== file.id && (!file.name || f.name !== file.name)));
         markRecentLocallyDeleted(file.id, file.name);
         markFileLocallyDeleted(file.id, file.name);
+        CloudDataStore.removeFile(file.id);
         deleteFileBlob(file.id).catch(() => {});
         removeDownloadedFile(file.id);
         if (file.name) removeDownloadedFile(file.name);
@@ -3033,6 +3078,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     idsToDelete.forEach(id => {
       markRecentLocallyDeleted(id);
       markFileLocallyDeleted(id);
+      CloudDataStore.removeFile(id);
       deleteFileBlob(id).catch(() => {});
       removeDownloadedFile(id);
     });
@@ -3416,7 +3462,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const isClean = (f: FileItem) => !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
     const isDoc = (f: FileItem) => (f.category === 'documents' || detectFileCategory({ name: f.name, type: f.type || '' }) === 'documents') && f.category !== 'videos' && f.category !== 'audio' && f.category !== 'images';
 
-    const list = [...documentsList, ...cloudRecentFiles.filter(f => isDoc(f) && !documentsList.some(s => s.id === f.id || s.name === f.name))].filter(isClean).filter(isDoc);
+    const mergedDocs = [...documentsList, ...cloudRecentFiles.filter(f => isDoc(f) && !documentsList.some(s => s.id === f.id || s.name === f.name))];
+    const seenDocIds = new Set<string>();
+    const list = mergedDocs.filter(f => { if (seenDocIds.has(f.id)) return false; seenDocIds.add(f.id); return true; }).filter(isClean).filter(isDoc);
     const filtered = list.filter(doc => {
       return subSearchQuery.trim() === '' || doc.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
@@ -3429,7 +3477,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const isClean = (f: FileItem) => !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
     const isImg = (f: FileItem) => (f.category === 'images' || Boolean(f.previewUrl && !f.videoUrl && !f.audioUrl) || f.isImage || detectFileCategory({ name: f.name, type: f.type || '' }) === 'images') && f.category !== 'videos' && f.category !== 'audio' && f.category !== 'documents';
 
-    const list = [...imagesList, ...cloudRecentFiles.filter(f => isImg(f) && !imagesList.some(s => s.id === f.id || s.name === f.name))].filter(isClean).filter(isImg);
+    const mergedImgs = [...imagesList, ...cloudRecentFiles.filter(f => isImg(f) && !imagesList.some(s => s.id === f.id || s.name === f.name))];
+    const seenImgIds = new Set<string>();
+    const list = mergedImgs.filter(f => { if (seenImgIds.has(f.id)) return false; seenImgIds.add(f.id); return true; }).filter(isClean).filter(isImg);
     const filtered = list.filter(img => {
       return subSearchQuery.trim() === '' || img.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
@@ -3452,7 +3502,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       return (f.category === 'videos' || Boolean(f.videoUrl) || f.isVideo || detectFileCategory({ name: f.name, type: f.type || '' }) === 'videos') && f.category !== 'audio' && f.category !== 'images' && f.category !== 'documents';
     };
 
-    const list = [...videosList, ...cloudRecentFiles.filter(f => isVid(f) && !videosList.some(s => s.id === f.id || s.name === f.name))].filter(isClean).filter(isVid);
+    const mergedVids = [...videosList, ...cloudRecentFiles.filter(f => isVid(f) && !videosList.some(s => s.id === f.id || s.name === f.name))];
+    const seenVidIds = new Set<string>();
+    const list = mergedVids.filter(f => { if (seenVidIds.has(f.id)) return false; seenVidIds.add(f.id); return true; }).filter(isClean).filter(isVid);
     const filtered = list.filter(vid => {
       return subSearchQuery.trim() === '' || vid.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
@@ -3475,7 +3527,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       return (f.category === 'audio' || Boolean(f.audioUrl) || f.isAudio || detectFileCategory({ name: f.name, type: f.type || '' }) === 'audio') && f.category !== 'videos' && f.category !== 'images' && f.category !== 'documents';
     };
 
-    const list = [...audioList, ...cloudRecentFiles.filter(f => isAud(f) && !audioList.some(s => s.id === f.id || s.name === f.name))].filter(isClean).filter(isAud);
+    const mergedAuds = [...audioList, ...cloudRecentFiles.filter(f => isAud(f) && !audioList.some(s => s.id === f.id || s.name === f.name))];
+    const seenAudIds = new Set<string>();
+    const list = mergedAuds.filter(f => { if (seenAudIds.has(f.id)) return false; seenAudIds.add(f.id); return true; }).filter(isClean).filter(isAud);
     const filtered = list.filter(aud => {
       return subSearchQuery.trim() === '' || aud.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
