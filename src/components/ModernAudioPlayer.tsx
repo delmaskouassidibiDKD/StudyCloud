@@ -15,6 +15,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { getFileBlobUrl, getFileBlob } from '../services/localFileStorage';
+import { getWorkerApiUrl } from '../services/api';
 
 interface ModernAudioPlayerProps {
   src?: string;
@@ -62,11 +63,7 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
     setHasError(false);
     setErrorMessage('');
 
-    if (src && typeof src === 'string' && src.trim() && !src.startsWith('data:image/')) {
-      setResolvedSrc(src);
-      return;
-    }
-
+    // Priorité 1 : Recherche dans le stockage local IndexedDB par fileId (garantit un blob frais)
     if (fileId) {
       try {
         const blobUrl = await getFileBlobUrl(fileId);
@@ -79,10 +76,22 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
       }
     }
 
-    if (!src || src.startsWith('data:image/')) {
-      setHasError(true);
-      setErrorMessage("Fichier audio non disponible.");
+    // Priorité 2 : Source directe
+    if (src && typeof src === 'string' && src.trim() && !src.startsWith('data:image/')) {
+      setResolvedSrc(src);
+      return;
     }
+
+    // Priorité 3 : Streaming Cloudflare Worker si fileId
+    if (fileId) {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
+      setResolvedSrc(streamUrl);
+      return;
+    }
+
+    setHasError(true);
+    setErrorMessage("Fichier audio non disponible.");
   }, [src, fileId]);
 
   useEffect(() => {
@@ -173,15 +182,27 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
             if (!isLooping) setCurrentTime(duration);
           }}
           onError={async () => {
-            if (fileId && !resolvedSrc.startsWith('blob:')) {
-              const b = await getFileBlob(fileId);
-              if (b) {
-                setResolvedSrc(URL.createObjectURL(b));
+            if (fileId) {
+              try {
+                const b = await getFileBlob(fileId);
+                if (b) {
+                  const freshUrl = URL.createObjectURL(b);
+                  if (freshUrl !== resolvedSrc) {
+                    setResolvedSrc(freshUrl);
+                    return;
+                  }
+                }
+              } catch (e) {}
+
+              const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+              const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
+              if (resolvedSrc !== streamUrl) {
+                setResolvedSrc(streamUrl);
                 return;
               }
             }
             setHasError(true);
-            setErrorMessage("Erreur de décodage audio.");
+            setErrorMessage("Erreur de lecture audio. Vérifiez que le format est supporté.");
           }}
         />
       )}

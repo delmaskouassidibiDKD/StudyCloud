@@ -215,10 +215,7 @@ export function CenterMenu({
 
   // Resolved binary / URL state
   const [resolvedUrl, setResolvedUrl] = useState<string>(() => {
-    if (activePreviewItem?.url && !activePreviewItem.url.startsWith('blob:')) {
-      return activePreviewItem.url;
-    }
-    return '';
+    return activePreviewItem?.url || '';
   });
   const [isLoadingDocument, setIsLoadingDocument] = useState<boolean>(false);
   const [extractedDocText, setExtractedDocText] = useState<string>('');
@@ -1123,7 +1120,7 @@ export function CenterMenu({
           const isPpt = ['PPTX', 'PPT'].includes(ext);
           const isText = ['TXT', 'MD', 'JSON', 'JS', 'TS', 'PY', 'HTML', 'CSS', 'SQL', 'XML', 'LOG', 'JAVA', 'C', 'CPP', 'SH', 'ENV'].includes(ext);
 
-          const currentUrl = resolvedUrl || (activePreviewItem?.url && !activePreviewItem.url.startsWith('blob:') ? activePreviewItem.url : '');
+          const currentUrl = resolvedUrl || activePreviewItem?.url || '';
 
           // 1. PDF:
           // Standard Vertical mode (default) -> Native PDF viewer with "le truc noir" (#toolbar=1, page counter, native - 122% + zoom, rotate, draw, download, print)

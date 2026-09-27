@@ -12,6 +12,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { getFileBlobUrl, getFileBlob } from '../services/localFileStorage';
+import { getWorkerApiUrl } from '../services/api';
 
 interface ModernImageViewerProps {
   src?: string;
@@ -46,11 +47,7 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
     setIsLoading(true);
     setHasError(false);
 
-    if (src && typeof src === 'string' && src.trim()) {
-      setResolvedSrc(src);
-      return;
-    }
-
+    // Priorité 1 : Recherche dans le stockage local IndexedDB par fileId (garantit un blob frais)
     if (fileId) {
       try {
         const blobUrl = await getFileBlobUrl(fileId);
@@ -61,6 +58,20 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
       } catch (err) {
         console.warn('[ModernImageViewer] Erreur lecture IndexedDB:', err);
       }
+    }
+
+    // Priorité 2 : Source directe
+    if (src && typeof src === 'string' && src.trim()) {
+      setResolvedSrc(src);
+      return;
+    }
+
+    // Priorité 3 : Streaming Cloudflare Worker si fileId
+    if (fileId) {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
+      setResolvedSrc(streamUrl);
+      return;
     }
 
     setHasError(true);
@@ -140,10 +151,22 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
             alt={alt || fileName}
             onLoad={() => setIsLoading(false)}
             onError={async () => {
-              if (fileId && !resolvedSrc.startsWith('blob:')) {
-                const b = await getFileBlob(fileId);
-                if (b) {
-                  setResolvedSrc(URL.createObjectURL(b));
+              if (fileId) {
+                try {
+                  const b = await getFileBlob(fileId);
+                  if (b) {
+                    const freshUrl = URL.createObjectURL(b);
+                    if (freshUrl !== resolvedSrc) {
+                      setResolvedSrc(freshUrl);
+                      return;
+                    }
+                  }
+                } catch (e) {}
+
+                const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+                const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
+                if (resolvedSrc !== streamUrl) {
+                  setResolvedSrc(streamUrl);
                   return;
                 }
               }

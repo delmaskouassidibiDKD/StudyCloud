@@ -264,8 +264,6 @@ const RecentImageCardPreview: React.FC<{ file: FileItem }> = ({ file }) => {
   const [imgSrc, setImgSrc] = useState<string | null>(() => {
     const cached = getCachedMediaThumbnail(file.id || file.url || '');
     if (cached) return cached;
-    if (file.previewUrl && !file.previewUrl.startsWith('blob:')) return file.previewUrl;
-    if (file.url && !file.url.startsWith('blob:')) return file.url;
     return file.previewUrl || file.url || null;
   });
   const [hasError, setHasError] = useState(false);
@@ -334,6 +332,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const [selectedCollectionFile, setSelectedCollectionFile] = useState<FileItem | null>(null);
 
   const [splitResolvedPdfUrl, setSplitResolvedPdfUrl] = useState<string>('');
+  const [splitResolvedAudioUrl, setSplitResolvedAudioUrl] = useState<string>('');
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
   const [viewerZoom, setViewerZoom] = useState(1);
   const [viewerRotation, setViewerRotation] = useState(0);
@@ -3200,12 +3199,24 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     // URL de lecture : préserver le blob local s'il existe, sinon URL worker
     const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-    const permanentWorkerUrl = `${baseUrl}/api/cloud/stream/${file.id}`;
+    const permanentWorkerUrl = file.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}` : '';
     if (!file.url) {
       file.url = permanentWorkerUrl;
     }
-    if (!file.videoUrl) {
+    if (!file.videoUrl && isVideo) {
       file.videoUrl = file.url;
+    }
+    if (!file.audioUrl && isAudio) {
+      file.audioUrl = file.url;
+    }
+    if (file.id) {
+      getFileBlobUrl(file.id).then(freshBlob => {
+        if (freshBlob) {
+          file.url = freshBlob;
+          if (isVideo) file.videoUrl = freshBlob;
+          if (isAudio) file.audioUrl = freshBlob;
+        }
+      }).catch(() => {});
     }
 
     if (isNotepad) {
@@ -4249,6 +4260,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
     return () => { isCurrent = false; };
   }, [splitSelectedFile?.id, isSelectedDocPdf]);
+
+  useEffect(() => {
+    let isCurrent = true;
+    const currentTrack = selectedAudioTrack || (splitSelectedFile && (splitSelectedFile.category === 'audio' || Boolean(splitSelectedFile.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(splitSelectedFile.name)) ? splitSelectedFile : null);
+    if (currentTrack?.id) {
+      const directUrl = currentTrack.audioUrl || (currentTrack as any).url;
+      if (directUrl && typeof directUrl === 'string' && directUrl.trim()) {
+        setSplitResolvedAudioUrl(directUrl);
+      }
+      getFileBlobUrl(currentTrack.id).then(blobUrl => {
+        if (isCurrent && blobUrl) {
+          setSplitResolvedAudioUrl(blobUrl);
+        }
+      }).catch(() => {});
+    } else {
+      setSplitResolvedAudioUrl('');
+    }
+    return () => { isCurrent = false; };
+  }, [selectedAudioTrack?.id, splitSelectedFile?.id]);
 
   // NAVIGATION PRÉCÉDENT / SUIVANT DANS LA VUE DIVISÉE (STRICTEMENT DANS LE MENU ACTUEL)
   const handleNavigateSplit = (direction: 'prev' | 'next') => {
@@ -9345,13 +9375,42 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // 2. LECTEUR AUDIO DÉDIÉ (IMAGE 2 & IMAGE 3)
   const renderAudioPlayer = (track: FileItem) => {
+    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+    const fallbackStreamUrl = track.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(track.id)}` : '';
+    const audioSrc = splitResolvedAudioUrl || track.audioUrl || (track as any).url || fallbackStreamUrl;
+
     return (
       <div className="relative w-full h-full flex-1 flex flex-col justify-between p-3 sm:p-6 md:p-8 bg-[#090D1A] text-white overflow-hidden select-none">
         <audio
           ref={audioRef}
-          src={track.audioUrl || (track as any).url || ''}
+          src={audioSrc}
           autoPlay={isAudioPlaying}
           loop={isAudioRepeat === 'one'}
+          onError={async () => {
+            console.warn('[AudioPlayer] Erreur chargement audio pour', track.name);
+            if (track.id) {
+              try {
+                const freshBlob = await getFileBlobUrl(track.id);
+                if (freshBlob && freshBlob !== audioSrc) {
+                  setSplitResolvedAudioUrl(freshBlob);
+                  if (audioRef.current) {
+                    audioRef.current.src = freshBlob;
+                    audioRef.current.play().catch(() => {});
+                  }
+                  return;
+                }
+              } catch (e) {}
+
+              if (fallbackStreamUrl && audioSrc !== fallbackStreamUrl) {
+                setSplitResolvedAudioUrl(fallbackStreamUrl);
+                if (audioRef.current) {
+                  audioRef.current.src = fallbackStreamUrl;
+                  audioRef.current.play().catch(() => {});
+                }
+                return;
+              }
+            }
+          }}
           onEnded={() => {
             if (isAudioRepeat === 'one') {
               if (audioRef.current) {
@@ -9629,11 +9688,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // 3. LECTEUR VIDÉO DÉDIÉ (IMAGE 4)
   const renderVideoPlayer = (file: FileItem) => {
-    const videoSrc = (file.videoUrl && !file.videoUrl.startsWith('blob:'))
-      ? file.videoUrl
-      : (file.url && !file.url.startsWith('blob:'))
-      ? file.url
-      : getWorkerApiUrl().replace(/\/+$/, '') + '/api/cloud/stream/' + file.id;
+    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+    const fallbackStreamUrl = file.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}` : '';
+    const videoSrc = file.videoUrl || file.url || fallbackStreamUrl;
 
     return (
       <div className="w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none">

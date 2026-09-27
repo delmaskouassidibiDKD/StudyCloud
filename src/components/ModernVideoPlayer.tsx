@@ -27,6 +27,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { getWorkerApiUrl } from '../services/api';
+import { getFileBlobUrl, getFileBlob } from '../services/localFileStorage';
 
 export type VideoQuality = 'auto' | '1080p' | '720p' | '480p' | '360p';
 export type VideoFitMode = 'contain' | 'cover' | 'fill';
@@ -117,38 +118,45 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
     }, 2500);
   };
 
-  // 1. Résolution de la source vidéo depuis le Worker Cloudflare et la base D1/R2
-  const resolveVideoSource = useCallback(() => {
+  // 1. Résolution de la source vidéo (Blob local instantané, IndexedDB ou stream Cloudflare)
+  const resolveVideoSource = useCallback(async () => {
     setHasError(false);
     setErrorMessage('');
     setIsBuffering(true);
 
     const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
 
-    // Priorité 1 : URL Cloudflare Worker directe
+    // Priorité 1 : Recherche dans le stockage local IndexedDB par fileId (garantit un blob frais, valide et hors-ligne)
+    if (fileId) {
+      try {
+        const localBlobUrl = await getFileBlobUrl(fileId);
+        if (localBlobUrl) {
+          setResolvedSrc(localBlobUrl);
+          return;
+        }
+      } catch (err) {
+        console.warn('[ModernVideoPlayer] Erreur lecture IndexedDB:', err);
+      }
+    }
+
+    // Priorité 2 : Source directe (URL blob: locale valide ou URL distante https:)
     if (src && typeof src === 'string' && src.trim()) {
-      if (!src.startsWith('data:image/') && !src.startsWith('blob:')) {
+      if (!src.startsWith('data:image/')) {
         setResolvedSrc(src);
         return;
       }
     }
 
-    // Priorité 2 : Flux de streaming dédié servi par le Worker via l'ID de fichier
+    // Priorité 3 : Flux de streaming dédié servi par le Worker via l'ID de fichier
     if (fileId) {
       const workerStreamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
       setResolvedSrc(workerStreamUrl);
       return;
     }
 
-    // Priorité 3 : Fallback si src est fourni
-    if (src && !src.startsWith('data:image/')) {
-      setResolvedSrc(src);
-      return;
-    }
-
     // Si aucune source n'est disponible
     setHasError(true);
-    setErrorMessage("Flux vidéo introuvable sur le serveur Cloudflare.");
+    setErrorMessage("Flux vidéo introuvable.");
     setIsBuffering(false);
   }, [src, fileId]);
 
@@ -450,18 +458,34 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
                 }
               }
             }}
-            onError={() => {
-              // Si la source directe a échoué et qu'on n'a pas encore testé le endpoint stream universel
+            onError={async () => {
               const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-              const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId || '')}`;
-              if (fileId && resolvedSrc !== streamUrl) {
-                console.log('[ModernVideoPlayer] Reconnexion au flux stream Cloudflare Worker...');
-                setResolvedSrc(streamUrl);
-                return;
+              // 1. Tenter la récupération depuis IndexedDB si ce n'est pas déjà fait
+              if (fileId) {
+                try {
+                  const b = await getFileBlob(fileId);
+                  if (b) {
+                    const freshBlobUrl = URL.createObjectURL(b);
+                    if (freshBlobUrl !== resolvedSrc) {
+                      console.log('[ModernVideoPlayer] Récupération réussie depuis IndexedDB locale');
+                      setResolvedSrc(freshBlobUrl);
+                      return;
+                    }
+                  }
+                } catch (e) {}
+
+                // 2. Tenter le endpoint de streaming Cloudflare si on ne l'a pas déjà essayé
+                const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
+                if (resolvedSrc !== streamUrl) {
+                  console.log('[ModernVideoPlayer] Reconnexion au flux stream Cloudflare Worker...');
+                  setResolvedSrc(streamUrl);
+                  return;
+                }
               }
+
               setHasError(true);
               setIsBuffering(false);
-              setErrorMessage("Impossible de charger la vidéo depuis le serveur Cloudflare. Vérifiez votre connexion.");
+              setErrorMessage("Impossible de lire ce fichier vidéo. Vérifiez que le format est supporté par votre appareil.");
             }}
             className={`w-full h-full cursor-pointer transition-all duration-300 ${getObjectFitClass()}`}
           />
