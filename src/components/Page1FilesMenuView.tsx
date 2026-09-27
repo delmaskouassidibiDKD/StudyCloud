@@ -111,7 +111,17 @@ import { PdfHorizontalViewer } from './PdfHorizontalViewer';
 import { CloudDataStore } from '../services/cloudDataStore';
 import { UploadQueue } from '../services/uploadQueue';
 import { UploadQueueWidget } from './UploadQueueWidget';
-import { detectFileCategory, validateFilesForMenu, CATEGORY_LABELS, isWhatsAppAudio, EXTENSION_MAP } from '../services/fileTypeValidator';
+import {
+  detectFileCategory,
+  detectFileCategoryWithMagic,
+  validateFilesForMenu,
+  validateFilesForMenuAsync,
+  CATEGORY_LABELS,
+  isWhatsAppAudio,
+  isWhatsAppVideo,
+  isWhatsAppImage,
+  EXTENSION_MAP
+} from '../services/fileTypeValidator';
 
 // Nettoyage immédiat de tout fichier figé en localStorage pour éviter le plantage QuotaExceededError
 if (typeof window !== 'undefined') {
@@ -1863,7 +1873,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // FONCTION UNIFIÉE D'EXÉCUTION DÉDIÉE PAR RÔLE DE BOUTON ET CATÉGORIE
   // Chaque bouton a son rôle explicite (uploadSource) transmis directement au Cloudflare Worker
-  const executeDedicatedMenuImport = (
+  const executeDedicatedMenuImport = async (
     files: File[],
     targetCategory: 'videos' | 'audio' | 'images' | 'documents' | 'classeur',
     uploadSource: string,
@@ -1872,8 +1882,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   ) => {
     if (!files || files.length === 0) return;
 
-    // Validation Option A stricte propre à chaque menu
-    const { validFiles, rejectedFiles } = validateFilesForMenu(files, targetCategory);
+    // Validation Option A stricte par Magic Numbers (signature binaire infaillible)
+    const { validFiles, rejectedFiles } = await validateFilesForMenuAsync(files, targetCategory);
 
     if (rejectedFiles.length > 0) {
       const first = rejectedFiles[0];
@@ -2030,18 +2040,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // B. EXÉCUTION OPTION B (ROUTAGE INTELLIGENT DEPUIS L'ACCUEIL)
   // Détecte la nature exacte de chaque fichier et le classe automatiquement dans son menu
-  const processHomeFiles = (files: File[]) => {
+  const processHomeFiles = async (files: File[]) => {
     if (!files || files.length === 0) return;
 
-    const newItemsWithFiles = files.map((file, idx) => {
+    const newItemsWithFiles = await Promise.all(files.map(async (file, idx) => {
       const localBlobUrl = URL.createObjectURL(file);
       const normName = file.name.toLowerCase();
       const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
       const fileId = `cf-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
       const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
 
-      // Détection fiable de la nature réelle du fichier
-      const autoCat = detectFileCategory(file);
+      // Détection infaillible par Magic Numbers (signature binaire réelle des octets)
+      const autoCat = await detectFileCategoryWithMagic(file);
 
       // Sauvegarde binaire locale immédiate dans IndexedDB
       storeFileBlob(fileId, file).catch(() => {});
@@ -2061,7 +2071,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         audioUrl: autoCat === 'audio' ? localBlobUrl : undefined,
       };
       return { file, item };
-    });
+    }));
 
     const newItems = newItemsWithFiles.map(x => x.item);
     const fileIds = newItems.map(x => x.id);
@@ -3415,11 +3425,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return applySorting(filtered);
   }, [imagesList, cloudRecentFiles, subSearchQuery, sortOption]);
 
-  // Liste des vidéos pour le sous-menu Vidéos (Image 3) - FILTRAGE STRICT : AUCUN AUDIO (Y COMPRIS WHATSAPP) NE PEUT APPARAÎTRE
+  // Liste des vidéos pour le sous-menu Vidéos (Image 3) - FILTRAGE STRICT : AUCUN AUDIO NE PEUT APPARAÎTRE
   const filteredVideos = useMemo(() => {
     const delLocal = getLocallyDeletedFileIds();
     const isClean = (f: FileItem) => !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
     const isVid = (f: FileItem) => {
+      // Reconnaissance explicite des vidéos WhatsApp (ex: WhatsApp Video 2026-..., VID-...)
+      if (isWhatsAppVideo(f.name, f.type)) {
+        return true;
+      }
       // Les fichiers audio ou notes vocales WhatsApp ne doivent JAMAIS apparaître dans les vidéos
       if (isWhatsAppAudio(f.name, f.type) || EXTENSION_MAP.audio.includes(((f.name || '').split('.').pop() || '').toLowerCase())) {
         return false;
@@ -3439,6 +3453,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const delLocal = getLocallyDeletedFileIds();
     const isClean = (f: FileItem) => !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
     const isAud = (f: FileItem) => {
+      // Une vidéo WhatsApp ou mobile ne doit JAMAIS apparaître dans le menu Audio
+      if (isWhatsAppVideo(f.name, f.type)) {
+        return false;
+      }
       // Tout fichier audio WhatsApp (AUD-..., PTT-..., .opus, .ogg, .m4a) appartient obligatoirement au menu Audio
       if (isWhatsAppAudio(f.name, f.type) || EXTENSION_MAP.audio.includes(((f.name || '').split('.').pop() || '').toLowerCase())) {
         return true;

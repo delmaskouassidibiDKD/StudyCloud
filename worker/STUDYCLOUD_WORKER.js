@@ -4785,16 +4785,20 @@ var index_default = {
         const audioExts = ["mp3", "wav", "ogg", "flac", "m4a", "aac", "wma", "opus", "amr", "weba", "aiff", "alac", "mid", "midi", "caf", "3ga", "3gp", "m4b", "m4p", "oga"];
         const docExts = ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "odt", "ods", "odp", "rtf", "tex", "epub", "md", "xml", "json"];
         
-        // DÉTECTION ROBUSTE DES AUDIOS WHATSAPP & ENREGISTREMENTS VOCAUX
-        const isWhatsAppVoice = lowerName.startsWith("aud-") || lowerName.startsWith("ptt-") || lowerName.includes("whatsapp") || lowerName.includes("voice_") || lowerName.includes("audio_");
+        // DÉTECTION ROBUSTE DES FORMATS & CONVENTIONS WHATSAPP / MOBILE
+        const isExplicitVideo = lowerName.startsWith("vid-") || lowerName.includes("whatsapp video") || lowerName.includes("video_") || videoExts.includes(ext) || normMime.startsWith("video/");
+        const isExplicitImage = lowerName.startsWith("img-") || lowerName.includes("whatsapp image") || lowerName.includes("image_") || lowerName.includes("photo_") || imageExts.includes(ext) || normMime.startsWith("image/");
+        const isWhatsAppVoice = !isExplicitVideo && !isExplicitImage && (
+          lowerName.startsWith("aud-") || lowerName.startsWith("ptt-") || lowerName.includes("whatsapp audio") || lowerName.includes("voice_") || lowerName.includes("audio_")
+        );
 
         let detectedNature = "documents";
-        if (isWhatsAppVoice || audioExts.includes(ext) || (ext === "3gp" && (isWhatsAppVoice || normMime.includes("audio"))) || normMime.includes("opus") || normMime.includes("ogg") || normMime.startsWith("audio/")) {
-          detectedNature = "audio";
-        } else if (imageExts.includes(ext) || normMime.startsWith("image/")) {
-          detectedNature = "images";
-        } else if (videoExts.includes(ext) || normMime.startsWith("video/")) {
+        if (isExplicitVideo) {
           detectedNature = "videos";
+        } else if (isExplicitImage) {
+          detectedNature = "images";
+        } else if (isWhatsAppVoice || audioExts.includes(ext) || (ext === "3gp" && normMime.includes("audio")) || normMime.includes("opus") || normMime.includes("ogg") || normMime.startsWith("audio/")) {
+          detectedNature = "audio";
         } else if (docExts.includes(ext) || normMime.startsWith("text/")) {
           detectedNature = "documents";
         } else {
