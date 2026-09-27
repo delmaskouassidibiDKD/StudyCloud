@@ -775,12 +775,15 @@ export const CloudStorageAPI = {
     fileName: string,
     folderId?: string,
     thumbnailDataUrl?: string,
-    uploadSource?: string
+    uploadSource?: string,
+    originalSizeBytes?: number,
+    originalSizeFormatted?: string
   ): Promise<{ success: boolean; category?: string; detectedCategory?: string; file?: FileItem; error?: string }> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const sourceQuery = uploadSource ? `&source=${encodeURIComponent(uploadSource)}` : '';
-      const uploadUrl = `${baseUrl}/api/cloud/upload?category=${encodeURIComponent(category)}&name=${encodeURIComponent(fileName)}&folderId=${encodeURIComponent(folderId || '')}&userId=${getUserIdParam()}${sourceQuery}`;
+      const origSizeParam = originalSizeBytes ? `&originalSizeBytes=${encodeURIComponent(String(originalSizeBytes))}` : '';
+      const uploadUrl = `${baseUrl}/api/cloud/upload?category=${encodeURIComponent(category)}&name=${encodeURIComponent(fileName)}&folderId=${encodeURIComponent(folderId || '')}&userId=${getUserIdParam()}${sourceQuery}${origSizeParam}`;
       
       const headers: Record<string, string> = {
         'Content-Type': file.type || 'application/octet-stream',
@@ -791,6 +794,12 @@ export const CloudStorageAPI = {
       }
       if (thumbnailDataUrl && thumbnailDataUrl.startsWith('data:image')) {
         headers['x-thumbnail-data'] = thumbnailDataUrl;
+      }
+      if (originalSizeBytes) {
+        headers['x-original-size-bytes'] = String(originalSizeBytes);
+      }
+      if (originalSizeFormatted) {
+        headers['x-original-size'] = originalSizeFormatted;
       }
 
       const res = await fetchWithTimeout(uploadUrl, {
@@ -824,9 +833,11 @@ export const CloudStorageAPI = {
     category: 'classeur' | 'audio' | 'images' | 'videos' | 'documents' | 'downloads' | 'secure',
     fileName: string,
     folderId?: string,
-    uploadSource?: string
+    uploadSource?: string,
+    originalSizeBytes?: number,
+    originalSizeFormatted?: string
   ): Promise<{ success: boolean; id?: string; key?: string; url?: string; error?: string }> {
-    const res = await this.uploadFile(file, category as any, fileName, folderId, undefined, uploadSource);
+    const res = await this.uploadFile(file, category as any, fileName, folderId, undefined, uploadSource, originalSizeBytes, originalSizeFormatted);
     if (!res.success) {
       return { success: false, error: res.error };
     }
@@ -836,6 +847,21 @@ export const CloudStorageAPI = {
       key: (res.file as any)?.r2Key || res.file?.id,
       url: res.file?.url,
     };
+  },
+
+  async getStorageUsage(): Promise<any> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/storage-usage?userId=${getUserIdParam()}`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      console.warn('[CloudStorageAPI] getStorageUsage error:', e);
+      return null;
+    }
   },
 
   // --------------------------------------------------------------------------

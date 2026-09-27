@@ -112,6 +112,7 @@ import { PdfHorizontalViewer } from './PdfHorizontalViewer';
 import { CloudDataStore } from '../services/cloudDataStore';
 import { UploadQueue } from '../services/uploadQueue';
 import { UploadQueueWidget } from './UploadQueueWidget';
+import { compressFile } from '../utils/fileCompressor';
 import {
   detectFileCategory,
   detectFileCategoryWithMagic,
@@ -522,7 +523,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   // Importer des fichiers dans le dossier ouvert
-  const handleFolderFileUpload = (e: React.ChangeEvent<HTMLInputElement>, folderId: string, skipDuplicateCheck?: boolean) => {
+  const handleFolderFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, folderId: string, skipDuplicateCheck?: boolean) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const files = Array.from(e.target.files) as File[];
     const targetFolder = classeur3DFolders.find(f => f.id === folderId);
@@ -549,30 +550,29 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
     }
 
-    const newFiles: FileItem[] = files.map((f: File, idx) => {
+    const newItemsWithFiles = await Promise.all(files.map(async (f: File, idx) => {
       const ext = f.name.includes('.') ? f.name.split('.').pop()?.toLowerCase() || '' : '';
       let category: FileItem['category'] = 'documents';
       if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) category = 'images';
       else if (['mp4', 'webm', 'mkv', 'avi', 'mov'].includes(ext)) category = 'videos';
       else if (['mp3', 'wav', 'ogg', 'm4a', 'flac'].includes(ext)) category = 'audio';
 
-      const k = 1024;
-      const sizes = ['o', 'Ko', 'Mo', 'Go'];
-      const i = f.size > 0 ? Math.floor(Math.log(f.size) / Math.log(k)) : 0;
-      const sizeStr = f.size > 0 ? parseFloat((f.size / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i] : '0 o';
+      // Compression intelligente tout en préservant la vraie taille d'origine
+      const compResult = await compressFile(f, category);
+      const fileToStore = compResult.file;
       const fileId = `cf-${folderId}-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
-      const localBlobUrl = URL.createObjectURL(f);
+      const localBlobUrl = URL.createObjectURL(fileToStore);
 
-      // Stocker le binaire immédiatement dans IndexedDB pour lecture instantanée
-      storeFileBlob(fileId, f).catch(() => {});
+      // Stocker le binaire optimisé immédiatement dans IndexedDB
+      storeFileBlob(fileId, fileToStore as any).catch(() => {});
 
-      return {
+      const item: FileItem = {
         id: fileId,
         name: f.name,
         category,
         source: folderName,
-        size: sizeStr,
-        sizeBytes: f.size,
+        size: compResult.originalSizeFormatted,
+        sizeBytes: compResult.originalSizeBytes,
         date: getDynamicCurrentDate().full,
         extension: ext.toUpperCase(),
         url: localBlobUrl,
@@ -583,7 +583,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         positionY: 0,
         displayOrder: idx
       };
-    });
+
+      return {
+        file: fileToStore,
+        item,
+        originalSizeBytes: compResult.originalSizeBytes,
+        originalSizeFormatted: compResult.originalSizeFormatted
+      };
+    }));
+
+    const newFiles = newItemsWithFiles.map(x => x.item);
 
     setFolderFilesMap(prev => ({
       ...prev,
@@ -604,7 +613,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     // Sauvegarde en arrière-plan via UploadQueue (max 2 parallèles, auto-retry, notifications)
     UploadQueue.enqueueExisting(
-      files.map((file, idx) => ({ file, item: newFiles[idx] })),
+      newItemsWithFiles,
       { category: 'classeur', folderId, folderName }
     );
 
@@ -612,7 +621,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     e.target.value = '';
   };
 
-  const handleDirectFilesImportToFolder = (fileList: FileList, folderId: string, skipDuplicateCheck?: boolean) => {
+  const handleDirectFilesImportToFolder = async (fileList: FileList, folderId: string, skipDuplicateCheck?: boolean) => {
     const files = Array.from(fileList) as File[];
     const targetFolder = classeur3DFolders.find(f => f.id === folderId);
     const folderName = targetFolder ? targetFolder.name : 'Dossier';
@@ -637,30 +646,29 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
     }
 
-    const newFiles: FileItem[] = files.map((f: File, idx) => {
+    const newItemsWithFiles = await Promise.all(files.map(async (f: File, idx) => {
       const ext = f.name.includes('.') ? f.name.split('.').pop()?.toLowerCase() || '' : '';
       let category: FileItem['category'] = 'documents';
       if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) category = 'images';
       else if (['mp4', 'webm', 'mkv', 'avi', 'mov'].includes(ext)) category = 'videos';
       else if (['mp3', 'wav', 'ogg', 'm4a', 'flac'].includes(ext)) category = 'audio';
 
-      const k = 1024;
-      const sizes = ['o', 'Ko', 'Mo', 'Go'];
-      const i = f.size > 0 ? Math.floor(Math.log(f.size) / Math.log(k)) : 0;
-      const sizeStr = f.size > 0 ? parseFloat((f.size / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i] : '0 o';
+      // Compression intelligente tout en préservant la vraie taille d'origine
+      const compResult = await compressFile(f, category);
+      const fileToStore = compResult.file;
       const fileId = `cf-${folderId}-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
-      const localBlobUrl = URL.createObjectURL(f);
+      const localBlobUrl = URL.createObjectURL(fileToStore);
 
-      // Stocker le binaire immédiatement dans IndexedDB
-      storeFileBlob(fileId, f).catch(() => {});
+      // Stocker le binaire optimisé immédiatement dans IndexedDB
+      storeFileBlob(fileId, fileToStore as any).catch(() => {});
 
-      return {
+      const item: FileItem = {
         id: fileId,
         name: f.name,
         category,
         source: folderName,
-        size: sizeStr,
-        sizeBytes: f.size,
+        size: compResult.originalSizeFormatted,
+        sizeBytes: compResult.originalSizeBytes,
         date: getDynamicCurrentDate().full,
         extension: ext.toUpperCase(),
         url: localBlobUrl,
@@ -671,7 +679,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         positionY: 0,
         displayOrder: idx
       };
-    });
+
+      return {
+        file: fileToStore,
+        item,
+        originalSizeBytes: compResult.originalSizeBytes,
+        originalSizeFormatted: compResult.originalSizeFormatted
+      };
+    }));
+
+    const newFiles = newItemsWithFiles.map(x => x.item);
 
     setFolderFilesMap(prev => ({
       ...prev,
@@ -692,7 +709,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     // Sauvegarde en arrière-plan via UploadQueue (max 2 parallèles, auto-retry, notifications)
     UploadQueue.enqueueExisting(
-      files.map((file, idx) => ({ file, item: newFiles[idx] })),
+      newItemsWithFiles,
       { category: 'classeur', folderId, folderName }
     );
 
@@ -2066,20 +2083,22 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
     }
 
-    // Création des FileItems dédiés au menu cible
-    const newItemsWithFiles = validFiles.map((file, idx) => {
-      const localBlobUrl = URL.createObjectURL(file);
+    // Création des FileItems dédiés au menu cible avec compression intelligente et préservation de la vraie taille
+    const newItemsWithFiles = await Promise.all(validFiles.map(async (file, idx) => {
+      const compResult = await compressFile(file, targetCategory);
+      const fileToUpload = compResult.file;
+      const localBlobUrl = URL.createObjectURL(fileToUpload);
       const normName = file.name.toLowerCase();
       const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
       const fileId = `cf-${targetCategory}-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
-      const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
 
-      storeFileBlob(fileId, file).catch(() => {});
+      storeFileBlob(fileId, fileToUpload as any).catch(() => {});
 
       const actualCat = targetCategory === 'classeur' ? 'documents' : targetCategory;
       const isAud = actualCat === 'audio';
       const isVid = actualCat === 'videos';
 
+      // L'utilisateur voit TOUJOURS sa vraie taille brute originale non compressée
       const item: FileItem = {
         id: fileId,
         name: file.name,
@@ -2090,8 +2109,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           targetCategory === 'images' ? 'Menu Images' :
           targetCategory === 'documents' ? 'Menu Documents' : 'StudyCloud'
         ),
-        size: sizeKb,
-        sizeBytes: file.size,
+        size: compResult.originalSizeFormatted,
+        sizeBytes: compResult.originalSizeBytes,
         date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
         extension: ext,
         url: localBlobUrl,
@@ -2100,8 +2119,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         audioUrl: isAud ? localBlobUrl : undefined,
         originalFolderId: folderId
       };
-      return { file, item };
-    });
+      return {
+        file: fileToUpload,
+        item,
+        originalSizeBytes: compResult.originalSizeBytes,
+        originalSizeFormatted: compResult.originalSizeFormatted
+      };
+    }));
 
     const newItems = newItemsWithFiles.map(x => x.item);
     const fileIds = newItems.map(x => x.id);
@@ -2130,7 +2154,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     startSavingAnimation(fileIds);
 
-    // Envoi en tâche de fond avec le rôle exact (uploadSource)
+    // Envoi en tâche de fond avec le rôle exact (uploadSource) et métadonnées de compression
     UploadQueue.enqueueExisting(newItemsWithFiles, {
       category: targetCategory as any,
       folderId,
@@ -2228,25 +2252,27 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
 
     const newItemsWithFiles = await Promise.all(files.map(async (file, idx) => {
-      const localBlobUrl = URL.createObjectURL(file);
+      // Détection infaillible par Magic Numbers (signature binaire réelle des octets)
+      const autoCat = await detectFileCategoryWithMagic(file);
+      // Compression client universelle tout en préservant les vraies valeurs d'origine
+      const compResult = await compressFile(file, autoCat);
+      const fileToUpload = compResult.file;
+      const localBlobUrl = URL.createObjectURL(fileToUpload);
       const normName = file.name.toLowerCase();
       const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
       const fileId = `cf-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
-      const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
-
-      // Détection infaillible par Magic Numbers (signature binaire réelle des octets)
-      const autoCat = await detectFileCategoryWithMagic(file);
 
       // Sauvegarde binaire locale immédiate dans IndexedDB
-      storeFileBlob(fileId, file).catch(() => {});
+      storeFileBlob(fileId, fileToUpload as any).catch(() => {});
 
+      // L'utilisateur voit TOUJOURS sa vraie taille brute originale non compressée
       const item: FileItem = {
         id: fileId,
         name: file.name,
         category: autoCat,
         source: 'StudyCloud Local',
-        size: sizeKb,
-        sizeBytes: file.size,
+        size: compResult.originalSizeFormatted,
+        sizeBytes: compResult.originalSizeBytes,
         date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
         extension: ext,
         url: localBlobUrl,
@@ -2254,7 +2280,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         videoUrl: autoCat === 'videos' ? localBlobUrl : undefined,
         audioUrl: autoCat === 'audio' ? localBlobUrl : undefined,
       };
-      return { file, item };
+      return { 
+        file: fileToUpload, 
+        item,
+        originalSizeBytes: compResult.originalSizeBytes,
+        originalSizeFormatted: compResult.originalSizeFormatted
+      };
     }));
 
     const newItems = newItemsWithFiles.map(x => x.item);

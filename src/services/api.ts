@@ -1236,16 +1236,26 @@ export const StudyCloudAPI = {
     return request<{ success: boolean; data: any[] }>(endpoint);
   },
 
-  async uploadFileToR2(file: File | Blob, r2Key: string, contentType?: string): Promise<{ success: boolean; key: string; url: string }> {
+  async uploadFileToR2(
+    file: File | Blob,
+    r2Key: string,
+    contentType?: string,
+    originalSizeBytes?: number
+  ): Promise<{ success: boolean; key: string; url: string; compressedSizeBytes?: number; originalSizeBytes?: number }> {
     const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
     const url = `${baseUrl}/api/storage/upload?key=${encodeURIComponent(r2Key)}`;
     const finalContentType = contentType || (file as any).type || 'application/octet-stream';
 
+    const headers: Record<string, string> = {
+      'Content-Type': finalContentType,
+    };
+    if (originalSizeBytes) {
+      headers['x-original-size-bytes'] = String(originalSizeBytes);
+    }
+
     const response = await fetch(url, {
       method: 'PUT',
-      headers: {
-        'Content-Type': finalContentType,
-      },
+      headers,
       body: file,
     });
 
@@ -1273,6 +1283,9 @@ export const StudyCloudAPI = {
     isImported?: boolean;
     isStudySession?: boolean;
     lastImported?: number;
+    originalSizeBytes?: number;
+    compressedSizeBytes?: number;
+    compressionRatio?: number;
   }) {
     return request('/api/files', { method: 'POST', body: JSON.stringify(fileData) });
   },

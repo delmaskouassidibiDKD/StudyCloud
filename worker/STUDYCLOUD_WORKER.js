@@ -2325,9 +2325,180 @@ async function ensureCloudMediaTables(db) {
       await db.prepare("CREATE INDEX IF NOT EXISTS idx_pinned_user ON pinned_items(user_id)").run();
     } catch (e) {
     }
+    await ensureCompressionAndStorageTables(db);
     isCloudMediaTablesInitialized = true;
   } catch (err) {
     console.error("[StudyCloud Cloud Media Tables Init Error]", err);
+  }
+}
+
+let isCompressionTablesInitialized = false;
+async function ensureCompressionAndStorageTables(db) {
+  if (isCompressionTablesInitialized || !db) return;
+  try {
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_storage_usage (
+        user_id TEXT PRIMARY KEY,
+        total_original_bytes INTEGER DEFAULT 0,
+        total_original_formatted TEXT DEFAULT '0 o',
+        total_r2_compressed_bytes INTEGER DEFAULT 0,
+        total_r2_formatted TEXT DEFAULT '0 o',
+        total_d1_database_bytes INTEGER DEFAULT 0,
+        total_d1_formatted TEXT DEFAULT '0 o',
+        total_saved_bytes INTEGER DEFAULT 0,
+        total_saved_formatted TEXT DEFAULT '0 o',
+        compression_ratio REAL DEFAULT 0.0,
+        total_files_count INTEGER DEFAULT 0,
+        breakdown_json TEXT DEFAULT '{}',
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS file_compression_records (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        folder_id TEXT DEFAULT '',
+        original_size_bytes INTEGER NOT NULL,
+        original_size_formatted TEXT NOT NULL,
+        compressed_size_bytes INTEGER NOT NULL,
+        compressed_size_formatted TEXT NOT NULL,
+        saved_bytes INTEGER NOT NULL,
+        compression_ratio REAL NOT NULL,
+        r2_key TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_fcomp_user ON file_compression_records(user_id)").run(); } catch (e) {}
+
+    const tablesToEnhance = ["video_files", "audio_files", "image_files", "document_files", "classeur_files", "files"];
+    for (const tbl of tablesToEnhance) {
+      try { await db.prepare(`ALTER TABLE ${tbl} ADD COLUMN original_size_bytes INTEGER DEFAULT 0`).run(); } catch (e) {}
+      try { await db.prepare(`ALTER TABLE ${tbl} ADD COLUMN compressed_size_bytes INTEGER DEFAULT 0`).run(); } catch (e) {}
+      try { await db.prepare(`ALTER TABLE ${tbl} ADD COLUMN compression_ratio REAL DEFAULT 0.0`).run(); } catch (e) {}
+    }
+    isCompressionTablesInitialized = true;
+  } catch (err) {
+    console.warn("[StudyCloud] Compression & Storage tables init warning:", err);
+  }
+}
+
+async function recalculateAndSaveUserStorage(db, userId) {
+  if (!db || !userId) return null;
+  try {
+    await ensureCompressionAndStorageTables(db);
+
+    const [
+      videoStats,
+      audioStats,
+      imageStats,
+      docStats,
+      classeurStats,
+      matiereStats,
+      downloadStats,
+      secureStats,
+      trashStats,
+      folderCount
+    ] = await Promise.all([
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM video_files WHERE user_id = ?").bind(userId).first(),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM audio_files WHERE user_id = ?").bind(userId).first(),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM image_files WHERE user_id = ?").bind(userId).first(),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM document_files WHERE user_id = ?").bind(userId).first(),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM classeur_files WHERE user_id = ?").bind(userId).first(),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size END), 0) as compBytes FROM files WHERE user_id = ?").bind(userId).first(),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(size_bytes), 0) as compBytes FROM download_files WHERE user_id = ?").bind(userId).first(),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(size_bytes), 0) as compBytes FROM secure_files WHERE user_id = ?").bind(userId).first(),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(size_bytes), 0) as compBytes FROM trash_files WHERE user_id = ?").bind(userId).first(),
+      db.prepare("SELECT COUNT(*) as cnt FROM classeur_folders WHERE user_id = ?").bind(userId).first()
+    ]);
+
+    const totalFiles = Number(videoStats?.cnt || 0) + Number(audioStats?.cnt || 0) + Number(imageStats?.cnt || 0) + 
+                       Number(docStats?.cnt || 0) + Number(classeurStats?.cnt || 0) + Number(matiereStats?.cnt || 0) + 
+                       Number(downloadStats?.cnt || 0) + Number(secureStats?.cnt || 0) + Number(trashStats?.cnt || 0);
+
+    const totalOriginalBytes = Number(videoStats?.origBytes || 0) + Number(audioStats?.origBytes || 0) + 
+                               Number(imageStats?.origBytes || 0) + Number(docStats?.origBytes || 0) + 
+                               Number(classeurStats?.origBytes || 0) + Number(matiereStats?.origBytes || 0) + 
+                               Number(downloadStats?.origBytes || 0) + Number(secureStats?.origBytes || 0) + 
+                               Number(trashStats?.origBytes || 0);
+
+    const totalR2Bytes = Number(videoStats?.compBytes || 0) + Number(audioStats?.compBytes || 0) + 
+                         Number(imageStats?.compBytes || 0) + Number(docStats?.compBytes || 0) + 
+                         Number(classeurStats?.compBytes || 0) + Number(matiereStats?.compBytes || 0) + 
+                         Number(downloadStats?.compBytes || 0) + Number(secureStats?.compBytes || 0) + 
+                         Number(trashStats?.compBytes || 0);
+
+    const estimatedD1Bytes = Math.max(1024, (totalFiles + Number(folderCount?.cnt || 0)) * 480);
+    const savedBytes = Math.max(0, totalOriginalBytes - totalR2Bytes);
+    const compRatio = totalOriginalBytes > 0 ? Math.round((savedBytes / totalOriginalBytes) * 1000) / 10 : 0;
+
+    const breakdown = {
+      videos: { count: Number(videoStats?.cnt || 0), originalBytes: Number(videoStats?.origBytes || 0), compressedBytes: Number(videoStats?.compBytes || 0) },
+      audio: { count: Number(audioStats?.cnt || 0), originalBytes: Number(audioStats?.origBytes || 0), compressedBytes: Number(audioStats?.compBytes || 0) },
+      images: { count: Number(imageStats?.cnt || 0), originalBytes: Number(imageStats?.origBytes || 0), compressedBytes: Number(imageStats?.compBytes || 0) },
+      documents: { count: Number(docStats?.cnt || 0), originalBytes: Number(docStats?.origBytes || 0), compressedBytes: Number(docStats?.compBytes || 0) },
+      classeur: { count: Number(classeurStats?.cnt || 0), originalBytes: Number(classeurStats?.origBytes || 0), compressedBytes: Number(classeurStats?.compBytes || 0) },
+      matieres: { count: Number(matiereStats?.cnt || 0), originalBytes: Number(matiereStats?.origBytes || 0), compressedBytes: Number(matiereStats?.compBytes || 0) },
+      downloads: { count: Number(downloadStats?.cnt || 0), originalBytes: Number(downloadStats?.origBytes || 0), compressedBytes: Number(downloadStats?.compBytes || 0) },
+      secure: { count: Number(secureStats?.cnt || 0), originalBytes: Number(secureStats?.origBytes || 0), compressedBytes: Number(secureStats?.compBytes || 0) },
+      trash: { count: Number(trashStats?.cnt || 0), originalBytes: Number(trashStats?.origBytes || 0), compressedBytes: Number(trashStats?.compBytes || 0) },
+    };
+
+    const totalOriginalFormatted = formatBytes(totalOriginalBytes);
+    const totalR2Formatted = formatBytes(totalR2Bytes);
+    const totalD1Formatted = formatBytes(estimatedD1Bytes);
+    const totalSavedFormatted = formatBytes(savedBytes);
+    const breakdownJson = JSON.stringify(breakdown);
+
+    await db.prepare(`
+      INSERT INTO user_storage_usage (
+        user_id, total_original_bytes, total_original_formatted,
+        total_r2_compressed_bytes, total_r2_formatted,
+        total_d1_database_bytes, total_d1_formatted,
+        total_saved_bytes, total_saved_formatted,
+        compression_ratio, total_files_count, breakdown_json, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id) DO UPDATE SET
+        total_original_bytes = excluded.total_original_bytes,
+        total_original_formatted = excluded.total_original_formatted,
+        total_r2_compressed_bytes = excluded.total_r2_compressed_bytes,
+        total_r2_formatted = excluded.total_r2_formatted,
+        total_d1_database_bytes = excluded.total_d1_database_bytes,
+        total_d1_formatted = excluded.total_d1_formatted,
+        total_saved_bytes = excluded.total_saved_bytes,
+        total_saved_formatted = excluded.total_saved_formatted,
+        compression_ratio = excluded.compression_ratio,
+        total_files_count = excluded.total_files_count,
+        breakdown_json = excluded.breakdown_json,
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(
+      userId, totalOriginalBytes, totalOriginalFormatted,
+      totalR2Bytes, totalR2Formatted,
+      estimatedD1Bytes, totalD1Formatted,
+      savedBytes, totalSavedFormatted,
+      compRatio, totalFiles, breakdownJson
+    ).run();
+
+    return {
+      userId,
+      totalOriginalBytes,
+      totalOriginalFormatted,
+      totalR2Bytes,
+      totalR2Formatted,
+      totalD1Bytes: estimatedD1Bytes,
+      totalD1Formatted,
+      savedBytes,
+      totalSavedFormatted,
+      compressionRatio: compRatio,
+      totalFiles,
+      breakdown
+    };
+  } catch (err) {
+    console.error("[StudyCloud] Erreur recalcul storage:", err);
+    return null;
   }
 }
 async function ensureReferralsTables(db) {
@@ -4506,11 +4677,24 @@ var index_default = {
         }
         if (method === "POST") {
           const body = await request.json();
-          const { id, userId, matiereId, name, size, type, extension, r2Key, fileUrl, isFavorite, isImported, isStudySession, lastImported } = body;
+          const { 
+            id, userId, matiereId, name, size, type, extension, r2Key, fileUrl, 
+            isFavorite, isImported, isStudySession, lastImported,
+            originalSizeBytes, compressedSizeBytes, compressionRatio 
+          } = body;
           if (!id || !userId || !name) return errorResponse("id, userId et name requis", 400, origin);
+
+          const origBytes = originalSizeBytes || (typeof size === 'number' ? size : 0);
+          const compBytes = compressedSizeBytes || origBytes;
+          const ratio = compressionRatio || (origBytes > 0 ? Math.round(Math.max(0, 1 - (compBytes / origBytes)) * 1000) / 10 : 0);
+
           await env.DB.prepare(`
-            INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO files (
+              id, user_id, matiere_id, name, size, type, extension, 
+              r2_key, file_url, is_favorite, is_imported, is_study_session, 
+              last_imported, original_size_bytes, compressed_size_bytes, compression_ratio, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               matiere_id = excluded.matiere_id,
@@ -4522,6 +4706,9 @@ var index_default = {
               is_imported = excluded.is_imported,
               is_study_session = excluded.is_study_session,
               last_imported = excluded.last_imported,
+              original_size_bytes = COALESCE(excluded.original_size_bytes, files.original_size_bytes),
+              compressed_size_bytes = COALESCE(excluded.compressed_size_bytes, files.compressed_size_bytes),
+              compression_ratio = COALESCE(excluded.compression_ratio, files.compression_ratio),
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             id,
@@ -4536,8 +4723,31 @@ var index_default = {
             isFavorite ? 1 : 0,
             isImported ? 1 : 0,
             isStudySession ? 1 : 0,
-            lastImported || Date.now()
+            lastImported || Date.now(),
+            origBytes,
+            compBytes,
+            ratio
           ).run();
+
+          // Enregistrement dans file_compression_records
+          try {
+            await env.DB.prepare(`
+              INSERT INTO file_compression_records (
+                id, user_id, file_name, category, folder_id,
+                original_size_bytes, original_size_formatted,
+                compressed_size_bytes, compressed_size_formatted,
+                saved_bytes, compression_ratio, r2_key
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).bind(
+              id, userId, name, 'matieres', matiereId || '',
+              origBytes, formatBytes(origBytes),
+              compBytes, formatBytes(compBytes),
+              Math.max(0, origBytes - compBytes), ratio, r2Key || ''
+            ).run();
+          } catch {}
+
+          recalculateAndSaveUserStorage(env.DB, userId).catch(() => {});
+
           return jsonResponse({ success: true, data: { id, name } }, 201, origin);
         }
       }
@@ -4552,7 +4762,7 @@ var index_default = {
       if (path.startsWith("/api/files/") && method === "DELETE") {
         if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
         const id = path.split("/")[3];
-        const file = await env.DB.prepare("SELECT r2_key FROM files WHERE id = ?").bind(id).first();
+        const file = await env.DB.prepare("SELECT r2_key, user_id FROM files WHERE id = ?").bind(id).first();
         if (file && file.r2_key && env.BUCKET) {
           try {
             await env.BUCKET.delete(file.r2_key);
@@ -4560,18 +4770,39 @@ var index_default = {
           }
         }
         await env.DB.prepare("DELETE FROM files WHERE id = ?").bind(id).run();
+        if (file?.user_id) {
+          recalculateAndSaveUserStorage(env.DB, file.user_id).catch(() => {});
+        }
         return jsonResponse({ success: true, message: "Fichier supprim\xE9" }, 200, origin);
       }
       if (path === "/api/storage/upload" && method === "PUT") {
         const key = url.searchParams.get("key");
         if (!key) return errorResponse("Cl\xE9 de stockage manquante", 400, origin);
         const contentType = request.headers.get("Content-Type") || "application/octet-stream";
-        const fileData = request.body || await request.arrayBuffer();
-        await env.BUCKET.put(key, fileData, {
-          httpMetadata: { contentType }
+        const fileBuffer = await request.arrayBuffer();
+        const compressedSizeBytes = fileBuffer.byteLength;
+        const rawOrig = request.headers.get("x-original-size-bytes");
+        const originalSizeBytes = rawOrig ? (parseInt(rawOrig, 10) || compressedSizeBytes) : compressedSizeBytes;
+        const savedBytes = Math.max(0, originalSizeBytes - compressedSizeBytes);
+        const compRatio = originalSizeBytes > 0 ? Math.round((savedBytes / originalSizeBytes) * 1000) / 10 : 0;
+
+        await env.BUCKET.put(key, fileBuffer, {
+          httpMetadata: { contentType },
+          customMetadata: {
+            originalSizeBytes: String(originalSizeBytes),
+            compressedSizeBytes: String(compressedSizeBytes),
+            compressionRatio: String(compRatio)
+          }
         });
         const fileUrl = `${url.origin}/api/storage/file/${encodeURIComponent(key)}`;
-        return jsonResponse({ success: true, key, url: fileUrl }, 200, origin);
+        return jsonResponse({ 
+          success: true, 
+          key, 
+          url: fileUrl,
+          originalSizeBytes,
+          compressedSizeBytes,
+          compressionRatio: compRatio
+        }, 200, origin);
       }
       if (path.startsWith("/api/storage/file/") && method === "GET") {
         const key = decodeURIComponent(path.replace("/api/storage/file/", ""));
@@ -4843,8 +5074,18 @@ var index_default = {
         const fileId = "f_" + crypto.randomUUID().substring(0, 12);
         const storageKey = `${reqUserId}/${finalCategory}/${fileId}_${sanitizedName}`;
         const fileBuffer = await request.arrayBuffer();
-        const sizeBytes = fileBuffer.byteLength;
-        const sizeFormatted = formatBytes(sizeBytes);
+        const compressedSizeBytes = fileBuffer.byteLength;
+        const rawOrigBytes = request.headers.get("x-original-size-bytes") || url.searchParams.get("originalSizeBytes");
+        const originalSizeBytes = rawOrigBytes ? (parseInt(rawOrigBytes, 10) || compressedSizeBytes) : compressedSizeBytes;
+        const originalSizeFormatted = request.headers.get("x-original-size") || formatBytes(originalSizeBytes);
+        const compressedSizeFormatted = formatBytes(compressedSizeBytes);
+        const savedBytes = Math.max(0, originalSizeBytes - compressedSizeBytes);
+        const compRatio = originalSizeBytes > 0 ? Math.round((savedBytes / originalSizeBytes) * 1000) / 10 : 0;
+
+        // Vraies valeurs affichées à l'utilisateur (non compressées)
+        const sizeBytes = originalSizeBytes;
+        const sizeFormatted = originalSizeFormatted;
+
         const extUpper = ext.toUpperCase() || "FICHIER";
         const now = /* @__PURE__ */ new Date();
         const timeStr = now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -4855,7 +5096,10 @@ var index_default = {
             userId: reqUserId,
             originalName: fileName,
             category: finalCategory,
-            folderId
+            folderId,
+            originalSizeBytes: String(originalSizeBytes),
+            compressedSizeBytes: String(compressedSizeBytes),
+            compressionRatio: String(compRatio)
           }
         });
         const fileUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(finalCategory)}/${encodeURIComponent(storageKey)}`;
@@ -4863,30 +5107,48 @@ var index_default = {
           try {
             if (finalCategory === "images") {
               await env.DB.prepare(`
-                INSERT INTO image_files (id, user_id, name, size, size_bytes, extension, date_formatted, r2_key, image_url, thumbnail_url, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+                INSERT INTO image_files (id, user_id, name, size, size_bytes, original_size_bytes, compressed_size_bytes, compression_ratio, extension, date_formatted, r2_key, image_url, thumbnail_url, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, originalSizeBytes, compressedSizeBytes, compRatio, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
             } else if (finalCategory === "videos") {
               await env.DB.prepare(`
-                INSERT INTO video_files (id, user_id, name, size, size_bytes, extension, date_formatted, r2_key, video_url, thumbnail_url, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+                INSERT INTO video_files (id, user_id, name, size, size_bytes, original_size_bytes, compressed_size_bytes, compression_ratio, extension, date_formatted, r2_key, video_url, thumbnail_url, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, originalSizeBytes, compressedSizeBytes, compRatio, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
             } else if (finalCategory === "audio") {
               await env.DB.prepare(`
-                INSERT INTO audio_files (id, user_id, name, title, artist, size, size_bytes, date_formatted, r2_key, audio_url, updated_at)
-                VALUES (?, ?, ?, ?, 'Artiste inconnu', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-              `).bind(fileId, reqUserId, fileName, fileName, sizeFormatted, sizeBytes, dateFormatted, storageKey, fileUrl).run();
+                INSERT INTO audio_files (id, user_id, name, title, artist, size, size_bytes, original_size_bytes, compressed_size_bytes, compression_ratio, date_formatted, r2_key, audio_url, updated_at)
+                VALUES (?, ?, ?, ?, 'Artiste inconnu', ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              `).bind(fileId, reqUserId, fileName, fileName, sizeFormatted, sizeBytes, originalSizeBytes, compressedSizeBytes, compRatio, dateFormatted, storageKey, fileUrl).run();
             } else if (finalCategory === "documents") {
               await env.DB.prepare(`
-                INSERT INTO document_files (id, user_id, name, size, size_bytes, extension, document_category, date_formatted, r2_key, file_url, preview_url, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, 'COURS', ?, ?, ?, ?, CURRENT_TIMESTAMP)
-              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+                INSERT INTO document_files (id, user_id, name, size, size_bytes, original_size_bytes, compressed_size_bytes, compression_ratio, extension, document_category, date_formatted, r2_key, file_url, preview_url, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'COURS', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, originalSizeBytes, compressedSizeBytes, compRatio, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
             } else if (finalCategory === "classeur") {
               await env.DB.prepare(`
-                INSERT INTO classeur_files (id, user_id, folder_id, name, size, size_bytes, category, extension, source, date_formatted, r2_key, file_url, preview_url, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Classeur', ?, ?, ?, ?, CURRENT_TIMESTAMP)
-              `).bind(fileId, reqUserId, folderId || "default-folder", fileName, sizeFormatted, sizeBytes, detectedNature, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+                INSERT INTO classeur_files (id, user_id, folder_id, name, size, size_bytes, original_size_bytes, compressed_size_bytes, compression_ratio, category, extension, source, date_formatted, r2_key, file_url, preview_url, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Classeur', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              `).bind(fileId, reqUserId, folderId || "default-folder", fileName, sizeFormatted, sizeBytes, originalSizeBytes, compressedSizeBytes, compRatio, detectedNature, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
             }
+
+            // Enregistrement dans file_compression_records
+            await env.DB.prepare(`
+              INSERT INTO file_compression_records (
+                id, user_id, file_name, category, folder_id,
+                original_size_bytes, original_size_formatted,
+                compressed_size_bytes, compressed_size_formatted,
+                saved_bytes, compression_ratio, r2_key
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).bind(
+              fileId, reqUserId, fileName, finalCategory, folderId || '',
+              originalSizeBytes, originalSizeFormatted,
+              compressedSizeBytes, compressedSizeFormatted,
+              savedBytes, compRatio, storageKey
+            ).run();
+
+            // Recalcul du stockage global de l'utilisateur (mise à jour user_storage_usage)
+            recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {});
           } catch (d1Err) {
             console.warn("[CloudWorker] Erreur insertion D1 upload:", d1Err);
           }
@@ -4960,12 +5222,23 @@ var index_default = {
           ...recentAudio?.results || [],
           ...recentVideos?.results || []
         ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 12);
+        const userStorage = await recalculateAndSaveUserStorage(env.DB, reqUserId);
         return jsonResponse({
           success: true,
           counts,
           totalBytes,
           totalFormatted: formatBytes(totalBytes),
-          recentFiles
+          recentFiles,
+          userStorage
+        }, 200, origin);
+      }
+      if (path === "/api/cloud/storage-usage" && method === "GET") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        const stats = await recalculateAndSaveUserStorage(env.DB, reqUserId);
+        return jsonResponse({
+          success: true,
+          data: stats
         }, 200, origin);
       }
       if (path === "/api/cloud/classeur/folders") {

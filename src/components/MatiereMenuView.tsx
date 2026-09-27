@@ -5,6 +5,7 @@ import { triggerDebouncedCloudBackup } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
 import { buildUserFileKey } from '../services/storageUtils';
+import { compressFile } from '../utils/fileCompressor';
 
 interface MatiereMenuViewProps {
   matiereName: string;
@@ -585,22 +586,27 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
           continue;
         }
 
+        // COMPRESSION CLIENT TRANSPARENTE TOUT EN PRÉSERVANT LES VRAIES VALEURS D'ORIGINE
+        const compResult = await compressFile(f);
+        const fileToStore = compResult.file;
+
         const isImg = f.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(f.name);
         const id = `file-${now + i}-${Math.random().toString(36).substring(2, 7)}`;
         
-        // 1. Stocker le blob complet dans IndexedDB
-        await storeFileBlob(id, f);
-        const localUrl = URL.createObjectURL(f);
+        // 1. Stocker le blob optimisé dans IndexedDB
+        await storeFileBlob(id, fileToStore as any);
+        const localUrl = URL.createObjectURL(fileToStore);
 
         if (isImg) {
           imageFilesToCompress.push({ id, file: f });
         }
 
         const extVal = f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : (f.type ? f.type.split('/').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
+        // L'utilisateur voit TOUJOURS sa vraie taille d'origine non compressée
         const itemObj: ImportedItem = {
           id,
           name: f.name,
-          size: f.size,
+          size: compResult.originalSizeBytes,
           type: f.type || 'Fichier',
           extension: extVal,
           url: localUrl,
@@ -613,39 +619,45 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         };
         newItems.push(itemObj);
 
-        // 2. Enregistrer les métadonnées dans Cloudflare D1 avec matiere_id
+        // 2. Enregistrer les métadonnées dans Cloudflare D1 avec matiere_id et valeurs réelles
         StudyCloudAPI.registerFileMetadata({
           id,
           userId,
           matiereId: matiereName,
           name: f.name,
-          size: f.size,
+          size: compResult.originalSizeBytes,
           type: f.type || 'application/octet-stream',
           extension: extVal,
           r2Key: null,
           fileUrl: localUrl,
           isFavorite: false,
           isImported: true,
-          lastImported: now + i
+          lastImported: now + i,
+          originalSizeBytes: compResult.originalSizeBytes,
+          compressedSizeBytes: compResult.compressedSizeBytes,
+          compressionRatio: compResult.compressionRatio
         }).catch(() => {});
 
-        // 3. Upload vers Cloudflare R2 en arrière-plan (dossier structuré user-files/)
+        // 3. Upload vers Cloudflare R2 en arrière-plan avec le fichier optimisé et taille réelle
         const r2Key = buildUserFileKey(userId, id, f.name);
-        StudyCloudAPI.uploadFileToR2(f, r2Key).then((uploadRes) => {
+        StudyCloudAPI.uploadFileToR2(fileToStore, r2Key, f.type, compResult.originalSizeBytes).then((uploadRes) => {
           if (uploadRes && uploadRes.url) {
             StudyCloudAPI.registerFileMetadata({
               id,
               userId,
               matiereId: matiereName,
               name: f.name,
-              size: f.size,
+              size: compResult.originalSizeBytes,
               type: f.type || 'application/octet-stream',
               extension: extVal,
               r2Key: uploadRes.key,
               fileUrl: uploadRes.url,
               isFavorite: false,
               isImported: true,
-              lastImported: now + i
+              lastImported: now + i,
+              originalSizeBytes: compResult.originalSizeBytes,
+              compressedSizeBytes: compResult.compressedSizeBytes,
+              compressionRatio: compResult.compressionRatio
             }).catch(() => {});
           }
         }).catch(() => {});

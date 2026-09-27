@@ -31,6 +31,8 @@ export interface UploadTask {
   error?: string;
   retries: number;
   fileItem: FileItem;
+  originalSizeBytes?: number;
+  originalSizeFormatted?: string;
   addedAt: number;
   completedAt?: number;
 }
@@ -190,7 +192,7 @@ class UploadQueueManager {
    * Enfile des éléments déjà créés avec prévisualisation locale
    */
   public enqueueExisting(
-    itemsWithFiles: { file: File; item: any }[],
+    itemsWithFiles: { file: File | Blob; item: any; originalSizeBytes?: number; originalSizeFormatted?: string }[],
     options: {
       category?: FileItem['category'];
       folderId?: string;
@@ -199,16 +201,16 @@ class UploadQueueManager {
     } = {}
   ): void {
     const now = Date.now();
-    itemsWithFiles.forEach(({ file, item }) => {
+    itemsWithFiles.forEach(({ file, item, originalSizeBytes, originalSizeFormatted }) => {
       // 1. Sauvegarde binaire IndexedDB (accès 0ms)
-      storeFileBlob(item.id, file).catch(() => {});
+      storeFileBlob(item.id, file as any).catch(() => {});
       // 2. Ajout optimiste immédiat dans CloudDataStore pour que tous les stores et vues le conservent
       CloudDataStore.addOptimisticFile(item, options.folderId || item.folderId);
 
       const task: UploadTask = {
         id: item.id,
-        file,
-        fileName: file.name,
+        file: file as any,
+        fileName: item.name || (file as any).name || 'fichier',
         category: (item.category || options.category || 'documents') as any,
         folderId: options.folderId || item.folderId,
         folderName: options.folderName || item.source,
@@ -217,6 +219,8 @@ class UploadQueueManager {
         progress: 10,
         retries: 0,
         fileItem: item,
+        originalSizeBytes: originalSizeBytes || item.sizeBytes,
+        originalSizeFormatted: originalSizeFormatted || item.size,
         addedAt: now,
       };
       this.queue.push(task);
@@ -285,7 +289,15 @@ class UploadQueueManager {
       let serverFileId: string | undefined = undefined;
 
       if (category === 'classeur' && folderId) {
-        const uploadRes = await CloudStorageAPI.uploadFileToCategoryR2(file, 'classeur', fileName, folderId, task.uploadSource);
+        const uploadRes = await CloudStorageAPI.uploadFileToCategoryR2(
+          file,
+          'classeur',
+          fileName,
+          folderId,
+          task.uploadSource,
+          task.originalSizeBytes,
+          task.originalSizeFormatted
+        );
         uploadUrl = uploadRes.url;
         r2Key = uploadRes.key;
         serverFileId = uploadRes.id;
@@ -306,7 +318,9 @@ class UploadQueueManager {
           fileName,
           folderId,
           previewDataUrl || undefined,
-          task.uploadSource
+          task.uploadSource,
+          task.originalSizeBytes,
+          task.originalSizeFormatted
         );
 
         if (res?.success && res.file) {
