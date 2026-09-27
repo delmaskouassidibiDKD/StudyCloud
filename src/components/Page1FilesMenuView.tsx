@@ -1736,69 +1736,39 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // État des fichiers récents (en mémoire de session)
   const [cloudRecentFiles, setCloudRecentFiles] = useState<FileItem[]>(DEFAULT_RECENT_FILES);
 
-  // Effacer complètement un élément des récents et de tout le stockage local / cloud
+  // Retirer un élément de l'aperçu "Récents" (comme rejeter une notification / une annonce sur son téléphone)
+  // LE FICHIER LUI-MÊME RESTE STRICTEMENT INTACT ET CONSERVÉ DANS SON MENU ET DANS LE CLOUD !
   const handleRemoveRecentFile = (fileId: string, fileItem?: FileItem) => {
     const file = fileItem || cloudRecentFiles.find(f => f.id === fileId);
     const fileName = file?.name;
 
-    // 1. Inscrire dans la liste noire persistante locale pour ne jamais revenir après rechargement
+    // 1. Inscrire UNIQUEMENT dans la liste noire des RÉCENTS (pour ne plus s'afficher dans ce bandeau d'accueil)
     markRecentLocallyDeleted(fileId, fileName);
-    markFileLocallyDeleted(fileId, fileName);
 
-    // 2. Retirer immédiatement des récents
+    // 2. Retirer immédiatement du bandeau des récents à l'écran
     setCloudRecentFiles(prev => prev.filter(f => f.id !== fileId && (!fileName || f.name !== fileName)));
+    try {
+      CloudDataStore.setRecentFiles(
+        CloudDataStore.getState().recentFiles.filter(f => f.id !== fileId && (!fileName || f.name !== fileName))
+      );
+    } catch {}
 
-    // 3. Purger complètement le binaire local IndexedDB
-    deleteFileBlob(fileId).catch(() => {});
-    removeDownloadedFile(fileId);
-    if (fileName) removeDownloadedFile(fileName);
-
-    // 4. Retirer de TOUTES les listes actives du composant
-    setDocumentsList(prev => prev.filter(d => d.id !== fileId && (!fileName || d.name !== fileName)));
-    setImagesList(prev => prev.filter(img => img.id !== fileId && (!fileName || img.name !== fileName)));
-    setVideosList(prev => prev.filter(vid => vid.id !== fileId && (!fileName || vid.name !== fileName)));
-    setAudioList(prev => prev.filter(aud => aud.id !== fileId && (!fileName || aud.name !== fileName)));
-    setDownloadedItems(prev => prev.filter(dl => dl.id !== fileId && (!fileName || dl.name !== fileName)));
-    setSecureFolderFiles(prev => prev.filter(s => s.id !== fileId && (!fileName || s.name !== fileName)));
-    setTrashFiles(prev => prev.filter(t => t.id !== fileId && (!fileName || t.name !== fileName)));
-
-    // 5. Retirer de tous les dossiers du classeur 3D
-    setFolderFilesMap(prev => {
-      const updated: Record<string, FileItem[]> = {};
-      for (const [folderId, files] of Object.entries(prev)) {
-        updated[folderId] = (files as FileItem[]).filter(f => f.id !== fileId && (!fileName || f.name !== fileName));
-      }
-      return updated;
-    });
-
-    // 6. Fermer le lecteur si ce fichier était ouvert
-    if (splitSelectedFile?.id === fileId || (fileName && splitSelectedFile?.name === fileName)) {
-      setSplitSelectedFile(null);
-      setIsAudioPlaying(false);
-      setIsVideoPlaying(false);
-    }
-
-    // 8. Supprimer dans Cloudflare D1/R2 pour que le serveur ne le renvoie plus
+    // 3. S'assurer que le fichier est bien présent dans sa catégorie respective (sécurité renforcée)
     if (file) {
-      if ((file as any).originalFolderId || (file as any).folderId) {
-        CloudStorageAPI.deleteClasseurFile(file.id).catch(console.error);
-      }
-      if (file.category === 'images' || file.isImage) {
-        CloudStorageAPI.deleteImage(file.id).catch(console.error);
-      } else if (file.category === 'videos' || file.videoUrl) {
-        CloudStorageAPI.deleteVideo(file.id).catch(console.error);
-      } else if (file.category === 'audio' || file.audioUrl) {
-        CloudStorageAPI.deleteAudio(file.id).catch(console.error);
-      } else if (file.category === 'downloads') {
-        CloudStorageAPI.deleteDownload(file.id).catch(console.error);
-      } else {
-        CloudStorageAPI.deleteDocument(file.id).catch(console.error);
+      const cat = file.category || detectFileCategory(file);
+      if (cat === 'images') {
+        setImagesList(prev => prev.some(f => f.id === file.id || f.name === file.name) ? prev : [file, ...prev]);
+      } else if (cat === 'videos') {
+        setVideosList(prev => prev.some(f => f.id === file.id || f.name === file.name) ? prev : [file, ...prev]);
+      } else if (cat === 'audio') {
+        setAudioList(prev => prev.some(f => f.id === file.id || f.name === file.name) ? prev : [file, ...prev]);
+      } else if (cat === 'documents') {
+        setDocumentsList(prev => prev.some(f => f.id === file.id || f.name === file.name) ? prev : [file, ...prev]);
       }
     }
-    // Purger définitivement de la corbeille backend aussi pour qu'il ne s'y cache pas
-    CloudStorageAPI.deleteTrashPermanently([fileId]).catch(() => {});
 
-    showToast("Fichier effacé définitivement.");
+    // 4. Notification claire pour l'utilisateur
+    showProfileToast("Aperçu retiré des récents (le fichier reste conservé dans son menu)", "success");
   };
 
   // Déclencher le sélecteur de fichier pour l'Accueil
@@ -3421,9 +3391,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // Liste des documents pour le sous-menu Documents (Image 1) - Filtrage strict par nature
   const filteredDocuments = useMemo(() => {
-    const delRecent = getDeletedRecentIds();
     const delLocal = getLocallyDeletedFileIds();
-    const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
+    const isClean = (f: FileItem) => !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
     const isDoc = (f: FileItem) => (f.category === 'documents' || detectFileCategory({ name: f.name, type: f.type || '' }) === 'documents') && f.category !== 'videos' && f.category !== 'audio' && f.category !== 'images';
 
     const list = [...documentsList, ...cloudRecentFiles.filter(f => isDoc(f) && !documentsList.some(s => s.id === f.id || s.name === f.name))].filter(isClean).filter(isDoc);
@@ -3435,9 +3404,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // Liste des images pour le sous-menu Images (Image 2) - Filtrage strict par nature
   const filteredImages = useMemo(() => {
-    const delRecent = getDeletedRecentIds();
     const delLocal = getLocallyDeletedFileIds();
-    const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
+    const isClean = (f: FileItem) => !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
     const isImg = (f: FileItem) => (f.category === 'images' || Boolean(f.previewUrl && !f.videoUrl && !f.audioUrl) || f.isImage || detectFileCategory({ name: f.name, type: f.type || '' }) === 'images') && f.category !== 'videos' && f.category !== 'audio' && f.category !== 'documents';
 
     const list = [...imagesList, ...cloudRecentFiles.filter(f => isImg(f) && !imagesList.some(s => s.id === f.id || s.name === f.name))].filter(isClean).filter(isImg);
@@ -3449,9 +3417,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // Liste des vidéos pour le sous-menu Vidéos (Image 3) - FILTRAGE STRICT : AUCUN AUDIO (Y COMPRIS WHATSAPP) NE PEUT APPARAÎTRE
   const filteredVideos = useMemo(() => {
-    const delRecent = getDeletedRecentIds();
     const delLocal = getLocallyDeletedFileIds();
-    const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
+    const isClean = (f: FileItem) => !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
     const isVid = (f: FileItem) => {
       // Les fichiers audio ou notes vocales WhatsApp ne doivent JAMAIS apparaître dans les vidéos
       if (isWhatsAppAudio(f.name, f.type) || EXTENSION_MAP.audio.includes(((f.name || '').split('.').pop() || '').toLowerCase())) {
@@ -3469,9 +3436,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // Liste audio pour le sous-menu Audio (Image 4) - ACCEPTE TOUS LES AUDIOS ET NOTES VOCALES WHATSAPP
   const filteredAudio = useMemo(() => {
-    const delRecent = getDeletedRecentIds();
     const delLocal = getLocallyDeletedFileIds();
-    const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
+    const isClean = (f: FileItem) => !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
     const isAud = (f: FileItem) => {
       // Tout fichier audio WhatsApp (AUD-..., PTT-..., .opus, .ogg, .m4a) appartient obligatoirement au menu Audio
       if (isWhatsAppAudio(f.name, f.type) || EXTENSION_MAP.audio.includes(((f.name || '').split('.').pop() || '').toLowerCase())) {
@@ -11747,7 +11713,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                   setMenuOpenId(null);
                                 }}
                                 className="w-full px-3 py-2 text-left hover:bg-rose-500/20 flex items-center gap-2 cursor-pointer text-rose-400 hover:text-rose-300 transition-colors"
-                                title="Supprimer définitivement ce fichier"
+                                title="Retirer cet aperçu des récents (le fichier reste conservé dans son menu)"
                               >
                                 <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Effacer
                               </button>
