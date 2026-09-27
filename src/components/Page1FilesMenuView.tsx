@@ -660,10 +660,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const handleDeleteFileFromFolder = (folderId: string, fileId: string) => {
     const fileToDelete = (folderFilesMap[folderId] || []).find(f => f.id === fileId);
     if (fileToDelete) {
-      setTrashFiles(prev => [{ ...fileToDelete, originalFolderId: folderId }, ...prev.filter(f => f.id !== fileId)]);
+      const trashed = { ...fileToDelete, originalFolderId: folderId, isTrash: true };
+      setTrashFiles(prev => [trashed, ...prev.filter(f => f.id !== fileId)]);
+      CloudDataStore.moveToTrash(trashed as any);
       markFileLocallyDeleted(fileId, fileToDelete.name);
       markRecentLocallyDeleted(fileId, fileToDelete.name);
     } else {
+      CloudDataStore.removeFile(fileId, folderId);
       markFileLocallyDeleted(fileId);
       markRecentLocallyDeleted(fileId);
     }
@@ -689,6 +692,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         ...prev,
         [folderId]: (prev[folderId] || []).map(f => f.id === file.id ? { ...f, name: finalName } : f)
       }));
+      CloudDataStore.updateFile(file.id, { name: finalName }, folderId);
       CloudStorageAPI.updateClasseurFile(file.id, { name: finalName }).catch(() => {});
       showToast(`Fichier renommé en "${finalName}" !`);
     }
@@ -721,6 +725,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       ...prev,
       [opened3DFolder.id]: [newNoteFile, ...(prev[opened3DFolder.id] || [])]
     }));
+    CloudDataStore.addOptimisticFile(newNoteFile as any, opened3DFolder.id);
 
     // Persister dans la table D1 classeur_files
     CloudStorageAPI.saveClasseurFile(newNoteFile, opened3DFolder.id).catch(() => {});
@@ -1061,6 +1066,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           } as FileItem;
         });
         setTrashFiles(tPrev => [...folderTrashItems, ...deletedFolderFiles, ...tPrev.filter(t => !toDeleteIds.includes(t.id))]);
+        toDeleteIds.forEach(id => CloudDataStore.removeFolder(id));
+        CloudDataStore.moveToTrash([...folderTrashItems, ...deletedFolderFiles] as any);
         return next;
       });
       return prev.filter(f => !toDeleteIds.includes(f.id));
@@ -1552,6 +1559,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   ];
 
   const handleRestoreFromTrash = (file: FileItem) => {
+    unmarkFileLocallyDeleted(file.id, file.name);
     setTrashFiles(prev => prev.filter(f => f.id !== file.id));
     if (file.category === 'folder' || (file as any).sourceCategory === 'classeur_folder') {
       const meta = (file as any).metadata || {};
@@ -1590,6 +1598,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       setDocumentsList(prev => prev.some(f => f.id === file.id) ? prev : [file, ...prev]);
     }
 
+    CloudDataStore.restoreFromTrash(file as any);
     if (splitSelectedFile?.id === file.id) {
       setSplitSelectedFile(null);
     }
@@ -1602,6 +1611,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (selectedItemIds.length === 0) return;
     const itemsToRestore = trashFiles.filter(f => selectedItemIds.includes(f.id));
     itemsToRestore.forEach(file => {
+      unmarkFileLocallyDeleted(file.id, file.name);
       if (file.category === 'folder' || (file as any).sourceCategory === 'classeur_folder') {
         const meta = (file as any).metadata || {};
         const restoredFolder: ClasseurCreatedFolder = {
@@ -1641,6 +1651,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     });
 
     setTrashFiles(prev => prev.filter(f => !selectedItemIds.includes(f.id)));
+    CloudDataStore.restoreFromTrash(itemsToRestore as any);
     if (splitSelectedFile && selectedItemIds.includes(splitSelectedFile.id)) {
       setSplitSelectedFile(null);
     }
@@ -1679,8 +1690,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       removeDownloadedFile(id);
       markFileLocallyDeleted(id);
       markRecentLocallyDeleted(id);
-      CloudDataStore.removeFile(id);
     });
+    CloudDataStore.removeFiles(ids);
     setCloudRecentFiles(prev => prev.filter(f => !ids.includes(f.id)));
     CloudStorageAPI.deleteTrashPermanently(ids).catch(() => {});
     setSelectedItemIds([]);
@@ -1694,6 +1705,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (newName && newName.trim() && newName.trim() !== currentName) {
       const trimmed = newName.trim();
       setTrashFiles(prev => prev.map(f => f.id === file.id ? { ...f, name: trimmed } : f));
+      CloudDataStore.updateFile(file.id, { name: trimmed });
+      CloudStorageAPI.renameItem(file.id, trimmed, 'trash').catch(console.error);
       showToast(`Fichier renommé en "${trimmed}" !`);
     }
   };
@@ -1712,6 +1725,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       markFileLocallyDeleted(id);
       markRecentLocallyDeleted(id);
     });
+    CloudDataStore.emptyTrash();
     setCloudRecentFiles(prev => prev.filter(f => !allTrashIds.includes(f.id)));
     CloudStorageAPI.emptyTrash().catch(() => {});
     showToast('Corbeille vidée.');
@@ -2385,6 +2399,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     if (lockedItems.length > 0) {
       setSecureFolderFiles(prev => [...lockedItems, ...prev]);
+      CloudDataStore.moveToSecure(lockedItems as any);
     }
 
     // Retirer des listes d'origine pour isolation
@@ -2469,6 +2484,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     });
 
     setSecureFolderFiles(prev => prev.filter(f => !selectedItemIds.includes(f.id)));
+    CloudDataStore.restoreFromSecure(itemsToUnlock as any);
 
     if (splitSelectedFile && selectedItemIds.includes(splitSelectedFile.id)) {
       setSplitSelectedFile(null);
@@ -2657,7 +2673,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         setCloudRecentFiles(prev => prev.filter(f => f.id !== file.id && (!file.name || f.name !== file.name)));
         markRecentLocallyDeleted(file.id, file.name);
         markFileLocallyDeleted(file.id, file.name);
-        CloudDataStore.removeFile(file.id);
+        CloudDataStore.moveToTrash(fileWithSource as any);
         deleteFileBlob(file.id).catch(() => {});
         removeDownloadedFile(file.id);
         if (file.name) removeDownloadedFile(file.name);
@@ -2738,6 +2754,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           source: 'Dossier Sécurisé'
         };
         setSecureFolderFiles(prev => [securedFile, ...prev]);
+        CloudDataStore.moveToSecure(securedFile as any);
 
         // Retirer de sa liste d'origine pour isolation
         setDocumentsList(prev => prev.filter(d => d.id !== file.id));
@@ -2776,6 +2793,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           source: origSource
         };
         setSecureFolderFiles(prev => prev.filter(f => f.id !== file.id));
+        CloudDataStore.restoreFromSecure(restoredFile as any);
 
         if (origCat === 'documents') setDocumentsList(prev => [restoredFile, ...prev]);
         else if (origCat === 'images') setImagesList(prev => [restoredFile, ...prev]);
@@ -2851,6 +2869,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             [opened3DFolder.id]: (prev[opened3DFolder.id] || []).map(f => f.id === file.id ? { ...f, isFavorite: newFav } : f)
           }));
         }
+        CloudDataStore.toggleFavorite(file.id, newFav);
         // Persistance dans la table user_favorites D1
         if (newFav) {
           CloudStorageAPI.addFavorite(file.id, file.category).catch(console.error);
@@ -2925,6 +2944,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           if (splitSelectedFile?.id === file.id) {
             setSplitSelectedFile(prev => prev ? { ...prev, name: finalName } : null);
           }
+          CloudDataStore.updateFile(file.id, { name: finalName }, opened3DFolder?.id);
           // Mise à jour directe dans la table D1
           CloudStorageAPI.renameItem(file.id, finalName, file.category, opened3DFolder?.id).catch(console.error);
           showToast(`Fichier renommé en "${finalName}" !`);
@@ -2993,6 +3013,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         CloudStorageAPI.deleteClasseurFolder(id).catch(console.error);
 
         const { folderIds, files } = getDescendants(id);
+        folderIds.forEach(fId => CloudDataStore.removeFolder(fId));
 
         deletedItems.push({
           id: folder.id,
@@ -3055,6 +3076,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     if (deletedItems.length > 0) {
       setTrashFiles(prev => [...deletedItems, ...prev.filter(t => !idsToDelete.includes(t.id))]);
+      CloudDataStore.moveToTrash(deletedItems as any);
     }
 
     setDocumentsList(prev => prev.filter(d => !idsToDelete.includes(d.id)));
@@ -3078,7 +3100,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     idsToDelete.forEach(id => {
       markRecentLocallyDeleted(id);
       markFileLocallyDeleted(id);
-      CloudDataStore.removeFile(id);
       deleteFileBlob(id).catch(() => {});
       removeDownloadedFile(id);
     });
@@ -4021,7 +4042,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const count = selectedAudioIds.length;
     const tracksToDelete = audioList.filter(a => selectedAudioIds.includes(a.id));
     if (tracksToDelete.length > 0) {
-      setTrashFiles(prev => [...tracksToDelete, ...prev.filter(f => !selectedAudioIds.includes(f.id))]);
+      const trashed = tracksToDelete.map(t => ({ ...t, isTrash: true }));
+      setTrashFiles(prev => [...trashed, ...prev.filter(f => !selectedAudioIds.includes(f.id))]);
+      CloudDataStore.moveToTrash(trashed as any);
       tracksToDelete.forEach(track => {
         CloudStorageAPI.deleteAudio(track.id).catch(console.error);
       });
@@ -5237,6 +5260,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           if (opened3DFolder?.id === folder.id) {
             setOpened3DFolder(prev => prev ? { ...prev, name: trimmed } : null);
           }
+          CloudDataStore.renameFolder(folder.id, trimmed);
           // Mise à jour directe dans la table classeur_folders D1
           CloudStorageAPI.renameItem(folder.id, trimmed, 'classeur_folder').catch(console.error);
           showToast(`Dossier renommé en "${trimmed}" !`);
