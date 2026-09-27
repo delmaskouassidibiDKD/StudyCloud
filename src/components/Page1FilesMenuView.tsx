@@ -1363,12 +1363,34 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   });
   const [cloudOverview, setCloudOverview] = useState<CloudOverviewData | null>(null);
 
-  // Synchronisation initiale complète et PARALLÈLE avec Cloudflare D1 et R2 (Option B)
   // === Cache-First + Stale-While-Revalidate (architecture type Google Drive) ===
   useEffect(() => {
     let isMounted = true;
 
-    // S'abonner au store global - mise à jour instantanée depuis le cache local
+    // ── ÉTAPE 1 : Affichage INSTANTANÉ depuis le cache mémoire (0 ms) ──────────
+    // Critique : sans cela, à la 2ème entrée le cooldown 15s empêche sync()
+    // d'appeler notify(), donc les données n'apparaissent jamais.
+    const cached = CloudDataStore.getState();
+    if (CloudDataStore.hasData()) {
+      setClasseur3DFolders(cached.classeurFolders);
+      setFolderFilesMap(cached.folderFilesMap);
+      setDownloadedItems(cached.downloads as any);
+      setDocumentsList(cached.documents);
+      setImagesList(cached.images);
+      setVideosList(cached.videos);
+      setAudioList(cached.audio);
+      setCloudRecentFiles(cached.recentFiles);
+      setSecureFolderFiles(cached.secure);
+      setTrashFiles(cached.trash);
+      setCloudOverview(cached.overview);
+      setLoadingCategories({
+        overview: false, classeur: false, documents: false, images: false,
+        videos: false, audio: false, downloads: false, trash: false,
+        secure: false, favorites: false, cloudStorage: false
+      });
+    }
+
+    // ── ÉTAPE 2 : S'abonner aux mises à jour futures du store ─────────────────
     const unsubscribe = CloudDataStore.subscribe((state) => {
       if (!isMounted) return;
       setClasseur3DFolders(state.classeurFolders);
@@ -1389,7 +1411,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       });
     });
 
-    // Synchronisation en arrière-plan (avec cooldown 15s) - ne bloque jamais l'UI
+    // ── ÉTAPE 3 : Sync réseau en arrière-plan (cooldown 15s respecté) ─────────
     CloudDataStore.sync().catch(() => {}).finally(() => {
       if (isMounted) {
         setLoadingCategories({
