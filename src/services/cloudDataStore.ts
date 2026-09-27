@@ -211,7 +211,10 @@ function getLocallyDeletedFileIds(): Set<string> {
     const raw = localStorage.getItem('studycloud_deleted_file_ids');
     if (raw) {
       const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) return new Set(arr);
+      if (Array.isArray(arr)) {
+        const validIds = arr.filter(item => typeof item === 'string' && !/\.[a-z0-9]{2,5}$/i.test(item));
+        return new Set(validIds);
+      }
     }
   } catch {}
   return new Set();
@@ -308,17 +311,15 @@ export const CloudDataStore = {
         // Préserver les fichiers optimistes locaux (en cours d'upload ou récemment créés) qui ne sont pas encore renvoyés par l'API
         const mergeOptimistic = (serverList: FileItem[], currentList: FileItem[]) => {
           const serverIds = new Set(serverList.map(s => s.id));
-          const serverNames = new Set(serverList.map(s => (s.name || '').toLowerCase()));
           const pending = (currentList || []).filter(c => 
             !serverIds.has(c.id) && 
-            !serverNames.has((c.name || '').toLowerCase()) && 
             (c.isUploading || (c.id && c.id.startsWith('cf-')))
           );
           return [...pending, ...serverList];
         };
 
         const locallyDeletedIds = getLocallyDeletedFileIds();
-        const isNotLocallyDeleted = (f: any) => !locallyDeletedIds.has(f.id) && (!f.name || !locallyDeletedIds.has(f.name));
+        const isNotLocallyDeleted = (f: any) => !locallyDeletedIds.has(f.id);
 
         const serverTrash = flag(trash).filter(isNotLocallyDeleted);
         const serverTrashIds = new Set(serverTrash.map(s => s.id));

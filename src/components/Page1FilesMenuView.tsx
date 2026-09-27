@@ -58,6 +58,7 @@ import {
   FileCode,
   Archive,
   AlertCircle,
+  AlertTriangle,
   ZoomIn,
   ZoomOut,
   SkipBack,
@@ -207,26 +208,26 @@ function getLocallyDeletedFileIds(): Set<string> {
     const raw = localStorage.getItem('studycloud_deleted_file_ids');
     if (raw) {
       const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) return new Set(arr);
+      if (Array.isArray(arr)) {
+        return new Set(arr.filter((x: any) => typeof x === 'string' && !/\.[a-z0-9]{2,5}$/i.test(x)));
+      }
     }
   } catch {}
   return new Set();
 }
 
-function markFileLocallyDeleted(id: string, name?: string): void {
+function markFileLocallyDeleted(id: string, _name?: string): void {
   try {
     const set = getLocallyDeletedFileIds();
     if (id) set.add(id);
-    if (name) set.add(name);
     localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(Array.from(set).slice(-500)));
   } catch {}
 }
 
-function unmarkFileLocallyDeleted(id: string, name?: string): void {
+function unmarkFileLocallyDeleted(id: string, _name?: string): void {
   try {
     const set = getLocallyDeletedFileIds();
     if (id) set.delete(id);
-    if (name) set.delete(name);
     localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(Array.from(set)));
   } catch {}
 }
@@ -236,26 +237,26 @@ function getDeletedRecentIds(): Set<string> {
     const raw = localStorage.getItem('studycloud_deleted_recent_ids');
     if (raw) {
       const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) return new Set(arr);
+      if (Array.isArray(arr)) {
+        return new Set(arr.filter((x: any) => typeof x === 'string' && !/\.[a-z0-9]{2,5}$/i.test(x)));
+      }
     }
   } catch {}
   return new Set();
 }
 
-function markRecentLocallyDeleted(id: string, name?: string): void {
+function markRecentLocallyDeleted(id: string, _name?: string): void {
   try {
     const set = getDeletedRecentIds();
     if (id) set.add(id);
-    if (name) set.add(name);
     localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(set).slice(-500)));
   } catch {}
 }
 
-function unmarkRecentLocallyDeleted(id: string, name?: string): void {
+function unmarkRecentLocallyDeleted(id: string, _name?: string): void {
   try {
     const set = getDeletedRecentIds();
     if (id) set.delete(id);
-    if (name) set.delete(name);
     localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(set)));
   } catch {}
 }
@@ -521,11 +522,32 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   // Importer des fichiers dans le dossier ouvert
-  const handleFolderFileUpload = (e: React.ChangeEvent<HTMLInputElement>, folderId: string) => {
+  const handleFolderFileUpload = (e: React.ChangeEvent<HTMLInputElement>, folderId: string, skipDuplicateCheck?: boolean) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const files = Array.from(e.target.files) as File[];
     const targetFolder = classeur3DFolders.find(f => f.id === folderId);
     const folderName = targetFolder ? targetFolder.name : 'Dossier';
+
+    // DÉTECTION DES DOUBLONS DANS LE DOSSIER DE L'UTILISATEUR
+    if (!skipDuplicateCheck) {
+      const dupes = checkDuplicateFiles(files, 'classeur', folderId);
+      if (dupes.length > 0) {
+        setDuplicateImportModal({
+          duplicateFileNames: dupes,
+          allFilesCount: files.length,
+          menuLabel: `dossier "${folderName}"`,
+          onConfirm: () => {
+            setDuplicateImportModal(null);
+            handleFolderFileUpload(e, folderId, true);
+          },
+          onCancel: () => {
+            setDuplicateImportModal(null);
+            if (e.target) e.target.value = '';
+          }
+        });
+        return;
+      }
+    }
 
     const newFiles: FileItem[] = files.map((f: File, idx) => {
       const ext = f.name.includes('.') ? f.name.split('.').pop()?.toLowerCase() || '' : '';
@@ -572,8 +594,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     // Débloquer des récents supprimés et afficher dans les récents
     newFiles.forEach(f => {
-      unmarkRecentLocallyDeleted(f.id, f.name);
-      unmarkFileLocallyDeleted(f.id, f.name);
+      unmarkRecentLocallyDeleted(f.id);
+      unmarkFileLocallyDeleted(f.id);
     });
     setCloudRecentFiles(prev => {
       const existingIds = new Set(newFiles.map(f => f.id));
@@ -590,10 +612,30 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     e.target.value = '';
   };
 
-  const handleDirectFilesImportToFolder = (fileList: FileList, folderId: string) => {
+  const handleDirectFilesImportToFolder = (fileList: FileList, folderId: string, skipDuplicateCheck?: boolean) => {
     const files = Array.from(fileList) as File[];
     const targetFolder = classeur3DFolders.find(f => f.id === folderId);
     const folderName = targetFolder ? targetFolder.name : 'Dossier';
+
+    // DÉTECTION DES DOUBLONS DANS LE DOSSIER DE L'UTILISATEUR
+    if (!skipDuplicateCheck) {
+      const dupes = checkDuplicateFiles(files, 'classeur', folderId);
+      if (dupes.length > 0) {
+        setDuplicateImportModal({
+          duplicateFileNames: dupes,
+          allFilesCount: files.length,
+          menuLabel: `dossier "${folderName}"`,
+          onConfirm: () => {
+            setDuplicateImportModal(null);
+            handleDirectFilesImportToFolder(fileList, folderId, true);
+          },
+          onCancel: () => {
+            setDuplicateImportModal(null);
+          }
+        });
+        return;
+      }
+    }
 
     const newFiles: FileItem[] = files.map((f: File, idx) => {
       const ext = f.name.includes('.') ? f.name.split('.').pop()?.toLowerCase() || '' : '';
@@ -640,8 +682,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     // Les récents d'accueil affichent les fichiers nouvellement importés
     newFiles.forEach(f => {
-      unmarkRecentLocallyDeleted(f.id, f.name);
-      unmarkFileLocallyDeleted(f.id, f.name);
+      unmarkRecentLocallyDeleted(f.id);
+      unmarkFileLocallyDeleted(f.id);
     });
     setCloudRecentFiles(prev => {
       const existingIds = new Set(newFiles.map(f => f.id));
@@ -663,8 +705,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const trashed = { ...fileToDelete, originalFolderId: folderId, isTrash: true };
       setTrashFiles(prev => [trashed, ...prev.filter(f => f.id !== fileId)]);
       CloudDataStore.moveToTrash(trashed as any);
-      markFileLocallyDeleted(fileId, fileToDelete.name);
-      markRecentLocallyDeleted(fileId, fileToDelete.name);
+      markFileLocallyDeleted(fileId);
+      markRecentLocallyDeleted(fileId);
     } else {
       CloudDataStore.removeFile(fileId, folderId);
       markFileLocallyDeleted(fileId);
@@ -674,9 +716,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       ...prev,
       [folderId]: (prev[folderId] || []).filter(f => f.id !== fileId)
     }));
-    setCloudRecentFiles(prev => prev.filter(f => f.id !== fileId && (!fileToDelete || f.name !== fileToDelete.name)));
+    setCloudRecentFiles(prev => prev.filter(f => f.id !== fileId));
     removeDownloadedFile(fileId);
-    if (fileToDelete?.name) removeDownloadedFile(fileToDelete.name);
     deleteFileBlob(fileId).catch(() => {});
     CloudStorageAPI.deleteClasseurFile(fileId).catch(() => {});
     showToast('Fichier déplacé dans la corbeille');
@@ -1258,9 +1299,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const handleUpdate = (e: any) => {
       if (e?.detail) {
         if (e.detail.deleted) {
-          setDownloadedItems(prev => prev.filter(f => f.id !== e.detail.id && f.name !== e.detail.id));
+          setDownloadedItems(prev => prev.filter(f => f.id !== e.detail.id));
         } else if (e.detail.id) {
-          setDownloadedItems(prev => [e.detail, ...prev.filter(f => f.id !== e.detail.id && f.name !== e.detail.name)]);
+          setDownloadedItems(prev => [e.detail, ...prev.filter(f => f.id !== e.detail.id)]);
         }
       }
     };
@@ -1381,22 +1422,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const delRecent = getDeletedRecentIds();
       const cleanList = (list: FileItem[]) => {
         const seenIds = new Set<string>();
-        const seenNames = new Set<string>();
         return list.filter(f => {
-          if (delIds.has(f.id) || (f.name && delIds.has(f.name))) return false;
+          if (delIds.has(f.id)) return false;
           if (seenIds.has(f.id)) return false;
-          const nameLower = (f.name || '').toLowerCase();
-          if (nameLower && seenNames.has(nameLower)) return false;
           seenIds.add(f.id);
-          if (nameLower) seenNames.add(nameLower);
           return true;
         });
       };
       const cleanRecent = (list: FileItem[]) => {
         const seenIds = new Set<string>();
         return list.filter(f => {
-          if (delIds.has(f.id) || (f.name && delIds.has(f.name))) return false;
-          if (delRecent.has(f.id) || (f.name && delRecent.has(f.name))) return false;
+          if (delIds.has(f.id)) return false;
+          if (delRecent.has(f.id)) return false;
           if (seenIds.has(f.id)) return false;
           seenIds.add(f.id);
           return true;
@@ -1428,12 +1465,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       setDownloadedItems(state.downloads as any);
       const _delIds = getLocallyDeletedFileIds();
       const _delRecent = getDeletedRecentIds();
-      const _isNotDeleted = (f: { id: string; name?: string }) => !_delIds.has(f.id) && !(f.name && _delIds.has(f.name));
-      const _isNotDeletedRecent = (f: { id: string; name?: string }) => _isNotDeleted(f) && !_delRecent.has(f.id) && !(f.name && _delRecent.has(f.name));
+      const _isNotDeleted = (f: { id: string }) => !_delIds.has(f.id);
+      const _isNotDeletedRecent = (f: { id: string }) => _isNotDeleted(f) && !_delRecent.has(f.id);
       setDocumentsList(prev => {
         const stateIds = new Set(state.documents.map(d => d.id));
-        const stateNames = new Set(state.documents.map(d => (d.name || '').toLowerCase()));
-        const pending = prev.filter(p => !stateIds.has(p.id) && !stateNames.has((p.name || '').toLowerCase()) && (p.id.startsWith('cf-') || p.isUploading) && _isNotDeleted(p));
+        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || p.isUploading) && _isNotDeleted(p));
         // Final dedup by ID to ensure no duplicates in the merged result
         const merged = [...pending, ...(state.documents as any[]).filter(_isNotDeleted)];
         const seen = new Set<string>();
@@ -1441,24 +1477,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       });
       setImagesList(prev => {
         const stateIds = new Set(state.images.map(img => img.id));
-        const stateNames = new Set(state.images.map(img => (img.name || '').toLowerCase()));
-        const pending = prev.filter(p => !stateIds.has(p.id) && !stateNames.has((p.name || '').toLowerCase()) && (p.id.startsWith('cf-') || p.isUploading) && _isNotDeleted(p));
+        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || p.isUploading) && _isNotDeleted(p));
         const merged = [...pending, ...(state.images as any[]).filter(_isNotDeleted)];
         const seen = new Set<string>();
         return merged.filter(f => { if (seen.has(f.id)) return false; seen.add(f.id); return true; });
       });
       setVideosList(prev => {
         const stateIds = new Set(state.videos.map(v => v.id));
-        const stateNames = new Set(state.videos.map(v => (v.name || '').toLowerCase()));
-        const pending = prev.filter(p => !stateIds.has(p.id) && !stateNames.has((p.name || '').toLowerCase()) && (p.id.startsWith('cf-') || p.isUploading) && _isNotDeleted(p));
+        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || p.isUploading) && _isNotDeleted(p));
         const merged = [...pending, ...(state.videos as any[]).filter(_isNotDeleted)];
         const seen = new Set<string>();
         return merged.filter(f => { if (seen.has(f.id)) return false; seen.add(f.id); return true; });
       });
       setAudioList(prev => {
         const stateIds = new Set(state.audio.map(a => a.id));
-        const stateNames = new Set(state.audio.map(a => (a.name || '').toLowerCase()));
-        const pending = prev.filter(p => !stateIds.has(p.id) && !stateNames.has((p.name || '').toLowerCase()) && (p.id.startsWith('cf-') || p.isUploading) && _isNotDeleted(p));
+        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || p.isUploading) && _isNotDeleted(p));
         const merged = [...pending, ...(state.audio as any[]).filter(_isNotDeleted)];
         const seen = new Set<string>();
         return merged.filter(f => { if (seen.has(f.id)) return false; seen.add(f.id); return true; });
@@ -1559,7 +1592,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   ];
 
   const handleRestoreFromTrash = (file: FileItem) => {
-    unmarkFileLocallyDeleted(file.id, file.name);
+    unmarkFileLocallyDeleted(file.id);
     setTrashFiles(prev => prev.filter(f => f.id !== file.id));
     if (file.category === 'folder' || (file as any).sourceCategory === 'classeur_folder') {
       const meta = (file as any).metadata || {};
@@ -1611,7 +1644,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (selectedItemIds.length === 0) return;
     const itemsToRestore = trashFiles.filter(f => selectedItemIds.includes(f.id));
     itemsToRestore.forEach(file => {
-      unmarkFileLocallyDeleted(file.id, file.name);
+      unmarkFileLocallyDeleted(file.id);
       if (file.category === 'folder' || (file as any).sourceCategory === 'classeur_folder') {
         const meta = (file as any).metadata || {};
         const restoredFolder: ClasseurCreatedFolder = {
@@ -1747,6 +1780,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     reason: string;
   } | null>(null);
 
+  // Modal d'avertissement affiché au milieu de l'écran quand un fichier existe déjà dans le répertoire (doublon)
+  const [duplicateImportModal, setDuplicateImportModal] = useState<{
+    duplicateFileNames: string[];
+    allFilesCount: number;
+    menuLabel: string;
+    onConfirm: () => void;
+    onCancel: () => void;
+  } | null>(null);
+
   const showProfileToast = (msg: string, type: 'success' | 'error' | 'warning' = 'success') => {
     if (profileToastTimerRef.current) clearTimeout(profileToastTimerRef.current);
     setProfileToastMessage(msg);
@@ -1780,8 +1822,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (!f || isMockFile(f)) return false;
     const delRecent = getDeletedRecentIds();
     const delLocal = getLocallyDeletedFileIds();
-    if (delRecent.has(f.id) || (f.name && delRecent.has(f.name))) return false;
-    if (delLocal.has(f.id) || (f.name && delLocal.has(f.name))) return false;
+    if (delRecent.has(f.id)) return false;
+    if (delLocal.has(f.id)) return false;
     return true;
   };
 
@@ -1803,20 +1845,46 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // État des fichiers récents (en mémoire de session)
   const [cloudRecentFiles, setCloudRecentFiles] = useState<FileItem[]>(DEFAULT_RECENT_FILES);
 
+  // Helper pour vérifier strictement dans le compte de l'utilisateur si un fichier existe déjà dans son répertoire
+  const checkDuplicateFiles = (
+    files: File[],
+    targetCategory: 'videos' | 'audio' | 'images' | 'documents' | 'classeur',
+    folderId?: string
+  ): string[] => {
+    let existingList: { name?: string }[] = [];
+    if (targetCategory === 'videos') existingList = videosList;
+    else if (targetCategory === 'audio') existingList = audioList;
+    else if (targetCategory === 'images') existingList = imagesList;
+    else if (targetCategory === 'documents') existingList = documentsList;
+    else if (targetCategory === 'classeur' && folderId) existingList = folderFilesMap[folderId] || [];
+
+    const existingNames = new Set(
+      existingList.map(f => (f.name || '').trim().toLowerCase()).filter(Boolean)
+    );
+
+    const dupes: string[] = [];
+    files.forEach(f => {
+      const n = (f.name || '').trim().toLowerCase();
+      if (n && existingNames.has(n)) {
+        dupes.push(f.name);
+      }
+    });
+    return dupes;
+  };
+
   // Retirer un élément de l'aperçu "Récents" (comme rejeter une notification / une annonce sur son téléphone)
   // LE FICHIER LUI-MÊME RESTE STRICTEMENT INTACT ET CONSERVÉ DANS SON MENU ET DANS LE CLOUD !
   const handleRemoveRecentFile = (fileId: string, fileItem?: FileItem) => {
     const file = fileItem || cloudRecentFiles.find(f => f.id === fileId);
-    const fileName = file?.name;
 
     // 1. Inscrire UNIQUEMENT dans la liste noire des RÉCENTS (pour ne plus s'afficher dans ce bandeau d'accueil)
-    markRecentLocallyDeleted(fileId, fileName);
+    markRecentLocallyDeleted(fileId);
 
     // 2. Retirer immédiatement du bandeau des récents à l'écran
-    setCloudRecentFiles(prev => prev.filter(f => f.id !== fileId && (!fileName || f.name !== fileName)));
+    setCloudRecentFiles(prev => prev.filter(f => f.id !== fileId));
     try {
       CloudDataStore.setRecentFiles(
-        CloudDataStore.getState().recentFiles.filter(f => f.id !== fileId && (!fileName || f.name !== fileName))
+        CloudDataStore.getState().recentFiles.filter(f => f.id !== fileId)
       );
     } catch {}
 
@@ -1824,13 +1892,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (file) {
       const cat = file.category || detectFileCategory(file);
       if (cat === 'images') {
-        setImagesList(prev => prev.some(f => f.id === file.id || f.name === file.name) ? prev : [file, ...prev]);
+        setImagesList(prev => prev.some(f => f.id === file.id) ? prev : [file, ...prev]);
       } else if (cat === 'videos') {
-        setVideosList(prev => prev.some(f => f.id === file.id || f.name === file.name) ? prev : [file, ...prev]);
+        setVideosList(prev => prev.some(f => f.id === file.id) ? prev : [file, ...prev]);
       } else if (cat === 'audio') {
-        setAudioList(prev => prev.some(f => f.id === file.id || f.name === file.name) ? prev : [file, ...prev]);
+        setAudioList(prev => prev.some(f => f.id === file.id) ? prev : [file, ...prev]);
       } else if (cat === 'documents') {
-        setDocumentsList(prev => prev.some(f => f.id === file.id || f.name === file.name) ? prev : [file, ...prev]);
+        setDocumentsList(prev => prev.some(f => f.id === file.id) ? prev : [file, ...prev]);
       }
     }
 
@@ -1935,7 +2003,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     targetCategory: 'videos' | 'audio' | 'images' | 'documents' | 'classeur',
     uploadSource: string,
     folderId?: string,
-    folderName?: string
+    folderName?: string,
+    skipDuplicateCheck?: boolean
   ) => {
     if (!files || files.length === 0) return;
 
@@ -1972,6 +2041,30 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
 
     if (validFiles.length === 0) return;
+
+    // DÉTECTION DES DOUBLONS DANS LE COMPTE DE L'UTILISATEUR (ISOLATION STRICTE)
+    if (!skipDuplicateCheck) {
+      const dupes = checkDuplicateFiles(validFiles, targetCategory, folderId);
+      if (dupes.length > 0) {
+        const targetLabel = targetCategory === 'classeur' && folderName
+          ? `dossier "${folderName}"`
+          : (CATEGORY_LABELS[targetCategory] || targetCategory);
+
+        setDuplicateImportModal({
+          duplicateFileNames: dupes,
+          allFilesCount: validFiles.length,
+          menuLabel: targetLabel,
+          onConfirm: () => {
+            setDuplicateImportModal(null);
+            executeDedicatedMenuImport(validFiles, targetCategory, uploadSource, folderId, folderName, true);
+          },
+          onCancel: () => {
+            setDuplicateImportModal(null);
+          }
+        });
+        return;
+      }
+    }
 
     // Création des FileItems dédiés au menu cible
     const newItemsWithFiles = validFiles.map((file, idx) => {
@@ -2014,8 +2107,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const fileIds = newItems.map(x => x.id);
 
     newItems.forEach(item => {
-      unmarkRecentLocallyDeleted(item.id, item.name);
-      unmarkFileLocallyDeleted(item.id, item.name);
+      unmarkRecentLocallyDeleted(item.id);
+      unmarkFileLocallyDeleted(item.id);
       CloudDataStore.addOptimisticFile(item as any, folderId);
     });
 
@@ -2097,8 +2190,42 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // B. EXÉCUTION OPTION B (ROUTAGE INTELLIGENT DEPUIS L'ACCUEIL)
   // Détecte la nature exacte de chaque fichier et le classe automatiquement dans son menu
-  const processHomeFiles = async (files: File[]) => {
+  const processHomeFiles = async (files: File[], skipDuplicateCheck?: boolean) => {
     if (!files || files.length === 0) return;
+
+    // DÉTECTION DES DOUBLONS DANS LE COMPTE DE L'UTILISATEUR (ISOLATION STRICTE)
+    if (!skipDuplicateCheck) {
+      const videoNames = new Set(videosList.map(f => (f.name || '').trim().toLowerCase()).filter(Boolean));
+      const audioNames = new Set(audioList.map(f => (f.name || '').trim().toLowerCase()).filter(Boolean));
+      const imageNames = new Set(imagesList.map(f => (f.name || '').trim().toLowerCase()).filter(Boolean));
+      const docNames = new Set(documentsList.map(f => (f.name || '').trim().toLowerCase()).filter(Boolean));
+
+      const dupes: string[] = [];
+      for (const file of files) {
+        const cat = await detectFileCategoryWithMagic(file);
+        const nameLower = (file.name || '').trim().toLowerCase();
+        if (cat === 'videos' && videoNames.has(nameLower)) dupes.push(file.name);
+        else if (cat === 'audio' && audioNames.has(nameLower)) dupes.push(file.name);
+        else if (cat === 'images' && imageNames.has(nameLower)) dupes.push(file.name);
+        else if (cat === 'documents' && docNames.has(nameLower)) dupes.push(file.name);
+      }
+
+      if (dupes.length > 0) {
+        setDuplicateImportModal({
+          duplicateFileNames: dupes,
+          allFilesCount: files.length,
+          menuLabel: "vos répertoires",
+          onConfirm: () => {
+            setDuplicateImportModal(null);
+            processHomeFiles(files, true);
+          },
+          onCancel: () => {
+            setDuplicateImportModal(null);
+          }
+        });
+        return;
+      }
+    }
 
     const newItemsWithFiles = await Promise.all(files.map(async (file, idx) => {
       const localBlobUrl = URL.createObjectURL(file);
@@ -2135,8 +2262,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     // Distribution immédiate dans les menus respectifs
     newItems.forEach(item => {
-      unmarkRecentLocallyDeleted(item.id, item.name);
-      unmarkFileLocallyDeleted(item.id, item.name);
+      unmarkRecentLocallyDeleted(item.id);
+      unmarkFileLocallyDeleted(item.id);
       CloudDataStore.addOptimisticFile(item as any);
       if (item.category === 'images') setImagesList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
       else if (item.category === 'videos') setVideosList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
@@ -2580,10 +2707,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     });
 
     const fileItem = file as FileItem;
-    unmarkRecentLocallyDeleted(fileItem.id, fileItem.name);
-    unmarkFileLocallyDeleted(fileItem.id, fileItem.name);
+    unmarkRecentLocallyDeleted(fileItem.id);
+    unmarkFileLocallyDeleted(fileItem.id);
     setCloudRecentFiles(prev => {
-      const filtered = prev.filter(f => f.id !== fileItem.id && (!fileItem.name || f.name !== fileItem.name));
+      const filtered = prev.filter(f => f.id !== fileItem.id);
       return [fileItem, ...filtered].slice(0, 6);
     });
 
@@ -2670,13 +2797,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         setVideosList(prev => prev.filter(vid => vid.id !== file.id));
         setAudioList(prev => prev.filter(aud => aud.id !== file.id));
         setDownloadedItems(prev => prev.filter(dl => dl.id !== file.id));
-        setCloudRecentFiles(prev => prev.filter(f => f.id !== file.id && (!file.name || f.name !== file.name)));
-        markRecentLocallyDeleted(file.id, file.name);
-        markFileLocallyDeleted(file.id, file.name);
+        setCloudRecentFiles(prev => prev.filter(f => f.id !== file.id));
+        markRecentLocallyDeleted(file.id);
+        markFileLocallyDeleted(file.id);
         CloudDataStore.moveToTrash(fileWithSource as any);
         deleteFileBlob(file.id).catch(() => {});
         removeDownloadedFile(file.id);
-        if (file.name) removeDownloadedFile(file.name);
         if (opened3DFolder) {
           setFolderFilesMap(prev => ({
             ...prev,
@@ -3403,8 +3529,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const trashIdSet = new Set(trashFiles.map(t => t.id));
 
     return cloudRecentFiles.filter(f => {
-      if (deletedRecentIds.has(f.id) || (f.name && deletedRecentIds.has(f.name))) return false;
-      if (locallyDeletedIds.has(f.id) || (f.name && locallyDeletedIds.has(f.name))) return false;
+      if (deletedRecentIds.has(f.id)) return false;
+      if (locallyDeletedIds.has(f.id)) return false;
       if (trashIdSet.has(f.id)) return false;
       if (isMockFile(f)) return false;
 
@@ -3480,10 +3606,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Liste des documents pour le sous-menu Documents (Image 1) - Filtrage strict par nature
   const filteredDocuments = useMemo(() => {
     const delLocal = getLocallyDeletedFileIds();
-    const isClean = (f: FileItem) => !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
+    const isClean = (f: FileItem) => !delLocal.has(f.id);
     const isDoc = (f: FileItem) => (f.category === 'documents' || detectFileCategory({ name: f.name, type: f.type || '' }) === 'documents') && f.category !== 'videos' && f.category !== 'audio' && f.category !== 'images';
 
-    const mergedDocs = [...documentsList, ...cloudRecentFiles.filter(f => isDoc(f) && !documentsList.some(s => s.id === f.id || s.name === f.name))];
+    const mergedDocs = [...documentsList, ...cloudRecentFiles.filter(f => isDoc(f) && !documentsList.some(s => s.id === f.id))];
     const seenDocIds = new Set<string>();
     const list = mergedDocs.filter(f => { if (seenDocIds.has(f.id)) return false; seenDocIds.add(f.id); return true; }).filter(isClean).filter(isDoc);
     const filtered = list.filter(doc => {
@@ -3495,10 +3621,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Liste des images pour le sous-menu Images (Image 2) - Filtrage strict par nature
   const filteredImages = useMemo(() => {
     const delLocal = getLocallyDeletedFileIds();
-    const isClean = (f: FileItem) => !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
+    const isClean = (f: FileItem) => !delLocal.has(f.id);
     const isImg = (f: FileItem) => (f.category === 'images' || Boolean(f.previewUrl && !f.videoUrl && !f.audioUrl) || f.isImage || detectFileCategory({ name: f.name, type: f.type || '' }) === 'images') && f.category !== 'videos' && f.category !== 'audio' && f.category !== 'documents';
 
-    const mergedImgs = [...imagesList, ...cloudRecentFiles.filter(f => isImg(f) && !imagesList.some(s => s.id === f.id || s.name === f.name))];
+    const mergedImgs = [...imagesList, ...cloudRecentFiles.filter(f => isImg(f) && !imagesList.some(s => s.id === f.id))];
     const seenImgIds = new Set<string>();
     const list = mergedImgs.filter(f => { if (seenImgIds.has(f.id)) return false; seenImgIds.add(f.id); return true; }).filter(isClean).filter(isImg);
     const filtered = list.filter(img => {
@@ -3510,7 +3636,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Liste des vidéos pour le sous-menu Vidéos (Image 3) - FILTRAGE STRICT : AUCUN AUDIO NE PEUT APPARAÎTRE
   const filteredVideos = useMemo(() => {
     const delLocal = getLocallyDeletedFileIds();
-    const isClean = (f: FileItem) => !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
+    const isClean = (f: FileItem) => !delLocal.has(f.id);
     const isVid = (f: FileItem) => {
       // Reconnaissance explicite des vidéos WhatsApp (ex: WhatsApp Video 2026-..., VID-...)
       if (isWhatsAppVideo(f.name, f.type)) {
@@ -3523,7 +3649,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       return (f.category === 'videos' || Boolean(f.videoUrl) || f.isVideo || detectFileCategory({ name: f.name, type: f.type || '' }) === 'videos') && f.category !== 'audio' && f.category !== 'images' && f.category !== 'documents';
     };
 
-    const mergedVids = [...videosList, ...cloudRecentFiles.filter(f => isVid(f) && !videosList.some(s => s.id === f.id || s.name === f.name))];
+    const mergedVids = [...videosList, ...cloudRecentFiles.filter(f => isVid(f) && !videosList.some(s => s.id === f.id))];
     const seenVidIds = new Set<string>();
     const list = mergedVids.filter(f => { if (seenVidIds.has(f.id)) return false; seenVidIds.add(f.id); return true; }).filter(isClean).filter(isVid);
     const filtered = list.filter(vid => {
@@ -3535,7 +3661,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Liste audio pour le sous-menu Audio (Image 4) - ACCEPTE TOUS LES AUDIOS ET NOTES VOCALES WHATSAPP
   const filteredAudio = useMemo(() => {
     const delLocal = getLocallyDeletedFileIds();
-    const isClean = (f: FileItem) => !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
+    const isClean = (f: FileItem) => !delLocal.has(f.id);
     const isAud = (f: FileItem) => {
       // Une vidéo WhatsApp ou mobile ne doit JAMAIS apparaître dans le menu Audio
       if (isWhatsAppVideo(f.name, f.type)) {
@@ -3548,7 +3674,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       return (f.category === 'audio' || Boolean(f.audioUrl) || f.isAudio || detectFileCategory({ name: f.name, type: f.type || '' }) === 'audio') && f.category !== 'videos' && f.category !== 'images' && f.category !== 'documents';
     };
 
-    const mergedAuds = [...audioList, ...cloudRecentFiles.filter(f => isAud(f) && !audioList.some(s => s.id === f.id || s.name === f.name))];
+    const mergedAuds = [...audioList, ...cloudRecentFiles.filter(f => isAud(f) && !audioList.some(s => s.id === f.id))];
     const seenAudIds = new Set<string>();
     const list = mergedAuds.filter(f => { if (seenAudIds.has(f.id)) return false; seenAudIds.add(f.id); return true; }).filter(isClean).filter(isAud);
     const filtered = list.filter(aud => {
@@ -4536,7 +4662,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       };
 
       // S'assurer que le fichier sélectionné est bien inclus dans la liste de tous les fichiers
-      const existingIdx = convertedFiles.findIndex(f => f.id === selectedFileForStudy.id || f.name === selectedFileForStudy.name);
+      const existingIdx = convertedFiles.findIndex(f => f.id === selectedFileForStudy.id);
       if (existingIdx >= 0) {
         convertedFiles[existingIdx] = selectedFileForStudy;
       } else {
@@ -12178,6 +12304,90 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             >
               Compris, fermer
             </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* GRAND MODAL AU MILIEU DE L'ÉCRAN : FICHIER DÉJÀ EXISTANT DANS LE RÉPERTOIRE (DOUBLON) */}
+      {duplicateImportModal && createPortal(
+        <div 
+          className="fixed inset-0 z-[99999999] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200 pointer-events-auto"
+          onClick={duplicateImportModal.onCancel}
+        >
+          <div 
+            className="relative w-full max-w-md bg-[#0A0E1A] border-2 border-amber-500/70 rounded-3xl p-6 sm:p-7 shadow-[0_25px_80px_rgba(245,158,11,0.45),0_0_0_1px_rgba(255,255,255,0.1)] text-white text-center flex flex-col items-center gap-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Bouton croix en haut à droite */}
+            <button
+              type="button"
+              onClick={duplicateImportModal.onCancel}
+              className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              title="Fermer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Grande Icône d'alerte ambre lumineuse */}
+            <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-3xl bg-amber-500/20 border-2 border-amber-500/60 flex items-center justify-center text-amber-400 shadow-[0_0_35px_rgba(245,158,11,0.5)] mt-1 animate-pulse">
+              <AlertTriangle className="w-8 h-8 sm:w-9 sm:h-9 stroke-[2.4]" />
+            </div>
+
+            {/* Titre */}
+            <div className="space-y-1">
+              <h3 className="text-lg sm:text-xl font-black text-white tracking-tight">
+                Fichier déjà existant
+              </h3>
+              <p className="text-[11px] font-bold text-amber-400 uppercase tracking-widest">
+                Détection dans votre compte personnel
+              </p>
+            </div>
+
+            {/* Message Principal textuel explicite demandé par l'utilisateur */}
+            <div className="w-full p-4 rounded-2xl bg-amber-950/50 border border-amber-500/40 text-xs sm:text-sm font-extrabold text-amber-200 leading-snug">
+              {duplicateImportModal.duplicateFileNames.length === 1
+                ? `Ce fichier existe déjà dans votre répertoire ${duplicateImportModal.menuLabel}.`
+                : `${duplicateImportModal.duplicateFileNames.length} fichiers existent déjà dans votre répertoire ${duplicateImportModal.menuLabel}.`}
+            </div>
+
+            {/* Détails du ou des fichiers doublons */}
+            <div className="w-full text-xs text-slate-300 font-medium bg-black/50 rounded-2xl p-3.5 border border-white/10 space-y-2 text-left max-h-36 overflow-y-auto custom-scrollbar">
+              <div className="text-[11px] text-slate-400 uppercase font-semibold">
+                Fichier(s) concerné(s) :
+              </div>
+              <ul className="space-y-1.5">
+                {duplicateImportModal.duplicateFileNames.map((name, idx) => (
+                  <li key={idx} className="flex items-center gap-2 text-white font-medium truncate">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                    <span className="truncate" title={name}>{name}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Explication rassurante */}
+            <p className="text-[11px] text-slate-400 leading-relaxed text-center px-1">
+              Chaque fichier reste strictement indépendant. Si vous choisissez <strong className="text-white">"Importer quand même"</strong>, une nouvelle copie sera enregistrée avec son propre identifiant unique.
+            </p>
+
+            {/* Deux boutons d'action demandés : "Importer quand même" ou "Annuler" */}
+            <div className="w-full flex flex-col sm:flex-row gap-2.5 mt-1">
+              <button
+                type="button"
+                onClick={duplicateImportModal.onCancel}
+                className="flex-1 py-3.5 px-4 rounded-2xl bg-white/10 hover:bg-white/15 text-slate-200 font-bold text-xs sm:text-sm transition-all active:scale-95 cursor-pointer order-2 sm:order-1"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={duplicateImportModal.onConfirm}
+                className="flex-1 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-400 text-white font-black text-xs sm:text-sm tracking-wide shadow-lg shadow-amber-950/60 transition-all active:scale-95 cursor-pointer order-1 sm:order-2"
+              >
+                Importer quand même
+              </button>
+            </div>
           </div>
         </div>,
         document.body

@@ -122,8 +122,8 @@ export function recordDownloadedFile(item: {
     previewUrl: item.previewUrl
   };
 
-  // Éviter les doublons stricts en début de liste
-  const updated = [newItem, ...current.filter(f => f.name !== newItem.name)];
+  // Éviter les doublons stricts par ID
+  const updated = [newItem, ...current.filter(f => f.id !== newItem.id)];
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     window.dispatchEvent(new CustomEvent('studycloud_download_updated', { detail: newItem }));
@@ -141,7 +141,7 @@ export function removeDownloadedFile(idOrName: string): void {
   if (typeof window === 'undefined') return;
   try {
     const current = getDownloadedFiles();
-    const updated = current.filter(f => f.id !== idOrName && f.name !== idOrName);
+    const updated = current.filter(f => f.id !== idOrName);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     window.dispatchEvent(new CustomEvent('studycloud_download_updated', { detail: { id: idOrName, deleted: true } }));
   } catch (e) {
