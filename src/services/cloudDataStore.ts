@@ -42,6 +42,7 @@ export interface FileItem {
   isFavorite?: boolean;
   isPinned?: boolean;
   folderId?: string;
+  r2Key?: string;
   isUploading?: boolean;
   uploadProgress?: number;
 }

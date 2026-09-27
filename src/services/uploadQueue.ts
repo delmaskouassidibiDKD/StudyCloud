@@ -186,6 +186,38 @@ class UploadQueueManager {
   }
 
   /**
+   * Enfile des éléments déjà créés avec prévisualisation locale
+   */
+  public enqueueExisting(
+    itemsWithFiles: { file: File; item: any }[],
+    options: {
+      category?: FileItem['category'];
+      folderId?: string;
+      folderName?: string;
+    } = {}
+  ): void {
+    const now = Date.now();
+    itemsWithFiles.forEach(({ file, item }) => {
+      const task: UploadTask = {
+        id: item.id,
+        file,
+        fileName: file.name,
+        category: (item.category || options.category || 'documents') as any,
+        folderId: options.folderId || item.folderId,
+        folderName: options.folderName || item.source,
+        status: 'pending',
+        progress: 10,
+        retries: 0,
+        fileItem: item,
+        addedAt: now,
+      };
+      this.queue.push(task);
+    });
+    this.notify();
+    this.processQueue();
+  }
+
+  /**
    * Traitement séquentiel / contrôlé de la file
    */
   private async processQueue() {
@@ -248,16 +280,16 @@ class UploadQueueManager {
         uploadUrl = uploadRes.url;
         r2Key = uploadRes.key;
 
-        const fileToSave: FileItem = {
+        const fileToSave = {
           ...task.fileItem,
           url: uploadUrl,
           r2Key: r2Key,
           previewUrl: previewDataUrl || uploadUrl,
           isUploading: false,
         };
-        await CloudStorageAPI.saveClasseurFile(fileToSave, folderId);
+        await CloudStorageAPI.saveClasseurFile(fileToSave as any, folderId);
       } else {
-        const uploadCat = category === 'classeur' ? 'documents' : category;
+        const uploadCat = (category === 'classeur' || category === 'downloads' || category === 'secure' || category === 'trash' ? 'documents' : category) as any;
         const res = await CloudStorageAPI.uploadFile(
           file,
           uploadCat,
@@ -268,10 +300,10 @@ class UploadQueueManager {
 
         if (res?.success && res.file) {
           uploadUrl = res.file.url || '';
-          r2Key = res.file.r2Key || '';
-        } else if (res?.url) {
-          uploadUrl = res.url;
-          r2Key = res.key || '';
+          r2Key = (res.file as any).r2Key || '';
+        } else if ((res as any)?.url) {
+          uploadUrl = (res as any).url;
+          r2Key = (res as any).key || '';
         }
       }
 
