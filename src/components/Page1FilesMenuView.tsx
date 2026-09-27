@@ -9151,22 +9151,22 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // Auto-sélection du premier élément pour Documents, Vidéos, Images si aucun fichier sélectionné
   useEffect(() => {
-    if ((currentSubView.id === 'studycloud-category-documents' || (isCloudView && cloudActiveTab === 'documents')) && !selectedDocFile && filteredDocuments.length > 0) {
+    if ((currentSubView?.id === 'studycloud-category-documents' || (isCloudView && cloudActiveTab === 'documents')) && !selectedDocFile && filteredDocuments.length > 0) {
       setSelectedDocFile(filteredDocuments[0]);
     }
-  }, [currentSubView.id, isCloudView, cloudActiveTab, filteredDocuments, selectedDocFile]);
+  }, [currentSubView?.id, isCloudView, cloudActiveTab, filteredDocuments, selectedDocFile]);
 
   useEffect(() => {
-    if ((currentSubView.id === 'studycloud-category-videos' || (isCloudView && cloudActiveTab === 'videos')) && !selectedVideoFile && filteredVideos.length > 0) {
+    if ((currentSubView?.id === 'studycloud-category-videos' || (isCloudView && cloudActiveTab === 'videos')) && !selectedVideoFile && filteredVideos.length > 0) {
       setSelectedVideoFile(filteredVideos[0]);
     }
-  }, [currentSubView.id, isCloudView, cloudActiveTab, filteredVideos, selectedVideoFile]);
+  }, [currentSubView?.id, isCloudView, cloudActiveTab, filteredVideos, selectedVideoFile]);
 
   useEffect(() => {
-    if ((currentSubView.id === 'studycloud-category-images' || (isCloudView && cloudActiveTab === 'images')) && !selectedImageFile && filteredImages.length > 0) {
+    if ((currentSubView?.id === 'studycloud-category-images' || (isCloudView && cloudActiveTab === 'images')) && !selectedImageFile && filteredImages.length > 0) {
       setSelectedImageFile(filteredImages[0]);
     }
-  }, [currentSubView.id, isCloudView, cloudActiveTab, filteredImages, selectedImageFile]);
+  }, [currentSubView?.id, isCloudView, cloudActiveTab, filteredImages, selectedImageFile]);
 
 
   // =========================================================================
@@ -10287,7 +10287,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   )}
 
                   {/* BOUTON CRÉER UN DOSSIER EN ORANGE DEVANT LE BOUTON ZOOM (Dans le menu Classeur, Image 2) */}
-                  {(currentSubView.id === 'studycloud-classeur-classeur' || (isCloudView && cloudActiveTab === 'classeur') || currentSubView.type === 'classeur') && (
+                  {(currentSubView?.id === 'studycloud-classeur-classeur' || (isCloudView && cloudActiveTab === 'classeur') || currentSubView?.type === 'classeur') && (
                     <button
                       type="button"
                       onClick={() => {
@@ -10483,7 +10483,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           {/* ========================================================================= */}
 
           {/* 1. MENU DOCUMENTS : LAYOUT ET LECTEUR DOCUMENT DÉDIÉ (IMAGE 1) */}
-          {(currentSubView.id === 'studycloud-category-documents' || (isCloudView && cloudActiveTab === 'documents')) && (
+          {(currentSubView?.id === 'studycloud-category-documents' || (isCloudView && cloudActiveTab === 'documents')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : LISTE DES DOCUMENTS */}
               <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
@@ -10538,7 +10538,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           )}
 
           {/* 2. MENU AUDIO : LAYOUT ET LECTEUR AUDIO DÉDIÉ (IMAGE 2 & IMAGE 3) */}
-          {(currentSubView.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio')) && (
+          {(currentSubView?.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : LISTE DES SONS */}
               <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
@@ -10762,7 +10762,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           )}
 
           {/* 3. MENU VIDÉOS : LAYOUT ET LECTEUR VIDÉO DÉDIÉ (IMAGE 4) */}
-          {(currentSubView.id === 'studycloud-category-videos' || (isCloudView && cloudActiveTab === 'videos')) && (
+          {(currentSubView?.id === 'studycloud-category-videos' || (isCloudView && cloudActiveTab === 'videos')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : LISTE DES VIDÉOS */}
               <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
@@ -10816,7 +10816,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           )}
 
           {/* 4. MENU IMAGES : LAYOUT ET LECTEUR IMAGE DÉDIÉ (IMAGE 5) */}
-          {(currentSubView.id === 'studycloud-category-images' || (isCloudView && cloudActiveTab === 'images')) && (
+          {(currentSubView?.id === 'studycloud-category-images' || (isCloudView && cloudActiveTab === 'images')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : LISTE DES IMAGES */}
               <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
@@ -10870,7 +10870,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           )}
 
           {/* 5. MENU TÉLÉCHARGEMENTS : LAYOUT ET LECTEUR INDÉPENDANT */}
-          {(currentSubView.id === 'studycloud-category-downloads' || (isCloudView && cloudActiveTab === 'downloads')) && (
+          {(currentSubView?.id === 'studycloud-category-downloads' || (isCloudView && cloudActiveTab === 'downloads')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : LISTE DES TÉLÉCHARGEMENTS */}
               <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
@@ -10986,7 +10986,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           )}
 
           {/* 6. CLASSEUR : DOSSIERS 3D ET FICHIERS DU DOSSIER OUVERT */}
-          {(currentSubView.id === 'studycloud-classeur-classeur' || (isCloudView && cloudActiveTab === 'classeur')) && (
+          {(currentSubView?.id === 'studycloud-classeur-classeur' || (isCloudView && cloudActiveTab === 'classeur')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : ARBORESCENCE & FICHIERS */}
               <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
@@ -11241,7 +11241,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           )}
 
           {/* 7. APPLICATIONS */}
-          {(currentSubView.id === 'studycloud-category-apps' || (isCloudView && cloudActiveTab === 'apps')) && (
+          {(currentSubView?.id === 'studycloud-category-apps' || (isCloudView && cloudActiveTab === 'apps')) && (
             <div className="flex-1 w-full overflow-y-auto px-3 sm:px-6 md:px-10 lg:px-12 py-3 sm:py-4 pb-64 sm:pb-80">
                 <div className="py-28 text-center animate-in fade-in duration-200">
                   <p className="text-sm sm:text-base font-semibold text-stone-600 dark:text-slate-300">
@@ -11252,7 +11252,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           )}
 
           {/* 8. DOSSIER SÉCURISÉ */}
-          {(currentSubView.id === 'studycloud-collection-secure-folder' || (isCloudView && cloudActiveTab === 'secure-folder')) && (
+          {(currentSubView?.id === 'studycloud-collection-secure-folder' || (isCloudView && cloudActiveTab === 'secure-folder')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 isViewerMaximized 
