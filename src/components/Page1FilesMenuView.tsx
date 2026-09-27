@@ -3313,6 +3313,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (isVid) setSelectedVideoFile(file);
     if (isImg) setSelectedImageFile(file);
     if (opened3DFolder) setSelectedClasseurFile(file);
+    setSelectedDownloadFile(file);
     setSelectedCollectionFile(file);
 
     setSplitSelectedFile(file);
@@ -3475,11 +3476,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setSubSearchQuery('');
     setIsViewerMaximized(false);
     setIsMobilePlayerOpen(false);
+    setSelectedDocFile(null);
+    setSelectedVideoFile(null);
+    setSelectedImageFile(null);
+    setSelectedAudioTrack(null);
+    setSelectedDownloadFile(null);
+    setSelectedClasseurFile(null);
+    setSelectedCollectionFile(null);
+    setSplitSelectedFile(null);
 
     // Par défaut pour l'Espace Cloud : sélectionner l'onglet Classeur et réinitialiser
     if (id === 'cloud-storage') {
       setCloudActiveTab('classeur');
-      setSplitSelectedFile(null);
       setOpened3DFolder(null);
       setSelectedClasseurFolder(null);
     } else {
@@ -9149,24 +9157,24 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
 
 
-  // Auto-sélection du premier élément pour Documents, Vidéos, Images si aucun fichier sélectionné
-  useEffect(() => {
-    if ((currentSubView?.id === 'studycloud-category-documents' || (isCloudView && cloudActiveTab === 'documents')) && !selectedDocFile && filteredDocuments.length > 0) {
-      setSelectedDocFile(filteredDocuments[0]);
+  // Fonction universelle de fermeture du lecteur (ou réduction si plein écran)
+  const handleCloseReader = () => {
+    if (isViewerMaximized) {
+      setIsViewerMaximized(false);
+    } else {
+      setSelectedDocFile(null);
+      setSelectedVideoFile(null);
+      setSelectedImageFile(null);
+      setSelectedAudioTrack(null);
+      setSelectedDownloadFile(null);
+      setSelectedClasseurFile(null);
+      setSelectedCollectionFile(null);
+      setSplitSelectedFile(null);
+      setIsViewerMaximized(false);
+      setIsMobilePlayerOpen(false);
+      setIsAudioPlaying(false);
     }
-  }, [currentSubView?.id, isCloudView, cloudActiveTab, filteredDocuments, selectedDocFile]);
-
-  useEffect(() => {
-    if ((currentSubView?.id === 'studycloud-category-videos' || (isCloudView && cloudActiveTab === 'videos')) && !selectedVideoFile && filteredVideos.length > 0) {
-      setSelectedVideoFile(filteredVideos[0]);
-    }
-  }, [currentSubView?.id, isCloudView, cloudActiveTab, filteredVideos, selectedVideoFile]);
-
-  useEffect(() => {
-    if ((currentSubView?.id === 'studycloud-category-images' || (isCloudView && cloudActiveTab === 'images')) && !selectedImageFile && filteredImages.length > 0) {
-      setSelectedImageFile(filteredImages[0]);
-    }
-  }, [currentSubView?.id, isCloudView, cloudActiveTab, filteredImages, selectedImageFile]);
+  };
 
 
   // =========================================================================
@@ -9359,13 +9367,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
             <button
               type="button"
-              onClick={() => {
-                setSelectedDocFile(null);
-                setSplitSelectedFile(null);
-                setIsViewerMaximized(false);
-              }}
+              onClick={handleCloseReader}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
-              title="Fermer le lecteur de document"
+              title={isViewerMaximized ? "Réduire la vue" : "Fermer le lecteur de document"}
             >
               <X className="w-4 h-4 stroke-[2.5]" />
             </button>
@@ -9570,14 +9574,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             {/* Bouton Fermer */}
             <button
               type="button"
-              onClick={() => {
-                setSelectedAudioTrack(null);
-                setSplitSelectedFile(null);
-                setIsAudioPlaying(false);
-                setIsMobilePlayerOpen(false);
-              }}
+              onClick={handleCloseReader}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
-              title="Fermer le lecteur audio"
+              title={isViewerMaximized ? "Réduire la vue" : "Fermer le lecteur audio"}
             >
               <X className="w-4 h-4 stroke-[2.5]" />
             </button>
@@ -9812,13 +9811,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             </button>
             <button
               type="button"
-              onClick={() => {
-                setSelectedVideoFile(null);
-                setSplitSelectedFile(null);
-                setIsViewerMaximized(false);
-              }}
+              onClick={handleCloseReader}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
-              title="Fermer le lecteur vidéo"
+              title={isViewerMaximized ? "Réduire la vue" : "Fermer le lecteur vidéo"}
             >
               <X className="w-4 h-4 stroke-[2.5]" />
             </button>
@@ -9926,13 +9921,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             </button>
             <button
               type="button"
-              onClick={() => {
-                setSelectedImageFile(null);
-                setSplitSelectedFile(null);
-                setIsViewerMaximized(false);
-              }}
+              onClick={handleCloseReader}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
-              title="Fermer le lecteur d'image"
+              title={isViewerMaximized ? "Réduire la vue" : "Fermer le lecteur d'image"}
             >
               <X className="w-4 h-4 stroke-[2.5]" />
             </button>
@@ -10389,6 +10380,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     onClick={() => {
                       setCloudActiveTab('classeur');
                       setSplitSelectedFile(null);
+                      setSelectedDocFile(null);
+                      setSelectedVideoFile(null);
+                      setSelectedImageFile(null);
+                      setSelectedAudioTrack(null);
+                      setSelectedDownloadFile(null);
+                      setSelectedClasseurFile(null);
+                      setSelectedCollectionFile(null);
+                      setIsViewerMaximized(false);
+                      setIsMobilePlayerOpen(false);
                       setOpened3DFolder(null);
                       setIsSecureFolderUnlocked(false);
                       setSecurePinInput('');
@@ -10419,10 +10419,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         type="button"
                         onClick={() => {
                           setOpened3DFolder(null);
+                          setSelectedDocFile(null);
+                          setSelectedVideoFile(null);
+                          setSelectedImageFile(null);
+                          setSelectedAudioTrack(null);
+                          setSelectedDownloadFile(null);
+                          setSelectedClasseurFile(null);
+                          setSelectedCollectionFile(null);
+                          setSplitSelectedFile(null);
+                          setIsViewerMaximized(false);
+                          setIsMobilePlayerOpen(false);
+
                           if (item.id === 'secure-folder') {
                             if (isSecureFolderUnlocked) {
                               setCloudActiveTab(item.id);
-                              setSplitSelectedFile(null);
                             } else {
                               setPinTargetDestination('cloud-tab');
                               setIsPinModalOpen(true);
@@ -10433,7 +10443,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             return;
                           }
                           setCloudActiveTab(item.id);
-                          setSplitSelectedFile(null);
                           setIsSecureFolderUnlocked(false);
                           setSecurePinInput('');
                           setSecurePinError(null);
@@ -10489,7 +10498,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 isViewerMaximized 
                   ? 'hidden' 
-                  : 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                  : selectedDocFile
+                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-3 sm:space-y-4">
                   {/* Compteur */}
@@ -10514,7 +10525,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </div>
                   ) : (
                     <div className={`grid gap-2.5 sm:gap-3.5 ${
-                      splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      selectedDocFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                     }`}>
                       {filteredDocuments.map((doc, idx) => renderDocumentCard(doc, idx))}
                     </div>
@@ -10523,17 +10534,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               </div>
 
               {/* PANNEAU DE DROITE : LECTEUR DOCUMENT INDÉPENDANT (IMAGE 1) */}
-              <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
-                isViewerMaximized 
-                  ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
-                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-              }`}>
-                {selectedDocFile ? (
-                  renderDocumentReader(selectedDocFile)
-                ) : (
-                  renderDocumentEmptyState()
-                )}
-              </div>
+              {selectedDocFile && (
+                <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                  isViewerMaximized 
+                    ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+                }`}>
+                  {renderDocumentReader(selectedDocFile)}
+                </div>
+              )}
             </div>
           )}
 
@@ -10542,8 +10551,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : LISTE DES SONS */}
               <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-                isMobilePlayerOpen ? 'hidden md:block' : 'w-full'
-              } md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80`}>
+                selectedAudioTrack
+                  ? `${isMobilePlayerOpen ? 'hidden md:block' : 'w-full'} md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80`
+                  : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
+              }`}>
                 <div className="w-full space-y-3">
                   {/* En-tête de la liste */}
                   <div className="flex items-center justify-between px-1 py-0.5">
@@ -10749,15 +10760,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               </div>
 
               {/* PANNEAU DE DROITE : LECTEUR AUDIO INDÉPENDANT (IMAGE 2 & IMAGE 3) */}
-              <div className={`transition-all duration-300 ${
-                isMobilePlayerOpen ? 'flex w-full min-h-[calc(100vh-120px)]' : 'hidden md:flex'
-              } md:w-7/12 lg:w-7/12 xl:w-7/12 flex-col bg-[#090D1A] border-t md:border-t-0 md:border-l border-white/10`}>
-                {selectedAudioTrack ? (
-                  renderAudioPlayer(selectedAudioTrack)
-                ) : (
-                  renderAudioEmptyState()
-                )}
-              </div>
+              {selectedAudioTrack && (
+                <div className={`transition-all duration-300 ${
+                  isMobilePlayerOpen ? 'flex w-full min-h-[calc(100vh-120px)]' : 'hidden md:flex'
+                } md:w-7/12 lg:w-7/12 xl:w-7/12 flex-col bg-[#090D1A] border-t md:border-t-0 md:border-l border-white/10`}>
+                  {renderAudioPlayer(selectedAudioTrack)}
+                </div>
+              )}
             </div>
           )}
 
@@ -10768,7 +10777,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 isViewerMaximized 
                   ? 'hidden' 
-                  : 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                  : selectedVideoFile
+                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-3 sm:space-y-4">
                   <div className="flex items-center justify-between">
@@ -10792,7 +10803,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </div>
                   ) : (
                     <div className={`grid gap-2 sm:gap-3 ${
-                      splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      selectedVideoFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                     }`}>
                       {filteredVideos.map((vid, idx) => renderVideoCard(vid, idx))}
                     </div>
@@ -10801,17 +10812,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               </div>
 
               {/* PANNEAU DE DROITE : LECTEUR VIDÉO INDÉPENDANT (IMAGE 4) */}
-              <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
-                isViewerMaximized 
-                  ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
-                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-              }`}>
-                {selectedVideoFile ? (
-                  renderVideoPlayer(selectedVideoFile)
-                ) : (
-                  renderVideoEmptyState()
-                )}
-              </div>
+              {selectedVideoFile && (
+                <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                  isViewerMaximized 
+                    ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+                }`}>
+                  {renderVideoPlayer(selectedVideoFile)}
+                </div>
+              )}
             </div>
           )}
 
@@ -10822,7 +10831,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 isViewerMaximized 
                   ? 'hidden' 
-                  : 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                  : selectedImageFile
+                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-3 sm:space-y-4">
                   <div className="flex items-center justify-between">
@@ -10846,7 +10857,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </div>
                   ) : (
                     <div className={`grid gap-2 sm:gap-3 ${
-                      splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      selectedImageFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                     }`}>
                       {filteredImages.map((img, idx) => renderImageCard(img, idx))}
                     </div>
@@ -10855,17 +10866,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               </div>
 
               {/* PANNEAU DE DROITE : LECTEUR IMAGE INDÉPENDANT (IMAGE 5) */}
-              <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
-                isViewerMaximized 
-                  ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
-                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-              }`}>
-                {selectedImageFile ? (
-                  renderImageViewer(selectedImageFile)
-                ) : (
-                  renderImageEmptyState()
-                )}
-              </div>
+              {selectedImageFile && (
+                <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                  isViewerMaximized 
+                    ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+                }`}>
+                  {renderImageViewer(selectedImageFile)}
+                </div>
+              )}
             </div>
           )}
 
@@ -10876,7 +10885,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 isViewerMaximized 
                   ? 'hidden' 
-                  : 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                  : selectedDownloadFile
+                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
@@ -10971,17 +10982,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               </div>
 
               {/* PANNEAU DE DROITE : LECTEUR INDÉPENDANT */}
-              <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
-                isViewerMaximized 
-                  ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
-                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-              }`}>
-                {selectedDownloadFile ? (
-                  renderDownloadReader(selectedDownloadFile)
-                ) : (
-                  renderDownloadEmptyState()
-                )}
-              </div>
+              {selectedDownloadFile && (
+                <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                  isViewerMaximized 
+                    ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+                }`}>
+                  {renderDownloadReader(selectedDownloadFile)}
+                </div>
+              )}
             </div>
           )}
 
@@ -10993,8 +11002,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 isViewerMaximized 
                   ? 'hidden' 
                   : opened3DFolder && selectedClasseurFile 
-                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
-                    : 'w-full'
+                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
+                    : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="w-full">
                   {opened3DFolder ? (
@@ -11224,17 +11233,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               </div>
 
               {/* PANNEAU DE DROITE : LECTEUR LORSQU'UN FICHIER DU DOSSIER EST OUVERT */}
-              {opened3DFolder && (
+              {opened3DFolder && selectedClasseurFile && (
                 <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
                   isViewerMaximized 
                     ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
-                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
                 }`}>
-                  {selectedClasseurFile ? (
-                    renderClasseurFileReader(selectedClasseurFile)
-                  ) : (
-                    renderCollectionEmptyState('le Classeur')
-                  )}
+                  {renderClasseurFileReader(selectedClasseurFile)}
                 </div>
               )}
             </div>
@@ -11257,7 +11262,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 isViewerMaximized 
                   ? 'hidden' 
-                  : 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                  : selectedCollectionFile
+                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-4">
                   {!isSecureFolderUnlocked ? (
@@ -11306,17 +11313,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   )}
                 </div>
               </div>
-              <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
-                isViewerMaximized 
-                  ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
-                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-              }`}>
-                {selectedCollectionFile ? (
-                  renderCollectionReader(selectedCollectionFile)
-                ) : (
-                  renderCollectionEmptyState('le Dossier Sécurisé')
-                )}
-              </div>
+              {selectedCollectionFile && (
+                <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                  isViewerMaximized 
+                    ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+                }`}>
+                  {renderCollectionReader(selectedCollectionFile)}
+                </div>
+              )}
             </div>
           )}
 
@@ -11326,7 +11331,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 isViewerMaximized 
                   ? 'hidden' 
-                  : 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                  : selectedCollectionFile
+                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-4 animate-in fade-in duration-200">
                   {loadingCategories.favorites ? (
@@ -11393,17 +11400,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   )}
                 </div>
               </div>
-              <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
-                isViewerMaximized 
-                  ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
-                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-              }`}>
-                {selectedCollectionFile ? (
-                  renderCollectionReader(selectedCollectionFile)
-                ) : (
-                  renderCollectionEmptyState('les Favoris')
-                )}
-              </div>
+              {selectedCollectionFile && (
+                <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                  isViewerMaximized 
+                    ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+                }`}>
+                  {renderCollectionReader(selectedCollectionFile)}
+                </div>
+              )}
             </div>
           )}
 
@@ -11413,7 +11418,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 isViewerMaximized 
                   ? 'hidden' 
-                  : 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                  : selectedCollectionFile
+                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-4 animate-in fade-in duration-200">
                   {loadingCategories.trash ? (
@@ -11509,17 +11516,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   )}
                 </div>
               </div>
-              <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
-                isViewerMaximized 
-                  ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
-                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-              }`}>
-                {selectedCollectionFile ? (
-                  renderCollectionReader(selectedCollectionFile)
-                ) : (
-                  renderCollectionEmptyState('la Corbeille')
-                )}
-              </div>
+              {selectedCollectionFile && (
+                <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                  isViewerMaximized 
+                    ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+                }`}>
+                  {renderCollectionReader(selectedCollectionFile)}
+                </div>
+              )}
             </div>
           )}
         </div>
