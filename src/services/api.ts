@@ -1317,6 +1317,8 @@ export const StudyCloudAPI = {
     fileUrl?: string;
     isFavorite?: boolean;
     importedAt?: number;
+    originalSizeBytes?: number;
+    compressedSizeBytes?: number;
   }) {
     return request('/api/study-files', { method: 'POST', body: JSON.stringify(fileData) });
   },

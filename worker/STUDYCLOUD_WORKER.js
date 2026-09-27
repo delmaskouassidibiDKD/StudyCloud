@@ -2374,7 +2374,29 @@ async function ensureCompressionAndStorageTables(db) {
 
     try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_fcomp_user ON file_compression_records(user_id)").run(); } catch (e) {}
 
-    const tablesToEnhance = ["video_files", "audio_files", "image_files", "document_files", "classeur_files", "files"];
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS study_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size INTEGER DEFAULT 0,
+        size_bytes INTEGER DEFAULT 0,
+        original_size_bytes INTEGER DEFAULT 0,
+        compressed_size_bytes INTEGER DEFAULT 0,
+        compression_ratio REAL DEFAULT 0.0,
+        type TEXT DEFAULT 'application/octet-stream',
+        extension TEXT DEFAULT '',
+        r2_key TEXT DEFAULT '',
+        file_url TEXT DEFAULT '',
+        is_favorite INTEGER DEFAULT 0,
+        imported_at INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_study_files_user ON study_files(user_id)").run(); } catch (e) {}
+
+    const tablesToEnhance = ["video_files", "audio_files", "image_files", "document_files", "classeur_files", "files", "study_files"];
     for (const tbl of tablesToEnhance) {
       try { await db.prepare(`ALTER TABLE ${tbl} ADD COLUMN original_size_bytes INTEGER DEFAULT 0`).run(); } catch (e) {}
       try { await db.prepare(`ALTER TABLE ${tbl} ADD COLUMN compressed_size_bytes INTEGER DEFAULT 0`).run(); } catch (e) {}
@@ -2401,6 +2423,7 @@ async function recalculateAndSaveUserStorage(db, userId) {
       docStats,
       classeurStats,
       matiereFileStats,
+      studyFileStats,
       downloadStats,
       secureStats,
       trashStats,
@@ -2408,6 +2431,8 @@ async function recalculateAndSaveUserStorage(db, userId) {
       productStats,
       shopStats,
       cartStats,
+      sellerFollowStats,
+      prodInteractionStats,
       chatStats,
       sessionStats,
       aiContentStats,
@@ -2416,58 +2441,79 @@ async function recalculateAndSaveUserStorage(db, userId) {
       noteStats,
       linkStats,
       calendarStats,
+      scheduleConfigStats,
       scheduleStats,
       matiereMetaStats,
       favStats,
       pinnedStats,
-      sharedFolderStats
+      sharedFolderStats,
+      sharedFilesStats,
+      secureConfigStats,
+      userProfileStats,
+      userPrefsStats,
+      notifStats,
+      referralStats
     ] = await Promise.all([
-      // A. Médias personnels avec R2 & D1 (Page 1 Fichiers & Matières)
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM video_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM audio_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM image_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM document_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM classeur_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size END), 0) as compBytes FROM files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
+      // A. Médias personnels avec R2 & D1 (Page 1 Fichiers, Matières & Fichiers d'étude)
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM video_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM audio_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM image_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM document_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM classeur_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size END), 0) as compBytes FROM files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE COALESCE(size_bytes, size) END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE COALESCE(size_bytes, size) END), 0) as compBytes FROM study_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
       db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(size_bytes), 0) as compBytes FROM download_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
       db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(size_bytes), 0) as compBytes FROM secure_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
       db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(size_bytes), 0) as compBytes FROM trash_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
       db.prepare("SELECT COUNT(*) as cnt FROM classeur_folders WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0 })),
       
-      // B. Boutique de l'utilisateur (Publications créées, profil boutique et panier)
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(description) + LENGTH(COALESCE(image_urls_json, '[]'))), 0) as textBytes FROM products WHERE seller_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(shop_name) + LENGTH(COALESCE(shop_phone, '')) + LENGTH(COALESCE(shop_whatsapp, ''))), 0) as textBytes FROM shop_profiles WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      // B. Boutique de l'utilisateur (Publications créées, profil, panier, interactions et abonnements)
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(description) + LENGTH(COALESCE(image_urls_json, '[]')) + LENGTH(COALESCE(category, '')) + LENGTH(COALESCE(seller_phone, '')) + LENGTH(COALESCE(seller_whatsapp, ''))), 0) as textBytes FROM products WHERE seller_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(shop_name) + LENGTH(COALESCE(shop_description, '')) + LENGTH(COALESCE(shop_phone, '')) + LENGTH(COALESCE(shop_whatsapp, '')) + LENGTH(COALESCE(shop_avatar_url, '')) + LENGTH(COALESCE(shop_banner_url, ''))), 0) as textBytes FROM shop_profiles WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
       db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(product_id) + LENGTH(COALESCE(notes, ''))), 0) as textBytes FROM cart_items WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(seller_id)), 0) as textBytes FROM seller_follows WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(product_id) + LENGTH(COALESCE(interaction_type, ''))), 0) as textBytes FROM user_product_interactions WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
 
       // C. Espace d'étude & Discussions avec l'IA & Créations IA
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(message_text)), 0) as textBytes FROM chat_messages WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(message_text) + LENGTH(COALESCE(sender, ''))), 0) as textBytes FROM chat_messages WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
       db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(matiere_name)), 0) as textBytes FROM study_sessions WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(content) + LENGTH(COALESCE(subject, ''))), 0) as textBytes FROM ai_generated_contents WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(content) + LENGTH(COALESCE(subject, '')) + LENGTH(COALESCE(type, ''))), 0) as textBytes FROM ai_generated_contents WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
 
       // D. Applications (Horloge/Alarmes, Moyennes/Notes, Bloc-notes, Liens créés, Agenda, Emploi du temps, Matières)
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(label) + LENGTH(COALESCE(days_json, ''))), 0) as textBytes FROM alarms WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(label) + LENGTH(COALESCE(days_json, '')) + LENGTH(COALESCE(time, '')) + LENGTH(COALESCE(sound, ''))), 0) as textBytes FROM alarms WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
       db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(subject_name) + LENGTH(COALESCE(sub_grades_json, ''))), 0) as textBytes FROM grades WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(content)), 0) as textBytes FROM notes WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(url)), 0) as textBytes FROM app_external_links WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(description, ''))), 0) as textBytes FROM calendar_events WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(day_name) + LENGTH(subject_name) + LENGTH(COALESCE(room, ''))), 0) as textBytes FROM schedule_slots WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(name)), 0) as textBytes FROM matieres WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(content) + LENGTH(COALESCE(category, '')) + LENGTH(COALESCE(color, ''))), 0) as textBytes FROM notes WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(url) + LENGTH(COALESCE(category, ''))), 0) as textBytes FROM app_external_links WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(description, '')) + LENGTH(COALESCE(start_date, '')) + LENGTH(COALESCE(end_date, ''))), 0) as textBytes FROM calendar_events WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(COALESCE(start_time, '')) + LENGTH(COALESCE(end_time, '')) + LENGTH(COALESCE(slot_duration, '')) + LENGTH(COALESCE(days_json, ''))), 0) as textBytes FROM schedule_config WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(day_name) + LENGTH(subject_name) + LENGTH(COALESCE(room, '')) + LENGTH(COALESCE(professor, ''))), 0) as textBytes FROM schedule_slots WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(name) + LENGTH(COALESCE(icon, '')) + LENGTH(COALESCE(color, ''))), 0) as textBytes FROM matieres WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
 
-      // E. Éléments épinglés, Favoris et Dossiers partagés
+      // E. Éléments épinglés, Favoris, Dossiers partagés et Fichiers partagés
       db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(item_id) + LENGTH(category)), 0) as textBytes FROM user_favorites WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
       db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(item_id) + LENGTH(category)), 0) as textBytes FROM pinned_items WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(name) + LENGTH(COALESCE(share_code, ''))), 0) as textBytes FROM shared_folders WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 }))
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(name) + LENGTH(COALESCE(share_code, ''))), 0) as textBytes FROM shared_folders WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(file_id) + LENGTH(COALESCE(file_name, ''))), 0) as textBytes FROM shared_folder_files WHERE folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+
+      // F. Configuration Coffre-fort, Profil Utilisateur (Avatar/Bio), Préférences, Notifications et Parrainages
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(COALESCE(pin_hash, '')) + LENGTH(COALESCE(hint, ''))), 0) as textBytes FROM secure_folder_config WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(name) + LENGTH(email) + LENGTH(COALESCE(avatar_url, '')) + LENGTH(COALESCE(school, '')) + LENGTH(COALESCE(filiere, '')) + LENGTH(COALESCE(country, '')) + LENGTH(COALESCE(phone, '')) + LENGTH(COALESCE(bio, ''))), 0) as textBytes FROM users WHERE id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(COALESCE(theme, '')) + LENGTH(COALESCE(language, '')) + LENGTH(COALESCE(preferences_json, ''))), 0) as textBytes FROM user_preferences WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(message) + LENGTH(COALESCE(type, ''))), 0) as textBytes FROM notifications WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(referred_user_id) + LENGTH(COALESCE(referred_user_name, ''))), 0) as textBytes FROM referrals WHERE referrer_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 }))
     ]);
 
     // 2. CALCUL DES TOTAUX
     const totalFiles = Number(videoStats?.cnt || 0) + Number(audioStats?.cnt || 0) + Number(imageStats?.cnt || 0) + 
                        Number(docStats?.cnt || 0) + Number(classeurStats?.cnt || 0) + Number(matiereFileStats?.cnt || 0) + 
+                       Number(studyFileStats?.cnt || 0) +
                        Number(downloadStats?.cnt || 0) + Number(secureStats?.cnt || 0) + Number(trashStats?.cnt || 0);
 
     // A. Espace des fichiers R2 (stockage physique réel sur Cloudflare R2)
     const totalFileR2Bytes = Number(videoStats?.compBytes || 0) + Number(audioStats?.compBytes || 0) + 
                              Number(imageStats?.compBytes || 0) + Number(docStats?.compBytes || 0) + 
                              Number(classeurStats?.compBytes || 0) + Number(matiereFileStats?.compBytes || 0) + 
+                             Number(studyFileStats?.compBytes || 0) +
                              Number(downloadStats?.compBytes || 0) + Number(secureStats?.compBytes || 0) + 
                              Number(trashStats?.compBytes || 0);
 
@@ -2479,19 +2525,31 @@ async function recalculateAndSaveUserStorage(db, userId) {
     // B. Espace total Base de données Cloudflare D1
     // Somme des octets textuels réels de l'utilisateur + overhead SQLite (~160 octets de structure B-Tree par ligne)
     const totalD1TextBytes = Number(productStats?.textBytes || 0) + Number(shopStats?.textBytes || 0) + Number(cartStats?.textBytes || 0) +
+                             Number(sellerFollowStats?.textBytes || 0) + Number(prodInteractionStats?.textBytes || 0) +
                              Number(chatStats?.textBytes || 0) + Number(sessionStats?.textBytes || 0) + Number(aiContentStats?.textBytes || 0) +
-                             Number(alarmStats?.textBytes || 0) + Number(gradeStats?.textBytes || 0) +
-                             Number(noteStats?.textBytes || 0) + Number(linkStats?.textBytes || 0) +
-                             Number(calendarStats?.textBytes || 0) + Number(scheduleStats?.textBytes || 0) +
+                             Number(alarmStats?.textBytes || 0) + Number(gradeStats?.textBytes || 0) + Number(noteStats?.textBytes || 0) +
+                             Number(linkStats?.textBytes || 0) + Number(calendarStats?.textBytes || 0) +
+                             Number(scheduleConfigStats?.textBytes || 0) + Number(scheduleStats?.textBytes || 0) +
                              Number(matiereMetaStats?.textBytes || 0) +
-                             Number(favStats?.textBytes || 0) + Number(pinnedStats?.textBytes || 0) + Number(sharedFolderStats?.textBytes || 0);
+                             Number(favStats?.textBytes || 0) + Number(pinnedStats?.textBytes || 0) +
+                             Number(sharedFolderStats?.textBytes || 0) + Number(sharedFilesStats?.textBytes || 0) +
+                             Number(secureConfigStats?.textBytes || 0) +
+                             Number(userProfileStats?.textBytes || 0) + Number(userPrefsStats?.textBytes || 0) +
+                             Number(notifStats?.textBytes || 0) + Number(referralStats?.textBytes || 0);
 
-    const totalD1Rows = totalFiles + Number(folderCount?.cnt || 0) + productCount + Number(shopStats?.cnt || 0) + Number(cartStats?.cnt || 0) +
+    const totalD1Rows = totalFiles + Number(folderCount?.cnt || 0) +
+                        productCount + Number(shopStats?.cnt || 0) + Number(cartStats?.cnt || 0) +
+                        Number(sellerFollowStats?.cnt || 0) + Number(prodInteractionStats?.cnt || 0) +
                         Number(chatStats?.cnt || 0) + Number(sessionStats?.cnt || 0) + Number(aiContentStats?.cnt || 0) +
                         Number(alarmStats?.cnt || 0) + Number(gradeStats?.cnt || 0) + Number(noteStats?.cnt || 0) +
-                        Number(linkStats?.cnt || 0) + Number(calendarStats?.cnt || 0) + Number(scheduleStats?.cnt || 0) +
+                        Number(linkStats?.cnt || 0) + Number(calendarStats?.cnt || 0) +
+                        Number(scheduleConfigStats?.cnt || 0) + Number(scheduleStats?.cnt || 0) +
                         Number(matiereMetaStats?.cnt || 0) +
-                        Number(favStats?.cnt || 0) + Number(pinnedStats?.cnt || 0) + Number(sharedFolderStats?.cnt || 0);
+                        Number(favStats?.cnt || 0) + Number(pinnedStats?.cnt || 0) +
+                        Number(sharedFolderStats?.cnt || 0) + Number(sharedFilesStats?.cnt || 0) +
+                        Number(secureConfigStats?.cnt || 0) +
+                        Number(userProfileStats?.cnt || 0) + Number(userPrefsStats?.cnt || 0) +
+                        Number(notifStats?.cnt || 0) + Number(referralStats?.cnt || 0);
 
     const estimatedD1Bytes = Math.max(1024, totalD1TextBytes + (totalD1Rows * 160));
 
@@ -2499,6 +2557,7 @@ async function recalculateAndSaveUserStorage(db, userId) {
     const totalFileOriginalBytes = Number(videoStats?.origBytes || 0) + Number(audioStats?.origBytes || 0) + 
                                    Number(imageStats?.origBytes || 0) + Number(docStats?.origBytes || 0) + 
                                    Number(classeurStats?.origBytes || 0) + Number(matiereFileStats?.origBytes || 0) + 
+                                   Number(studyFileStats?.origBytes || 0) +
                                    Number(downloadStats?.origBytes || 0) + Number(secureStats?.origBytes || 0) + 
                                    Number(trashStats?.origBytes || 0);
 
@@ -2519,6 +2578,7 @@ async function recalculateAndSaveUserStorage(db, userId) {
         documents: { count: Number(docStats?.cnt || 0), originalBytes: Number(docStats?.origBytes || 0), compressedBytes: Number(docStats?.compBytes || 0) },
         classeur: { count: Number(classeurStats?.cnt || 0), originalBytes: Number(classeurStats?.origBytes || 0), compressedBytes: Number(classeurStats?.compBytes || 0) },
         matieres_files: { count: Number(matiereFileStats?.cnt || 0), originalBytes: Number(matiereFileStats?.origBytes || 0), compressedBytes: Number(matiereFileStats?.compBytes || 0) },
+        study_files: { count: Number(studyFileStats?.cnt || 0), originalBytes: Number(studyFileStats?.origBytes || 0), compressedBytes: Number(studyFileStats?.compBytes || 0) },
         downloads: { count: Number(downloadStats?.cnt || 0), originalBytes: Number(downloadStats?.origBytes || 0), compressedBytes: Number(downloadStats?.compBytes || 0) },
         secure: { count: Number(secureStats?.cnt || 0), originalBytes: Number(secureStats?.origBytes || 0), compressedBytes: Number(secureStats?.compBytes || 0) },
         trash: { count: Number(trashStats?.cnt || 0), originalBytes: Number(trashStats?.origBytes || 0), compressedBytes: Number(trashStats?.compBytes || 0) },
@@ -2529,7 +2589,9 @@ async function recalculateAndSaveUserStorage(db, userId) {
         products_r2_bytes: estimatedProductR2Bytes,
         shop_profile_bytes: Number(shopStats?.textBytes || 0),
         cart_items_count: Number(cartStats?.cnt || 0),
-        cart_items_bytes: Number(cartStats?.textBytes || 0)
+        cart_items_bytes: Number(cartStats?.textBytes || 0),
+        seller_follows_count: Number(sellerFollowStats?.cnt || 0),
+        interactions_count: Number(prodInteractionStats?.cnt || 0)
       },
       espace_etude_ia: {
         chat_messages_count: Number(chatStats?.cnt || 0),
@@ -2537,7 +2599,9 @@ async function recalculateAndSaveUserStorage(db, userId) {
         study_sessions_count: Number(sessionStats?.cnt || 0),
         study_sessions_bytes: Number(sessionStats?.textBytes || 0),
         ai_creations_count: Number(aiContentStats?.cnt || 0),
-        ai_creations_bytes: Number(aiContentStats?.textBytes || 0)
+        ai_creations_bytes: Number(aiContentStats?.textBytes || 0),
+        imported_study_files_count: Number(studyFileStats?.cnt || 0),
+        imported_study_files_bytes: Number(studyFileStats?.origBytes || 0)
       },
       applications: {
         horloge_alarmes: { count: Number(alarmStats?.cnt || 0), bytes: Number(alarmStats?.textBytes || 0) },
@@ -2545,10 +2609,13 @@ async function recalculateAndSaveUserStorage(db, userId) {
         bloc_notes: { count: Number(noteStats?.cnt || 0), bytes: Number(noteStats?.textBytes || 0) },
         liens_crees: { count: Number(linkStats?.cnt || 0), bytes: Number(linkStats?.textBytes || 0) },
         agenda_calendrier: { count: Number(calendarStats?.cnt || 0), bytes: Number(calendarStats?.textBytes || 0) },
-        emploi_du_temps: { count: Number(scheduleStats?.cnt || 0), bytes: Number(scheduleStats?.textBytes || 0) },
+        emploi_du_temps: { count: Number(scheduleStats?.cnt || 0) + Number(scheduleConfigStats?.cnt || 0), bytes: Number(scheduleStats?.textBytes || 0) + Number(scheduleConfigStats?.textBytes || 0) },
         matieres_creees: { count: Number(matiereMetaStats?.cnt || 0), bytes: Number(matiereMetaStats?.textBytes || 0) },
         favoris_epingles: { count: Number(favStats?.cnt || 0) + Number(pinnedStats?.cnt || 0), bytes: Number(favStats?.textBytes || 0) + Number(pinnedStats?.textBytes || 0) },
-        dossiers_partages: { count: Number(sharedFolderStats?.cnt || 0), bytes: Number(sharedFolderStats?.textBytes || 0) }
+        dossiers_partages: { count: Number(sharedFolderStats?.cnt || 0), bytes: Number(sharedFolderStats?.textBytes || 0) + Number(sharedFilesStats?.textBytes || 0) },
+        profil_et_compte: { count: Number(userProfileStats?.cnt || 0), bytes: Number(userProfileStats?.textBytes || 0) + Number(userPrefsStats?.textBytes || 0) },
+        notifications: { count: Number(notifStats?.cnt || 0), bytes: Number(notifStats?.textBytes || 0) },
+        parrainages: { count: Number(referralStats?.cnt || 0), bytes: Number(referralStats?.textBytes || 0) }
       },
       exclusions_garanties: [
         "published_documents (ressources publiques de la bibliothèque)",
@@ -4889,6 +4956,72 @@ var index_default = {
           recalculateAndSaveUserStorage(env.DB, file.user_id).catch(() => {});
         }
         return jsonResponse({ success: true, message: "Fichier supprim\xE9" }, 200, origin);
+      }
+      if (path === "/api/study-files") {
+        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
+        await ensureCompressionAndStorageTables(env.DB);
+        if (method === "GET") {
+          const userId = url.searchParams.get("userId");
+          if (!userId) return errorResponse("userId requis", 400, origin);
+          const { results } = await env.DB.prepare("SELECT * FROM study_files WHERE user_id = ? ORDER BY imported_at DESC, created_at DESC").bind(userId).all().catch(() => ({ results: [] }));
+          return jsonResponse({ success: true, data: results || [] }, 200, origin);
+        }
+        if (method === "POST") {
+          const body = await request.json();
+          const { id, userId, name, size, type, extension, r2Key, fileUrl, isFavorite, importedAt, originalSizeBytes, compressedSizeBytes } = body;
+          const origBytes = originalSizeBytes || size || 0;
+          const compBytes = compressedSizeBytes || origBytes;
+          const ratio = origBytes > 0 ? Math.round(((origBytes - compBytes) / origBytes) * 1000) / 10 : 0;
+          await env.DB.prepare(`
+            INSERT INTO study_files (id, user_id, name, size, size_bytes, original_size_bytes, compressed_size_bytes, compression_ratio, type, extension, r2_key, file_url, is_favorite, imported_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              size = excluded.size,
+              size_bytes = excluded.size_bytes,
+              original_size_bytes = excluded.original_size_bytes,
+              compressed_size_bytes = excluded.compressed_size_bytes,
+              compression_ratio = excluded.compression_ratio,
+              type = excluded.type,
+              extension = excluded.extension,
+              r2_key = excluded.r2_key,
+              file_url = excluded.file_url,
+              is_favorite = excluded.is_favorite,
+              imported_at = excluded.imported_at,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(id || crypto.randomUUID(), userId, name, size || 0, size || 0, origBytes, compBytes, ratio, type || "application/octet-stream", extension || "", r2Key || "", fileUrl || "", isFavorite ? 1 : 0, importedAt || Date.now()).run();
+          
+          try {
+            await env.DB.prepare(`
+              INSERT INTO file_compression_records (
+                id, user_id, file_name, category, folder_id,
+                original_size_bytes, original_size_formatted,
+                compressed_size_bytes, compressed_size_formatted,
+                saved_bytes, compression_ratio, r2_key
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).bind(
+              id, userId, name, 'study', 'study_imported',
+              origBytes, formatBytes(origBytes),
+              compBytes, formatBytes(compBytes),
+              Math.max(0, origBytes - compBytes), ratio, r2Key || ''
+            ).run();
+          } catch {}
+
+          if (userId) recalculateAndSaveUserStorage(env.DB, userId).catch(() => {});
+          return jsonResponse({ success: true, message: "Fichier d'\xE9tude enregistr\xE9" }, 201, origin);
+        }
+      }
+      if (path.startsWith("/api/study-files/") && method === "DELETE") {
+        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
+        await ensureCompressionAndStorageTables(env.DB);
+        const id = path.split("/")[3];
+        const file = await env.DB.prepare("SELECT r2_key, user_id FROM study_files WHERE id = ?").bind(id).first().catch(() => null);
+        if (file?.r2_key && env.BUCKET) {
+          try { await env.BUCKET.delete(file.r2_key); } catch (e) {}
+        }
+        await env.DB.prepare("DELETE FROM study_files WHERE id = ?").bind(id).run().catch(() => {});
+        if (file?.user_id) recalculateAndSaveUserStorage(env.DB, file.user_id).catch(() => {});
+        return jsonResponse({ success: true, message: "Fichier d'\xE9tude supprim\xE9" }, 200, origin);
       }
       if (path === "/api/storage/upload" && method === "PUT") {
         const key = url.searchParams.get("key");

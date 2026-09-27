@@ -8,6 +8,7 @@ import { buildAiStudyKey } from '../services/storageUtils';
 import { storeFileBlob, deleteFileBlob, getFileBlobUrl, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
 import { getGalleryFilesForCategory } from '../data/categoryFilesData';
 import { isGalleryOrDemoFile } from './FilesMenuView';
+import { compressFile } from '../utils/fileCompressor';
 
 interface LeftMenuProps {
   isCenterFullscreen: boolean;
@@ -221,10 +222,17 @@ export function LeftMenu({
         continue;
       }
 
+      // Compression intelligente automatique
+      const compResult = await compressFile(file);
+      const fileToStore = compResult.file;
+      const originalSizeBytes = compResult.originalSizeBytes;
+      const compressedSizeBytes = compResult.compressedSizeBytes;
+      const compressionRatio = compResult.compressionRatio;
+
       const now = Date.now() + idx;
       const id = `file-${now}-${Math.random().toString(36).substring(2, 7)}`;
-      await storeFileBlob(id, file);
-      const localUrl = URL.createObjectURL(file);
+      await storeFileBlob(id, fileToStore);
+      const localUrl = URL.createObjectURL(fileToStore);
       const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
       const extVal = file.name.split('.').pop()?.toUpperCase() || 'FICHIER';
 
@@ -232,7 +240,8 @@ export function LeftMenu({
         id,
         name: file.name,
         type: file.type || 'file',
-        size: file.size,
+        size: originalSizeBytes,
+        sizeBytes: originalSizeBytes,
         date: new Date().toLocaleDateString('fr-FR'),
         extension: extVal,
         isImage: file.type.startsWith('image/'),
@@ -252,7 +261,7 @@ export function LeftMenu({
         userId,
         matiereId: currentFolderName && currentFolderName !== 'Mes fichiers' ? currentFolderName : null,
         name: file.name,
-        size: file.size,
+        size: originalSizeBytes,
         type: file.type || 'application/octet-stream',
         extension: extVal,
         r2Key: null,
@@ -260,32 +269,37 @@ export function LeftMenu({
         isFavorite: false,
         isImported: true,
         isStudySession: true,
-        lastImported: now
+        lastImported: now,
+        originalSizeBytes,
+        compressedSizeBytes,
+        compressionRatio
       }).catch(() => {});
 
       StudyCloudAPI.registerStudyFile({
         id,
         userId,
         name: file.name,
-        size: file.size,
+        size: originalSizeBytes,
         type: file.type || 'application/octet-stream',
         extension: extVal,
         r2Key: null,
         fileUrl: localUrl,
         isFavorite: false,
-        importedAt: now
+        importedAt: now,
+        originalSizeBytes,
+        compressedSizeBytes
       }).catch(() => {});
 
       // Upload vers Cloudflare R2 (dossier structuré ai-studies/)
       const r2Key = buildAiStudyKey(userId, id, file.name);
-      StudyCloudAPI.uploadFileToR2(file, r2Key).then(res => {
+      StudyCloudAPI.uploadFileToR2(fileToStore, r2Key, compResult.mimeType, originalSizeBytes).then(res => {
         if (res && res.url) {
           StudyCloudAPI.registerFileMetadata({
             id,
             userId,
             matiereId: currentFolderName && currentFolderName !== 'Mes fichiers' ? currentFolderName : null,
             name: file.name,
-            size: file.size,
+            size: originalSizeBytes,
             type: file.type || 'application/octet-stream',
             extension: extVal,
             r2Key: res.key,
@@ -293,20 +307,25 @@ export function LeftMenu({
             isFavorite: false,
             isImported: true,
             isStudySession: true,
-            lastImported: now
+            lastImported: now,
+            originalSizeBytes,
+            compressedSizeBytes,
+            compressionRatio
           }).catch(() => {});
 
           StudyCloudAPI.registerStudyFile({
             id,
             userId,
             name: file.name,
-            size: file.size,
+            size: originalSizeBytes,
             type: file.type || 'application/octet-stream',
             extension: extVal,
             r2Key: res.key,
             fileUrl: res.url,
             isFavorite: false,
-            importedAt: now
+            importedAt: now,
+            originalSizeBytes,
+            compressedSizeBytes
           }).catch(() => {});
         }
       }).catch(() => {});
