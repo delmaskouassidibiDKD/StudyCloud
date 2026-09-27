@@ -25,6 +25,7 @@ export interface UploadTask {
   category: FileItem['category'];
   folderId?: string;
   folderName?: string;
+  uploadSource?: string;
   status: 'pending' | 'uploading' | 'completed' | 'error';
   progress: number; // 0 - 100
   error?: string;
@@ -194,6 +195,7 @@ class UploadQueueManager {
       category?: FileItem['category'];
       folderId?: string;
       folderName?: string;
+      uploadSource?: string;
     } = {}
   ): void {
     const now = Date.now();
@@ -210,6 +212,7 @@ class UploadQueueManager {
         category: (item.category || options.category || 'documents') as any,
         folderId: options.folderId || item.folderId,
         folderName: options.folderName || item.source,
+        uploadSource: options.uploadSource || (item as any).uploadSource || `btn-${options.category || 'auto'}`,
         status: 'pending',
         progress: 10,
         retries: 0,
@@ -282,7 +285,7 @@ class UploadQueueManager {
       let serverFileId: string | undefined = undefined;
 
       if (category === 'classeur' && folderId) {
-        const uploadRes = await CloudStorageAPI.uploadFileToCategoryR2(file, 'classeur', fileName, folderId);
+        const uploadRes = await CloudStorageAPI.uploadFileToCategoryR2(file, 'classeur', fileName, folderId, task.uploadSource);
         uploadUrl = uploadRes.url;
         r2Key = uploadRes.key;
         serverFileId = uploadRes.id;
@@ -302,7 +305,8 @@ class UploadQueueManager {
           uploadCat,
           fileName,
           folderId,
-          previewDataUrl || undefined
+          previewDataUrl || undefined,
+          task.uploadSource
         );
 
         if (res?.success && res.file) {

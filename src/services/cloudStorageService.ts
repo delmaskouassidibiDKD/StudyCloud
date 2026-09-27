@@ -774,16 +774,21 @@ export const CloudStorageAPI = {
     category: 'auto' | 'classeur' | 'audio' | 'images' | 'videos' | 'documents',
     fileName: string,
     folderId?: string,
-    thumbnailDataUrl?: string
+    thumbnailDataUrl?: string,
+    uploadSource?: string
   ): Promise<{ success: boolean; category?: string; detectedCategory?: string; file?: FileItem; error?: string }> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const uploadUrl = `${baseUrl}/api/cloud/upload?category=${encodeURIComponent(category)}&name=${encodeURIComponent(fileName)}&folderId=${encodeURIComponent(folderId || '')}&userId=${getUserIdParam()}`;
+      const sourceQuery = uploadSource ? `&source=${encodeURIComponent(uploadSource)}` : '';
+      const uploadUrl = `${baseUrl}/api/cloud/upload?category=${encodeURIComponent(category)}&name=${encodeURIComponent(fileName)}&folderId=${encodeURIComponent(folderId || '')}&userId=${getUserIdParam()}${sourceQuery}`;
       
       const headers: Record<string, string> = {
         'Content-Type': file.type || 'application/octet-stream',
         'x-user-id': getCurrentUserId() || 'default-user',
       };
+      if (uploadSource) {
+        headers['x-upload-source'] = uploadSource;
+      }
       if (thumbnailDataUrl && thumbnailDataUrl.startsWith('data:image')) {
         headers['x-thumbnail-data'] = thumbnailDataUrl;
       }
@@ -818,9 +823,10 @@ export const CloudStorageAPI = {
     file: File | Blob,
     category: 'classeur' | 'audio' | 'images' | 'videos' | 'documents' | 'downloads' | 'secure',
     fileName: string,
-    folderId?: string
+    folderId?: string,
+    uploadSource?: string
   ): Promise<{ success: boolean; id?: string; key?: string; url?: string; error?: string }> {
-    const res = await this.uploadFile(file, category as any, fileName, folderId);
+    const res = await this.uploadFile(file, category as any, fileName, folderId, undefined, uploadSource);
     if (!res.success) {
       return { success: false, error: res.error };
     }

@@ -4772,60 +4772,62 @@ var index_default = {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise pour t\xE9l\xE9verser un fichier", 401, origin);
         const requestedCategory = (url.searchParams.get("category") || "auto").toLowerCase().trim();
+        const uploadSource = (url.searchParams.get("source") || request.headers.get("x-upload-source") || "btn-auto").toLowerCase().trim();
         const fileName = url.searchParams.get("name") || "fichier_" + Date.now();
         const folderId = url.searchParams.get("folderId") || "";
         const contentType = request.headers.get("Content-Type") || "application/octet-stream";
         const normMime = (contentType || "").toLowerCase().trim();
         const ext = fileName.includes(".") ? (fileName.split(".").pop() || "").toLowerCase().trim() : "";
+        const lowerName = fileName.toLowerCase();
+
         const imageExts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico", "tiff", "tif", "heic", "heif", "avif", "raw", "psd", "ai", "eps"];
-        const videoExts = ["mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "3gp", "m4v", "ts", "ogv", "mpg", "mpeg", "vob", "m2ts", "divx"];
-        const audioExts = ["mp3", "wav", "ogg", "flac", "m4a", "aac", "wma", "opus", "amr", "weba", "aiff", "alac", "mid", "midi", "caf", "3ga", "m4b", "m4p", "oga"];
+        const videoExts = ["mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "ts", "ogv", "mpg", "mpeg", "vob", "m2ts", "divx"];
+        const audioExts = ["mp3", "wav", "ogg", "flac", "m4a", "aac", "wma", "opus", "amr", "weba", "aiff", "alac", "mid", "midi", "caf", "3ga", "3gp", "m4b", "m4p", "oga"];
         const docExts = ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "odt", "ods", "odp", "rtf", "tex", "epub", "md", "xml", "json"];
         
-        // DÉTECTION INVIOLABLE : L'extension est prioritaire sur le MIME car Chrome marque souvent .m4a en video/mp4 ou .opus en video/ogg
+        // DÉTECTION ROBUSTE DES AUDIOS WHATSAPP & ENREGISTREMENTS VOCAUX
+        const isWhatsAppVoice = lowerName.startsWith("aud-") || lowerName.startsWith("ptt-") || lowerName.includes("whatsapp") || lowerName.includes("voice_") || lowerName.includes("audio_");
+
         let detectedNature = "documents";
-        if (audioExts.includes(ext)) {
+        if (isWhatsAppVoice || audioExts.includes(ext) || (ext === "3gp" && (isWhatsAppVoice || normMime.includes("audio"))) || normMime.includes("opus") || normMime.includes("ogg") || normMime.startsWith("audio/")) {
           detectedNature = "audio";
-        } else if (imageExts.includes(ext)) {
+        } else if (imageExts.includes(ext) || normMime.startsWith("image/")) {
           detectedNature = "images";
-        } else if (videoExts.includes(ext)) {
+        } else if (videoExts.includes(ext) || normMime.startsWith("video/")) {
           detectedNature = "videos";
-        } else if (docExts.includes(ext)) {
+        } else if (docExts.includes(ext) || normMime.startsWith("text/")) {
           detectedNature = "documents";
-        } else if (normMime.startsWith("audio/")) {
-          detectedNature = "audio";
-        } else if (normMime.startsWith("image/")) {
-          detectedNature = "images";
-        } else if (normMime.startsWith("video/")) {
-          detectedNature = "videos";
         } else {
           detectedNature = "documents";
         }
+
         let finalCategory;
-        if (requestedCategory === "auto" || requestedCategory === "" || requestedCategory === "all") {
-          finalCategory = detectedNature;
-        } else if (requestedCategory === "classeur") {
-          finalCategory = "classeur";
-        } else if (requestedCategory === "images" || requestedCategory === "photos") {
-          if (detectedNature !== "images") {
-            return errorResponse("Ce fichier ne correspond pas au menu Images. Veuillez importer une image (PNG, JPG, SVG, WebP...).", 400, origin);
-          }
-          finalCategory = "images";
-        } else if (requestedCategory === "videos") {
+        // CONTRÔLE DOUANIER STRICT BASÉ SUR LE BOUTON SOURCE (uploadSource) ET LA CATÉGORIE
+        if (uploadSource === "btn-menu-videos" || requestedCategory === "videos") {
           if (detectedNature !== "videos") {
-            return errorResponse("Ce fichier ne correspond pas au menu Vid\xE9os. Veuillez importer une vid\xE9o (MP4, MKV, AVI, WebM...).", 400, origin);
+            const extra = (isWhatsAppVoice || detectedNature === "audio")
+              ? " Ce fichier semble être un fichier audio/vocal (ex: WhatsApp). Veuillez utiliser le bouton dédié « Importer un audio » dans le menu Audio / Musique !"
+              : " Veuillez importer un fichier vidéo (MP4, MKV, AVI, WebM...).";
+            return errorResponse("Ce fichier ne correspond pas au bouton d'importation Vidéos." + extra, 400, origin);
           }
           finalCategory = "videos";
-        } else if (requestedCategory === "audio" || requestedCategory === "musique") {
+        } else if (uploadSource === "btn-menu-audio" || requestedCategory === "audio" || requestedCategory === "musique") {
           if (detectedNature !== "audio") {
-            return errorResponse("Ce fichier ne correspond pas au menu Audio. Veuillez importer un fichier audio (MP3, WAV, FLAC, M4A...).", 400, origin);
+            return errorResponse("Ce fichier ne correspond pas au bouton d'importation Audio / Musique. Veuillez importer un fichier sonore ou musical (MP3, WAV, FLAC, M4A, OPUS, OGG, WhatsApp...).", 400, origin);
           }
           finalCategory = "audio";
-        } else if (requestedCategory === "documents" || requestedCategory === "docs") {
+        } else if (uploadSource === "btn-menu-images" || requestedCategory === "images" || requestedCategory === "photos") {
+          if (detectedNature !== "images") {
+            return errorResponse("Ce fichier ne correspond pas au bouton d'importation Images. Veuillez importer une image (PNG, JPG, SVG, WebP...).", 400, origin);
+          }
+          finalCategory = "images";
+        } else if (uploadSource === "btn-menu-documents" || requestedCategory === "documents" || requestedCategory === "docs") {
           if (detectedNature !== "documents") {
-            return errorResponse("Ce fichier ne correspond pas au menu Documents. Veuillez importer un document (PDF, Word, Excel, texte...).", 400, origin);
+            return errorResponse("Ce fichier ne correspond pas au bouton d'importation Documents. Veuillez importer un document (PDF, Word, Excel, texte...).", 400, origin);
           }
           finalCategory = "documents";
+        } else if (uploadSource === "btn-classeur-folder" || requestedCategory === "classeur") {
+          finalCategory = "classeur";
         } else {
           finalCategory = detectedNature;
         }

@@ -111,7 +111,7 @@ import { PdfHorizontalViewer } from './PdfHorizontalViewer';
 import { CloudDataStore } from '../services/cloudDataStore';
 import { UploadQueue } from '../services/uploadQueue';
 import { UploadQueueWidget } from './UploadQueueWidget';
-import { detectFileCategory, validateFilesForMenu, CATEGORY_LABELS } from '../services/fileTypeValidator';
+import { detectFileCategory, validateFilesForMenu, CATEGORY_LABELS, isWhatsAppAudio, EXTENSION_MAP } from '../services/fileTypeValidator';
 
 // Nettoyage immédiat de tout fichier figé en localStorage pour éviter le plantage QuotaExceededError
 if (typeof window !== 'undefined') {
@@ -1319,9 +1319,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     };
   }, [activeMenuFileId, docMenuOpenId, audioMenuSongId, menuOpenId, isPlayerMenuOpen, isHeaderMenuOpen, activeFolderMenuId]);
 
-  // Références et état pour l'import de fichier
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const categoryFileInputRef = useRef<HTMLInputElement>(null);
+  // Références dédiées et isolées pour chaque bouton d'importation
+  const fileInputRef = useRef<HTMLInputElement>(null); // Accueil (+ Importer)
+  const videoFileInputRef = useRef<HTMLInputElement>(null); // Menu Vidéos
+  const audioFileInputRef = useRef<HTMLInputElement>(null); // Menu Audio / Musique
+  const imageFileInputRef = useRef<HTMLInputElement>(null); // Menu Images
+  const documentFileInputRef = useRef<HTMLInputElement>(null); // Menu Documents
+  const classeurFolderFileInputRef = useRef<HTMLInputElement>(null); // Dossier ouvert du Classeur
   const [isUploading, setIsUploading] = useState(false);
 
   // Sous-page ouverte
@@ -1887,18 +1891,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   const menuImportConfig = getMenuImportConfig();
 
-  // A. EXÉCUTION OPTION A (REJET STRICT DANS LES SOUS-MENUS SPÉCIFIQUES)
-  // Bloque immédiatement le fichier au niveau du navigateur si non conforme :
-  // Aucun stockage local, aucun téléversement, aucune apparition dans l'interface !
-  const processMenuFiles = (files: File[], importConfig: NonNullable<ReturnType<typeof getMenuImportConfig>>) => {
+  // FONCTION UNIFIÉE D'EXÉCUTION DÉDIÉE PAR RÔLE DE BOUTON ET CATÉGORIE
+  // Chaque bouton a son rôle explicite (uploadSource) transmis directement au Cloudflare Worker
+  const executeDedicatedMenuImport = (
+    files: File[],
+    targetCategory: 'videos' | 'audio' | 'images' | 'documents' | 'classeur',
+    uploadSource: string,
+    folderId?: string,
+    folderName?: string
+  ) => {
     if (!files || files.length === 0) return;
 
-    const { validFiles, rejectedFiles } = validateFilesForMenu(files, importConfig.category as any);
+    // Validation Option A stricte propre à chaque menu
+    const { validFiles, rejectedFiles } = validateFilesForMenu(files, targetCategory);
 
     if (rejectedFiles.length > 0) {
       const first = rejectedFiles[0];
-      const targetLabel = CATEGORY_LABELS[importConfig.category as any] || 'ce menu';
-      const detectedLabel = CATEGORY_LABELS[first.detectedCategory] || first.detectedCategory;
+      const targetLabel = CATEGORY_LABELS[targetCategory] || targetCategory;
+      const isWa = isWhatsAppAudio(first.file.name, first.file.type);
+      const detectedLabel = isWa ? 'Audio (WhatsApp / Vocal)' : (CATEGORY_LABELS[first.detectedCategory] || first.detectedCategory);
 
       // OUVERTURE IMMÉDIATE DU MODAL D'ALERTE AU MILIEU DE L'ÉCRAN
       setIncompatibleAlertInfo({
@@ -1908,15 +1919,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         reason: first.reason,
       });
 
-      // Notification toast en complément
       showProfileToast(
         `❌ Fichier bloqué par le navigateur : ${first.reason}`,
         'error'
       );
 
       if (validFiles.length === 0) {
-        // Arrêt total : aucun enregistrement, aucun upload, aucune apparition !
-        return;
+        return; // Blocage total : aucun upload ni apparition
       } else {
         showProfileToast(
           `⚠️ ${rejectedFiles.length} fichier(s) bloqué(s) (format interdit dans ${targetLabel}). ${validFiles.length} fichier(s) valide(s) accepté(s).`,
@@ -1927,18 +1936,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     if (validFiles.length === 0) return;
 
-    // Création des FileItems UNIQUEMENT pour les fichiers strictement autorisés
+    // Création des FileItems dédiés au menu cible
     const newItemsWithFiles = validFiles.map((file, idx) => {
       const localBlobUrl = URL.createObjectURL(file);
       const normName = file.name.toLowerCase();
       const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
-      const fileId = `cf-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+      const fileId = `cf-${targetCategory}-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
       const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
 
-      // Sauvegarde IndexedDB immédiate pour le fichier validé
       storeFileBlob(fileId, file).catch(() => {});
 
-      const actualCat = importConfig.category === 'classeur' ? 'documents' : importConfig.category;
+      const actualCat = targetCategory === 'classeur' ? 'documents' : targetCategory;
       const isAud = actualCat === 'audio';
       const isVid = actualCat === 'videos';
 
@@ -1946,7 +1954,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         id: fileId,
         name: file.name,
         category: actualCat,
-        source: importConfig.category === 'classeur' && opened3DFolder ? opened3DFolder.name : 'StudyCloud Local',
+        source: targetCategory === 'classeur' && folderName ? folderName : (
+          targetCategory === 'videos' ? 'Menu Vidéos' :
+          targetCategory === 'audio' ? 'Menu Audio' :
+          targetCategory === 'images' ? 'Menu Images' :
+          targetCategory === 'documents' ? 'Menu Documents' : 'StudyCloud'
+        ),
         size: sizeKb,
         sizeBytes: file.size,
         date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
@@ -1955,7 +1968,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         previewUrl: isAud ? undefined : localBlobUrl,
         videoUrl: isVid ? localBlobUrl : undefined,
         audioUrl: isAud ? localBlobUrl : undefined,
-        originalFolderId: importConfig.folderId
+        originalFolderId: folderId
       };
       return { file, item };
     });
@@ -1963,41 +1976,86 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const newItems = newItemsWithFiles.map(x => x.item);
     const fileIds = newItems.map(x => x.id);
 
-    // Ajout immédiat à la liste du menu dédié
     newItems.forEach(item => {
       unmarkRecentLocallyDeleted(item.id, item.name);
       unmarkFileLocallyDeleted(item.id, item.name);
-      CloudDataStore.addOptimisticFile(item as any, importConfig.category === 'classeur' ? importConfig.folderId : undefined);
+      CloudDataStore.addOptimisticFile(item as any, folderId);
     });
-    if (importConfig.category === 'images') {
+
+    if (targetCategory === 'images') {
       setImagesList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
-    } else if (importConfig.category === 'videos') {
+    } else if (targetCategory === 'videos') {
       setVideosList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
-    } else if (importConfig.category === 'audio') {
+    } else if (targetCategory === 'audio') {
       setAudioList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
-    } else if (importConfig.category === 'documents') {
+    } else if (targetCategory === 'documents') {
       setDocumentsList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
-    } else if (importConfig.category === 'classeur' && importConfig.folderId) {
+    } else if (targetCategory === 'classeur' && folderId) {
       setFolderFilesMap(prev => ({
         ...prev,
-        [importConfig.folderId!]: [...newItems, ...(prev[importConfig.folderId!] || []).filter(f => !fileIds.includes(f.id))]
+        [folderId]: [...newItems, ...(prev[folderId] || []).filter(f => !fileIds.includes(f.id))]
       }));
     }
     setCloudRecentFiles(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))].slice(0, 6));
 
-    // Animation de trait qui se remplit
     startSavingAnimation(fileIds);
 
-    // Envoi en tâche de fond via UploadQueue
+    // Envoi en tâche de fond avec le rôle exact (uploadSource)
     UploadQueue.enqueueExisting(newItemsWithFiles, {
-      category: importConfig.category as any,
-      folderId: importConfig.folderId,
-      folderName: opened3DFolder?.name
+      category: targetCategory as any,
+      folderId,
+      folderName,
+      uploadSource
     });
 
     if (rejectedFiles.length === 0) {
-      showProfileToast(`${validFiles.length} fichier(s) importé(s) dans ${CATEGORY_LABELS[importConfig.category as any] || 'ce menu'} !`, 'success');
+      showProfileToast(`${validFiles.length} fichier(s) importé(s) dans ${CATEGORY_LABELS[targetCategory]} !`, 'success');
     }
+  };
+
+  // 1. Bouton DÉDIÉ du menu VIDÉOS (rôle: btn-menu-videos)
+  const handleVideoMenuFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = e.target.files;
+    if (list && list.length > 0) {
+      executeDedicatedMenuImport(Array.from(list), 'videos', 'btn-menu-videos');
+    }
+    if (videoFileInputRef.current) videoFileInputRef.current.value = '';
+  };
+
+  // 2. Bouton DÉDIÉ du menu AUDIO / MUSIQUE (rôle: btn-menu-audio, support WhatsApp inclus)
+  const handleAudioMenuFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = e.target.files;
+    if (list && list.length > 0) {
+      executeDedicatedMenuImport(Array.from(list), 'audio', 'btn-menu-audio');
+    }
+    if (audioFileInputRef.current) audioFileInputRef.current.value = '';
+  };
+
+  // 3. Bouton DÉDIÉ du menu IMAGES (rôle: btn-menu-images)
+  const handleImageMenuFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = e.target.files;
+    if (list && list.length > 0) {
+      executeDedicatedMenuImport(Array.from(list), 'images', 'btn-menu-images');
+    }
+    if (imageFileInputRef.current) imageFileInputRef.current.value = '';
+  };
+
+  // 4. Bouton DÉDIÉ du menu DOCUMENTS (rôle: btn-menu-documents)
+  const handleDocumentMenuFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = e.target.files;
+    if (list && list.length > 0) {
+      executeDedicatedMenuImport(Array.from(list), 'documents', 'btn-menu-documents');
+    }
+    if (documentFileInputRef.current) documentFileInputRef.current.value = '';
+  };
+
+  // 5. Bouton DÉDIÉ du dossier ouvert CLASSEUR (rôle: btn-classeur-folder)
+  const handleClasseurFolderFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = e.target.files;
+    if (list && list.length > 0 && opened3DFolder) {
+      executeDedicatedMenuImport(Array.from(list), 'classeur', 'btn-classeur-folder', opened3DFolder.id, opened3DFolder.name);
+    }
+    if (classeurFolderFileInputRef.current) classeurFolderFileInputRef.current.value = '';
   };
 
   // B. EXÉCUTION OPTION B (ROUTAGE INTELLIGENT DEPUIS L'ACCUEIL)
@@ -2071,7 +2129,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     );
   };
 
-  // 1. Bouton "+ Importer" de l'Accueil (ou fallback sous-menu sécurisé)
+  // 1. Bouton "+ Importer" de l'Accueil (Routage Automatique Intelligent Option B)
   const handleHomeFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
@@ -2079,32 +2137,34 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     if (fileInputRef.current) fileInputRef.current.value = '';
 
-    // SÉCURITÉ GARANTIE : Si l'utilisateur est actuellement à l'intérieur d'un sous-menu spécifique,
-    // appliquer STRICTEMENT le Rejet Option A au lieu du routage automatique !
-    const activeImportConfig = getMenuImportConfig();
-    if (activeImportConfig) {
-      processMenuFiles(files, activeImportConfig);
+    const viewId = currentSubView?.id || '';
+    const currentTab = isCloudView ? cloudActiveTab : null;
+
+    if (viewId === 'studycloud-category-videos' || currentTab === 'videos') {
+      executeDedicatedMenuImport(files, 'videos', 'btn-menu-videos');
+      return;
+    }
+    if (viewId === 'studycloud-category-audio' || currentTab === 'audio') {
+      executeDedicatedMenuImport(files, 'audio', 'btn-menu-audio');
+      return;
+    }
+    if (viewId === 'studycloud-category-images' || currentTab === 'images') {
+      executeDedicatedMenuImport(files, 'images', 'btn-menu-images');
+      return;
+    }
+    if (viewId === 'studycloud-category-documents' || currentTab === 'documents') {
+      executeDedicatedMenuImport(files, 'documents', 'btn-menu-documents');
+      return;
+    }
+    if (opened3DFolder && (viewId === 'studycloud-classeur-classeur' || currentTab === 'classeur' || currentSubView?.type === 'classeur')) {
+      executeDedicatedMenuImport(files, 'classeur', 'btn-classeur-folder', opened3DFolder.id, opened3DFolder.name);
       return;
     }
 
     processHomeFiles(files);
   };
 
-  // 2. Bouton "+ Importer" dédié d'un sous-menu spécifique (Option A : Rejet Strict)
-  const handleMenuFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fileList = e.target.files;
-    if (!fileList || fileList.length === 0) return;
-    const files = Array.from(fileList) as File[];
-
-    if (categoryFileInputRef.current) categoryFileInputRef.current.value = '';
-
-    const importConfig = getMenuImportConfig();
-    if (!importConfig) return;
-
-    processMenuFiles(files, importConfig);
-  };
-
-  // 3. Gestionnaire universel de Drag & Drop (Déposer un fichier sur la fenêtre)
+  // 2. Gestionnaire universel de Drag & Drop (Déposer un fichier sur la fenêtre)
   const handleGlobalDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -2112,17 +2172,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (!fileList || fileList.length === 0) return;
     const files = Array.from(fileList) as File[];
 
-    if (opened3DFolder) {
-      handleFolderFileUpload({ target: { files: fileList } } as any, opened3DFolder.id);
-      return;
-    }
+    const viewId = currentSubView?.id || '';
+    const currentTab = isCloudView ? cloudActiveTab : null;
 
-    const activeConfig = getMenuImportConfig();
-    if (activeConfig) {
-      // Déposé dans un sous-menu dédié (ex: Vidéos) : Option A (Rejet Strict)
-      processMenuFiles(files, activeConfig);
+    if (viewId === 'studycloud-category-videos' || currentTab === 'videos') {
+      executeDedicatedMenuImport(files, 'videos', 'drag-menu-videos');
+    } else if (viewId === 'studycloud-category-audio' || currentTab === 'audio') {
+      executeDedicatedMenuImport(files, 'audio', 'drag-menu-audio');
+    } else if (viewId === 'studycloud-category-images' || currentTab === 'images') {
+      executeDedicatedMenuImport(files, 'images', 'drag-menu-images');
+    } else if (viewId === 'studycloud-category-documents' || currentTab === 'documents') {
+      executeDedicatedMenuImport(files, 'documents', 'drag-menu-documents');
+    } else if (opened3DFolder && (viewId === 'studycloud-classeur-classeur' || currentTab === 'classeur' || currentSubView?.type === 'classeur')) {
+      executeDedicatedMenuImport(files, 'classeur', 'drag-classeur-folder', opened3DFolder.id, opened3DFolder.name);
     } else {
-      // Déposé sur l'accueil : Option B (Routage Intelligent)
       processHomeFiles(files);
     }
   };
@@ -3384,12 +3447,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return applySorting(filtered);
   }, [imagesList, cloudRecentFiles, subSearchQuery, sortOption]);
 
-  // Liste des vidéos pour le sous-menu Vidéos (Image 3) - FILTRAGE STRICT : AUCUN AUDIO OU AUTRE FORMAT NE PEUT APPARAÎTRE
+  // Liste des vidéos pour le sous-menu Vidéos (Image 3) - FILTRAGE STRICT : AUCUN AUDIO (Y COMPRIS WHATSAPP) NE PEUT APPARAÎTRE
   const filteredVideos = useMemo(() => {
     const delRecent = getDeletedRecentIds();
     const delLocal = getLocallyDeletedFileIds();
     const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
-    const isVid = (f: FileItem) => (f.category === 'videos' || Boolean(f.videoUrl) || f.isVideo || detectFileCategory({ name: f.name, type: f.type || '' }) === 'videos') && f.category !== 'audio' && f.category !== 'images' && f.category !== 'documents';
+    const isVid = (f: FileItem) => {
+      // Les fichiers audio ou notes vocales WhatsApp ne doivent JAMAIS apparaître dans les vidéos
+      if (isWhatsAppAudio(f.name, f.type) || EXTENSION_MAP.audio.includes(((f.name || '').split('.').pop() || '').toLowerCase())) {
+        return false;
+      }
+      return (f.category === 'videos' || Boolean(f.videoUrl) || f.isVideo || detectFileCategory({ name: f.name, type: f.type || '' }) === 'videos') && f.category !== 'audio' && f.category !== 'images' && f.category !== 'documents';
+    };
 
     const list = [...videosList, ...cloudRecentFiles.filter(f => isVid(f) && !videosList.some(s => s.id === f.id || s.name === f.name))].filter(isClean).filter(isVid);
     const filtered = list.filter(vid => {
@@ -3398,12 +3467,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return applySorting(filtered);
   }, [videosList, cloudRecentFiles, subSearchQuery, sortOption]);
 
-  // Liste audio pour le sous-menu Audio (Image 4) - FILTRAGE STRICT : UNIQUEMENT DES FICHIERS AUDIO
+  // Liste audio pour le sous-menu Audio (Image 4) - ACCEPTE TOUS LES AUDIOS ET NOTES VOCALES WHATSAPP
   const filteredAudio = useMemo(() => {
     const delRecent = getDeletedRecentIds();
     const delLocal = getLocallyDeletedFileIds();
     const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
-    const isAud = (f: FileItem) => (f.category === 'audio' || Boolean(f.audioUrl) || f.isAudio || detectFileCategory({ name: f.name, type: f.type || '' }) === 'audio') && f.category !== 'videos' && f.category !== 'images' && f.category !== 'documents';
+    const isAud = (f: FileItem) => {
+      // Tout fichier audio WhatsApp (AUD-..., PTT-..., .opus, .ogg, .m4a) appartient obligatoirement au menu Audio
+      if (isWhatsAppAudio(f.name, f.type) || EXTENSION_MAP.audio.includes(((f.name || '').split('.').pop() || '').toLowerCase())) {
+        return true;
+      }
+      return (f.category === 'audio' || Boolean(f.audioUrl) || f.isAudio || detectFileCategory({ name: f.name, type: f.type || '' }) === 'audio') && f.category !== 'videos' && f.category !== 'images' && f.category !== 'documents';
+    };
 
     const list = [...audioList, ...cloudRecentFiles.filter(f => isAud(f) && !audioList.some(s => s.id === f.id || s.name === f.name))].filter(isClean).filter(isAud);
     const filtered = list.filter(aud => {
@@ -9860,7 +9935,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         : 'fixed top-[64px] md:top-[68px] bottom-0 left-0 md:left-64 right-0 z-30 min-h-[calc(100vh-68px)]'
     }`}>
       
-      {/* Input de sélection de fichier caché pour l'Accueil (mode auto) */}
+      {/* 1. Input DÉDIÉ pour l'Accueil : Routage automatique intelligent */}
       <input
         type="file"
         ref={fileInputRef}
@@ -9869,12 +9944,52 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         className="hidden"
       />
 
-      {/* Input de sélection de fichier caché pour les sous-menus spécifiques (validation stricte) */}
+      {/* 2. Input DÉDIÉ pour le menu VIDÉOS (accept="video/*" strictly calls video files only on Android/iOS/Windows) */}
       <input
         type="file"
-        ref={categoryFileInputRef}
-        accept={menuImportConfig?.accept || '*/*'}
-        onChange={handleMenuFileSelected}
+        ref={videoFileInputRef}
+        accept="video/*"
+        onChange={handleVideoMenuFileSelected}
+        multiple
+        className="hidden"
+      />
+
+      {/* 3. Input DÉDIÉ pour le menu AUDIO / MUSIQUE (inclut tous les audios et vocaux WhatsApp .opus, .ogg, .m4a, .3gp...) */}
+      <input
+        type="file"
+        ref={audioFileInputRef}
+        accept="audio/*,audio/ogg,audio/opus,audio/mp4,audio/mpeg,audio/aac,audio/wav,audio/3gpp,audio/amr,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus,.wma,.amr,.weba,.3ga,.3gp"
+        onChange={handleAudioMenuFileSelected}
+        multiple
+        className="hidden"
+      />
+
+      {/* 4. Input DÉDIÉ pour le menu IMAGES (accept="image/*" strictly calls pictures/gallery only) */}
+      <input
+        type="file"
+        ref={imageFileInputRef}
+        accept="image/*"
+        onChange={handleImageMenuFileSelected}
+        multiple
+        className="hidden"
+      />
+
+      {/* 5. Input DÉDIÉ pour le menu DOCUMENTS */}
+      <input
+        type="file"
+        ref={documentFileInputRef}
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.odt,.ods,.odp,.rtf,.epub,.md,application/pdf,text/*"
+        onChange={handleDocumentMenuFileSelected}
+        multiple
+        className="hidden"
+      />
+
+      {/* 6. Input DÉDIÉ pour les dossiers du CLASSEUR */}
+      <input
+        type="file"
+        ref={classeurFolderFileInputRef}
+        accept="*/*"
+        onChange={handleClasseurFolderFileSelected}
         multiple
         className="hidden"
       />
@@ -10131,17 +10246,78 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </button>
                   )}
 
-                  {/* BOUTON + IMPORTER UN FICHIER DANS LES MENUS AUTORISÉS (Prend la couleur du logo du menu) */}
-                  {menuImportConfig && (
+                  {/* 1. BOUTON DÉDIÉ : MENU VIDÉOS */}
+                  {(currentSubView?.id === 'studycloud-category-videos' || (isCloudView && cloudActiveTab === 'videos')) && (
                     <button
                       type="button"
-                      onClick={() => categoryFileInputRef.current?.click()}
-                      className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border ${menuImportConfig.colorClass} transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black animate-in fade-in duration-150`}
-                      title={menuImportConfig.title}
+                      id="btn-import-menu-videos"
+                      onClick={() => videoFileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-purple-500/40 hover:border-purple-400 text-purple-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black animate-in fade-in duration-150"
+                      title="Importer une vidéo dans le menu Vidéos"
                     >
-                      <Plus className={`w-4 h-4 ${menuImportConfig.iconColor} stroke-[2.5]`} />
-                      <span className="hidden xs:inline">{menuImportConfig.fullLabel}</span>
-                      <span className="xs:hidden">{menuImportConfig.label}</span>
+                      <Plus className="w-4 h-4 text-purple-400 stroke-[2.5]" />
+                      <span className="hidden xs:inline">Importer une vidéo</span>
+                      <span className="xs:hidden">Importer</span>
+                    </button>
+                  )}
+
+                  {/* 2. BOUTON DÉDIÉ : MENU AUDIO / MUSIQUE */}
+                  {(currentSubView?.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio')) && (
+                    <button
+                      type="button"
+                      id="btn-import-menu-audio"
+                      onClick={() => audioFileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-amber-500/40 hover:border-amber-400 text-amber-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black animate-in fade-in duration-150"
+                      title="Importer un fichier audio ou musique (WhatsApp inclus)"
+                    >
+                      <Plus className="w-4 h-4 text-amber-400 stroke-[2.5]" />
+                      <span className="hidden xs:inline">Importer un audio</span>
+                      <span className="xs:hidden">Importer</span>
+                    </button>
+                  )}
+
+                  {/* 3. BOUTON DÉDIÉ : MENU IMAGES */}
+                  {(currentSubView?.id === 'studycloud-category-images' || (isCloudView && cloudActiveTab === 'images')) && (
+                    <button
+                      type="button"
+                      id="btn-import-menu-images"
+                      onClick={() => imageFileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-emerald-500/40 hover:border-emerald-400 text-emerald-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black animate-in fade-in duration-150"
+                      title="Importer une image dans Images"
+                    >
+                      <Plus className="w-4 h-4 text-emerald-400 stroke-[2.5]" />
+                      <span className="hidden xs:inline">Importer une image</span>
+                      <span className="xs:hidden">Importer</span>
+                    </button>
+                  )}
+
+                  {/* 4. BOUTON DÉDIÉ : MENU DOCUMENTS */}
+                  {(currentSubView?.id === 'studycloud-category-documents' || (isCloudView && cloudActiveTab === 'documents')) && (
+                    <button
+                      type="button"
+                      id="btn-import-menu-documents"
+                      onClick={() => documentFileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-blue-500/40 hover:border-blue-400 text-blue-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black animate-in fade-in duration-150"
+                      title="Importer un document dans Documents"
+                    >
+                      <Plus className="w-4 h-4 text-blue-400 stroke-[2.5]" />
+                      <span className="hidden xs:inline">Importer un document</span>
+                      <span className="xs:hidden">Importer</span>
+                    </button>
+                  )}
+
+                  {/* 5. BOUTON DÉDIÉ : DOSSIER DU CLASSEUR */}
+                  {opened3DFolder && (currentSubView?.type === 'classeur' || currentSubView?.id === 'studycloud-classeur-classeur' || (isCloudView && cloudActiveTab === 'classeur')) && (
+                    <button
+                      type="button"
+                      id="btn-import-menu-classeur"
+                      onClick={() => classeurFolderFileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-orange-500/40 hover:border-orange-400 text-orange-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black animate-in fade-in duration-150"
+                      title={`Importer un fichier dans ${opened3DFolder?.name || 'le dossier'}`}
+                    >
+                      <Plus className="w-4 h-4 text-orange-400 stroke-[2.5]" />
+                      <span className="hidden xs:inline">Importer un fichier</span>
+                      <span className="xs:hidden">Importer</span>
                     </button>
                   )}
 

@@ -2,9 +2,8 @@
  * StudyCloud - Validation et Routage Intelligent des Fichiers
  *
  * 1. Détection universelle et inviolable de la nature réelle d'un fichier (Extension prioritaire sur MIME erroné).
- * 2. Option A (Rejet Strict) : Utilisé dans les sous-menus spécifiques (Images, Vidéos, Audio, Documents).
- *    Le navigateur bloque immédiatement le fichier : aucun enregistrement en cache, aucun upload, aucune apparition.
- * 3. Option B (Routage Intelligent) : Utilisé pour le bouton "+ Importer" de l'Accueil.
+ * 2. Prise en charge stricte des audios et notes vocales WhatsApp (.opus, .ogg, .m4a, AUD-..., PTT-...).
+ * 3. Séparation stricte des boutons d'importation par menu avec rôle attribué (uploadSource).
  */
 
 export type FileCategory = 'images' | 'videos' | 'audio' | 'documents' | 'classeur';
@@ -15,12 +14,12 @@ export const EXTENSION_MAP = {
     'heic', 'heif', 'avif', 'raw', 'psd', 'ai', 'eps'
   ],
   videos: [
-    'mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', '3gp', 'm4v', 'ts',
+    'mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', 'm4v', 'ts',
     'ogv', 'mpg', 'mpeg', 'vob', 'm2ts', 'divx', 'asf'
   ],
   audio: [
     'mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma', 'opus', 'amr', 'weba',
-    'aiff', 'alac', 'mid', 'midi', 'caf', '3ga', 'm4b', 'm4p', 'oga'
+    'aiff', 'alac', 'mid', 'midi', 'caf', '3ga', '3gp', 'm4b', 'm4p', 'oga'
   ],
   documents: [
     'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'odt',
@@ -37,16 +36,47 @@ export const CATEGORY_LABELS: Record<FileCategory, string> = {
 };
 
 /**
+ * Détecte si un fichier est un fichier audio / vocal WhatsApp ou téléchargé
+ */
+export function isWhatsAppAudio(name?: string, mime?: string): boolean {
+  const normName = ((name || '')).toLowerCase().trim();
+  const normMime = ((mime || '')).toLowerCase().trim();
+
+  // Préfixes WhatsApp universels (Android, iOS, Web)
+  if (normName.startsWith('aud-') || normName.startsWith('ptt-') || normName.includes('whatsapp') || normName.includes('voice_') || normName.includes('audio_')) {
+    return true;
+  }
+  // Formats typiques des notes vocales et sons téléchargés
+  if (normName.endsWith('.opus') || normName.endsWith('.oga') || normName.endsWith('.3ga') || normName.endsWith('.amr')) {
+    return true;
+  }
+  if (normName.endsWith('.3gp') && (normMime.includes('audio') || normMime.includes('amr') || normName.startsWith('aud-') || normName.startsWith('ptt-'))) {
+    return true;
+  }
+  if (normMime.includes('opus') || normMime.includes('audio/ogg') || normMime.includes('audio/amr') || normMime.includes('audio/3gpp')) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Détecte la véritable nature d'un fichier.
- * RÈGLE D'OR : L'extension est PRIORITAIRE sur le type MIME car sous Windows/Chrome,
- * des fichiers audio (.m4a, .opus, .ogg, .weba) sont fréquemment marqués avec des MIME vidéo (video/mp4, video/ogg, video/webm).
+ * RÈGLE D'OR :
+ * - Les notes vocales et audios WhatsApp sont TOUJOURS 'audio'.
+ * - L'extension est PRIORITAIRE sur le type MIME car sous Windows/Chrome/Android,
+ *   des fichiers audio (.m4a, .opus, .ogg, .weba) sont fréquemment marqués avec des MIME vidéo (video/mp4, video/ogg, video/webm).
  */
 export function detectFileCategory(file: { name?: string; type?: string }): 'images' | 'videos' | 'audio' | 'documents' {
   const normName = ((file && file.name) || '').toLowerCase().trim();
   const mime = ((file && file.type) || '').toLowerCase().trim();
   const ext = normName.includes('.') ? (normName.split('.').pop() || '').toLowerCase().trim() : '';
 
-  // 1. EXTENSIONS STRICTES (Priorité absolue pour empêcher tout faux classement)
+  // 0. VÉRIFICATION IMMÉDIATE POUR LES AUDIOS WHATSAPP ET ENREGISTREMENTS VOCAUX
+  if (isWhatsAppAudio(normName, mime)) {
+    return 'audio';
+  }
+
+  // 1. EXTENSIONS STRICTES
   if (EXTENSION_MAP.audio.includes(ext)) {
     return 'audio';
   }
@@ -61,7 +91,7 @@ export function detectFileCategory(file: { name?: string; type?: string }): 'ima
   }
 
   // 2. TYPES MIME (Seulement si l'extension est absente ou non répertoriée)
-  if (mime.startsWith('audio/')) {
+  if (mime.startsWith('audio/') || mime.includes('opus') || mime.includes('ogg')) {
     return 'audio';
   }
   if (mime.startsWith('image/')) {
@@ -99,14 +129,11 @@ export interface ValidationResult {
 
 /**
  * Validation Option A (Rejet Strict) pour les menus dédiés
- * Si un fichier ne correspond pas au menu cible, il est rejeté avec un motif clair.
- * Le navigateur bloque son apparition, son enregistrement et son téléchargement.
  */
 export function validateFilesForMenu(
   files: File[],
   targetCategory: FileCategory
 ): ValidationResult {
-  // Le classeur accepte tous les types de fichiers de cours
   if (targetCategory === 'classeur') {
     return { validFiles: files, rejectedFiles: [] };
   }
@@ -122,11 +149,18 @@ export function validateFilesForMenu(
     if (detected === targetCategory) {
       validFiles.push(file);
     } else {
-      const detectedLabel = CATEGORY_LABELS[detected] || detected;
+      const isWa = isWhatsAppAudio(file.name, file.type);
+      const detectedLabel = isWa ? 'Audio (WhatsApp / Vocal)' : (CATEGORY_LABELS[detected] || detected);
+
+      let reason = `« ${file.name} » est un fichier ${detectedLabel}. Le menu « ${expectedLabel} » n'accepte strictement que des fichiers ${expectedLabel.toLowerCase()}.`;
+      if (isWa && targetCategory === 'videos') {
+        reason += ` Ce fichier est un fichier audio WhatsApp, veuillez utiliser le bouton dédié « Importer un audio » dans le menu Audio / Musique !`;
+      }
+
       rejectedFiles.push({
         file,
         detectedCategory: detected,
-        reason: `« ${file.name} » est un fichier ${detectedLabel}. Le menu « ${expectedLabel} » n'accepte strictement que des fichiers ${expectedLabel.toLowerCase()}. L'apparition et l'importation de ce fichier ont été bloquées par le navigateur.`,
+        reason,
       });
     }
   }
