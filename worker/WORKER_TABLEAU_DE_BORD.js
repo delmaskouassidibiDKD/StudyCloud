@@ -611,36 +611,40 @@ const TABLES_METADATA = [
     example: "{ id: 'cl_1', name: 'Semestre 1 - Électronique' }"
   },
   {
-    table: 'user_storage_usage',
-    label: 'Table de consommation & facturation D1/R2',
-    uiConnection: "Tableau de bord admin > Consommation des Utilisateurs, Menu Mon Stockage",
-    role: "Table maîtresse consolidée stockant en temps réel le total brut facturé, l'espace physique R2 compressé, les octets D1, l'économie réalisée et le détail JSON de chaque table.",
-    usage: "Calcul du quota et facturation sans perte. Mise à jour automatique à chaque action.",
-    example: "{ user_id: 'usr_1', total_original_bytes: 25400000, total_r2_compressed_bytes: 8400000, compression_ratio: 66.9 }",
-    isExempted: true,
-    exemptReason: "Table technique centrale de facturation et de traçabilité (strictement non décomptée)"
+    table: 'download_files',
+    label: 'Fichiers téléchargés hors-ligne',
+    uiConnection: "Page 1 > Mes fichiers > Fichiers téléchargés",
+    role: "Trace les fichiers et documents sauvegardés pour consultation hors-ligne ou téléchargement rapide.",
+    usage: "Lecture/Écriture lors du téléchargement local de supports de cours.",
+    example: "{ id: 'dl_1', user_id: 'usr_1', name: 'Cours_Optique.pdf', size_bytes: 3500000 }"
   },
   {
-    table: 'file_compression_records',
-    label: 'Historique des compressions de fichiers',
-    uiConnection: "Administration & Télémétrie Cloudflare",
-    role: "Trace pour chaque document importé la taille avant/après compression et le ratio d'économie.",
-    usage: "Journal d'audit de l'optimisation serveur.",
-    example: "{ id: 'fcr_1', original_size_bytes: 5000000, compressed_size_bytes: 1200000, saved_bytes: 3800000 }",
-    isExempted: true,
-    exemptReason: "Journal technique de compression (non décompté du quota personnel)"
+    table: 'secure_files',
+    label: 'Fichiers protégés du coffre-fort sécurisé',
+    uiConnection: "Menu latéral > Dossier Sécurisé (Coffre-fort privé)",
+    role: "Héberge les documents confidentiels, relevés de notes officiels et pièces privées protégés par code PIN.",
+    usage: "Accessible uniquement après saisie du code PIN secret du dossier sécurisé.",
+    example: "{ id: 'sec_1', user_id: 'usr_1', name: 'Releve_Notes_Officiel.pdf', size_bytes: 1200000 }"
   },
   {
-    table: 'chat_messages',
-    label: 'Messages échangés avec l\'IA d\'assistance',
-    uiConnection: "Espace d'étude IA > Chat avec Delmas Robot",
-    role: "Messages directs posés au tuteur IA pendant l'étude d'un document.",
-    usage: "Historique de chat de travail.",
-    example: "{ id: 'cm_1', user_id: 'user_1', message_text: 'Explique-moi la formule de Shannon' }"
+    table: 'secure_folder_config',
+    label: 'Configuration et code PIN du coffre-fort',
+    uiConnection: "Menu Dossier Sécurisé > Paramètres de sécurité & Déverrouillage",
+    role: "Conserve l'empreinte chiffrée (hash) du code PIN à 4 ou 6 chiffres et l'indice de récupération.",
+    usage: "Vérification lors de l'ouverture du dossier sécurisé.",
+    example: "{ user_id: 'usr_1', pin_hash: 'e3b0c44298fc...', is_locked: 1, updated_at: '2026-09-27' }"
+  },
+  {
+    table: 'trash_files',
+    label: 'Corbeille de fichiers supprimés',
+    uiConnection: "Menu latéral > Corbeille (Restauration ou suppression définitive)",
+    role: "Conserve temporairement les fichiers supprimés pendant 30 jours avec possibilité de restauration immédiate.",
+    usage: "Alimentée lors de la suppression d'un document, purgée lors du vidage de la corbeille.",
+    example: "{ id: 'tr_1', user_id: 'usr_1', name: 'Brouillon_TP.docx', size_bytes: 450000, deleted_at: '2026-09-27' }"
   },
   {
     table: 'files',
-    label: 'Fichiers personnels & Sessions IA',
+    label: 'Fichiers personnels & Sessions IA (Matières)',
     uiConnection: "Écran d'accueil > Mes fichiers, Menu latéral gauche > Mes fichiers & Matières, Espace d'étude IA",
     role: "Stocke les métadonnées de chaque document déposé par l'étudiant (PDF, Word, photos d'exercices, polycopiés). Fait le lien direct avec le fichier physique hébergé dans Cloudflare R2.",
     usage: "Écriture lors du téléversement d'un document. Lecture à l'ouverture de 'Mes fichiers', d'une matière ou lors du démarrage d'une session IA.",
@@ -663,20 +667,28 @@ const TABLES_METADATA = [
     example: "{ id: 'mat_45', user_id: 'user_abc', name: 'Électronique de puissance', coefficient: 3, color: '#EA580C' }"
   },
   {
-    table: 'ai_generated_contents',
-    label: 'Contenus d\'étude générés par l\'IA',
-    uiConnection: "Menu latéral droit > Onglet Créations IA (Questionnaires, QCM, Résumés, Cartes mentales, Devoirs)",
-    role: "Stocke au format JSON tous les exercices et modules d'apprentissage créés par l'intelligence artificielle Gemini à partir des polycopiés de cours.",
-    usage: "Écriture quand l'élève clique sur 'Générer un QCM' ou 'Créer une fiche de révision'. Lecture lors de l'ouverture du questionnaire ou de la carte mentale.",
-    example: "{ id: 'ai_987', tool_type: 'questionnaire', title: 'QCM Amplificateur Opérationnel', content_json: '{\"questions\": [...]}' }"
+    table: 'pinned_items',
+    label: 'Éléments et raccourcis épinglés',
+    uiConnection: "Écran d'accueil > Section Accès rapide & Éléments épinglés",
+    role: "Mémorise les documents, notes ou cours que l'étudiant a épinglés en haut de son espace pour un accès direct.",
+    usage: "Lue au chargement de la page d'accueil pour afficher les raccourcis prioritaires.",
+    example: "{ id: 'pin_1', user_id: 'usr_1', item_id: 'doc_1', category: 'documents', created_at: '2026-09-27' }"
   },
   {
-    table: 'user_ai_workspace',
-    label: 'Espace de travail et brouillons IA',
-    uiConnection: "Espace d'étude IA > Panneau d'interaction Delmas Robot",
-    role: "Conserve l'historique complet des prompts, des réponses pédagogiques, des notes de l'élève et des documents joints en session d'étude.",
-    usage: "Mis à jour à chaque question posée au robot tuteur pendant l'étude d'un document.",
-    example: "{ id: 'ws_01', session_id: 'sess_99', role: 'assistant', message_text: 'Le théorème de Thévenin permet de simplifier...', attached_file_name: 'TP1.pdf' }"
+    table: 'user_favorites',
+    label: 'Favoris étudiants (Cours, créations & articles)',
+    uiConnection: "Menu Favoris (Étoile) & Signets rapides",
+    role: "Stocke la liste des ressources, cours, articles de la boutique ou fiches que l'élève a mis en favoris.",
+    usage: "Alimentée au clic sur le bouton favori (étoile / signet).",
+    example: "{ id: 'fav_1', user_id: 'usr_1', item_id: 'prod_9', category: 'boutique' }"
+  },
+  {
+    table: 'chat_messages',
+    label: 'Messages échangés avec l\'IA d\'assistance',
+    uiConnection: "Espace d'étude IA > Chat avec Delmas Robot",
+    role: "Messages directs posés au tuteur IA pendant l'étude d'un document.",
+    usage: "Historique de chat de travail.",
+    example: "{ id: 'cm_1', user_id: 'user_1', message_text: 'Explique-moi la formule de Shannon' }"
   },
   {
     table: 'conversations',
@@ -697,6 +709,14 @@ const TABLES_METADATA = [
     exemptReason: "Messages reçus & chat d'assistance : table générale (non décomptée du quota personnel)"
   },
   {
+    table: 'ai_generated_contents',
+    label: 'Contenus d\'étude générés par l\'IA',
+    uiConnection: "Menu latéral droit > Onglet Créations IA (Questionnaires, QCM, Résumés, Cartes mentales, Devoirs)",
+    role: "Stocke au format JSON tous les exercices et modules d'apprentissage créés par l'intelligence artificielle Gemini à partir des polycopiés de cours.",
+    usage: "Écriture quand l'élève clique sur 'Générer un QCM' ou 'Créer une fiche de révision'. Lecture lors de l'ouverture du questionnaire ou de la carte mentale.",
+    example: "{ id: 'ai_987', tool_type: 'questionnaire', title: 'QCM Amplificateur Opérationnel', content_json: '{\"questions\": [...]}' }"
+  },
+  {
     table: 'ai_creations',
     label: 'Modules interactifs de cours IA',
     uiConnection: "Menu Créations IA > Modules d'auto-évaluation et fiches mémoires",
@@ -705,12 +725,48 @@ const TABLES_METADATA = [
     example: "{ id: 'crea_55', type: 'devoir-complet', title: 'Examen partiel Automatique', content: '{...}' }"
   },
   {
+    table: 'user_ai_workspace',
+    label: 'Espace de travail et brouillons IA',
+    uiConnection: "Espace d'étude IA > Panneau d'interaction Delmas Robot",
+    role: "Conserve l'historique complet des prompts, des réponses pédagogiques, des notes de l'élève et des documents joints en session d'étude.",
+    usage: "Mis à jour à chaque question posée au robot tuteur pendant l'étude d'un document.",
+    example: "{ id: 'ws_01', session_id: 'sess_99', role: 'assistant', message_text: 'Le théorème de Thévenin permet de simplifier...', attached_file_name: 'TP1.pdf' }"
+  },
+  {
+    table: 'study_sessions',
+    label: 'Historique des sessions d\'étude',
+    uiConnection: "Espace d'étude IA > Historique de révision & Statistiques",
+    role: "Suit le temps passé, les matières révisées et les objectifs atteints lors de chaque session d'étude.",
+    usage: "Enregistre la durée et la date de chaque session de révision.",
+    example: "{ id: 'ss_1', user_id: 'usr_1', subject_id: 'mat_1', duration_minutes: 45, date: '2026-09-27' }"
+  },
+  {
     table: 'ai_tasks',
     label: 'Tâches d\'arrière-plan IA',
     uiConnection: "Notifications & Indicateurs de chargement IA",
     role: "Suit l'état d'avancement des générations IA complexes (en cours, terminé, erreur).",
     usage: "Écrit lors du lancement d'une analyse de long document, mis à jour à la fin.",
     example: "{ id: 'task_02', task_type: 'synthese-cours', status: 'completed' }"
+  },
+  {
+    table: 'user_ai_credits',
+    label: 'Crédits et quota d\'utilisation Delmas IA',
+    uiConnection: "Espace d'étude IA & Menu Forfaits IA",
+    role: "Comptabilise le solde de crédits et de mots restants pour les requêtes à l'IA Delmas.",
+    usage: "Vérifiée avant chaque requête IA, débitée du nombre de jetons consommés.",
+    example: "{ user_id: 'usr_1', total_credits: 50000, remaining_credits: 42150, used_credits: 7850 }",
+    isExempted: true,
+    exemptReason: "Table technique de comptabilisation des crédits IA (non comptée dans le stockage)"
+  },
+  {
+    table: 'ai_subscription_plans',
+    label: 'Grille tarifaire des forfaits crédits IA',
+    uiConnection: "Boutique StudyCloud > Onglet Forfaits IA & Cartes d'abonnement",
+    role: "Définit les formules d'accès et recharges de crédits IA (Forfait Découverte, Étudiant Pro, Illimité).",
+    usage: "Lue pour afficher les cartes de tarification des forfaits de l'assistante IA.",
+    example: "{ id: 'ai_pro', name: 'Pack IA Pro 100K Mots', price: 2000, credits_count: 100000, is_active: 1 }",
+    isExempted: true,
+    exemptReason: "Configuration tarifaire globale des forfaits IA (table administrative)"
   },
   {
     table: 'user_certificates',
@@ -748,209 +804,297 @@ const TABLES_METADATA = [
     table: 'grade_settings',
     label: 'Barème et paramètres des notes',
     uiConnection: "Écran d'accueil > Mes notes d'évaluation > Paramètres",
-    role: "Définit l'échelle de notation (sur 20, sur 100 ou GPA).",
-    usage: "Lue pour adapter les calculs de moyenne au système éducatif de l'étudiant.",
-    example: "{ user_id: 'user_abc', standard_scale: 20.0 }"
+    role: "Stocke la base de notation (ex: /20 ou /100) et les options de calcul automatique des moyennes.",
+    usage: "Lue pour afficher les calculs selon le barème du pays de l'étudiant.",
+    example: "{ user_id: 'user_abc', scale_max: 20, passing_grade: 10 }"
   },
   {
     table: 'calendar_events',
-    label: 'Événements du calendrier & Agenda',
-    uiConnection: "Écran d'accueil > Calendrier",
-    role: "Enregistre les dates d'examens, rendus de devoirs, révisions et événements scolaires.",
-    usage: "Affiché dans la vue calendrier mensuelle et journalière.",
-    example: "{ id: 'ev_12', title: 'Partiel d\'Électronique', start_date: '2026-10-15', color: '#EF4444' }"
+    label: 'Événements & Agenda des cours',
+    uiConnection: "Écran d'accueil > Mon agenda / Calendrier",
+    role: "Planning des devoirs, examens partiels, TP et événements importants avec rappels de date.",
+    usage: "Affiché dans le calendrier mensuel/hebdomadaire.",
+    example: "{ id: 'ev_12', title: 'Partiel Électromagnétisme', start_date: '2026-09-30 08:30:00', color: '#EF4444' }"
   },
   {
     table: 'alarms',
-    label: 'Alarmes & Réveils d\'étude',
-    uiConnection: "Écran d'accueil > Horloge",
-    role: "Planifie des réveils et rappels d'étude programmés pour rythmer les sessions de travail.",
-    usage: "Déclenche les alertes sonores et visuelles de l'application.",
-    example: "{ id: 'al_3', time: '06:30', label: 'Réveil révision Maths', is_active: 1 }"
-  },
-  {
-    table: 'study_sessions',
-    label: 'Sessions d\'étude chronométrées',
-    uiConnection: "Espace d'étude > Chronomètre & Mode focus",
-    role: "Comptabilise le temps total passé à réviser par matière pour alimenter les graphiques de progression (Évolution & Stats).",
-    usage: "Incrémenté à la fin d'une session de travail concentré.",
-    example: "{ id: 'ss_44', duration_seconds: 3600, matiere_name: 'Informatique' }"
+    label: 'Alarmes & Rappels d\'étude',
+    uiConnection: "Menu latéral gauche > Horloge & Alarmes",
+    role: "Enregistre les réveils programmés, sonneries et minuteries d'étude de l'étudiant.",
+    usage: "Déclenche les sonneries et notifications aux heures choisies.",
+    example: "{ id: 'alm_4', time: '06:30', label: 'Révision avant amphi', enabled: 1, sound: 'classic_bell' }"
   },
   {
     table: 'published_documents',
-    label: 'Documents publiés dans la bibliothèque (Menu Ressources)',
-    uiConnection: "Bibliothèque partagée StudyCloud (Menu Ressources)",
-    role: "Gère les cours et résumés rendus publics par les étudiants pour toute la communauté.",
-    usage: "Alimente le moteur de recherche de la bibliothèque publique.",
-    example: "{ id: 'pub_90', title: 'Fiche Synthèse AOP', file_size: 1450000, downloads_count: 142, views_count: 850 }",
+    label: 'Documents partagés dans la bibliothèque (Ressources)',
+    uiConnection: "Menu Ressources > Bibliothèque partagée",
+    role: "Enregistre les métadonnées de tous les polycopiés, fiches et annales d'examens partagés publiquement pour toute la communauté. Totalement exonéré de quota.",
+    usage: "Consultation, recherche et téléchargement direct par les étudiants de toutes les filières.",
+    example: "{ id: 'pub_301', user_id: 'user_xyz', title: 'Annales Corrigées Mathématiques 2025', views_count: 342, downloads_count: 89 }",
     isExempted: true,
-    exemptReason: "Fichiers publiés comme ressource pour tout le monde : bibliothèque publique (non compté ni pénalisé)"
-  },
-  {
-    table: 'user_document_interactions',
-    label: 'Interactions et nombre de vues des fichiers',
-    uiConnection: "Bibliothèque partagée > Vues et consultations",
-    role: "Enregistre l'historique et les compteurs de vues sur les documents.",
-    usage: "Écrit à chaque consultation d'un cours public.",
-    example: "{ id: 'int_1', user_id: 'user_abc', document_id: 'pub_90', interaction_type: 'view' }",
-    isExempted: true,
-    exemptReason: "Nombre de vues des fichiers : consultation publique (non décompté du quota personnel)"
+    exemptReason: "Bibliothèque collaborative publique pour toute la communauté (strictement non décomptée)"
   },
   {
     table: 'published_document_downloads',
-    label: 'Nombre de téléchargements (Fichiers & Liens)',
-    uiConnection: "Bibliothèque partagée & Liens partagés > Téléchargements",
-    role: "Traçabilité des téléchargements effectués sur les cours publiés et liens de partage.",
-    usage: "Incrémenté à chaque téléchargement de fichier.",
-    example: "{ id: 'dl_2', user_id: 'user_abc', document_id: 'pub_90' }",
+    label: 'Historique des téléchargements publics',
+    uiConnection: "Menu Ressources > Compteurs de popularité des documents",
+    role: "Trace chaque téléchargement d'un document public afin d'éviter les doubles comptages et récompenser les meilleurs créateurs.",
+    usage: "Incrémenté au téléchargement d'une ressource de la bibliothèque.",
+    example: "{ id: 'dl_99', document_id: 'pub_301', user_id: 'user_abc', downloaded_at: '2026-09-27 10:14:00' }",
     isExempted: true,
-    exemptReason: "Nombre de téléchargements (fichiers et liens) : traçabilité (non décompté du quota personnel)"
+    exemptReason: "Métadonnées de popularité de la bibliothèque publique (non décompté du quota personnel)"
   },
   {
-    table: 'user_word_counts',
-    label: "Compteurs de mots de chaque utilisateur",
-    uiConnection: "Espace d'étude IA > Suivi de consommation de mots",
-    role: "Table technique qui enregistre le nombre total de mots et de jetons rédigés ou générés par chaque utilisateur.",
-    usage: "Mis à jour à chaque génération de synthèse ou échange IA.",
-    example: "{ id: 'wc_1', user_id: 'user_abc', word_count: 12450, token_count: 15800 }",
+    table: 'user_document_interactions',
+    label: 'Vues & Interactions sur les documents',
+    uiConnection: "Menu Ressources & Fiches de cours partagées",
+    role: "Enregistre les vues uniques, likes et commentaires sur les cours partagés par d'autres étudiants.",
+    usage: "Mis à jour à l'ouverture d'une fiche ressource.",
+    example: "{ id: 'int_1', document_id: 'pub_301', user_id: 'user_abc', interaction_type: 'view' }",
     isExempted: true,
-    exemptReason: "Table pour stocker les nombres de mots : compteur technique (non décompté du quota personnel)"
+    exemptReason: "Interactions sur documents publics (non décompté du quota personnel)"
   },
   {
     table: 'shared_folders',
-    label: 'Dossiers de partage par lien & QR code',
-    uiConnection: "Bouton Partager > Créer un lien de partage sécurisé",
-    role: "Permet aux étudiants de générer un lien public ou protégé par mot de passe pour envoyer des cours à leurs camarades.",
-    usage: "Consulté lors de l'accès au lien public `studycloud.../share/...`",
-    example: "{ id: 'sf_5', share_code: 'sc_a8f9...', title: 'Dossier Révisions Semestre 1', total_size: 15400000 }"
+    label: 'Dossiers partagés par lien public & QR Code',
+    uiConnection: "Bouton Partager > Générer un lien public / QR code",
+    role: "Enregistre les dossiers et classeurs rendus accessibles par lien web de partage direct.",
+    usage: "Créé au partage, consulté par les personnes accédant au lien externe.",
+    example: "{ id: 'sh_21', user_id: 'user_abc', name: 'Polycopiés Semestre 1', share_code: 'sc_82f19a', downloads_count: 14 }"
   },
   {
     table: 'shared_folder_files',
-    label: 'Fichiers des dossiers de partage',
-    uiConnection: "Portail de téléchargement des liens partagés",
-    role: "Associe chaque fichier d'un lien partagé à sa clé de stockage Cloudflare R2 dédiée (`shared-links/files/`).",
-    usage: "Lue pour afficher la liste des fichiers téléchargeables sur la page de partage.",
-    example: "{ id: 'sff_1', shared_folder_id: 'sf_5', name: 'TD1_Corrige.pdf', size: 3200000 }"
+    label: 'Fichiers contenus dans les partages',
+    uiConnection: "Page de téléchargement du lien partagé",
+    role: "Lie les fichiers spécifiques inclus dans un dossier partagé par lien.",
+    usage: "Lue par le visiteur externe pour télécharger les documents partagés.",
+    example: "{ folder_id: 'sh_21', file_id: 'file_1728...', name: 'Cours_Optique.pdf' }"
+  },
+  {
+    table: 'shared_folder_downloads',
+    label: 'Téléchargements des partages externes',
+    uiConnection: "Statistiques des liens de partage créés",
+    role: "Trace le nombre et les adresses IP de téléchargement des dossiers partagés par lien externe.",
+    usage: "Incrémenté chaque fois qu'un camarade télécharge les fichiers du lien.",
+    example: "{ id: 'sfd_1', shared_folder_id: 'sh_21', ip_address: '154.0.12.3', created_at: '2026-09-27' }",
+    isExempted: true,
+    exemptReason: "Traçabilité des téléchargements externes (non décompté du quota personnel)"
   },
   {
     table: 'shop_profiles',
-    label: 'Profils des boutiques DKD',
-    uiConnection: "Boutique StudyCloud > Profil Vendeur",
-    role: "Enregistre le nom commercial, le contact WhatsApp et les coordonnées des vendeurs certifiés sur la plateforme.",
-    usage: "Affiché sur la page d'accueil de la boutique et les fiches produits.",
-    example: "{ user_id: 'user_abc', shop_name: 'DKD Technologies', shop_whatsapp: '+225 07...' }"
+    label: 'Profils des boutiques d\'étudiants vendeurs',
+    uiConnection: "Boutique StudyCloud > Profil Vendeur & Coordonnées marchandes",
+    role: "Enregistre les informations professionnelles des étudiants qui vendent leurs services ou matériels (nom de boutique, téléphone Wave/OM, WhatsApp, photo/bannière).",
+    usage: "Affiché sur la fiche boutique et dans l'en-tête des articles en vente.",
+    example: "{ user_id: 'user_abc', shop_name: 'Tech & Fournitures DKD', shop_phone: '+225 07 00 00 00 00', shop_category: 'Matériel électronique' }"
   },
   {
     table: 'products',
-    label: 'Produits et articles de la boutique',
-    uiConnection: "Boutique StudyCloud > Catalogue des produits",
-    role: "Catalogue des calculatrices, livres, composants électroniques et fournitures scolaires mis en vente.",
-    usage: "Affiché dans le carrousel boutique, modifié lors de l'ajout d'un nouvel article.",
-    example: "{ id: 'prd_10', title: 'Calculatrice Casio Graph 35+', price: '25 000 FCFA', image_urls_json: '[...]' }"
+    label: 'Articles & Services de la boutique DKD',
+    uiConnection: "Boutique StudyCloud > Vitrine articles & Fiches produits",
+    role: "Catalogue des produits mis en vente par les étudiants ou l'administration : calculatrices, livres, composants électroniques, polycopiés imprimés.",
+    usage: "Affiché dans la vitrine. Mis à jour lors de l'ajout, modification ou suppression d'un article.",
+    example: "{ id: 'prod_9', seller_id: 'user_abc', title: 'Calculatrice Casio Graph 35+', price: 15000, currency: 'FCFA', stock: 2 }"
   },
   {
     table: 'cart_items',
-    label: 'Paniers d\'achat des étudiants',
-    uiConnection: "Boutique StudyCloud > Panier de commande",
-    role: "Garde en mémoire les articles sélectionnés par l'utilisateur avant la validation de sa commande.",
-    usage: "Mis à jour à chaque ajout ou retrait d'article du panier.",
-    example: "{ id: 'cart_1', user_id: 'user_abc', product_id: 'prd_10', quantity: 1 }"
+    label: 'Paniers d\'achats de la boutique',
+    uiConnection: "Boutique StudyCloud > Panier d'achat (en haut à droite)",
+    role: "Conserve les articles sélectionnés par l'acheteur avant validation de sa commande.",
+    usage: "Alimenté à chaque clic sur 'Ajouter au panier'. Vidé à la finalisation de la commande.",
+    example: "{ id: 'cart_1', user_id: 'user_123', product_id: 'prod_9', quantity: 1 }"
   },
   {
     table: 'seller_follows',
-    label: 'Abonnements aux boutiques',
-    uiConnection: "Boutique StudyCloud > Bouton S'abonner au vendeur",
-    role: "Gère les abonnements des étudiants à leurs vendeurs préférés pour recevoir des notifications de nouveaux articles.",
-    usage: "Incrémenté quand un client s'abonne à une boutique.",
-    example: "{ user_id: 'user_abc', seller_id: 'seller_xyz' }"
+    label: 'Abonnements aux vendeurs de la boutique',
+    uiConnection: "Boutique StudyCloud > Bouton 'Suivre ce vendeur'",
+    role: "Permet aux acheteurs de s'abonner à un étudiant vendeur pour être notifiés de ses nouveaux articles.",
+    usage: "Mis à jour au clic sur 'Suivre / Ne plus suivre'.",
+    example: "{ user_id: 'user_123', seller_id: 'user_abc', created_at: '2026-09-27' }"
   },
   {
-    table: 'notifications',
-    label: 'Notifications & Alertes de l\'application',
-    uiConnection: "En-tête de l'application > Icône cloche de notifications",
-    role: "Diffuse les alertes de cours, les rappels de révision, les messages système et les confirmations d'inscription.",
-    usage: "Lue au démarrage de l'app pour afficher le badge de notifications non lues.",
-    example: "{ id: 'notif_9', title: 'Nouveau cours disponible', description: 'Un corrigé a été ajouté...', is_unread: 1 }"
+    table: 'user_product_interactions',
+    label: 'Vues et interactions sur les articles boutique',
+    uiConnection: "Boutique StudyCloud > Vues et popularité des fiches produits",
+    role: "Enregistre le nombre de clics, vues et interactions sur les articles proposés en boutique.",
+    usage: "Incrémenté lors de la consultation d'une fiche article par un étudiant.",
+    example: "{ id: 'upi_1', user_id: 'usr_1', product_id: 'prod_9', interaction_type: 'view' }"
+  },
+  {
+    table: 'user_purchases_history',
+    label: 'Historique des achats et commandes confirmées',
+    uiConnection: "Tableau de bord admin > Commandes & Abonnements, Espace Factures",
+    role: "Conserve l'historique complet des paiements, forfaits de stockage achetés, articles commandés et reçus officiels.",
+    usage: "Alimentée lors de la confirmation d'un paiement ou de la validation d'une commande.",
+    example: "{ id: 'ord_1', user_id: 'usr_1', pack_name: 'Forfait 50 Go', price_paid: 2500, currency: 'FCFA', status: 'confirmed' }"
+  },
+  {
+    table: 'storage_subscription_plans',
+    label: 'Grille tarifaire des forfaits de stockage',
+    uiConnection: "Menu d'Administration > Demande de stockage > Cartes d'abonnement",
+    role: "Définit les forfaits et paliers de stockage payants (+10 Go, +50 Go, +100 Go) avec leurs prix et devises.",
+    usage: "Lue pour afficher les cartes de tarification des forfaits de stockage cloud.",
+    example: "{ id: 'plan_50go', name: 'Pack Pro 50 Go', storage_mb: 51200, price: 2500, is_active: 1 }",
+    isExempted: true,
+    exemptReason: "Configuration tarifaire globale des forfaits de stockage (table administrative)"
+  },
+  {
+    table: 'storage_upgrade_requests',
+    label: 'Demandes d\'augmentation de stockage & Preuves',
+    uiConnection: "Menu d'Administration > Demande de stockage",
+    role: "Enregistre chaque demande d'upgrade soumise par un étudiant : volume additionnel demandé (+Go/Mo), prix payé, image ou reçu du paiement Wave/Orange Money, et statut d'approbation.",
+    usage: "Écriture lors de la soumission de la demande d'upgrade, lecture et validation dans le panneau d'administration.",
+    example: "{ id: 'req_89', user_id: 'user_123', pack_name: 'Pack Pro 50 Go', additional_mb: 51200, price_paid: 2500, status: 'pending', receipt_r2_key: 'storage-receipts/user_123/recu.jpg' }"
+  },
+  {
+    table: 'user_subscriptions',
+    label: 'Abonnements de stockage en cours & Résiliations',
+    uiConnection: "Menu d'Administration > Demande de stockage (Abonnements en cours & Annulés)",
+    role: "Trace tous les abonnements payants attribués : volume total, date et heure de début/fin, prix mensuel, ainsi que les motifs et l'ancien quota pour les abonnements annulés.",
+    usage: "Créé à l'approbation d'une demande, mis à jour lors de l'annulation ou de l'expiration de l'abonnement.",
+    example: "{ id: 'sub_44', user_id: 'user_123', plan_name: 'Pack Pro 50 Go', total_storage_mb: 51200, monthly_price: 2500, status: 'active', previous_storage_mb: 30 }"
+  },
+  {
+    table: 'user_requests_history_purge',
+    label: 'Journal des purges et nettoyages programmés',
+    uiConnection: "Administration Cloudflare > Journal de maintenance",
+    role: "Trace les dates d'archivage et de purge des anciennes requêtes de paiement ou comptes désactivés.",
+    usage: "Enregistrement lors des opérations périodiques de maintenance et d'archivage.",
+    example: "{ id: 'purg_1', request_id: 'req_89', user_id: 'usr_1', purge_effective_at: '2026-10-01' }",
+    isExempted: true,
+    exemptReason: "Journal technique de maintenance serveur (non décompté du quota personnel)"
+  },
+  {
+    table: 'company_profile',
+    label: 'Profil de l\'entreprise DKD & Comptes marchands',
+    uiConnection: "Menu d'Administration > Demande de stockage (Espace Entreprise)",
+    role: "Contient les coordonnées officielles de l'entreprise DKD et les numéros marchands Wave, Orange Money, MTN et Moov Money pour les encaissements.",
+    usage: "Affiché aux étudiants lors du paiement d'un forfait ou achat boutique.",
+    example: "{ id: 'company_dkd', company_name: 'DELMAS KOUASSI DIBI (DKD)', wave_number: '+225 07 00 00 00 00' }",
+    isExempted: true,
+    exemptReason: "Profil administratif général de l'entreprise (non décompté du quota personnel)"
+  },
+  {
+    table: 'user_storage_quotas',
+    label: 'Quotas de stockage personnalisés par utilisateur',
+    uiConnection: "Tableau de bord admin > Vue Globale & Consommation des Utilisateurs",
+    role: "Enregistre pour chaque utilisateur son quota gratuit de bienvenue (Total, R2, D1), ses extensions payantes et ses bonus attribués par l'administrateur.",
+    usage: "Lue à chaque vérification de téléversement pour bloquer les dépassements de quota.",
+    example: "{ user_id: 'user_abc', welcome_total_mb: 30.0, paid_total_mb: 51200.0, plan_name: 'Pack Pro 50 Go' }",
+    isExempted: true,
+    exemptReason: "Configuration administrative des quotas (strictement non décomptée)"
+  },
+  {
+    table: 'storage_global_config',
+    label: 'Paramètres globaux de stockage Cloudflare',
+    uiConnection: "Tableau de bord admin > Configuration globale (Bouton modifier les quotas)",
+    role: "Définit les valeurs par défaut attribuées à chaque nouvel inscrit sur StudyCloud : Quota gratuit total (ex: 30 Mo), part Cloudflare R2 (10 Mo) et part SQLite D1 (20 Mo).",
+    usage: "Lue lors de l'inscription d'un nouvel étudiant pour initialiser son compte.",
+    example: "{ default_welcome_total_mb: 30.0, default_welcome_r2_mb: 10.0, default_welcome_d1_mb: 20.0 }",
+    isExempted: true,
+    exemptReason: "Configuration système générale (strictement non décomptée)"
+  },
+  {
+    table: 'user_storage_usage',
+    label: 'Table de consommation & facturation D1/R2',
+    uiConnection: "Tableau de bord admin > Consommation des Utilisateurs, Menu Mon Stockage",
+    role: "Table maîtresse consolidée stockant en temps réel le total brut facturé, l'espace physique R2 compressé, les octets D1, l'économie réalisée et le détail JSON de chaque table.",
+    usage: "Calcul du quota et facturation sans perte. Mise à jour automatique à chaque action.",
+    example: "{ user_id: 'usr_1', total_original_bytes: 25400000, total_r2_compressed_bytes: 8400000, compression_ratio: 66.9 }",
+    isExempted: true,
+    exemptReason: "Table technique centrale de facturation et de traçabilité (strictement non décomptée)"
+  },
+  {
+    table: 'file_compression_records',
+    label: 'Historique des compressions de fichiers',
+    uiConnection: "Administration & Télémétrie Cloudflare",
+    role: "Trace pour chaque document importé la taille avant/après compression et le ratio d'économie.",
+    usage: "Journal d'audit de l'optimisation serveur.",
+    example: "{ id: 'fcr_1', original_size_bytes: 5000000, compressed_size_bytes: 1200000, saved_bytes: 3800000 }",
+    isExempted: true,
+    exemptReason: "Journal technique de compression (non décompté du quota personnel)"
+  },
+  {
+    table: 'user_word_counts',
+    label: 'Compteurs de mots de chaque utilisateur',
+    uiConnection: "Menu d'Administration > Demande de stockage (Compteurs de mots)",
+    role: "Comptabilise le nombre total de mots et tokens saisis par l'étudiant dans ses notes, devoirs et requêtes IA.",
+    usage: "Incrémenté lors de la rédaction de notes ou de questions à l'IA.",
+    example: "{ user_id: 'user_abc', word_count: 15420, token_count: 21800 }",
+    isExempted: true,
+    exemptReason: "Table technique de comptage (strictement non décomptée du quota personnel)"
   },
   {
     table: 'users',
     label: 'Comptes et profils des utilisateurs',
-    uiConnection: "Page de connexion / Inscription, En-tête profil utilisateur",
-    role: "Table centrale de l'identité de chaque étudiant (nom, email, téléphone, école, filière, niveau, avatar).",
-    usage: "Consultée à chaque connexion et pour afficher le profil.",
-    example: "{ id: 'user_123', name: 'Kouassi Delmas', email: 'delmas@...', phone: '+225 07...', school: 'INP-HB', filiere: 'Génie Électrique' }"
+    uiConnection: "En-tête profil, Menu latéral, Écran d'accueil",
+    role: "Stocke les informations personnelles des étudiants : nom, email, téléphone, école, filière, niveau d'études, avatar et date d'inscription.",
+    usage: "Lue à l'ouverture de session pour afficher le profil et adapter l'interface.",
+    example: "{ id: 'user_abc', name: 'Kouassi Delmas', email: 'delmas@studycloud.ci', school: 'INP-HB', filiere: 'Informatique' }"
   },
   {
     table: 'user_preferences',
-    label: 'Préférences d\'affichage utilisateur',
-    uiConnection: "En-tête > Bouton Mode Sombre / Clair, Vue grille/liste",
-    role: "Conserve le thème choisi (sombre ou clair) et les options visuelles de l'interface.",
-    usage: "Lue dès le chargement initial pour appliquer instantanément le bon thème.",
-    example: "{ user_id: 'user_123', is_dark_mode: 1, view_mode: 'grid' }"
+    label: 'Préférences & Personnalisation',
+    uiConnection: "Menu latéral > Paramètres (Thème sombre/clair, langue, alertes)",
+    role: "Mémorise les choix d'affichage de l'étudiant pour lui restituer son environnement personnalisé à chaque visite.",
+    usage: "Lue au chargement de l'interface pour appliquer le bon thème.",
+    example: "{ user_id: 'user_abc', theme: 'dark', language: 'fr', sound_enabled: 1 }"
   },
   {
-    table: 'user_subscriptions',
-    label: 'Formules d\'abonnement au stockage',
-    uiConnection: "Écran d'accueil > Mon stockage > Formules & Tarifs",
-    role: "Définit le quota attribué (Gratuit 1 Go, Étudiant 5 Go, Pro 20 Go) et la date d'expiration.",
-    usage: "Vérifié à chaque téléversement de fichier pour autoriser ou bloquer l'upload si le quota est atteint.",
-    example: "{ user_id: 'user_123', plan_name: 'free', status: 'active' }"
-  },
-  {
-    table: 'user_storage_quotas',
-    label: 'Quotas de stockage personnalisés (Bienvenue & Payant)',
-    uiConnection: "Tableau de bord admin > Demandes de stockage, Écran d'accueil > Mon stockage",
-    role: "Gère pour CHAQUE utilisateur son stockage de bienvenue (R2: 10 Mo, D1: 20 Mo) et son stockage payant additionnel sans jamais être confondu.",
-    usage: "Consulté à chaque upload pour valider l'espace restant de l'élève. Modifiable directement depuis le tableau de bord.",
-    example: "{ user_id: 'user_123', welcome_r2_mb: 10, welcome_d1_mb: 20, paid_r2_mb: 0, paid_d1_mb: 0 }"
-  },
-  {
-    table: 'storage_global_config',
-    label: 'Configuration globale du stockage de bienvenue',
-    uiConnection: "Tableau de bord admin > Paramètres de bienvenue par défaut",
-    role: "Définit les Mo accordés automatiquement en cadeau de bienvenue à chaque nouvel étudiant lors de son inscription.",
-    usage: "Lue lors de l'enregistrement d'un nouvel utilisateur pour lui attribuer son quota.",
-    example: "{ id: 'default', default_welcome_r2_mb: 10, default_welcome_d1_mb: 20 }"
+    table: 'notifications',
+    label: 'Notifications & Alertes de cours',
+    uiConnection: "Icône Cloche (en haut à droite) > Centre de notifications",
+    role: "Distribue les rappels de révision, alertes d'évaluation, confirmations de commande et annonces de cours.",
+    usage: "Créé par le système lors d'un événement, affiché dans la bulle de notifications.",
+    example: "{ id: 'notif_1', user_id: 'user_abc', title: 'Rappel Devoir', message: 'Partiel dans 24h', is_read: 0 }"
   },
   {
     table: 'referrals',
-    label: 'Parrainages & Codes d\'invitation',
-    uiConnection: "Menu latéral > Parrainer un ami",
-    role: "Traite les invitations entre camarades et attribue des jours sans publicité ou du stockage bonus.",
-    usage: "Vérifié à l'inscription lors de la saisie d'un code de parrainage.",
-    example: "{ referrer_id: 'user_123', referred_user_id: 'user_456', reward_days: 5 }"
+    label: 'Parrainages & Recommandations entre étudiants',
+    uiConnection: "Menu latéral > Parrainer un ami (+15 jours de stockage offert)",
+    role: "Enregistre chaque invitation réussie entre étudiants pour débloquer automatiquement du bonus de stockage gratuit.",
+    usage: "Créé quand un filleul s'inscrit avec le code de parrainage de son camarade.",
+    example: "{ id: 'ref_1', referrer_id: 'user_abc', referred_user_id: 'user_xyz', status: 'rewarded' }"
   },
   {
     table: 'referral_rewards_config',
-    label: 'Barème des récompenses de parrainage',
-    uiConnection: "Administration > Configuration des récompenses",
-    role: "Configure les règles de bonus par parrainage (nombre de jours accordés).",
-    usage: "Lue lors du calcul des gains de parrainage.",
-    example: "{ id: 'default', days_per_referral: 5 }"
+    label: 'Configuration des récompenses de parrainage',
+    uiConnection: "Administration > Paramètres du système de parrainage",
+    role: "Définit les règles et paliers de récompense (jours de stockage offerts par filleul invité).",
+    usage: "Lue lors de l'attribution des bonus de parrainage.",
+    example: "{ id: 'default', days_per_referral: 15, updated_at: '2026-09-27' }",
+    isExempted: true,
+    exemptReason: "Configuration administrative globale du parrainage (table système)"
   },
   {
     table: 'auth_sessions',
-    label: 'Sessions actives d\'authentification',
-    uiConnection: "Système de sécurité & Maintien de connexion",
-    role: "Stocke les jetons de session chiffrés pour maintenir l'utilisateur connecté en toute sécurité.",
-    usage: "Vérifié à chaque requête vers les API sécurisées.",
-    example: "{ id: 'sess_1', user_id: 'user_123', token_hash: 'sha256...', expires_at: '2026-12-31' }"
+    label: 'Sessions actives & Sécurité des connexions',
+    uiConnection: "Système d'authentification & Sécurité des sessions",
+    role: "Gère les jetons de session chiffrés pour maintenir l'utilisateur connecté en toute sécurité.",
+    usage: "Vérifié à chaque requête vers les API Cloudflare.",
+    example: "{ id: 'sess_1', user_id: 'user_abc', token_hash: 'a1b2c3...', expires_at: '2026-10-27' }",
+    isExempted: true,
+    exemptReason: "Sessions techniques de connexion et sécurité (non décompté du quota personnel)"
   },
   {
     table: 'email_verifications',
-    label: 'Codes de vérification d\'email',
-    uiConnection: "Écran d'inscription > Validation par code OTP à 6 chiffres",
-    role: "Sécurise l'inscription en vérifiant que l'adresse email appartient bien à l'étudiant.",
-    usage: "Écriture à l'inscription, vérifié lors de la saisie du code par l'élève.",
-    example: "{ id: 'ev_99', email: 'etudiant@...', token: '482910', expires_at: '...' }"
+    label: 'Vérification des adresses e-mail',
+    uiConnection: "Écran d'inscription > Validation du code reçu par mail",
+    role: "Stocke les codes OTP temporaires à 6 chiffres pour valider l'adresse email des nouveaux membres.",
+    usage: "Généré à la création de compte, supprimé dès validation réussie.",
+    example: "{ email: 'etudiant@inphb.ci', code: '482910', expires_at: '2026-09-27 10:30:00' }",
+    isExempted: true,
+    exemptReason: "Codes techniques de validation temporaires (non décompté du quota personnel)"
   },
   {
     table: 'password_resets',
-    label: 'Réinitialisation de mot de passe',
+    label: 'Réinitialisation des mots de passe oubliés',
     uiConnection: "Écran de connexion > Mot de passe oublié",
     role: "Gère les codes temporaires de récupération de mot de passe par email.",
     usage: "Créé à la demande de réinitialisation, consommé lors du changement de mot de passe.",
-    example: "{ id: 'pr_5', reset_code: '719302', used: 0 }"
+    example: "{ id: 'pr_5', reset_code: '719302', used: 0 }",
+    isExempted: true,
+    exemptReason: "Codes de récupération de sécurité (non décompté du quota personnel)"
   },
   {
     table: 'app_external_links',
@@ -958,23 +1102,9 @@ const TABLES_METADATA = [
     uiConnection: "Menu latéral > Liens utiles (YouTube, WhatsApp, Telegram)",
     role: "Permet de mettre à jour dynamiquement les canaux de support officiel sans recompiler l'application.",
     usage: "Lue à l'ouverture du menu pour afficher les bons liens d'aide.",
-    example: "{ id: 'youtube', name: 'Tutoriels Vidéo', url: 'https://youtube.com/...' }"
-  },
-  {
-    table: 'storage_upgrade_requests',
-    label: 'Demandes d\'augmentation de stockage & Preuves de paiement',
-    uiConnection: "Menu d\'Administration > Demande de stockage",
-    role: "Enregistre chaque demande d'upgrade soumise par un étudiant : volume additionnel demandé (+Go/Mo), prix payé, image ou reçu du paiement Wave/Orange Money, et statut d'approbation.",
-    usage: "Écriture lors de la soumission de la demande d'upgrade, lecture et validation dans le panneau d'administration.",
-    example: "{ id: 'req_89', user_id: 'user_123', pack_name: 'Pack Pro 50 Go', additional_mb: 51200, price_paid: 2500, status: 'pending', receipt_r2_key: 'storage-receipts/user_123/recu.jpg' }"
-  },
-  {
-    table: 'user_subscriptions',
-    label: 'Abonnements de stockage en cours & Historique des résiliations',
-    uiConnection: "Menu d\'Administration > Demande de stockage (Abonnements en cours & Annulés)",
-    role: "Trace tous les abonnements payants attribués : volume total, date et heure de début/fin, prix mensuel, ainsi que les motifs et l'ancien quota pour les abonnements annulés.",
-    usage: "Créé à l'approbation d'une demande, mis à jour lors de l'annulation ou de l'expiration de l'abonnement.",
-    example: "{ id: 'sub_44', user_id: 'user_123', plan_name: 'Pack Pro 50 Go', total_storage_mb: 51200, monthly_price: 2500, status: 'active', previous_storage_mb: 30 }"
+    example: "{ id: 'youtube', name: 'Tutoriels Vidéo', url: 'https://youtube.com/...' }",
+    isExempted: true,
+    exemptReason: "Liens utiles globaux de la plateforme (non décompté du quota personnel)"
   }
 ];
 
@@ -986,17 +1116,25 @@ const R2_FOLDERS_METADATA = [
     folder: 'user-files/',
     name: 'Fichiers personnels de cours (« Mes fichiers » et Matières)',
     uiConnection: "Écran d'accueil > Mes fichiers, Menu latéral gauche > Dossiers de matières",
-    role: "Stocke physiquement tous les documents personnels de l'étudiant : polycopiés de cours, fiches de TD, devoirs, examens passés, photos d'exercices.",
-    usage: "Téléversement par l'étudiant lors de l'ajout d'un document. Téléchargement et prévisualisation directe (PDF, images, Word). Le fichier réside une seule fois dans R2 et D1 gère ses liaisons.",
-    examples: "Cours_Electronique.pdf, TP_Physique_Ondes.docx, Photo_Exercice_Calcul.jpg",
+    role: "Stocke physiquement tous les documents personnels de l'étudiant : polycopiés de cours, fiches de TD, devoirs, examens passés, photos d'exercices, vidéos et audios.",
+    usage: "Téléversement par l'étudiant lors de l'ajout d'un document. Téléchargement et prévisualisation directe (PDF, images, Word, vidéo, audio). Le fichier réside une seule fois dans R2 et D1 gère ses liaisons.",
+    examples: "Cours_Electronique.pdf, TP_Physique_Ondes.docx, Photo_Exercice_Calcul.jpg, Video_Cours_Maths.mp4",
+  },
+  {
+    folder: 'study-files/',
+    name: 'Documents d\'étude importés pour analyse Delmas IA',
+    uiConnection: "Espace d'étude IA > Documents importés & Sessions d'apprentissage",
+    role: "Héberge les documents complets (PDF, polycopiés, fiches) que l'étudiant importe pour analyse approfondie par l'intelligence artificielle Delmas.",
+    usage: "Téléversé pour nourrir les synthèses, QCM et explications pas-à-pas générés par l'IA.",
+    examples: "Livre_Thermodynamique.pdf, Support_Chimie_Organique.pdf",
   },
   {
     folder: 'ai-studies/',
     name: 'Fichiers des sessions d\'étude assistées par l\'IA',
-    uiConnection: "Espace d'étude IA > Importer un document pour analyse Gemini",
-    role: "Héberge les documents complets que l'étudiant confie au robot Delmas pour qu'il en fasse la synthèse, génère des QCM ou réponde à des questions ciblées.",
-    usage: "Téléversé au démarrage d'une session IA. L'IA lit son contenu pour générer les questionnaires et explications étape par étape.",
-    examples: "Livre_Automatique_Lineaire.pdf, Support_Chimie_Organique.pdf",
+    uiConnection: "Espace d'étude IA > Documents de session IA & Synthèses",
+    role: "Conserve les supports de cours traités lors d'une session interactive avec le tuteur IA Delmas.",
+    usage: "Consulté lors des sessions de travail assistées par l'IA.",
+    examples: "Synthese_Electronique_Lineaire.pdf, Fiche_Memo_Automatique.pdf",
   },
   {
     folder: 'published/files/',
@@ -1041,6 +1179,32 @@ const R2_FOLDERS_METADATA = [
     examples: "storage-receipts/user_123/recu_wave_2500fcfa.jpg, storage-receipts/user_456/recu_om.png",
     isExempted: true,
     exemptReason: "Reçus comptables et administratifs de paiement (non décomptés du quota personnel de l'élève)"
+  },
+  {
+    folder: 'payment-methods/',
+    name: 'Logos et cartes marchandes de l\'entreprise (Wave / OM / Moov / MTN)',
+    uiConnection: "Menu Administration > Profil Entreprise > QR Codes et Cartes Commerçants",
+    role: "Héberge les captures d'écran, QR codes et cartes officielles des comptes marchands de l'entreprise affichés aux étudiants pour effectuer leurs paiements.",
+    usage: "Affiché sur la page de paiement lors de l'achat d'un abonnement ou d'un article boutique.",
+    examples: "payment-methods/wave_merchant.png, payment-methods/orange_money_qr.jpg",
+    isExempted: true,
+    exemptReason: "Moyens de paiement officiels de la plateforme (table et assets de l'entreprise)"
+  },
+  {
+    folder: 'secure-files/',
+    name: 'Fichiers confidentiels du coffre-fort sécurisé',
+    uiConnection: "Menu Dossier Sécurisé > Fichiers chiffrés",
+    role: "Conserve les documents sensibles, pièces d'identité et relevés de notes protégés par le code PIN secret de l'étudiant.",
+    usage: "Téléchargé et affiché uniquement après saisie du code PIN valide.",
+    examples: "Releve_S1_Confidentiel.pdf, Attestation_Reussite.pdf"
+  },
+  {
+    folder: 'trash/',
+    name: 'Corbeille et archives temporaires de fichiers',
+    uiConnection: "Menu Corbeille > Fichiers en attente de purge",
+    role: "Conserve les fichiers supprimés pendant leur période de rétention de 30 jours avant suppression définitive.",
+    usage: "Restauré vers son dossier d'origine ou purgé définitivement.",
+    examples: "trash/usr_1/vieux_brouillon.pdf, trash/usr_1/exercice_rate.png"
   }
 ];
 
@@ -1403,6 +1567,11 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig, preloade
   const exemptD1Bytes = (pubStats.count * 450) + ((viewsInteractionsStats.count || pubStats.total_views) * 64) + ((pubDownloadsStats.count || pubStats.total_downloads) * 64) + (wordStats.count * 128) + 140;
   const totalExemptBytes = exemptR2Bytes + exemptD1Bytes;
 
+  // Requêtes complémentaires pour tables et dossiers réels
+  const reqStats = await safeFirst(db, "SELECT COUNT(*) as count, COALESCE(SUM(CASE WHEN receipt_r2_key != '' THEN 85000 ELSE 0 END), 0) as receipt_bytes FROM storage_upgrade_requests WHERE user_id = ?", [userId], { count: 0, receipt_bytes: 0 });
+  const purchaseStats = await safeFirst(db, "SELECT COUNT(*) as count FROM user_purchases_history WHERE user_id = ?", [userId], { count: 0 });
+  const sharedDownloadsStats = await safeFirst(db, "SELECT COUNT(*) as count FROM shared_folder_downloads WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)", [userId], { count: 0 });
+
   // Statut boutique & profil
   const hasShop = (boutique.products_count > 0) || (user.shop_name && user.shop_name.length > 0);
   const shopProfile = await safeFirst(db, `SELECT * FROM shop_profiles WHERE user_id = ?`, [userId]);
@@ -1447,53 +1616,83 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig, preloade
     image_files: { count: media.images?.count || 0, bytes: media.images?.originalBytes || 0, formatted: formatBytes(media.images?.originalBytes || 0), isExempted: false },
     document_files: { count: media.documents?.count || 0, bytes: media.documents?.originalBytes || 0, formatted: formatBytes(media.documents?.originalBytes || 0), isExempted: false },
     classeur_files: { count: media.classeur?.count || 0, bytes: media.classeur?.originalBytes || 0, formatted: formatBytes(media.classeur?.originalBytes || 0), isExempted: false },
+    classeur_folders: { count: Number(usage?.total_files_count ? 1 : 0), bytes: 64, formatted: '64 Octets', isExempted: false },
+    download_files: { count: media.downloads?.count || 0, bytes: media.downloads?.originalBytes || 0, formatted: formatBytes(media.downloads?.originalBytes || 0), isExempted: false },
+    secure_files: { count: media.secure?.count || 0, bytes: media.secure?.originalBytes || 0, formatted: formatBytes(media.secure?.originalBytes || 0), isExempted: false },
+    secure_folder_config: { count: 1, bytes: 140, formatted: '140 Octets', isExempted: false },
+    trash_files: { count: media.trash?.count || 0, bytes: media.trash?.originalBytes || 0, formatted: formatBytes(media.trash?.originalBytes || 0), isExempted: false },
     files: { count: media.matieres_files?.count || 0, bytes: media.matieres_files?.originalBytes || 0, formatted: formatBytes(media.matieres_files?.originalBytes || 0), isExempted: false },
     notes: { count: apps.bloc_notes?.count || 0, bytes: apps.bloc_notes?.bytes || 0, formatted: formatBytes(apps.bloc_notes?.bytes || 0), isExempted: false },
     matieres: { count: apps.matieres_creees?.count || 0, bytes: apps.matieres_creees?.bytes || 0, formatted: formatBytes(apps.matieres_creees?.bytes || 0), isExempted: false },
-    products: { count: boutique.products_count || 0, bytes: boutique.products_d1_bytes || 0, formatted: formatBytes(boutique.products_d1_bytes || 0), isExempted: false },
-    shop_profiles: { count: hasShop ? 1 : 0, bytes: boutique.shop_profile_bytes || 180, formatted: formatBytes(boutique.shop_profile_bytes || 180), isExempted: false },
-    cart_items: { count: boutique.cart_items_count || 0, bytes: boutique.cart_items_bytes || 0, formatted: formatBytes(boutique.cart_items_bytes || 0), isExempted: false },
-    seller_follows: { count: boutique.seller_follows_count || 0, bytes: (boutique.seller_follows_count || 0) * 64, formatted: formatBytes((boutique.seller_follows_count || 0) * 64), isExempted: false },
+    pinned_items: { count: apps.favoris_epingles?.count ? Math.ceil(apps.favoris_epingles.count / 2) : 0, bytes: apps.favoris_epingles?.bytes ? Math.ceil(apps.favoris_epingles.bytes / 2) : 0, formatted: formatBytes(apps.favoris_epingles?.bytes ? Math.ceil(apps.favoris_epingles.bytes / 2) : 0), isExempted: false },
+    user_favorites: { count: apps.favoris_epingles?.count ? Math.ceil(apps.favoris_epingles.count / 2) : 0, bytes: apps.favoris_epingles?.bytes ? Math.ceil(apps.favoris_epingles.bytes / 2) : 0, formatted: formatBytes(apps.favoris_epingles?.bytes ? Math.ceil(apps.favoris_epingles.bytes / 2) : 0), isExempted: false },
     chat_messages: { count: ia.chat_messages_count || 0, bytes: ia.chat_messages_bytes || 0, formatted: formatBytes(ia.chat_messages_bytes || 0), isExempted: false },
     conversations: { count: ia.chat_messages_count ? Math.ceil(ia.chat_messages_count / 10) : 0, bytes: 250, formatted: '250 Octets', isExempted: false },
-    messages: { count: ia.chat_messages_count || 0, bytes: ia.chat_messages_bytes || 0, formatted: formatBytes(ia.chat_messages_bytes || 0), isExempted: false },
+    messages: { count: ia.chat_messages_count || 0, bytes: ia.chat_messages_bytes || 0, formatted: formatBytes(ia.chat_messages_bytes || 0), isExempted: true, exemptReason: "Messages échangés avec Delmas IA" },
     ai_generated_contents: { count: ia.ai_creations_count || 0, bytes: ia.ai_creations_bytes || 0, formatted: formatBytes(ia.ai_creations_bytes || 0), isExempted: false },
     ai_creations: { count: ia.ai_creations_count || 0, bytes: ia.ai_creations_bytes || 0, formatted: formatBytes(ia.ai_creations_bytes || 0), isExempted: false },
     user_ai_workspace: { count: ia.imported_study_files_count || 0, bytes: ia.imported_study_files_bytes || 0, formatted: formatBytes(ia.imported_study_files_bytes || 0), isExempted: false },
     study_sessions: { count: ia.study_sessions_count || 0, bytes: ia.study_sessions_bytes || 0, formatted: formatBytes(ia.study_sessions_bytes || 0), isExempted: false },
-    alarms: { count: apps.horloge_alarmes?.count || 0, bytes: apps.horloge_alarmes?.bytes || 0, formatted: formatBytes(apps.horloge_alarmes?.bytes || 0), isExempted: false },
+    ai_tasks: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: true, exemptReason: "Tâches d'arrière-plan IA" },
+    user_ai_credits: { count: 1, bytes: 140, formatted: '140 Octets', isExempted: true, exemptReason: "Compteur de crédits IA Delmas" },
+    ai_subscription_plans: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: true, exemptReason: "Grille tarifaire des forfaits IA" },
+    user_certificates: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
+    schedule_slots: { count: apps.emploi_du_temps?.count || 0, bytes: apps.emploi_du_temps?.bytes || 0, formatted: formatBytes(apps.emploi_du_temps?.bytes || 0), isExempted: false },
+    schedule_config: { count: 1, bytes: 180, formatted: '180 Octets', isExempted: false },
     grades: { count: apps.moyennes_notes?.count || 0, bytes: apps.moyennes_notes?.bytes || 0, formatted: formatBytes(apps.moyennes_notes?.bytes || 0), isExempted: false },
     grade_settings: { count: 1, bytes: 80, formatted: '80 Octets', isExempted: false },
     calendar_events: { count: apps.agenda_calendrier?.count || 0, bytes: apps.agenda_calendrier?.bytes || 0, formatted: formatBytes(apps.agenda_calendrier?.bytes || 0), isExempted: false },
-    schedule_slots: { count: apps.emploi_du_temps?.count || 0, bytes: apps.emploi_du_temps?.bytes || 0, formatted: formatBytes(apps.emploi_du_temps?.bytes || 0), isExempted: false },
-    schedule_config: { count: 1, bytes: 180, formatted: '180 Octets', isExempted: false },
-    user_favorites: { count: apps.favoris_epingles?.count || 0, bytes: apps.favoris_epingles?.bytes || 0, formatted: formatBytes(apps.favoris_epingles?.bytes || 0), isExempted: false },
-    pinned_items: { count: apps.favoris_epingles?.count || 0, bytes: apps.favoris_epingles?.bytes || 0, formatted: formatBytes(apps.favoris_epingles?.bytes || 0), isExempted: false },
+    alarms: { count: apps.horloge_alarmes?.count || 0, bytes: apps.horloge_alarmes?.bytes || 0, formatted: formatBytes(apps.horloge_alarmes?.bytes || 0), isExempted: false },
+    published_documents: { count: pubStats.count, bytes: pubStats.count * 450, formatted: formatBytes(pubStats.count * 450), isExempted: true, exemptReason: "Bibliothèque publique collaborative" },
+    published_document_downloads: { count: pubDownloadsStats.count || pubStats.total_downloads, bytes: (pubDownloadsStats.count || pubStats.total_downloads) * 64, formatted: formatBytes((pubDownloadsStats.count || pubStats.total_downloads) * 64), isExempted: true, exemptReason: "Traçabilité des téléchargements publics" },
+    user_document_interactions: { count: viewsInteractionsStats.count || pubStats.total_views, bytes: (viewsInteractionsStats.count || pubStats.total_views) * 64, formatted: formatBytes((viewsInteractionsStats.count || pubStats.total_views) * 64), isExempted: true, exemptReason: "Vues sur les documents partagés" },
     shared_folders: { count: apps.dossiers_partages?.count || 0, bytes: apps.dossiers_partages?.bytes || 0, formatted: formatBytes(apps.dossiers_partages?.bytes || 0), isExempted: false },
     shared_folder_files: { count: apps.dossiers_partages?.count || 0, bytes: apps.dossiers_partages?.bytes || 0, formatted: formatBytes(apps.dossiers_partages?.bytes || 0), isExempted: false },
-    secure_folder_config: { count: 1, bytes: 140, formatted: '140 Octets', isExempted: false },
+    shared_folder_downloads: { count: sharedDownloadsStats.count, bytes: sharedDownloadsStats.count * 64, formatted: formatBytes(sharedDownloadsStats.count * 64), isExempted: true, exemptReason: "Téléchargements de liens publics" },
+    shop_profiles: { count: hasShop ? 1 : 0, bytes: boutique.shop_profile_bytes || 180, formatted: formatBytes(boutique.shop_profile_bytes || 180), isExempted: false },
+    products: { count: boutique.products_count || 0, bytes: boutique.products_d1_bytes || 0, formatted: formatBytes(boutique.products_d1_bytes || 0), isExempted: false },
+    cart_items: { count: boutique.cart_items_count || 0, bytes: boutique.cart_items_bytes || 0, formatted: formatBytes(boutique.cart_items_bytes || 0), isExempted: false },
+    seller_follows: { count: boutique.seller_follows_count || 0, bytes: (boutique.seller_follows_count || 0) * 64, formatted: formatBytes((boutique.seller_follows_count || 0) * 64), isExempted: false },
+    user_product_interactions: { count: boutique.interactions_count || 0, bytes: (boutique.interactions_count || 0) * 64, formatted: formatBytes((boutique.interactions_count || 0) * 64), isExempted: false },
+    user_purchases_history: { count: purchaseStats.count, bytes: purchaseStats.count * 240, formatted: formatBytes(purchaseStats.count * 240), isExempted: true, exemptReason: "Historique d'achat et justificatifs" },
+    storage_subscription_plans: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: true, exemptReason: "Grille tarifaire des forfaits de stockage" },
+    storage_upgrade_requests: { count: reqStats.count, bytes: reqStats.count * 350, formatted: formatBytes(reqStats.count * 350), isExempted: true, exemptReason: "Demandes d'upgrade et justificatifs" },
+    user_subscriptions: { count: 1, bytes: 120, formatted: '120 Octets', isExempted: true, exemptReason: "Historique d'abonnement personnel" },
+    user_requests_history_purge: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: true, exemptReason: "Journal technique de maintenance" },
+    company_profile: { count: 1, bytes: 240, formatted: '240 Octets', isExempted: true, exemptReason: "Coordonnées de l'entreprise" },
+    user_storage_quotas: { count: 1, bytes: 140, formatted: '140 Octets', isExempted: true, exemptReason: "Configuration administrative des quotas" },
+    storage_global_config: { count: 1, bytes: 80, formatted: '80 Octets', isExempted: true, exemptReason: "Paramètres globaux de stockage" },
+    user_storage_usage: { count: 1, bytes: 240, formatted: '240 Octets', isExempted: true, exemptReason: "Table maîtresse de calcul et suivi" },
+    file_compression_records: { count: totalFilesCount, bytes: totalFilesCount * 128, formatted: formatBytes(totalFilesCount * 128), isExempted: true, exemptReason: "Journal technique d'optimisation Cloudflare" },
+    user_word_counts: { count: wordStats.count || 1, bytes: 140, formatted: '140 Octets', isExempted: true, exemptReason: "Compteur technique de mots rédigés" },
     users: { count: 1, bytes: apps.profil_et_compte?.bytes || 400, formatted: formatBytes(apps.profil_et_compte?.bytes || 400), isExempted: false },
     user_preferences: { count: 1, bytes: 90, formatted: '90 Octets', isExempted: false },
     notifications: { count: apps.notifications?.count || 0, bytes: apps.notifications?.bytes || 0, formatted: formatBytes(apps.notifications?.bytes || 0), isExempted: false },
     referrals: { count: apps.parrainages?.count || 0, bytes: apps.parrainages?.bytes || 0, formatted: formatBytes(apps.parrainages?.bytes || 0), isExempted: false },
-    user_storage_usage: { count: 1, bytes: 240, formatted: '240 Octets', isExempted: true, exemptReason: "Table maîtresse de calcul et suivi" },
-    file_compression_records: { count: totalFilesCount, bytes: totalFilesCount * 128, formatted: formatBytes(totalFilesCount * 128), isExempted: true, exemptReason: "Journal technique d\'optimisation Cloudflare" },
-    published_documents: { count: pubStats.count, bytes: pubStats.count * 450, formatted: formatBytes(pubStats.count * 450), isExempted: true, exemptReason: "Bibliothèque publique du Menu Ressources pour toute la communauté" },
-    user_document_interactions: { count: viewsInteractionsStats.count || pubStats.total_views, bytes: (viewsInteractionsStats.count || pubStats.total_views) * 64, formatted: formatBytes((viewsInteractionsStats.count || pubStats.total_views) * 64), isExempted: true, exemptReason: "Nombre de vues des fichiers publics" },
-    published_document_downloads: { count: pubDownloadsStats.count || pubStats.total_downloads, bytes: (pubDownloadsStats.count || pubStats.total_downloads) * 64, formatted: formatBytes((pubDownloadsStats.count || pubStats.total_downloads) * 64), isExempted: true, exemptReason: "Traçabilité des téléchargements publics" },
-    user_word_counts: { count: wordStats.count || 1, bytes: 140, formatted: '140 Octets', isExempted: true, exemptReason: "Compteur technique de mots rédigés" },
-    user_subscriptions: { count: 1, bytes: 120, formatted: '120 Octets', isExempted: true, exemptReason: "Historique d\'abonnement de l\'utilisateur" },
-    user_storage_quotas: { count: 1, bytes: 140, formatted: '140 Octets', isExempted: true, exemptReason: "Attribution des quotas administratifs" },
-    storage_global_config: { count: 1, bytes: 80, formatted: '80 Octets', isExempted: true, exemptReason: "Paramètres globaux du serveur" }
+    referral_rewards_config: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: true, exemptReason: "Configuration du parrainage" },
+    auth_sessions: { count: (activeSession ? 1 : 0), bytes: (activeSession ? 180 : 0), formatted: formatBytes(activeSession ? 180 : 0), isExempted: true, exemptReason: "Sessions de connexion sécurisées" },
+    email_verifications: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: true, exemptReason: "Codes OTP temporaires" },
+    password_resets: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: true, exemptReason: "Codes de récupération de compte" },
+    app_external_links: { count: apps.liens_crees?.count || 0, bytes: apps.liens_crees?.bytes || 0, formatted: formatBytes(apps.liens_crees?.bytes || 0), isExempted: true, exemptReason: "Liens utiles de support" }
   };
 
   const userR2FoldersStats = {
-    'user-files/': { count: (media.matieres_files?.count || 0) + (media.documents?.count || 0) + (media.classeur?.count || 0), bytes: (media.matieres_files?.compressedBytes || 0) + (media.documents?.compressedBytes || 0) + (media.classeur?.compressedBytes || 0), formatted: formatBytes((media.matieres_files?.compressedBytes || 0) + (media.documents?.compressedBytes || 0) + (media.classeur?.compressedBytes || 0)), isExempted: false },
+    'user-files/': {
+      count: (media.matieres_files?.count || 0) + (media.documents?.count || 0) + (media.classeur?.count || 0) + (media.videos?.count || 0) + (media.audio?.count || 0) + (media.images?.count || 0) + (media.downloads?.count || 0),
+      bytes: (media.matieres_files?.compressedBytes || 0) + (media.documents?.compressedBytes || 0) + (media.classeur?.compressedBytes || 0) + (media.videos?.compressedBytes || 0) + (media.audio?.compressedBytes || 0) + (media.images?.compressedBytes || 0) + (media.downloads?.compressedBytes || 0),
+      formatted: formatBytes((media.matieres_files?.compressedBytes || 0) + (media.documents?.compressedBytes || 0) + (media.classeur?.compressedBytes || 0) + (media.videos?.compressedBytes || 0) + (media.audio?.compressedBytes || 0) + (media.images?.compressedBytes || 0) + (media.downloads?.compressedBytes || 0)),
+      isExempted: false
+    },
+    'study-files/': { count: media.study_files?.count || 0, bytes: media.study_files?.compressedBytes || 0, formatted: formatBytes(media.study_files?.compressedBytes || 0), isExempted: false },
     'ai-studies/': { count: media.study_files?.count || 0, bytes: media.study_files?.compressedBytes || 0, formatted: formatBytes(media.study_files?.compressedBytes || 0), isExempted: false },
-    'products/images/': { count: boutique.products_count || 0, bytes: boutique.products_r2_bytes || 0, formatted: formatBytes(boutique.products_r2_bytes || 0), isExempted: false },
+    'published/files/': { count: pubStats.count, bytes: exemptR2Bytes, formatted: formatBytes(exemptR2Bytes), isExempted: true, exemptReason: "Ressources publiques de la bibliothèque partagée" },
     'shared-links/files/': { count: apps.dossiers_partages?.count || 0, bytes: apps.dossiers_partages?.bytes || 0, formatted: formatBytes(apps.dossiers_partages?.bytes || 0), isExempted: false },
+    'products/images/': { count: boutique.products_count || 0, bytes: boutique.products_r2_bytes || 0, formatted: formatBytes(boutique.products_r2_bytes || 0), isExempted: false },
     'avatars/': { count: (user.avatar_url && user.avatar_url.includes('avatars/')) ? 1 : 0, bytes: (user.avatar_url && user.avatar_url.includes('avatars/')) ? 85000 : 0, formatted: formatBytes((user.avatar_url && user.avatar_url.includes('avatars/')) ? 85000 : 0), isExempted: false },
-    'published/files/': { count: pubStats.count, bytes: exemptR2Bytes, formatted: formatBytes(exemptR2Bytes), isExempted: true, exemptReason: "Ressources publiques de la bibliothèque partagée" }
+    'storage-receipts/': { count: reqStats.receipt_bytes > 0 ? reqStats.count : 0, bytes: reqStats.receipt_bytes, formatted: formatBytes(reqStats.receipt_bytes), isExempted: true, exemptReason: "Reçus de paiement Wave/OM/Moov/MTN" },
+    'payment-methods/': { count: 0, bytes: 0, formatted: '0 Octets', isExempted: true, exemptReason: "Moyens de paiement de l'entreprise" },
+    'secure-files/': { count: media.secure?.count || 0, bytes: media.secure?.compressedBytes || 0, formatted: formatBytes(media.secure?.compressedBytes || 0), isExempted: false },
+    'trash/': { count: media.trash?.count || 0, bytes: media.trash?.compressedBytes || 0, formatted: formatBytes(media.trash?.compressedBytes || 0), isExempted: false }
   };
 
   return {
@@ -1734,12 +1933,16 @@ async function inspectRealR2Global(bucket, db, detailedUsers) {
   let totalR2Files = 0;
   const folders = {
     'user-files/': { count: 0, bytes: 0, formatted: '0 Octets' },
+    'study-files/': { count: 0, bytes: 0, formatted: '0 Octets' },
     'ai-studies/': { count: 0, bytes: 0, formatted: '0 Octets' },
     'published/files/': { count: 0, bytes: 0, formatted: '0 Octets' },
     'shared-links/files/': { count: 0, bytes: 0, formatted: '0 Octets' },
     'products/images/': { count: 0, bytes: 0, formatted: '0 Octets' },
     'avatars/': { count: 0, bytes: 0, formatted: '0 Octets' },
-    'storage-receipts/': { count: 0, bytes: 0, formatted: '0 Octets' }
+    'storage-receipts/': { count: 0, bytes: 0, formatted: '0 Octets' },
+    'payment-methods/': { count: 0, bytes: 0, formatted: '0 Octets' },
+    'secure-files/': { count: 0, bytes: 0, formatted: '0 Octets' },
+    'trash/': { count: 0, bytes: 0, formatted: '0 Octets' }
   };
 
   let bucketScanned = false;
@@ -1817,6 +2020,8 @@ async function inspectRealR2Global(bucket, db, detailedUsers) {
       if (!bucketScanned) {
         folders['user-files/'].bytes = Number(filesDb.personal_bytes || 0);
         folders['user-files/'].count = Number(filesDb.personal_count || 0);
+        folders['study-files/'].bytes = Number(filesDb.ai_bytes || 0);
+        folders['study-files/'].count = Number(filesDb.ai_count || 0);
         folders['ai-studies/'].bytes = Number(filesDb.ai_bytes || 0);
         folders['ai-studies/'].count = Number(filesDb.ai_count || 0);
       }
@@ -4129,6 +4334,9 @@ function renderDashboardHtml(data) {
         return t.table.toLowerCase().includes(q) || t.label.toLowerCase().includes(q) || t.role.toLowerCase().includes(q);
       });
 
+      const countBadge = document.getElementById('d1-tables-count-badge');
+      if (countBadge) countBadge.textContent = q ? '(' + filtered.length + ' sur ' + tablesMeta.length + ' tables)' : '(' + tablesMeta.length + ' tables répertoriées)';
+
       if (filtered.length === 0) {
         container.innerHTML = '<div class="p-4 text-center text-slate-500 text-xs">Aucune table trouvée.</div>';
         return;
@@ -4178,6 +4386,9 @@ function renderDashboardHtml(data) {
         if (!q) return true;
         return r.folder.toLowerCase().includes(q) || r.name.toLowerCase().includes(q);
       });
+
+      const r2Badge = document.getElementById('r2-folders-count-badge');
+      if (r2Badge) r2Badge.textContent = q ? '(' + filtered.length + ' sur ' + r2Meta.length + ' dossiers)' : '(' + r2Meta.length + ' dossiers structurés)';
 
       if (filtered.length === 0) {
         container.innerHTML = '<div class="p-4 text-center text-slate-500 text-xs">Aucun dossier trouvé.</div>';
@@ -4350,6 +4561,9 @@ function renderDashboardHtml(data) {
       const displayTotalFormatted = isNet ? (s.net ? s.net.totalFormatted : s.totalFormatted) : (s.gross ? s.gross.totalFormatted : s.totalFormatted);
       const displayUsagePercentage = isNet ? (s.net ? s.net.usagePercentage : s.usagePercentage) : (s.gross ? s.gross.usagePercentage : s.usagePercentage);
       const exempted = s.exempted || { totalFormatted: '0 Octets', totalBytes: 0, r2Formatted: '0 Octets', d1Formatted: '0 Octets', exemptD1Rows: 0 };
+      const totalUserR2Files = r2 && r2.folders ? Object.values(r2.folders).reduce((acc, f) => acc + (f?.count || 0), 0) : 0;
+      const totalUserD1RowsCalculated = d1 && d1.tables ? Object.values(d1.tables).reduce((acc, t) => acc + (t?.count || 0), 0) : 0;
+      const finalD1Rows = Math.max(displayD1Rows, totalUserD1RowsCalculated);
 
       panel.innerHTML = \`
         <!-- En-tête profil complet listé verticalement ligne par ligne -->
@@ -4470,14 +4684,14 @@ function renderDashboardHtml(data) {
         <!-- BARRE DE RECALCUL ET AUDIT DIRECT DES 36 TABLES -->
         <div class="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 flex-wrap">
           <div class="flex items-center gap-2">
-            <span class="text-xs font-bold text-slate-200">📊 Audit D1 / R2 (36 Tables) :</span>
+            <span class="text-xs font-bold text-slate-200">📊 Audit D1 / R2 (${tablesMeta.length} Tables) :</span>
             <span class="text-[11px] px-2 py-0.5 rounded-md bg-orange-500/20 text-orange-400 font-mono font-bold">\${s.original ? s.original.totalFormatted : displayTotalFormatted} facturés</span>
           </div>
           <button 
             onclick="recalculateUserStorage('\${u.id}')" 
             id="btn-recalc-storage-\${u.id}"
             class="px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-md shadow-orange-600/30 cursor-pointer"
-            title="Recalculer les 36 tables D1 et les dossiers R2 de cet utilisateur en temps réel"
+            title="Recalculer les ${tablesMeta.length} tables D1 et les dossiers R2 de cet utilisateur en temps réel"
           >
             <span>🔄</span> <span>Recalculer le stockage en direct</span>
           </button>
