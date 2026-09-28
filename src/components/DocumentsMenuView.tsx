@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
   FileText,
@@ -20,23 +21,111 @@ import {
   SlidersHorizontal,
   LayoutGrid,
   List,
-  Check
+  Check,
+  Menu,
+  CheckSquare,
+  Square,
+  Link,
+  Lock,
+  Unlock,
+  FolderInput,
+  Copy,
+  Pin,
+  Pencil,
+  AlertCircle,
+  RotateCcw,
+  FolderArchive
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
-import { storeFileBlob, getFileBlobUrl, deleteFileBlob } from '../services/localFileStorage';
+import { storeFileBlob, getFileBlobUrl, deleteFileBlob, getFileBlob } from '../services/localFileStorage';
 import { compressFile } from '../utils/fileCompressor';
 import { FileItem } from './Page1FilesMenuView';
 import { UploadQueue } from '../services/uploadQueue';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { PdfHorizontalViewer } from './PdfHorizontalViewer';
+import { generatePdfThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
+import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
 
 interface DocumentsMenuViewProps {
   onBack: () => void;
   onOpenStudySpace?: (file?: any, folderName?: string, folderFiles?: any[]) => void;
   onOpenCreateShareLink?: (items: any[]) => void;
 }
+
+function formatBytes(bytes: number, decimals = 1) {
+  if (!+bytes) return '0 o';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['o', 'Ko', 'Mo', 'Go', 'To'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+}
+
+const computeDuplicateName = (originalName: string, existingNames: string[]): string => {
+  const hasExt = originalName.includes('.');
+  const ext = hasExt ? originalName.substring(originalName.lastIndexOf('.')) : '';
+  const base = hasExt ? originalName.substring(0, originalName.lastIndexOf('.')) : originalName;
+
+  const regex = /^(.*?)(?:\s+(?:(?:\()?(\d+)(?:\))?|\(Copie\)))?$/;
+  const match = base.match(regex);
+  const cleanBase = (match && match[1]) ? match[1].trim() : base;
+
+  let counter = 2;
+  let candidate = `${cleanBase} ${counter}${ext}`;
+  const lowerNames = existingNames.map(n => n.toLowerCase());
+  while (lowerNames.includes(candidate.toLowerCase())) {
+    counter++;
+    candidate = `${cleanBase} ${counter}${ext}`;
+  }
+  return candidate;
+};
+
+// Récupération des styles de carte document en fonction de l'extension (Image 1)
+const getDocumentTheme = (ext: string = 'PDF') => {
+  const upper = ext.toUpperCase();
+  if (upper === 'PDF') {
+    return {
+      bg: 'linear-gradient(180deg, #dc2626 0%, #991b1b 100%)',
+      border: 'border-2 border-red-500 hover:border-red-400',
+      shadow: 'shadow-[2.5px_2.5px_0px_0px_#450a0a]',
+      badge: 'bg-white text-red-700 border-white',
+      typeBadge: 'PDF'
+    };
+  } else if (['DOC', 'DOCX'].includes(upper)) {
+    return {
+      bg: 'linear-gradient(180deg, #2563eb 0%, #1e40af 100%)',
+      border: 'border-2 border-blue-500 hover:border-blue-400',
+      shadow: 'shadow-[2.5px_2.5px_0px_0px_#172554]',
+      badge: 'bg-white text-blue-700 border-white',
+      typeBadge: 'DOCX'
+    };
+  } else if (['XLS', 'XLSX', 'CSV'].includes(upper)) {
+    return {
+      bg: 'linear-gradient(180deg, #0d9488 0%, #115e59 100%)',
+      border: 'border-2 border-emerald-500 hover:border-emerald-400',
+      shadow: 'shadow-[2.5px_2.5px_0px_0px_#022c22]',
+      badge: 'bg-white text-emerald-700 border-white',
+      typeBadge: 'XLSX'
+    };
+  } else if (['PPT', 'PPTX'].includes(upper)) {
+    return {
+      bg: 'linear-gradient(180deg, #ea580c 0%, #9a3412 100%)',
+      border: 'border-2 border-orange-500 hover:border-orange-400',
+      shadow: 'shadow-[2.5px_2.5px_0px_0px_#431407]',
+      badge: 'bg-white text-orange-700 border-white',
+      typeBadge: 'PPTX'
+    };
+  }
+  return {
+    bg: 'linear-gradient(180deg, #26272b 0%, #1c1c1f 100%)',
+    border: 'border-2 border-stone-700 hover:border-stone-500',
+    shadow: 'shadow-[2.5px_2.5px_0px_0px_#1c1917]',
+    badge: 'bg-white text-stone-900 border-white',
+    typeBadge: upper
+  };
+};
 
 export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
   onBack,
@@ -60,9 +149,29 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
   const [viewerRotation, setViewerRotation] = useState(0);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
 
-  // Menu déroulant par document
-  const [menuDocId, setMenuDocId] = useState<string | null>(null);
+  // État du menu 3 traits dédié à chaque document (Image 2)
+  const [activeMenuDocId, setActiveMenuDocId] = useState<string | null>(null);
+
+  // Mode sélection & éléments cochés
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Progression d'enregistrement et gestion d'erreurs en temps réel
+  const [savingProgress, setSavingProgress] = useState<Record<string, number>>({});
+  const [savingErrors, setSavingErrors] = useState<Record<string, string>>({});
+  const savingIntervalsRef = useRef<Record<string, any>>({});
+
+  // Modales de transfert (Déplacer / Créer une copie) vers le Classeur
+  const [itemsToTransfer, setItemsToTransfer] = useState<FileItem[]>([]);
+  const [isTransferPromptOpen, setIsTransferPromptOpen] = useState(false);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [transferMode, setTransferMode] = useState<'move' | 'copy'>('move');
+  const [transferSelectedFolderIds, setTransferSelectedFolderIds] = useState<string[]>([]);
+  const [transferNavFolderId, setTransferNavFolderId] = useState<string | null>(null);
+  const [transferSearchQuery, setTransferSearchQuery] = useState('');
+  const [isTransferring, setIsTransferring] = useState(false);
+  const [classeur3DFolders, setClasseur3DFolders] = useState<ClasseurCreatedFolder[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,30 +180,113 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Chargement et synchronisation avec CloudDataStore
+  // Fermer le menu 3 traits si on clique en dehors
   useEffect(() => {
-    let isMounted = true;
-    CloudStorageAPI.getDocumentsList()
-      .then((data) => {
-        if (isMounted && data && Array.isArray(data)) {
-          setDocumentsList(data);
-          CloudDataStore.setDocuments(data as any);
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.studycloud-file-menu-panel') || target.closest('.studycloud-menu-trigger')) {
+        return;
+      }
+      setActiveMenuDocId(null);
+    };
+
+    document.addEventListener('pointerdown', handleOutsideClick);
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideClick);
+    };
+  }, []);
+
+  // Animation de progression d'enregistrement optimiste
+  const startSavingAnimation = (ids: string[]) => {
+    ids.forEach(id => {
+      if (savingIntervalsRef.current[id]) {
+        clearInterval(savingIntervalsRef.current[id]);
+      }
+
+      setSavingProgress(prev => ({ ...prev, [id]: 12 }));
+
+      let current = 12;
+      const interval = setInterval(() => {
+        current += Math.floor(Math.random() * 8) + 4;
+        if (current >= 92) {
+          current = 92;
+          clearInterval(interval);
+          delete savingIntervalsRef.current[id];
         }
-      })
-      .catch((err) => console.warn('[DocumentsMenuView] Error fetching documents:', err))
-      .finally(() => {
-        if (isMounted) setLoading(false);
+
+        setSavingProgress(prev => {
+          if (prev[id] === undefined) return prev;
+          const higher = Math.max(prev[id], current);
+          return { ...prev, [id]: higher };
+        });
+      }, 300);
+
+      savingIntervalsRef.current[id] = interval;
+    });
+  };
+
+  // Écoute en temps réel de la file d'attente d'upload liée au Cloudflare Worker (D1/R2)
+  useEffect(() => {
+    const unsubscribe = UploadQueue.subscribe((queueState) => {
+      const activeProg: Record<string, number> = {};
+      const activeErrs: Record<string, string> = {};
+
+      queueState.tasks.forEach(task => {
+        if (task.category === 'documents' || task.id.startsWith('doc-')) {
+          if (task.status === 'uploading' || task.status === 'pending') {
+            activeProg[task.id] = Math.max(task.progress || 12, 12);
+          } else if (task.status === 'completed') {
+            activeProg[task.id] = 100;
+            if (savingIntervalsRef.current[task.id]) {
+              clearInterval(savingIntervalsRef.current[task.id]);
+              delete savingIntervalsRef.current[task.id];
+            }
+          } else if (task.status === 'error') {
+            activeErrs[task.id] = task.error || "Non enregistré sur le Cloud";
+            if (savingIntervalsRef.current[task.id]) {
+              clearInterval(savingIntervalsRef.current[task.id]);
+              delete savingIntervalsRef.current[task.id];
+            }
+          }
+        }
       });
 
-    const unsubscribe = CloudDataStore.subscribe((state) => {
-      if (isMounted) {
-        setDocumentsList(state.documents || []);
-      }
+      setSavingProgress(prev => {
+        const next = { ...prev };
+        Object.entries(activeProg).forEach(([id, pct]) => {
+          if (pct >= 100) {
+            next[id] = 100;
+            setTimeout(() => {
+              setSavingProgress(curr => {
+                const clean = { ...curr };
+                delete clean[id];
+                return clean;
+              });
+            }, 400);
+          } else {
+            next[id] = Math.max(prev[id] || 0, pct);
+          }
+        });
+        Object.keys(activeErrs).forEach(id => {
+          delete next[id];
+        });
+        return next;
+      });
+
+      setSavingErrors(prev => {
+        const next = { ...prev, ...activeErrs };
+        queueState.tasks.forEach(task => {
+          if ((task.status === 'uploading' || task.status === 'completed') && next[task.id]) {
+            delete next[task.id];
+          }
+        });
+        return next;
+      });
     });
 
     return () => {
-      isMounted = false;
       unsubscribe();
+      Object.values(savingIntervalsRef.current).forEach(int => clearInterval(int as any));
     };
   }, []);
 
@@ -123,6 +315,82 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isViewerMaximized, selectedDoc]);
+
+  // Effacer un document dont l'enregistrement a échoué (Bouton Croix X)
+  const handleDismissFailedUpload = (docId: string) => {
+    if (savingIntervalsRef.current[docId]) {
+      clearInterval(savingIntervalsRef.current[docId]);
+      delete savingIntervalsRef.current[docId];
+    }
+    UploadQueue.removeTask(docId);
+    setSavingProgress(prev => {
+      const next = { ...prev };
+      delete next[docId];
+      return next;
+    });
+    setSavingErrors(prev => {
+      const next = { ...prev };
+      delete next[docId];
+      return next;
+    });
+    setDocumentsList(prev => prev.filter(d => d.id !== docId));
+    CloudDataStore.removeFile(docId);
+    deleteFileBlob(docId).catch(() => {});
+    if (selectedDoc?.id === docId) {
+      setSelectedDoc(null);
+      setIsViewerMaximized(false);
+    }
+    showToast("Document non enregistré retiré.");
+  };
+
+  // Réessayer l'enregistrement d'un document échoué
+  const handleRetryUpload = (docId: string) => {
+    setSavingErrors(prev => {
+      const next = { ...prev };
+      delete next[docId];
+      return next;
+    });
+    startSavingAnimation([docId]);
+    UploadQueue.retryTask(docId);
+    showToast("Nouvelle tentative d'enregistrement...");
+  };
+
+  // Chargement et synchronisation avec CloudDataStore
+  useEffect(() => {
+    let isMounted = true;
+    CloudStorageAPI.getDocumentsList()
+      .then((data) => {
+        if (isMounted && data && Array.isArray(data)) {
+          setDocumentsList(prev => {
+            const serverIds = new Set(data.map(d => d.id));
+            const pending = prev.filter(d => !serverIds.has(d.id) && Boolean(d.isUploading));
+            return [...pending, ...data];
+          });
+          CloudDataStore.setDocuments(data as any);
+        }
+      })
+      .catch((err) => console.warn('[DocumentsMenuView] Error fetching documents:', err))
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    const unsubscribe = CloudDataStore.subscribe((state) => {
+      if (isMounted && state.documents) {
+        setDocumentsList(prev => {
+          const storeDocs = state.documents || [];
+          const storeIds = new Set(storeDocs.map(d => d.id));
+          const pending = prev.filter(d => !storeIds.has(d.id) && Boolean(d.isUploading));
+          if (pending.length === 0) return storeDocs;
+          return [...pending, ...storeDocs];
+        });
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
 
   // Résolution du Blob URL quand un document est sélectionné
   useEffect(() => {
@@ -171,61 +439,128 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     }
   };
 
-  // Import de documents
-  const handleImportDocuments = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Import de documents : affichage immédiat 0ms avec ligne de chargement animée
+  const handleImportDocuments = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const files = Array.from(e.target.files) as File[];
 
-    showToast(`Préparation de ${files.length} document(s)...`);
+    const newItems: FileItem[] = [];
+    const newFiles: { file: File; id: string }[] = [];
+    const now = Date.now();
 
-    const newItemsWithFiles = await Promise.all(
-      files.map(async (f, idx) => {
-        const ext = f.name.includes('.') ? f.name.split('.').pop()?.toLowerCase() || 'pdf' : 'pdf';
-        const comp = await compressFile(f, 'documents');
-        const fileId = `doc-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
-        const localBlobUrl = URL.createObjectURL(comp.file);
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const ext = f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'PDF' : 'PDF';
+      const fileId = `doc-${now}-${i}-${Math.random().toString(36).substring(2, 6)}`;
+      const localBlobUrl = URL.createObjectURL(f);
 
-        await storeFileBlob(fileId, comp.file as any).catch(() => {});
+      // Sauvegarde immédiate du blob dans IndexedDB (0ms)
+      storeFileBlob(fileId, f).catch(() => {});
 
-        let docCat: FileItem['documentCategory'] = "PAS D'INF...";
-        const lowerName = f.name.toLowerCase();
-        if (lowerName.includes('cours') || lowerName.includes('chapitre') || lowerName.includes('leçon')) {
-          docCat = 'COURS';
-        } else if (lowerName.includes('td') || lowerName.includes('travaux')) {
-          docCat = 'TD';
-        } else if (lowerName.includes('devoir') || lowerName.includes('examen') || lowerName.includes('ds') || lowerName.includes('test')) {
-          docCat = 'DEVOIRS';
-        }
+      let docCat: FileItem['documentCategory'] = "PAS D'INF...";
+      const lowerName = f.name.toLowerCase();
+      if (lowerName.includes('cours') || lowerName.includes('chapitre') || lowerName.includes('leçon')) {
+        docCat = 'COURS';
+      } else if (lowerName.includes('td') || lowerName.includes('travaux')) {
+        docCat = 'TD';
+      } else if (lowerName.includes('devoir') || lowerName.includes('examen') || lowerName.includes('ds') || lowerName.includes('test')) {
+        docCat = 'DEVOIRS';
+      }
 
-        const item: FileItem = {
-          id: fileId,
-          name: f.name,
-          category: 'documents',
-          source: 'Documents',
-          documentCategory: docCat,
-          size: comp.originalSizeFormatted,
-          sizeBytes: comp.originalSizeBytes,
-          date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
-          extension: ext.toUpperCase(),
-          url: localBlobUrl,
-          previewUrl: localBlobUrl
-        };
+      const item: FileItem = {
+        id: fileId,
+        name: f.name,
+        category: 'documents',
+        source: 'Documents',
+        documentCategory: docCat,
+        size: formatBytes(f.size),
+        sizeBytes: f.size,
+        date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
+        extension: ext,
+        url: localBlobUrl,
+        previewUrl: localBlobUrl
+      };
 
-        return { file: comp.file, item };
-      })
-    );
-
-    const newItems = newItemsWithFiles.map(x => x.item);
-    setDocumentsList(prev => [...newItems, ...prev]);
-    CloudDataStore.setDocuments([...newItems, ...documentsList] as any);
-
-    UploadQueue.enqueueExisting(newItemsWithFiles, { category: 'documents' });
-    showToast(`${newItems.length} document(s) importé(s) !`);
-
-    if (newItems.length > 0 && !selectedDoc) {
-      setSelectedDoc(newItems[0]);
+      newItems.push(item);
+      newFiles.push({ file: f, id: fileId });
     }
+
+    if (newItems.length === 0) return;
+
+    // 1. AFFICHAGE IMMÉDIAT (0 milliseconde !)
+    setDocumentsList(prev => [...newItems, ...prev]);
+
+    // 2. Démarrage immédiat de la ligne de progression qui se remplit
+    startSavingAnimation(newItems.map(it => it.id));
+
+    // 2.5. Extraction immédiate de la vignette PDF si possible
+    newFiles.forEach(({ file, id }) => {
+      const isPdf = file.type?.includes('pdf') || file.name.toLowerCase().endsWith('.pdf');
+      if (isPdf) {
+        generatePdfThumbnail(file, id).then(thumbUrl => {
+          if (thumbUrl) {
+            setCachedMediaThumbnail(id, thumbUrl);
+            setDocumentsList(prev => prev.map(d => d.id === id ? { ...d, previewUrl: thumbUrl, thumbnailUrl: thumbUrl } : d));
+            CloudDataStore.updateFile(id, { previewUrl: thumbUrl, thumbnailUrl: thumbUrl });
+            CloudStorageAPI.saveMediaThumbnail(id, 'documents', thumbUrl, file.name).catch(() => {});
+          }
+        }).catch(() => {});
+      }
+    });
+
+    // 3. Ajout optimiste dans CloudDataStore
+    newItems.forEach(it => {
+      CloudDataStore.addOptimisticFile(it as any);
+    });
+
     if (fileInputRef.current) fileInputRef.current.value = '';
+    showToast(`${newItems.length} document(s) ajouté(s) — Enregistrement en cours...`);
+
+    // 4. Traitement asynchrone en arrière-plan : compression et UploadQueue
+    (async () => {
+      const itemsWithFiles = await Promise.all(
+        newFiles.map(async ({ file, id }) => {
+          let fileToSend: File | Blob = file;
+          let origBytes = file.size;
+          let origFormatted = formatBytes(file.size);
+
+          try {
+            const comp = await compressFile(file, 'documents');
+            fileToSend = comp.file;
+            origBytes = comp.originalSizeBytes;
+            origFormatted = comp.originalSizeFormatted;
+            if (comp.file !== file) {
+              await storeFileBlob(id, comp.file as any).catch(() => {});
+            }
+          } catch (err) {
+            console.warn('[DocumentsMenuView] Compression doc échouée, utilisation brute:', err);
+          }
+
+          const targetItem = newItems.find(it => it.id === id)!;
+          const updatedItem = {
+            ...targetItem,
+            size: origFormatted,
+            sizeBytes: origBytes
+          };
+
+          return {
+            file: fileToSend,
+            item: updatedItem,
+            originalSizeBytes: origBytes,
+            originalSizeFormatted: origFormatted
+          };
+        })
+      );
+
+      // Mise à jour des tailles réelles dans le store
+      itemsWithFiles.forEach(({ item }) => {
+        setDocumentsList(prev => prev.map(d => d.id === item.id ? { ...d, size: item.size, sizeBytes: item.sizeBytes } : d));
+        CloudDataStore.updateFile(item.id, { size: item.size, sizeBytes: item.sizeBytes });
+      });
+
+      // Envoi vers UploadQueue
+      UploadQueue.enqueueExisting(itemsWithFiles, { category: 'documents' });
+    })();
   };
 
   // Favoris
@@ -244,7 +579,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       await CloudStorageAPI.removeFavorite(doc.id).catch(() => {});
     }
     showToast(nextState ? 'Ajouté aux favoris ⭐' : 'Retiré des favoris');
-    setMenuDocId(null);
+    setActiveMenuDocId(null);
   };
 
   // Renommer
@@ -262,8 +597,9 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       setSelectedDoc(prev => (prev ? { ...prev, name: finalName } : null));
     }
     CloudDataStore.updateFile(doc.id, { name: finalName });
+    await CloudStorageAPI.renameItem(doc.id, finalName, 'documents').catch(() => {});
     showToast(`Document renommé en "${finalName}"`);
-    setMenuDocId(null);
+    setActiveMenuDocId(null);
   };
 
   // Suppression
@@ -275,11 +611,12 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       setSelectedDoc(null);
       setIsViewerMaximized(false);
     }
+    setSelectedItemIds(prev => prev.filter(id => id !== doc.id));
     CloudDataStore.removeFile(doc.id);
     deleteFileBlob(doc.id).catch(() => {});
     await CloudStorageAPI.deleteDocument(doc.id).catch(() => {});
     showToast(`"${doc.name}" supprimé`);
-    setMenuDocId(null);
+    setActiveMenuDocId(null);
   };
 
   // Téléchargement
@@ -310,9 +647,592 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     }
   };
 
-  // Filtrage
+  // Traitement universel des 12 actions du menu contextuel dédié (Image 2)
+  const handleMenuAction = async (action: string, doc: FileItem) => {
+    setActiveMenuDocId(null);
+
+    switch (action) {
+      case 'check': {
+        setIsSelectionMode(true);
+        setSelectedItemIds(prev =>
+          prev.includes(doc.id) ? prev.filter(id => id !== doc.id) : [...prev, doc.id]
+        );
+        break;
+      }
+
+      case 'check_all': {
+        const allIds = filteredDocuments.map(d => d.id);
+        const isAllChecked = allIds.length > 0 && selectedItemIds.length >= allIds.length;
+        if (isAllChecked) {
+          setSelectedItemIds([]);
+          setIsSelectionMode(false);
+        } else {
+          setIsSelectionMode(true);
+          setSelectedItemIds(allIds);
+        }
+        break;
+      }
+
+      case 'download': {
+        await handleDownload(doc);
+        break;
+      }
+
+      case 'delete': {
+        await handleDeleteDocument(doc);
+        break;
+      }
+
+      case 'share': {
+        handleShare(doc);
+        break;
+      }
+
+      case 'create_link': {
+        if (onOpenCreateShareLink) {
+          onOpenCreateShareLink([{
+            id: doc.id,
+            name: doc.name,
+            size: doc.sizeBytes || 0,
+            type: doc.extension || 'PDF',
+            url: doc.previewUrl || doc.url
+          }]);
+          showToast(`Création du lien pour "${doc.name}"...`);
+        } else {
+          const link = `${window.location.origin}${window.location.pathname}#doc-${doc.id}`;
+          try {
+            await navigator.clipboard?.writeText(link);
+            showToast('Lien copié dans le presse-papiers !');
+          } catch {
+            showToast(`Lien créé pour "${doc.name}"`);
+          }
+        }
+        break;
+      }
+
+      case 'lock_file': {
+        const securedFile: FileItem = {
+          ...doc,
+          isSecure: true,
+          originalCategory: 'documents',
+          originalSource: doc.source || 'Documents',
+          source: 'Dossier Sécurisé'
+        };
+        setDocumentsList(prev => prev.filter(d => d.id !== doc.id));
+        if (selectedDoc?.id === doc.id) {
+          setSelectedDoc(null);
+          setIsViewerMaximized(false);
+        }
+        CloudDataStore.moveToSecure(securedFile as any);
+        CloudStorageAPI.moveToSecureFolder(doc, 'documents').catch(console.error);
+        showToast(`"${doc.name}" verrouillé dans le dossier sécurisé !`);
+        break;
+      }
+
+      case 'move': {
+        const items = isSelectionMode && selectedItemIds.includes(doc.id) && selectedItemIds.length > 1
+          ? filteredDocuments.filter(f => selectedItemIds.includes(f.id))
+          : [doc];
+        setItemsToTransfer(items);
+        setTransferSelectedFolderIds([]);
+        setTransferNavFolderId(null);
+        setTransferSearchQuery('');
+        setIsTransferPromptOpen(true);
+        break;
+      }
+
+      case 'duplicate': {
+        const existingNames = documentsList.map(d => d.name);
+        const newName = computeDuplicateName(doc.name, existingNames);
+        const newDoc: FileItem = {
+          ...doc,
+          id: `doc-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          name: newName,
+          date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
+          isPinned: false
+        };
+        setDocumentsList(prev => [newDoc, ...prev]);
+        CloudDataStore.setDocuments([newDoc, ...documentsList] as any);
+        CloudStorageAPI.duplicateItem(doc.id, 'documents', undefined, newName).catch(console.error);
+        showToast(`Document dupliqué : "${newName}" !`);
+        break;
+      }
+
+      case 'favorite': {
+        await handleToggleFavorite(doc);
+        break;
+      }
+
+      case 'pin': {
+        const nextPinned = !doc.isPinned;
+        setDocumentsList(prev => {
+          const updated = prev.map(d => (d.id === doc.id ? { ...d, isPinned: nextPinned } : d));
+          if (nextPinned) {
+            const item = updated.find(d => d.id === doc.id);
+            return item ? [item, ...updated.filter(d => d.id !== doc.id)] : updated;
+          }
+          return updated;
+        });
+        CloudDataStore.updateFile(doc.id, { isPinned: nextPinned });
+        if (nextPinned) {
+          CloudStorageAPI.addPinned(doc.id, 'documents').catch(console.error);
+          showToast(`"${doc.name}" épinglé !`);
+        } else {
+          CloudStorageAPI.removePinned(doc.id).catch(console.error);
+          showToast(`"${doc.name}" désépinglé`);
+        }
+        break;
+      }
+
+      case 'rename': {
+        await handleRenameDocument(doc);
+        break;
+      }
+
+      default:
+        break;
+    }
+  };
+
+  // Exécution du transfert (Déplacer ou Copier) vers les dossiers sélectionnés du Classeur
+  const handleExecuteTransfer = async () => {
+    if (transferSelectedFolderIds.length === 0 || itemsToTransfer.length === 0 || isTransferring) return;
+    setIsTransferring(true);
+
+    try {
+      await CloudStorageAPI.moveOrCopyItems(itemsToTransfer, transferSelectedFolderIds, transferMode);
+
+      if (transferMode === 'move') {
+        const idsToRemove = new Set(itemsToTransfer.map(i => i.id));
+        setDocumentsList(prev => prev.filter(d => !idsToRemove.has(d.id)));
+        CloudDataStore.setDocuments(documentsList.filter(d => !idsToRemove.has(d.id)) as any);
+
+        setSelectedItemIds(prev => prev.filter(id => !idsToRemove.has(id)));
+        if (selectedItemIds.length <= itemsToTransfer.length) {
+          setIsSelectionMode(false);
+        }
+        if (selectedDoc && idsToRemove.has(selectedDoc.id)) {
+          setSelectedDoc(null);
+          setIsViewerMaximized(false);
+        }
+      }
+
+      const successMsg = transferMode === 'move'
+        ? `${itemsToTransfer.length} document(s) déplacé(s) avec succès !`
+        : `${itemsToTransfer.length} document(s) copié(s) avec succès !`;
+      showToast(successMsg);
+
+      setIsTransferModalOpen(false);
+      setTransferSelectedFolderIds([]);
+      setTransferNavFolderId(null);
+      setTransferSearchQuery('');
+      setItemsToTransfer([]);
+    } catch (err: any) {
+      console.error('Erreur lors du transfert:', err);
+      showToast('Erreur lors du traitement du transfert');
+    } finally {
+      setIsTransferring(false);
+    }
+  };
+
+  // Modal Prompt : choix entre "Déplacer" et "Créer une copie"
+  const renderTransferPromptModal = () => {
+    if (!isTransferPromptOpen) return null;
+
+    const count = itemsToTransfer.length;
+    const titleText = count === 1 
+      ? `Que souhaitez-vous faire avec "${itemsToTransfer[0]?.name}" ?`
+      : `Que souhaitez-vous faire avec ces ${count} documents ?`;
+
+    const content = (
+      <div 
+        className="fixed inset-0 z-[2700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150 pointer-events-auto select-none"
+        onClick={() => setIsTransferPromptOpen(false)}
+      >
+        <div 
+          className="relative w-full max-w-[420px] bg-[#0A0F1D] border-2 border-amber-500/40 rounded-3xl p-5 sm:p-6 shadow-[0_25px_60px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.1)] text-white animate-in zoom-in-95 duration-150 flex flex-col gap-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-3 pb-3 border-b border-white/10">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-400/40 text-amber-300 flex items-center justify-center shadow-inner shrink-0">
+                <FolderInput className="w-5 h-5 stroke-[2.2]" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-black text-white leading-tight">Déplacer ou Copier</h3>
+                <p className="text-[11px] text-slate-400 font-medium truncate mt-0.5" title={titleText}>
+                  {titleText}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsTransferPromptOpen(false)}
+              className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+              title="Fermer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setTransferMode('move');
+                setIsTransferPromptOpen(false);
+                setIsTransferModalOpen(true);
+                CloudStorageAPI.getClasseurFolders().then(folders => {
+                  if (folders && Array.isArray(folders)) setClasseur3DFolders(folders);
+                }).catch(() => {});
+              }}
+              className="group p-4 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-400/60 transition-all text-left flex items-start gap-3.5 cursor-pointer shadow-md active:scale-98"
+            >
+              <div className="w-10 h-10 rounded-xl bg-amber-500/25 border border-amber-400/40 text-amber-300 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <FolderInput className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-black text-amber-200 group-hover:text-amber-100">Déplacer</span>
+                  <span className="text-[10px] font-bold text-rose-400 bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 rounded-full">
+                    Retiré d'ici
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-1 leading-snug">
+                  Transfère {count > 1 ? 'ces documents' : 'ce document'} vers le(s) dossier(s) choisi(s) et le retire d'ici.
+                </p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setTransferMode('copy');
+                setIsTransferPromptOpen(false);
+                setIsTransferModalOpen(true);
+                CloudStorageAPI.getClasseurFolders().then(folders => {
+                  if (folders && Array.isArray(folders)) setClasseur3DFolders(folders);
+                }).catch(() => {});
+              }}
+              className="group p-4 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 hover:border-emerald-400/60 transition-all text-left flex items-start gap-3.5 cursor-pointer shadow-md active:scale-98"
+            >
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/25 border border-emerald-400/40 text-emerald-300 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <Copy className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-black text-emerald-200 group-hover:text-emerald-100">Créer une copie</span>
+                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                    Conserve l'original
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-1 leading-snug">
+                  Garde l'original intact dans le menu Documents et ajoute une copie dans le(s) dossier(s) choisi(s).
+                </p>
+              </div>
+            </button>
+          </div>
+
+          <div className="flex justify-end pt-1">
+            <button
+              type="button"
+              onClick={() => setIsTransferPromptOpen(false)}
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+
+    return typeof document !== 'undefined' ? createPortal(content, document.body) : null;
+  };
+
+  // Modal de sélection du dossier récepteur dans le Classeur
+  const renderTransferFolderModal = () => {
+    if (!isTransferModalOpen) return null;
+
+    let displayedFolders = classeur3DFolders;
+    if (transferSearchQuery.trim()) {
+      const q = transferSearchQuery.trim().toLowerCase();
+      displayedFolders = classeur3DFolders.filter(f => f.name.toLowerCase().includes(q));
+    } else if (transferNavFolderId) {
+      displayedFolders = classeur3DFolders.filter(f => f.parentId === transferNavFolderId);
+    } else {
+      displayedFolders = classeur3DFolders.filter(f => !f.parentId);
+    }
+
+    const currentNavFolder = transferNavFolderId ? classeur3DFolders.find(f => f.id === transferNavFolderId) : null;
+    const parentNavFolder = currentNavFolder?.parentId ? classeur3DFolders.find(f => f.id === currentNavFolder.parentId) : null;
+
+    const toggleFolderCheck = (folderId: string) => {
+      setTransferSelectedFolderIds(prev => 
+        prev.includes(folderId) ? prev.filter(id => id !== folderId) : [...prev, folderId]
+      );
+    };
+
+    const isSelectionActive = transferSelectedFolderIds.length > 0;
+
+    const content = (
+      <div 
+        className="fixed inset-0 z-[2700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200 pointer-events-auto select-none"
+        onClick={() => {
+          setIsTransferModalOpen(false);
+          setTransferNavFolderId(null);
+          setTransferSearchQuery('');
+        }}
+      >
+        <div 
+          className="relative w-full max-w-[440px] max-h-[82vh] bg-[#0A0F1D] border-2 border-amber-500/40 rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.1)] flex flex-col overflow-hidden text-white animate-in zoom-in-95 duration-200"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-5 py-3.5 border-b border-white/10 flex items-center justify-between gap-3 bg-[#070B14] shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className={`w-8 h-8 rounded-xl ${transferMode === 'move' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'} border flex items-center justify-center`}>
+                {transferMode === 'move' ? <FolderInput className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              </div>
+              <h3 className="text-sm sm:text-base font-black text-white">
+                {transferMode === 'move' ? 'Déplacer vers un dossier' : 'Créer une copie dans...'}
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setIsTransferModalOpen(false);
+                setTransferNavFolderId(null);
+                setTransferSearchQuery('');
+              }}
+              className="p-1 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              title="Fermer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="p-3.5 border-b border-white/10 bg-[#0E1526] space-y-2.5 shrink-0">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                value={transferSearchQuery}
+                onChange={(e) => setTransferSearchQuery(e.target.value)}
+                placeholder="Trouver un dossier rapidement..."
+                className="w-full bg-[#0A0F1D] border border-white/10 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-colors"
+              />
+              {transferSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setTransferSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold flex items-center gap-1.5">
+                <CheckSquare className="w-3.5 h-3.5 text-amber-400" />
+                {transferSelectedFolderIds.length} dossier{transferSelectedFolderIds.length > 1 ? 's' : ''} coché{transferSelectedFolderIds.length > 1 ? 's' : ''}
+              </span>
+              <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300 font-semibold flex items-center gap-1.5">
+                {itemsToTransfer.length} document{itemsToTransfer.length > 1 ? 's' : ''} à {transferMode === 'move' ? 'déplacer' : 'copier'}
+              </span>
+            </div>
+
+            {!transferSearchQuery && (
+              <div className="flex items-center gap-2 pt-1 border-t border-white/5 text-xs overflow-x-auto no-scrollbar">
+                {transferNavFolderId && (
+                  <button
+                    type="button"
+                    onClick={() => setTransferNavFolderId(currentNavFolder?.parentId || null)}
+                    className="p-1 rounded-lg bg-white/5 hover:bg-white/10 text-amber-400 transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
+                    title="Retour"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span className="text-[11px] font-bold">Retour</span>
+                  </button>
+                )}
+                
+                <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
+                  {parentNavFolder ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setTransferNavFolderId(parentNavFolder.id)}
+                        className="text-[11px] font-semibold text-white/40 hover:text-white/60 truncate cursor-pointer transition-colors"
+                        title={parentNavFolder.name}
+                      >
+                        {parentNavFolder.name}
+                      </button>
+                      <span className="text-white/30 text-xs">/</span>
+                    </>
+                  ) : currentNavFolder ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setTransferNavFolderId(null)}
+                        className="text-[11px] font-semibold text-white/40 hover:text-white/60 truncate cursor-pointer transition-colors"
+                      >
+                        Classeur
+                      </button>
+                      <span className="text-white/30 text-xs">/</span>
+                    </>
+                  ) : (
+                    <span className="text-[11px] font-semibold text-slate-400">Racine du Classeur</span>
+                  )}
+
+                  {currentNavFolder && (
+                    <span
+                      className="text-[11px] font-black px-2 py-0.5 rounded-md border truncate shadow-xs"
+                      style={{
+                        color: currentNavFolder.primaryColor || '#F59E0B',
+                        borderColor: `${currentNavFolder.primaryColor || '#F59E0B'}40`,
+                        backgroundColor: `${currentNavFolder.primaryColor || '#F59E0B'}15`
+                      }}
+                    >
+                      {currentNavFolder.name}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-[220px] max-h-[380px]">
+            {displayedFolders.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 space-y-1">
+                <FolderArchive className="w-8 h-8 mx-auto text-slate-600 mb-2" />
+                <p className="text-xs font-semibold text-slate-300">Aucun dossier trouvé</p>
+                <p className="text-[11px] text-slate-500">
+                  {transferSearchQuery ? 'Aucun résultat pour cette recherche' : 'Ce dossier ne contient aucun sous-dossier'}
+                </p>
+              </div>
+            ) : (
+              displayedFolders.map(folder => {
+                const isChecked = transferSelectedFolderIds.includes(folder.id);
+                const subCount = classeur3DFolders.filter(f => f.parentId === folder.id).length;
+
+                return (
+                  <div
+                    key={folder.id}
+                    onClick={() => {
+                      if (!transferSearchQuery) {
+                        setTransferNavFolderId(folder.id);
+                      }
+                    }}
+                    className={`group flex items-center justify-between gap-2.5 p-2.5 rounded-2xl transition-all border cursor-pointer ${
+                      isChecked
+                        ? 'bg-amber-500/15 border-amber-500/40 shadow-sm'
+                        : 'bg-slate-900/60 hover:bg-slate-800/80 border-white/5 hover:border-white/15'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFolderCheck(folder.id);
+                        }}
+                        className="p-1 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white shrink-0 cursor-pointer"
+                        title={isChecked ? 'Décocher ce dossier' : 'Cocher ce dossier'}
+                      >
+                        {isChecked ? (
+                          <CheckSquare className="w-5 h-5 text-amber-400 fill-amber-400/20" />
+                        ) : (
+                          <Square className="w-5 h-5 text-slate-400 hover:text-white" />
+                        )}
+                      </button>
+
+                      <div
+                        className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-sm border"
+                        style={{
+                          backgroundColor: folder.primaryColor || '#E76239',
+                          borderColor: lightenColor(folder.primaryColor || '#E76239', 20),
+                          color: folder.textDark ? '#0F172A' : '#FFFFFF'
+                        }}
+                      >
+                        <FolderArchive className="w-4 h-4 stroke-[2.2]" />
+                      </div>
+
+                      <span className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-amber-200 transition-colors">
+                        {folder.name}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {subCount > 0 ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] sm:text-[11px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                            {subCount} sous-dossier{subCount > 1 ? 's' : ''}
+                          </span>
+                          {!transferSearchQuery && (
+                            <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-300 transition-colors" />
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] sm:text-[11px] font-medium text-slate-500 px-1">
+                          0 sous-dossier
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <div className="p-3.5 border-t border-white/10 bg-[#070B14] shrink-0 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setIsTransferModalOpen(false);
+                setTransferNavFolderId(null);
+                setTransferSearchQuery('');
+              }}
+              className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+            >
+              Annuler
+            </button>
+
+            <button
+              type="button"
+              disabled={!isSelectionActive || isTransferring}
+              onClick={handleExecuteTransfer}
+              className={`px-4 sm:px-5 py-2.5 rounded-xl font-black text-xs sm:text-sm flex items-center gap-2 transition-all shadow-lg ${
+                isSelectionActive && !isTransferring
+                  ? transferMode === 'move'
+                    ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer shadow-amber-500/20 active:scale-95'
+                    : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 cursor-pointer shadow-emerald-500/20 active:scale-95'
+                  : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5'
+              }`}
+            >
+              {isTransferring ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                  <span>Transfert en cours...</span>
+                </>
+              ) : (
+                <>
+                  {transferMode === 'move' ? <FolderInput className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  <span>
+                    {transferMode === 'move' ? 'Déplacer ici' : 'Copier ici'} ({transferSelectedFolderIds.length})
+                  </span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+
+    return typeof document !== 'undefined' ? createPortal(content, document.body) : null;
+  };
+
+  // Filtrage et tri des documents (avec tri des documents épinglés en tête)
   const filteredDocuments = useMemo(() => {
-    let list = documentsList;
+    let list = [...documentsList];
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter(d => d.name.toLowerCase().includes(q));
@@ -328,8 +1248,398 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     } else if (activeFilter === 'txt') {
       list = list.filter(d => ['txt', 'md'].includes((d.extension || '').toLowerCase()));
     }
-    return list;
+
+    return list.sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return 0;
+    });
   }, [documentsList, searchQuery, activeFilter]);
+
+  // =========================================================================
+  // RENDU DU MENU 3 TRAITS DÉDIÉ ET INDÉPENDANT POUR CHAQUE DOCUMENT (IMAGE 2)
+  // =========================================================================
+  const renderDocumentOptionsMenu = (doc: FileItem, index?: number) => {
+    const isRightCol = typeof index === 'number' && (
+      (index % 2 === 1) || 
+      (Boolean(selectedDoc) && (index + 1) % 3 === 0) ||
+      ((index + 1) % (selectedDoc ? 3 : 5) === 0)
+    );
+    const align: 'left' | 'right' = isRightCol ? 'right' : 'left';
+    const isChecked = selectedItemIds.includes(doc.id);
+    const isAllChecked = filteredDocuments.length > 0 && selectedItemIds.length >= filteredDocuments.length;
+
+    return (
+      <div 
+        className={`studycloud-file-menu-panel absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-[100] w-64 bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.25)] text-slate-200 rounded-xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* En-tête de menu dédié avec nom du fichier et bouton fermeture (Image 2) */}
+        <div className="px-3 py-2 bg-slate-900 border-b border-white/10 flex items-center justify-between gap-2 shrink-0">
+          <div className="min-w-0">
+            <p className="text-[11px] font-black text-white truncate" title={doc.name}>
+              {doc.name}
+            </p>
+            <p className="text-[9px] font-semibold text-slate-400">
+              {doc.size || 'Document'} • <span className="uppercase text-amber-400">{doc.extension || 'PDF'}</span>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveMenuDocId(null);
+            }}
+            className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+            title="Fermer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Liste déroulante des 12 options avec défilement fluide garanti (Image 2) */}
+        <div className="max-h-[min(380px,calc(100vh-140px))] overflow-y-auto no-scrollbar py-1 divide-y divide-white/5">
+          {/* Section 1 : Sélection (Cocher, Tout cocher, Télécharger) */}
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => handleMenuAction('check', doc)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+            >
+              <CheckSquare className="w-3.5 h-3.5 shrink-0" />
+              <span>{isChecked ? 'Décocher' : 'Cocher'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleMenuAction('check_all', doc)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+            >
+              <CheckSquare className="w-3.5 h-3.5 shrink-0" />
+              <span>{isAllChecked ? 'Tout décocher' : 'Tout cocher'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleMenuAction('download', doc)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-sky-400 hover:bg-sky-500/15 transition-colors cursor-pointer text-left"
+            >
+              <Download className="w-3.5 h-3.5 shrink-0" />
+              <span>Télécharger</span>
+            </button>
+          </div>
+
+          {/* Section 2 : Actions principales de gestion */}
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => handleMenuAction('delete', doc)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
+            >
+              <Trash2 className="w-3.5 h-3.5 shrink-0" />
+              <span>Supprimer le fichier</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleMenuAction('share', doc)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Share2 className="w-3.5 h-3.5 shrink-0 text-sky-400" />
+              <span>Partager</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleMenuAction('create_link', doc)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Link className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
+              <span>Créer un lien</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleMenuAction('lock_file', doc)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-300 hover:bg-amber-400/15 transition-colors cursor-pointer text-left"
+              title="Verrouiller ce document dans le dossier sécurisé"
+            >
+              <Lock className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+              <span>Verrouiller</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleMenuAction('move', doc)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <FolderInput className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+              <span>Le déplacer</span>
+            </button>
+          </div>
+
+          {/* Section 3 : Organisation & Édition */}
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => handleMenuAction('duplicate', doc)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Copy className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+              <span>Dupliquer</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleMenuAction('favorite', doc)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Star className={`w-3.5 h-3.5 shrink-0 ${doc.isFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-yellow-400'}`} />
+              <span>{doc.isFavorite ? 'Retirer des favoris' : 'Ajouter au favoris'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleMenuAction('pin', doc)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Pin className="w-3.5 h-3.5 shrink-0 text-purple-400" />
+              <span>{doc.isPinned ? 'Désépingler' : 'Épinglez'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleMenuAction('rename', doc)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Pencil className="w-3.5 h-3.5 shrink-0 text-teal-400" />
+              <span>Modifier le nom</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // RENDU D'UNE CARTE DOCUMENT (IMAGE 1 & 2 AVEC SUIVI ENREGISTREMENT ET ERREUR)
+  // =========================================================================
+  const renderDocumentCard = (doc: FileItem, index: number) => {
+    const theme = getDocumentTheme(doc.extension || 'PDF');
+    const isSelected = selectedDoc?.id === doc.id;
+    const isMenuOpen = activeMenuDocId === doc.id;
+    const isChecked = selectedItemIds.includes(doc.id);
+
+    // Suivi d'enregistrement temps réel lié au Worker R2/D1
+    const isSaving = savingProgress[doc.id] !== undefined;
+    const progressVal = savingProgress[doc.id] || 0;
+    const saveError = savingErrors[doc.id];
+    const hasFailed = Boolean(saveError);
+
+    return (
+      <div
+        key={doc.id}
+        style={{ background: theme.bg }}
+        onClick={() => {
+          if (hasFailed) {
+            showToast("Enregistrement échoué. Utilisez la croix pour effacer ou le bouton Réessayer.");
+            return;
+          }
+          if (isSaving) {
+            showToast("Enregistrement du document en cours... Veuillez patienter.");
+            return;
+          }
+          if (isSelectionMode) {
+            const next = isChecked
+              ? selectedItemIds.filter(id => id !== doc.id)
+              : [...selectedItemIds, doc.id];
+            setSelectedItemIds(next);
+            if (next.length === 0) setIsSelectionMode(false);
+          } else {
+            setSelectedDoc(doc);
+          }
+        }}
+        className={`aspect-[3/4] ${theme.border} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none ${
+          hasFailed
+            ? 'border-rose-500 ring-4 ring-rose-500/50 shadow-2xl bg-rose-950/40 cursor-default'
+            : isSaving
+              ? 'border-emerald-500/40 cursor-wait'
+              : isChecked
+                ? 'ring-4 ring-amber-400 shadow-2xl scale-[1.02] cursor-pointer'
+                : isSelected
+                  ? 'ring-4 ring-white shadow-2xl scale-[1.02] cursor-pointer'
+                  : 'hover:scale-[1.01] shadow-md cursor-pointer active:scale-98'
+        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
+      >
+        {/* 1. Trait en haut collé au document qui se remplit pendant l'enregistrement */}
+        {isSaving && !hasFailed && (
+          <div className="absolute top-0 inset-x-0 h-1.5 bg-black/40 z-35 overflow-hidden pointer-events-none rounded-t-2xl">
+            <div 
+              className="h-full bg-emerald-400 transition-all duration-300 ease-out shadow-[0_0_8px_#34d399]"
+              style={{ width: `${progressVal}%` }}
+            />
+          </div>
+        )}
+        {hasFailed && (
+          <div className="absolute top-0 inset-x-0 h-1.5 bg-rose-500 z-35 overflow-hidden pointer-events-none rounded-t-2xl shadow-[0_0_10px_#f43f5e]" />
+        )}
+
+        {/* 2. Overlay d'enregistrement au centre */}
+        {isSaving && !hasFailed && (
+          <div className="absolute inset-0 z-30 bg-black/75 backdrop-blur-[2px] flex flex-col items-center justify-center p-2 text-white pointer-events-none animate-in fade-in rounded-2xl">
+            <div className="w-5 h-5 rounded-full border-2 border-white/20 border-t-emerald-400 animate-spin mb-1.5" />
+            <span className="text-[10px] font-black text-emerald-300 tracking-wider">
+              {progressVal}%
+            </span>
+            <span className="text-[8px] font-bold text-white/90 text-center leading-tight">
+              Enregistrement Cloud...
+            </span>
+            <span className="text-[7.5px] text-emerald-400/80 mt-0.5 font-mono">
+              Worker R2 en direct
+            </span>
+          </div>
+        )}
+
+        {/* 3. Overlay d'échec rouge avec bouton croix (X) pour effacer et Réessayer */}
+        {hasFailed && (
+          <div className="absolute inset-0 z-30 bg-rose-950/92 backdrop-blur-[3px] border border-rose-500/50 flex flex-col items-center justify-between p-2.5 text-white rounded-2xl animate-in fade-in duration-200">
+            <div className="w-full flex justify-between items-center">
+              <span className="text-[9px] font-black uppercase tracking-wider text-rose-300 bg-rose-900/70 px-2 py-0.5 rounded-full border border-rose-500/40">
+                Non enregistré
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDismissFailedUpload(doc.id);
+                }}
+                className="w-6 h-6 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-lg transition-transform active:scale-90 cursor-pointer"
+                title="Effacer le document non enregistré (Croix)"
+              >
+                <X className="w-3.5 h-3.5 stroke-[2.5]" />
+              </button>
+            </div>
+
+            <div className="flex flex-col items-center text-center my-auto px-1">
+              <div className="w-7 h-7 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 mb-1 shadow-md">
+                <AlertCircle className="w-4 h-4" />
+              </div>
+              <p className="text-[10px] font-black text-rose-200 leading-tight">
+                Échec d'enregistrement
+              </p>
+              <p className="text-[8.5px] text-rose-300/85 line-clamp-2 mt-0.5 leading-snug">
+                {saveError || "Fichier non enregistré sur le Cloud"}
+              </p>
+            </div>
+
+            <div className="w-full flex items-center gap-1.5 pt-1">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRetryUpload(doc.id);
+                }}
+                className="flex-1 py-1 px-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-white text-[9.5px] font-bold flex items-center justify-center gap-1 cursor-pointer active:scale-95 transition-all"
+                title="Réessayer l'enregistrement"
+              >
+                <RotateCcw className="w-3 h-3 text-emerald-400" />
+                <span>Réessayer</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDismissFailedUpload(doc.id);
+                }}
+                className="py-1 px-1.5 rounded-lg bg-rose-600/80 hover:bg-rose-600 text-white text-[9.5px] font-bold flex items-center justify-center gap-1 cursor-pointer active:scale-95 transition-all"
+                title="Effacer"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Effacer</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Barre supérieure : Bouton 3 traits, Checkbox (en mode sélection) & Taille */}
+        <div className="flex items-center justify-between gap-1 z-20 relative">
+          <div className="flex items-center gap-1.5">
+            <div className="relative studycloud-menu-trigger">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveMenuDocId(isMenuOpen ? null : doc.id);
+                }}
+                className="p-1 sm:p-1.2 rounded-lg bg-black/40 hover:bg-black/70 text-white border border-white/20 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-sm"
+                title="Options du fichier (3 traits)"
+              >
+                <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+              </button>
+
+              {isMenuOpen && renderDocumentOptionsMenu(doc, index)}
+            </div>
+
+            {/* Case à cocher visible en mode sélection */}
+            {isSelectionMode && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleMenuAction('check', doc);
+                }}
+                className="p-0.5 text-white hover:scale-110 transition-transform cursor-pointer"
+                title={isChecked ? "Décocher" : "Cocher"}
+              >
+                {isChecked ? (
+                  <CheckSquare className="w-4 h-4 fill-amber-400 text-stone-950" />
+                ) : (
+                  <Square className="w-4 h-4 text-white/90" />
+                )}
+              </button>
+            )}
+
+            {/* Badges Épinglé et Favori */}
+            {doc.isPinned && (
+              <span className="p-0.5 rounded bg-black/60 text-purple-300 border border-purple-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
+                <Pin className="w-3 h-3 rotate-45" />
+              </span>
+            )}
+            {doc.isFavorite && (
+              <span className="p-0.5 rounded bg-black/60 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
+                <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+              </span>
+            )}
+          </div>
+
+          <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/40 text-white border border-black/20 px-1.5 py-0.5 rounded shadow-sm">
+            {doc.size}
+          </span>
+        </div>
+
+        {/* Corps de carte / aperçu réel du document (PDF page 1 ou layout dynamique) */}
+        <div className="flex-1 w-full my-1.5 overflow-hidden rounded-lg bg-white relative shadow-inner border border-white/20 flex flex-col justify-between pointer-events-none">
+          <DocumentCardPreview doc={doc} />
+        </div>
+
+        {/* Titre unique : un seul nom en bas */}
+        <div className="px-0.5 mb-1">
+          <p className="text-[9px] sm:text-[10px] font-black text-white truncate drop-shadow-md" title={doc.name}>
+            {doc.name}
+          </p>
+        </div>
+
+        {/* Pied de carte : typeBadge et bouton télécharger */}
+        <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1">
+          <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
+            {theme.typeBadge}
+          </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDownload(doc);
+            }}
+            className="p-1 sm:p-1.2 bg-orange-500 hover:bg-orange-600 text-white rounded border border-stone-900 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:scale-95"
+            title="Télécharger"
+          >
+            <Download className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   // Rendu du lecteur de document dédié (Image 3)
   const renderDocumentReader = (file: FileItem) => {
@@ -350,76 +1660,87 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             <button
               type="button"
               onClick={() => handleNavigateDoc('prev')}
-              className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
+              className="p-1 sm:p-1.5 rounded-full bg-black/60 hover:bg-slate-800 text-white border border-white/10 transition-colors cursor-pointer"
               title="Document précédent"
             >
-              <ChevronLeft className="w-4 h-4 stroke-[2.2]" />
+              <ChevronLeft className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"
               onClick={() => handleNavigateDoc('next')}
-              className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
+              className="p-1 sm:p-1.5 rounded-full bg-black/60 hover:bg-slate-800 text-white border border-white/10 transition-colors cursor-pointer"
               title="Document suivant"
             >
-              <ChevronRight className="w-4 h-4 stroke-[2.2]" />
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
 
             <div className="min-w-0 ml-1">
               <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-[220px]" title={file.name}>
                 {file.name}
               </p>
-              {file.size && (
-                <p className="text-[10px] text-slate-400 font-semibold truncate">
-                  {file.size}
-                </p>
-              )}
+              <p className="text-[10px] text-slate-400 font-semibold truncate">
+                {file.size} • <span className="uppercase text-blue-400">{file.extension || 'PDF'}</span>
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-wrap justify-end">
-            <button
-              type="button"
-              onClick={() => setViewerZoom(prev => Math.max(0.5, prev - 0.25))}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-              title="Zoom arrière (-)"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewerZoom(prev => Math.min(3, prev + 0.25))}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-              title="Zoom avant (+)"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewerRotation(prev => (prev + 90) % 360)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-              title="Faire pivoter"
-            >
-              <RotateCw className="w-3.5 h-3.5" />
-            </button>
+          {/* Outils du lecteur à droite */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {isPdf && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setDocLayoutMode(m => m === 'vertical' ? 'horizontal' : 'vertical')}
+                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                    docLayoutMode === 'horizontal' ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-slate-800 text-white border-white/10'
+                  }`}
+                  title={docLayoutMode === 'horizontal' ? 'Mode défilement vertical' : 'Mode pages horizontales'}
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                </button>
 
-            {/* Bouton Mode Vertical / Horizontal (Image 3) */}
+                <button
+                  type="button"
+                  onClick={() => setViewerZoom(z => Math.max(0.5, Math.round((z - 0.2) * 10) / 10))}
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+                  title="Zoom arrière"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+
+                <span className="text-[10px] font-bold text-slate-300 w-10 text-center hidden sm:inline-block">
+                  {Math.round(viewerZoom * 100)}%
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setViewerZoom(z => Math.min(3, Math.round((z + 0.2) * 10) / 10))}
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+                  title="Zoom avant"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setViewerRotation(r => (r + 90) % 360)}
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+                  title="Faire pivoter"
+                >
+                  <RotateCw className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+
             <button
               type="button"
-              onClick={() => {
-                const nextMode = docLayoutMode === 'vertical' ? 'horizontal' : 'vertical';
-                setDocLayoutMode(nextMode);
-                setDocCurrentPage(1);
-                showToast(nextMode === 'horizontal' ? 'Mode défilement horizontal activé' : 'Mode défilement vertical activé');
-              }}
-              className={`h-7 sm:h-8 px-2.5 sm:px-3 rounded-full flex items-center gap-1.5 text-xs font-bold border transition-all cursor-pointer shadow-sm active:scale-95 ${
-                docLayoutMode === 'horizontal'
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30 ring-1 ring-amber-400/40'
-                  : 'bg-blue-500/20 text-blue-300 border-blue-500/50 hover:bg-blue-500/30 ring-1 ring-blue-400/40'
+              onClick={() => handleToggleFavorite(file)}
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                file.isFavorite ? 'bg-amber-500/20 text-amber-400 border-amber-400/40' : 'bg-black/60 hover:bg-slate-800 text-white border-white/10'
               }`}
-              title={docLayoutMode === 'vertical' ? 'Défilement vertical (Cliquer pour passer en horizontal)' : 'Défilement horizontal (Cliquer pour passer en vertical)'}
+              title={file.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
             >
-              <SlidersHorizontal className={`w-3.5 h-3.5 ${docLayoutMode === 'vertical' ? 'rotate-90 text-blue-400' : 'text-amber-400'}`} />
-              <span className="text-[11px] font-black">{docLayoutMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
+              <Star className={`w-3.5 h-3.5 ${file.isFavorite ? 'fill-amber-400' : ''}`} />
             </button>
 
             <button
@@ -650,10 +1971,29 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
               : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
         }`}>
           <div className="space-y-3 sm:space-y-4">
-            <div className="flex items-center justify-between">
+            {/* Ligne d'en-tête de la liste avec filtres et compteurs */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
                 {filteredDocuments.length} document{filteredDocuments.length > 1 ? 's' : ''} disponible{filteredDocuments.length > 1 ? 's' : ''}
               </span>
+
+              {/* Filtres par type */}
+              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
+                {(['all', 'pdf', 'cours', 'td', 'devoirs'] as const).map(tab => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setActiveFilter(tab)}
+                    className={`px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer uppercase ${
+                      activeFilter === tab
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-stone-200 dark:bg-slate-800/80 text-stone-600 dark:text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {tab === 'all' ? 'Tous' : tab}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {loading ? (
@@ -670,54 +2010,13 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                 </p>
               </div>
             ) : (
+              /* GRILLE DES CARTES DE DOCUMENTS (IMAGE 1) */
               <div className={`grid gap-2.5 sm:gap-3.5 ${
                 selectedDoc
-                  ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3'
+                  ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3'
                   : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
               }`}>
-                {filteredDocuments.map((doc) => {
-                  const isSelected = selectedDoc?.id === doc.id;
-                  const isMenuOpen = menuDocId === doc.id;
-
-                  return (
-                    <div
-                      key={doc.id}
-                      onClick={() => {
-                        setSelectedDoc(doc);
-                      }}
-                      className={`group relative flex flex-col rounded-2xl p-2.5 transition-all cursor-pointer border select-none ${
-                        isSelected
-                          ? 'bg-blue-500/10 dark:bg-blue-950/30 border-blue-400 dark:border-blue-500 shadow-md ring-1 ring-blue-400/40'
-                          : 'bg-white dark:bg-slate-900/80 border-stone-200/90 dark:border-slate-800 hover:border-blue-400/50 hover:shadow-lg'
-                      }`}
-                    >
-                      {/* Vignette Preview */}
-                      <div className="w-full aspect-[4/3] rounded-xl overflow-hidden bg-slate-950 relative flex items-center justify-center shadow-inner">
-                        <DocumentCardPreview doc={doc} className="w-full h-full object-cover" />
-                        {doc.extension && (
-                          <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/80 border border-white/20 text-[9px] font-black uppercase text-white tracking-wider">
-                            {doc.extension}
-                          </span>
-                        )}
-                        {doc.isFavorite && (
-                          <Star className="absolute top-1.5 right-1.5 w-3.5 h-3.5 text-amber-400 fill-amber-400 filter drop-shadow" />
-                        )}
-                      </div>
-
-                      {/* Titre & métadonnées */}
-                      <div className="mt-2 min-w-0">
-                        <h4 className={`text-xs font-bold truncate leading-tight ${
-                          isSelected ? 'text-blue-500 dark:text-blue-300' : 'text-stone-800 dark:text-white group-hover:text-blue-500'
-                        }`}>
-                          {doc.name}
-                        </h4>
-                        <p className="text-[10px] text-stone-400 dark:text-slate-500 font-medium truncate mt-0.5">
-                          {doc.size || 'Document'} • {doc.date}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
+                {filteredDocuments.map((doc, idx) => renderDocumentCard(doc, idx))}
               </div>
             )}
           </div>
@@ -734,6 +2033,76 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* BARRE D'ACTIONS FLOTTANTE EN MODE SÉLECTION */}
+      {isSelectionMode && selectedItemIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#0A0E1A]/95 backdrop-blur-md border border-blue-500/40 rounded-full px-4 sm:px-6 py-2.5 shadow-2xl flex items-center gap-3 sm:gap-4 text-white text-xs sm:text-sm animate-in slide-in-from-bottom-4 duration-200">
+          <span className="font-bold text-blue-300">
+            {selectedItemIds.length} sélectionné{selectedItemIds.length > 1 ? 's' : ''}
+          </span>
+          <div className="h-4 w-px bg-white/20" />
+          <button
+            type="button"
+            onClick={() => {
+              const toDownload = filteredDocuments.filter(d => selectedItemIds.includes(d.id));
+              toDownload.forEach(handleDownload);
+            }}
+            className="flex items-center gap-1.5 hover:text-blue-400 font-semibold cursor-pointer transition-colors"
+            title="Télécharger la sélection"
+          >
+            <Download className="w-4 h-4 text-blue-400" />
+            <span className="hidden sm:inline">Télécharger</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const items = filteredDocuments.filter(d => selectedItemIds.includes(d.id));
+              setItemsToTransfer(items);
+              setTransferSelectedFolderIds([]);
+              setTransferNavFolderId(null);
+              setTransferSearchQuery('');
+              setIsTransferPromptOpen(true);
+            }}
+            className="flex items-center gap-1.5 hover:text-amber-400 font-semibold cursor-pointer transition-colors"
+            title="Déplacer ou copier la sélection"
+          >
+            <FolderInput className="w-4 h-4 text-amber-400" />
+            <span className="hidden sm:inline">Déplacer/Copier</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!window.confirm(`Supprimer les ${selectedItemIds.length} document(s) sélectionné(s) ?`)) return;
+              const toDelete = filteredDocuments.filter(d => selectedItemIds.includes(d.id));
+              toDelete.forEach(d => {
+                handleMenuAction('delete', d);
+              });
+              setSelectedItemIds([]);
+              setIsSelectionMode(false);
+            }}
+            className="flex items-center gap-1.5 hover:text-rose-400 font-semibold cursor-pointer transition-colors"
+            title="Supprimer la sélection"
+          >
+            <Trash2 className="w-4 h-4 text-rose-400" />
+            <span className="hidden sm:inline">Supprimer</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedItemIds([]);
+              setIsSelectionMode(false);
+            }}
+            className="p-1 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            title="Annuler la sélection"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Modales de transfert vers le Classeur 3D */}
+      {renderTransferPromptModal()}
+      {renderTransferFolderModal()}
     </div>
   );
 };
