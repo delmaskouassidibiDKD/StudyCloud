@@ -6,7 +6,6 @@
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
-import jsmediatags from 'jsmediatags';
 import { storeThumbnailData, getThumbnailData } from './localFileStorage';
 
 export interface AudioMetadataResult {
@@ -16,56 +15,219 @@ export interface AudioMetadataResult {
   coverUrl?: string;
 }
 
-/**
- * Extrait les métadonnées audio et la pochette d'album réelle (Artwork) via jsmediatags
- */
-export function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Promise<AudioMetadataResult> {
-  return new Promise((resolve) => {
-    try {
-      (jsmediatags as any).read(fileOrBlob, {
-        onSuccess: (tag: any) => {
-          const tags = tag?.tags || {};
-          let coverUrl: string | undefined = undefined;
+function decodeTextFrame(bytes: Uint8Array, encoding: number): string {
+  try {
+    if (encoding === 0) {
+      return new TextDecoder('iso-8859-1').decode(bytes).replace(/\0+$/, '').trim();
+    } else if (encoding === 1) {
+      return new TextDecoder('utf-16').decode(bytes).replace(/\0+$/, '').trim();
+    } else if (encoding === 2) {
+      return new TextDecoder('utf-16be').decode(bytes).replace(/\0+$/, '').trim();
+    } else if (encoding === 3) {
+      return new TextDecoder('utf-8').decode(bytes).replace(/\0+$/, '').trim();
+    }
+  } catch {}
+  let res = '';
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] !== 0) res += String.fromCharCode(bytes[i]);
+  }
+  return res.trim();
+}
 
-          if (tags.picture && tags.picture.data) {
-            const { data, format } = tags.picture;
-            let mime = 'image/jpeg';
-            if (format) {
-              const fLower = String(format).toLowerCase();
-              mime = fLower.startsWith('image/') ? fLower : `image/${fLower}`;
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const len = bytes.byteLength;
+  const chunkSize = 8192;
+  for (let i = 0; i < len; i += chunkSize) {
+    const sub = bytes.subarray(i, Math.min(i + chunkSize, len));
+    binary += String.fromCharCode.apply(null, sub as any);
+  }
+  return window.btoa(binary);
+}
+
+/**
+ * Extrait les métadonnées audio et la pochette d'album réelle (Artwork) de manière purement native et ultra-rapide (ID3v2 & M4A)
+ */
+export async function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Promise<AudioMetadataResult> {
+  const result: AudioMetadataResult = {};
+
+  try {
+    const sliceLen = Math.min(fileOrBlob.size, 5 * 1024 * 1024);
+    const slice = fileOrBlob.slice(0, sliceLen);
+    const buffer = await slice.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+
+    // 1. Parsing ID3v2 (MP3, WAV, FLAC)
+    if (bytes.length > 10 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
+      const version = bytes[3]; // 2 (ID3v2.2), 3 (ID3v2.3), 4 (ID3v2.4)
+      const tagSize = ((bytes[6] & 0x7f) << 21) |
+                      ((bytes[7] & 0x7f) << 14) |
+                      ((bytes[8] & 0x7f) << 7) |
+                      (bytes[9] & 0x7f);
+
+      const maxOffset = Math.min(bytes.length, tagSize + 10);
+      let offset = 10;
+
+      if (version === 2) {
+        // ID3v2.2 (tags 3 caractères: TT2, TP1, TAL, PIC)
+        while (offset < maxOffset - 6) {
+          const frameId = String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2]);
+          const frameSize = (bytes[offset + 3] << 16) | (bytes[offset + 4] << 8) | bytes[offset + 5];
+          if (frameSize <= 0 || offset + 6 + frameSize > maxOffset) break;
+
+          const dataOffset = offset + 6;
+          const encoding = bytes[dataOffset];
+          const frameBytes = bytes.subarray(dataOffset + 1, dataOffset + frameSize);
+
+          if (frameId === 'TT2' && !result.title) {
+            result.title = decodeTextFrame(frameBytes, encoding);
+          } else if (frameId === 'TP1' && !result.artist) {
+            result.artist = decodeTextFrame(frameBytes, encoding);
+          } else if (frameId === 'TAL' && !result.album) {
+            result.album = decodeTextFrame(frameBytes, encoding);
+          } else if (frameId === 'PIC' && !result.coverUrl) {
+            let p = dataOffset + 1;
+            const imgFormat = String.fromCharCode(bytes[p], bytes[p + 1], bytes[p + 2]).toLowerCase();
+            p += 3;
+            p++; // picType
+            while (p < dataOffset + frameSize && bytes[p] !== 0) p++;
+            p++;
+            const imgData = bytes.subarray(p, dataOffset + frameSize);
+            if (imgData.length > 50) {
+              const mime = imgFormat === 'png' ? 'image/png' : 'image/jpeg';
+              result.coverUrl = `data:${mime};base64,${bytesToBase64(imgData)}`;
+            }
+          }
+          offset += 6 + frameSize;
+        }
+      } else {
+        // ID3v2.3 ou ID3v2.4 (tags 4 caractères: TIT2, TPE1, TALB, APIC)
+        while (offset < maxOffset - 10) {
+          if (bytes[offset] === 0) break; // Fin des frames / padding
+
+          const frameId = String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
+          let frameSize = 0;
+          if (version === 4) {
+            frameSize = ((bytes[offset + 4] & 0x7f) << 21) |
+                        ((bytes[offset + 5] & 0x7f) << 14) |
+                        ((bytes[offset + 6] & 0x7f) << 7) |
+                        (bytes[offset + 7] & 0x7f);
+          } else {
+            frameSize = (bytes[offset + 4] << 24) |
+                        (bytes[offset + 5] << 16) |
+                        (bytes[offset + 6] << 8) |
+                        bytes[offset + 7];
+          }
+
+          if (frameSize <= 0 || offset + 10 + frameSize > bytes.length) break;
+
+          const dataOffset = offset + 10;
+          const encoding = bytes[dataOffset];
+          const frameBytes = bytes.subarray(dataOffset + 1, dataOffset + frameSize);
+
+          if (frameId === 'TIT2' && !result.title) {
+            result.title = decodeTextFrame(frameBytes, encoding);
+          } else if (frameId === 'TPE1' && !result.artist) {
+            result.artist = decodeTextFrame(frameBytes, encoding);
+          } else if (frameId === 'TALB' && !result.album) {
+            result.album = decodeTextFrame(frameBytes, encoding);
+          } else if (frameId === 'APIC' && !result.coverUrl) {
+            let p = dataOffset + 1;
+            let mime = '';
+            while (p < dataOffset + frameSize && bytes[p] !== 0) {
+              mime += String.fromCharCode(bytes[p++]);
+            }
+            p++; // Sauter zéro terminal
+            if (!mime || mime.length < 3) mime = 'image/jpeg';
+            if (!mime.includes('/')) mime = `image/${mime.toLowerCase()}`;
+
+            p++; // Picture type (ex 0x03 Front cover)
+
+            // Sauter la description selon l'encodage
+            if (encoding === 1 || encoding === 2) {
+              while (p < dataOffset + frameSize - 1 && !(bytes[p] === 0 && bytes[p + 1] === 0)) p += 2;
+              p += 2;
+            } else {
+              while (p < dataOffset + frameSize && bytes[p] !== 0) p++;
+              p++;
             }
 
-            try {
-              let binary = '';
-              const bytes = new Uint8Array(data);
-              const len = bytes.byteLength;
-              const chunkSize = 8192;
-              for (let i = 0; i < len; i += chunkSize) {
-                const sub = bytes.subarray(i, Math.min(i + chunkSize, len));
-                binary += String.fromCharCode.apply(null, sub as any);
-              }
-              const base64 = window.btoa(binary);
-              coverUrl = `data:${mime};base64,${base64}`;
-            } catch (convErr) {
-              console.warn('[mediaPreviewService] Erreur conversion base64 pochette:', convErr);
+            const imgData = bytes.subarray(p, dataOffset + frameSize);
+            if (imgData.length > 50) {
+              result.coverUrl = `data:${mime};base64,${bytesToBase64(imgData)}`;
             }
           }
 
-          resolve({
-            title: tags.title ? String(tags.title).trim() : undefined,
-            artist: tags.artist ? String(tags.artist).trim() : undefined,
-            album: tags.album ? String(tags.album).trim() : undefined,
-            coverUrl,
-          });
-        },
-        onError: (_err: any) => {
-          resolve({});
-        },
-      });
-    } catch {
-      resolve({});
+          offset += 10 + frameSize;
+        }
+      }
     }
-  });
+
+    // 2. Parsing M4A / MP4 / AAC (recherche d'atom 'covr' dans le conteneur)
+    if (!result.coverUrl) {
+      try {
+        let p = 0;
+        const max = Math.min(bytes.length - 8, 2 * 1024 * 1024);
+        while (p < max) {
+          if (bytes[p] === 0x63 && bytes[p + 1] === 0x6f && bytes[p + 2] === 0x76 && bytes[p + 3] === 0x72) {
+            let dataPos = p + 4;
+            while (dataPos < Math.min(p + 512, bytes.length - 8)) {
+              if (bytes[dataPos + 4] === 0x64 && bytes[dataPos + 5] === 0x61 && bytes[dataPos + 6] === 0x74 && bytes[dataPos + 7] === 0x61) {
+                const dataSize = (bytes[dataPos] << 24) | (bytes[dataPos + 1] << 16) | (bytes[dataPos + 2] << 8) | bytes[dataPos + 3];
+                const imgStart = dataPos + 16;
+                const imgEnd = dataPos + dataSize;
+                if (imgEnd <= bytes.length && imgEnd - imgStart > 50) {
+                  const imgBytes = bytes.subarray(imgStart, imgEnd);
+                  const isPng = imgBytes[0] === 0x89 && imgBytes[1] === 0x50;
+                  const mime = isPng ? 'image/png' : 'image/jpeg';
+                  result.coverUrl = `data:${mime};base64,${bytesToBase64(imgBytes)}`;
+                }
+                break;
+              }
+              dataPos++;
+            }
+          }
+          p++;
+        }
+      } catch {}
+    }
+
+    // 3. Scanner binaire direct en secours (recherche des signatures d'images JPEG / PNG intégrées)
+    if (!result.coverUrl) {
+      for (let i = 0; i < Math.min(bytes.length - 200, 3 * 1024 * 1024); i++) {
+        // En-tête JPEG: 0xFF 0xD8 0xFF
+        if (bytes[i] === 0xFF && bytes[i + 1] === 0xD8 && bytes[i + 2] === 0xFF && (bytes[i + 3] === 0xE0 || bytes[i + 3] === 0xE1 || bytes[i + 3] === 0xDB)) {
+          for (let j = i + 100; j < Math.min(bytes.length - 1, i + 2 * 1024 * 1024); j++) {
+            if (bytes[j] === 0xFF && bytes[j + 1] === 0xD9) {
+              const imgBytes = bytes.subarray(i, j + 2);
+              if (imgBytes.length > 500) {
+                result.coverUrl = `data:image/jpeg;base64,${bytesToBase64(imgBytes)}`;
+                break;
+              }
+            }
+          }
+          if (result.coverUrl) break;
+        }
+        // En-tête PNG: 0x89 0x50 0x4E 0x47
+        if (bytes[i] === 0x89 && bytes[i + 1] === 0x50 && bytes[i + 2] === 0x4E && bytes[i + 3] === 0x47) {
+          for (let j = i + 50; j < Math.min(bytes.length - 8, i + 2 * 1024 * 1024); j++) {
+            if (bytes[j] === 0x49 && bytes[j + 1] === 0x45 && bytes[j + 2] === 0x4E && bytes[j + 3] === 0x44) {
+              const imgBytes = bytes.subarray(i, j + 8);
+              if (imgBytes.length > 500) {
+                result.coverUrl = `data:image/png;base64,${bytesToBase64(imgBytes)}`;
+                break;
+              }
+            }
+          }
+          if (result.coverUrl) break;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[mediaPreviewService] Extraction métadonnées audio:', e);
+  }
+
+  return result;
 }
 
 // Configuration du worker PDF.js local
