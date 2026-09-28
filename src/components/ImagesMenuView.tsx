@@ -198,6 +198,13 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
               clearInterval(savingIntervalsRef.current[task.id]);
               delete savingIntervalsRef.current[task.id];
             }
+            // Mise à jour immédiate dès la confirmation d'enregistrement en base
+            CloudStorageAPI.getImagesList().then((data) => {
+              if (data && Array.isArray(data)) {
+                setImagesList(data);
+                CloudDataStore.setImages(data as any);
+              }
+            }).catch(() => {});
           } else if (task.status === 'error') {
             activeErrs[task.id] = task.error || "Non enregistré sur le Cloud";
             if (savingIntervalsRef.current[task.id]) {
@@ -243,8 +250,22 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       });
     });
 
+    const handleUploadedEvent = (e: any) => {
+      const detail = e.detail;
+      if (!detail || detail.category === 'images' || String(detail.fileId).startsWith('img-')) {
+        CloudStorageAPI.getImagesList().then((data) => {
+          if (data && Array.isArray(data)) {
+            setImagesList(data);
+            CloudDataStore.setImages(data as any);
+          }
+        }).catch(() => {});
+      }
+    };
+    window.addEventListener('studycloud_file_uploaded', handleUploadedEvent);
+
     return () => {
       unsubscribe();
+      window.removeEventListener('studycloud_file_uploaded', handleUploadedEvent);
       Object.values(savingIntervalsRef.current).forEach(int => clearInterval(int as any));
     };
   }, []);

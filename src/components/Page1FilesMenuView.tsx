@@ -276,7 +276,12 @@ function unmarkRecentLocallyDeleted(id: string, _name?: string): void {
 
 const RecentImageCardPreview: React.FC<{ file: FileItem }> = ({ file }) => {
   const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-  const src = `${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}`;
+  const directUrl = file.previewUrl || file.url;
+  const src = (directUrl && (directUrl.startsWith('blob:') || directUrl.startsWith('data:')))
+    ? directUrl
+    : (directUrl && directUrl.startsWith('http') && !directUrl.includes('localhost')
+      ? directUrl
+      : `${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}`);
 
   return (
     <img
