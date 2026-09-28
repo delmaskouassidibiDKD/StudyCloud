@@ -27,6 +27,8 @@ export interface FileItem {
   videoUrl?: string;
   audioUrl?: string;
   coverUrl?: string;
+  artist?: string;
+  album?: string;
   extension?: string;
   content?: string;
   noteTitle?: string;

@@ -79,7 +79,8 @@ export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track, class
 
   useEffect(() => {
     let isMounted = true;
-    if (coverUrl && isImageCover(coverUrl)) return;
+    // Si on a déjà une vraie image en base64 / blob / lien vérifié, pas besoin de réextraire
+    if (coverUrl && isImageCover(coverUrl) && !coverUrl.includes('/api/cloud/thumbnail')) return;
 
     async function loadCover() {
       // 1. Tenter d'extraire la pochette ID3 directement du blob IndexedDB local
@@ -88,7 +89,7 @@ export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track, class
           const blob = await getFileBlob(track.id);
           if (blob && isMounted) {
             const url = await extractAudioCover(blob, track.name, track.artist || track.source);
-            if (isMounted && url) {
+            if (isMounted && url && isImageCover(url) && !url.includes('/api/cloud/thumbnail')) {
               setCoverUrl(url);
               setCachedMediaThumbnail(track.id, url);
               if (track.id && !track.id.startsWith('blob:')) {
@@ -105,7 +106,7 @@ export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track, class
       if (sourceToExtract) {
         try {
           const url = await extractAudioCover(sourceToExtract, track.name, track.artist || track.source);
-          if (isMounted && url) {
+          if (isMounted && url && isImageCover(url) && !url.includes('/api/cloud/thumbnail')) {
             setCoverUrl(url);
             setCachedMediaThumbnail(track.id || sourceToExtract, url);
             if (track.id && !track.id.startsWith('blob:')) {
@@ -117,7 +118,7 @@ export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track, class
       }
 
       // 3. Fallback officiel pochette vinyle haute fidélité
-      if (isMounted) {
+      if (isMounted && !coverUrl) {
         const fallback = generateAudioCreatorCover(track.name, track.artist || track.source);
         setCoverUrl(fallback);
       }
@@ -137,7 +138,23 @@ export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track, class
         alt={track.name}
         className={imgClass}
         loading="lazy"
-        onError={() => setHasError(true)}
+        onError={async () => {
+          if (track.id) {
+            try {
+              const blob = await getFileBlob(track.id);
+              if (blob) {
+                const localCover = await extractAudioCover(blob, track.name, track.artist || track.source);
+                if (localCover && isImageCover(localCover) && !localCover.includes('/api/cloud/thumbnail')) {
+                  setCoverUrl(localCover);
+                  setCachedMediaThumbnail(track.id, localCover);
+                  setHasError(false);
+                  return;
+                }
+              }
+            } catch {}
+          }
+          setHasError(true);
+        }}
       />
     );
   }

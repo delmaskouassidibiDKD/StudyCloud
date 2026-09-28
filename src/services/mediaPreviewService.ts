@@ -6,7 +6,67 @@
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
+import jsmediatags from 'jsmediatags';
 import { storeThumbnailData, getThumbnailData } from './localFileStorage';
+
+export interface AudioMetadataResult {
+  title?: string;
+  artist?: string;
+  album?: string;
+  coverUrl?: string;
+}
+
+/**
+ * Extrait les métadonnées audio et la pochette d'album réelle (Artwork) via jsmediatags
+ */
+export function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Promise<AudioMetadataResult> {
+  return new Promise((resolve) => {
+    try {
+      (jsmediatags as any).read(fileOrBlob, {
+        onSuccess: (tag: any) => {
+          const tags = tag?.tags || {};
+          let coverUrl: string | undefined = undefined;
+
+          if (tags.picture && tags.picture.data) {
+            const { data, format } = tags.picture;
+            let mime = 'image/jpeg';
+            if (format) {
+              const fLower = String(format).toLowerCase();
+              mime = fLower.startsWith('image/') ? fLower : `image/${fLower}`;
+            }
+
+            try {
+              let binary = '';
+              const bytes = new Uint8Array(data);
+              const len = bytes.byteLength;
+              const chunkSize = 8192;
+              for (let i = 0; i < len; i += chunkSize) {
+                const sub = bytes.subarray(i, Math.min(i + chunkSize, len));
+                binary += String.fromCharCode.apply(null, sub as any);
+              }
+              const base64 = window.btoa(binary);
+              coverUrl = `data:${mime};base64,${base64}`;
+            } catch (convErr) {
+              console.warn('[mediaPreviewService] Erreur conversion base64 pochette:', convErr);
+            }
+          }
+
+          resolve({
+            title: tags.title ? String(tags.title).trim() : undefined,
+            artist: tags.artist ? String(tags.artist).trim() : undefined,
+            album: tags.album ? String(tags.album).trim() : undefined,
+            coverUrl,
+          });
+        },
+        onError: (_err: any) => {
+          resolve({});
+        },
+      });
+    } catch {
+      resolve({});
+    }
+  });
+}
 
 // Configuration du worker PDF.js local
 if (typeof window !== 'undefined' && !(pdfjsLib as any).GlobalWorkerOptions?.workerSrc) {
@@ -238,7 +298,7 @@ export async function extractAudioCover(
       if (fileOrBlob.startsWith('http') || fileOrBlob.startsWith('/') || fileOrBlob.startsWith('blob:')) {
         try {
           const resp = await fetch(fileOrBlob, {
-            headers: { Range: 'bytes=0-524287' },
+            headers: { Range: 'bytes=0-4194303' },
           });
           if (resp && (resp.ok || resp.status === 206)) {
             targetBlob = await resp.blob();
@@ -256,8 +316,17 @@ export async function extractAudioCover(
       return generateAudioCreatorCover(title || '', artist);
     }
 
-    // Lire les premiers 512 Ko du fichier audio (là où se trouvent les métadonnées ID3v2)
-    const headerSlice = targetBlob.slice(0, 512 * 1024);
+    // 1. Tenter d'abord avec jsmediatags (gère ID3v2.2, ID3v2.3, ID3v2.4, MP4/M4A covr, FLAC)
+    try {
+      const meta = await extractAudioMetadataWithTags(targetBlob);
+      if (meta.coverUrl) {
+        return meta.coverUrl;
+      }
+    } catch {}
+
+    // 2. Scanner binaire direct sur 4 Mo en secours
+    const maxScanLen = Math.min(targetBlob.size, 4 * 1024 * 1024);
+    const headerSlice = targetBlob.slice(0, maxScanLen);
     const buffer = await headerSlice.arrayBuffer();
     const bytes = new Uint8Array(buffer);
 

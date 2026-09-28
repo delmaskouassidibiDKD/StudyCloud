@@ -190,6 +190,7 @@ export interface FileItem {
   type?: string;
   folderId?: string;
   artist?: string;
+  album?: string;
   lyricsSnippet?: string;
   fullLyrics?: string[];
   durationSec?: number;
