@@ -2839,6 +2839,25 @@ async function ensureCloudMediaTables(db: any) {
       )
     `).run();
 
+    // 10. Table Universelle des Aperçus et Miniatures pour TOUS LES MENUS (Vidéos, Son, Documents, Images, Classeur...)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS media_thumbnails (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        file_id TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        r2_key TEXT NOT NULL,
+        thumbnail_url TEXT NOT NULL,
+        thumbnail_data TEXT DEFAULT '',
+        file_size INTEGER DEFAULT 0,
+        width INTEGER DEFAULT 640,
+        height INTEGER DEFAULT 360,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
     // Index d'isolation et d'optimisation
     try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_cfolders_user ON classeur_folders(user_id)").run(); } catch(e){}
     try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_cfiles_user ON classeur_files(user_id)").run(); } catch(e){}
@@ -2852,6 +2871,10 @@ async function ensureCloudMediaTables(db: any) {
     try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_trash_user ON trash_files(user_id)").run(); } catch(e){}
     try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_favs_user ON user_favorites(user_id)").run(); } catch(e){}
     try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_pinned_user ON pinned_items(user_id)").run(); } catch(e){}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_mthumbs_user ON media_thumbnails(user_id)").run(); } catch(e){}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_mthumbs_file ON media_thumbnails(file_id)").run(); } catch(e){}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_mthumbs_user_file ON media_thumbnails(user_id, file_id)").run(); } catch(e){}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_mthumbs_cat ON media_thumbnails(user_id, category)").run(); } catch(e){}
 
     isCloudMediaTablesInitialized = true;
   } catch (err) {
@@ -5758,6 +5781,227 @@ export default {
       }
 
       // ----------------------------------------------------------------------
+      // DOSSIER UNIVERSEL D'APERÇUS ET MINIATURES MULTI-MENUS
+      // (Vidéos, Son/Musique, Documents, Images, Classeur, Téléchargements...)
+      // Dossier R2 : {userId}/thumbnails/{fileId}_thumb.jpg
+      // Table universelle D1 : media_thumbnails avec isolation stricte par userId
+      // ----------------------------------------------------------------------
+
+      // 1. Distribution de la miniature d'un fichier (/api/cloud/thumbnail/:fileId)
+      if (path.startsWith('/api/cloud/thumbnail/') && method === 'GET') {
+        const fileId = decodeURIComponent(path.replace('/api/cloud/thumbnail/', '').trim());
+        const reqUserId = await extractRequestUserId();
+        if (!fileId) return errorResponse('ID de fichier manquant', 400, origin);
+
+        let targetR2Key = '';
+        let targetCategory = 'videos';
+        let fallbackDataUrl = '';
+
+        if (env.DB) {
+          try {
+            const thumbRow: any = await env.DB.prepare(
+              'SELECT * FROM media_thumbnails WHERE file_id = ? AND user_id = ? LIMIT 1'
+            ).bind(fileId, reqUserId).first();
+
+            if (thumbRow) {
+              targetR2Key = thumbRow.r2_key;
+              targetCategory = thumbRow.category || 'videos';
+              fallbackDataUrl = thumbRow.thumbnail_data || '';
+            } else {
+              // Vérification croisée dans les tables spécifiques
+              const vRow: any = await env.DB.prepare('SELECT thumbnail_url, r2_key FROM video_files WHERE id = ? AND user_id = ? LIMIT 1').bind(fileId, reqUserId).first();
+              if (vRow && vRow.thumbnail_url && !vRow.thumbnail_url.includes('/api/cloud/thumbnail/')) {
+                fallbackDataUrl = vRow.thumbnail_url;
+              }
+              const dRow: any = await env.DB.prepare('SELECT preview_url, r2_key FROM document_files WHERE id = ? AND user_id = ? LIMIT 1').bind(fileId, reqUserId).first();
+              if (dRow && dRow.preview_url && !dRow.preview_url.includes('/api/cloud/thumbnail/')) {
+                fallbackDataUrl = dRow.preview_url;
+              }
+            }
+          } catch (e) {}
+        }
+
+        if (!targetR2Key) {
+          targetR2Key = `${reqUserId}/thumbnails/${fileId}_thumb.jpg`;
+        }
+
+        const bucket = getBucketForCategory(rawEnv, targetCategory) || rawEnv.BUCKET || env.BUCKET;
+        let object: any = null;
+        if (bucket) {
+          try {
+            object = await bucket.get(targetR2Key);
+            if (!object && !targetR2Key.endsWith('.png')) {
+              object = await bucket.get(targetR2Key.replace(/\.jpg$/, '.png'));
+            }
+            if (!object && targetR2Key !== `${reqUserId}/thumbnails/${fileId}.jpg`) {
+              object = await bucket.get(`${reqUserId}/thumbnails/${fileId}.jpg`);
+            }
+          } catch (e) {}
+        }
+
+        if (object) {
+          const headers = new Headers();
+          headers.set('Access-Control-Allow-Origin', origin || '*');
+          headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+          headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+          headers.set('Content-Type', object.httpMetadata?.contentType || 'image/jpeg');
+          headers.set('Content-Length', String(object.size));
+          return new Response(object.body, { status: 200, headers });
+        }
+
+        if (fallbackDataUrl && fallbackDataUrl.startsWith('data:image')) {
+          try {
+            const parts = fallbackDataUrl.split(',');
+            const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+            const bin = atob(parts[1]);
+            const u8 = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+            const headers = new Headers();
+            headers.set('Access-Control-Allow-Origin', origin || '*');
+            headers.set('Cache-Control', 'public, max-age=86400');
+            headers.set('Content-Type', mime);
+            return new Response(u8.buffer, { status: 200, headers });
+          } catch (e) {}
+        }
+
+        return errorResponse('Aperçu non trouvé', 404, origin);
+      }
+
+      // 2. Sauvegarde d'un aperçu / miniature pour TOUT TYPE DE MENU (/api/cloud/thumbnail)
+      if (path === '/api/cloud/thumbnail' && (method === 'POST' || method === 'PUT')) {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+
+        const body: any = await request.json().catch(() => ({}));
+        const fileId = body.fileId || url.searchParams.get('fileId') || '';
+        const category = (body.category || url.searchParams.get('category') || 'videos').toLowerCase().trim();
+        const fileName = body.fileName || url.searchParams.get('fileName') || `${fileId}_preview`;
+        const dataUrl = body.dataUrl || body.thumbnailDataUrl || '';
+        const width = Number(body.width || 640);
+        const height = Number(body.height || 360);
+
+        if (!fileId) return errorResponse('fileId obligatoire', 400, origin);
+        if (!dataUrl) return errorResponse('dataUrl obligatoire', 400, origin);
+
+        let mimeType = 'image/jpeg';
+        let thumbExt = 'jpg';
+        let imageBuffer: ArrayBuffer | null = null;
+        let imageSize = 0;
+
+        if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image')) {
+          try {
+            const parts = dataUrl.split(',');
+            const match = parts[0].match(/:(.*?);/);
+            if (match) mimeType = match[1];
+            if (mimeType.includes('png')) thumbExt = 'png';
+            const binary = atob(parts[1]);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            imageBuffer = bytes.buffer;
+            imageSize = bytes.length;
+          } catch (e) {
+            return errorResponse('Format de données image invalide', 400, origin);
+          }
+        }
+
+        // Dossier dédié dans R2 : {userId}/thumbnails/{fileId}_thumb.jpg
+        const r2Key = `${reqUserId}/thumbnails/${fileId}_thumb.${thumbExt}`;
+        const targetBucket = getBucketForCategory(rawEnv, category) || rawEnv.BUCKET || env.BUCKET;
+
+        if (targetBucket && imageBuffer) {
+          await targetBucket.put(r2Key, imageBuffer, {
+            httpMetadata: { contentType: mimeType, cacheControl: 'public, max-age=31536000, immutable' },
+            customMetadata: {
+              userId: reqUserId,
+              fileId,
+              category,
+              originalName: fileName
+            }
+          });
+        }
+
+        const thumbnailUrl = `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(fileId)}?userId=${encodeURIComponent(reqUserId)}`;
+
+        // Enregistrement dans la table universelle D1 media_thumbnails
+        if (env.DB) {
+          try {
+            const thumbId = `${reqUserId}_${fileId}`;
+            await env.DB.prepare(`
+              INSERT INTO media_thumbnails (id, user_id, file_id, file_name, category, r2_key, thumbnail_url, thumbnail_data, file_size, width, height, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET
+                file_name = excluded.file_name,
+                category = excluded.category,
+                r2_key = excluded.r2_key,
+                thumbnail_url = excluded.thumbnail_url,
+                thumbnail_data = excluded.thumbnail_data,
+                file_size = excluded.file_size,
+                width = excluded.width,
+                height = excluded.height,
+                updated_at = CURRENT_TIMESTAMP
+            `).bind(
+              thumbId,
+              reqUserId,
+              fileId,
+              fileName,
+              category,
+              r2Key,
+              thumbnailUrl,
+              dataUrl.length > 5000 ? '' : dataUrl,
+              imageSize,
+              width,
+              height
+            ).run();
+
+            // Synchronisation de la table spécifique au menu
+            if (category === 'videos') {
+              await env.DB.prepare('UPDATE video_files SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?').bind(thumbnailUrl, fileId, reqUserId).run().catch(() => {});
+              await env.DB.prepare('UPDATE files SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?').bind(thumbnailUrl, fileId, reqUserId).run().catch(() => {});
+            } else if (category === 'audio' || category === 'musique') {
+              await env.DB.prepare('UPDATE audio_files SET cover_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?').bind(thumbnailUrl, fileId, reqUserId).run().catch(() => {});
+            } else if (category === 'documents') {
+              await env.DB.prepare('UPDATE document_files SET preview_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?').bind(thumbnailUrl, fileId, reqUserId).run().catch(() => {});
+            } else if (category === 'images' || category === 'photos') {
+              await env.DB.prepare('UPDATE image_files SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?').bind(thumbnailUrl, fileId, reqUserId).run().catch(() => {});
+            } else if (category === 'classeur') {
+              await env.DB.prepare('UPDATE classeur_files SET preview_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?').bind(thumbnailUrl, fileId, reqUserId).run().catch(() => {});
+            }
+          } catch (dbErr) {
+            console.warn('[saveMediaThumbnail DB Error]', dbErr);
+          }
+        }
+
+        return jsonResponse({
+          success: true,
+          fileId,
+          category,
+          r2Key,
+          thumbnailUrl,
+          message: 'Aperçu enregistré avec succès dans le dossier utilisateur'
+        }, 200, origin);
+      }
+
+      // 3. Liste universelle des miniatures d'un utilisateur par catégorie (/api/cloud/thumbnails)
+      if (path === '/api/cloud/thumbnails' && method === 'GET') {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+        const categoryFilter = url.searchParams.get('category');
+
+        if (!env.DB) return jsonResponse({ success: true, thumbnails: [] }, 200, origin);
+
+        let query = 'SELECT * FROM media_thumbnails WHERE user_id = ?';
+        const params: any[] = [reqUserId];
+        if (categoryFilter) {
+          query += ' AND category = ?';
+          params.push(categoryFilter.toLowerCase().trim());
+        }
+        query += ' ORDER BY updated_at DESC';
+
+        const { results } = await env.DB.prepare(query).bind(...params).all();
+        return jsonResponse({ success: true, thumbnails: results || [] }, 200, origin);
+      }
+
+      // ----------------------------------------------------------------------
       // Upload Direct R2 & Enregistrement D1 (Intelligent & Strictement typé par menu)
       // ----------------------------------------------------------------------
       if (path === '/api/cloud/upload' && (method === 'PUT' || method === 'POST')) {
@@ -5855,7 +6099,69 @@ export default {
         });
 
         const fileUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(finalCategory)}/${encodeURIComponent(storageKey)}`;
-        const finalThumbnailUrl = thumbnailToSave || fileUrl;
+        let finalThumbnailUrl = '';
+        let thumbR2Key = '';
+
+        if (thumbnailToSave && thumbnailToSave.startsWith('data:image')) {
+          try {
+            const parts = thumbnailToSave.split(',');
+            const mimeMatch = parts[0].match(/:(.*?);/);
+            const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+            const thumbExt = mimeType.includes('png') ? 'png' : 'jpg';
+            const b64Data = parts[1];
+            const binaryStr = atob(b64Data);
+            const bytes = new Uint8Array(binaryStr.length);
+            for (let i = 0; i < binaryStr.length; i++) {
+              bytes[i] = binaryStr.charCodeAt(i);
+            }
+            thumbR2Key = `${reqUserId}/thumbnails/${fileId}_thumb.${thumbExt}`;
+            const targetBucket = categoryBucket || env.BUCKET;
+            if (targetBucket) {
+              await targetBucket.put(thumbR2Key, bytes.buffer, {
+                httpMetadata: { contentType: mimeType, cacheControl: 'public, max-age=31536000, immutable' },
+                customMetadata: { userId: reqUserId, fileId, category: finalCategory, originalName: fileName }
+              });
+              finalThumbnailUrl = `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(fileId)}?userId=${encodeURIComponent(reqUserId)}`;
+            }
+          } catch (err) {
+            console.warn('[Upload Thumbnail Storage Error]', err);
+            finalThumbnailUrl = thumbnailToSave;
+          }
+        } else if (thumbnailToSave) {
+          finalThumbnailUrl = thumbnailToSave;
+        } else if (finalCategory === 'images') {
+          finalThumbnailUrl = fileUrl;
+        } else {
+          finalThumbnailUrl = `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(fileId)}?userId=${encodeURIComponent(reqUserId)}`;
+        }
+
+        // Enregistrement systématique dans la table universelle media_thumbnails
+        if (env.DB) {
+          try {
+            const thumbId = `${reqUserId}_${fileId}`;
+            await env.DB.prepare(`
+              INSERT INTO media_thumbnails (id, user_id, file_id, file_name, category, r2_key, thumbnail_url, thumbnail_data, file_size, width, height, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 640, 360, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET
+                file_name = excluded.file_name,
+                category = excluded.category,
+                r2_key = excluded.r2_key,
+                thumbnail_url = excluded.thumbnail_url,
+                thumbnail_data = excluded.thumbnail_data,
+                updated_at = CURRENT_TIMESTAMP
+            `).bind(
+              thumbId,
+              reqUserId,
+              fileId,
+              fileName,
+              finalCategory,
+              thumbR2Key,
+              finalThumbnailUrl,
+              thumbnailToSave.length > 5000 ? '' : thumbnailToSave,
+              sizeBytes
+            ).run();
+          } catch (e) {}
+        }
 
         // 4. Enregistrement direct dans la table D1 correspondante avec ON CONFLICT
         if (env.DB) {

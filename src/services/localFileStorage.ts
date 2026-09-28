@@ -134,15 +134,58 @@ export async function deleteFileBlob(id: string): Promise<void> {
 export async function clearAllFileBlobs(): Promise<void> {
   try {
     const db = await getDB();
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
       const req = store.clear();
 
       req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      req.onerror = () => resolve();
     });
   } catch (err) {
     console.warn('[LocalFileStorage] Erreur vidage binaire IndexedDB:', err);
+  }
+}
+
+/**
+ * Sauvegarde la miniature / image d'aperçu dans IndexedDB pour affichage local instantané (0ms)
+ */
+export async function storeThumbnailData(id: string, dataUrl: string): Promise<void> {
+  if (!id || !dataUrl) return;
+  try {
+    const db = await getDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.put({ id: `thumb_${id}`, blob: null, dataUrl, updatedAt: Date.now() });
+
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
+    });
+  } catch (err) {
+    console.warn('[LocalFileStorage] Erreur sauvegarde miniature IndexedDB:', err);
+  }
+}
+
+/**
+ * Récupère la miniature / image d'aperçu depuis IndexedDB
+ */
+export async function getThumbnailData(id: string): Promise<string | null> {
+  if (!id) return null;
+  try {
+    const db = await getDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.get(`thumb_${id}`);
+
+      req.onsuccess = () => {
+        const res = req.result;
+        resolve(res?.dataUrl || null);
+      };
+      req.onerror = () => resolve(null);
+    });
+  } catch {
+    return null;
   }
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, FileSpreadsheet, Presentation, FileCode, AlignLeft } from 'lucide-react';
-import { generatePdfThumbnail, getCachedMediaThumbnail } from '../services/mediaPreviewService';
+import { generatePdfThumbnail, getCachedMediaThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
+import { CloudStorageAPI } from '../services/cloudStorageService';
 import { getFileBlob } from '../services/localFileStorage';
 import { FileItem } from './Page1FilesMenuView';
 
@@ -40,6 +41,10 @@ export const DocumentCardPreview: React.FC<DocumentCardPreviewProps> = ({ doc })
           generatePdfThumbnail(blob, doc.id).then(url => {
             if (isMounted && url) {
               setThumbUrl(url);
+              setCachedMediaThumbnail(doc.id, url);
+              if (doc.id && !doc.id.startsWith('blob:')) {
+                CloudStorageAPI.saveMediaThumbnail(doc.id, 'documents', url, doc.name).catch(() => {});
+              }
             }
           });
           return;
@@ -49,6 +54,10 @@ export const DocumentCardPreview: React.FC<DocumentCardPreviewProps> = ({ doc })
           generatePdfThumbnail(targetUrl, doc.id || targetUrl).then(url => {
             if (isMounted && url) {
               setThumbUrl(url);
+              setCachedMediaThumbnail(doc.id, url);
+              if (doc.id && !doc.id.startsWith('blob:')) {
+                CloudStorageAPI.saveMediaThumbnail(doc.id, 'documents', url, doc.name).catch(() => {});
+              }
             }
           });
         }

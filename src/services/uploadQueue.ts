@@ -277,7 +277,7 @@ class UploadQueueManager {
 
       if (previewDataUrl) {
         setCachedMediaThumbnail(id, previewDataUrl);
-        CloudStorageAPI.saveMediaThumbnail(id, category, previewDataUrl).catch(() => {});
+        CloudStorageAPI.saveMediaThumbnail(id, category, previewDataUrl, fileName).catch(() => {});
       }
 
       task.progress = 50;

@@ -754,19 +754,28 @@ export const CloudStorageAPI = {
   // --------------------------------------------------------------------------
   // 10. UPLOAD DIRECT R2 ET D1 PAR CATÉGORIE (Validation & Routage Intelligent)
   // --------------------------------------------------------------------------
-  async saveMediaThumbnail(fileId: string, category: string, dataUrl: string): Promise<boolean> {
+  async saveMediaThumbnail(fileId: string, category: string, dataUrl: string, fileName?: string): Promise<{ success: boolean; thumbnailUrl?: string }> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const res = await fetchWithTimeout(`${baseUrl}/api/cloud/thumbnail?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ fileId, category, dataUrl }),
+        body: JSON.stringify({ fileId, category, dataUrl, fileName }),
       });
-      return res.ok;
+      if (res.ok) {
+        const json = await res.json().catch(() => ({}));
+        return { success: true, thumbnailUrl: json.thumbnailUrl };
+      }
+      return { success: false };
     } catch (e) {
       console.warn('[CloudStorageAPI] saveMediaThumbnail error:', e);
-      return false;
+      return { success: false };
     }
+  },
+
+  getThumbnailUrl(fileId: string): string {
+    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+    return `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(fileId)}?userId=${getUserIdParam()}`;
   },
 
   async uploadFile(

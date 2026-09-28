@@ -32,9 +32,9 @@ import {
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
-import { storeFileBlob, getFileBlobUrl, deleteFileBlob } from '../services/localFileStorage';
+import { storeFileBlob, getFileBlobUrl, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
 import { compressFile, formatBytes } from '../utils/fileCompressor';
-import { generateVideoThumbnail } from '../services/mediaPreviewService';
+import { generateVideoThumbnail, setCachedMediaThumbnail, getCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { FileItem } from './Page1FilesMenuView';
 import { UploadQueue } from '../services/uploadQueue';
 import { VideoCardPreview } from './VideoCardPreview';
@@ -378,6 +378,19 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     // 2. Démarrage immédiat de la ligne de progression qui se remplit
     startSavingAnimation(newItems.map(it => it.id));
 
+    // 2.5. Extraction immédiate de la frame d'aperçu vidéo (0.5s par canvas) pour chaque vidéo importée
+    newFiles.forEach(({ file, id }) => {
+      generateVideoThumbnail(file, id, file.name).then(thumbUrl => {
+        if (thumbUrl) {
+          setCachedMediaThumbnail(id, thumbUrl);
+          storeThumbnailData(id, thumbUrl).catch(() => {});
+          setVideosList(prev => prev.map(v => v.id === id ? { ...v, thumbnailUrl: thumbUrl, previewUrl: thumbUrl } : v));
+          CloudDataStore.updateFile(id, { thumbnailUrl: thumbUrl, previewUrl: thumbUrl });
+          CloudStorageAPI.saveMediaThumbnail(id, 'videos', thumbUrl, file.name).catch(() => {});
+        }
+      }).catch(() => {});
+    });
+
     // 3. Ajout optimiste dans CloudDataStore
     newItems.forEach(it => {
       CloudDataStore.addOptimisticFile(it as any);
@@ -411,7 +424,12 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
 
           let thumbUrl: string | undefined;
           try {
-            thumbUrl = (await generateVideoThumbnail(fileToSend)) || undefined;
+            thumbUrl = getCachedMediaThumbnail(id) || (await generateVideoThumbnail(fileToSend, id, file.name)) || undefined;
+            if (thumbUrl) {
+              setCachedMediaThumbnail(id, thumbUrl);
+              storeThumbnailData(id, thumbUrl).catch(() => {});
+              CloudStorageAPI.saveMediaThumbnail(id, 'videos', thumbUrl, file.name).catch(() => {});
+            }
           } catch {}
 
           const targetItem = newItems.find(it => it.id === id)!;

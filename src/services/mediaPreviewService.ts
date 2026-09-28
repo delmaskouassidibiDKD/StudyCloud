@@ -6,6 +6,7 @@
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
+import { storeThumbnailData, getThumbnailData } from './localFileStorage';
 
 // Configuration du worker PDF.js local
 if (typeof window !== 'undefined' && !(pdfjsLib as any).GlobalWorkerOptions?.workerSrc) {
@@ -23,11 +24,31 @@ export function getCachedMediaThumbnail(key: string): string | null {
 }
 
 /**
- * Enregistre un aperçu dans le cache mémoire
+ * Récupère un aperçu de façon asynchrone (RAM + IndexedDB)
+ */
+export async function getAsyncMediaThumbnail(key: string): Promise<string | null> {
+  if (!key) return null;
+  const inMem = previewMemoryCache.get(key);
+  if (inMem) return inMem;
+  try {
+    const inIdb = await getThumbnailData(key);
+    if (inIdb) {
+      previewMemoryCache.set(key, inIdb);
+      return inIdb;
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Enregistre un aperçu dans le cache mémoire et IndexedDB
  */
 export function setCachedMediaThumbnail(key: string, thumbUrl: string): void {
   if (!key || !thumbUrl) return;
   previewMemoryCache.set(key, thumbUrl);
+  if (thumbUrl.startsWith('data:image') || thumbUrl.includes('/api/cloud/thumbnail')) {
+    storeThumbnailData(key, thumbUrl).catch(() => {});
+  }
 }
 
 /**

@@ -82,7 +82,7 @@ export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track, class
               setCoverUrl(url);
               setCachedMediaThumbnail(track.id, url);
               if (track.id && !track.id.startsWith('blob:')) {
-                CloudStorageAPI.saveMediaThumbnail(track.id, 'audio', url).catch(() => {});
+                CloudStorageAPI.saveMediaThumbnail(track.id, 'audio', url, track.name).catch(() => {});
               }
               return;
             }
@@ -99,7 +99,7 @@ export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track, class
             setCoverUrl(url);
             setCachedMediaThumbnail(track.id || sourceToExtract, url);
             if (track.id && !track.id.startsWith('blob:')) {
-              CloudStorageAPI.saveMediaThumbnail(track.id, 'audio', url).catch(() => {});
+              CloudStorageAPI.saveMediaThumbnail(track.id, 'audio', url, track.name).catch(() => {});
             }
             return;
           }
