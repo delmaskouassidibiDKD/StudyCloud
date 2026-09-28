@@ -2594,6 +2594,53 @@ function getBucketForCategory(rawEnv: any, category?: string): any {
   return rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv['MON_R2-STUDYCLOUD'];
 }
 
+async function getObjectFromAnyBucket(rawEnv: any, category: string, key: string, rangeOptions?: any): Promise<{ object: any; bucket: any } | null> {
+  if (!rawEnv || !key) return null;
+  const bucketsToTry: any[] = [];
+  const categoryBucket = getBucketForCategory(rawEnv, category);
+  if (categoryBucket) bucketsToTry.push(categoryBucket);
+
+  const mainBucket = rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv['MON_R2-STUDYCLOUD'];
+  if (mainBucket && !bucketsToTry.includes(mainBucket)) bucketsToTry.push(mainBucket);
+
+  const candidates = [
+    rawEnv.BUCKET_IMAGES, rawEnv.MON_R2_IMAGES, rawEnv['MON_R2-IMAGES'],
+    rawEnv.BUCKET_CLASSEUR, rawEnv.MON_R2_CLASSEUR, rawEnv['MON_R2-CLASSEUR'],
+    rawEnv.BUCKET_DOCUMENTS, rawEnv.MON_R2_DOCUMENTS, rawEnv['MON_R2-DOCUMENTS'],
+    rawEnv.BUCKET_VIDEOS, rawEnv.MON_R2_VIDEOS, rawEnv['MON_R2-VIDEOS'],
+    rawEnv.BUCKET_AUDIO, rawEnv.MON_R2_AUDIO, rawEnv['MON_R2-AUDIO'],
+    rawEnv.BUCKET_DOWNLOADS, rawEnv.BUCKET_SECURE
+  ];
+  for (const b of candidates) {
+    if (b && !bucketsToTry.includes(b)) bucketsToTry.push(b);
+  }
+
+  // Clés candidates à tester pour tolérer les encodages, préfixes et séparateurs
+  const keysToTry: string[] = [];
+  if (key) keysToTry.push(key);
+  try {
+    const decoded = decodeURIComponent(key);
+    if (decoded && !keysToTry.includes(decoded)) keysToTry.push(decoded);
+  } catch {}
+
+  if (key.includes('/')) {
+    const fileNameOnly = key.split('/').pop();
+    if (fileNameOnly && !keysToTry.includes(fileNameOnly)) keysToTry.push(fileNameOnly);
+    const withoutUser = key.split('/').slice(1).join('/');
+    if (withoutUser && !keysToTry.includes(withoutUser)) keysToTry.push(withoutUser);
+  }
+
+  for (const k of keysToTry) {
+    for (const bucket of bucketsToTry) {
+      try {
+        const obj = rangeOptions ? await bucket.get(k, rangeOptions) : await bucket.get(k);
+        if (obj) return { object: obj, bucket };
+      } catch (e) {}
+    }
+  }
+  return null;
+}
+
 async function ensureCloudMediaTables(db: any) {
   if (isCloudMediaTablesInitialized || !db) return;
   try {
@@ -5882,20 +5929,16 @@ export default {
         }
 
         const rangeHeader = request.headers.get('Range');
-        let object: any;
-        if (rangeHeader) {
-          try {
-            object = await categoryBucket.get(key, { range: request.headers });
-          } catch (e) {
-            object = await categoryBucket.get(key);
-          }
-        } else {
-          object = await categoryBucket.get(key);
+        const rangeOptions = rangeHeader ? { range: request.headers } : undefined;
+        let found = await getObjectFromAnyBucket(rawEnv, category, key, rangeOptions);
+        if (!found || !found.object) {
+          found = await getObjectFromAnyBucket(rawEnv, category, rawKey, rangeOptions);
         }
 
-        if (!object) {
+        if (!found || !found.object) {
           return errorResponse('Fichier introuvable dans le stockage R2', 404, origin);
         }
+        const object = found.object;
 
         const headers = new Headers();
         object.writeHttpMetadata(headers);
@@ -5970,33 +6013,14 @@ export default {
           return errorResponse('Fichier introuvable dans la base de données', 404, origin);
         }
 
-        const categoryBucket = getBucketForCategory(rawEnv, foundRecord.category);
-        const mainBucket = rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv['MON_R2-STUDYCLOUD'];
-        const targetBucket = categoryBucket || mainBucket;
-        if (!targetBucket) return errorResponse('Stockage R2 indisponible pour cette catégorie', 503, origin);
-
         const rangeHeader = request.headers.get('Range');
-        let object: any = null;
-        if (rangeHeader) {
-          try {
-            object = await targetBucket.get(foundRecord.r2_key, { range: request.headers });
-          } catch (e) {
-            object = await targetBucket.get(foundRecord.r2_key);
-          }
-        } else {
-          object = await targetBucket.get(foundRecord.r2_key);
-        }
+        const rangeOptions = rangeHeader ? { range: request.headers } : undefined;
+        let found = await getObjectFromAnyBucket(rawEnv, foundRecord.category || 'documents', foundRecord.r2_key, rangeOptions);
 
-        // Si non trouvé dans le bucket dédié, essayer le bucket principal
-        if (!object && mainBucket && mainBucket !== targetBucket) {
-          try {
-            object = rangeHeader
-              ? await mainBucket.get(foundRecord.r2_key, { range: request.headers })
-              : await mainBucket.get(foundRecord.r2_key);
-          } catch (e) {}
+        if (!found || !found.object) {
+          return errorResponse('Objet binaire introuvable dans R2', 404, origin);
         }
-
-        if (!object) return errorResponse('Objet binaire introuvable dans R2', 404, origin);
+        const object = found.object;
 
         const headers = new Headers();
         object.writeHttpMetadata(headers);

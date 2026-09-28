@@ -783,29 +783,45 @@ export const CloudStorageAPI = {
     return `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}?userId=${getUserIdParam()}`;
   },
 
-  getImageDirectUrl(img: any): string {
-    if (!img) return '';
+  getImageCandidateUrls(img: any): string[] {
+    if (!img) return [];
     const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+    const urls: string[] = [];
+
+    // Priorité 1 : Streaming universel Cloudflare Worker par ID de fichier (résolution directe D1 + R2)
+    if (img.id) {
+      urls.push(`${baseUrl}/api/cloud/stream/${encodeURIComponent(img.id)}`);
+    }
+
+    // Priorité 2 : Accès direct R2 par clé
     const key = img.r2Key || img.r2_key;
     if (key) {
-      return `${baseUrl}/api/cloud/file/images/${encodeURIComponent(key)}`;
+      urls.push(`${baseUrl}/api/cloud/file/images/${encodeURIComponent(key)}`);
+      if (key.includes('/')) {
+        urls.push(`${baseUrl}/api/cloud/file/images/${key}`);
+      }
     }
-    if (img.id) {
-      return `${baseUrl}/api/cloud/stream/${encodeURIComponent(img.id)}`;
-    }
+
+    // Priorité 3 : URL propre enregistrée (non localhost)
     const raw = img.url || img.previewUrl || img.imageUrl || (img.thumbnailUrl && !img.thumbnailUrl.includes('/api/cloud/thumbnail/') ? img.thumbnailUrl : '');
-    if (raw) {
+    if (raw && !raw.startsWith('blob:') && !raw.startsWith('data:image')) {
       if (raw.includes('localhost') && !baseUrl.includes('localhost')) {
         const parts = raw.split('/api/cloud/');
         if (parts.length > 1) {
-          return `${baseUrl}/api/cloud/${parts[1]}`;
+          const rebased = `${baseUrl}/api/cloud/${parts[1]}`;
+          if (!urls.includes(rebased)) urls.push(rebased);
         }
-      }
-      if (!raw.startsWith('blob:') && !raw.startsWith('data:image')) {
-        return raw;
+      } else if (!urls.includes(raw)) {
+        urls.push(raw);
       }
     }
-    return '';
+
+    return urls;
+  },
+
+  getImageDirectUrl(img: any): string {
+    const candidates = this.getImageCandidateUrls(img);
+    return candidates[0] || '';
   },
 
   async uploadFile(
