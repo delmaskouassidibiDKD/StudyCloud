@@ -783,6 +783,31 @@ export const CloudStorageAPI = {
     return `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}?userId=${getUserIdParam()}`;
   },
 
+  getImageDirectUrl(img: any): string {
+    if (!img) return '';
+    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+    const key = img.r2Key || img.r2_key;
+    if (key) {
+      return `${baseUrl}/api/cloud/file/images/${encodeURIComponent(key)}`;
+    }
+    if (img.id) {
+      return `${baseUrl}/api/cloud/stream/${encodeURIComponent(img.id)}`;
+    }
+    const raw = img.url || img.previewUrl || img.imageUrl || (img.thumbnailUrl && !img.thumbnailUrl.includes('/api/cloud/thumbnail/') ? img.thumbnailUrl : '');
+    if (raw) {
+      if (raw.includes('localhost') && !baseUrl.includes('localhost')) {
+        const parts = raw.split('/api/cloud/');
+        if (parts.length > 1) {
+          return `${baseUrl}/api/cloud/${parts[1]}`;
+        }
+      }
+      if (!raw.startsWith('blob:') && !raw.startsWith('data:image')) {
+        return raw;
+      }
+    }
+    return '';
+  },
+
   async uploadFile(
     file: File | Blob,
     category: 'auto' | 'classeur' | 'audio' | 'images' | 'videos' | 'documents',

@@ -275,34 +275,13 @@ function unmarkRecentLocallyDeleted(id: string, _name?: string): void {
 }
 
 const RecentImageCardPreview: React.FC<{ file: FileItem }> = ({ file }) => {
-  const [imgSrc, setImgSrc] = useState<string | null>(() => {
-    const cached = getCachedMediaThumbnail(file.id || file.url || '');
-    if (cached) return cached;
-    return file.previewUrl || file.url || null;
-  });
   const [hasError, setHasError] = useState(false);
+  const imageUrl = CloudStorageAPI.getImageDirectUrl(file);
 
-  useEffect(() => {
-    let isMounted = true;
-    // Only run once per file.id - avoid re-triggering when imgSrc/hasError change
-    if (file.id) {
-      getFileBlobUrl(file.id).then(blobUrl => {
-        if (isMounted && blobUrl) {
-          setImgSrc(blobUrl);
-          setHasError(false);
-        }
-      }).catch(() => {});
-    }
-
-    return () => {
-      isMounted = false;
-    };
-  }, [file.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (imgSrc && !hasError) {
+  if (imageUrl && !hasError) {
     return (
       <img
-        src={imgSrc}
+        src={imageUrl}
         alt={file.name}
         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
         loading="lazy"
@@ -319,6 +298,7 @@ const RecentImageCardPreview: React.FC<{ file: FileItem }> = ({ file }) => {
     </div>
   );
 };
+
 
 
 export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, onOpenStudySpace, onOpenCreateShareLink }) => {

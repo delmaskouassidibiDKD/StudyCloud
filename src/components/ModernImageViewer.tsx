@@ -42,12 +42,36 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
   const [hasError, setHasError] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Résolution de l'image (source directe ou IndexedDB)
+  // Résolution de l'image : l'image enregistrée sur le Cloudflare Worker / R2 est la source directe
   const resolveImage = useCallback(async () => {
     setIsLoading(true);
     setHasError(false);
 
-    // Priorité 1 : Recherche dans le stockage local IndexedDB par fileId (garantit un blob frais)
+    // Priorité 1 : Source directe (URL R2 / Worker)
+    if (src && typeof src === 'string' && src.trim()) {
+      let finalSrc = src;
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      if (finalSrc.includes('localhost') && !baseUrl.includes('localhost')) {
+        const parts = finalSrc.split('/api/cloud/');
+        if (parts.length > 1) {
+          finalSrc = `${baseUrl}/api/cloud/${parts[1]}`;
+        }
+      }
+      if (!finalSrc.startsWith('blob:') && !finalSrc.includes('/api/cloud/thumbnail/')) {
+        setResolvedSrc(finalSrc);
+        return;
+      }
+    }
+
+    // Priorité 2 : Streaming Cloudflare Worker si fileId
+    if (fileId) {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
+      setResolvedSrc(streamUrl);
+      return;
+    }
+
+    // Secours local si blob disponible dans ce navigateur
     if (fileId) {
       try {
         const blobUrl = await getFileBlobUrl(fileId);
@@ -55,23 +79,7 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
           setResolvedSrc(blobUrl);
           return;
         }
-      } catch (err) {
-        console.warn('[ModernImageViewer] Erreur lecture IndexedDB:', err);
-      }
-    }
-
-    // Priorité 2 : Source directe
-    if (src && typeof src === 'string' && src.trim()) {
-      setResolvedSrc(src);
-      return;
-    }
-
-    // Priorité 3 : Streaming Cloudflare Worker si fileId
-    if (fileId) {
-      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
-      setResolvedSrc(streamUrl);
-      return;
+      } catch (err) {}
     }
 
     setHasError(true);

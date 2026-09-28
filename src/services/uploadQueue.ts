@@ -279,7 +279,7 @@ class UploadQueueManager {
         }
       }
 
-      if (previewDataUrl && previewDataUrl.startsWith('data:image')) {
+      if (category !== 'images' && previewDataUrl && previewDataUrl.startsWith('data:image')) {
         setCachedMediaThumbnail(id, previewDataUrl);
         CloudStorageAPI.saveMediaThumbnail(id, category, previewDataUrl, fileName).catch(() => {});
       }
@@ -360,7 +360,8 @@ class UploadQueueManager {
         id: serverFileId || id,
         url: uploadUrl || task.fileItem.url,
         r2Key: r2Key || task.fileItem.r2Key,
-        previewUrl: previewDataUrl || uploadUrl || task.fileItem.previewUrl,
+        previewUrl: category === 'images' ? (uploadUrl || task.fileItem.url) : (previewDataUrl || uploadUrl || task.fileItem.previewUrl),
+        thumbnailUrl: category === 'images' ? (uploadUrl || task.fileItem.url) : (task.fileItem.thumbnailUrl || undefined),
         videoUrl: category === 'videos' ? (uploadUrl || task.fileItem.videoUrl) : undefined,
         audioUrl: category === 'audio' ? (uploadUrl || task.fileItem.audioUrl) : undefined,
         isUploading: false,

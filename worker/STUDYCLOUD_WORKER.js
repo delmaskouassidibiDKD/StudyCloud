@@ -5458,6 +5458,19 @@ var index_default = {
                   thumbnail_url = excluded.thumbnail_url,
                   updated_at = CURRENT_TIMESTAMP
               `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
+              try {
+                await env.DB.prepare(`
+                  INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
+                  VALUES (?, ?, 'menu-images', ?, ?, 'image/jpeg', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    size = excluded.size,
+                    r2_key = COALESCE(excluded.r2_key, files.r2_key),
+                    file_url = excluded.file_url,
+                    last_imported = excluded.last_imported,
+                    updated_at = CURRENT_TIMESTAMP
+                `).bind(fileId, reqUserId, fileName, sizeBytes, extUpper, storageKey, fileUrl, Date.now()).run();
+              } catch (e) {}
             } else if (finalCategory === "videos") {
               await env.DB.prepare(`
                 INSERT INTO video_files (id, user_id, name, size, size_bytes, extension, date_formatted, r2_key, video_url, thumbnail_url, updated_at)
@@ -6386,10 +6399,19 @@ var index_default = {
             if (seen.has(id) || seenNames.has(normKey)) return;
             seen.add(id);
             seenNames.add(normKey);
-            let finalUrl = img.image_url || img.file_url || img.url || img.preview_url || "";
-            if ((!finalUrl || finalUrl.startsWith("blob:")) && img.r2_key) {
+            // Pour les images : l'image enregistrée dans Cloudflare R2 EST l'aperçu lui-même.
+            // On résout dynamiquement l'URL absolue vers Cloudflare R2 pour cet environnement (aucun localhost figé)
+            let finalUrl = "";
+            if (img.r2_key) {
               finalUrl = `${url.origin}/api/cloud/file/images/${encodeURIComponent(img.r2_key)}`;
+            } else if (img.id) {
+              finalUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(img.id)}`;
+            } else if (img.image_url && !img.image_url.includes("localhost") && !img.image_url.startsWith("blob:")) {
+              finalUrl = img.image_url;
+            } else if (img.file_url && !img.file_url.includes("localhost") && !img.file_url.startsWith("blob:")) {
+              finalUrl = img.file_url;
             }
+
             allList.push({
               id: img.id,
               userId: img.user_id,
@@ -6403,7 +6425,7 @@ var index_default = {
               r2Key: img.r2_key || "",
               previewUrl: finalUrl,
               url: finalUrl,
-              thumbnailUrl: img.thumbnail_url || finalUrl,
+              thumbnailUrl: finalUrl,
               category: "images",
               isImage: true,
               isFavorite: Boolean(img.is_favorite),
@@ -6425,8 +6447,16 @@ var index_default = {
           const extension = body.extension || "jpg";
           const dateFormatted = body.date || body.dateFormatted || "";
           const r2Key = body.r2Key || "";
-          const imageUrl = body.imageUrl || body.url || body.previewUrl || "";
-          const thumbnailUrl = body.thumbnailUrl || "";
+          let imageUrl = body.imageUrl || body.url || body.previewUrl || "";
+          if (imageUrl.startsWith("blob:") || imageUrl.includes("localhost") || !imageUrl) {
+            if (r2Key) {
+              imageUrl = `${url.origin}/api/cloud/file/images/${encodeURIComponent(r2Key)}`;
+            } else if (id) {
+              imageUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(id)}`;
+            }
+          }
+          const thumbnailUrl = imageUrl;
+
           await env.DB.prepare(`
             INSERT INTO image_files (
               id, user_id, name, size, size_bytes, width, height, extension,
@@ -6438,12 +6468,12 @@ var index_default = {
               size_bytes = excluded.size_bytes,
               r2_key = COALESCE(excluded.r2_key, image_files.r2_key),
               image_url = CASE
-                WHEN (excluded.image_url IS NULL OR excluded.image_url = '' OR excluded.image_url LIKE 'blob:%')
-                     AND image_files.image_url IS NOT NULL AND image_files.image_url != '' AND image_files.image_url NOT LIKE 'blob:%'
+                WHEN (excluded.image_url IS NULL OR excluded.image_url = '' OR excluded.image_url LIKE 'blob:%' OR excluded.image_url LIKE '%localhost%')
+                     AND image_files.image_url IS NOT NULL AND image_files.image_url != '' AND image_files.image_url NOT LIKE 'blob:%' AND image_files.image_url NOT LIKE '%localhost%'
                 THEN image_files.image_url
                 ELSE excluded.image_url
               END,
-              thumbnail_url = COALESCE(excluded.thumbnail_url, image_files.thumbnail_url),
+              thumbnail_url = excluded.image_url,
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             id,

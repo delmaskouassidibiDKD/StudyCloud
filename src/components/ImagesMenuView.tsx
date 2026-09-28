@@ -375,17 +375,6 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       newItems.push(item);
       newFiles.push({ file: f, id: fileId });
 
-      // Extraction immédiate de miniature dataUrl
-      const reader = new FileReader();
-      reader.onload = (re) => {
-        const dataUrl = re.target?.result as string;
-        if (dataUrl) {
-          setCachedMediaThumbnail(fileId, dataUrl);
-          storeThumbnailData(fileId, dataUrl).catch(() => {});
-          CloudStorageAPI.saveMediaThumbnail(fileId, 'images', dataUrl, f.name).catch(() => {});
-        }
-      };
-      reader.readAsDataURL(f);
     }
 
     if (newItems.length === 0) return;
