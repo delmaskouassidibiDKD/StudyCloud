@@ -275,27 +275,16 @@ function unmarkRecentLocallyDeleted(id: string, _name?: string): void {
 }
 
 const RecentImageCardPreview: React.FC<{ file: FileItem }> = ({ file }) => {
-  const [hasError, setHasError] = useState(false);
-  const imageUrl = CloudStorageAPI.getImageDirectUrl(file);
-
-  if (imageUrl && !hasError) {
-    return (
-      <img
-        src={imageUrl}
-        alt={file.name}
-        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
-        loading="lazy"
-        onError={() => setHasError(true)}
-      />
-    );
-  }
+  const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+  const src = `${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}`;
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-emerald-950/80 via-slate-900 to-slate-900 p-3">
-      <ImageIcon className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-400 stroke-[1.8]" />
-      {/* Widget flottant file d'attente type Google Drive */}
-      <UploadQueueWidget />
-    </div>
+    <img
+      src={src}
+      alt={file.name}
+      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
+      loading="lazy"
+    />
   );
 };
 
