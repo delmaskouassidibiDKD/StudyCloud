@@ -480,6 +480,7 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
             playsInline
             autoPlay={autoPlay}
             loop={isLooping}
+            muted={isMuted}
             onClick={togglePlay}
             style={{
               filter: getQualityFilter(),
@@ -499,6 +500,8 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
             }}
             onLoadedMetadata={() => {
               if (videoRef.current) {
+                videoRef.current.volume = volume;
+                videoRef.current.muted = isMuted;
                 setDuration(videoRef.current.duration || 0);
                 setIsBuffering(false);
                 setVideoDimensions({
