@@ -1,41 +1,35 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ArrowLeft,
-  Search,
-  X,
   FileText,
+  Search,
   Plus,
-  Trash2,
-  MoreVertical,
   Star,
-  Download,
   Share2,
-  BookOpen,
-  Edit2,
+  Download,
+  Trash2,
   ZoomIn,
   ZoomOut,
   RotateCw,
   Maximize2,
   Minimize2,
-  FileCode,
-  Check,
-  CheckSquare,
-  Square,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  BookOpen,
+  SlidersHorizontal,
   LayoutGrid,
   List,
-  Eye,
-  FileSpreadsheet,
-  FileCheck2,
-  Clock,
-  Sparkles
+  Check
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob } from '../services/localFileStorage';
 import { compressFile } from '../utils/fileCompressor';
 import { FileItem } from './Page1FilesMenuView';
-import { DocumentCardPreview } from './DocumentCardPreview';
 import { UploadQueue } from '../services/uploadQueue';
+import { DocumentCardPreview } from './DocumentCardPreview';
+import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { PdfHorizontalViewer } from './PdfHorizontalViewer';
 
 interface DocumentsMenuViewProps {
@@ -57,20 +51,18 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
   const [activeFilter, setActiveFilter] = useState<'all' | 'pdf' | 'cours' | 'td' | 'devoirs' | 'txt'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-  // Lecteur de document actif (split ou modal plein écran)
-  const [readingDoc, setReadingDoc] = useState<FileItem | null>(null);
-  const [docBlobUrl, setDocBlobUrl] = useState<string>('');
-  const [readerZoom, setReaderZoom] = useState(1);
-  const [readerRotation, setReaderRotation] = useState(0);
+  // Lecteur de document actif (split à droite)
+  const [selectedDoc, setSelectedDoc] = useState<FileItem | null>(null);
+  const [splitResolvedPdfUrl, setSplitResolvedPdfUrl] = useState<string>('');
+  const [docLayoutMode, setDocLayoutMode] = useState<'vertical' | 'horizontal'>('vertical');
+  const [docCurrentPage, setDocCurrentPage] = useState(1);
+  const [viewerZoom, setViewerZoom] = useState(1);
+  const [viewerRotation, setViewerRotation] = useState(0);
+  const [isViewerMaximized, setIsViewerMaximized] = useState(false);
 
-  // Sélection multiple
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-
-  // Menu déroulant
+  // Menu déroulant par document
   const [menuDocId, setMenuDocId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -79,7 +71,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Chargement des documents
+  // Chargement et synchronisation avec CloudDataStore
   useEffect(() => {
     let isMounted = true;
     CloudStorageAPI.getDocumentsList()
@@ -94,33 +86,64 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
         if (isMounted) setLoading(false);
       });
 
+    const unsubscribe = CloudDataStore.subscribe((state) => {
+      if (isMounted) {
+        setDocumentsList(state.documents || []);
+      }
+    });
+
     return () => {
       isMounted = false;
+      unsubscribe();
     };
   }, []);
 
-  // Résoudre l'URL de prévisualisation du document quand on l'ouvre
+  // Résolution du Blob URL quand un document est sélectionné
   useEffect(() => {
-    if (!readingDoc) {
-      setDocBlobUrl('');
+    if (!selectedDoc) {
+      setSplitResolvedPdfUrl('');
       return;
     }
 
     let isMounted = true;
-    const resolveUrl = async () => {
-      let target = readingDoc.previewUrl || readingDoc.url || '';
-      if (!target.startsWith('http') && !target.startsWith('blob:')) {
-        const local = await getFileBlobUrl(readingDoc.id);
-        if (local) target = local;
-      }
-      if (isMounted) setDocBlobUrl(target);
-    };
+    const isPdf =
+      selectedDoc.extension === 'pdf' ||
+      selectedDoc.name.toLowerCase().endsWith('.pdf') ||
+      (selectedDoc.url && selectedDoc.url.toLowerCase().includes('.pdf')) ||
+      Boolean(selectedDoc.type?.includes('pdf'));
 
-    resolveUrl();
+    if (isPdf && selectedDoc.id) {
+      getFileBlobUrl(selectedDoc.id)
+        .then((blobUrl) => {
+          if (isMounted && blobUrl) {
+            setSplitResolvedPdfUrl(blobUrl);
+          }
+        })
+        .catch(() => {});
+    }
+
     return () => {
       isMounted = false;
     };
-  }, [readingDoc]);
+  }, [selectedDoc?.id]);
+
+  // Navigation entre documents
+  const handleNavigateDoc = (direction: 'prev' | 'next') => {
+    if (filteredDocuments.length === 0) return;
+    const currentIndex = selectedDoc
+      ? filteredDocuments.findIndex(d => d.id === selectedDoc.id)
+      : 0;
+    let newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
+    if (newIndex < 0) newIndex = filteredDocuments.length - 1;
+    if (newIndex >= filteredDocuments.length) newIndex = 0;
+    const nextDoc = filteredDocuments[newIndex];
+    if (nextDoc) {
+      setSelectedDoc(nextDoc);
+      setViewerZoom(1);
+      setViewerRotation(0);
+      setDocCurrentPage(1);
+    }
+  };
 
   // Import de documents
   const handleImportDocuments = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -138,7 +161,6 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
 
         await storeFileBlob(fileId, comp.file as any).catch(() => {});
 
-        // Détection de catégorie de cours
         let docCat: FileItem['documentCategory'] = "PAS D'INF...";
         const lowerName = f.name.toLowerCase();
         if (lowerName.includes('cours') || lowerName.includes('chapitre') || lowerName.includes('leçon')) {
@@ -160,8 +182,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
           date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
           extension: ext.toUpperCase(),
           url: localBlobUrl,
-          previewUrl: localBlobUrl,
-          isNotepad: ext === 'txt'
+          previewUrl: localBlobUrl
         };
 
         return { file: comp.file, item };
@@ -172,33 +193,25 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     setDocumentsList(prev => [...newItems, ...prev]);
     CloudDataStore.setDocuments([...newItems, ...documentsList] as any);
 
-    // File d'attente d'upload cloud
     UploadQueue.enqueueExisting(newItemsWithFiles, { category: 'documents' });
+    showToast(`${newItems.length} document(s) importé(s) !`);
 
-    showToast(`${newItems.length} document(s) importé(s) avec succès !`);
+    if (newItems.length > 0 && !selectedDoc) {
+      setSelectedDoc(newItems[0]);
+    }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Suppression d'un document (mise à la corbeille)
-  const handleDeleteDocument = async (doc: FileItem) => {
-    setDocumentsList(prev => prev.filter(d => d.id !== doc.id));
-    if (readingDoc?.id === doc.id) {
-      setReadingDoc(null);
-    }
-
-    const trashedItem = { ...doc, originalCategory: 'documents', isTrash: true };
-    CloudDataStore.moveToTrash(trashedItem as any);
-    await CloudStorageAPI.deleteDocument(doc.id).catch(() => {});
-    showToast(`"${doc.name}" déplacé dans la corbeille`);
-    setMenuDocId(null);
-  };
-
-  // Basculer favori
+  // Favoris
   const handleToggleFavorite = async (doc: FileItem) => {
     const nextState = !doc.isFavorite;
     setDocumentsList(prev =>
       prev.map(d => (d.id === doc.id ? { ...d, isFavorite: nextState } : d))
     );
+    if (selectedDoc?.id === doc.id) {
+      setSelectedDoc(prev => (prev ? { ...prev, isFavorite: nextState } : null));
+    }
+    CloudDataStore.updateFile(doc.id, { isFavorite: nextState });
     if (nextState) {
       await CloudStorageAPI.addFavorite(doc.id, 'documents').catch(() => {});
     } else {
@@ -219,8 +232,26 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     setDocumentsList(prev =>
       prev.map(d => (d.id === doc.id ? { ...d, name: finalName } : d))
     );
+    if (selectedDoc?.id === doc.id) {
+      setSelectedDoc(prev => (prev ? { ...prev, name: finalName } : null));
+    }
     CloudDataStore.updateFile(doc.id, { name: finalName });
     showToast(`Document renommé en "${finalName}"`);
+    setMenuDocId(null);
+  };
+
+  // Suppression
+  const handleDeleteDocument = async (doc: FileItem) => {
+    if (!window.confirm(`Supprimer définitivement "${doc.name}" ?`)) return;
+
+    setDocumentsList(prev => prev.filter(d => d.id !== doc.id));
+    if (selectedDoc?.id === doc.id) {
+      setSelectedDoc(null);
+    }
+    CloudDataStore.removeFile(doc.id);
+    deleteFileBlob(doc.id).catch(() => {});
+    await CloudStorageAPI.deleteDocument(doc.id).catch(() => {});
+    showToast(`"${doc.name}" supprimé`);
     setMenuDocId(null);
   };
 
@@ -230,45 +261,260 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     if (!url || (!url.startsWith('http') && !url.startsWith('blob:'))) {
       url = await getFileBlobUrl(doc.id);
     }
-    if (url) {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = doc.name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      showToast('Téléchargement démarré...');
+    if (!url) {
+      showToast('Fichier introuvable');
+      return;
     }
-    setMenuDocId(null);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = doc.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast(`Téléchargement de "${doc.name}"`);
   };
 
-  // Filtrage par onglet & recherche
+  // Partager
+  const handleShare = (doc: FileItem) => {
+    if (onOpenCreateShareLink) {
+      onOpenCreateShareLink([doc]);
+    } else {
+      showToast('Partage StudyCloud');
+    }
+  };
+
+  // Filtrage
   const filteredDocuments = useMemo(() => {
     let list = documentsList;
-
-    if (activeFilter === 'pdf') {
-      list = list.filter(d => (d.extension || '').toUpperCase() === 'PDF');
-    } else if (activeFilter === 'cours') {
-      list = list.filter(d => d.documentCategory === 'COURS' || d.name.toLowerCase().includes('cours'));
-    } else if (activeFilter === 'td') {
-      list = list.filter(d => d.documentCategory === 'TD' || d.name.toLowerCase().includes('td'));
-    } else if (activeFilter === 'devoirs') {
-      list = list.filter(d => d.documentCategory === 'DEVOIRS' || d.name.toLowerCase().includes('devoir'));
-    } else if (activeFilter === 'txt') {
-      list = list.filter(d => d.isNotepad || (d.extension || '').toUpperCase() === 'TXT');
-    }
-
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter(d => d.name.toLowerCase().includes(q));
     }
-
+    if (activeFilter === 'pdf') {
+      list = list.filter(d => (d.extension || '').toLowerCase() === 'pdf');
+    } else if (activeFilter === 'cours') {
+      list = list.filter(d => d.documentCategory === 'COURS');
+    } else if (activeFilter === 'td') {
+      list = list.filter(d => d.documentCategory === 'TD');
+    } else if (activeFilter === 'devoirs') {
+      list = list.filter(d => d.documentCategory === 'DEVOIRS');
+    } else if (activeFilter === 'txt') {
+      list = list.filter(d => ['txt', 'md'].includes((d.extension || '').toLowerCase()));
+    }
     return list;
-  }, [documentsList, activeFilter, searchQuery]);
+  }, [documentsList, searchQuery, activeFilter]);
+
+  // Rendu du lecteur de document dédié (Image 3)
+  const renderDocumentReader = (file: FileItem) => {
+    const isPdf =
+      file.extension === 'pdf' ||
+      file.name.toLowerCase().endsWith('.pdf') ||
+      (file.url && file.url.toLowerCase().includes('.pdf')) ||
+      Boolean(file.type?.includes('pdf'));
+    const pdfUrl = splitResolvedPdfUrl || file.url || '';
+    const cleanPdfBase = pdfUrl.split('#')[0];
+    const nativePdfUrl = cleanPdfBase ? cleanPdfBase + '#toolbar=1&navpanes=0&view=FitH' : '';
+
+    return (
+      <div className="w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none">
+        {/* Barre supérieure du lecteur document (Image 3) */}
+        <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => handleNavigateDoc('prev')}
+              className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
+              title="Document précédent"
+            >
+              <ChevronLeft className="w-4 h-4 stroke-[2.2]" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleNavigateDoc('next')}
+              className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
+              title="Document suivant"
+            >
+              <ChevronRight className="w-4 h-4 stroke-[2.2]" />
+            </button>
+
+            <div className="min-w-0 ml-1">
+              <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-[220px]" title={file.name}>
+                {file.name}
+              </p>
+              {file.size && (
+                <p className="text-[10px] text-slate-400 font-semibold truncate">
+                  {file.size}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-wrap justify-end">
+            <button
+              type="button"
+              onClick={() => setViewerZoom(prev => Math.max(0.5, prev - 0.25))}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Zoom arrière (-)"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewerZoom(prev => Math.min(3, prev + 0.25))}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Zoom avant (+)"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewerRotation(prev => (prev + 90) % 360)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Faire pivoter"
+            >
+              <RotateCw className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Bouton Mode Vertical / Horizontal (Image 3) */}
+            <button
+              type="button"
+              onClick={() => {
+                const nextMode = docLayoutMode === 'vertical' ? 'horizontal' : 'vertical';
+                setDocLayoutMode(nextMode);
+                setDocCurrentPage(1);
+                showToast(nextMode === 'horizontal' ? 'Mode défilement horizontal activé' : 'Mode défilement vertical activé');
+              }}
+              className={`h-7 sm:h-8 px-2.5 sm:px-3 rounded-full flex items-center gap-1.5 text-xs font-bold border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                docLayoutMode === 'horizontal'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30 ring-1 ring-amber-400/40'
+                  : 'bg-blue-500/20 text-blue-300 border-blue-500/50 hover:bg-blue-500/30 ring-1 ring-blue-400/40'
+              }`}
+              title={docLayoutMode === 'vertical' ? 'Défilement vertical (Cliquer pour passer en horizontal)' : 'Défilement horizontal (Cliquer pour passer en vertical)'}
+            >
+              <SlidersHorizontal className={`w-3.5 h-3.5 ${docLayoutMode === 'vertical' ? 'rotate-90 text-blue-400' : 'text-amber-400'}`} />
+              <span className="text-[11px] font-black">{docLayoutMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleShare(file)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Partager"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleDownload(file)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Télécharger"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </button>
+
+            {onOpenStudySpace && (
+              <button
+                type="button"
+                onClick={() => onOpenStudySpace(file, 'Documents', documentsList)}
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50"
+                title="Ouvrir dans l'Espace d'étude"
+              >
+                <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+              }`}
+              title={isViewerMaximized ? 'Réduire la vue' : "Agrandir dans l'espace"}
+            >
+              {isViewerMaximized ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedDoc(null)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
+              title="Fermer le lecteur de document"
+            >
+              <X className="w-4 h-4 stroke-[2.5]" />
+            </button>
+          </div>
+        </div>
+
+        {/* Corps du Document (Image 3) */}
+        <div className="flex-1 w-full h-full flex flex-col overflow-hidden bg-stone-100 dark:bg-stone-900 select-text">
+          {isPdf ? (
+            docLayoutMode === 'horizontal' ? (
+              <PdfHorizontalViewer
+                fileId={file.id}
+                file={file}
+                url={splitResolvedPdfUrl || file.url}
+                docZoom={Math.round(viewerZoom * 100)}
+                layoutMode="horizontal"
+                currentPage={docCurrentPage}
+                onPageChange={setDocCurrentPage}
+                isFullscreen={isViewerMaximized}
+              />
+            ) : nativePdfUrl ? (
+              <div className="w-full h-full flex-1 flex flex-col items-center overflow-hidden bg-stone-100 dark:bg-stone-900">
+                <object
+                  key={`pdf-native-${file.id || cleanPdfBase}`}
+                  data={nativePdfUrl}
+                  type="application/pdf"
+                  className="w-full h-full border-0 block flex-1"
+                  style={{ width: '100%', height: '100%' }}
+                >
+                  <iframe
+                    key={`iframe-pdf-native-${file.id || cleanPdfBase}`}
+                    src={nativePdfUrl}
+                    title={file.name || 'Document PDF'}
+                    className="w-full h-full border-0 block flex-1"
+                    style={{ width: '100%', height: '100%' }}
+                  />
+                </object>
+              </div>
+            ) : (
+              <PdfHorizontalViewer
+                fileId={file.id}
+                file={file}
+                url={file.url}
+                docZoom={Math.round(viewerZoom * 100)}
+                layoutMode="vertical"
+                currentPage={docCurrentPage}
+                onPageChange={setDocCurrentPage}
+                isFullscreen={isViewerMaximized}
+              />
+            )
+          ) : (
+            <ModernDocumentViewer
+              fileId={file.id}
+              url={file.url}
+              fileName={file.name}
+              fileSize={file.size}
+              className="w-full h-full border-0 rounded-none shadow-none"
+            />
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <div className="flex-1 flex flex-col w-full min-h-screen bg-[#070A12] text-white select-none animate-in fade-in duration-200">
-      {/* Input invisible pour l'import de documents */}
+    <div className="w-full h-full flex flex-col bg-stone-50 dark:bg-[#070B14] overflow-hidden select-none">
+      {/* Toast */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 bg-black/90 text-white border border-white/20 rounded-xl shadow-2xl text-xs sm:text-sm font-semibold flex items-center gap-2 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <Check className="w-4 h-4 text-emerald-400" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Input de sélection de fichier */}
       <input
         type="file"
         ref={fileInputRef}
@@ -281,13 +527,13 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       {/* EN-TÊTE FIXE DU MENU DOCUMENTS */}
       <header className="sticky top-0 z-30 w-full bg-[#0A0E1A]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-white/10 shadow-lg">
         <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
-          {/* GAUCHE : Bouton Retour et Titre Documents */}
+          {/* GAUCHE : Retour et Titre */}
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <button
               type="button"
               onClick={onBack}
               className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
-              title="Retour au gestionnaire de fichiers"
+              title="Retour"
             >
               <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
               <span className="hidden xs:inline">Retour</span>
@@ -301,14 +547,14 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                 <h1 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
                   Documents
                 </h1>
-                <p className="text-[10px] sm:text-[11px] font-semibold text-blue-400/80 leading-tight">
-                  {documentsList.length} document{documentsList.length > 1 ? 's' : ''} disponible{documentsList.length > 1 ? 's' : ''}
+                <p className="text-[10px] sm:text-[11px] font-semibold text-slate-400 leading-tight">
+                  StudyCloud
                 </p>
               </div>
             </div>
           </div>
 
-          {/* MILIEU : Barre de Recherche Documents */}
+          {/* MILIEU : Barre de Recherche */}
           <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-1 sm:px-2">
             <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-blue-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 transition-all shadow-inner gap-2">
               <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-400/80 shrink-0 stroke-[2.2]" />
@@ -316,7 +562,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Rechercher un document, cours, TD..."
+                placeholder="Rechercher dans Documents..."
                 className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
               />
               {searchQuery && (
@@ -331,525 +577,127 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             </div>
           </div>
 
-          {/* DROITE : Bouton + Importer et Actions */}
+          {/* DROITE : Espace d'étude & + Importer */}
           <div className="shrink-0 flex items-center gap-2">
+            {onOpenStudySpace && (
+              <button
+                type="button"
+                onClick={() => onOpenStudySpace(selectedDoc || undefined, 'Documents', documentsList)}
+                className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#101827] text-emerald-400 border border-emerald-500/30 transition-all font-bold text-xs"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Espace d'étude</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-blue-400 border border-blue-500/40 hover:border-blue-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black"
-              title="Importer un fichier document"
+              title="Importer un document"
             >
               <Plus className="w-4 h-4 text-blue-400 stroke-[2.5]" />
-              <span className="hidden xs:inline">Importer document</span>
-              <span className="xs:hidden">Importer</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-              className="p-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-slate-300 hover:text-white border border-white/10"
-              title={viewMode === 'grid' ? 'Vue liste' : 'Vue grille'}
-            >
-              {viewMode === 'grid' ? <List className="w-4 h-4" /> : <LayoutGrid className="w-4 h-4" />}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsSelectionMode(!isSelectionMode)}
-              className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full border transition-all cursor-pointer shrink-0 active:scale-95 ${
-                isSelectionMode
-                  ? 'bg-blue-500 text-black border-blue-400 font-bold'
-                  : 'bg-[#04060A] hover:bg-[#0A0E18] text-white border-white/10'
-              }`}
-              title={isSelectionMode ? 'Quitter la sélection' : 'Sélection multiple'}
-            >
-              <CheckSquare className="w-4 h-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
-              title={isFullscreen ? 'Quitter le plein écran' : 'Plein écran'}
-            >
-              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              <span>+ Importer</span>
             </button>
           </div>
-        </div>
-
-        {/* BARRE DES FILTRES RAPIDES */}
-        <div className="flex items-center gap-1.5 sm:gap-2 mt-2.5 overflow-x-auto pb-1 scrollbar-none">
-          {[
-            { id: 'all', label: 'Tous' },
-            { id: 'pdf', label: 'PDF' },
-            { id: 'cours', label: 'Cours' },
-            { id: 'td', label: 'TD' },
-            { id: 'devoirs', label: 'Devoirs' },
-            { id: 'txt', label: 'Notes (.txt)' }
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveFilter(tab.id as any)}
-              className={`px-3 py-1 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                activeFilter === tab.id
-                  ? 'bg-blue-500 text-black shadow-md shadow-blue-500/20'
-                  : 'bg-[#10162A] text-slate-300 hover:text-white hover:bg-[#192242] border border-white/10'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
         </div>
       </header>
 
-      {/* BANDEAU DE SÉLECTION MULTIPLE */}
-      {isSelectionMode && (
-        <div className="w-full bg-[#0F1424] border-b border-blue-500/30 px-3 sm:px-6 py-2 flex items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-blue-400">
-              {selectedIds.length} sélectionné(s)
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedIds.length === filteredDocuments.length) {
-                  setSelectedIds([]);
-                } else {
-                  setSelectedIds(filteredDocuments.map(d => d.id));
-                }
-              }}
-              className="text-stone-300 hover:text-white underline ml-2"
-            >
-              {selectedIds.length === filteredDocuments.length ? 'Tout désélectionner' : 'Tout sélectionner'}
-            </button>
-          </div>
+      {/* DISPOSITION SPLIT (IMAGE 3) */}
+      <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+        {/* PANNEAU DE GAUCHE : LISTE DES DOCUMENTS */}
+        <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+          isViewerMaximized
+            ? 'hidden'
+            : selectedDoc
+              ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+              : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
+        }`}>
+          <div className="space-y-3 sm:space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
+                {filteredDocuments.length} document{filteredDocuments.length > 1 ? 's' : ''} disponible{filteredDocuments.length > 1 ? 's' : ''}
+              </span>
+            </div>
 
-          <div className="flex items-center gap-2">
-            {selectedIds.length > 0 && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const toDelete = documentsList.filter(d => selectedIds.includes(d.id));
-                    toDelete.forEach(handleDeleteDocument);
-                    setSelectedIds([]);
-                    setIsSelectionMode(false);
-                  }}
-                  className="px-3 py-1 bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/40 rounded-lg flex items-center gap-1 font-bold"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Supprimer ({selectedIds.length})</span>
-                </button>
-
-                {onOpenStudySpace && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const first = documentsList.find(d => d.id === selectedIds[0]);
-                      onOpenStudySpace(first, 'Documents', documentsList);
-                    }}
-                    className="px-3 py-1 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40 rounded-lg flex items-center gap-1 font-bold"
-                  >
-                    <BookOpen className="w-3.5 h-3.5" />
-                    <span>Espace d'étude</span>
-                  </button>
-                )}
-              </>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setIsSelectionMode(false);
-                setSelectedIds([]);
-              }}
-              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded-lg"
-            >
-              Fermer
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* LECTEUR DE DOCUMENT INTÉGRÉ AU SOMMET (SI DOCUMENT OUVERT) */}
-      {readingDoc && (
-        <div className="w-full bg-[#0D1222] border-b border-blue-500/30 p-3 sm:p-5 shadow-2xl relative">
-          <div className="max-w-6xl mx-auto flex flex-col gap-3">
-            {/* Barre de contrôles du lecteur */}
-            <div className="flex items-center justify-between gap-3 bg-[#060914] p-2.5 rounded-2xl border border-white/10">
-              <div className="min-w-0 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-blue-400 shrink-0" />
-                <h3 className="text-xs sm:text-sm font-black text-white truncate" title={readingDoc.name}>
-                  {readingDoc.name}
-                </h3>
+            {loading ? (
+              <div className="py-20 text-center text-stone-400">
+                <div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                <p className="text-xs">Chargement des documents...</p>
               </div>
-
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setReaderZoom(Math.max(0.6, readerZoom - 0.2))}
-                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300"
-                  title="Zoom arrière"
-                >
-                  <ZoomOut className="w-4 h-4" />
-                </button>
-                <span className="text-xs font-mono px-1.5 text-slate-400">
-                  {Math.round(readerZoom * 100)}%
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setReaderZoom(Math.min(2.5, readerZoom + 0.2))}
-                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300"
-                  title="Zoom avant"
-                >
-                  <ZoomIn className="w-4 h-4" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setReaderRotation((readerRotation + 90) % 360)}
-                  className="p-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300 ml-1"
-                  title="Pivoter à 90°"
-                >
-                  <RotateCw className="w-4 h-4" />
-                </button>
-
-                {onOpenStudySpace && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenStudySpace(readingDoc, 'Documents', documentsList)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-xs font-bold ml-1"
-                  >
-                    <BookOpen className="w-3.5 h-3.5" />
-                    <span>Espace d'étude</span>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setReadingDoc(null)}
-                  className="p-1.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 ml-2"
-                  title="Fermer le lecteur"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+            ) : filteredDocuments.length === 0 ? (
+              <div className="py-20 text-center text-stone-500 dark:text-slate-400">
+                <FileText className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-blue-400" />
+                <p className="text-sm font-semibold">Aucun document disponible</p>
+                <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                  Ce dossier ne contient aucun document pour le moment.
+                </p>
               </div>
-            </div>
+            ) : (
+              <div className={`grid gap-2.5 sm:gap-3.5 ${
+                selectedDoc
+                  ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3'
+                  : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+              }`}>
+                {filteredDocuments.map((doc) => {
+                  const isSelected = selectedDoc?.id === doc.id;
+                  const isMenuOpen = menuDocId === doc.id;
 
-            {/* Zone d'affichage du Document (PDF / iframe / visionneuse) */}
-            <div className="w-full h-[60vh] max-h-[750px] bg-[#04060C] rounded-2xl border border-white/10 overflow-hidden flex items-center justify-center relative">
-              {docBlobUrl ? (
-                (readingDoc.extension || '').toUpperCase() === 'PDF' ? (
-                  <div
-                    className="w-full h-full overflow-auto flex items-center justify-center transition-transform"
-                    style={{ transform: `scale(${readerZoom}) rotate(${readerRotation}deg)` }}
-                  >
-                    <iframe
-                      src={`${docBlobUrl}#toolbar=1&navpanes=0`}
-                      className="w-full h-full border-none rounded-xl"
-                      title={readingDoc.name}
-                    />
-                  </div>
-                ) : readingDoc.isNotepad || (readingDoc.extension || '').toUpperCase() === 'TXT' ? (
-                  <div className="w-full h-full p-6 overflow-auto font-mono text-xs sm:text-sm text-slate-200 leading-relaxed bg-[#0B0F1E] rounded-xl whitespace-pre-wrap">
-                    {readingDoc.content || 'Document texte vide.'}
-                  </div>
-                ) : (
-                  <div className="text-center p-8">
-                    <FileText className="w-12 h-12 mx-auto text-blue-400 mb-3 opacity-60" />
-                    <p className="text-sm font-bold text-white mb-2">{readingDoc.name}</p>
-                    <p className="text-xs text-slate-400 mb-4">
-                      Aperçu intégré non disponible pour le format {readingDoc.extension}. Téléchargez ou ouvrez le document.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => handleDownload(readingDoc)}
-                      className="px-4 py-2 rounded-xl bg-blue-500 text-black font-bold text-xs inline-flex items-center gap-1.5"
-                    >
-                      <Download className="w-4 h-4" />
-                      <span>Télécharger le fichier</span>
-                    </button>
-                  </div>
-                )
-              ) : (
-                <div className="flex items-center gap-2 text-slate-400 text-xs">
-                  <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                  <span>Chargement du document...</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CONTENU PRINCIPAL : LISTE OU GRILLE DES DOCUMENTS */}
-      <main className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-4 pb-32">
-        {loading ? (
-          <div className="py-20 flex flex-col items-center justify-center gap-3">
-            <div className="w-10 h-10 border-3 border-blue-400 border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm font-semibold text-slate-400">Chargement de vos documents...</p>
-          </div>
-        ) : filteredDocuments.length === 0 ? (
-          <div className="py-24 flex flex-col items-center justify-center text-center max-w-md mx-auto">
-            <div className="w-20 h-20 rounded-3xl bg-[#121829] border border-blue-500/20 flex items-center justify-center mb-4 shadow-xl">
-              <FileText className="w-10 h-10 text-blue-400 opacity-80 stroke-[1.5]" />
-            </div>
-            <h3 className="text-lg font-black text-white mb-1.5">
-              {searchQuery ? 'Aucun document trouvé' : 'Aucun document disponible'}
-            </h3>
-            <p className="text-xs sm:text-sm text-slate-400 mb-6 leading-relaxed">
-              {searchQuery
-                ? `Aucun document ne correspond à "${searchQuery}".`
-                : 'Importez vos cours, fiches de révision, exercices TD, examens au format PDF ou Word.'}
-            </p>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="px-5 py-2.5 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 text-black font-black text-sm shadow-lg shadow-blue-500/20 transition-all cursor-pointer active:scale-95 flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Importer un document</span>
-            </button>
-          </div>
-        ) : viewMode === 'grid' ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-            {filteredDocuments.map((doc, idx) => {
-              const isSelected = readingDoc?.id === doc.id;
-              const isChecked = selectedIds.includes(doc.id);
-
-              return (
-                <div
-                  key={doc.id}
-                  onClick={() => {
-                    if (isSelectionMode) {
-                      if (isChecked) setSelectedIds(selectedIds.filter(id => id !== doc.id));
-                      else setSelectedIds([...selectedIds, doc.id]);
-                    } else {
-                      setReadingDoc(doc);
-                    }
-                  }}
-                  className={`group relative rounded-2xl p-2.5 flex flex-col justify-between transition-all duration-200 cursor-pointer select-none border ${
-                    isSelected
-                      ? 'bg-[#151D33] border-blue-400 shadow-lg shadow-blue-500/10 scale-102'
-                      : 'bg-[#0B0F1D] hover:bg-[#121828] border-white/10 hover:border-blue-400/40 shadow-sm'
-                  }`}
-                >
-                  {/* Case à cocher ou Badge Catégorie */}
-                  <div className="flex items-center justify-between mb-2">
-                    {isSelectionMode ? (
-                      <div className="text-blue-400">
-                        {isChecked ? (
-                          <CheckSquare className="w-5 h-5 fill-blue-500/20" />
-                        ) : (
-                          <Square className="w-5 h-5 text-slate-500" />
-                        )}
-                      </div>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-300 font-extrabold text-[10px] tracking-wide border border-blue-500/30">
-                        {doc.extension || 'PDF'}
-                      </span>
-                    )}
-
-                    <div className="relative" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        onClick={() => setMenuDocId(menuDocId === doc.id ? null : doc.id)}
-                        className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10"
-                      >
-                        <MoreVertical className="w-3.5 h-3.5" />
-                      </button>
-
-                      {menuDocId === doc.id && (
-                        <div className="absolute right-0 top-full mt-1 z-50 w-44 rounded-2xl bg-[#121828] border border-white/15 shadow-2xl p-1.5 flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-150">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setReadingDoc(doc);
-                              setMenuDocId(null);
-                            }}
-                            className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 rounded-xl text-left"
-                          >
-                            <Eye className="w-3.5 h-3.5 text-blue-400" />
-                            <span>Lire</span>
-                          </button>
-
-                          {onOpenStudySpace && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onOpenStudySpace(doc, 'Documents', documentsList);
-                                setMenuDocId(null);
-                              }}
-                              className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 rounded-xl text-left"
-                            >
-                              <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>Espace d'étude</span>
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => handleToggleFavorite(doc)}
-                            className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 rounded-xl text-left"
-                          >
-                            <Star className="w-3.5 h-3.5 text-amber-400" />
-                            <span>{doc.isFavorite ? 'Retirer des favoris' : 'Favori'}</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDownload(doc)}
-                            className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 rounded-xl text-left"
-                          >
-                            <Download className="w-3.5 h-3.5 text-sky-400" />
-                            <span>Télécharger</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleRenameDocument(doc)}
-                            className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 rounded-xl text-left"
-                          >
-                            <Edit2 className="w-3.5 h-3.5 text-blue-400" />
-                            <span>Renommer</span>
-                          </button>
-
-                          {onOpenCreateShareLink && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onOpenCreateShareLink([doc]);
-                                setMenuDocId(null);
-                              }}
-                              className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 rounded-xl text-left"
-                            >
-                              <Share2 className="w-3.5 h-3.5 text-purple-400" />
-                              <span>Partager le lien</span>
-                            </button>
-                          )}
-
-                          <div className="h-px bg-white/10 my-1" />
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteDocument(doc)}
-                            className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-red-400 hover:bg-red-500/20 rounded-xl text-left"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Corbeille</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Aperçu Card */}
-                  <div className="w-full h-28 rounded-xl bg-black/40 border border-white/5 overflow-hidden flex items-center justify-center p-2 mb-2 group-hover:scale-102 transition-transform">
-                    <DocumentCardPreview doc={doc} />
-                  </div>
-
-                  {/* Nom & Infos */}
-                  <div className="min-w-0">
-                    <h4
-                      className="text-xs font-bold text-white truncate group-hover:text-blue-300 transition-colors"
-                      title={doc.name}
-                    >
-                      {doc.name}
-                    </h4>
-                    <p className="text-[10px] text-slate-400 truncate mt-0.5">
-                      {doc.size} • {doc.date}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            {filteredDocuments.map((doc) => {
-              const isSelected = readingDoc?.id === doc.id;
-              const isChecked = selectedIds.includes(doc.id);
-
-              return (
-                <div
-                  key={doc.id}
-                  onClick={() => {
-                    if (isSelectionMode) {
-                      if (isChecked) setSelectedIds(selectedIds.filter(id => id !== doc.id));
-                      else setSelectedIds([...selectedIds, doc.id]);
-                    } else {
-                      setReadingDoc(doc);
-                    }
-                  }}
-                  className={`group rounded-2xl p-3 flex items-center gap-3 transition-all duration-200 cursor-pointer border ${
-                    isSelected
-                      ? 'bg-[#151D33] border-blue-400'
-                      : 'bg-[#0B0F1D] hover:bg-[#121828] border-white/10 hover:border-blue-400/40'
-                  }`}
-                >
-                  {isSelectionMode && (
-                    <div className="shrink-0 text-blue-400">
-                      {isChecked ? <CheckSquare className="w-5 h-5 fill-blue-500/20" /> : <Square className="w-5 h-5 text-slate-500" />}
-                    </div>
-                  )}
-
-                  <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 shrink-0">
-                    <FileText className="w-5 h-5" />
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <h4 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-blue-300">
-                      {doc.name}
-                    </h4>
-                    <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                      {doc.documentCategory && doc.documentCategory !== "PAS D'INF..." && (
-                        <span className="text-blue-400 font-bold mr-1.5">{doc.documentCategory}</span>
-                      )}
-                      {doc.size} • {doc.date}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleFavorite(doc)}
-                      className={`p-1.5 rounded-lg border transition-all ${
-                        doc.isFavorite ? 'bg-amber-500/20 border-amber-400 text-amber-400' : 'border-white/10 text-slate-400 hover:text-white'
+                  return (
+                    <div
+                      key={doc.id}
+                      onClick={() => {
+                        setSelectedDoc(doc);
+                      }}
+                      className={`group relative flex flex-col rounded-2xl p-2.5 transition-all cursor-pointer border select-none ${
+                        isSelected
+                          ? 'bg-blue-500/10 dark:bg-blue-950/30 border-blue-400 dark:border-blue-500 shadow-md ring-1 ring-blue-400/40'
+                          : 'bg-white dark:bg-slate-900/80 border-stone-200/90 dark:border-slate-800 hover:border-blue-400/50 hover:shadow-lg'
                       }`}
                     >
-                      <Star className={`w-4 h-4 ${doc.isFavorite ? 'fill-amber-400' : ''}`} />
-                    </button>
+                      {/* Vignette Preview */}
+                      <div className="w-full aspect-[4/3] rounded-xl overflow-hidden bg-slate-950 relative flex items-center justify-center shadow-inner">
+                        <DocumentCardPreview doc={doc} className="w-full h-full object-cover" />
+                        {doc.extension && (
+                          <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/80 border border-white/20 text-[9px] font-black uppercase text-white tracking-wider">
+                            {doc.extension}
+                          </span>
+                        )}
+                        {doc.isFavorite && (
+                          <Star className="absolute top-1.5 right-1.5 w-3.5 h-3.5 text-amber-400 fill-amber-400 filter drop-shadow" />
+                        )}
+                      </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleDownload(doc)}
-                      className="p-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white hover:border-sky-400"
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
+                      {/* Titre & métadonnées */}
+                      <div className="mt-2 min-w-0">
+                        <h4 className={`text-xs font-bold truncate leading-tight ${
+                          isSelected ? 'text-blue-500 dark:text-blue-300' : 'text-stone-800 dark:text-white group-hover:text-blue-500'
+                        }`}>
+                          {doc.name}
+                        </h4>
+                        <p className="text-[10px] text-stone-400 dark:text-slate-500 font-medium truncate mt-0.5">
+                          {doc.size || 'Document'} • {doc.date}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteDocument(doc)}
-                      className="p-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-red-400 hover:border-red-400"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+        {/* PANNEAU DE DROITE : LECTEUR DOCUMENT DÉDIÉ (IMAGE 3) */}
+        {selectedDoc && (
+          <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+            isViewerMaximized
+              ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]'
+              : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+          }`}>
+            {renderDocumentReader(selectedDoc)}
           </div>
         )}
-      </main>
-
-      {/* TOAST FLOTTANT */}
-      {toastMessage && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0F1424] border border-blue-500/40 text-blue-300 px-4 py-2.5 rounded-full shadow-2xl text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
-          <Check className="w-4 h-4 stroke-[3]" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
+      </div>
     </div>
   );
 };

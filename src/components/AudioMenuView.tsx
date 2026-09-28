@@ -1,36 +1,33 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ArrowLeft,
-  Search,
-  X,
   Music,
+  Search,
+  Plus,
+  Star,
+  Share2,
+  Download,
+  Trash2,
   Play,
   Pause,
-  Plus,
-  Trash2,
-  MoreVertical,
+  SkipBack,
+  SkipForward,
+  Shuffle,
+  Repeat,
   Volume2,
   VolumeX,
-  Volume1,
   RotateCcw,
   RotateCw,
-  Repeat,
-  Shuffle,
-  Star,
-  Download,
-  Share2,
+  X,
+  Menu,
   BookOpen,
-  Edit2,
-  Clock,
-  Sparkles,
-  SlidersHorizontal,
-  Check,
   CheckSquare,
   Square,
+  ChevronLeft,
+  ChevronRight,
   Maximize2,
   Minimize2,
-  FolderInput,
-  FileAudio
+  Check
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
@@ -39,6 +36,8 @@ import { compressFile } from '../utils/fileCompressor';
 import { extractAudioCover, generateAudioCreatorCover } from '../services/mediaPreviewService';
 import { FileItem } from './Page1FilesMenuView';
 import { UploadQueue } from '../services/uploadQueue';
+import { AudioCardPreview } from './AudioCardPreview';
+import { getWorkerApiUrl } from '../services/api';
 
 interface AudioMenuViewProps {
   onBack: () => void;
@@ -64,39 +63,31 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTrack, setSelectedTrack] = useState<FileItem | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(0.85);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isShuffle, setIsShuffle] = useState(false);
-  const [isRepeat, setIsRepeat] = useState<'off' | 'all' | 'one'>('off');
-  const [playbackRate, setPlaybackRate] = useState(1);
-  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
-  const [showLyricsModal, setShowLyricsModal] = useState(false);
-  const [isEqualizerOn, setIsEqualizerOn] = useState(true);
-  const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(null);
-  const [sleepTimerRemaining, setSleepTimerRemaining] = useState<number | null>(null);
+  const [isAudioShuffle, setIsAudioShuffle] = useState(false);
+  const [isAudioRepeat, setIsAudioRepeat] = useState<'off' | 'all' | 'one'>('off');
+  const [splitResolvedAudioUrl, setSplitResolvedAudioUrl] = useState<string>('');
+  const [isMobilePlayerOpen, setIsMobilePlayerOpen] = useState(false);
+  const [isPlayerMenuOpen, setIsPlayerMenuOpen] = useState(false);
+  const [isViewerMaximized, setIsViewerMaximized] = useState(false);
 
-  // Mode sélection multiple
+  // Mode sélection
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-
-  // Menu déroulant par piste
-  const [menuTrackId, setMenuTrackId] = useState<string | null>(null);
+  const [activeMenuTrackId, setActiveMenuTrackId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const sleepTimerRef = useRef<any>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Chargement des fichiers audio depuis le Cloud / IndexedDB
+  // Chargement et synchronisation avec CloudDataStore
   useEffect(() => {
     let isMounted = true;
     CloudStorageAPI.getAudioList()
@@ -111,130 +102,95 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
         if (isMounted) setLoading(false);
       });
 
+    const unsubscribe = CloudDataStore.subscribe((state) => {
+      if (isMounted) {
+        setAudioList(state.audio || []);
+      }
+    });
+
     return () => {
       isMounted = false;
+      unsubscribe();
     };
   }, []);
 
-  // Gestion du Sleep Timer
+  // Résolution du Blob URL lors du changement de piste
   useEffect(() => {
-    if (sleepTimerMinutes === null) {
-      setSleepTimerRemaining(null);
-      if (sleepTimerRef.current) clearInterval(sleepTimerRef.current);
+    if (!selectedTrack) {
+      setSplitResolvedAudioUrl('');
+      setIsAudioPlaying(false);
       return;
     }
 
-    let remaining = sleepTimerMinutes * 60;
-    setSleepTimerRemaining(remaining);
-
-    sleepTimerRef.current = setInterval(() => {
-      remaining -= 1;
-      if (remaining <= 0) {
-        clearInterval(sleepTimerRef.current);
-        if (audioRef.current) {
-          audioRef.current.pause();
-          setIsPlaying(false);
-        }
-        setSleepTimerMinutes(null);
-        setSleepTimerRemaining(null);
-        showToast('Minuteur de mise en veille terminé : lecture arrêtée');
-      } else {
-        setSleepTimerRemaining(remaining);
-      }
-    }, 1000);
+    let isMounted = true;
+    if (selectedTrack.id) {
+      getFileBlobUrl(selectedTrack.id)
+        .then((blobUrl) => {
+          if (isMounted && blobUrl) {
+            setSplitResolvedAudioUrl(blobUrl);
+          }
+        })
+        .catch(() => {});
+    }
 
     return () => {
-      if (sleepTimerRef.current) clearInterval(sleepTimerRef.current);
+      isMounted = false;
     };
-  }, [sleepTimerMinutes]);
+  }, [selectedTrack?.id]);
 
-  // Synchronisation de l'élément audio natif
-  useEffect(() => {
+  // Contrôles de lecture
+  const togglePlayPause = () => {
     if (!audioRef.current) return;
-    audioRef.current.volume = isMuted ? 0 : volume;
-    audioRef.current.playbackRate = playbackRate;
-  }, [volume, isMuted, playbackRate]);
-
-  // Gestion de la sélection d'une piste
-  const handleSelectTrack = async (track: FileItem) => {
-    if (selectedTrack?.id === track.id) {
-      if (isPlaying) {
-        audioRef.current?.pause();
-        setIsPlaying(false);
-      } else {
-        audioRef.current?.play().catch(() => {});
-        setIsPlaying(true);
-      }
-      return;
-    }
-
-    setSelectedTrack(track);
-    setIsPlaying(true);
-
-    // Résoudre l'URL de lecture (IndexedDB Blob URL ou URL directe)
-    let playUrl = track.audioUrl || track.url || '';
-    if (!playUrl.startsWith('http') && !playUrl.startsWith('blob:')) {
-      const blobUrl = await getFileBlobUrl(track.id);
-      if (blobUrl) playUrl = blobUrl;
-    }
-
-    if (audioRef.current) {
-      audioRef.current.src = playUrl;
+    if (isAudioPlaying) {
+      audioRef.current.pause();
+    } else {
       audioRef.current.play().catch(() => {});
     }
   };
 
-  // Piste suivante / précédente
-  const handlePlayNext = () => {
+  const handleAudioNext = () => {
     if (filteredAudio.length === 0) return;
-    if (!selectedTrack) {
-      handleSelectTrack(filteredAudio[0]);
+    if (isAudioShuffle) {
+      const randIdx = Math.floor(Math.random() * filteredAudio.length);
+      setSelectedTrack(filteredAudio[randIdx]);
       return;
     }
-
-    if (isShuffle) {
-      const randomIndex = Math.floor(Math.random() * filteredAudio.length);
-      handleSelectTrack(filteredAudio[randomIndex]);
-      return;
-    }
-
-    const currentIndex = filteredAudio.findIndex(t => t.id === selectedTrack.id);
-    const nextIndex = (currentIndex + 1) % filteredAudio.length;
-    handleSelectTrack(filteredAudio[nextIndex]);
+    const curIdx = selectedTrack ? filteredAudio.findIndex(t => t.id === selectedTrack.id) : -1;
+    const nextIdx = (curIdx + 1) % filteredAudio.length;
+    setSelectedTrack(filteredAudio[nextIdx]);
   };
 
-  const handlePlayPrev = () => {
+  const handleAudioPrev = () => {
     if (filteredAudio.length === 0) return;
-    if (!selectedTrack) {
-      handleSelectTrack(filteredAudio[0]);
+    if (isAudioShuffle) {
+      const randIdx = Math.floor(Math.random() * filteredAudio.length);
+      setSelectedTrack(filteredAudio[randIdx]);
       return;
     }
-
-    const currentIndex = filteredAudio.findIndex(t => t.id === selectedTrack.id);
-    const prevIndex = (currentIndex - 1 + filteredAudio.length) % filteredAudio.length;
-    handleSelectTrack(filteredAudio[prevIndex]);
+    const curIdx = selectedTrack ? filteredAudio.findIndex(t => t.id === selectedTrack.id) : 0;
+    const prevIdx = (curIdx - 1 + filteredAudio.length) % filteredAudio.length;
+    setSelectedTrack(filteredAudio[prevIdx]);
   };
 
-  // Fin de la piste
-  const handleAudioEnded = () => {
-    if (isRepeat === 'one') {
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-        audioRef.current.play().catch(() => {});
-      }
-    } else if (isRepeat === 'all' || isShuffle) {
-      handlePlayNext();
-    } else {
-      setIsPlaying(false);
-    }
+  const handleSeekDelta = (deltaSec: number) => {
+    if (!audioRef.current) return;
+    const newTime = Math.max(0, Math.min(duration || 1000, currentTime + deltaSec));
+    audioRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
   };
 
-  // Import de nouveaux fichiers audio
+  const toggleAudioRepeat = () => {
+    if (isAudioRepeat === 'off') setIsAudioRepeat('all');
+    else if (isAudioRepeat === 'all') setIsAudioRepeat('one');
+    else setIsAudioRepeat('off');
+  };
+
+  // Import audio
   const handleImportAudio = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const files = Array.from(e.target.files) as File[];
 
-    showToast(`Préparation de ${files.length} fichier(s) audio...`);
+    showToast(`Préparation de ${files.length} son(s)...`);
 
     const newItemsWithFiles = await Promise.all(
       files.map(async (f, idx) => {
@@ -245,7 +201,6 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
         await storeFileBlob(fileId, comp.file as any).catch(() => {});
 
-        // Extraction de pochette audio si possible
         let coverUrl: string | undefined;
         try {
           coverUrl = (await extractAudioCover(comp.file)) || undefined;
@@ -266,7 +221,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           url: localBlobUrl,
           audioUrl: localBlobUrl,
           coverUrl,
-          artist: 'StudyCloud Audio'
+          isAudio: true
         };
 
         return { file: comp.file, item };
@@ -277,50 +232,37 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     setAudioList(prev => [...newItems, ...prev]);
     CloudDataStore.setAudio([...newItems, ...audioList] as any);
 
-    // File d'attente d'upload cloud
     UploadQueue.enqueueExisting(newItemsWithFiles, { category: 'audio' });
+    showToast(`${newItems.length} fichier(s) audio importé(s) !`);
 
-    showToast(`${newItems.length} audio(s) importé(s) avec succès !`);
+    if (newItems.length > 0 && !selectedTrack) {
+      setSelectedTrack(newItems[0]);
+    }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Suppression d'un audio (mise à la corbeille)
-  const handleDeleteAudio = async (track: FileItem) => {
-    setAudioList(prev => prev.filter(t => t.id !== track.id));
-    if (selectedTrack?.id === track.id) {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = '';
-      }
-      setSelectedTrack(null);
-      setIsPlaying(false);
-    }
-
-    const trashedItem = { ...track, originalCategory: 'audio', isTrash: true };
-    CloudDataStore.moveToTrash(trashedItem as any);
-    await CloudStorageAPI.deleteAudio(track.id).catch(() => {});
-    showToast(`"${track.name}" déplacé dans la corbeille`);
-    setMenuTrackId(null);
-  };
-
-  // Basculer favori
+  // Favoris
   const handleToggleFavorite = async (track: FileItem) => {
     const nextState = !track.isFavorite;
     setAudioList(prev =>
       prev.map(t => (t.id === track.id ? { ...t, isFavorite: nextState } : t))
     );
+    if (selectedTrack?.id === track.id) {
+      setSelectedTrack(prev => (prev ? { ...prev, isFavorite: nextState } : null));
+    }
+    CloudDataStore.updateFile(track.id, { isFavorite: nextState });
     if (nextState) {
       await CloudStorageAPI.addFavorite(track.id, 'audio').catch(() => {});
     } else {
       await CloudStorageAPI.removeFavorite(track.id).catch(() => {});
     }
     showToast(nextState ? 'Ajouté aux favoris ⭐' : 'Retiré des favoris');
-    setMenuTrackId(null);
+    setActiveMenuTrackId(null);
   };
 
-  // Renommer une piste
+  // Renommer
   const handleRenameAudio = async (track: FileItem) => {
-    const newName = window.prompt('Nouveau nom du fichier audio :', track.name);
+    const newName = window.prompt('Nouveau nom du son :', track.name);
     if (!newName || !newName.trim() || newName.trim() === track.name) return;
 
     const trimmed = newName.trim();
@@ -329,54 +271,427 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     setAudioList(prev =>
       prev.map(t => (t.id === track.id ? { ...t, name: finalName } : t))
     );
+    if (selectedTrack?.id === track.id) {
+      setSelectedTrack(prev => (prev ? { ...prev, name: finalName } : null));
+    }
     CloudDataStore.updateFile(track.id, { name: finalName });
-    showToast(`Piste renommée en "${finalName}"`);
-    setMenuTrackId(null);
+    showToast(`Son renommé en "${finalName}"`);
+    setActiveMenuTrackId(null);
   };
 
-  // Téléchargement
+  // Suppression
+  const handleDeleteAudio = async (track: FileItem) => {
+    if (!window.confirm(`Supprimer définitivement "${track.name}" ?`)) return;
+
+    setAudioList(prev => prev.filter(t => t.id !== track.id));
+    if (selectedTrack?.id === track.id) {
+      setSelectedTrack(null);
+      setIsAudioPlaying(false);
+    }
+    CloudDataStore.removeFile(track.id);
+    deleteFileBlob(track.id).catch(() => {});
+    await CloudStorageAPI.deleteAudio(track.id).catch(() => {});
+    showToast(`"${track.name}" supprimé`);
+    setActiveMenuTrackId(null);
+  };
+
+  // Télécharger
   const handleDownload = async (track: FileItem) => {
     let url = track.audioUrl || track.url;
     if (!url || (!url.startsWith('http') && !url.startsWith('blob:'))) {
       url = await getFileBlobUrl(track.id);
     }
-    if (url) {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = track.name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      showToast('Téléchargement démarré...');
+    if (!url) {
+      showToast('Fichier introuvable');
+      return;
     }
-    setMenuTrackId(null);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = track.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast(`Téléchargement de "${track.name}"`);
   };
 
-  // Filtrage par recherche
+  // Partager
+  const handleShare = (track: FileItem) => {
+    if (onOpenCreateShareLink) {
+      onOpenCreateShareLink([track]);
+    } else {
+      showToast('Partage StudyCloud');
+    }
+  };
+
+  // Filtrage
   const filteredAudio = useMemo(() => {
     if (!searchQuery.trim()) return audioList;
     const q = searchQuery.toLowerCase().trim();
     return audioList.filter(
-      t =>
-        t.name.toLowerCase().includes(q) ||
-        (t.artist && t.artist.toLowerCase().includes(q))
+      t => t.name.toLowerCase().includes(q) || (t.artist && t.artist.toLowerCase().includes(q))
     );
   }, [audioList, searchQuery]);
 
-  return (
-    <div className="flex-1 flex flex-col w-full min-h-screen bg-[#070A12] text-white select-none animate-in fade-in duration-200">
-      <audio
-        ref={audioRef}
-        onTimeUpdate={() => {
-          if (audioRef.current) {
-            setCurrentTime(audioRef.current.currentTime);
-            setDuration(audioRef.current.duration || 0);
-          }
-        }}
-        onEnded={handleAudioEnded}
-      />
+  // Rendu du lecteur indépendant (Image 2)
+  const renderAudioPlayer = (track: FileItem) => {
+    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+    const fallbackStreamUrl = track.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(track.id)}` : '';
+    const rawDirect = track.audioUrl || (track as any).url || '';
+    const isDirectUsable = rawDirect && !rawDirect.startsWith('blob:');
+    const audioSrc = splitResolvedAudioUrl || (isDirectUsable ? rawDirect : '') || fallbackStreamUrl;
 
-      {/* Input invisible pour l'import audio */}
+    return (
+      <div className="relative w-full h-full flex-1 flex flex-col justify-between p-3 sm:p-6 md:p-8 bg-[#090D1A] text-white overflow-hidden select-none">
+        <audio
+          ref={audioRef}
+          src={audioSrc}
+          preload="auto"
+          autoPlay={isAudioPlaying}
+          loop={isAudioRepeat === 'one'}
+          onCanPlay={() => {
+            if (isAudioPlaying && audioRef.current && audioRef.current.paused) {
+              audioRef.current.play().catch(() => {});
+            }
+          }}
+          onPlay={() => setIsAudioPlaying(true)}
+          onPause={() => setIsAudioPlaying(false)}
+          onError={async () => {
+            console.warn('[AudioPlayer] Erreur chargement audio pour', track.name);
+            if (track.id) {
+              try {
+                const freshBlob = await getFileBlobUrl(track.id);
+                if (freshBlob && freshBlob !== audioSrc) {
+                  setSplitResolvedAudioUrl(freshBlob);
+                  if (audioRef.current) {
+                    audioRef.current.src = freshBlob;
+                    audioRef.current.play().catch(() => {});
+                  }
+                  return;
+                }
+              } catch (e) {}
+
+              if (fallbackStreamUrl && audioSrc !== fallbackStreamUrl) {
+                setSplitResolvedAudioUrl(fallbackStreamUrl);
+                if (audioRef.current) {
+                  audioRef.current.src = fallbackStreamUrl;
+                  audioRef.current.play().catch(() => {});
+                }
+              }
+            }
+          }}
+          onEnded={() => {
+            if (isAudioRepeat === 'one') {
+              if (audioRef.current) {
+                audioRef.current.currentTime = 0;
+                audioRef.current.play().catch(() => {});
+              }
+              setCurrentTime(0);
+            } else {
+              handleAudioNext();
+            }
+          }}
+          onTimeUpdate={() => {
+            if (audioRef.current) {
+              setCurrentTime(Math.floor(audioRef.current.currentTime));
+              if (audioRef.current.duration && !isNaN(audioRef.current.duration)) {
+                setDuration(Math.floor(audioRef.current.duration));
+              }
+            }
+          }}
+        />
+
+        {/* Halo ambré chaleureux */}
+        <div
+          className="absolute inset-0 pointer-events-none opacity-35"
+          style={{
+            background: 'radial-gradient(circle at 45% 30%, rgba(245, 158, 11, 0.45) 0%, rgba(217, 119, 6, 0.18) 40%, transparent 75%)'
+          }}
+        />
+
+        {/* Bouton retour mobile */}
+        <div className="md:hidden flex items-center justify-between pb-2 relative z-10 shrink-0">
+          <button
+            type="button"
+            onClick={() => setIsMobilePlayerOpen(false)}
+            className="flex items-center gap-1 text-xs text-slate-400 hover:text-white"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span>Retour à la liste</span>
+          </button>
+        </div>
+
+        {/* En-tête du lecteur audio */}
+        <div className="w-full flex items-center justify-between pb-3 border-b border-white/10 relative z-10 shrink-0">
+          <div className="min-w-0 pr-2">
+            <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[200px] sm:max-w-xs" title={track.name}>
+              {track.name}
+            </p>
+            <p className="text-[10px] text-amber-400 font-semibold truncate">
+              {track.artist || track.size || 'StudyCloud Audio'}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => handleToggleFavorite(track)}
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer ${
+                track.isFavorite
+                  ? 'bg-amber-500/20 text-amber-400 border-amber-400/40'
+                  : 'bg-black/60 hover:bg-slate-800 text-white border-white/10'
+              }`}
+              title={track.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+            >
+              <Star className={`w-3.5 h-3.5 ${track.isFavorite ? 'fill-amber-400' : ''}`} />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleShare(track)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Partager"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDownload(track)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Télécharger"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </button>
+            {onOpenStudySpace && (
+              <button
+                type="button"
+                onClick={() => onOpenStudySpace(track, 'Audio', audioList)}
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50"
+                title="Ouvrir dans l'Espace d'étude"
+              >
+                <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
+              </button>
+            )}
+
+            {/* Menu 3 traits */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsPlayerMenuOpen(!isPlayerMenuOpen)}
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center bg-black/60 hover:bg-white/20 text-white border border-white/15 transition-all cursor-pointer shadow-sm active:scale-95"
+                title="Options"
+              >
+                <Menu className="w-4 h-4 stroke-[2.2]" />
+              </button>
+              {isPlayerMenuOpen && (
+                <div
+                  className="absolute right-0 top-9 z-50 w-52 bg-[#0D1527] border border-slate-700/80 rounded-xl shadow-2xl py-1 text-xs text-white divide-y divide-white/10 backdrop-blur-xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    onClick={() => { handleDownload(track); setIsPlayerMenuOpen(false); }}
+                    className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <Download className="w-4 h-4 text-blue-400" /> Télécharger ce son
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { handleRenameAudio(track); setIsPlayerMenuOpen(false); }}
+                    className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4 text-amber-400" /> Renommer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { handleDeleteAudio(track); setIsPlayerMenuOpen(false); }}
+                    className="w-full px-3.5 py-2.5 text-left hover:bg-rose-950/40 text-rose-400 flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-500" /> Supprimer ce son
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Fermer */}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedTrack(null);
+                setIsAudioPlaying(false);
+              }}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
+              title="Fermer le lecteur audio"
+            >
+              <X className="w-4 h-4 stroke-[2.5]" />
+            </button>
+          </div>
+        </div>
+
+        {/* Centre : Pochette MESSAGE, waveform et détails (Image 2) */}
+        <div className="relative z-10 w-full flex items-center justify-center max-w-sm mx-auto my-auto pt-2 sm:pt-4">
+          <div className="relative w-44 sm:w-56 md:w-64 aspect-square rounded-2xl overflow-hidden shrink-0 shadow-[0_20px_45px_rgba(0,0,0,0.85)] border border-white/20 bg-black group">
+            <AudioCardPreview
+              track={track}
+              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+            />
+            <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/85 border border-white/25 rounded text-[7px] font-black uppercase tracking-wider text-white">
+              Parental Advisory
+            </div>
+          </div>
+        </div>
+
+        <div className="relative z-10 w-full text-center space-y-1 my-2 sm:my-3">
+          <h2 className="text-lg sm:text-2xl md:text-3xl font-black text-white tracking-tight drop-shadow-md truncate px-2">
+            {track.name}
+          </h2>
+          <p className="text-xs sm:text-sm font-semibold text-slate-300 truncate px-2">
+            {track.artist || track.source || 'StudyCloud Audio'}
+          </p>
+        </div>
+
+        {/* Section temporelle */}
+        <div className="relative z-10 w-full max-w-md mx-auto space-y-1.5 py-1">
+          <div className="flex items-center justify-between px-3">
+            <button
+              type="button"
+              onClick={() => handleSeekDelta(-10)}
+              className="relative w-8 h-8 rounded-full flex items-center justify-center text-white/90 hover:text-white hover:bg-white/10 transition-all active:scale-90 cursor-pointer"
+              title="Reculer de 10s"
+            >
+              <RotateCcw className="w-5 h-5 stroke-[2]" />
+              <span className="absolute text-[8px] font-black text-white">10</span>
+            </button>
+
+            <div className="px-3.5 py-1 rounded-full bg-white text-stone-950 font-black text-xs shadow-md tracking-wider">
+              {formatAudioTime(currentTime)} / {formatAudioTime(duration)}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleSeekDelta(10)}
+              className="relative w-8 h-8 rounded-full flex items-center justify-center text-white/90 hover:text-white hover:bg-white/10 transition-all active:scale-90 cursor-pointer"
+              title="Avancer de 10s"
+            >
+              <RotateCw className="w-5 h-5 stroke-[2]" />
+              <span className="absolute text-[8px] font-black text-white">10</span>
+            </button>
+          </div>
+
+          <div className="w-full px-2">
+            <input
+              type="range"
+              min="0"
+              max={duration || 1}
+              value={currentTime}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                setCurrentTime(val);
+                if (audioRef.current) audioRef.current.currentTime = val;
+              }}
+              className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-white hover:accent-amber-400 transition-all"
+            />
+          </div>
+        </div>
+
+        {/* Contrôles principaux (Image 2) */}
+        <div className="relative z-10 w-full max-w-sm mx-auto flex items-center justify-between px-2 pt-1 pb-2 sm:pb-3">
+          <button
+            type="button"
+            onClick={() => {
+              setIsAudioShuffle(!isAudioShuffle);
+              showToast(!isAudioShuffle ? 'Lecture aléatoire activée' : 'Lecture aléatoire désactivée');
+            }}
+            className={`p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer ${
+              isAudioShuffle ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
+            }`}
+            title={isAudioShuffle ? 'Désactiver mode aléatoire' : 'Mode aléatoire'}
+          >
+            <Shuffle className="w-5 h-5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={handleAudioPrev}
+            className="p-2 text-white hover:text-amber-400 transition-all active:scale-90 cursor-pointer"
+            title="Piste précédente"
+          >
+            <SkipBack className="w-6 h-6 fill-current" />
+          </button>
+
+          <button
+            type="button"
+            onClick={togglePlayPause}
+            className="w-14 h-14 rounded-full bg-white text-stone-950 flex items-center justify-center hover:scale-105 active:scale-95 shadow-[0_8px_25px_rgba(255,255,255,0.3)] transition-all cursor-pointer"
+            title={isAudioPlaying ? 'Mettre en pause' : 'Lire'}
+          >
+            {isAudioPlaying ? (
+              <Pause className="w-7 h-7 fill-current" />
+            ) : (
+              <Play className="w-7 h-7 fill-current ml-1" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleAudioNext}
+            className="p-2 text-white hover:text-amber-400 transition-all active:scale-90 cursor-pointer"
+            title="Piste suivante"
+          >
+            <SkipForward className="w-6 h-6 fill-current" />
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleAudioRepeat}
+            className={`p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer relative ${
+              isAudioRepeat !== 'off' ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
+            }`}
+            title={isAudioRepeat === 'one' ? 'Boucle 1 titre' : isAudioRepeat === 'all' ? 'Boucle tous les titres' : 'Boucle désactivée'}
+          >
+            <Repeat className="w-5 h-5" />
+            {isAudioRepeat === 'one' && (
+              <span className="absolute -top-0.5 -right-0.5 text-[9px] font-black text-amber-400">1</span>
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // Rendu de l'état vide (Image 1)
+  const renderAudioEmptyState = () => (
+    <div className="flex flex-1 flex-col items-center justify-center p-8 text-center select-none bg-[#090D1A] border-t md:border-t-0 md:border-l border-white/10 animate-in fade-in duration-200 h-full min-h-[500px]">
+      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 flex items-center justify-center shadow-[0_8px_30px_rgba(245,158,11,0.45)] border-2 border-white/30 ring-4 ring-black/40 relative mb-4">
+        <div className="absolute inset-2 rounded-full border border-white/20 pointer-events-none" />
+        <svg className="w-10 h-10 sm:w-12 sm:h-12 text-white filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] relative z-10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M2.5 10.5C2.5 7.8 4.2 5.5 6.5 4.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.8" />
+          <path d="M21.5 10.5C21.5 7.8 19.8 5.5 17.5 4.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.8" />
+          <path d="M9 16.5V5.5L20 3.5V14.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M9 9.5L20 7.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <ellipse cx="6" cy="16.5" rx="3" ry="2.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.8" transform="rotate(-15 6 16.5)" />
+          <ellipse cx="17" cy="14.5" rx="3" ry="2.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.8" transform="rotate(-15 17 14.5)" />
+        </svg>
+      </div>
+
+      <h3 className="text-base sm:text-lg font-bold text-slate-200">
+        Aucun son sélectionné
+      </h3>
+      <p className="text-xs text-slate-400 mt-1 max-w-xs">
+        Sélectionnez une piste musicale dans la liste de gauche pour lancer la lecture.
+      </p>
+    </div>
+  );
+
+  return (
+    <div className="w-full h-full flex flex-col bg-stone-50 dark:bg-[#070B14] overflow-hidden select-none">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 bg-black/90 text-white border border-white/20 rounded-xl shadow-2xl text-xs sm:text-sm font-semibold flex items-center gap-2 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <Check className="w-4 h-4 text-emerald-400" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Input de sélection de fichier */}
       <input
         type="file"
         ref={fileInputRef}
@@ -407,10 +722,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               </div>
               <div>
                 <h1 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
-                  Audio & Musique
+                  Audio
                 </h1>
-                <p className="text-[10px] sm:text-[11px] font-semibold text-amber-400/80 leading-tight">
-                  {audioList.length} piste{audioList.length > 1 ? 's' : ''} disponible{audioList.length > 1 ? 's' : ''}
+                <p className="text-[10px] sm:text-[11px] font-semibold text-slate-400 leading-tight">
+                  StudyCloud
                 </p>
               </div>
             </div>
@@ -424,7 +739,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Rechercher une musique, cours audio..."
+                placeholder="Rechercher dans Audio..."
                 className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
               />
               {searchQuery && (
@@ -439,581 +754,248 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
             </div>
           </div>
 
-          {/* DROITE : Bouton + Importer de l'audio et Actions */}
+          {/* DROITE : Espace d'étude & + Importer */}
           <div className="shrink-0 flex items-center gap-2">
+            {onOpenStudySpace && (
+              <button
+                type="button"
+                onClick={() => onOpenStudySpace(selectedTrack || undefined, 'Audio', audioList)}
+                className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#101827] text-emerald-400 border border-emerald-500/30 transition-all font-bold text-xs"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Espace d'étude</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-amber-400 border border-amber-500/40 hover:border-amber-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black"
-              title="Importer un fichier audio ou cours"
+              title="Importer un fichier audio"
             >
               <Plus className="w-4 h-4 text-amber-400 stroke-[2.5]" />
-              <span className="hidden xs:inline">Importer audio</span>
-              <span className="xs:hidden">Importer</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsSelectionMode(!isSelectionMode)}
-              className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full border transition-all cursor-pointer shrink-0 active:scale-95 ${
-                isSelectionMode
-                  ? 'bg-amber-500 text-black border-amber-400 font-bold'
-                  : 'bg-[#04060A] hover:bg-[#0A0E18] text-white border-white/10'
-              }`}
-              title={isSelectionMode ? 'Quitter la sélection' : 'Sélection multiple'}
-            >
-              <CheckSquare className="w-4 h-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
-              title={isFullscreen ? 'Quitter le plein écran' : 'Plein écran'}
-            >
-              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              <span>+ Importer</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* BANDEAU DE SÉLECTION MULTIPLE */}
-      {isSelectionMode && (
-        <div className="w-full bg-[#0F1424] border-b border-amber-500/30 px-3 sm:px-6 py-2 flex items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-amber-400">
-              {selectedIds.length} sélectionné(s)
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedIds.length === filteredAudio.length) {
-                  setSelectedIds([]);
-                } else {
-                  setSelectedIds(filteredAudio.map(t => t.id));
-                }
-              }}
-              className="text-stone-300 hover:text-white underline ml-2"
-            >
-              {selectedIds.length === filteredAudio.length ? 'Tout désélectionner' : 'Tout sélectionner'}
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {selectedIds.length > 0 && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const toDelete = audioList.filter(t => selectedIds.includes(t.id));
-                    toDelete.forEach(handleDeleteAudio);
-                    setSelectedIds([]);
-                    setIsSelectionMode(false);
-                  }}
-                  className="px-3 py-1 bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/40 rounded-lg flex items-center gap-1 font-bold"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Supprimer ({selectedIds.length})</span>
-                </button>
-
-                {onOpenStudySpace && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const first = audioList.find(t => t.id === selectedIds[0]);
-                      onOpenStudySpace(first, 'Audio', audioList);
-                    }}
-                    className="px-3 py-1 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40 rounded-lg flex items-center gap-1 font-bold"
-                  >
-                    <BookOpen className="w-3.5 h-3.5" />
-                    <span>Espace d'étude</span>
-                  </button>
-                )}
-              </>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setIsSelectionMode(false);
-                setSelectedIds([]);
-              }}
-              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded-lg"
-            >
-              Fermer
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* LECTEUR AUDIO INTÉGRÉ AU SOMMET (SI PISTE SÉLECTIONNÉE) */}
-      {selectedTrack && (
-        <div className="w-full bg-gradient-to-b from-[#131929] to-[#0A0E1A] border-b border-amber-500/20 px-4 sm:px-8 py-4 sm:py-5 shadow-2xl relative">
-          <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center gap-4 sm:gap-6">
-            {/* Pochette Vinyle / Cover animée */}
-            <div className="relative shrink-0 group">
-              <div
-                className={`w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-br from-amber-600 via-amber-700 to-amber-950 p-1 shadow-lg border border-amber-400/30 flex items-center justify-center overflow-hidden transition-transform duration-300 ${
-                  isPlaying ? 'rotate-1' : ''
-                }`}
-              >
-                {selectedTrack.coverUrl ? (
-                  <img
-                    src={selectedTrack.coverUrl}
-                    alt={selectedTrack.name}
-                    className="w-full h-full object-cover rounded-xl"
-                  />
-                ) : (
-                  <Music className="w-10 h-10 text-amber-300 stroke-[1.8]" />
-                )}
+      {/* DISPOSITION SPLIT EN DEUX COLONNES (IMAGES 1 & 2) */}
+      <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+        {/* PANNEAU DE GAUCHE : LISTE DES SONS */}
+        <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+          selectedTrack
+            ? `${isMobilePlayerOpen ? 'hidden md:block' : 'w-full'} md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80`
+            : 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+        }`}>
+          <div className="w-full space-y-3">
+            {/* En-tête de la liste */}
+            <div className="flex items-center justify-between px-1 py-0.5">
+              <div className="flex items-center gap-2">
+                <Music className="w-4 h-4 text-amber-500 dark:text-amber-400 stroke-[2.2]" />
+                <span className="text-xs sm:text-sm font-bold text-stone-900 dark:text-white tracking-wide">
+                  Les sons ({filteredAudio.length})
+                </span>
               </div>
-              {isPlaying && (
-                <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center shadow-md animate-pulse">
-                  <span className="w-2.5 h-2.5 rounded-full bg-black" />
-                </div>
-              )}
+              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider">
+                STUDYCLOUD AUDIO
+              </span>
             </div>
 
-            {/* Infos Piste & Contrôles Centraux */}
-            <div className="flex-1 w-full min-w-0">
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-sm sm:text-base font-black text-white truncate" title={selectedTrack.name}>
-                    {selectedTrack.name}
-                  </h3>
-                  <p className="text-xs text-amber-400 font-semibold truncate">
-                    {selectedTrack.artist || 'StudyCloud Audio'} • {selectedTrack.size}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => handleToggleFavorite(selectedTrack)}
-                    className={`p-1.5 rounded-lg border transition-all ${
-                      selectedTrack.isFavorite
-                        ? 'bg-amber-500/20 border-amber-400 text-amber-400'
-                        : 'border-white/10 hover:border-amber-400/40 text-slate-400'
-                    }`}
-                    title={selectedTrack.isFavorite ? 'Retirer des favoris' : 'Marquer comme favori'}
-                  >
-                    <Star className={`w-4 h-4 ${selectedTrack.isFavorite ? 'fill-amber-400' : ''}`} />
-                  </button>
-
-                  {onOpenStudySpace && (
-                    <button
-                      type="button"
-                      onClick={() => onOpenStudySpace(selectedTrack, 'Audio', audioList)}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30 text-xs font-bold"
-                      title="Ouvrir dans l'Espace d'étude"
-                    >
-                      <BookOpen className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Étude</span>
-                    </button>
-                  )}
-                </div>
+            {/* Pistes audio */}
+            {loading ? (
+              <div className="py-20 text-center text-stone-400">
+                <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                <p className="text-xs">Chargement des sons...</p>
               </div>
-
-              {/* Slider de Progression */}
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-mono text-slate-400 w-10 text-right">
-                    {formatAudioTime(currentTime)}
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={duration || 100}
-                    value={currentTime}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setCurrentTime(val);
-                      if (audioRef.current) audioRef.current.currentTime = val;
-                    }}
-                    className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-400"
-                  />
-                  <span className="text-[11px] font-mono text-slate-400 w-10">
-                    {formatAudioTime(duration)}
-                  </span>
-                </div>
+            ) : filteredAudio.length === 0 ? (
+              <div className="py-20 text-center text-stone-500 dark:text-slate-400">
+                <Music className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
+                <p className="text-sm font-semibold">Aucun son disponible</p>
+                <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                  Ce dossier ne contient aucun fichier audio pour le moment.
+                </p>
               </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredAudio.map((track) => {
+                  const isSelected = selectedTrack?.id === track.id;
+                  const isMenuOpen = activeMenuTrackId === track.id;
 
-              {/* Barre des boutons de lecture */}
-              <div className="flex items-center justify-between mt-2 pt-1">
-                <div className="flex items-center gap-1 sm:gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsShuffle(!isShuffle)}
-                    className={`p-1.5 rounded-lg transition-all ${
-                      isShuffle ? 'text-amber-400 bg-amber-500/20' : 'text-slate-400 hover:text-white'
-                    }`}
-                    title="Aléatoire"
-                  >
-                    <Shuffle className="w-4 h-4" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isRepeat === 'off') setIsRepeat('all');
-                      else if (isRepeat === 'all') setIsRepeat('one');
-                      else setIsRepeat('off');
-                    }}
-                    className={`p-1.5 rounded-lg transition-all flex items-center gap-0.5 ${
-                      isRepeat !== 'off' ? 'text-amber-400 bg-amber-500/20' : 'text-slate-400 hover:text-white'
-                    }`}
-                    title={isRepeat === 'one' ? 'Répéter 1 piste' : isRepeat === 'all' ? 'Répéter tout' : 'Répétition désactivée'}
-                  >
-                    <Repeat className="w-4 h-4" />
-                    {isRepeat === 'one' && <span className="text-[9px] font-bold">1</span>}
-                  </button>
-
-                  {/* Vitesse de lecture */}
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-                      className="px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/10 text-xs font-bold text-slate-300 border border-white/10"
-                    >
-                      {playbackRate}x
-                    </button>
-                    {showSpeedMenu && (
-                      <div className="absolute bottom-full left-0 mb-1 z-50 bg-[#121828] border border-white/15 rounded-xl shadow-xl p-1 flex flex-col gap-0.5">
-                        {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
-                          <button
-                            key={rate}
-                            type="button"
-                            onClick={() => {
-                              setPlaybackRate(rate);
-                              setShowSpeedMenu(false);
-                            }}
-                            className={`px-3 py-1 text-xs rounded-lg text-left ${
-                              playbackRate === rate ? 'bg-amber-500 text-black font-bold' : 'hover:bg-white/10 text-white'
-                            }`}
-                          >
-                            {rate}x
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Boutons Principaux : Précédent, Lecture/Pause, Suivant */}
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <button
-                    type="button"
-                    onClick={handlePlayPrev}
-                    className="p-2 text-slate-300 hover:text-white active:scale-95 transition-all"
-                    title="Piste précédente"
-                  >
-                    <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isPlaying) {
-                        audioRef.current?.pause();
-                        setIsPlaying(false);
-                      } else {
-                        audioRef.current?.play().catch(() => {});
-                        setIsPlaying(true);
-                      }
-                    }}
-                    className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-amber-400 hover:bg-amber-300 text-black flex items-center justify-center shadow-lg transition-transform active:scale-90"
-                    title={isPlaying ? 'Pause' : 'Lecture'}
-                  >
-                    {isPlaying ? (
-                      <Pause className="w-5 h-5 fill-current" />
-                    ) : (
-                      <Play className="w-5 h-5 fill-current ml-0.5" />
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handlePlayNext}
-                    className="p-2 text-slate-300 hover:text-white active:scale-95 transition-all"
-                    title="Piste suivante"
-                  >
-                    <RotateCw className="w-4 h-4 sm:w-5 sm:h-5" />
-                  </button>
-                </div>
-
-                {/* Volume & Outils */}
-                <div className="flex items-center gap-2">
-                  <div className="hidden sm:flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setIsMuted(!isMuted)}
-                      className="text-slate-400 hover:text-white"
-                      title={isMuted ? 'Activer le son' : 'Couper le son'}
-                    >
-                      {isMuted || volume === 0 ? (
-                        <VolumeX className="w-4 h-4" />
-                      ) : volume < 0.5 ? (
-                        <Volume1 className="w-4 h-4" />
-                      ) : (
-                        <Volume2 className="w-4 h-4" />
-                      )}
-                    </button>
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={isMuted ? 0 : volume}
-                      onChange={(e) => {
-                        setVolume(Number(e.target.value));
-                        setIsMuted(false);
+                  return (
+                    <div
+                      key={track.id}
+                      onClick={() => {
+                        if (isSelected) {
+                          togglePlayPause();
+                        } else {
+                          setSelectedTrack(track);
+                          setIsAudioPlaying(true);
+                          setIsMobilePlayerOpen(true);
+                        }
                       }}
-                      className="w-16 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-400"
-                    />
-                  </div>
+                      className={`group flex items-center justify-between gap-3 p-3 rounded-2xl transition-all cursor-pointer select-none border relative ${
+                        isMenuOpen ? 'z-50' : 'z-10'
+                      } ${
+                        isSelected
+                          ? 'bg-amber-500/10 dark:bg-amber-950/30 border-amber-400 dark:border-amber-500 shadow-sm ring-1 ring-amber-400/30'
+                          : 'bg-white dark:bg-slate-900/80 border-stone-200/90 dark:border-slate-800 hover:border-amber-400/60 hover:shadow-md'
+                      }`}
+                    >
+                      {/* Vignette album + Titre + Artiste + Métadonnées */}
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-stone-900 border border-stone-200 dark:border-white/10 relative shadow-sm">
+                          <AudioCardPreview
+                            track={track}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                          />
+                        </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (sleepTimerMinutes === null) setSleepTimerMinutes(15);
-                      else if (sleepTimerMinutes === 15) setSleepTimerMinutes(30);
-                      else if (sleepTimerMinutes === 30) setSleepTimerMinutes(60);
-                      else setSleepTimerMinutes(null);
-                    }}
-                    className={`px-2 py-1 rounded-md text-xs font-bold border transition-all flex items-center gap-1 ${
-                      sleepTimerMinutes !== null
-                        ? 'bg-amber-500/20 border-amber-400 text-amber-300'
-                        : 'border-white/10 text-slate-400 hover:text-white'
-                    }`}
-                    title="Minuteur de mise en veille"
-                  >
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>{sleepTimerRemaining ? `${Math.ceil(sleepTimerRemaining / 60)}m` : 'Timer'}</span>
-                  </button>
-                </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className={`text-xs sm:text-sm font-bold truncate leading-tight ${
+                            isSelected ? 'text-amber-600 dark:text-amber-300 font-black' : 'text-stone-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors'
+                          }`}>
+                            {track.name}
+                          </h4>
+                          <p className="text-[11px] sm:text-xs text-stone-500 dark:text-slate-400 font-medium truncate mt-0.5">
+                            {track.artist || 'Artiste inconnu'}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5 text-[10px] text-stone-400 dark:text-slate-500 font-medium">
+                            <span>{track.size}</span>
+                            <span>•</span>
+                            <span>{formatAudioTime(track.durationSec || 0)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Droite : Bouton Play/Pause + Animation d'égaliseur + Date + Menu */}
+                      <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+                        {isSelected && (
+                          <div
+                            className="flex items-end gap-1 h-5 px-1 py-0.5 shrink-0"
+                            title={isAudioPlaying ? 'Lecture en cours' : 'En pause'}
+                          >
+                            <span
+                              className={`w-1 rounded-full bg-amber-400 transition-all ${isAudioPlaying ? 'h-5 animate-pulse' : 'h-1.5'}`}
+                            />
+                            <span
+                              className={`w-1 rounded-full bg-amber-300 transition-all ${isAudioPlaying ? 'h-3 animate-pulse delay-75' : 'h-3'}`}
+                            />
+                            <span
+                              className={`w-1 rounded-full bg-yellow-400 transition-all ${isAudioPlaying ? 'h-4 animate-pulse delay-150' : 'h-2'}`}
+                            />
+                            <span
+                              className={`w-1 rounded-full bg-amber-400 transition-all ${isAudioPlaying ? 'h-2 animate-pulse' : 'h-1'}`}
+                            />
+                          </div>
+                        )}
+
+                        {/* Bouton lecture rapide */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isSelected) {
+                              togglePlayPause();
+                            } else {
+                              setSelectedTrack(track);
+                              setIsAudioPlaying(true);
+                              setIsMobilePlayerOpen(true);
+                            }
+                          }}
+                          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                            isSelected && isAudioPlaying
+                              ? 'bg-amber-500 text-stone-950 shadow-md'
+                              : 'bg-stone-100 dark:bg-slate-800 text-stone-700 dark:text-slate-300 hover:bg-amber-500 hover:text-stone-950'
+                          }`}
+                          title={isSelected && isAudioPlaying ? 'Pause' : 'Reprendre la lecture'}
+                        >
+                          {isSelected && isAudioPlaying ? (
+                            <Pause className="w-3.5 h-3.5 fill-current" />
+                          ) : (
+                            <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                          )}
+                        </button>
+
+                        <span className="hidden sm:inline text-[11px] text-stone-400 dark:text-slate-500 whitespace-nowrap">
+                          {track.date || "Aujourd'hui, 11:34"}
+                        </span>
+
+                        {/* Bouton 3 traits menu */}
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveMenuTrackId(isMenuOpen ? null : track.id);
+                            }}
+                            className="p-1.5 text-stone-400 hover:text-stone-700 dark:hover:text-white rounded-lg hover:bg-stone-200 dark:hover:bg-slate-800 transition-colors"
+                            title="Options"
+                          >
+                            <Menu className="w-4 h-4 stroke-[2]" />
+                          </button>
+                          {isMenuOpen && (
+                            <div
+                              className="absolute right-0 top-8 z-50 w-44 bg-white dark:bg-[#0D1527] border border-stone-200 dark:border-slate-700 rounded-xl shadow-2xl py-1 text-xs text-stone-800 dark:text-white divide-y divide-stone-100 dark:divide-white/10"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => handleToggleFavorite(track)}
+                                className="w-full px-3 py-2 text-left hover:bg-stone-100 dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
+                              >
+                                <Star className={`w-3.5 h-3.5 ${track.isFavorite ? 'fill-amber-400 text-amber-400' : 'text-slate-400'}`} />
+                                <span>{track.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDownload(track)}
+                                className="w-full px-3 py-2 text-left hover:bg-stone-100 dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
+                              >
+                                <Download className="w-3.5 h-3.5 text-blue-400" />
+                                <span>Télécharger</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRenameAudio(track)}
+                                className="w-full px-3 py-2 text-left hover:bg-stone-100 dark:hover:bg-slate-800 flex items-center gap-2 cursor-pointer"
+                              >
+                                <Plus className="w-3.5 h-3.5 text-amber-400" />
+                                <span>Renommer</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAudio(track)}
+                                className="w-full px-3 py-2 text-left hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-500 flex items-center gap-2 cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Supprimer</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
+            )}
           </div>
         </div>
-      )}
 
-      {/* CONTENU PRINCIPAL : LISTE DES PISTES AUDIO */}
-      <main className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-4 pb-32">
-        {loading ? (
-          <div className="py-20 flex flex-col items-center justify-center gap-3">
-            <div className="w-10 h-10 border-3 border-amber-400 border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm font-semibold text-slate-400">Chargement de vos pistes audio...</p>
-          </div>
-        ) : filteredAudio.length === 0 ? (
-          <div className="py-24 flex flex-col items-center justify-center text-center max-w-md mx-auto">
-            <div className="w-20 h-20 rounded-3xl bg-[#121829] border border-amber-500/20 flex items-center justify-center mb-4 shadow-xl">
-              <FileAudio className="w-10 h-10 text-amber-400 opacity-80 stroke-[1.5]" />
-            </div>
-            <h3 className="text-lg font-black text-white mb-1.5">
-              {searchQuery ? 'Aucun résultat trouvé' : 'Aucun fichier audio disponible'}
-            </h3>
-            <p className="text-xs sm:text-sm text-slate-400 mb-6 leading-relaxed">
-              {searchQuery
-                ? `Aucune musique ou note vocale ne correspond à "${searchQuery}".`
-                : 'Importez vos morceaux favoris, cours magistraux enregistrés ou mémos vocaux WhatsApp.'}
-            </p>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="px-5 py-2.5 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black text-sm shadow-lg shadow-amber-500/20 transition-all cursor-pointer active:scale-95 flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Importer un audio</span>
-            </button>
+        {/* PANNEAU DE DROITE : LECTEUR AUDIO DÉDIÉ OU ÉTAT VIDE (IMAGES 1 & 2) */}
+        {selectedTrack ? (
+          <div className={`transition-all duration-300 ${
+            isMobilePlayerOpen ? 'flex w-full min-h-[calc(100vh-120px)]' : 'hidden md:flex'
+          } md:w-7/12 lg:w-7/12 xl:w-7/12 flex-col bg-[#090D1A] border-t md:border-t-0 md:border-l border-white/10`}>
+            {renderAudioPlayer(selectedTrack)}
           </div>
         ) : (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between pb-2 text-xs font-bold text-slate-400">
-              <span>{filteredAudio.length} piste(s) audio</span>
-              <span className="hidden sm:inline">Cliquez sur une piste pour lancer la lecture</span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
-              {filteredAudio.map((track, idx) => {
-                const isCurrent = selectedTrack?.id === track.id;
-                const isChecked = selectedIds.includes(track.id);
-
-                return (
-                  <div
-                    key={track.id}
-                    onClick={() => {
-                      if (isSelectionMode) {
-                        if (isChecked) setSelectedIds(selectedIds.filter(id => id !== track.id));
-                        else setSelectedIds([...selectedIds, track.id]);
-                      } else {
-                        handleSelectTrack(track);
-                      }
-                    }}
-                    className={`group relative rounded-2xl p-3 flex items-center gap-3 transition-all duration-200 cursor-pointer select-none border ${
-                      isCurrent
-                        ? 'bg-[#151D33] border-amber-400 shadow-md shadow-amber-500/10'
-                        : 'bg-[#0B0F1D] hover:bg-[#121828] border-white/10 hover:border-amber-400/40 shadow-sm'
-                    }`}
-                  >
-                    {/* Case à cocher en mode sélection */}
-                    {isSelectionMode && (
-                      <div className="shrink-0 text-amber-400">
-                        {isChecked ? (
-                          <CheckSquare className="w-5 h-5 fill-amber-500/20" />
-                        ) : (
-                          <Square className="w-5 h-5 text-slate-500" />
-                        )}
-                      </div>
-                    )}
-
-                    {/* Pochette ou Icône Audio */}
-                    <div className="relative w-12 h-12 rounded-xl bg-black/40 border border-white/10 shrink-0 overflow-hidden flex items-center justify-center">
-                      {track.coverUrl ? (
-                        <img
-                          src={track.coverUrl}
-                          alt={track.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                        />
-                      ) : (
-                        <Music className="w-5 h-5 text-amber-400 stroke-[2]" />
-                      )}
-
-                      {/* Bouton Play au survol */}
-                      <div
-                        className={`absolute inset-0 bg-black/60 flex items-center justify-center transition-opacity ${
-                          isCurrent && isPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                        }`}
-                      >
-                        {isCurrent && isPlaying ? (
-                          <Pause className="w-5 h-5 text-amber-400 fill-current" />
-                        ) : (
-                          <Play className="w-5 h-5 text-amber-400 fill-current ml-0.5" />
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Nom, Artiste & Taille */}
-                    <div className="min-w-0 flex-1">
-                      <h4
-                        className={`text-xs sm:text-sm font-bold truncate leading-tight transition-colors ${
-                          isCurrent ? 'text-amber-400' : 'text-white group-hover:text-amber-300'
-                        }`}
-                        title={track.name}
-                      >
-                        {track.name}
-                      </h4>
-                      <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                        {track.size} • {track.date}
-                      </p>
-                    </div>
-
-                    {/* Bouton 3 petits points (Options) */}
-                    <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        onClick={() => setMenuTrackId(menuTrackId === track.id ? null : track.id)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-                        title="Options"
-                      >
-                        <MoreVertical className="w-4 h-4" />
-                      </button>
-
-                      {menuTrackId === track.id && (
-                        <div className="absolute right-0 top-full mt-1 z-50 w-48 rounded-2xl bg-[#121828] border border-white/15 shadow-2xl p-1.5 flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-150">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleSelectTrack(track);
-                              setMenuTrackId(null);
-                            }}
-                            className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10 rounded-xl text-left"
-                          >
-                            <Play className="w-3.5 h-3.5 text-amber-400" />
-                            <span>Écouter</span>
-                          </button>
-
-                          {onOpenStudySpace && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onOpenStudySpace(track, 'Audio', audioList);
-                                setMenuTrackId(null);
-                              }}
-                              className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10 rounded-xl text-left"
-                            >
-                              <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>Espace d'étude</span>
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => handleToggleFavorite(track)}
-                            className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10 rounded-xl text-left"
-                          >
-                            <Star className="w-3.5 h-3.5 text-amber-400" />
-                            <span>{track.isFavorite ? 'Retirer des favoris' : 'Favori'}</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDownload(track)}
-                            className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10 rounded-xl text-left"
-                          >
-                            <Download className="w-3.5 h-3.5 text-sky-400" />
-                            <span>Télécharger</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleRenameAudio(track)}
-                            className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10 rounded-xl text-left"
-                          >
-                            <Edit2 className="w-3.5 h-3.5 text-blue-400" />
-                            <span>Renommer</span>
-                          </button>
-
-                          {onOpenCreateShareLink && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onOpenCreateShareLink([track]);
-                                setMenuTrackId(null);
-                              }}
-                              className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10 rounded-xl text-left"
-                            >
-                              <Share2 className="w-3.5 h-3.5 text-purple-400" />
-                              <span>Partager le lien</span>
-                            </button>
-                          )}
-
-                          <div className="h-px bg-white/10 my-1" />
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteAudio(track)}
-                            className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-red-400 hover:bg-red-500/20 rounded-xl text-left"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Déplacer vers la corbeille</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+          <div className="hidden md:flex md:w-7/12 lg:w-7/12 xl:w-7/12 flex-col">
+            {renderAudioEmptyState()}
           </div>
         )}
-      </main>
-
-      {/* TOAST FLOTTANT */}
-      {toastMessage && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0F1424] border border-amber-500/40 text-amber-300 px-4 py-2.5 rounded-full shadow-2xl text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
-          <Check className="w-4 h-4 stroke-[3]" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
+      </div>
     </div>
   );
 };
