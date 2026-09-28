@@ -3,7 +3,8 @@ import { Edit3, ArrowLeft, Upload, File, Folder, Check, MoreVertical, X, Search,
 import { StudyCloudAPI } from '../services/api';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob, getFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
 import { persistRawFile } from './PublishFileView';
-import { buildUserFileKey } from '../services/storageUtils';
+import { UploadQueue } from '../services/uploadQueue';
+import { CloudDataStore } from '../services/cloudDataStore';
 
 interface FilesMenuViewProps {
   onBack: () => void;
@@ -482,6 +483,16 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     setNewMatiereName('');
     setNewMatiereCoef('1');
     setIsAddingNewMatiere(false);
+
+    // Enregistrement immédiat dans Cloudflare D1
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    StudyCloudAPI.createMatiere({
+      id: newMat.id,
+      userId,
+      name: newMat.name,
+      coefficient: Number(newMat.coefficient) || 1,
+      color: '#EA580C'
+    }).catch(() => {});
   };
 
   useEffect(() => {
@@ -845,8 +856,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   const processFiles = async (fileList: FileList | File[]) => {
     try {
       const newItems: ImportedItem[] = [];
+      const itemsWithFiles: { file: File | Blob; item: any; originalSizeBytes?: number; originalSizeFormatted?: string }[] = [];
       const imageFilesToCompress: { id: string; file: File }[] = [];
-      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
       const now = Date.now();
 
       for (let i = 0; i < fileList.length; i++) {
@@ -861,7 +872,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         const isImg = f.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(f.name);
         const id = `file-${now + i}-${Math.random().toString(36).substring(2, 7)}`;
         
-        // 1. Stocker le blob dans IndexedDB
+        // 1. Stocker le blob dans IndexedDB (0ms, accès instantané)
         await storeFileBlob(id, f);
         const localUrl = URL.createObjectURL(f);
 
@@ -870,7 +881,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         }
 
         const extVal = f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : (f.type ? f.type.split('/').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
-        newItems.push({
+        const item: ImportedItem = {
           id,
           name: f.name,
           size: f.size,
@@ -883,9 +894,11 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           createdAt: now + i,
           timestamp: now + i,
           isFavorite: false
-        });
+        };
+        newItems.push(item);
 
-        // 2. Enregistrer dans Cloudflare D1
+        // 2. Enregistrement D1 immédiat (sans attendre R2)
+        const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
         StudyCloudAPI.registerFileMetadata({
           id,
           userId,
@@ -901,31 +914,42 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           lastImported: now + i
         }).catch(() => {});
 
-        // 3. Upload vers R2 en arrière-plan (dossier structuré user-files/)
-        const r2Key = buildUserFileKey(userId, id, f.name);
-        StudyCloudAPI.uploadFileToR2(f, r2Key).then((uploadRes) => {
-          if (uploadRes && uploadRes.url) {
-            StudyCloudAPI.registerFileMetadata({
-              id,
-              userId,
-              matiereId: null,
-              name: f.name,
-              size: f.size,
-              type: f.type || 'application/octet-stream',
-              extension: extVal,
-              r2Key: uploadRes.key,
-              fileUrl: uploadRes.url,
-              isFavorite: false,
-              isImported: true,
-              lastImported: now + i
-            }).catch(() => {});
-          }
-        }).catch(() => {});
+        // 3. Préparer les données pour UploadQueue
+        itemsWithFiles.push({
+          file: f,
+          item: {
+            ...item,
+            category: isImg ? 'images' : (
+              f.type.startsWith('video/') ? 'videos' :
+              f.type.startsWith('audio/') ? 'audio' : 'documents'
+            ),
+            source: 'Mes fichiers',
+            sizeBytes: f.size,
+            date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+            previewUrl: localUrl,
+            videoUrl: f.type.startsWith('video/') ? localUrl : undefined,
+            audioUrl: f.type.startsWith('audio/') ? localUrl : undefined,
+          },
+          originalSizeBytes: f.size
+        });
       }
 
-      // Placer en tête de liste pour affichage immédiat à l'en-tête même
+      if (newItems.length === 0) return;
+
+      // 4. Affichage immédiat (optimiste) + animation de progression
       setImportedFiles(prev => [...newItems, ...prev]);
       startSavingAnimation(newItems.map(item => item.id));
+
+      // 5. CloudDataStore.addOptimisticFile — sync multi-appareils immédiate
+      newItems.forEach(item => {
+        CloudDataStore.addOptimisticFile(item as any);
+      });
+
+      // 6. UploadQueue.enqueueExisting — R2 en arrière-plan avec retry automatique
+      UploadQueue.enqueueExisting(itemsWithFiles, {
+        category: 'documents',
+        uploadSource: 'mes-fichiers'
+      });
 
       if (newItems.length > 0) {
         localStorage.setItem('unifolder_last_imported_id', newItems[newItems.length - 1].id);

@@ -4,7 +4,8 @@ import { getFileTimestamp } from './FilesMenuView';
 import { triggerDebouncedCloudBackup } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
-import { buildUserFileKey } from '../services/storageUtils';
+import { UploadQueue } from '../services/uploadQueue';
+import { CloudDataStore } from '../services/cloudDataStore';
 import { compressFile } from '../utils/fileCompressor';
 
 interface MatiereMenuViewProps {
@@ -146,6 +147,16 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     setNewMatiereName('');
     setNewMatiereCoef('1');
     setIsAddingNewMatiere(false);
+
+    // Enregistrement immédiat dans Cloudflare D1
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    StudyCloudAPI.createMatiere({
+      id: newMat.id,
+      userId,
+      name: newMat.name,
+      coefficient: Number(newMat.coefficient) || 1,
+      color: '#EA580C'
+    }).catch(() => {});
   };
 
   useEffect(() => {
@@ -584,8 +595,8 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
   const processFiles = async (fileList: FileList | File[]) => {
     try {
       const newItems: ImportedItem[] = [];
+      const itemsWithFiles: { file: File | Blob; item: any; originalSizeBytes?: number; originalSizeFormatted?: string }[] = [];
       const imageFilesToCompress: { id: string; file: File }[] = [];
-      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
 
       const now = Date.now();
       for (let i = 0; i < fileList.length; i++) {
@@ -602,9 +613,9 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         const fileToStore = compResult.file;
 
         const isImg = f.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(f.name);
-        const id = `file-${now + i}-${Math.random().toString(36).substring(2, 7)}`;
-        
-        // 1. Stocker le blob optimisé dans IndexedDB
+        const id = `matiere-${matiereName.replace(/\s+/g, '_')}-${now + i}-${Math.random().toString(36).substring(2, 7)}`;
+
+        // 1. Stocker le blob optimisé dans IndexedDB (0ms, accès instantané)
         await storeFileBlob(id, fileToStore as any);
         const localUrl = URL.createObjectURL(fileToStore);
 
@@ -613,6 +624,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         }
 
         const extVal = f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : (f.type ? f.type.split('/').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
+
         // L'utilisateur voit TOUJOURS sa vraie taille d'origine non compressée
         const itemObj: ImportedItem = {
           id,
@@ -630,7 +642,31 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         };
         newItems.push(itemObj);
 
-        // 2. Enregistrer les métadonnées dans Cloudflare D1 avec matiere_id et valeurs réelles
+        // 2. Préparer les métadonnées pour UploadQueue (D1 + R2 en arrière-plan)
+        itemsWithFiles.push({
+          file: fileToStore,
+          item: {
+            ...itemObj,
+            // Champs attendus par CloudDataStore / UploadQueue
+            category: isImg ? 'images' : (
+              f.type.startsWith('video/') ? 'videos' :
+              f.type.startsWith('audio/') ? 'audio' : 'documents'
+            ),
+            source: matiereName,
+            size: compResult.originalSizeFormatted,
+            sizeBytes: compResult.originalSizeBytes,
+            date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+            url: localUrl,
+            previewUrl: localUrl,
+            videoUrl: f.type.startsWith('video/') ? localUrl : undefined,
+            audioUrl: f.type.startsWith('audio/') ? localUrl : undefined,
+          },
+          originalSizeBytes: compResult.originalSizeBytes,
+          originalSizeFormatted: compResult.originalSizeFormatted
+        });
+
+        // 3. Enregistrement D1 immédiat (sans attendre R2)
+        const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
         StudyCloudAPI.registerFileMetadata({
           id,
           userId,
@@ -648,34 +684,24 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
           compressedSizeBytes: compResult.compressedSizeBytes,
           compressionRatio: compResult.compressionRatio
         }).catch(() => {});
-
-        // 3. Upload vers Cloudflare R2 en arrière-plan avec le fichier optimisé et taille réelle
-        const r2Key = buildUserFileKey(userId, id, f.name);
-        StudyCloudAPI.uploadFileToR2(fileToStore, r2Key, f.type, compResult.originalSizeBytes).then((uploadRes) => {
-          if (uploadRes && uploadRes.url) {
-            StudyCloudAPI.registerFileMetadata({
-              id,
-              userId,
-              matiereId: matiereName,
-              name: f.name,
-              size: compResult.originalSizeBytes,
-              type: f.type || 'application/octet-stream',
-              extension: extVal,
-              r2Key: uploadRes.key,
-              fileUrl: uploadRes.url,
-              isFavorite: false,
-              isImported: true,
-              lastImported: now + i,
-              originalSizeBytes: compResult.originalSizeBytes,
-              compressedSizeBytes: compResult.compressedSizeBytes,
-              compressionRatio: compResult.compressionRatio
-            }).catch(() => {});
-          }
-        }).catch(() => {});
       }
 
+      if (newItems.length === 0) return;
+
+      // 4. Affichage immédiat (optimiste) + animation de progression
       setImportedFiles(prev => [...newItems, ...prev]);
       startSavingAnimation(newItems.map(item => item.id));
+
+      // 5. CloudDataStore.addOptimisticFile — sync multi-appareils immédiate
+      newItems.forEach(item => {
+        CloudDataStore.addOptimisticFile(item as any);
+      });
+
+      // 6. UploadQueue.enqueueExisting — R2 en arrière-plan avec retry automatique
+      UploadQueue.enqueueExisting(itemsWithFiles, {
+        category: 'documents',
+        uploadSource: `matiere-${matiereName}`
+      });
 
       // Ajouter automatiquement et immédiatement dans "Mes fichiers" avec le tag de matière
       try {

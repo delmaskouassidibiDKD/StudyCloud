@@ -4501,7 +4501,17 @@ var index_default = {
           }
           query += " ORDER BY last_imported DESC, updated_at DESC, created_at DESC";
           const { results } = await env.DB.prepare(query).bind(...params).all();
-          return jsonResponse({ success: true, data: results }, 200, origin);
+          const formatted = (results || []).map((row) => {
+            let finalUrl = row.file_url || "";
+            if ((!finalUrl || finalUrl.startsWith("blob:")) && row.r2_key) {
+              finalUrl = `${url.origin}/api/storage/file/${encodeURIComponent(row.r2_key)}`;
+            }
+            return {
+              ...row,
+              file_url: finalUrl
+            };
+          });
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
         }
         if (method === "POST") {
           const body = await request.json();
@@ -4516,7 +4526,12 @@ var index_default = {
               size = excluded.size,
               type = excluded.type,
               r2_key = COALESCE(excluded.r2_key, files.r2_key),
-              file_url = COALESCE(excluded.file_url, files.file_url),
+              file_url = CASE
+                WHEN (excluded.file_url IS NULL OR excluded.file_url = '' OR excluded.file_url LIKE 'blob:%') 
+                     AND files.file_url IS NOT NULL AND files.file_url != '' AND files.file_url NOT LIKE 'blob:%' 
+                THEN files.file_url
+                ELSE COALESCE(excluded.file_url, files.file_url)
+              END,
               is_favorite = excluded.is_favorite,
               is_imported = excluded.is_imported,
               is_study_session = excluded.is_study_session,

@@ -83,7 +83,7 @@ import {
   Palette,
   Loader2
 } from 'lucide-react';
-import { getWorkerApiUrl } from '../services/api';
+import { getWorkerApiUrl, StudyCloudAPI } from '../services/api';
 import { getDownloadedFiles, recordDownloadedFile, removeDownloadedFile, clearLegacyDownloadedFiles, DownloadedItem } from '../services/downloadsManager';
 import { 
   MODEL_1_FOLDERS, 
@@ -1526,8 +1526,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       });
     });
 
-    // ── ÉTAPE 3 : Sync réseau en arrière-plan (cooldown 15s respecté) ─────────
-    CloudDataStore.sync().catch(() => {}).finally(() => {
+    // ── ÉTAPE 3 : Sync réseau immédiate depuis Cloudflare D1 (sans cooldown) ─────────
+    CloudDataStore.sync(true).catch(() => {}).finally(() => {
       if (isMounted) {
         setLoadingCategories({
           overview: false, classeur: false, documents: false, images: false,
@@ -2132,10 +2132,44 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const newItems = newItemsWithFiles.map(x => x.item);
     const fileIds = newItems.map(x => x.id);
 
+    const currentUserId = localStorage.getItem('unifolder_user_id') || 'default-user';
     newItems.forEach(item => {
       unmarkRecentLocallyDeleted(item.id);
       unmarkFileLocallyDeleted(item.id);
       CloudDataStore.addOptimisticFile(item as any, folderId);
+
+      // 1. Enregistrement D1 immédiat selon la catégorie dédiée
+      if (targetCategory === 'images') {
+        CloudStorageAPI.saveImage(item as any).catch(() => {});
+      } else if (targetCategory === 'videos') {
+        CloudStorageAPI.saveVideo(item as any).catch(() => {});
+      } else if (targetCategory === 'audio') {
+        CloudStorageAPI.saveAudio(item as any).catch(() => {});
+      } else if (targetCategory === 'documents') {
+        CloudStorageAPI.saveDocument(item as any).catch(() => {});
+      } else if (targetCategory === 'classeur' && folderId) {
+        CloudStorageAPI.saveClasseurFile(item as any, folderId).catch(() => {});
+      }
+
+      // 2. Enregistrement universel D1 (comme Mes fichiers) pour synchronisation instantanée multi-appareils
+      StudyCloudAPI.registerFileMetadata({
+        id: item.id,
+        userId: currentUserId,
+        matiereId: targetCategory === 'classeur' ? (folderName || 'Classeur') : `menu-${targetCategory}`,
+        name: item.name,
+        size: item.sizeBytes || 0,
+        type: targetCategory === 'images' ? 'image/jpeg' : (
+          targetCategory === 'videos' ? 'video/mp4' : (
+            targetCategory === 'audio' ? 'audio/mpeg' : 'application/pdf'
+          )
+        ),
+        extension: item.extension || 'FICHIER',
+        r2Key: null,
+        fileUrl: item.url || '',
+        isFavorite: false,
+        isImported: true,
+        lastImported: Date.now()
+      }).catch(() => {});
     });
 
     if (targetCategory === 'images') {
@@ -3639,7 +3673,89 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       icon,
       color
     });
+
+    // Rechargement immédiat depuis le Worker / Base de données D1 dès qu'on RENTRE dans un sous-menu (comme Mes fichiers)
+    if (id === 'videos') {
+      CloudStorageAPI.getVideosList().then(vids => {
+        if (vids && Array.isArray(vids)) {
+          setVideosList(vids);
+          CloudDataStore.setVideos(vids);
+        }
+      }).catch(() => {});
+    } else if (id === 'audio') {
+      CloudStorageAPI.getAudioList().then(auds => {
+        if (auds && Array.isArray(auds)) {
+          setAudioList(auds);
+          CloudDataStore.setAudio(auds);
+        }
+      }).catch(() => {});
+    } else if (id === 'images') {
+      CloudStorageAPI.getImagesList().then(imgs => {
+        if (imgs && Array.isArray(imgs)) {
+          setImagesList(imgs);
+          CloudDataStore.setImages(imgs);
+        }
+      }).catch(() => {});
+    } else if (id === 'documents') {
+      CloudStorageAPI.getDocumentsList().then(docs => {
+        if (docs && Array.isArray(docs)) {
+          setDocumentsList(docs);
+          CloudDataStore.setDocuments(docs);
+        }
+      }).catch(() => {});
+    } else if (id === 'classeur' || id === 'cloud-storage') {
+      CloudStorageAPI.getClasseurFolders().then(folders => {
+        if (folders && Array.isArray(folders)) {
+          setClasseurFolders(folders);
+          CloudDataStore.setClasseurFolders(folders);
+        }
+      }).catch(() => {});
+    } else if (id === 'downloads') {
+      CloudStorageAPI.getDownloadsList().then(dls => {
+        if (dls && Array.isArray(dls)) {
+          setDownloadedFiles(dls);
+          CloudDataStore.setDownloads(dls as any);
+        }
+      }).catch(() => {});
+    } else if (id === 'trash') {
+      CloudStorageAPI.getTrashFiles().then(trash => {
+        if (trash && Array.isArray(trash)) {
+          setTrashFiles(trash);
+          CloudDataStore.setTrashFiles(trash);
+        }
+      }).catch(() => {});
+    } else if (id === 'secure-folder') {
+      CloudStorageAPI.getSecureFiles().then(sec => {
+        if (sec && Array.isArray(sec)) {
+          setSecureFiles(sec);
+          CloudDataStore.setSecureFiles(sec);
+        }
+      }).catch(() => {});
+    }
+
+    // Déclencher également une synchronisation d'arrière-plan sans cooldown bloquant
+    CloudDataStore.sync(true).catch(() => {});
   };
+
+  // Rechargement immédiat depuis Cloudflare D1 dès qu'on ouvre un dossier du Classeur 3D
+  useEffect(() => {
+    if (!opened3DFolder || !opened3DFolder.id) return;
+    CloudStorageAPI.getClasseurFiles(opened3DFolder.id)
+      .then(files => {
+        if (files && Array.isArray(files)) {
+          setFolderFilesMap(prev => ({
+            ...prev,
+            [opened3DFolder.id]: files
+          }));
+          const currentMap = CloudDataStore.getState().folderFilesMap;
+          CloudDataStore.setFolderFilesMap({
+            ...currentMap,
+            [opened3DFolder.id]: files
+          });
+        }
+      })
+      .catch(() => {});
+  }, [opened3DFolder?.id]);
 
   // Fonction de tri universelle appliquée aux listes selon l'option sélectionnée (menu 3 traits)
   const applySorting = (list: FileItem[]): FileItem[] => {

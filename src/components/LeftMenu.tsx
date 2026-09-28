@@ -4,8 +4,9 @@ import { DelmasRobot } from './DelmasRobot';
 import { AssistantChat } from './AssistantChat';
 import { FileIconBadge } from './FileIconBadge';
 import { StudyCloudAPI } from '../services/api';
-import { buildAiStudyKey } from '../services/storageUtils';
 import { storeFileBlob, deleteFileBlob, getFileBlobUrl, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
+import { UploadQueue } from '../services/uploadQueue';
+import { CloudDataStore } from '../services/cloudDataStore';
 import { getGalleryFilesForCategory } from '../data/categoryFilesData';
 import { isGalleryOrDemoFile } from './FilesMenuView';
 import { compressFile } from '../utils/fileCompressor';
@@ -216,6 +217,8 @@ export function LeftMenu({
 
   const processFiles = async (files: FileList | File[]) => {
     if (!files || files.length === 0) return;
+
+    const itemsWithFiles: { file: File | Blob; item: any; originalSizeBytes?: number; originalSizeFormatted?: string }[] = [];
     
     for (let idx = 0; idx < files.length; idx++) {
       const file = files[idx];
@@ -238,7 +241,7 @@ export function LeftMenu({
       const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
       const extVal = file.name.split('.').pop()?.toUpperCase() || 'FICHIER';
 
-      const newFile = {
+      const newFile: any = {
         id,
         name: file.name,
         type: file.type || 'file',
@@ -254,10 +257,19 @@ export function LeftMenu({
         isImported: true,
         importedAt: now,
         createdAt: now,
-        timestamp: now
+        timestamp: now,
+        // Champs CloudDataStore / UploadQueue
+        category: file.type.startsWith('image/') ? 'images' : (
+          file.type.startsWith('video/') ? 'videos' :
+          file.type.startsWith('audio/') ? 'audio' : 'documents'
+        ),
+        source: currentFolderName || 'Espace détude',
+        previewUrl: localUrl,
+        videoUrl: file.type.startsWith('video/') ? localUrl : undefined,
+        audioUrl: file.type.startsWith('audio/') ? localUrl : undefined,
       };
-      
-      // Enregistrer dans Cloudflare D1
+
+      // 1. Enregistrement D1 immédiat (sans attendre R2)
       StudyCloudAPI.registerFileMetadata({
         id,
         userId,
@@ -292,47 +304,17 @@ export function LeftMenu({
         compressedSizeBytes
       }).catch(() => {});
 
-      // Upload vers Cloudflare R2 (dossier structuré ai-studies/)
-      const r2Key = buildAiStudyKey(userId, id, file.name);
-      StudyCloudAPI.uploadFileToR2(fileToStore, r2Key, compResult.mimeType, originalSizeBytes).then(res => {
-        if (res && res.url) {
-          StudyCloudAPI.registerFileMetadata({
-            id,
-            userId,
-            matiereId: currentFolderName && currentFolderName !== 'Mes fichiers' ? currentFolderName : null,
-            name: file.name,
-            size: originalSizeBytes,
-            type: file.type || 'application/octet-stream',
-            extension: extVal,
-            r2Key: res.key,
-            fileUrl: res.url,
-            isFavorite: false,
-            isImported: true,
-            isStudySession: true,
-            lastImported: now,
-            originalSizeBytes,
-            compressedSizeBytes,
-            compressionRatio
-          }).catch(() => {});
+      // 2. Sync multi-appareils optimiste
+      CloudDataStore.addOptimisticFile(newFile);
 
-          StudyCloudAPI.registerStudyFile({
-            id,
-            userId,
-            name: file.name,
-            size: originalSizeBytes,
-            type: file.type || 'application/octet-stream',
-            extension: extVal,
-            r2Key: res.key,
-            fileUrl: res.url,
-            isFavorite: false,
-            importedAt: now,
-            originalSizeBytes,
-            compressedSizeBytes
-          }).catch(() => {});
-        }
-      }).catch(() => {});
+      itemsWithFiles.push({
+        file: fileToStore,
+        item: newFile,
+        originalSizeBytes,
+        originalSizeFormatted: compResult.originalSizeFormatted
+      });
       
-      // Save to dedicated study imports localStorage (global and independent of current menu)
+      // 3. Save to dedicated study imports localStorage
       try {
         const keys = ['unifolder_study_imported_files', 'unifolder_left_menu_general_imports'];
         keys.forEach(k => {
@@ -355,6 +337,14 @@ export function LeftMenu({
         setActivePreviewItem({ ...newFile, folderName: currentFolderName || 'Mes fichiers' });
         setViewHistory(prev => [newFile.id, ...prev.filter(id => id !== newFile.id)]);
       }
+    }
+
+    // 4. UploadQueue.enqueueExisting — R2 en arrière-plan avec retry automatique
+    if (itemsWithFiles.length > 0) {
+      UploadQueue.enqueueExisting(itemsWithFiles, {
+        category: 'documents',
+        uploadSource: 'left-menu-study'
+      });
     }
   };
 
