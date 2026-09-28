@@ -95,12 +95,39 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({ onBack, on
     };
   }, [selectedItem?.id]);
 
+  // Fonction universelle de fermeture du lecteur (ou réduction si agrandi)
+  const handleCloseReader = () => {
+    if (isViewerMaximized) {
+      setIsViewerMaximized(false);
+    } else {
+      setSelectedItem(null);
+      setIsViewerMaximized(false);
+    }
+  };
+
+  // Gestion de la touche Échap pour réduire ou fermer le lecteur
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isViewerMaximized) {
+          setIsViewerMaximized(false);
+        } else if (selectedItem) {
+          setSelectedItem(null);
+          setIsViewerMaximized(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isViewerMaximized, selectedItem]);
+
   const handleDeleteItem = async (id: string) => {
     removeDownloadedFile(id);
     CloudDataStore.removeFile(id);
     setDownloadedList(prev => prev.filter(item => item.id !== id));
     if (selectedItem?.id === id) {
       setSelectedItem(null);
+      setIsViewerMaximized(false);
     }
     showToast('Élément retiré de vos téléchargements');
     await CloudStorageAPI.deleteDownload(id).catch(() => {});
@@ -164,9 +191,9 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({ onBack, on
             </button>
             <button
               type="button"
-              onClick={() => setSelectedItem(null)}
+              onClick={handleCloseReader}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
-              title="Fermer"
+              title={isViewerMaximized ? "Réduire la vue" : "Fermer le lecteur"}
             >
               <X className="w-4 h-4 stroke-[2.5]" />
             </button>
@@ -223,12 +250,21 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({ onBack, on
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <button
               type="button"
-              onClick={onBack}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                } else if (selectedItem) {
+                  setSelectedItem(null);
+                  setIsViewerMaximized(false);
+                } else {
+                  onBack();
+                }
+              }}
               className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
-              title="Retour au gestionnaire de fichiers"
+              title={isViewerMaximized ? "Réduire la vue" : selectedItem ? "Fermer la vue" : "Retour au gestionnaire de fichiers"}
             >
               <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
-              <span className="hidden xs:inline">Retour</span>
+              <span className="hidden xs:inline">{isViewerMaximized ? "Réduire" : "Retour"}</span>
             </button>
 
             <div className="flex items-center gap-2">
@@ -289,7 +325,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({ onBack, on
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE */}
         <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-6 py-4 pb-64 ${
-          isViewerMaximized
+          isViewerMaximized && selectedItem
             ? 'hidden'
             : selectedItem
               ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-white/10'
@@ -361,7 +397,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({ onBack, on
         {/* PANNEAU DE DROITE : LECTEUR */}
         {selectedItem && (
           <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
-            isViewerMaximized
+            isViewerMaximized && selectedItem
               ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]'
               : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
           }`}>

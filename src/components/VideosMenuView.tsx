@@ -210,6 +210,32 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     };
   }, []);
 
+  // Fonction universelle de fermeture du lecteur (ou réduction si plein écran/agrandi)
+  const handleCloseReader = () => {
+    if (isViewerMaximized) {
+      setIsViewerMaximized(false);
+    } else {
+      setSelectedVideo(null);
+      setIsViewerMaximized(false);
+    }
+  };
+
+  // Gestion de la touche Échap pour réduire ou fermer le lecteur vidéo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isViewerMaximized) {
+          setIsViewerMaximized(false);
+        } else if (selectedVideo) {
+          setSelectedVideo(null);
+          setIsViewerMaximized(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isViewerMaximized, selectedVideo]);
+
   // Effacer une vidéo dont l'enregistrement a échoué (Bouton Croix X)
   const handleDismissFailedUpload = (vidId: string) => {
     if (savingIntervalsRef.current[vidId]) {
@@ -232,6 +258,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     deleteFileBlob(vidId).catch(() => {});
     if (selectedVideo?.id === vidId) {
       setSelectedVideo(null);
+      setIsViewerMaximized(false);
     }
     showToast("Vidéo non enregistrée retirée.");
   };
@@ -491,6 +518,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     setVideosList(prev => prev.filter(v => v.id !== vid.id));
     if (selectedVideo?.id === vid.id) {
       setSelectedVideo(null);
+      setIsViewerMaximized(false);
     }
     setSelectedItemIds(prev => prev.filter(id => id !== vid.id));
     CloudDataStore.moveToTrash(fileWithSource as any);
@@ -653,6 +681,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
         setVideosList(prev => prev.filter(v => v.id !== vid.id));
         if (selectedVideo?.id === vid.id) {
           setSelectedVideo(null);
+          setIsViewerMaximized(false);
         }
         CloudDataStore.moveToSecure(securedFile as any);
         CloudStorageAPI.moveToSecureFolder(vid, 'videos').catch(console.error);
@@ -756,6 +785,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
         }
         if (selectedVideo && idsToRemove.has(selectedVideo.id)) {
           setSelectedVideo(null);
+          setIsViewerMaximized(false);
         }
       }
 
@@ -1657,9 +1687,9 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setSelectedVideo(null)}
+              onClick={handleCloseReader}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
-              title="Fermer le lecteur vidéo"
+              title={isViewerMaximized ? "Réduire la vue" : "Fermer le lecteur vidéo"}
             >
               <X className="w-4 h-4 stroke-[2.5]" />
             </button>
@@ -1713,12 +1743,21 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <button
               type="button"
-              onClick={onBack}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                } else if (selectedVideo) {
+                  setSelectedVideo(null);
+                  setIsViewerMaximized(false);
+                } else {
+                  onBack();
+                }
+              }}
               className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
-              title="Retour"
+              title={isViewerMaximized ? "Réduire la vue" : selectedVideo ? "Fermer la vidéo" : "Retour"}
             >
               <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
-              <span className="hidden xs:inline">Retour</span>
+              <span className="hidden xs:inline">{isViewerMaximized ? "Réduire" : "Retour"}</span>
             </button>
 
             <div className="flex items-center gap-2">
@@ -1789,7 +1828,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE DES VIDÉOS (IMAGE 1) */}
         <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-          isViewerMaximized
+          isViewerMaximized && selectedVideo
             ? 'hidden'
             : selectedVideo
               ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
@@ -1878,7 +1917,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
         {/* PANNEAU DE DROITE : LECTEUR VIDÉO DÉDIÉ (IMAGE 4) */}
         {selectedVideo && (
           <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
-            isViewerMaximized
+            isViewerMaximized && selectedVideo
               ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]'
               : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
           }`}>

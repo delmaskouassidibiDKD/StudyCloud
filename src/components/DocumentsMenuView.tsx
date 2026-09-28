@@ -98,6 +98,32 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     };
   }, []);
 
+  // Fonction universelle de fermeture du lecteur (ou réduction si agrandi)
+  const handleCloseReader = () => {
+    if (isViewerMaximized) {
+      setIsViewerMaximized(false);
+    } else {
+      setSelectedDoc(null);
+      setIsViewerMaximized(false);
+    }
+  };
+
+  // Gestion de la touche Échap pour réduire ou fermer le lecteur de document
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isViewerMaximized) {
+          setIsViewerMaximized(false);
+        } else if (selectedDoc) {
+          setSelectedDoc(null);
+          setIsViewerMaximized(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isViewerMaximized, selectedDoc]);
+
   // Résolution du Blob URL quand un document est sélectionné
   useEffect(() => {
     if (!selectedDoc) {
@@ -247,6 +273,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     setDocumentsList(prev => prev.filter(d => d.id !== doc.id));
     if (selectedDoc?.id === doc.id) {
       setSelectedDoc(null);
+      setIsViewerMaximized(false);
     }
     CloudDataStore.removeFile(doc.id);
     deleteFileBlob(doc.id).catch(() => {});
@@ -437,9 +464,9 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
 
             <button
               type="button"
-              onClick={() => setSelectedDoc(null)}
+              onClick={handleCloseReader}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
-              title="Fermer le lecteur de document"
+              title={isViewerMaximized ? "Réduire la vue" : "Fermer le lecteur de document"}
             >
               <X className="w-4 h-4 stroke-[2.5]" />
             </button>
@@ -531,12 +558,21 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <button
               type="button"
-              onClick={onBack}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                } else if (selectedDoc) {
+                  setSelectedDoc(null);
+                  setIsViewerMaximized(false);
+                } else {
+                  onBack();
+                }
+              }}
               className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
-              title="Retour"
+              title={isViewerMaximized ? "Réduire la vue" : selectedDoc ? "Fermer le document" : "Retour"}
             >
               <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
-              <span className="hidden xs:inline">Retour</span>
+              <span className="hidden xs:inline">{isViewerMaximized ? "Réduire" : "Retour"}</span>
             </button>
 
             <div className="flex items-center gap-2">
@@ -607,7 +643,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE DES DOCUMENTS */}
         <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-          isViewerMaximized
+          isViewerMaximized && selectedDoc
             ? 'hidden'
             : selectedDoc
               ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
@@ -690,7 +726,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
         {/* PANNEAU DE DROITE : LECTEUR DOCUMENT DÉDIÉ (IMAGE 3) */}
         {selectedDoc && (
           <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
-            isViewerMaximized
+            isViewerMaximized && selectedDoc
               ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]'
               : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
           }`}>

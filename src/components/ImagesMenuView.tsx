@@ -270,6 +270,32 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     };
   }, []);
 
+  // Fonction universelle de fermeture du lecteur (ou réduction si plein écran/agrandi)
+  const handleCloseReader = () => {
+    if (isViewerMaximized) {
+      setIsViewerMaximized(false);
+    } else {
+      setSelectedImage(null);
+      setIsViewerMaximized(false);
+    }
+  };
+
+  // Gestion de la touche Échap pour réduire ou fermer le lecteur d'image
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isViewerMaximized) {
+          setIsViewerMaximized(false);
+        } else if (selectedImage) {
+          setSelectedImage(null);
+          setIsViewerMaximized(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isViewerMaximized, selectedImage]);
+
   // Effacer une image dont l'enregistrement a échoué (Bouton Croix X)
   const handleDismissFailedUpload = (imgId: string) => {
     if (savingIntervalsRef.current[imgId]) {
@@ -292,6 +318,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     deleteFileBlob(imgId).catch(() => {});
     if (selectedImage?.id === imgId) {
       setSelectedImage(null);
+      setIsViewerMaximized(false);
     }
     showToast("Image non enregistrée retirée.");
   };
@@ -1651,9 +1678,9 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setSelectedImage(null)}
+              onClick={handleCloseReader}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
-              title="Fermer le lecteur d'image"
+              title={isViewerMaximized ? "Réduire la vue" : "Fermer le lecteur d'image"}
             >
               <X className="w-4 h-4 stroke-[2.5]" />
             </button>
@@ -1706,12 +1733,21 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <button
               type="button"
-              onClick={onBack}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                } else if (selectedImage) {
+                  setSelectedImage(null);
+                  setIsViewerMaximized(false);
+                } else {
+                  onBack();
+                }
+              }}
               className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
-              title="Retour"
+              title={isViewerMaximized ? "Réduire la vue" : selectedImage ? "Fermer l'image" : "Retour"}
             >
               <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
-              <span className="hidden xs:inline">Retour</span>
+              <span className="hidden xs:inline">{isViewerMaximized ? "Réduire" : "Retour"}</span>
             </button>
 
             <div className="flex items-center gap-2">
@@ -1782,7 +1818,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE DES IMAGES (IMAGE 1) */}
         <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-          isViewerMaximized
+          isViewerMaximized && selectedImage
             ? 'hidden'
             : selectedImage
               ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
@@ -1870,7 +1906,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
         {/* PANNEAU DE DROITE : LECTEUR IMAGE DÉDIÉ (IMAGE 5) */}
         {selectedImage && (
           <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
-            isViewerMaximized
+            isViewerMaximized && selectedImage
               ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]'
               : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
           }`}>
