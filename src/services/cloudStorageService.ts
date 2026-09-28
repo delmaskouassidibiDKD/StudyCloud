@@ -777,13 +777,15 @@ export const CloudStorageAPI = {
     thumbnailDataUrl?: string,
     uploadSource?: string,
     originalSizeBytes?: number,
-    originalSizeFormatted?: string
+    originalSizeFormatted?: string,
+    fileId?: string
   ): Promise<{ success: boolean; category?: string; detectedCategory?: string; file?: FileItem; error?: string }> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const sourceQuery = uploadSource ? `&source=${encodeURIComponent(uploadSource)}` : '';
       const origSizeParam = originalSizeBytes ? `&originalSizeBytes=${encodeURIComponent(String(originalSizeBytes))}` : '';
-      const uploadUrl = `${baseUrl}/api/cloud/upload?category=${encodeURIComponent(category)}&name=${encodeURIComponent(fileName)}&folderId=${encodeURIComponent(folderId || '')}&userId=${getUserIdParam()}${sourceQuery}${origSizeParam}`;
+      const idParam = fileId ? `&id=${encodeURIComponent(fileId)}` : '';
+      const uploadUrl = `${baseUrl}/api/cloud/upload?category=${encodeURIComponent(category)}&name=${encodeURIComponent(fileName)}&folderId=${encodeURIComponent(folderId || '')}&userId=${getUserIdParam()}${sourceQuery}${origSizeParam}${idParam}`;
       
       const token = localStorage.getItem('sc_auth_token') || '';
       const headers: Record<string, string> = {
@@ -792,6 +794,9 @@ export const CloudStorageAPI = {
       };
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
+      }
+      if (fileId) {
+        headers['x-file-id'] = fileId;
       }
       if (uploadSource) {
         headers['x-upload-source'] = uploadSource;

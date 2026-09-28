@@ -320,7 +320,8 @@ class UploadQueueManager {
           previewDataUrl || undefined,
           task.uploadSource,
           task.originalSizeBytes,
-          task.originalSizeFormatted
+          task.originalSizeFormatted,
+          id
         );
 
         if (res?.success && res.file) {

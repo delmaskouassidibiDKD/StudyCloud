@@ -3679,41 +3679,41 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       CloudStorageAPI.getVideosList().then(vids => {
         if (vids && Array.isArray(vids)) {
           setVideosList(vids);
-          CloudDataStore.setVideos(vids);
+          CloudDataStore.setVideos(vids as any);
         }
       }).catch(() => {});
     } else if (id === 'audio') {
       CloudStorageAPI.getAudioList().then(auds => {
         if (auds && Array.isArray(auds)) {
           setAudioList(auds);
-          CloudDataStore.setAudio(auds);
+          CloudDataStore.setAudio(auds as any);
         }
       }).catch(() => {});
     } else if (id === 'images') {
       CloudStorageAPI.getImagesList().then(imgs => {
         if (imgs && Array.isArray(imgs)) {
           setImagesList(imgs);
-          CloudDataStore.setImages(imgs);
+          CloudDataStore.setImages(imgs as any);
         }
       }).catch(() => {});
     } else if (id === 'documents') {
       CloudStorageAPI.getDocumentsList().then(docs => {
         if (docs && Array.isArray(docs)) {
           setDocumentsList(docs);
-          CloudDataStore.setDocuments(docs);
+          CloudDataStore.setDocuments(docs as any);
         }
       }).catch(() => {});
     } else if (id === 'classeur' || id === 'cloud-storage') {
       CloudStorageAPI.getClasseurFolders().then(folders => {
         if (folders && Array.isArray(folders)) {
-          setClasseurFolders(folders);
+          setClasseur3DFolders(folders);
           CloudDataStore.setClasseurFolders(folders);
         }
       }).catch(() => {});
     } else if (id === 'downloads') {
       CloudStorageAPI.getDownloadsList().then(dls => {
         if (dls && Array.isArray(dls)) {
-          setDownloadedFiles(dls);
+          setDownloadedItems(dls as any);
           CloudDataStore.setDownloads(dls as any);
         }
       }).catch(() => {});
@@ -3721,14 +3721,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       CloudStorageAPI.getTrashFiles().then(trash => {
         if (trash && Array.isArray(trash)) {
           setTrashFiles(trash);
-          CloudDataStore.setTrashFiles(trash);
+          CloudDataStore.setTrashFiles(trash as any);
         }
       }).catch(() => {});
     } else if (id === 'secure-folder') {
       CloudStorageAPI.getSecureFiles().then(sec => {
         if (sec && Array.isArray(sec)) {
-          setSecureFiles(sec);
-          CloudDataStore.setSecureFiles(sec);
+          setSecureFolderFiles(sec);
+          CloudDataStore.setSecureFiles(sec as any);
         }
       }).catch(() => {});
     }
