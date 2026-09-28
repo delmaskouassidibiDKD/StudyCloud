@@ -771,6 +771,20 @@ export function RightMenu({
     }).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const handleRestore = () => {
+      try {
+        const saved = localStorage.getItem('unifolder_ai_history');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) setHistoryItems(parsed);
+        }
+      } catch (e) {}
+    };
+    window.addEventListener('unifolder_data_restored', handleRestore);
+    return () => window.removeEventListener('unifolder_data_restored', handleRestore);
+  }, []);
+
   // Écoute des événements de création IA venant du Chat / Assistant
   useEffect(() => {
     const handleStart = (e: any) => {

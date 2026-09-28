@@ -194,6 +194,8 @@ export interface FileItem {
   positionY?: number;
   displayOrder?: number;
   r2Key?: string;
+  isSyncError?: boolean;
+  uploadError?: string;
 }
 
 interface SubMenuView {
@@ -3399,13 +3401,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // SÉLECTION D'UN ÉLÉMENT : DÉCLENCHE LA DIVISION EN DEUX (SPLIT SCREEN)
   const handleSelectFile = (file: FileItem) => {
-    const isAud = Boolean(file.category === 'audio' || (file as any).isAudio || Boolean((file as any).audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name));
-    const isVid = Boolean(file.category === 'videos' || (file as any).isVideo || Boolean((file as any).videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(file.name));
-    const isImg = Boolean(file.category === 'images' || (file as any).isImage || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name));
+    const ext = (file.name || '').includes('.') ? (file.name || '').split('.').pop()?.toLowerCase() || '' : '';
+    const isAud = Boolean(
+      file.category === 'audio' ||
+      (file as any).isAudio ||
+      Boolean((file as any).audioUrl) ||
+      (file.type && file.type.startsWith('audio/')) ||
+      isWhatsAppAudio(file.name, file.type) ||
+      EXTENSION_MAP.audio.includes(ext) ||
+      /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name)
+    );
+    const isVid = Boolean(file.category === 'videos' || (file as any).isVideo || Boolean((file as any).videoUrl) || (file.type && file.type.startsWith('video/')) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(file.name));
+    const isImg = Boolean(file.category === 'images' || (file as any).isImage || (file.type && file.type.startsWith('image/')) || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name));
     const isDoc = file.category === 'documents' || (!isAud && !isVid && !isImg);
 
     if (isDoc) setSelectedDocFile(file);
-    if (isAud) setSelectedAudioTrack(file);
+    if (isAud) {
+      setSelectedAudioTrack(file);
+      setSplitResolvedAudioUrl('');
+    }
     if (isVid) setSelectedVideoFile(file);
     if (isImg) setSelectedImageFile(file);
     if (opened3DFolder) setSelectedClasseurFile(file);
@@ -3418,27 +3432,28 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setDocCurrentPage(1);
 
     const isNotepad = Boolean(file.isNotepad || file.extension === 'txt' || file.name.toLowerCase().endsWith('.txt'));
-    const isAudio = Boolean(file.category === 'audio' || file.isAudio || Boolean(file.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name));
-    const isVideo = Boolean(file.category === 'videos' || file.isVideo || Boolean(file.videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(file.name));
 
     // URL de lecture : préserver le blob local s'il existe, sinon URL worker
     const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
     const permanentWorkerUrl = file.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}` : '';
-    if (!file.url) {
+    if (!file.url || file.url.startsWith('blob:')) {
       file.url = permanentWorkerUrl;
     }
-    if (!file.videoUrl && isVideo) {
-      file.videoUrl = file.url;
+    if (!file.videoUrl || file.videoUrl.startsWith('blob:')) {
+      file.videoUrl = isVid ? (file.url || permanentWorkerUrl) : file.videoUrl;
     }
-    if (!file.audioUrl && isAudio) {
-      file.audioUrl = file.url;
+    if (!file.audioUrl || file.audioUrl.startsWith('blob:')) {
+      file.audioUrl = isAud ? (file.url || permanentWorkerUrl) : file.audioUrl;
     }
     if (file.id) {
       getFileBlobUrl(file.id).then(freshBlob => {
         if (freshBlob) {
           file.url = freshBlob;
-          if (isVideo) file.videoUrl = freshBlob;
-          if (isAudio) file.audioUrl = freshBlob;
+          if (isVid) file.videoUrl = freshBlob;
+          if (isAud) {
+            file.audioUrl = freshBlob;
+            setSplitResolvedAudioUrl(freshBlob);
+          }
         }
       }).catch(() => {});
     }
@@ -3450,7 +3465,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
 
     // Si audio, démarrer l'écouteur et ouvrir le lecteur mobile si sur téléphone
-    if (isAudio) {
+    if (isAud) {
       setIsAudioPlaying(true);
       setAudioCurrentTime(0);
       setAudioDuration(file.durationSec || 219);
@@ -3460,7 +3475,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
 
     // Si vidéo, réinitialiser
-    if (isVideo) {
+    if (isVid) {
       setIsVideoPlaying(true);
       setVideoCurrentTime(0);
     } else {
@@ -3474,9 +3489,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const normName = (file.name || '').toLowerCase();
     const ext = normName.includes('.') ? normName.split('.').pop() || '' : '';
 
-    const isImg = file.category === 'images' || file.isImage || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'avif'].includes(ext);
-    const isVid = file.category === 'videos' || file.isVideo || Boolean(file.videoUrl) || ['mp4', 'webm', 'mkv', 'mov', 'avi', 'flv', 'wmv', 'm4v', '3gp'].includes(ext);
-    const isAud = file.category === 'audio' || file.isAudio || Boolean(file.audioUrl) || ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'wma', 'opus', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'].includes(ext);
+    const isImg = file.category === 'images' || file.isImage || (file.type && file.type.startsWith('image/')) || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'avif'].includes(ext);
+    const isVid = file.category === 'videos' || file.isVideo || Boolean(file.videoUrl) || (file.type && file.type.startsWith('video/')) || ['mp4', 'webm', 'mkv', 'mov', 'avi', 'flv', 'wmv', 'm4v', '3gp'].includes(ext);
+    const isAud = file.category === 'audio' || file.isAudio || Boolean(file.audioUrl) || (file.type && file.type.startsWith('audio/')) || isWhatsAppAudio(file.name, file.type) || EXTENSION_MAP.audio.includes(ext) || ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'wma', 'opus', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'].includes(ext);
     const isDl = file.category === 'downloads';
     const isApp = file.category === 'apps';
 
@@ -3494,6 +3509,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         if (prev.some(i => i.id === file.id || (file.name && i.name === file.name))) return prev;
         return [file, ...prev];
       });
+      if (isCloudView) setCloudActiveTab('images');
     } else if (isVid) {
       targetCatId = 'videos';
       targetName = 'Vidéos';
@@ -3503,6 +3519,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         if (prev.some(v => v.id === file.id || (file.name && v.name === file.name))) return prev;
         return [file, ...prev];
       });
+      if (isCloudView) setCloudActiveTab('videos');
     } else if (isAud) {
       targetCatId = 'audio';
       targetName = 'Audio';
@@ -3512,6 +3529,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         if (prev.some(a => a.id === file.id || (file.name && a.name === file.name))) return prev;
         return [file, ...prev];
       });
+      if (isCloudView) setCloudActiveTab('audio');
     } else if (isDl) {
       targetCatId = 'downloads';
       targetName = 'Téléchargements';
@@ -3535,6 +3553,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         if (prev.some(d => d.id === file.id || (file.name && d.name === file.name))) return prev;
         return [file, ...prev];
       });
+      if (isCloudView) setCloudActiveTab('documents');
     }
 
     setSubSearchQuery('');
@@ -3550,16 +3569,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     handleSelectFile(file);
   };
 
-
-
-
   // Filtrage selon la recherche (strictement 6 éléments maximum sur l'accueil, sans fichiers supprimés)
   const displayedFiles = useMemo(() => {
     const deletedRecentIds = getDeletedRecentIds();
     const locallyDeletedIds = getLocallyDeletedFileIds();
     const trashIdSet = new Set(trashFiles.map(t => t.id));
 
-    return cloudRecentFiles.filter(f => {
+    let sourceFiles = cloudRecentFiles;
+    if (!sourceFiles || sourceFiles.length === 0) {
+      const allLive = [...documentsList, ...imagesList, ...videosList, ...audioList];
+      sourceFiles = allLive.slice(0, 10);
+    }
+
+    return sourceFiles.filter(f => {
       if (deletedRecentIds.has(f.id)) return false;
       if (locallyDeletedIds.has(f.id)) return false;
       if (trashIdSet.has(f.id)) return false;
@@ -3571,7 +3593,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       
       return matchQuery;
     }).slice(0, 6);
-  }, [cloudRecentFiles, searchQuery, trashFiles]);
+  }, [cloudRecentFiles, searchQuery, trashFiles, documentsList, imagesList, videosList, audioList]);
 
   // Ouverture d'un sous-menu indépendant
   const handleOpenSubMenu = (
@@ -4497,17 +4519,39 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   useEffect(() => {
     let isCurrent = true;
-    const currentTrack = selectedAudioTrack || (splitSelectedFile && (splitSelectedFile.category === 'audio' || Boolean(splitSelectedFile.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(splitSelectedFile.name)) ? splitSelectedFile : null);
+    const ext = (splitSelectedFile?.name || '').includes('.') ? (splitSelectedFile?.name || '').split('.').pop()?.toLowerCase() || '' : '';
+    const isAud = (f: any) => f && (
+      f.category === 'audio' ||
+      f.isAudio ||
+      Boolean(f.audioUrl) ||
+      (f.type && f.type.startsWith('audio/')) ||
+      isWhatsAppAudio(f.name, f.type) ||
+      EXTENSION_MAP.audio.includes(ext) ||
+      /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(f.name)
+    );
+    const currentTrack = (selectedAudioTrack && isAud(selectedAudioTrack)) ? selectedAudioTrack : (splitSelectedFile && isAud(splitSelectedFile)) ? splitSelectedFile : null;
     if (currentTrack?.id) {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const fallbackUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(currentTrack.id)}`;
       const directUrl = currentTrack.audioUrl || (currentTrack as any).url;
-      if (directUrl && typeof directUrl === 'string' && directUrl.trim()) {
+
+      if (directUrl && typeof directUrl === 'string' && directUrl.trim() && !directUrl.startsWith('blob:')) {
         setSplitResolvedAudioUrl(directUrl);
+      } else {
+        setSplitResolvedAudioUrl(fallbackUrl);
       }
+
       getFileBlobUrl(currentTrack.id).then(blobUrl => {
         if (isCurrent && blobUrl) {
           setSplitResolvedAudioUrl(blobUrl);
+        } else if (isCurrent && (!directUrl || directUrl.startsWith('blob:'))) {
+          setSplitResolvedAudioUrl(fallbackUrl);
         }
-      }).catch(() => {});
+      }).catch(() => {
+        if (isCurrent && (!directUrl || directUrl.startsWith('blob:'))) {
+          setSplitResolvedAudioUrl(fallbackUrl);
+        }
+      });
     } else {
       setSplitResolvedAudioUrl('');
     }
@@ -9612,15 +9656,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const renderAudioPlayer = (track: FileItem) => {
     const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
     const fallbackStreamUrl = track.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(track.id)}` : '';
-    const audioSrc = splitResolvedAudioUrl || track.audioUrl || (track as any).url || fallbackStreamUrl;
+    const rawDirect = track.audioUrl || (track as any).url || '';
+    const isDirectUsable = rawDirect && !rawDirect.startsWith('blob:');
+    const audioSrc = splitResolvedAudioUrl || (isDirectUsable ? rawDirect : '') || fallbackStreamUrl;
 
     return (
       <div className="relative w-full h-full flex-1 flex flex-col justify-between p-3 sm:p-6 md:p-8 bg-[#090D1A] text-white overflow-hidden select-none">
         <audio
           ref={audioRef}
           src={audioSrc}
+          preload="auto"
           autoPlay={isAudioPlaying}
           loop={isAudioRepeat === 'one'}
+          onCanPlay={() => {
+            if (isAudioPlaying && audioRef.current && audioRef.current.paused) {
+              audioRef.current.play().catch(() => {});
+            }
+          }}
+          onPlay={() => setIsAudioPlaying(true)}
+          onPause={() => setIsAudioPlaying(false)}
           onError={async () => {
             console.warn('[AudioPlayer] Erreur chargement audio pour', track.name);
             if (track.id) {
@@ -9658,7 +9712,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             }
           }}
           onTimeUpdate={() => {
-            if (audioRef.current && isAudioPlaying) {
+            if (audioRef.current) {
               setAudioCurrentTime(Math.floor(audioRef.current.currentTime));
               if (audioRef.current.duration && !isNaN(audioRef.current.duration)) {
                 setAudioDuration(Math.floor(audioRef.current.duration));
@@ -10146,8 +10200,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // 5. LECTEUR TÉLÉCHARGEMENT DÉDIÉ
   const renderDownloadReader = (file: FileItem | DownloadedItem) => {
+    const ext = (file.name || '').includes('.') ? (file.name || '').split('.').pop()?.toLowerCase() || '' : '';
     const isVid = file.category === 'videos' || Boolean((file as any).videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(file.name);
-    const isAud = file.category === 'audio' || Boolean((file as any).audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name);
+    const isAud = file.category === 'audio' || Boolean((file as any).audioUrl) || isWhatsAppAudio(file.name, (file as any).type) || EXTENSION_MAP.audio.includes(ext) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name);
     const isImg = file.category === 'images' || Boolean((file as any).isImage) || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name);
     
     if (isVid) return renderVideoPlayer(file as FileItem);
@@ -10172,8 +10227,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // 6. LECTEUR CLASSEUR & COLLECTIONS DÉDIÉ
   const renderClasseurFileReader = (file: FileItem) => {
+    const ext = (file.name || '').includes('.') ? (file.name || '').split('.').pop()?.toLowerCase() || '' : '';
     const isVid = file.category === 'videos' || Boolean(file.videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(file.name);
-    const isAud = file.category === 'audio' || Boolean(file.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name);
+    const isAud = file.category === 'audio' || Boolean(file.audioUrl) || isWhatsAppAudio(file.name, file.type) || EXTENSION_MAP.audio.includes(ext) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name);
     const isImg = file.category === 'images' || Boolean(file.isImage) || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name);
 
     if (isVid) return renderVideoPlayer(file);
@@ -10843,7 +10899,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 selectedAudioTrack
                   ? `${isMobilePlayerOpen ? 'hidden md:block' : 'w-full'} md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80`
-                  : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
+                  : 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
               }`}>
                 <div className="w-full space-y-3">
                   {/* En-tête de la liste */}
@@ -10987,7 +11043,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setIsAudioPlaying(!isAudioPlaying);
+                                    toggleAudioPlayPause();
                                   }}
                                   className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-amber-500 hover:bg-amber-600 text-stone-950 flex items-center justify-center transition-transform active:scale-95 shadow-sm cursor-pointer"
                                   title={isAudioPlaying ? "Mettre en pause" : "Reprendre la lecture"}
@@ -11050,11 +11106,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               </div>
 
               {/* PANNEAU DE DROITE : LECTEUR AUDIO INDÉPENDANT (IMAGE 2 & IMAGE 3) */}
-              {selectedAudioTrack && (
+              {selectedAudioTrack ? (
                 <div className={`transition-all duration-300 ${
                   isMobilePlayerOpen ? 'flex w-full min-h-[calc(100vh-120px)]' : 'hidden md:flex'
                 } md:w-7/12 lg:w-7/12 xl:w-7/12 flex-col bg-[#090D1A] border-t md:border-t-0 md:border-l border-white/10`}>
                   {renderAudioPlayer(selectedAudioTrack)}
+                </div>
+              ) : (
+                <div className="hidden md:flex md:w-7/12 lg:w-7/12 xl:w-7/12 flex-col">
+                  {renderAudioEmptyState()}
                 </div>
               )}
             </div>

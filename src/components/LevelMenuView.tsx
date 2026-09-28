@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Menu, X, BarChart2, Calendar, FolderTree, Award } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ResponsiveContainer, BarChart as RechartsBarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, PieChart, Pie, AreaChart, Area } from 'recharts';
+import { StudyCloudAPI } from '../services/api';
 
 interface LevelMenuViewProps {
   onBack: () => void;
@@ -66,12 +67,47 @@ const getTrimesterAverage = (trimestreKey: string, standardScale: number) => {
 };
 
 export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
+  const [refreshTick, setRefreshTick] = useState(0);
   const [isRightDrawerOpen, setIsRightDrawerOpen] = useState(false);
   const [selectedAnalysis, setSelectedAnalysis] = useState<string>('analyse globale');
   const [subjectTrimestre, setSubjectTrimestre] = useState<'1' | '2' | '3'>('1');
   const [noteTrimestre, setNoteTrimestre] = useState<'1' | '2' | '3'>('1');
   const [selectedNoteSubject, setSelectedNoteSubject] = useState<string>('');
   const [isNoteSubjectDropdownOpen, setIsNoteSubjectDropdownOpen] = useState(false);
+
+  // Synchronisation descendante directe depuis Cloudflare D1
+  useEffect(() => {
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    StudyCloudAPI.getGrades(userId)
+      .then((res: any) => {
+        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+          const mapped: Record<string, any[]> = { '1': [], '2': [], '3': [] };
+          for (const row of res.data) {
+            const trimKey = String(row.trimester || '1');
+            if (!mapped[trimKey]) mapped[trimKey] = [];
+            mapped[trimKey].push({
+              id: row.id,
+              subject: row.subject_name,
+              coefficient: Number(row.coefficient) || 1.0,
+              grade: Number(row.average) || 0,
+              subGrades: row.sub_grades_json ? (typeof row.sub_grades_json === 'string' ? JSON.parse(row.sub_grades_json) : row.sub_grades_json) : [],
+            });
+          }
+          localStorage.setItem('user_grades_trimesters_data', JSON.stringify(mapped));
+          setRefreshTick(prev => prev + 1);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Écoute de la restauration globale en arrière-plan
+  useEffect(() => {
+    const handleRestore = () => {
+      setRefreshTick(prev => prev + 1);
+    };
+    window.addEventListener('unifolder_data_restored', handleRestore);
+    return () => window.removeEventListener('unifolder_data_restored', handleRestore);
+  }, []);
 
   const standardScale = getStandardScale();
   const t1Avg = getTrimesterAverage('1', standardScale);

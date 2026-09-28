@@ -308,6 +308,17 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       .catch(() => {});
   }, [matiereName, storageKey]);
 
+  useEffect(() => {
+    const handleRestore = () => {
+      const local = loadFilesForMatiere(matiereName);
+      if (local && local.length > 0) {
+        setImportedFiles(local);
+      }
+    };
+    window.addEventListener('unifolder_data_restored', handleRestore);
+    return () => window.removeEventListener('unifolder_data_restored', handleRestore);
+  }, [matiereName]);
+
   // Sauvegarder uniquement pour la matière active
   useEffect(() => {
     if (currentKeyRef.current === storageKey) {

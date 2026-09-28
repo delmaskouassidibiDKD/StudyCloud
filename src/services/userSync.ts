@@ -119,12 +119,52 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
         if (d.scheduleConfig.zoom_level) localStorage.setItem('user_schedule_zoom', String(d.scheduleConfig.zoom_level));
       }
       if (Array.isArray(d.scheduleSlots)) {
-        localStorage.setItem('user_schedule_data', JSON.stringify(d.scheduleSlots));
+        const mappedSchedule: Record<string, any> = {};
+        for (const s of d.scheduleSlots) {
+          const k = `${s.day}_${s.hour_slot}`;
+          mappedSchedule[k] = {
+            subject: s.subject,
+            room: s.room || '',
+            note: s.note_or_teacher || '',
+            color: s.color || 'bg-emerald-100 dark:bg-emerald-950/80',
+          };
+        }
+        localStorage.setItem('user_schedule_data', JSON.stringify(mappedSchedule));
       }
 
-      // 6. Carnet de notes
+      // Calendrier des événements
+      if (Array.isArray(d.calendarEvents)) {
+        const mappedEvents = d.calendarEvents.map((row: any) => ({
+          id: row.id,
+          title: row.title,
+          start: row.start_date,
+          end: row.end_date || undefined,
+          allDay: Boolean(row.all_day),
+          color: row.color || '#2563EB',
+          description: row.description || undefined,
+          location: row.location || undefined,
+        }));
+        localStorage.setItem('unifolder_calendar_data', JSON.stringify(mappedEvents));
+      }
+
+      // 6. Carnet de notes & Moyennes
       if (Array.isArray(d.grades)) {
         localStorage.setItem('unifolder_grades_data', JSON.stringify(d.grades));
+        if (d.grades.length > 0) {
+          const mappedGrades: Record<string, any[]> = { '1': [], '2': [], '3': [] };
+          for (const row of d.grades) {
+            const trimKey = String(row.trimester || '1');
+            if (!mappedGrades[trimKey]) mappedGrades[trimKey] = [];
+            mappedGrades[trimKey].push({
+              id: row.id,
+              subject: row.subject_name || row.subject || 'Matière',
+              coefficient: Number(row.coefficient) || 1.0,
+              grade: Number(row.average) || Number(row.grade) || 0,
+              subGrades: row.sub_grades_json ? (typeof row.sub_grades_json === 'string' ? JSON.parse(row.sub_grades_json) : row.sub_grades_json) : (row.subGrades || []),
+            });
+          }
+          localStorage.setItem('user_grades_trimesters_data', JSON.stringify(mappedGrades));
+        }
       }
 
       // 7. Alarmes
@@ -133,12 +173,29 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
         localStorage.setItem('unifolder_clock_alarms', JSON.stringify(d.alarms));
       }
 
+      // 8. Contenus Générés IA (Créations & Studio)
+      if (Array.isArray(d.aiContents) && d.aiContents.length > 0) {
+        const mappedAiHistory = d.aiContents.map((item: any) => ({
+          id: item.id,
+          toolType: item.tool_type,
+          title: item.title,
+          dateStr: item.created_at ? new Date(item.created_at).toLocaleDateString('fr-FR') : "Récemment",
+          colorClass: 'text-orange-300',
+          desc: item.source_file_name ? `Généré pour "${item.source_file_name}"` : 'Création IA',
+          pinned: Boolean(item.is_pinned),
+          contentJson: item.content_json ? (typeof item.content_json === 'string' ? JSON.parse(item.content_json) : item.content_json) : null,
+          sourceFileName: item.source_file_name,
+        }));
+        localStorage.setItem('unifolder_ai_history', JSON.stringify(mappedAiHistory));
+      }
+
       const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' - ' + new Date().toLocaleDateString();
       localStorage.setItem('studycloud_last_sync', nowStr);
 
       // Notifier l'UI pour re-render immédiat
       window.dispatchEvent(new Event('unifolder_files_updated'));
       window.dispatchEvent(new Event('unifolder_data_restored'));
+      import('./cloudDataStore').then(m => m.CloudDataStore.sync(true)).catch(() => {});
       return true;
     }
   } catch (err) {
@@ -166,7 +223,28 @@ export function triggerDebouncedCloudBackup(delayMs = 2000): void {
     try {
       const matieres = JSON.parse(localStorage.getItem('unifolder_saved_matieres') || '[]');
       const notes = JSON.parse(localStorage.getItem('unifolder_keep_notes') || '[]');
-      const scheduleSlots = JSON.parse(localStorage.getItem('user_schedule_data') || '[]');
+      const rawSchedule = JSON.parse(localStorage.getItem('user_schedule_data') || '{}');
+      let scheduleSlots: any[] = [];
+      if (Array.isArray(rawSchedule)) {
+        scheduleSlots = rawSchedule;
+      } else if (rawSchedule && typeof rawSchedule === 'object') {
+        scheduleSlots = Object.entries(rawSchedule).map(([key, val]: [string, any]) => {
+          const parts = key.split('_');
+          const day = parts[0] || '';
+          const hourSlot = parts.slice(1).join('_') || '';
+          return {
+            id: `${userId}-${day}-${hourSlot}`,
+            day,
+            hourSlot,
+            subject: val?.subject || '',
+            room: val?.room || '',
+            noteOrTeacher: val?.note || '',
+            color: val?.color || 'bg-emerald-100 dark:bg-emerald-950/80',
+          };
+        });
+      }
+
+      const calendarEvents = JSON.parse(localStorage.getItem('unifolder_calendar_data') || '[]');
       const scheduleConfig = {
         days: JSON.parse(localStorage.getItem('user_schedule_days') || '["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"]'),
         hours: JSON.parse(localStorage.getItem('user_schedule_hours') || '["08:00 - 10:00","10:00 - 12:00","14:00 - 16:00","16:00 - 18:00"]'),
@@ -181,6 +259,25 @@ export function triggerDebouncedCloudBackup(delayMs = 2000): void {
         country: localStorage.getItem('unifolder_user_country') || "Côte d'Ivoire",
       };
 
+      const rawGrades = JSON.parse(localStorage.getItem('user_grades_trimesters_data') || '{}');
+      const grades: any[] = [];
+      if (rawGrades && typeof rawGrades === 'object') {
+        Object.entries(rawGrades).forEach(([trim, items]) => {
+          if (Array.isArray(items)) {
+            items.forEach((item: any) => {
+              grades.push({
+                id: item.id,
+                trimester: Number(trim) || 1,
+                subjectName: item.subject,
+                coefficient: Number(item.coefficient) || 1.0,
+                subGradesJson: JSON.stringify(item.subGrades || []),
+                average: Number(item.grade) || 0,
+              });
+            });
+          }
+        });
+      }
+
       await StudyCloudAPI.backupCloud({
         userId,
         userProfile,
@@ -188,7 +285,9 @@ export function triggerDebouncedCloudBackup(delayMs = 2000): void {
         notes,
         scheduleSlots,
         scheduleConfig,
+        calendarEvents,
         alarms,
+        grades,
       });
 
       const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' - ' + new Date().toLocaleDateString();

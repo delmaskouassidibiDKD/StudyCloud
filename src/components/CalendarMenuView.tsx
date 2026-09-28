@@ -53,6 +53,14 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
 
   // Synchronisation avec Cloudflare D1
   useEffect(() => {
+    const handleRestore = () => {
+      try {
+        const saved = localStorage.getItem('unifolder_calendar_data');
+        if (saved) setEvents(JSON.parse(saved));
+      } catch (e) {}
+    };
+    window.addEventListener('unifolder_data_restored', handleRestore);
+
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
     StudyCloudAPI.getCalendarEvents(userId)
       .then((res: any) => {
@@ -72,6 +80,8 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
         }
       })
       .catch(() => {});
+
+    return () => window.removeEventListener('unifolder_data_restored', handleRestore);
   }, []);
 
   // Modal State for New Event

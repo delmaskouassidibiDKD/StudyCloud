@@ -373,9 +373,24 @@ class UploadQueueManager {
         await new Promise(res => setTimeout(res, task.retries * 1500));
       } else {
         task.status = 'error';
-        task.error = err?.message || 'Erreur réseau ou timeout';
-        CloudDataStore.updateFile(id, { isUploading: false }, folderId);
+        const errorMsg = err?.message?.includes('413')
+          ? 'Fichier trop volumineux pour Cloudflare (> 100 Mo)'
+          : err?.message?.includes('timeout')
+            ? 'Délai d\'envoi dépassé (connexion trop lente)'
+            : (err?.message || 'Erreur réseau ou timeout');
+        task.error = errorMsg;
+        CloudDataStore.updateFile(id, { 
+          isUploading: false, 
+          isSyncError: true, 
+          uploadError: errorMsg 
+        } as any, folderId);
         this.notify();
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('studycloud_upload_error', {
+            detail: { fileId: id, fileName, error: errorMsg }
+          }));
+        }
       }
     }
   }
@@ -387,6 +402,11 @@ class UploadQueueManager {
       task.retries = 0;
       task.error = undefined;
       task.progress = 15;
+      CloudDataStore.updateFile(task.id, { 
+        isUploading: true, 
+        isSyncError: false, 
+        uploadError: undefined 
+      } as any, task.folderId);
       this.notify();
       this.processQueue();
     }
@@ -399,6 +419,11 @@ class UploadQueueManager {
         task.retries = 0;
         task.error = undefined;
         task.progress = 15;
+        CloudDataStore.updateFile(task.id, { 
+          isUploading: true, 
+          isSyncError: false, 
+          uploadError: undefined 
+        } as any, task.folderId);
       }
     });
     this.notify();

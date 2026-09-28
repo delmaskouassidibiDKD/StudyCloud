@@ -92,9 +92,11 @@ export function LeftMenu({
   useEffect(() => {
     const handleUpdate = () => setSyncTick(prev => prev + 1);
     window.addEventListener('unifolder_files_updated', handleUpdate);
+    window.addEventListener('unifolder_data_restored', handleUpdate);
     window.addEventListener('storage', handleUpdate);
     return () => {
       window.removeEventListener('unifolder_files_updated', handleUpdate);
+      window.removeEventListener('unifolder_data_restored', handleUpdate);
       window.removeEventListener('storage', handleUpdate);
     };
   }, []);

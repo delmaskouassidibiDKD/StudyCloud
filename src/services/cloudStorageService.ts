@@ -13,7 +13,7 @@ import { ClasseurCreatedFolder } from '../components/Folder3DModels';
 // En-têtes d'authentification pour garantir l'isolation des données
 function getAuthHeaders(): Record<string, string> {
   const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
-  const token = localStorage.getItem('sc_auth_token') || '';
+  const token = localStorage.getItem('sc_auth_token') || localStorage.getItem('unifolder_auth_token') || localStorage.getItem('auth_token') || '';
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'x-user-id': userId,
@@ -60,11 +60,11 @@ export interface ReorderFileItem {
   positionY?: number;
 }
 
-// ─── Helper : fetch avec timeout strict (évite les requêtes bloquées indéfiniment) ───
+// ─── Helper : fetch avec timeout strict (15s par défaut pour réseaux mobiles/stables) ───
 async function fetchWithTimeout(
   url: string,
   options: RequestInit = {},
-  timeoutMs = 4000
+  timeoutMs = 15000
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -785,10 +785,14 @@ export const CloudStorageAPI = {
       const origSizeParam = originalSizeBytes ? `&originalSizeBytes=${encodeURIComponent(String(originalSizeBytes))}` : '';
       const uploadUrl = `${baseUrl}/api/cloud/upload?category=${encodeURIComponent(category)}&name=${encodeURIComponent(fileName)}&folderId=${encodeURIComponent(folderId || '')}&userId=${getUserIdParam()}${sourceQuery}${origSizeParam}`;
       
+      const token = localStorage.getItem('sc_auth_token') || '';
       const headers: Record<string, string> = {
         'Content-Type': file.type || 'application/octet-stream',
         'x-user-id': getCurrentUserId() || 'default-user',
       };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
       if (uploadSource) {
         headers['x-upload-source'] = uploadSource;
       }
@@ -806,7 +810,7 @@ export const CloudStorageAPI = {
         method: 'POST',
         headers,
         body: file,
-      });
+      }, 180000); // 3 minutes timeout pour éviter tout avortement prématuré de fichier média volumineux
 
       if (!res.ok) {
         let errorMsg = 'Erreur lors du téléversement';

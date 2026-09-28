@@ -327,6 +327,11 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
   useEffect(() => {
     loadConversations();
+    const handleRestore = () => {
+      loadConversations();
+    };
+    window.addEventListener('unifolder_data_restored', handleRestore);
+    return () => window.removeEventListener('unifolder_data_restored', handleRestore);
   }, [currentUserId]);
 
   // Chargement des messages de la conversation active

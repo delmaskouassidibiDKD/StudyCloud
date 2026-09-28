@@ -42,7 +42,7 @@ function corsHeaders(origin = "*") {
     "Access-Control-Allow-Headers": "Content-Type, Authorization, x-user-id, Cache-Control, Pragma, *"
   };
 }
-function jsonResponse(data, status = 200, origin = "*", extraHeaders = {}) {
+function jsonResponse(data, status = 200, origin = "*") {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
@@ -50,8 +50,7 @@ function jsonResponse(data, status = 200, origin = "*", extraHeaders = {}) {
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
       "Pragma": "no-cache",
       "Expires": "0",
-      ...corsHeaders(origin),
-      ...extraHeaders
+      ...corsHeaders(origin)
     }
   });
 }
@@ -2325,362 +2324,9 @@ async function ensureCloudMediaTables(db) {
       await db.prepare("CREATE INDEX IF NOT EXISTS idx_pinned_user ON pinned_items(user_id)").run();
     } catch (e) {
     }
-    await ensureCompressionAndStorageTables(db);
     isCloudMediaTablesInitialized = true;
   } catch (err) {
     console.error("[StudyCloud Cloud Media Tables Init Error]", err);
-  }
-}
-
-let isCompressionTablesInitialized = false;
-async function ensureCompressionAndStorageTables(db) {
-  if (isCompressionTablesInitialized || !db) return;
-  try {
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS user_storage_usage (
-        user_id TEXT PRIMARY KEY,
-        total_original_bytes INTEGER DEFAULT 0,
-        total_original_formatted TEXT DEFAULT '0 o',
-        total_r2_compressed_bytes INTEGER DEFAULT 0,
-        total_r2_formatted TEXT DEFAULT '0 o',
-        total_d1_database_bytes INTEGER DEFAULT 0,
-        total_d1_formatted TEXT DEFAULT '0 o',
-        total_saved_bytes INTEGER DEFAULT 0,
-        total_saved_formatted TEXT DEFAULT '0 o',
-        compression_ratio REAL DEFAULT 0.0,
-        total_files_count INTEGER DEFAULT 0,
-        breakdown_json TEXT DEFAULT '{}',
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
-
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS file_compression_records (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        file_name TEXT NOT NULL,
-        category TEXT NOT NULL,
-        folder_id TEXT DEFAULT '',
-        original_size_bytes INTEGER NOT NULL,
-        original_size_formatted TEXT NOT NULL,
-        compressed_size_bytes INTEGER NOT NULL,
-        compressed_size_formatted TEXT NOT NULL,
-        saved_bytes INTEGER NOT NULL,
-        compression_ratio REAL NOT NULL,
-        r2_key TEXT DEFAULT '',
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
-
-    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_fcomp_user ON file_compression_records(user_id)").run(); } catch (e) {}
-
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS study_files (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        size INTEGER DEFAULT 0,
-        size_bytes INTEGER DEFAULT 0,
-        original_size_bytes INTEGER DEFAULT 0,
-        compressed_size_bytes INTEGER DEFAULT 0,
-        compression_ratio REAL DEFAULT 0.0,
-        type TEXT DEFAULT 'application/octet-stream',
-        extension TEXT DEFAULT '',
-        r2_key TEXT DEFAULT '',
-        file_url TEXT DEFAULT '',
-        is_favorite INTEGER DEFAULT 0,
-        imported_at INTEGER,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run().catch(() => {});
-    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_study_files_user ON study_files(user_id)").run(); } catch (e) {}
-
-    const tablesToEnhance = ["video_files", "audio_files", "image_files", "document_files", "classeur_files", "files", "study_files"];
-    for (const tbl of tablesToEnhance) {
-      try { await db.prepare(`ALTER TABLE ${tbl} ADD COLUMN original_size_bytes INTEGER DEFAULT 0`).run(); } catch (e) {}
-      try { await db.prepare(`ALTER TABLE ${tbl} ADD COLUMN compressed_size_bytes INTEGER DEFAULT 0`).run(); } catch (e) {}
-      try { await db.prepare(`ALTER TABLE ${tbl} ADD COLUMN compression_ratio REAL DEFAULT 0.0`).run(); } catch (e) {}
-    }
-    isCompressionTablesInitialized = true;
-  } catch (err) {
-    console.warn("[StudyCloud] Compression & Storage tables init warning:", err);
-  }
-}
-
-async function recalculateAndSaveUserStorage(db, userId) {
-  if (!db || !userId) return null;
-  try {
-    await ensureCompressionAndStorageTables(db);
-
-    // 1. REQUÊTES EN PARALLÈLE POUR TOUS LES MENUS ET TABLES DE L'UTILISATEUR
-    // (EXCLUSION STRICTE : published_documents, published_document_downloads, user_document_interactions,
-    //  support_tickets, signalements, abonnements/plans, demandes de stockage, profils entreprises/système)
-    const [
-      videoStats,
-      audioStats,
-      imageStats,
-      docStats,
-      classeurStats,
-      matiereFileStats,
-      studyFileStats,
-      downloadStats,
-      secureStats,
-      trashStats,
-      folderCount,
-      productStats,
-      shopStats,
-      cartStats,
-      sellerFollowStats,
-      prodInteractionStats,
-      chatStats,
-      sessionStats,
-      aiContentStats,
-      alarmStats,
-      gradeStats,
-      noteStats,
-      linkStats,
-      calendarStats,
-      scheduleConfigStats,
-      scheduleStats,
-      matiereMetaStats,
-      favStats,
-      pinnedStats,
-      sharedFolderStats,
-      sharedFilesStats,
-      secureConfigStats,
-      userProfileStats,
-      userPrefsStats,
-      notifStats,
-      referralStats
-    ] = await Promise.all([
-      // A. Médias personnels avec R2 & D1 (Page 1 Fichiers, Matières & Fichiers d'étude)
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM video_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM audio_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM image_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM document_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM classeur_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size END), 0) as compBytes FROM files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE COALESCE(size_bytes, size) END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE COALESCE(size_bytes, size) END), 0) as compBytes FROM study_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(size_bytes), 0) as compBytes FROM download_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(size_bytes), 0) as compBytes FROM secure_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(size_bytes), 0) as compBytes FROM trash_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt FROM classeur_folders WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0 })),
-      
-      // B. Boutique de l'utilisateur (Publications créées, profil, panier, interactions et abonnements)
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(description) + LENGTH(COALESCE(image_urls_json, '[]')) + LENGTH(COALESCE(category, '')) + LENGTH(COALESCE(seller_phone, '')) + LENGTH(COALESCE(seller_whatsapp, ''))), 0) as textBytes FROM products WHERE seller_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(shop_name) + LENGTH(COALESCE(shop_description, '')) + LENGTH(COALESCE(shop_phone, '')) + LENGTH(COALESCE(shop_whatsapp, '')) + LENGTH(COALESCE(shop_avatar_url, '')) + LENGTH(COALESCE(shop_banner_url, ''))), 0) as textBytes FROM shop_profiles WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(product_id) + LENGTH(COALESCE(notes, ''))), 0) as textBytes FROM cart_items WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(seller_id)), 0) as textBytes FROM seller_follows WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(product_id) + LENGTH(COALESCE(interaction_type, ''))), 0) as textBytes FROM user_product_interactions WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-
-      // C. Espace d'étude & Discussions avec l'IA & Créations IA
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(message_text) + LENGTH(COALESCE(sender, ''))), 0) as textBytes FROM chat_messages WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(matiere_name)), 0) as textBytes FROM study_sessions WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(content) + LENGTH(COALESCE(subject, '')) + LENGTH(COALESCE(type, ''))), 0) as textBytes FROM ai_generated_contents WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-
-      // D. Applications (Horloge/Alarmes, Moyennes/Notes, Bloc-notes, Liens créés, Agenda, Emploi du temps, Matières)
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(label) + LENGTH(COALESCE(days_json, '')) + LENGTH(COALESCE(time, '')) + LENGTH(COALESCE(sound, ''))), 0) as textBytes FROM alarms WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(subject_name) + LENGTH(COALESCE(sub_grades_json, ''))), 0) as textBytes FROM grades WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(content) + LENGTH(COALESCE(category, '')) + LENGTH(COALESCE(color, ''))), 0) as textBytes FROM notes WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(url) + LENGTH(COALESCE(category, ''))), 0) as textBytes FROM app_external_links WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(description, '')) + LENGTH(COALESCE(start_date, '')) + LENGTH(COALESCE(end_date, ''))), 0) as textBytes FROM calendar_events WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(COALESCE(start_time, '')) + LENGTH(COALESCE(end_time, '')) + LENGTH(COALESCE(slot_duration, '')) + LENGTH(COALESCE(days_json, ''))), 0) as textBytes FROM schedule_config WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(day_name) + LENGTH(subject_name) + LENGTH(COALESCE(room, '')) + LENGTH(COALESCE(professor, ''))), 0) as textBytes FROM schedule_slots WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(name) + LENGTH(COALESCE(icon, '')) + LENGTH(COALESCE(color, ''))), 0) as textBytes FROM matieres WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-
-      // E. Éléments épinglés, Favoris, Dossiers partagés et Fichiers partagés
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(item_id) + LENGTH(category)), 0) as textBytes FROM user_favorites WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(item_id) + LENGTH(category)), 0) as textBytes FROM pinned_items WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(name) + LENGTH(COALESCE(share_code, ''))), 0) as textBytes FROM shared_folders WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(file_id) + LENGTH(COALESCE(file_name, ''))), 0) as textBytes FROM shared_folder_files WHERE folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-
-      // F. Configuration Coffre-fort, Profil Utilisateur (Avatar/Bio), Préférences, Notifications et Parrainages
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(COALESCE(pin_hash, '')) + LENGTH(COALESCE(hint, ''))), 0) as textBytes FROM secure_folder_config WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(name) + LENGTH(email) + LENGTH(COALESCE(avatar_url, '')) + LENGTH(COALESCE(school, '')) + LENGTH(COALESCE(filiere, '')) + LENGTH(COALESCE(country, '')) + LENGTH(COALESCE(phone, '')) + LENGTH(COALESCE(bio, ''))), 0) as textBytes FROM users WHERE id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(COALESCE(theme, '')) + LENGTH(COALESCE(language, '')) + LENGTH(COALESCE(preferences_json, ''))), 0) as textBytes FROM user_preferences WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(message) + LENGTH(COALESCE(type, ''))), 0) as textBytes FROM notifications WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(referred_user_id) + LENGTH(COALESCE(referred_user_name, ''))), 0) as textBytes FROM referrals WHERE referrer_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 }))
-    ]);
-
-    // 2. CALCUL DES TOTAUX
-    const totalFiles = Number(videoStats?.cnt || 0) + Number(audioStats?.cnt || 0) + Number(imageStats?.cnt || 0) + 
-                       Number(docStats?.cnt || 0) + Number(classeurStats?.cnt || 0) + Number(matiereFileStats?.cnt || 0) + 
-                       Number(studyFileStats?.cnt || 0) +
-                       Number(downloadStats?.cnt || 0) + Number(secureStats?.cnt || 0) + Number(trashStats?.cnt || 0);
-
-    // A. Espace des fichiers R2 (stockage physique réel sur Cloudflare R2)
-    const totalFileR2Bytes = Number(videoStats?.compBytes || 0) + Number(audioStats?.compBytes || 0) + 
-                             Number(imageStats?.compBytes || 0) + Number(docStats?.compBytes || 0) + 
-                             Number(classeurStats?.compBytes || 0) + Number(matiereFileStats?.compBytes || 0) + 
-                             Number(studyFileStats?.compBytes || 0) +
-                             Number(downloadStats?.compBytes || 0) + Number(secureStats?.compBytes || 0) + 
-                             Number(trashStats?.compBytes || 0);
-
-    // Photos des produits boutique stockées dans R2 (~350 Ko par image de produit publié)
-    const productCount = Number(productStats?.cnt || 0);
-    const estimatedProductR2Bytes = productCount * 350 * 1024;
-    const totalR2Bytes = totalFileR2Bytes + estimatedProductR2Bytes;
-
-    // B. Espace total Base de données Cloudflare D1
-    // Somme des octets textuels réels de l'utilisateur + overhead SQLite (~160 octets de structure B-Tree par ligne)
-    const totalD1TextBytes = Number(productStats?.textBytes || 0) + Number(shopStats?.textBytes || 0) + Number(cartStats?.textBytes || 0) +
-                             Number(sellerFollowStats?.textBytes || 0) + Number(prodInteractionStats?.textBytes || 0) +
-                             Number(chatStats?.textBytes || 0) + Number(sessionStats?.textBytes || 0) + Number(aiContentStats?.textBytes || 0) +
-                             Number(alarmStats?.textBytes || 0) + Number(gradeStats?.textBytes || 0) + Number(noteStats?.textBytes || 0) +
-                             Number(linkStats?.textBytes || 0) + Number(calendarStats?.textBytes || 0) +
-                             Number(scheduleConfigStats?.textBytes || 0) + Number(scheduleStats?.textBytes || 0) +
-                             Number(matiereMetaStats?.textBytes || 0) +
-                             Number(favStats?.textBytes || 0) + Number(pinnedStats?.textBytes || 0) +
-                             Number(sharedFolderStats?.textBytes || 0) + Number(sharedFilesStats?.textBytes || 0) +
-                             Number(secureConfigStats?.textBytes || 0) +
-                             Number(userProfileStats?.textBytes || 0) + Number(userPrefsStats?.textBytes || 0) +
-                             Number(notifStats?.textBytes || 0) + Number(referralStats?.textBytes || 0);
-
-    const totalD1Rows = totalFiles + Number(folderCount?.cnt || 0) +
-                        productCount + Number(shopStats?.cnt || 0) + Number(cartStats?.cnt || 0) +
-                        Number(sellerFollowStats?.cnt || 0) + Number(prodInteractionStats?.cnt || 0) +
-                        Number(chatStats?.cnt || 0) + Number(sessionStats?.cnt || 0) + Number(aiContentStats?.cnt || 0) +
-                        Number(alarmStats?.cnt || 0) + Number(gradeStats?.cnt || 0) + Number(noteStats?.cnt || 0) +
-                        Number(linkStats?.cnt || 0) + Number(calendarStats?.cnt || 0) +
-                        Number(scheduleConfigStats?.cnt || 0) + Number(scheduleStats?.cnt || 0) +
-                        Number(matiereMetaStats?.cnt || 0) +
-                        Number(favStats?.cnt || 0) + Number(pinnedStats?.cnt || 0) +
-                        Number(sharedFolderStats?.cnt || 0) + Number(sharedFilesStats?.cnt || 0) +
-                        Number(secureConfigStats?.cnt || 0) +
-                        Number(userProfileStats?.cnt || 0) + Number(userPrefsStats?.cnt || 0) +
-                        Number(notifStats?.cnt || 0) + Number(referralStats?.cnt || 0);
-
-    const estimatedD1Bytes = Math.max(1024, totalD1TextBytes + (totalD1Rows * 160));
-
-    // C. Vraie valeur brute totale des fichiers (Non compressée - ce qui compte pour le quota de l'élève)
-    const totalFileOriginalBytes = Number(videoStats?.origBytes || 0) + Number(audioStats?.origBytes || 0) + 
-                                   Number(imageStats?.origBytes || 0) + Number(docStats?.origBytes || 0) + 
-                                   Number(classeurStats?.origBytes || 0) + Number(matiereFileStats?.origBytes || 0) + 
-                                   Number(studyFileStats?.origBytes || 0) +
-                                   Number(downloadStats?.origBytes || 0) + Number(secureStats?.origBytes || 0) + 
-                                   Number(trashStats?.origBytes || 0);
-
-    // Total original affiché à l'utilisateur = vraies tailles des fichiers + photos boutique + données D1 de ses apps
-    const totalOriginalBytes = totalFileOriginalBytes + estimatedProductR2Bytes + estimatedD1Bytes;
-
-    // Économie réalisée sur les serveurs
-    const totalActuallyConsumed = totalR2Bytes + estimatedD1Bytes;
-    const savedBytes = Math.max(0, totalOriginalBytes - totalActuallyConsumed);
-    const compRatio = totalOriginalBytes > 0 ? Math.round((savedBytes / totalOriginalBytes) * 1000) / 10 : 0;
-
-    // 3. DÉCOMPOSITION DÉTAILLÉE PAR MENU ET APPLICATION
-    const breakdown = {
-      fichiers_media: {
-        videos: { count: Number(videoStats?.cnt || 0), originalBytes: Number(videoStats?.origBytes || 0), compressedBytes: Number(videoStats?.compBytes || 0) },
-        audio: { count: Number(audioStats?.cnt || 0), originalBytes: Number(audioStats?.origBytes || 0), compressedBytes: Number(audioStats?.compBytes || 0) },
-        images: { count: Number(imageStats?.cnt || 0), originalBytes: Number(imageStats?.origBytes || 0), compressedBytes: Number(imageStats?.compBytes || 0) },
-        documents: { count: Number(docStats?.cnt || 0), originalBytes: Number(docStats?.origBytes || 0), compressedBytes: Number(docStats?.compBytes || 0) },
-        classeur: { count: Number(classeurStats?.cnt || 0), originalBytes: Number(classeurStats?.origBytes || 0), compressedBytes: Number(classeurStats?.compBytes || 0) },
-        matieres_files: { count: Number(matiereFileStats?.cnt || 0), originalBytes: Number(matiereFileStats?.origBytes || 0), compressedBytes: Number(matiereFileStats?.compBytes || 0) },
-        study_files: { count: Number(studyFileStats?.cnt || 0), originalBytes: Number(studyFileStats?.origBytes || 0), compressedBytes: Number(studyFileStats?.compBytes || 0) },
-        downloads: { count: Number(downloadStats?.cnt || 0), originalBytes: Number(downloadStats?.origBytes || 0), compressedBytes: Number(downloadStats?.compBytes || 0) },
-        secure: { count: Number(secureStats?.cnt || 0), originalBytes: Number(secureStats?.origBytes || 0), compressedBytes: Number(secureStats?.compBytes || 0) },
-        trash: { count: Number(trashStats?.cnt || 0), originalBytes: Number(trashStats?.origBytes || 0), compressedBytes: Number(trashStats?.compBytes || 0) },
-      },
-      boutique: {
-        products_count: productCount,
-        products_d1_bytes: Number(productStats?.textBytes || 0),
-        products_r2_bytes: estimatedProductR2Bytes,
-        shop_profile_bytes: Number(shopStats?.textBytes || 0),
-        cart_items_count: Number(cartStats?.cnt || 0),
-        cart_items_bytes: Number(cartStats?.textBytes || 0),
-        seller_follows_count: Number(sellerFollowStats?.cnt || 0),
-        interactions_count: Number(prodInteractionStats?.cnt || 0)
-      },
-      espace_etude_ia: {
-        chat_messages_count: Number(chatStats?.cnt || 0),
-        chat_messages_bytes: Number(chatStats?.textBytes || 0),
-        study_sessions_count: Number(sessionStats?.cnt || 0),
-        study_sessions_bytes: Number(sessionStats?.textBytes || 0),
-        ai_creations_count: Number(aiContentStats?.cnt || 0),
-        ai_creations_bytes: Number(aiContentStats?.textBytes || 0),
-        imported_study_files_count: Number(studyFileStats?.cnt || 0),
-        imported_study_files_bytes: Number(studyFileStats?.origBytes || 0)
-      },
-      applications: {
-        horloge_alarmes: { count: Number(alarmStats?.cnt || 0), bytes: Number(alarmStats?.textBytes || 0) },
-        moyennes_notes: { count: Number(gradeStats?.cnt || 0), bytes: Number(gradeStats?.textBytes || 0) },
-        bloc_notes: { count: Number(noteStats?.cnt || 0), bytes: Number(noteStats?.textBytes || 0) },
-        liens_crees: { count: Number(linkStats?.cnt || 0), bytes: Number(linkStats?.textBytes || 0) },
-        agenda_calendrier: { count: Number(calendarStats?.cnt || 0), bytes: Number(calendarStats?.textBytes || 0) },
-        emploi_du_temps: { count: Number(scheduleStats?.cnt || 0) + Number(scheduleConfigStats?.cnt || 0), bytes: Number(scheduleStats?.textBytes || 0) + Number(scheduleConfigStats?.textBytes || 0) },
-        matieres_creees: { count: Number(matiereMetaStats?.cnt || 0), bytes: Number(matiereMetaStats?.textBytes || 0) },
-        favoris_epingles: { count: Number(favStats?.cnt || 0) + Number(pinnedStats?.cnt || 0), bytes: Number(favStats?.textBytes || 0) + Number(pinnedStats?.textBytes || 0) },
-        dossiers_partages: { count: Number(sharedFolderStats?.cnt || 0), bytes: Number(sharedFolderStats?.textBytes || 0) + Number(sharedFilesStats?.textBytes || 0) },
-        profil_et_compte: { count: Number(userProfileStats?.cnt || 0), bytes: Number(userProfileStats?.textBytes || 0) + Number(userPrefsStats?.textBytes || 0) },
-        notifications: { count: Number(notifStats?.cnt || 0), bytes: Number(notifStats?.textBytes || 0) },
-        parrainages: { count: Number(referralStats?.cnt || 0), bytes: Number(referralStats?.textBytes || 0) }
-      },
-      exclusions_garanties: [
-        "published_documents (ressources publiques de la bibliothèque)",
-        "published_document_downloads (compteurs de téléchargement de ressources)",
-        "user_document_interactions (vues et avis sur ressources publiques)",
-        "support_tickets, réclamations et signalements",
-        "storage_upgrade_requests (demandes d'extension quota stockage)",
-        "abonnements, plans tarifaires et quotas globaux de la plateforme",
-        "données système et d'administration générale"
-      ]
-    };
-
-    const totalOriginalFormatted = formatBytes(totalOriginalBytes);
-    const totalR2Formatted = formatBytes(totalR2Bytes);
-    const totalD1Formatted = formatBytes(estimatedD1Bytes);
-    const totalSavedFormatted = formatBytes(savedBytes);
-    const breakdownJson = JSON.stringify(breakdown);
-
-    // 4. INSERTION / MISE À JOUR DANS user_storage_usage
-    await db.prepare(`
-      INSERT INTO user_storage_usage (
-        user_id, total_original_bytes, total_original_formatted,
-        total_r2_compressed_bytes, total_r2_formatted,
-        total_d1_database_bytes, total_d1_formatted,
-        total_saved_bytes, total_saved_formatted,
-        compression_ratio, total_files_count, breakdown_json, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(user_id) DO UPDATE SET
-        total_original_bytes = excluded.total_original_bytes,
-        total_original_formatted = excluded.total_original_formatted,
-        total_r2_compressed_bytes = excluded.total_r2_compressed_bytes,
-        total_r2_formatted = excluded.total_r2_formatted,
-        total_d1_database_bytes = excluded.total_d1_database_bytes,
-        total_d1_formatted = excluded.total_d1_formatted,
-        total_saved_bytes = excluded.total_saved_bytes,
-        total_saved_formatted = excluded.total_saved_formatted,
-        compression_ratio = excluded.compression_ratio,
-        total_files_count = excluded.total_files_count,
-        breakdown_json = excluded.breakdown_json,
-        updated_at = CURRENT_TIMESTAMP
-    `).bind(
-      userId, totalOriginalBytes, totalOriginalFormatted,
-      totalR2Bytes, totalR2Formatted,
-      estimatedD1Bytes, totalD1Formatted,
-      savedBytes, totalSavedFormatted,
-      compRatio, totalFiles, breakdownJson
-    ).run();
-
-    return {
-      userId,
-      totalOriginalBytes,
-      totalOriginalFormatted,
-      totalR2Bytes,
-      totalR2Formatted,
-      totalD1Bytes: estimatedD1Bytes,
-      totalD1Formatted,
-      savedBytes,
-      totalSavedFormatted,
-      compressionRatio: compRatio,
-      totalFiles,
-      breakdown
-    };
-  } catch (err) {
-    console.error("[StudyCloud] Erreur recalcul storage:", err);
-    return null;
   }
 }
 async function ensureReferralsTables(db) {
@@ -4859,24 +4505,11 @@ var index_default = {
         }
         if (method === "POST") {
           const body = await request.json();
-          const { 
-            id, userId, matiereId, name, size, type, extension, r2Key, fileUrl, 
-            isFavorite, isImported, isStudySession, lastImported,
-            originalSizeBytes, compressedSizeBytes, compressionRatio 
-          } = body;
+          const { id, userId, matiereId, name, size, type, extension, r2Key, fileUrl, isFavorite, isImported, isStudySession, lastImported } = body;
           if (!id || !userId || !name) return errorResponse("id, userId et name requis", 400, origin);
-
-          const origBytes = originalSizeBytes || (typeof size === 'number' ? size : 0);
-          const compBytes = compressedSizeBytes || origBytes;
-          const ratio = compressionRatio || (origBytes > 0 ? Math.round(Math.max(0, 1 - (compBytes / origBytes)) * 1000) / 10 : 0);
-
           await env.DB.prepare(`
-            INSERT INTO files (
-              id, user_id, matiere_id, name, size, type, extension, 
-              r2_key, file_url, is_favorite, is_imported, is_study_session, 
-              last_imported, original_size_bytes, compressed_size_bytes, compression_ratio, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               matiere_id = excluded.matiere_id,
@@ -4888,9 +4521,6 @@ var index_default = {
               is_imported = excluded.is_imported,
               is_study_session = excluded.is_study_session,
               last_imported = excluded.last_imported,
-              original_size_bytes = COALESCE(excluded.original_size_bytes, files.original_size_bytes),
-              compressed_size_bytes = COALESCE(excluded.compressed_size_bytes, files.compressed_size_bytes),
-              compression_ratio = COALESCE(excluded.compression_ratio, files.compression_ratio),
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             id,
@@ -4905,31 +4535,8 @@ var index_default = {
             isFavorite ? 1 : 0,
             isImported ? 1 : 0,
             isStudySession ? 1 : 0,
-            lastImported || Date.now(),
-            origBytes,
-            compBytes,
-            ratio
+            lastImported || Date.now()
           ).run();
-
-          // Enregistrement dans file_compression_records
-          try {
-            await env.DB.prepare(`
-              INSERT INTO file_compression_records (
-                id, user_id, file_name, category, folder_id,
-                original_size_bytes, original_size_formatted,
-                compressed_size_bytes, compressed_size_formatted,
-                saved_bytes, compression_ratio, r2_key
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `).bind(
-              id, userId, name, 'matieres', matiereId || '',
-              origBytes, formatBytes(origBytes),
-              compBytes, formatBytes(compBytes),
-              Math.max(0, origBytes - compBytes), ratio, r2Key || ''
-            ).run();
-          } catch {}
-
-          recalculateAndSaveUserStorage(env.DB, userId).catch(() => {});
-
           return jsonResponse({ success: true, data: { id, name } }, 201, origin);
         }
       }
@@ -4944,7 +4551,7 @@ var index_default = {
       if (path.startsWith("/api/files/") && method === "DELETE") {
         if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
         const id = path.split("/")[3];
-        const file = await env.DB.prepare("SELECT r2_key, user_id FROM files WHERE id = ?").bind(id).first();
+        const file = await env.DB.prepare("SELECT r2_key FROM files WHERE id = ?").bind(id).first();
         if (file && file.r2_key && env.BUCKET) {
           try {
             await env.BUCKET.delete(file.r2_key);
@@ -4952,105 +4559,18 @@ var index_default = {
           }
         }
         await env.DB.prepare("DELETE FROM files WHERE id = ?").bind(id).run();
-        if (file?.user_id) {
-          recalculateAndSaveUserStorage(env.DB, file.user_id).catch(() => {});
-        }
         return jsonResponse({ success: true, message: "Fichier supprim\xE9" }, 200, origin);
-      }
-      if (path === "/api/study-files") {
-        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
-        await ensureCompressionAndStorageTables(env.DB);
-        if (method === "GET") {
-          const userId = url.searchParams.get("userId");
-          if (!userId) return errorResponse("userId requis", 400, origin);
-          const { results } = await env.DB.prepare("SELECT * FROM study_files WHERE user_id = ? ORDER BY imported_at DESC, created_at DESC").bind(userId).all().catch(() => ({ results: [] }));
-          return jsonResponse({ success: true, data: results || [] }, 200, origin);
-        }
-        if (method === "POST") {
-          const body = await request.json();
-          const { id, userId, name, size, type, extension, r2Key, fileUrl, isFavorite, importedAt, originalSizeBytes, compressedSizeBytes } = body;
-          const origBytes = originalSizeBytes || size || 0;
-          const compBytes = compressedSizeBytes || origBytes;
-          const ratio = origBytes > 0 ? Math.round(((origBytes - compBytes) / origBytes) * 1000) / 10 : 0;
-          await env.DB.prepare(`
-            INSERT INTO study_files (id, user_id, name, size, size_bytes, original_size_bytes, compressed_size_bytes, compression_ratio, type, extension, r2_key, file_url, is_favorite, imported_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(id) DO UPDATE SET
-              name = excluded.name,
-              size = excluded.size,
-              size_bytes = excluded.size_bytes,
-              original_size_bytes = excluded.original_size_bytes,
-              compressed_size_bytes = excluded.compressed_size_bytes,
-              compression_ratio = excluded.compression_ratio,
-              type = excluded.type,
-              extension = excluded.extension,
-              r2_key = excluded.r2_key,
-              file_url = excluded.file_url,
-              is_favorite = excluded.is_favorite,
-              imported_at = excluded.imported_at,
-              updated_at = CURRENT_TIMESTAMP
-          `).bind(id || crypto.randomUUID(), userId, name, size || 0, size || 0, origBytes, compBytes, ratio, type || "application/octet-stream", extension || "", r2Key || "", fileUrl || "", isFavorite ? 1 : 0, importedAt || Date.now()).run();
-          
-          try {
-            await env.DB.prepare(`
-              INSERT INTO file_compression_records (
-                id, user_id, file_name, category, folder_id,
-                original_size_bytes, original_size_formatted,
-                compressed_size_bytes, compressed_size_formatted,
-                saved_bytes, compression_ratio, r2_key
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `).bind(
-              id, userId, name, 'study', 'study_imported',
-              origBytes, formatBytes(origBytes),
-              compBytes, formatBytes(compBytes),
-              Math.max(0, origBytes - compBytes), ratio, r2Key || ''
-            ).run();
-          } catch {}
-
-          if (userId) recalculateAndSaveUserStorage(env.DB, userId).catch(() => {});
-          return jsonResponse({ success: true, message: "Fichier d'\xE9tude enregistr\xE9" }, 201, origin);
-        }
-      }
-      if (path.startsWith("/api/study-files/") && method === "DELETE") {
-        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
-        await ensureCompressionAndStorageTables(env.DB);
-        const id = path.split("/")[3];
-        const file = await env.DB.prepare("SELECT r2_key, user_id FROM study_files WHERE id = ?").bind(id).first().catch(() => null);
-        if (file?.r2_key && env.BUCKET) {
-          try { await env.BUCKET.delete(file.r2_key); } catch (e) {}
-        }
-        await env.DB.prepare("DELETE FROM study_files WHERE id = ?").bind(id).run().catch(() => {});
-        if (file?.user_id) recalculateAndSaveUserStorage(env.DB, file.user_id).catch(() => {});
-        return jsonResponse({ success: true, message: "Fichier d'\xE9tude supprim\xE9" }, 200, origin);
       }
       if (path === "/api/storage/upload" && method === "PUT") {
         const key = url.searchParams.get("key");
         if (!key) return errorResponse("Cl\xE9 de stockage manquante", 400, origin);
         const contentType = request.headers.get("Content-Type") || "application/octet-stream";
-        const fileBuffer = await request.arrayBuffer();
-        const compressedSizeBytes = fileBuffer.byteLength;
-        const rawOrig = request.headers.get("x-original-size-bytes");
-        const originalSizeBytes = rawOrig ? (parseInt(rawOrig, 10) || compressedSizeBytes) : compressedSizeBytes;
-        const savedBytes = Math.max(0, originalSizeBytes - compressedSizeBytes);
-        const compRatio = originalSizeBytes > 0 ? Math.round((savedBytes / originalSizeBytes) * 1000) / 10 : 0;
-
-        await env.BUCKET.put(key, fileBuffer, {
-          httpMetadata: { contentType },
-          customMetadata: {
-            originalSizeBytes: String(originalSizeBytes),
-            compressedSizeBytes: String(compressedSizeBytes),
-            compressionRatio: String(compRatio)
-          }
+        const fileData = request.body || await request.arrayBuffer();
+        await env.BUCKET.put(key, fileData, {
+          httpMetadata: { contentType }
         });
         const fileUrl = `${url.origin}/api/storage/file/${encodeURIComponent(key)}`;
-        return jsonResponse({ 
-          success: true, 
-          key, 
-          url: fileUrl,
-          originalSizeBytes,
-          compressedSizeBytes,
-          compressionRatio: compRatio
-        }, 200, origin);
+        return jsonResponse({ success: true, key, url: fileUrl }, 200, origin);
       }
       if (path.startsWith("/api/storage/file/") && method === "GET") {
         const key = decodeURIComponent(path.replace("/api/storage/file/", ""));
@@ -5184,21 +4704,35 @@ var index_default = {
         if (!foundRecord) {
           foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "classeur" as category FROM classeur_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
+        if (!foundRecord) {
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "documents" as category FROM files WHERE id = ? LIMIT 1').bind(fileId).first();
+        }
+        if (!foundRecord) {
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, file_type as extension, title as name, "documents" as category FROM published_documents WHERE id = ? LIMIT 1').bind(fileId).first();
+        }
         if (!foundRecord || !foundRecord.r2_key) {
           return errorResponse("Fichier introuvable dans la base de donn\xE9es", 404, origin);
         }
         const categoryBucket = getBucketForCategory(rawEnv, foundRecord.category);
-        if (!categoryBucket) return errorResponse("Stockage R2 indisponible pour cette cat\xE9gorie", 503, origin);
+        const mainBucket = rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
+        const targetBucket = categoryBucket || mainBucket;
+        if (!targetBucket) return errorResponse("Stockage R2 indisponible pour cette cat\xE9gorie", 503, origin);
         const rangeHeader = request.headers.get("Range");
-        let object;
+        let object = null;
         if (rangeHeader) {
           try {
-            object = await categoryBucket.get(foundRecord.r2_key, { range: request.headers });
+            object = await targetBucket.get(foundRecord.r2_key, { range: request.headers });
           } catch (e) {
-            object = await categoryBucket.get(foundRecord.r2_key);
+            object = await targetBucket.get(foundRecord.r2_key);
           }
         } else {
-          object = await categoryBucket.get(foundRecord.r2_key);
+          object = await targetBucket.get(foundRecord.r2_key);
+        }
+        if (!object && mainBucket && mainBucket !== targetBucket) {
+          try {
+            object = rangeHeader ? await mainBucket.get(foundRecord.r2_key, { range: request.headers }) : await mainBucket.get(foundRecord.r2_key);
+          } catch (e) {
+          }
         }
         if (!object) return errorResponse("Objet binaire introuvable dans R2", 404, origin);
         const headers = new Headers();
@@ -5251,66 +4785,47 @@ var index_default = {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise pour t\xE9l\xE9verser un fichier", 401, origin);
         const requestedCategory = (url.searchParams.get("category") || "auto").toLowerCase().trim();
-        const uploadSource = (url.searchParams.get("source") || request.headers.get("x-upload-source") || "btn-auto").toLowerCase().trim();
         const fileName = url.searchParams.get("name") || "fichier_" + Date.now();
         const folderId = url.searchParams.get("folderId") || "";
         const contentType = request.headers.get("Content-Type") || "application/octet-stream";
         const normMime = (contentType || "").toLowerCase().trim();
         const ext = fileName.includes(".") ? (fileName.split(".").pop() || "").toLowerCase().trim() : "";
-        const lowerName = fileName.toLowerCase();
-
-        const imageExts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico", "tiff", "tif", "heic", "heif", "avif", "raw", "psd", "ai", "eps"];
-        const videoExts = ["mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "ts", "ogv", "mpg", "mpeg", "vob", "m2ts", "divx"];
-        const audioExts = ["mp3", "wav", "ogg", "flac", "m4a", "aac", "wma", "opus", "amr", "weba", "aiff", "alac", "mid", "midi", "caf", "3ga", "3gp", "m4b", "m4p", "oga"];
-        const docExts = ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "odt", "ods", "odp", "rtf", "tex", "epub", "md", "xml", "json"];
-        
-        // DÉTECTION ROBUSTE DES FORMATS & CONVENTIONS WHATSAPP / MOBILE
-        const isExplicitVideo = lowerName.startsWith("vid-") || lowerName.includes("whatsapp video") || lowerName.includes("video_") || videoExts.includes(ext) || normMime.startsWith("video/");
-        const isExplicitImage = lowerName.startsWith("img-") || lowerName.includes("whatsapp image") || lowerName.includes("image_") || lowerName.includes("photo_") || imageExts.includes(ext) || normMime.startsWith("image/");
-        const isWhatsAppVoice = !isExplicitVideo && !isExplicitImage && (
-          lowerName.startsWith("aud-") || lowerName.startsWith("ptt-") || lowerName.includes("whatsapp audio") || lowerName.includes("voice_") || lowerName.includes("audio_")
-        );
-
+        const imageExts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico", "tiff", "tif", "heic", "heif", "avif", "raw"];
+        const videoExts = ["mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "3gp", "m4v", "ts", "ogv", "mpg", "mpeg"];
+        const audioExts = ["mp3", "wav", "ogg", "flac", "m4a", "aac", "wma", "opus", "aiff", "alac", "mid", "midi"];
         let detectedNature = "documents";
-        if (isExplicitVideo) {
-          detectedNature = "videos";
-        } else if (isExplicitImage) {
+        if (normMime.startsWith("image/") || imageExts.includes(ext)) {
           detectedNature = "images";
-        } else if (isWhatsAppVoice || audioExts.includes(ext) || (ext === "3gp" && normMime.includes("audio")) || normMime.includes("opus") || normMime.includes("ogg") || normMime.startsWith("audio/")) {
+        } else if (normMime.startsWith("video/") || videoExts.includes(ext)) {
+          detectedNature = "videos";
+        } else if (normMime.startsWith("audio/") || audioExts.includes(ext)) {
           detectedNature = "audio";
-        } else if (docExts.includes(ext) || normMime.startsWith("text/")) {
-          detectedNature = "documents";
-        } else {
-          detectedNature = "documents";
         }
-
         let finalCategory;
-        // CONTRÔLE DOUANIER STRICT BASÉ SUR LE BOUTON SOURCE (uploadSource) ET LA CATÉGORIE
-        if (uploadSource === "btn-menu-videos" || requestedCategory === "videos") {
-          if (detectedNature !== "videos") {
-            const extra = (isWhatsAppVoice || detectedNature === "audio")
-              ? " Ce fichier semble être un fichier audio/vocal (ex: WhatsApp). Veuillez utiliser le bouton dédié « Importer un audio » dans le menu Audio / Musique !"
-              : " Veuillez importer un fichier vidéo (MP4, MKV, AVI, WebM...).";
-            return errorResponse("Ce fichier ne correspond pas au bouton d'importation Vidéos." + extra, 400, origin);
-          }
-          finalCategory = "videos";
-        } else if (uploadSource === "btn-menu-audio" || requestedCategory === "audio" || requestedCategory === "musique") {
-          if (detectedNature !== "audio") {
-            return errorResponse("Ce fichier ne correspond pas au bouton d'importation Audio / Musique. Veuillez importer un fichier sonore ou musical (MP3, WAV, FLAC, M4A, OPUS, OGG, WhatsApp...).", 400, origin);
-          }
-          finalCategory = "audio";
-        } else if (uploadSource === "btn-menu-images" || requestedCategory === "images" || requestedCategory === "photos") {
+        if (requestedCategory === "auto" || requestedCategory === "" || requestedCategory === "all") {
+          finalCategory = detectedNature;
+        } else if (requestedCategory === "classeur") {
+          finalCategory = "classeur";
+        } else if (requestedCategory === "images" || requestedCategory === "photos") {
           if (detectedNature !== "images") {
-            return errorResponse("Ce fichier ne correspond pas au bouton d'importation Images. Veuillez importer une image (PNG, JPG, SVG, WebP...).", 400, origin);
+            return errorResponse("Ce fichier ne correspond pas au menu Images. Veuillez importer une image (PNG, JPG, SVG, WebP...).", 400, origin);
           }
           finalCategory = "images";
-        } else if (uploadSource === "btn-menu-documents" || requestedCategory === "documents" || requestedCategory === "docs") {
+        } else if (requestedCategory === "videos") {
+          if (detectedNature !== "videos") {
+            return errorResponse("Ce fichier ne correspond pas au menu Vid\xE9os. Veuillez importer une vid\xE9o (MP4, MKV, AVI, WebM...).", 400, origin);
+          }
+          finalCategory = "videos";
+        } else if (requestedCategory === "audio" || requestedCategory === "musique") {
+          if (detectedNature !== "audio") {
+            return errorResponse("Ce fichier ne correspond pas au menu Audio. Veuillez importer un fichier audio (MP3, WAV, FLAC, M4A...).", 400, origin);
+          }
+          finalCategory = "audio";
+        } else if (requestedCategory === "documents" || requestedCategory === "docs") {
           if (detectedNature !== "documents") {
-            return errorResponse("Ce fichier ne correspond pas au bouton d'importation Documents. Veuillez importer un document (PDF, Word, Excel, texte...).", 400, origin);
+            return errorResponse("Ce fichier ne correspond pas au menu Documents. Veuillez importer un document (PDF, Word, Excel, texte...).", 400, origin);
           }
           finalCategory = "documents";
-        } else if (uploadSource === "btn-classeur-folder" || requestedCategory === "classeur") {
-          finalCategory = "classeur";
         } else {
           finalCategory = detectedNature;
         }
@@ -5322,18 +4837,8 @@ var index_default = {
         const fileId = "f_" + crypto.randomUUID().substring(0, 12);
         const storageKey = `${reqUserId}/${finalCategory}/${fileId}_${sanitizedName}`;
         const fileBuffer = await request.arrayBuffer();
-        const compressedSizeBytes = fileBuffer.byteLength;
-        const rawOrigBytes = request.headers.get("x-original-size-bytes") || url.searchParams.get("originalSizeBytes");
-        const originalSizeBytes = rawOrigBytes ? (parseInt(rawOrigBytes, 10) || compressedSizeBytes) : compressedSizeBytes;
-        const originalSizeFormatted = request.headers.get("x-original-size") || formatBytes(originalSizeBytes);
-        const compressedSizeFormatted = formatBytes(compressedSizeBytes);
-        const savedBytes = Math.max(0, originalSizeBytes - compressedSizeBytes);
-        const compRatio = originalSizeBytes > 0 ? Math.round((savedBytes / originalSizeBytes) * 1000) / 10 : 0;
-
-        // Vraies valeurs affichées à l'utilisateur (non compressées)
-        const sizeBytes = originalSizeBytes;
-        const sizeFormatted = originalSizeFormatted;
-
+        const sizeBytes = fileBuffer.byteLength;
+        const sizeFormatted = formatBytes(sizeBytes);
         const extUpper = ext.toUpperCase() || "FICHIER";
         const now = /* @__PURE__ */ new Date();
         const timeStr = now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -5344,10 +4849,7 @@ var index_default = {
             userId: reqUserId,
             originalName: fileName,
             category: finalCategory,
-            folderId,
-            originalSizeBytes: String(originalSizeBytes),
-            compressedSizeBytes: String(compressedSizeBytes),
-            compressionRatio: String(compRatio)
+            folderId
           }
         });
         const fileUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(finalCategory)}/${encodeURIComponent(storageKey)}`;
@@ -5355,48 +4857,30 @@ var index_default = {
           try {
             if (finalCategory === "images") {
               await env.DB.prepare(`
-                INSERT INTO image_files (id, user_id, name, size, size_bytes, original_size_bytes, compressed_size_bytes, compression_ratio, extension, date_formatted, r2_key, image_url, thumbnail_url, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, originalSizeBytes, compressedSizeBytes, compRatio, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+                INSERT INTO image_files (id, user_id, name, size, size_bytes, extension, date_formatted, r2_key, image_url, thumbnail_url, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
             } else if (finalCategory === "videos") {
               await env.DB.prepare(`
-                INSERT INTO video_files (id, user_id, name, size, size_bytes, original_size_bytes, compressed_size_bytes, compression_ratio, extension, date_formatted, r2_key, video_url, thumbnail_url, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, originalSizeBytes, compressedSizeBytes, compRatio, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+                INSERT INTO video_files (id, user_id, name, size, size_bytes, extension, date_formatted, r2_key, video_url, thumbnail_url, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
             } else if (finalCategory === "audio") {
               await env.DB.prepare(`
-                INSERT INTO audio_files (id, user_id, name, title, artist, size, size_bytes, original_size_bytes, compressed_size_bytes, compression_ratio, date_formatted, r2_key, audio_url, updated_at)
-                VALUES (?, ?, ?, ?, 'Artiste inconnu', ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-              `).bind(fileId, reqUserId, fileName, fileName, sizeFormatted, sizeBytes, originalSizeBytes, compressedSizeBytes, compRatio, dateFormatted, storageKey, fileUrl).run();
+                INSERT INTO audio_files (id, user_id, name, title, artist, size, size_bytes, date_formatted, r2_key, audio_url, updated_at)
+                VALUES (?, ?, ?, ?, 'Artiste inconnu', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              `).bind(fileId, reqUserId, fileName, fileName, sizeFormatted, sizeBytes, dateFormatted, storageKey, fileUrl).run();
             } else if (finalCategory === "documents") {
               await env.DB.prepare(`
-                INSERT INTO document_files (id, user_id, name, size, size_bytes, original_size_bytes, compressed_size_bytes, compression_ratio, extension, document_category, date_formatted, r2_key, file_url, preview_url, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'COURS', ?, ?, ?, ?, CURRENT_TIMESTAMP)
-              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, originalSizeBytes, compressedSizeBytes, compRatio, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+                INSERT INTO document_files (id, user_id, name, size, size_bytes, extension, document_category, date_formatted, r2_key, file_url, preview_url, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'COURS', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
             } else if (finalCategory === "classeur") {
               await env.DB.prepare(`
-                INSERT INTO classeur_files (id, user_id, folder_id, name, size, size_bytes, original_size_bytes, compressed_size_bytes, compression_ratio, category, extension, source, date_formatted, r2_key, file_url, preview_url, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Classeur', ?, ?, ?, ?, CURRENT_TIMESTAMP)
-              `).bind(fileId, reqUserId, folderId || "default-folder", fileName, sizeFormatted, sizeBytes, originalSizeBytes, compressedSizeBytes, compRatio, detectedNature, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+                INSERT INTO classeur_files (id, user_id, folder_id, name, size, size_bytes, category, extension, source, date_formatted, r2_key, file_url, preview_url, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Classeur', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              `).bind(fileId, reqUserId, folderId || "default-folder", fileName, sizeFormatted, sizeBytes, detectedNature, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
             }
-
-            // Enregistrement dans file_compression_records
-            await env.DB.prepare(`
-              INSERT INTO file_compression_records (
-                id, user_id, file_name, category, folder_id,
-                original_size_bytes, original_size_formatted,
-                compressed_size_bytes, compressed_size_formatted,
-                saved_bytes, compression_ratio, r2_key
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `).bind(
-              fileId, reqUserId, fileName, finalCategory, folderId || '',
-              originalSizeBytes, originalSizeFormatted,
-              compressedSizeBytes, compressedSizeFormatted,
-              savedBytes, compRatio, storageKey
-            ).run();
-
-            // Recalcul du stockage global de l'utilisateur (mise à jour user_storage_usage)
-            recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {});
           } catch (d1Err) {
             console.warn("[CloudWorker] Erreur insertion D1 upload:", d1Err);
           }
@@ -5458,137 +4942,32 @@ var index_default = {
           trash: Number(trashStat?.count || 0)
         };
         const totalBytes = Number(cFilesStat?.totalBytes || 0) + Number(audioStat?.totalBytes || 0) + Number(imageStat?.totalBytes || 0) + Number(videoStat?.totalBytes || 0) + Number(docStat?.totalBytes || 0) + Number(downloadStat?.totalBytes || 0) + Number(secureStat?.totalBytes || 0);
-        const [recentDocs, recentImages, recentAudio, recentVideos] = await Promise.all([
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, created_at FROM document_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, thumbnail_url as thumbnailUrl, "images" as category, created_at FROM image_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, cover_url as coverUrl, cover_url as previewUrl, artist, "audio" as category, created_at FROM audio_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, thumbnail_url as thumbnailUrl, thumbnail_url as previewUrl, "videos" as category, created_at FROM video_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all()
+        const [recentDocs, recentImages, recentAudio, recentVideos, recentClasseur] = await Promise.all([
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, created_at FROM document_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, thumbnail_url as thumbnailUrl, "images" as category, created_at FROM image_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, cover_url as coverUrl, cover_url as previewUrl, artist, "audio" as category, created_at FROM audio_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, thumbnail_url as thumbnailUrl, thumbnail_url as previewUrl, "videos" as category, created_at FROM video_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, COALESCE(category, "documents") as category, created_at FROM classeur_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all()
         ]);
+        const parseDateMs = (d) => {
+          if (!d) return 0;
+          const s = String(d).replace(" ", "T");
+          const t = new Date(s).getTime();
+          return isNaN(t) ? 0 : t;
+        };
         const recentFiles = [
           ...recentDocs?.results || [],
           ...recentImages?.results || [],
           ...recentAudio?.results || [],
-          ...recentVideos?.results || []
-        ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 12);
-        const userStorage = await recalculateAndSaveUserStorage(env.DB, reqUserId);
-        const displayTotalBytes = userStorage?.totalOriginalBytes ?? totalBytes;
-        const displayTotalFormatted = userStorage?.totalOriginalFormatted ?? formatBytes(totalBytes);
+          ...recentVideos?.results || [],
+          ...recentClasseur?.results || []
+        ].sort((a, b) => parseDateMs(b.created_at) - parseDateMs(a.created_at)).slice(0, 12);
         return jsonResponse({
           success: true,
           counts,
-          totalBytes: displayTotalBytes,
-          totalFormatted: displayTotalFormatted,
-          recentFiles,
-          userStorage
-        }, 200, origin);
-      }
-      if (path === "/api/cloud/storage-usage" && method === "GET") {
-        const reqUserId = await extractRequestUserId();
-        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
-        const stats = await recalculateAndSaveUserStorage(env.DB, reqUserId);
-        return jsonResponse({
-          success: true,
-          data: stats
-        }, 200, origin);
-      }
-      if ((path === "/api/cloud/all-users-storage" || path === "/api/admin/users-storage") && method === "GET") {
-        if (!env.DB) return errorResponse("Base de donn\xE9es D1 indisponible", 500, origin);
-        await ensureCompressionAndStorageTables(env.DB);
-        
-        const search = url.searchParams.get("search") || "";
-        const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "50", 10)));
-        const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
-        const offset = (page - 1) * limit;
-
-        let query = `
-          SELECT 
-            u.id as user_id,
-            u.name,
-            u.email,
-            u.school,
-            u.filiere,
-            u.country,
-            u.avatar_url,
-            COALESCE(s.total_original_bytes, 0) as total_original_bytes,
-            COALESCE(s.total_original_formatted, '0 o') as total_original_formatted,
-            COALESCE(s.total_r2_compressed_bytes, 0) as total_r2_compressed_bytes,
-            COALESCE(s.total_r2_formatted, '0 o') as total_r2_formatted,
-            COALESCE(s.total_d1_database_bytes, 0) as total_d1_database_bytes,
-            COALESCE(s.total_d1_formatted, '0 o') as total_d1_formatted,
-            COALESCE(s.total_saved_bytes, 0) as total_saved_bytes,
-            COALESCE(s.total_saved_formatted, '0 o') as total_saved_formatted,
-            COALESCE(s.compression_ratio, 0.0) as compression_ratio,
-            COALESCE(s.total_files_count, 0) as total_files_count,
-            COALESCE(s.breakdown_json, '{}') as breakdown_json,
-            COALESCE(s.updated_at, u.created_at) as updated_at
-          FROM users u
-          LEFT JOIN user_storage_usage s ON u.id = s.user_id
-        `;
-        const params = [];
-        if (search.trim()) {
-          query += " WHERE u.name LIKE ? OR u.email LIKE ? OR u.school LIKE ? OR u.filiere LIKE ?";
-          const s = `%${search.trim()}%`;
-          params.push(s, s, s, s);
-        }
-        query += " ORDER BY s.total_original_bytes DESC, u.created_at DESC LIMIT ? OFFSET ?";
-        params.push(limit, offset);
-
-        const { results } = await env.DB.prepare(query).bind(...params).all().catch(() => ({ results: [] }));
-        
-        // Totaux globaux de tous les utilisateurs
-        const globalStats = await env.DB.prepare(`
-          SELECT 
-            COUNT(DISTINCT u.id) as total_users,
-            COALESCE(SUM(s.total_original_bytes), 0) as global_original_bytes,
-            COALESCE(SUM(s.total_r2_compressed_bytes), 0) as global_r2_bytes,
-            COALESCE(SUM(s.total_d1_database_bytes), 0) as global_d1_bytes,
-            COALESCE(SUM(s.total_saved_bytes), 0) as global_saved_bytes,
-            COALESCE(SUM(s.total_files_count), 0) as global_files_count
-          FROM users u
-          LEFT JOIN user_storage_usage s ON u.id = s.user_id
-        `).first().catch(() => ({}));
-
-        return jsonResponse({
-          success: true,
-          page,
-          limit,
-          users: (results || []).map(r => {
-            let breakdown = {};
-            try { breakdown = JSON.parse(r.breakdown_json || '{}'); } catch {}
-            return {
-              userId: r.user_id,
-              name: r.name,
-              email: r.email,
-              school: r.school,
-              filiere: r.filiere,
-              country: r.country,
-              avatarUrl: r.avatar_url,
-              totalOriginalBytes: r.total_original_bytes,
-              totalOriginalFormatted: r.total_original_formatted,
-              totalR2CompressedBytes: r.total_r2_compressed_bytes,
-              totalR2Formatted: r.total_r2_formatted,
-              totalD1DatabaseBytes: r.total_d1_database_bytes,
-              totalD1Formatted: r.total_d1_formatted,
-              totalSavedBytes: r.total_saved_bytes,
-              totalSavedFormatted: r.total_saved_formatted,
-              compressionRatio: r.compression_ratio,
-              totalFilesCount: r.total_files_count,
-              breakdown,
-              updatedAt: r.updated_at
-            };
-          }),
-          globalOverview: {
-            totalUsers: Number(globalStats?.total_users || 0),
-            globalOriginalBytes: Number(globalStats?.global_original_bytes || 0),
-            globalOriginalFormatted: formatBytes(Number(globalStats?.global_original_bytes || 0)),
-            globalR2Bytes: Number(globalStats?.global_r2_bytes || 0),
-            globalR2Formatted: formatBytes(Number(globalStats?.global_r2_bytes || 0)),
-            globalD1Bytes: Number(globalStats?.global_d1_bytes || 0),
-            globalD1Formatted: formatBytes(Number(globalStats?.global_d1_bytes || 0)),
-            globalSavedBytes: Number(globalStats?.global_saved_bytes || 0),
-            globalSavedFormatted: formatBytes(Number(globalStats?.global_saved_bytes || 0)),
-            globalFilesCount: Number(globalStats?.global_files_count || 0)
-          }
+          totalBytes,
+          totalFormatted: formatBytes(totalBytes),
+          recentFiles
         }, 200, origin);
       }
       if (path === "/api/cloud/classeur/folders") {
@@ -5821,30 +5200,14 @@ var index_default = {
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
           const folderId = url.searchParams.get("folderId");
-          const limitParam = parseInt(url.searchParams.get("limit") || "0", 10);
-          const cursor = url.searchParams.get("cursor");
           let query = "SELECT * FROM classeur_files WHERE user_id = ?";
           const params = [reqUserId];
           if (folderId) {
             query += " AND folder_id = ?";
             params.push(folderId);
           }
-          if (cursor) {
-            query += " AND created_at < ?";
-            params.push(cursor);
-          }
           query += " ORDER BY display_order ASC, created_at DESC";
-          if (limitParam > 0) {
-            query += " LIMIT ?";
-            params.push(limitParam);
-          }
           const { results } = await env.DB.prepare(query).bind(...params).all();
-          const latestId = results && results.length > 0 ? (results[0].id || results[0].created_at) : "empty";
-          const etag = `"${(results || []).length}-${latestId}"`;
-          const ifNoneMatch = request.headers.get("if-none-match");
-          if (ifNoneMatch && ifNoneMatch === etag) {
-            return new Response(null, { status: 304, headers: { ...corsHeaders(origin), "ETag": etag } });
-          }
           const formatted = (results || []).map((f) => ({
             id: f.id,
             userId: f.user_id,
@@ -5868,14 +5231,7 @@ var index_default = {
             isPinned: Boolean(f.is_pinned),
             isFavorite: Boolean(f.is_favorite)
           }));
-          return jsonResponse({
-            success: true,
-            data: formatted,
-            pagination: limitParam > 0 ? {
-              hasMore: (results || []).length === limitParam,
-              nextCursor: (results || []).length === limitParam ? results[results.length - 1].created_at : null
-            } : undefined
-          }, 200, origin, { "ETag": etag });
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
         }
         if (method === "POST") {
           const body = await request.json().catch(() => ({}));
@@ -6111,26 +5467,9 @@ var index_default = {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
-          const limitParam = parseInt(url.searchParams.get("limit") || "0", 10);
-          const cursor = url.searchParams.get("cursor");
-          let query = "SELECT * FROM audio_files WHERE user_id = ?";
-          const params = [reqUserId];
-          if (cursor) {
-            query += " AND created_at < ?";
-            params.push(cursor);
-          }
-          query += " ORDER BY is_pinned DESC, created_at DESC";
-          if (limitParam > 0) {
-            query += " LIMIT ?";
-            params.push(limitParam);
-          }
-          const { results } = await env.DB.prepare(query).bind(...params).all();
-          const latestId = results && results.length > 0 ? (results[0].id || results[0].created_at) : "empty";
-          const etag = `"${(results || []).length}-${latestId}"`;
-          const ifNoneMatch = request.headers.get("if-none-match");
-          if (ifNoneMatch && ifNoneMatch === etag) {
-            return new Response(null, { status: 304, headers: { ...corsHeaders(origin), "ETag": etag } });
-          }
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM audio_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
+          `).bind(reqUserId).all();
           const formatted = (results || []).map((a) => ({
             id: a.id,
             userId: a.user_id,
@@ -6152,14 +5491,7 @@ var index_default = {
             isFavorite: Boolean(a.is_favorite),
             isPinned: Boolean(a.is_pinned)
           }));
-          return jsonResponse({
-            success: true,
-            data: formatted,
-            pagination: limitParam > 0 ? {
-              hasMore: (results || []).length === limitParam,
-              nextCursor: (results || []).length === limitParam ? results[results.length - 1].created_at : null
-            } : undefined
-          }, 200, origin, { "ETag": etag });
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
         }
         if (method === "POST") {
           const body = await request.json().catch(() => ({}));
@@ -6245,26 +5577,9 @@ var index_default = {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
-          const limitParam = parseInt(url.searchParams.get("limit") || "0", 10);
-          const cursor = url.searchParams.get("cursor");
-          let query = "SELECT * FROM image_files WHERE user_id = ?";
-          const params = [reqUserId];
-          if (cursor) {
-            query += " AND created_at < ?";
-            params.push(cursor);
-          }
-          query += " ORDER BY is_pinned DESC, created_at DESC";
-          if (limitParam > 0) {
-            query += " LIMIT ?";
-            params.push(limitParam);
-          }
-          const { results } = await env.DB.prepare(query).bind(...params).all();
-          const latestId = results && results.length > 0 ? (results[0].id || results[0].created_at) : "empty";
-          const etag = `"${(results || []).length}-${latestId}"`;
-          const ifNoneMatch = request.headers.get("if-none-match");
-          if (ifNoneMatch && ifNoneMatch === etag) {
-            return new Response(null, { status: 304, headers: { ...corsHeaders(origin), "ETag": etag } });
-          }
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM image_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
+          `).bind(reqUserId).all();
           const formatted = (results || []).map((img) => ({
             id: img.id,
             userId: img.user_id,
@@ -6284,14 +5599,7 @@ var index_default = {
             isFavorite: Boolean(img.is_favorite),
             isPinned: Boolean(img.is_pinned)
           }));
-          return jsonResponse({
-            success: true,
-            data: formatted,
-            pagination: limitParam > 0 ? {
-              hasMore: (results || []).length === limitParam,
-              nextCursor: (results || []).length === limitParam ? results[results.length - 1].created_at : null
-            } : undefined
-          }, 200, origin, { "ETag": etag });
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
         }
         if (method === "POST") {
           const body = await request.json().catch(() => ({}));
@@ -6367,26 +5675,9 @@ var index_default = {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
-          const limitParam = parseInt(url.searchParams.get("limit") || "0", 10);
-          const cursor = url.searchParams.get("cursor");
-          let query = "SELECT * FROM video_files WHERE user_id = ?";
-          const params = [reqUserId];
-          if (cursor) {
-            query += " AND created_at < ?";
-            params.push(cursor);
-          }
-          query += " ORDER BY is_pinned DESC, created_at DESC";
-          if (limitParam > 0) {
-            query += " LIMIT ?";
-            params.push(limitParam);
-          }
-          const { results } = await env.DB.prepare(query).bind(...params).all();
-          const latestId = results && results.length > 0 ? (results[0].id || results[0].created_at) : "empty";
-          const etag = `"${(results || []).length}-${latestId}"`;
-          const ifNoneMatch = request.headers.get("if-none-match");
-          if (ifNoneMatch && ifNoneMatch === etag) {
-            return new Response(null, { status: 304, headers: { ...corsHeaders(origin), "ETag": etag } });
-          }
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM video_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
+          `).bind(reqUserId).all();
           const formatted = (results || []).map((v) => ({
             id: v.id,
             userId: v.user_id,
@@ -6406,14 +5697,7 @@ var index_default = {
             isFavorite: Boolean(v.is_favorite),
             isPinned: Boolean(v.is_pinned)
           }));
-          return jsonResponse({
-            success: true,
-            data: formatted,
-            pagination: limitParam > 0 ? {
-              hasMore: (results || []).length === limitParam,
-              nextCursor: (results || []).length === limitParam ? results[results.length - 1].created_at : null
-            } : undefined
-          }, 200, origin, { "ETag": etag });
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
         }
         if (method === "POST") {
           const body = await request.json().catch(() => ({}));
@@ -6489,26 +5773,9 @@ var index_default = {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
-          const limitParam = parseInt(url.searchParams.get("limit") || "0", 10);
-          const cursor = url.searchParams.get("cursor");
-          let query = "SELECT * FROM document_files WHERE user_id = ?";
-          const params = [reqUserId];
-          if (cursor) {
-            query += " AND created_at < ?";
-            params.push(cursor);
-          }
-          query += " ORDER BY is_pinned DESC, created_at DESC";
-          if (limitParam > 0) {
-            query += " LIMIT ?";
-            params.push(limitParam);
-          }
-          const { results } = await env.DB.prepare(query).bind(...params).all();
-          const latestId = results && results.length > 0 ? (results[0].id || results[0].created_at) : "empty";
-          const etag = `"${(results || []).length}-${latestId}"`;
-          const ifNoneMatch = request.headers.get("if-none-match");
-          if (ifNoneMatch && ifNoneMatch === etag) {
-            return new Response(null, { status: 304, headers: { ...corsHeaders(origin), "ETag": etag } });
-          }
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM document_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
+          `).bind(reqUserId).all();
           const formatted = (results || []).map((d) => ({
             id: d.id,
             userId: d.user_id,
@@ -6530,14 +5797,7 @@ var index_default = {
             isFavorite: Boolean(d.is_favorite),
             isPinned: Boolean(d.is_pinned)
           }));
-          return jsonResponse({
-            success: true,
-            data: formatted,
-            pagination: limitParam > 0 ? {
-              hasMore: (results || []).length === limitParam,
-              nextCursor: (results || []).length === limitParam ? results[results.length - 1].created_at : null
-            } : undefined
-          }, 200, origin, { "ETag": etag });
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
         }
         if (method === "POST") {
           const body = await request.json().catch(() => ({}));
@@ -6772,7 +6032,7 @@ var index_default = {
         }
         return jsonResponse({ success: true, verified: true, message: "Dossier s\xE9curis\xE9 d\xE9verrouill\xE9" }, 200, origin);
       }
-      if (path === "/api/cloud/secure/files" || path === "/api/cloud/secure") {
+      if (path === "/api/cloud/secure/files") {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
@@ -9589,20 +8849,38 @@ Lien vers le produit : ${productShareUrl}`;
               updated_at = CURRENT_TIMESTAMP
           `).bind(userId, JSON.stringify(scheduleConfig.days || []), JSON.stringify(scheduleConfig.hours || []), scheduleConfig.zoomLevel || 100).run();
         }
+        let slotsToSave = [];
         if (Array.isArray(scheduleSlots)) {
-          for (const s of scheduleSlots) {
-            await env.DB.prepare(`
-              INSERT INTO schedule_slots (id, user_id, day, hour_slot, subject, room, note_or_teacher, color)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-              ON CONFLICT(id) DO UPDATE SET
-                day = excluded.day,
-                hour_slot = excluded.hour_slot,
-                subject = excluded.subject,
-                room = excluded.room,
-                note_or_teacher = excluded.note_or_teacher,
-                color = excluded.color
-            `).bind(s.id || crypto.randomUUID(), userId, s.day, s.hourSlot, s.subject, s.room || "", s.noteOrTeacher || "", s.color || "#EA580C").run();
-          }
+          slotsToSave = scheduleSlots;
+        } else if (scheduleSlots && typeof scheduleSlots === "object") {
+          slotsToSave = Object.entries(scheduleSlots).map(([key, val]) => {
+            const parts = key.split("_");
+            const day = parts[0] || "";
+            const hourSlot = parts.slice(1).join("_") || "";
+            return {
+              id: `${userId}-${day}-${hourSlot}`,
+              day,
+              hourSlot,
+              subject: val?.subject || "",
+              room: val?.room || "",
+              noteOrTeacher: val?.note || val?.noteOrTeacher || "",
+              color: val?.color || "#EA580C"
+            };
+          });
+        }
+        for (const s of slotsToSave) {
+          const sId = s.id || `${userId}-${s.day}-${s.hourSlot || s.hour_slot}`;
+          await env.DB.prepare(`
+            INSERT INTO schedule_slots (id, user_id, day, hour_slot, subject, room, note_or_teacher, color)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              day = excluded.day,
+              hour_slot = excluded.hour_slot,
+              subject = excluded.subject,
+              room = excluded.room,
+              note_or_teacher = excluded.note_or_teacher,
+              color = excluded.color
+          `).bind(sId, userId, s.day, s.hourSlot || s.hour_slot, s.subject, s.room || "", s.noteOrTeacher || s.note_or_teacher || "", s.color || "#EA580C").run();
         }
         if (Array.isArray(alarms)) {
           for (const a of alarms) {
@@ -9615,6 +8893,46 @@ Lien vers le produit : ${productShareUrl}`;
                 is_active = excluded.is_active,
                 days_json = excluded.days_json
             `).bind(a.id || crypto.randomUUID(), userId, a.time, a.label || "R\xE9veil \xE9tude", a.isActive ? 1 : 0, JSON.stringify(a.days || ["Tous les jours"])).run();
+          }
+        }
+        if (Array.isArray(body.calendarEvents)) {
+          for (const ev of body.calendarEvents) {
+            const evId = ev.id || crypto.randomUUID();
+            await env.DB.prepare(`
+              INSERT INTO calendar_events (id, user_id, title, start_date, end_date, all_day, color, description, location)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                title = excluded.title,
+                start_date = excluded.start_date,
+                end_date = excluded.end_date,
+                all_day = excluded.all_day,
+                color = excluded.color,
+                description = excluded.description,
+                location = excluded.location
+            `).bind(evId, userId, ev.title, ev.start || ev.startDate || ev.start_date, ev.end || ev.endDate || ev.end_date || null, ev.allDay || ev.all_day ? 1 : 0, ev.color || ev.backgroundColor || "#2563EB", ev.description || "", ev.location || "").run();
+          }
+        }
+        if (Array.isArray(body.grades)) {
+          for (const g of body.grades) {
+            const gId = g.id || crypto.randomUUID();
+            await env.DB.prepare(`
+              INSERT INTO grades (id, user_id, trimester, subject_name, coefficient, sub_grades_json, average, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET
+                subject_name = excluded.subject_name,
+                coefficient = excluded.coefficient,
+                sub_grades_json = excluded.sub_grades_json,
+                average = excluded.average,
+                updated_at = CURRENT_TIMESTAMP
+            `).bind(
+              gId,
+              userId,
+              Number(g.trimester) || 1,
+              g.subjectName || g.subject_name || "Mati\xE8re",
+              Number(g.coefficient) || 1,
+              typeof g.subGradesJson === "string" ? g.subGradesJson : JSON.stringify(g.subGrades || []),
+              Number(g.average) || Number(g.grade) || 0
+            ).run();
           }
         }
         return jsonResponse({
@@ -9635,7 +8953,8 @@ Lien vers le produit : ${productShareUrl}`;
           { results: scheduleSlots },
           { results: grades },
           { results: alarms },
-          { results: aiContents }
+          { results: aiContents },
+          { results: calendarEvents }
         ] = await Promise.all([
           env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first(),
           env.DB.prepare("SELECT * FROM matieres WHERE user_id = ? ORDER BY display_order ASC").bind(userId).all(),
@@ -9645,7 +8964,8 @@ Lien vers le produit : ${productShareUrl}`;
           env.DB.prepare("SELECT * FROM schedule_slots WHERE user_id = ?").bind(userId).all(),
           env.DB.prepare("SELECT * FROM grades WHERE user_id = ?").bind(userId).all(),
           env.DB.prepare("SELECT * FROM alarms WHERE user_id = ?").bind(userId).all(),
-          env.DB.prepare("SELECT * FROM ai_generated_contents WHERE user_id = ? ORDER BY is_pinned DESC, updated_at DESC").bind(userId).all()
+          env.DB.prepare("SELECT * FROM ai_generated_contents WHERE user_id = ? ORDER BY is_pinned DESC, updated_at DESC").bind(userId).all(),
+          env.DB.prepare("SELECT * FROM calendar_events WHERE user_id = ? ORDER BY start_date ASC").bind(userId).all()
         ]);
         return jsonResponse({
           success: true,
@@ -9658,7 +8978,8 @@ Lien vers le produit : ${productShareUrl}`;
             scheduleSlots,
             grades,
             alarms,
-            aiContents
+            aiContents,
+            calendarEvents
           }
         }, 200, origin);
       }

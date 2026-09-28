@@ -1859,6 +1859,8 @@ export const StudyCloudAPI = {
     scheduleConfig?: any;
     alarms?: any[];
     shopProfile?: any;
+    grades?: any[];
+    calendarEvents?: any[];
   }) {
     return request<{ success: boolean; message: string; timestamp: string }>('/api/sync/backup', {
       method: 'POST',

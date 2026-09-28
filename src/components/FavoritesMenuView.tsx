@@ -23,44 +23,46 @@ interface FavoriteItem {
   timestamp?: number;
 }
 
-export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({ onBack, setActivePreviewItem }) => {
-  const [favoriteFiles, setFavoriteFiles] = useState<FavoriteItem[]>(() => {
-    const list: FavoriteItem[] = [];
-    const seenIds = new Set<string>();
+const loadLocalFavorites = (): FavoriteItem[] => {
+  const list: FavoriteItem[] = [];
+  const seenIds = new Set<string>();
 
-    const checkKey = (key: string) => {
-      try {
-        const raw = localStorage.getItem(key);
-        if (!raw) return;
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          parsed.forEach((item: any) => {
-            if (item && item.id && item.isFavorite && !seenIds.has(item.id)) {
-              seenIds.add(item.id);
-              list.push({
-                ...item,
-                extension: item.extension || (item.name?.includes('.') ? item.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
-              });
-            }
-          });
-        }
-      } catch (e) {}
-    };
-
-    checkKey('unifolder_files_menu_items');
-    checkKey('unifolder_study_imported_files');
-    checkKey('unifolder_left_menu_general_imports');
-
-    // Vérifier les clés des matières
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith('unifolder_matiere_files_')) {
-        checkKey(k);
+  const checkKey = (key: string) => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        parsed.forEach((item: any) => {
+          if (item && item.id && item.isFavorite && !seenIds.has(item.id)) {
+            seenIds.add(item.id);
+            list.push({
+              ...item,
+              extension: item.extension || (item.name?.includes('.') ? item.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
+            });
+          }
+        });
       }
-    }
+    } catch (e) {}
+  };
 
-    return list;
-  });
+  checkKey('unifolder_files_menu_items');
+  checkKey('unifolder_study_imported_files');
+  checkKey('unifolder_left_menu_general_imports');
+
+  // Vérifier les clés des matières
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('unifolder_matiere_files_')) {
+      checkKey(k);
+    }
+  }
+
+  return list;
+};
+
+export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({ onBack, setActivePreviewItem }) => {
+  const [favoriteFiles, setFavoriteFiles] = useState<FavoriteItem[]>(() => loadLocalFavorites());
 
   const [searchQuery, setSearchQuery] = useState('');
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -96,6 +98,20 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({ onBack, se
         }
       })
       .catch(() => {});
+
+    const handleReload = () => {
+      const list = loadLocalFavorites();
+      if (list.length > 0) {
+        setFavoriteFiles(list);
+      }
+    };
+
+    window.addEventListener('unifolder_files_updated', handleReload);
+    window.addEventListener('unifolder_data_restored', handleReload);
+    return () => {
+      window.removeEventListener('unifolder_files_updated', handleReload);
+      window.removeEventListener('unifolder_data_restored', handleReload);
+    };
   }, []);
 
   const handleToggleFavorite = (id: string) => {

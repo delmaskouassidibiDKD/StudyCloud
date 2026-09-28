@@ -5629,7 +5629,7 @@ export default {
         const fileId = path.replace('/api/cloud/stream/', '').trim();
         if (!fileId || !env.DB) return errorResponse('ID de fichier manquant ou DB inaccessible', 400, origin);
 
-        let foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "videos" as category FROM video_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        let foundRecord: any = await env.DB.prepare('SELECT id, r2_key, extension, name, "videos" as category FROM video_files WHERE id = ? LIMIT 1').bind(fileId).first();
         if (!foundRecord) {
           foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "audio" as category FROM audio_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
@@ -5642,24 +5642,41 @@ export default {
         if (!foundRecord) {
           foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "classeur" as category FROM classeur_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
+        if (!foundRecord) {
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "documents" as category FROM files WHERE id = ? LIMIT 1').bind(fileId).first();
+        }
+        if (!foundRecord) {
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, file_type as extension, title as name, "documents" as category FROM published_documents WHERE id = ? LIMIT 1').bind(fileId).first();
+        }
 
         if (!foundRecord || !foundRecord.r2_key) {
           return errorResponse('Fichier introuvable dans la base de données', 404, origin);
         }
 
         const categoryBucket = getBucketForCategory(rawEnv, foundRecord.category);
-        if (!categoryBucket) return errorResponse('Stockage R2 indisponible pour cette catégorie', 503, origin);
+        const mainBucket = rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv['MON_R2-STUDYCLOUD'];
+        const targetBucket = categoryBucket || mainBucket;
+        if (!targetBucket) return errorResponse('Stockage R2 indisponible pour cette catégorie', 503, origin);
 
         const rangeHeader = request.headers.get('Range');
-        let object;
+        let object: any = null;
         if (rangeHeader) {
           try {
-            object = await categoryBucket.get(foundRecord.r2_key, { range: request.headers });
+            object = await targetBucket.get(foundRecord.r2_key, { range: request.headers });
           } catch (e) {
-            object = await categoryBucket.get(foundRecord.r2_key);
+            object = await targetBucket.get(foundRecord.r2_key);
           }
         } else {
-          object = await categoryBucket.get(foundRecord.r2_key);
+          object = await targetBucket.get(foundRecord.r2_key);
+        }
+
+        // Si non trouvé dans le bucket dédié, essayer le bucket principal
+        if (!object && mainBucket && mainBucket !== targetBucket) {
+          try {
+            object = rangeHeader
+              ? await mainBucket.get(foundRecord.r2_key, { range: request.headers })
+              : await mainBucket.get(foundRecord.r2_key);
+          } catch (e) {}
         }
 
         if (!object) return errorResponse('Objet binaire introuvable dans R2', 404, origin);
@@ -5900,20 +5917,29 @@ export default {
           Number(downloadStat?.totalBytes || 0) +
           Number(secureStat?.totalBytes || 0);
 
-        // Récupérer les fichiers récents pour l'espace cloud (toutes catégories confondues)
-        const [recentDocs, recentImages, recentAudio, recentVideos] = await Promise.all([
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, created_at FROM document_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all<any>(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, thumbnail_url as thumbnailUrl, "images" as category, created_at FROM image_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all<any>(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, cover_url as coverUrl, cover_url as previewUrl, artist, "audio" as category, created_at FROM audio_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all<any>(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, thumbnail_url as thumbnailUrl, thumbnail_url as previewUrl, "videos" as category, created_at FROM video_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all<any>(),
+        // Récupérer les fichiers récents pour l'espace cloud (toutes catégories confondues, y compris classeur)
+        const [recentDocs, recentImages, recentAudio, recentVideos, recentClasseur] = await Promise.all([
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, created_at FROM document_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, thumbnail_url as thumbnailUrl, "images" as category, created_at FROM image_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, cover_url as coverUrl, cover_url as previewUrl, artist, "audio" as category, created_at FROM audio_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, thumbnail_url as thumbnailUrl, thumbnail_url as previewUrl, "videos" as category, created_at FROM video_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, COALESCE(category, "documents") as category, created_at FROM classeur_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all<any>(),
         ]);
+
+        const parseDateMs = (d: any): number => {
+          if (!d) return 0;
+          const s = String(d).replace(' ', 'T');
+          const t = new Date(s).getTime();
+          return isNaN(t) ? 0 : t;
+        };
 
         const recentFiles = [
           ...(recentDocs?.results || []),
           ...(recentImages?.results || []),
           ...(recentAudio?.results || []),
           ...(recentVideos?.results || []),
-        ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 12);
+          ...(recentClasseur?.results || []),
+        ].sort((a, b) => parseDateMs(b.created_at) - parseDateMs(a.created_at)).slice(0, 12);
 
         return jsonResponse({
           success: true,
@@ -10115,20 +10141,39 @@ export default {
           `).bind(userId, JSON.stringify(scheduleConfig.days || []), JSON.stringify(scheduleConfig.hours || []), scheduleConfig.zoomLevel || 100).run();
         }
 
+        let slotsToSave: any[] = [];
         if (Array.isArray(scheduleSlots)) {
-          for (const s of scheduleSlots) {
-            await env.DB.prepare(`
-              INSERT INTO schedule_slots (id, user_id, day, hour_slot, subject, room, note_or_teacher, color)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-              ON CONFLICT(id) DO UPDATE SET
-                day = excluded.day,
-                hour_slot = excluded.hour_slot,
-                subject = excluded.subject,
-                room = excluded.room,
-                note_or_teacher = excluded.note_or_teacher,
-                color = excluded.color
-            `).bind(s.id || crypto.randomUUID(), userId, s.day, s.hourSlot, s.subject, s.room || '', s.noteOrTeacher || '', s.color || '#EA580C').run();
-          }
+          slotsToSave = scheduleSlots;
+        } else if (scheduleSlots && typeof scheduleSlots === 'object') {
+          slotsToSave = Object.entries(scheduleSlots).map(([key, val]: [string, any]) => {
+            const parts = key.split('_');
+            const day = parts[0] || '';
+            const hourSlot = parts.slice(1).join('_') || '';
+            return {
+              id: `${userId}-${day}-${hourSlot}`,
+              day,
+              hourSlot,
+              subject: val?.subject || '',
+              room: val?.room || '',
+              noteOrTeacher: val?.note || val?.noteOrTeacher || '',
+              color: val?.color || '#EA580C',
+            };
+          });
+        }
+
+        for (const s of slotsToSave) {
+          const sId = s.id || `${userId}-${s.day}-${s.hourSlot || s.hour_slot}`;
+          await env.DB.prepare(`
+            INSERT INTO schedule_slots (id, user_id, day, hour_slot, subject, room, note_or_teacher, color)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              day = excluded.day,
+              hour_slot = excluded.hour_slot,
+              subject = excluded.subject,
+              room = excluded.room,
+              note_or_teacher = excluded.note_or_teacher,
+              color = excluded.color
+          `).bind(sId, userId, s.day, s.hourSlot || s.hour_slot, s.subject, s.room || '', s.noteOrTeacher || s.note_or_teacher || '', s.color || '#EA580C').run();
         }
 
         // 5. Alarmes
@@ -10143,6 +10188,50 @@ export default {
                 is_active = excluded.is_active,
                 days_json = excluded.days_json
             `).bind(a.id || crypto.randomUUID(), userId, a.time, a.label || 'Réveil étude', a.isActive ? 1 : 0, JSON.stringify(a.days || ['Tous les jours'])).run();
+          }
+        }
+
+        // 6. Calendrier
+        if (Array.isArray(body.calendarEvents)) {
+          for (const ev of body.calendarEvents) {
+            const evId = ev.id || crypto.randomUUID();
+            await env.DB.prepare(`
+              INSERT INTO calendar_events (id, user_id, title, start_date, end_date, all_day, color, description, location)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                title = excluded.title,
+                start_date = excluded.start_date,
+                end_date = excluded.end_date,
+                all_day = excluded.all_day,
+                color = excluded.color,
+                description = excluded.description,
+                location = excluded.location
+            `).bind(evId, userId, ev.title, ev.start || ev.startDate || ev.start_date, ev.end || ev.endDate || ev.end_date || null, (ev.allDay || ev.all_day) ? 1 : 0, ev.color || ev.backgroundColor || '#2563EB', ev.description || '', ev.location || '').run();
+          }
+        }
+
+        // 7. Carnet de notes & Moyennes
+        if (Array.isArray(body.grades)) {
+          for (const g of body.grades) {
+            const gId = g.id || crypto.randomUUID();
+            await env.DB.prepare(`
+              INSERT INTO grades (id, user_id, trimester, subject_name, coefficient, sub_grades_json, average, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET
+                subject_name = excluded.subject_name,
+                coefficient = excluded.coefficient,
+                sub_grades_json = excluded.sub_grades_json,
+                average = excluded.average,
+                updated_at = CURRENT_TIMESTAMP
+            `).bind(
+              gId,
+              userId,
+              Number(g.trimester) || 1,
+              g.subjectName || g.subject_name || 'Matière',
+              Number(g.coefficient) || 1.0,
+              typeof g.subGradesJson === 'string' ? g.subGradesJson : JSON.stringify(g.subGrades || []),
+              Number(g.average) || Number(g.grade) || 0.0
+            ).run();
           }
         }
 
@@ -10166,7 +10255,8 @@ export default {
           { results: scheduleSlots },
           { results: grades },
           { results: alarms },
-          { results: aiContents }
+          { results: aiContents },
+          { results: calendarEvents }
         ] = await Promise.all([
           env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first(),
           env.DB.prepare('SELECT * FROM matieres WHERE user_id = ? ORDER BY display_order ASC').bind(userId).all(),
@@ -10176,7 +10266,8 @@ export default {
           env.DB.prepare('SELECT * FROM schedule_slots WHERE user_id = ?').bind(userId).all(),
           env.DB.prepare('SELECT * FROM grades WHERE user_id = ?').bind(userId).all(),
           env.DB.prepare('SELECT * FROM alarms WHERE user_id = ?').bind(userId).all(),
-          env.DB.prepare('SELECT * FROM ai_generated_contents WHERE user_id = ? ORDER BY is_pinned DESC, updated_at DESC').bind(userId).all()
+          env.DB.prepare('SELECT * FROM ai_generated_contents WHERE user_id = ? ORDER BY is_pinned DESC, updated_at DESC').bind(userId).all(),
+          env.DB.prepare('SELECT * FROM calendar_events WHERE user_id = ? ORDER BY start_date ASC').bind(userId).all()
         ]);
 
         return jsonResponse({
@@ -10190,7 +10281,8 @@ export default {
             scheduleSlots,
             grades,
             alarms,
-            aiContents
+            aiContents,
+            calendarEvents
           }
         }, 200, origin);
       }

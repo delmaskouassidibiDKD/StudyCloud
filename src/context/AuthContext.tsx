@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { StudyCloudAPI } from '../services/api';
 import { restoreUserDataFromCloud, clearUserDataOnLogout } from '../services/userSync';
+import { CloudDataStore } from '../services/cloudDataStore';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -212,6 +213,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
           // Hydrater automatiquement les données Cloudflare D1 de l'utilisateur
           restoreUserDataFromCloud(res.data.id).catch(() => {});
+          CloudDataStore.sync(true).catch(() => {});
         }
       })
       .catch((err: any) => {
@@ -223,6 +225,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           err?.message?.includes("1 mois d'inactivité")
         ) {
           clearUserDataOnLogout();
+          CloudDataStore.clearCache().catch(() => {});
           setUser(null);
           setToken(null);
         }
@@ -288,6 +291,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(newUser);
     // Restaurer immédiatement toutes les matières, fichiers, notes et plannings du compte connecté
     restoreUserDataFromCloud(newUser.id).catch(() => {});
+    CloudDataStore.resetAndSyncForUser(newUser.id).catch(() => {});
   }, []);
 
   const updateProfile = useCallback((data: Partial<AuthUser>) => {
@@ -321,6 +325,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     // Nettoyage strict et complet de la session locale pour isoler les utilisateurs
     clearUserDataOnLogout();
+    CloudDataStore.clearCache().catch(() => {});
     setToken(null);
     setUser(null);
   }, [token]);
