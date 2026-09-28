@@ -267,7 +267,7 @@ class UploadQueueManager {
 
     try {
       // Étape A : Génération / Réutilisation de la miniature réelle
-      let previewDataUrl: string | null = task.fileItem?.thumbnailUrl || task.fileItem?.previewUrl || null;
+      let previewDataUrl: string | null = task.fileItem?.thumbnailUrl || task.fileItem?.previewUrl || task.fileItem?.coverUrl || null;
       if (!previewDataUrl || !previewDataUrl.startsWith('data:image')) {
         previewDataUrl = null;
         if (category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/i)) {
@@ -361,7 +361,8 @@ class UploadQueueManager {
         url: uploadUrl || task.fileItem.url,
         r2Key: r2Key || task.fileItem.r2Key,
         previewUrl: category === 'images' ? (uploadUrl || task.fileItem.url) : (previewDataUrl || uploadUrl || task.fileItem.previewUrl),
-        thumbnailUrl: category === 'images' ? (uploadUrl || task.fileItem.url) : (task.fileItem.thumbnailUrl || undefined),
+        thumbnailUrl: category === 'images' ? (uploadUrl || task.fileItem.url) : (previewDataUrl || task.fileItem.thumbnailUrl || undefined),
+        coverUrl: category === 'audio' ? (previewDataUrl || task.fileItem.coverUrl) : undefined,
         videoUrl: category === 'videos' ? (uploadUrl || task.fileItem.videoUrl) : undefined,
         audioUrl: category === 'audio' ? (uploadUrl || task.fileItem.audioUrl) : undefined,
         isUploading: false,

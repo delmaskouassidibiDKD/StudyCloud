@@ -79,12 +79,211 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   const [activeMenuTrackId, setActiveMenuTrackId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Progression d'enregistrement et gestion d'erreurs en temps réel (comme dans Vidéos et Images)
+  const [savingProgress, setSavingProgress] = useState<Record<string, number>>({});
+  const [savingErrors, setSavingErrors] = useState<Record<string, string>>({});
+  const savingIntervalsRef = useRef<Record<string, any>>({});
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  // Fermer le menu 3 traits si on clique en dehors
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.studycloud-file-menu-panel') || target.closest('.studycloud-menu-trigger')) {
+        return;
+      }
+      setActiveMenuTrackId(null);
+    };
+
+    document.addEventListener('pointerdown', handleOutsideClick);
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideClick);
+    };
+  }, []);
+
+  // Animation et suivi en continu de la ligne de progression qui se remplit
+  const startSavingAnimation = (fileIds: string[]) => {
+    if (!fileIds || fileIds.length === 0) return;
+
+    setSavingProgress(prev => {
+      const next = { ...prev };
+      fileIds.forEach(id => {
+        next[id] = 12;
+      });
+      return next;
+    });
+
+    fileIds.forEach(id => {
+      if (savingIntervalsRef.current[id]) {
+        clearInterval(savingIntervalsRef.current[id]);
+      }
+
+      let current = 12;
+      const interval = setInterval(() => {
+        if (savingErrors[id]) {
+          clearInterval(interval);
+          delete savingIntervalsRef.current[id];
+          return;
+        }
+
+        current += Math.floor(Math.random() * 10) + 8;
+        if (current >= 95) {
+          current = 95;
+          clearInterval(interval);
+          delete savingIntervalsRef.current[id];
+        }
+
+        setSavingProgress(prev => {
+          if (prev[id] === undefined) return prev;
+          const higher = Math.max(prev[id], current);
+          return { ...prev, [id]: higher };
+        });
+      }, 300);
+
+      savingIntervalsRef.current[id] = interval;
+    });
+  };
+
+  // Écoute en temps réel de la file d'attente d'upload liée au Cloudflare Worker (D1/R2)
+  useEffect(() => {
+    const unsubscribe = UploadQueue.subscribe((queueState) => {
+      const activeProg: Record<string, number> = {};
+      const activeErrs: Record<string, string> = {};
+
+      queueState.tasks.forEach(task => {
+        if (task.category === 'audio' || task.id.startsWith('aud-')) {
+          if (task.status === 'uploading' || task.status === 'pending') {
+            activeProg[task.id] = Math.max(task.progress || 12, 12);
+          } else if (task.status === 'completed') {
+            activeProg[task.id] = 100;
+            if (savingIntervalsRef.current[task.id]) {
+              clearInterval(savingIntervalsRef.current[task.id]);
+              delete savingIntervalsRef.current[task.id];
+            }
+            // Mise à jour immédiate dès confirmation d'enregistrement en base
+            CloudStorageAPI.getAudioList().then((data) => {
+              if (data && Array.isArray(data)) {
+                setAudioList(data);
+                CloudDataStore.setAudio(data as any);
+                setSelectedTrack(curr => {
+                  if (!curr) return null;
+                  const updated = data.find(x => x.id === curr.id || x.name === curr.name);
+                  return updated || curr;
+                });
+              }
+            }).catch(() => {});
+          } else if (task.status === 'error') {
+            activeErrs[task.id] = task.error || "Non enregistré sur le Cloud";
+            if (savingIntervalsRef.current[task.id]) {
+              clearInterval(savingIntervalsRef.current[task.id]);
+              delete savingIntervalsRef.current[task.id];
+            }
+          }
+        }
+      });
+
+      setSavingProgress(prev => {
+        const next = { ...prev };
+        Object.entries(activeProg).forEach(([id, pct]) => {
+          if (pct >= 100) {
+            next[id] = 100;
+            setTimeout(() => {
+              setSavingProgress(curr => {
+                const clean = { ...curr };
+                delete clean[id];
+                return clean;
+              });
+            }, 400);
+          } else {
+            next[id] = Math.max(prev[id] || 0, pct);
+          }
+        });
+        Object.keys(activeErrs).forEach(id => {
+          delete next[id];
+        });
+        return next;
+      });
+
+      setSavingErrors(prev => {
+        const next = { ...prev, ...activeErrs };
+        queueState.tasks.forEach(task => {
+          if ((task.status === 'uploading' || task.status === 'completed') && next[task.id]) {
+            delete next[task.id];
+          }
+        });
+        return next;
+      });
+    });
+
+    const handleUploadedEvent = (e: any) => {
+      const detail = e.detail;
+      if (!detail || detail.category === 'audio' || String(detail.fileId).startsWith('aud-')) {
+        CloudStorageAPI.getAudioList().then((data) => {
+          if (data && Array.isArray(data)) {
+            setAudioList(data);
+            CloudDataStore.setAudio(data as any);
+            setSelectedTrack(curr => {
+              if (!curr) return null;
+              const updated = data.find(x => x.id === curr.id || x.name === curr.name);
+              return updated || curr;
+            });
+          }
+        }).catch(() => {});
+      }
+    };
+    window.addEventListener('studycloud_file_uploaded', handleUploadedEvent);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('studycloud_file_uploaded', handleUploadedEvent);
+      Object.values(savingIntervalsRef.current).forEach(int => clearInterval(int as any));
+    };
+  }, []);
+
+  // Retirer un son dont l'enregistrement a échoué
+  const handleDismissFailedUpload = (audId: string) => {
+    if (savingIntervalsRef.current[audId]) {
+      clearInterval(savingIntervalsRef.current[audId]);
+      delete savingIntervalsRef.current[audId];
+    }
+    UploadQueue.removeTask(audId);
+    setSavingProgress(prev => {
+      const next = { ...prev };
+      delete next[audId];
+      return next;
+    });
+    setSavingErrors(prev => {
+      const next = { ...prev };
+      delete next[audId];
+      return next;
+    });
+    setAudioList(prev => prev.filter(t => t.id !== audId));
+    CloudDataStore.removeFile(audId);
+    deleteFileBlob(audId).catch(() => {});
+    if (selectedTrack?.id === audId) {
+      setSelectedTrack(null);
+      setIsAudioPlaying(false);
+    }
+    showToast("Son non enregistré retiré.");
+  };
+
+  // Réessayer l'enregistrement d'un son échoué
+  const handleRetryUpload = (audId: string) => {
+    setSavingErrors(prev => {
+      const next = { ...prev };
+      delete next[audId];
+      return next;
+    });
+    startSavingAnimation([audId]);
+    UploadQueue.retryTask(audId);
+    showToast("Nouvelle tentative d'enregistrement...");
   };
 
   // Chargement et synchronisation avec CloudDataStore
@@ -221,6 +420,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           url: localBlobUrl,
           audioUrl: localBlobUrl,
           coverUrl,
+          thumbnailUrl: coverUrl,
           isAudio: true
         };
 
@@ -232,6 +432,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     setAudioList(prev => [...newItems, ...prev]);
     CloudDataStore.setAudio([...newItems, ...audioList] as any);
 
+    startSavingAnimation(newItems.map(x => x.id));
     UploadQueue.enqueueExisting(newItemsWithFiles, { category: 'audio' });
     showToast(`${newItems.length} fichier(s) audio importé(s) !`);
 
@@ -821,11 +1022,19 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                 {filteredAudio.map((track) => {
                   const isSelected = selectedTrack?.id === track.id;
                   const isMenuOpen = activeMenuTrackId === track.id;
+                  const isSaving = savingProgress[track.id] !== undefined;
+                  const progressVal = savingProgress[track.id] || 0;
+                  const saveError = savingErrors[track.id];
+                  const hasFailed = Boolean(saveError);
 
                   return (
                     <div
                       key={track.id}
                       onClick={() => {
+                        if (hasFailed) {
+                          showToast("Enregistrement échoué. Utilisez la croix pour retirer ou le bouton Réessayer.");
+                          return;
+                        }
                         if (isSelected) {
                           togglePlayPause();
                         } else {
@@ -834,14 +1043,30 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                           setIsMobilePlayerOpen(true);
                         }
                       }}
-                      className={`group flex items-center justify-between gap-3 p-3 rounded-2xl transition-all cursor-pointer select-none border relative ${
-                        isMenuOpen ? 'z-50' : 'z-10'
+                      className={`group flex items-center justify-between gap-3 p-3 rounded-2xl transition-all select-none border relative overflow-hidden ${
+                        isMenuOpen ? 'z-50 overflow-visible' : 'z-10'
                       } ${
-                        isSelected
-                          ? 'bg-amber-500/10 dark:bg-amber-950/30 border-amber-400 dark:border-amber-500 shadow-sm ring-1 ring-amber-400/30'
-                          : 'bg-white dark:bg-slate-900/80 border-stone-200/90 dark:border-slate-800 hover:border-amber-400/60 hover:shadow-md'
+                        hasFailed
+                          ? 'border-rose-500 bg-rose-950/20 shadow-md ring-1 ring-rose-500/40 cursor-default'
+                          : isSaving
+                            ? 'border-amber-400/40 bg-amber-500/5 cursor-wait'
+                            : isSelected
+                              ? 'bg-amber-500/10 dark:bg-amber-950/30 border-amber-400 dark:border-amber-500 shadow-sm ring-1 ring-amber-400/30 cursor-pointer'
+                              : 'bg-white dark:bg-slate-900/80 border-stone-200/90 dark:border-slate-800 hover:border-amber-400/60 hover:shadow-md cursor-pointer'
                       }`}
                     >
+                      {/* Ligne de progression en temps réel au-dessus de l'élément */}
+                      {isSaving && !hasFailed && (
+                        <div className="absolute top-0 inset-x-0 h-1 bg-black/40 z-20 overflow-hidden pointer-events-none rounded-t-2xl">
+                          <div 
+                            className="h-full bg-amber-400 transition-all duration-300 ease-out shadow-[0_0_10px_#f59e0b]"
+                            style={{ width: `${progressVal}%` }}
+                          />
+                        </div>
+                      )}
+                      {hasFailed && (
+                        <div className="absolute top-0 inset-x-0 h-1 bg-rose-500 z-20 overflow-hidden pointer-events-none rounded-t-2xl shadow-[0_0_10px_#f43f5e]" />
+                      )}
                       {/* Vignette album + Titre + Artiste + Métadonnées */}
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-stone-900 border border-stone-200 dark:border-white/10 relative shadow-sm">
@@ -917,9 +1142,33 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                           )}
                         </button>
 
-                        <span className="hidden sm:inline text-[11px] text-stone-400 dark:text-slate-500 whitespace-nowrap">
-                          {track.date || "Aujourd'hui, 11:34"}
-                        </span>
+                        {hasFailed ? (
+                          <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => handleRetryUpload(track.id)}
+                              className="px-2 py-1 bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/40 rounded-lg text-[10px] font-bold cursor-pointer"
+                            >
+                              Réessayer
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDismissFailedUpload(track.id)}
+                              className="p-1 hover:bg-rose-500/20 text-rose-400 rounded-lg cursor-pointer"
+                              title="Retirer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : isSaving ? (
+                          <span className="text-[10px] text-amber-400 font-bold animate-pulse whitespace-nowrap">
+                            Enregistrement {progressVal}%
+                          </span>
+                        ) : (
+                          <span className="hidden sm:inline text-[11px] text-stone-400 dark:text-slate-500 whitespace-nowrap">
+                            {track.date || "Aujourd'hui, 11:34"}
+                          </span>
+                        )}
 
                         {/* Bouton 3 traits menu */}
                         <div className="relative">

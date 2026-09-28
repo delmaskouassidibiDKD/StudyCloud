@@ -5125,6 +5125,22 @@ var index_default = {
               if (dRow && dRow.preview_url && !dRow.preview_url.includes("/api/cloud/thumbnail/")) {
                 fallbackDataUrl = dRow.preview_url;
               }
+              let aRow = null;
+              if (reqUserId && reqUserId !== "default-user") {
+                aRow = await env.DB.prepare("SELECT cover_url, r2_key, user_id FROM audio_files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId).first();
+              }
+              if (!aRow) {
+                aRow = await env.DB.prepare("SELECT cover_url, r2_key, user_id FROM audio_files WHERE id = ? LIMIT 1").bind(fileId).first();
+              }
+              if (aRow) {
+                if (aRow.cover_url && !aRow.cover_url.includes("/api/cloud/thumbnail/")) {
+                  fallbackDataUrl = aRow.cover_url;
+                }
+                if (!targetR2Key && aRow.r2_key) {
+                  const owner = aRow.user_id || (reqUserId !== "default-user" ? reqUserId : "");
+                  if (owner) targetR2Key = `${owner}/thumbnails/${fileId}_thumb.jpg`;
+                }
+              }
             }
           } catch (e) {
           }
@@ -5132,16 +5148,18 @@ var index_default = {
         if (!targetR2Key && reqUserId && reqUserId !== "default-user") {
           targetR2Key = `${reqUserId}/thumbnails/${fileId}_thumb.jpg`;
         }
-        const bucket = getBucketForCategory(rawEnv, targetCategory) || rawEnv.BUCKET || env.BUCKET;
         let object = null;
-        if (bucket) {
+        if (targetR2Key) {
           try {
-            object = await bucket.get(targetR2Key);
-            if (!object && !targetR2Key.endsWith(".png")) {
-              object = await bucket.get(targetR2Key.replace(/\.jpg$/, ".png"));
+            let found = await getObjectFromAnyBucket(rawEnv, targetCategory || "audio", targetR2Key);
+            if (!found?.object && !targetR2Key.endsWith(".png")) {
+              found = await getObjectFromAnyBucket(rawEnv, targetCategory || "audio", targetR2Key.replace(/\.jpg$/, ".png"));
             }
-            if (!object && targetR2Key !== `${reqUserId}/thumbnails/${fileId}.jpg`) {
-              object = await bucket.get(`${reqUserId}/thumbnails/${fileId}.jpg`);
+            if (!found?.object && reqUserId && targetR2Key !== `${reqUserId}/thumbnails/${fileId}.jpg`) {
+              found = await getObjectFromAnyBucket(rawEnv, targetCategory || "audio", `${reqUserId}/thumbnails/${fileId}.jpg`);
+            }
+            if (found?.object) {
+              object = found.object;
             }
           } catch (e) {
           }
@@ -5492,8 +5510,8 @@ var index_default = {
               }
             } else if (finalCategory === "audio") {
               await env.DB.prepare(`
-                INSERT INTO audio_files (id, user_id, name, title, artist, size, size_bytes, date_formatted, r2_key, audio_url, updated_at)
-                VALUES (?, ?, ?, ?, 'Artiste inconnu', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO audio_files (id, user_id, name, title, artist, size, size_bytes, date_formatted, r2_key, audio_url, cover_url, updated_at)
+                VALUES (?, ?, ?, ?, 'Artiste inconnu', ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(id) DO UPDATE SET
                   name = excluded.name,
                   title = excluded.title,
@@ -5501,8 +5519,24 @@ var index_default = {
                   size_bytes = excluded.size_bytes,
                   r2_key = excluded.r2_key,
                   audio_url = excluded.audio_url,
+                  cover_url = COALESCE(excluded.cover_url, audio_files.cover_url),
                   updated_at = CURRENT_TIMESTAMP
-              `).bind(fileId, reqUserId, fileName, fileName, sizeFormatted, sizeBytes, dateFormatted, storageKey, fileUrl).run();
+              `).bind(fileId, reqUserId, fileName, fileName, sizeFormatted, sizeBytes, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
+              try {
+                await env.DB.prepare(`
+                  INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, thumbnail_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
+                  VALUES (?, ?, 'menu-audio', ?, ?, 'audio/mpeg', ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    size = excluded.size,
+                    r2_key = COALESCE(excluded.r2_key, files.r2_key),
+                    file_url = excluded.file_url,
+                    thumbnail_url = COALESCE(excluded.thumbnail_url, files.thumbnail_url),
+                    last_imported = excluded.last_imported,
+                    updated_at = CURRENT_TIMESTAMP
+                `).bind(fileId, reqUserId, fileName, sizeBytes, extUpper, storageKey, fileUrl, finalThumbnailUrl, Date.now()).run();
+              } catch (e) {
+              }
             } else if (finalCategory === "documents") {
               await env.DB.prepare(`
                 INSERT INTO document_files (id, user_id, name, size, size_bytes, extension, document_category, date_formatted, r2_key, file_url, preview_url, updated_at)
@@ -6208,7 +6242,7 @@ var index_default = {
           try {
             const { results: extra } = await env.DB.prepare(`
               SELECT * FROM files 
-              WHERE user_id = ? AND (type LIKE 'audio/%' OR LOWER(extension) IN ('mp3','wav','ogg','m4a','aac','flac','wma','opus','alac','aiff'))
+              WHERE user_id = ? AND (type LIKE 'audio/%' OR LOWER(extension) IN ('mp3','wav','ogg','m4a','aac','flac','wma','opus','alac','aiff') OR matiere_id = 'menu-audio')
               ORDER BY last_imported DESC, created_at DESC
             `).bind(reqUserId).all();
             extraAuds = extra || [];
@@ -6225,8 +6259,29 @@ var index_default = {
             seen.add(id);
             seenNames.add(normKey);
             let finalUrl = a.audio_url || a.file_url || a.url || "";
+            if (finalUrl.includes("localhost") || finalUrl.includes("127.0.0.1")) {
+              try {
+                const u = new URL(finalUrl);
+                finalUrl = `${url.origin}${u.pathname}${u.search}`;
+              } catch (e) {
+                finalUrl = "";
+              }
+            }
             if ((!finalUrl || finalUrl.startsWith("blob:")) && a.r2_key) {
               finalUrl = `${url.origin}/api/cloud/file/audio/${encodeURIComponent(a.r2_key)}`;
+            } else if (!finalUrl && a.id) {
+              finalUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(a.id)}`;
+            }
+            let cover = a.cover_url || a.thumbnail_url || "";
+            if (cover.includes("localhost") || cover.includes("127.0.0.1")) {
+              try {
+                const cu = new URL(cover);
+                cover = `${url.origin}${cu.pathname}${cu.search}`;
+              } catch (e) {
+              }
+            }
+            if (!cover && a.id) {
+              cover = `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(a.id)}?userId=${encodeURIComponent(reqUserId)}`;
             }
             allList.push({
               id: a.id,
@@ -6241,7 +6296,9 @@ var index_default = {
               date: a.date_formatted || (a.created_at ? new Date(a.created_at).toLocaleDateString("fr-FR") : ""),
               lyricsSnippet: a.lyrics_snippet || "",
               fullLyrics: a.full_lyrics_json ? typeof a.full_lyrics_json === "string" ? JSON.parse(a.full_lyrics_json) : a.full_lyrics_json : [],
-              coverUrl: a.cover_url || "",
+              coverUrl: cover,
+              thumbnailUrl: cover,
+              previewUrl: cover,
               r2Key: a.r2_key || "",
               audioUrl: finalUrl,
               url: finalUrl,

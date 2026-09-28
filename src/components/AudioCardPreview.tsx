@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { extractAudioCover, generateAudioCreatorCover, getCachedMediaThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { CloudStorageAPI } from '../services/cloudStorageService';
+import { getWorkerApiUrl } from '../services/api';
 import { getFileBlob } from '../services/localFileStorage';
 import { FileItem } from './Page1FilesMenuView';
 
@@ -37,6 +38,10 @@ export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track, class
     if (isImageCover(track.previewUrl)) return track.previewUrl!;
     const cached = getCachedMediaThumbnail(track.id || track.audioUrl || track.url || '');
     if (isImageCover(cached || undefined)) return cached;
+    if (track.id && !track.id.startsWith('blob:')) {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      return `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(track.id)}`;
+    }
     return null;
   });
 
@@ -62,6 +67,11 @@ export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track, class
     const cached = getCachedMediaThumbnail(track.id || track.audioUrl || track.url || '');
     if (isImageCover(cached || undefined)) {
       setCoverUrl(cached);
+      return;
+    }
+    if (track.id && !track.id.startsWith('blob:')) {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      setCoverUrl(`${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(track.id)}`);
       return;
     }
     setCoverUrl(null);
