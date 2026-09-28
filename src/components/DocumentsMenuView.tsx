@@ -50,7 +50,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
   onOpenCreateShareLink
 }) => {
   const [documentsList, setDocumentsList] = useState<FileItem[]>(() => {
-    return CloudDataStore.getDocuments();
+    return CloudDataStore.getState().documents || [];
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -125,7 +125,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
   // Import de documents
   const handleImportDocuments = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    const files = Array.from(e.target.files);
+    const files = Array.from(e.target.files) as File[];
 
     showToast(`Préparation de ${files.length} document(s)...`);
 
@@ -199,7 +199,11 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     setDocumentsList(prev =>
       prev.map(d => (d.id === doc.id ? { ...d, isFavorite: nextState } : d))
     );
-    await CloudStorageAPI.setFavorite(doc.id, nextState).catch(() => {});
+    if (nextState) {
+      await CloudStorageAPI.addFavorite(doc.id, 'documents').catch(() => {});
+    } else {
+      await CloudStorageAPI.removeFavorite(doc.id).catch(() => {});
+    }
     showToast(nextState ? 'Ajouté aux favoris ⭐' : 'Retiré des favoris');
     setMenuDocId(null);
   };
@@ -215,7 +219,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     setDocumentsList(prev =>
       prev.map(d => (d.id === doc.id ? { ...d, name: finalName } : d))
     );
-    await CloudStorageAPI.updateDocument(doc.id, { name: finalName }).catch(() => {});
+    CloudDataStore.updateFile(doc.id, { name: finalName });
     showToast(`Document renommé en "${finalName}"`);
     setMenuDocId(null);
   };

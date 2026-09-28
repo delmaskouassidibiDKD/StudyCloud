@@ -39,18 +39,26 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
   onOpenCreateShareLink,
   setActivePreviewItem
 }) => {
-  const [favoritesList, setFavoritesList] = useState<FileItem[]>(() => {
-    // Initialiser depuis le cache CloudDataStore
-    const state = CloudDataStore.getState();
+  const getFavsFromStore = () => {
+    const s = CloudDataStore.getState();
     const all = [
-      ...CloudDataStore.getDocuments(),
-      ...CloudDataStore.getImages(),
-      ...CloudDataStore.getVideos(),
-      ...CloudDataStore.getAudio()
+      ...(s.favorites || []),
+      ...(s.documents || []).filter(f => f.isFavorite),
+      ...(s.images || []).filter(f => f.isFavorite),
+      ...(s.videos || []).filter(f => f.isFavorite),
+      ...(s.audio || []).filter(f => f.isFavorite),
+      ...Object.values(s.folderFilesMap || {}).flat().filter(f => f.isFavorite),
     ];
-    return all.filter(f => f.isFavorite);
-  });
-  const [loading, setLoading] = useState(true);
+    const seen = new Set<string>();
+    return all.filter(f => {
+      if (!f || !f.id || seen.has(f.id)) return false;
+      seen.add(f.id);
+      return true;
+    });
+  };
+
+  const [favoritesList, setFavoritesList] = useState<FileItem[]>(() => getFavsFromStore());
+  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'documents' | 'images' | 'videos' | 'audio'>('all');
   const [menuItemId, setMenuItemId] = useState<string | null>(null);
@@ -61,29 +69,23 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Chargement des favoris
+  // Chargement et synchronisation des favoris
   useEffect(() => {
-    let isMounted = true;
-    CloudStorageAPI.getFavoritesList()
-      .then((data) => {
-        if (isMounted && data && Array.isArray(data)) {
-          setFavoritesList(data);
-        }
-      })
-      .catch((err) => console.warn('[FavoritesMenuView] Error fetching favorites:', err))
-      .finally(() => {
-        if (isMounted) setLoading(false);
-      });
-
+    const unsubscribe = CloudDataStore.subscribe(() => {
+      setFavoritesList(getFavsFromStore());
+      setLoading(false);
+    });
+    setFavoritesList(getFavsFromStore());
     return () => {
-      isMounted = false;
+      unsubscribe();
     };
   }, []);
 
   // Retirer un favori
   const handleRemoveFavorite = async (file: FileItem) => {
     setFavoritesList(prev => prev.filter(f => f.id !== file.id));
-    await CloudStorageAPI.setFavorite(file.id, false).catch(() => {});
+    CloudDataStore.updateFile(file.id, { isFavorite: false });
+    await CloudStorageAPI.removeFavorite(file.id).catch(() => {});
     showToast(`"${file.name}" retiré des favoris`);
     setMenuItemId(null);
   };

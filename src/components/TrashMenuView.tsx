@@ -29,7 +29,7 @@ interface TrashMenuViewProps {
 
 export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   const [trashList, setTrashList] = useState<FileItem[]>(() => {
-    return CloudDataStore.getTrash();
+    return CloudDataStore.getState().trash || [];
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -52,11 +52,11 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   // Chargement des fichiers de la corbeille
   useEffect(() => {
     let isMounted = true;
-    CloudStorageAPI.getTrashList()
+    CloudStorageAPI.getTrashFiles()
       .then((data) => {
         if (isMounted && data && Array.isArray(data)) {
           setTrashList(data);
-          CloudDataStore.setTrash(data as any);
+          CloudDataStore.setTrashFiles(data as any);
         }
       })
       .catch((err) => console.warn('[TrashMenuView] Error fetching trash:', err))
@@ -73,16 +73,16 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   const handleRestore = async (file: FileItem) => {
     setTrashList(prev => prev.filter(f => f.id !== file.id));
     CloudDataStore.restoreFromTrash(file as any);
-    await CloudStorageAPI.restoreTrashFile(file.id, file.originalCategory || 'documents').catch(() => {});
+    await CloudStorageAPI.restoreTrashItem(file.id).catch(() => {});
     showToast(`"${file.name}" a été restauré dans ${file.originalCategory || 'son menu'}`);
   };
 
   // Supprimer définitivement un fichier
   const handleDeletePermanently = async (file: FileItem) => {
     setTrashList(prev => prev.filter(f => f.id !== file.id));
-    CloudDataStore.removeFile(file.id, 'trash');
+    CloudDataStore.removeFile(file.id);
     deleteFileBlob(file.id).catch(() => {});
-    await CloudStorageAPI.deleteTrashFilePermanently(file.id).catch(() => {});
+    await CloudStorageAPI.deleteTrashPermanently([file.id]).catch(() => {});
     showToast(`"${file.name}" a été supprimé définitivement`);
   };
 

@@ -59,7 +59,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   onOpenCreateShareLink
 }) => {
   const [audioList, setAudioList] = useState<FileItem[]>(() => {
-    return CloudDataStore.getAudio();
+    return CloudDataStore.getState().audio || [];
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -232,7 +232,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   // Import de nouveaux fichiers audio
   const handleImportAudio = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    const files = Array.from(e.target.files);
+    const files = Array.from(e.target.files) as File[];
 
     showToast(`Préparation de ${files.length} fichier(s) audio...`);
 
@@ -309,7 +309,11 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     setAudioList(prev =>
       prev.map(t => (t.id === track.id ? { ...t, isFavorite: nextState } : t))
     );
-    await CloudStorageAPI.setFavorite(track.id, nextState).catch(() => {});
+    if (nextState) {
+      await CloudStorageAPI.addFavorite(track.id, 'audio').catch(() => {});
+    } else {
+      await CloudStorageAPI.removeFavorite(track.id).catch(() => {});
+    }
     showToast(nextState ? 'Ajouté aux favoris ⭐' : 'Retiré des favoris');
     setMenuTrackId(null);
   };
@@ -325,7 +329,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     setAudioList(prev =>
       prev.map(t => (t.id === track.id ? { ...t, name: finalName } : t))
     );
-    await CloudStorageAPI.updateAudio(track.id, { name: finalName }).catch(() => {});
+    CloudDataStore.updateFile(track.id, { name: finalName });
     showToast(`Piste renommée en "${finalName}"`);
     setMenuTrackId(null);
   };

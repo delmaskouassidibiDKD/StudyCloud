@@ -59,11 +59,12 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         setOverview(data);
       } else {
         // Calcul de repli local depuis CloudDataStore
-        const docs = CloudDataStore.getDocuments();
-        const imgs = CloudDataStore.getImages();
-        const vids = CloudDataStore.getVideos();
-        const auds = CloudDataStore.getAudio();
-        const trash = CloudDataStore.getTrash();
+        const storeState = CloudDataStore.getState();
+        const docs = storeState.documents || [];
+        const imgs = storeState.images || [];
+        const vids = storeState.videos || [];
+        const auds = storeState.audio || [];
+        const trash = storeState.trash || [];
 
         const totalBytes = [...docs, ...imgs, ...vids, ...auds, ...trash].reduce(
           (sum, f) => sum + (f.sizeBytes || 0),

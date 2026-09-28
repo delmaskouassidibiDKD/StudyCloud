@@ -43,7 +43,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
   onOpenCreateShareLink
 }) => {
   const [imagesList, setImagesList] = useState<FileItem[]>(() => {
-    return CloudDataStore.getImages();
+    return CloudDataStore.getState().images || [];
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -118,7 +118,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
   // Import d'images
   const handleImportImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    const files = Array.from(e.target.files);
+    const files = Array.from(e.target.files) as File[];
 
     showToast(`Préparation de ${files.length} image(s)...`);
 
@@ -180,7 +180,11 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     setImagesList(prev =>
       prev.map(i => (i.id === img.id ? { ...i, isFavorite: nextState } : i))
     );
-    await CloudStorageAPI.setFavorite(img.id, nextState).catch(() => {});
+    if (nextState) {
+      await CloudStorageAPI.addFavorite(img.id, 'images').catch(() => {});
+    } else {
+      await CloudStorageAPI.removeFavorite(img.id).catch(() => {});
+    }
     showToast(nextState ? 'Ajoutée aux favoris ⭐' : 'Retirée des favoris');
     setMenuImageId(null);
   };
@@ -196,7 +200,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     setImagesList(prev =>
       prev.map(i => (i.id === img.id ? { ...i, name: finalName } : i))
     );
-    await CloudStorageAPI.updateImage(img.id, { name: finalName }).catch(() => {});
+    CloudDataStore.updateFile(img.id, { name: finalName });
     showToast(`Image renommée en "${finalName}"`);
     setMenuImageId(null);
   };

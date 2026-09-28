@@ -47,7 +47,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   onOpenCreateShareLink
 }) => {
   const [videosList, setVideosList] = useState<FileItem[]>(() => {
-    return CloudDataStore.getVideos();
+    return CloudDataStore.getState().videos || [];
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -118,7 +118,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   // Import de vidéos
   const handleImportVideos = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    const files = Array.from(e.target.files);
+    const files = Array.from(e.target.files) as File[];
 
     showToast(`Préparation de ${files.length} vidéo(s)...`);
 
@@ -181,7 +181,11 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     setVideosList(prev =>
       prev.map(v => (v.id === vid.id ? { ...v, isFavorite: nextState } : v))
     );
-    await CloudStorageAPI.setFavorite(vid.id, nextState).catch(() => {});
+    if (nextState) {
+      await CloudStorageAPI.addFavorite(vid.id, 'videos').catch(() => {});
+    } else {
+      await CloudStorageAPI.removeFavorite(vid.id).catch(() => {});
+    }
     showToast(nextState ? 'Ajouté aux favoris ⭐' : 'Retiré des favoris');
     setMenuVideoId(null);
   };
@@ -197,7 +201,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     setVideosList(prev =>
       prev.map(v => (v.id === vid.id ? { ...v, name: finalName } : v))
     );
-    await CloudStorageAPI.updateVideo(vid.id, { name: finalName }).catch(() => {});
+    CloudDataStore.updateFile(vid.id, { name: finalName });
     showToast(`Vidéo renommée en "${finalName}"`);
     setMenuVideoId(null);
   };

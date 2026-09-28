@@ -38,7 +38,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
   const [pinError, setPinError] = useState<string | null>(null);
 
   const [secureFiles, setSecureFiles] = useState<FileItem[]>(() => {
-    return CloudDataStore.getSecureFolder();
+    return CloudDataStore.getState().secure || [];
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -95,11 +95,11 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
   // Chargement des fichiers protégés une fois déverrouillé
   useEffect(() => {
     if (!isUnlocked) return;
-    CloudStorageAPI.getSecureFilesList()
+    CloudStorageAPI.getSecureFiles()
       .then((data) => {
         if (data && Array.isArray(data)) {
           setSecureFiles(data);
-          CloudDataStore.setSecureFolder(data as any);
+          CloudDataStore.setSecureFiles(data as any);
         }
       })
       .catch(() => {});
@@ -108,7 +108,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
   // Import dans le dossier sécurisé
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    const files = Array.from(e.target.files);
+    const files = Array.from(e.target.files) as File[];
 
     showToast(`Chiffrement et ajout de ${files.length} fichier(s)...`);
 
@@ -146,9 +146,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
 
     const newItems = newItemsWithFiles.map(x => x.item);
     setSecureFiles(prev => [...newItems, ...prev]);
-    CloudDataStore.setSecureFolder([...newItems, ...secureFiles] as any);
+    CloudDataStore.setSecureFiles([...newItems, ...secureFiles]);
 
-    UploadQueue.enqueueExisting(newItemsWithFiles, { category: 'secure-folder' });
+    UploadQueue.enqueueExisting(newItemsWithFiles, { category: 'secure' });
     showToast(`${newItems.length} fichier(s) protégé(s) avec succès !`);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -156,9 +156,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
   // Suppression
   const handleDelete = async (file: FileItem) => {
     setSecureFiles(prev => prev.filter(f => f.id !== file.id));
-    CloudDataStore.removeFile(file.id, 'secure-folder');
+    CloudDataStore.removeFile(file.id);
     deleteFileBlob(file.id).catch(() => {});
-    await CloudStorageAPI.deleteSecureFile(file.id).catch(() => {});
+    await CloudStorageAPI.restoreFromSecureFolder(file.id).catch(() => {});
     showToast(`"${file.name}" supprimé du dossier sécurisé`);
   };
 
