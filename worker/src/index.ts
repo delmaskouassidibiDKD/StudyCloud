@@ -5830,8 +5830,14 @@ export default {
         const storageKey = `${reqUserId}/${finalCategory}/${fileId}_${sanitizedName}`;
 
         const fileBuffer = await request.arrayBuffer();
-        const sizeBytes = fileBuffer.byteLength;
-        const sizeFormatted = formatBytes(sizeBytes);
+        const rawSizeBytes = fileBuffer.byteLength;
+        const headerOrigSizeBytes = Number(request.headers.get('x-original-size-bytes') || url.searchParams.get('originalSizeBytes') || 0);
+        const headerOrigSizeFormatted = request.headers.get('x-original-size') || '';
+        const sizeBytes = headerOrigSizeBytes > 0 ? headerOrigSizeBytes : rawSizeBytes;
+        const sizeFormatted = headerOrigSizeFormatted || formatBytes(sizeBytes);
+        const headerThumbnail = request.headers.get('x-thumbnail-data') || url.searchParams.get('thumbnailUrl') || '';
+        const thumbnailToSave = headerThumbnail && headerThumbnail.trim() ? headerThumbnail.trim() : '';
+
         const extUpper = ext.toUpperCase() || 'FICHIER';
 
         const now = new Date();
@@ -5849,6 +5855,7 @@ export default {
         });
 
         const fileUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(finalCategory)}/${encodeURIComponent(storageKey)}`;
+        const finalThumbnailUrl = thumbnailToSave || fileUrl;
 
         // 4. Enregistrement direct dans la table D1 correspondante avec ON CONFLICT
         if (env.DB) {
@@ -5865,7 +5872,7 @@ export default {
                   image_url = excluded.image_url,
                   thumbnail_url = excluded.thumbnail_url,
                   updated_at = CURRENT_TIMESTAMP
-              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
             } else if (finalCategory === 'videos') {
               await env.DB.prepare(`
                 INSERT INTO video_files (id, user_id, name, size, size_bytes, extension, date_formatted, r2_key, video_url, thumbnail_url, updated_at)
@@ -5876,9 +5883,26 @@ export default {
                   size_bytes = excluded.size_bytes,
                   r2_key = excluded.r2_key,
                   video_url = excluded.video_url,
-                  thumbnail_url = excluded.thumbnail_url,
+                  thumbnail_url = CASE 
+                    WHEN excluded.thumbnail_url IS NOT NULL AND excluded.thumbnail_url != '' AND excluded.thumbnail_url != excluded.video_url
+                    THEN excluded.thumbnail_url 
+                    ELSE COALESCE(NULLIF(video_files.thumbnail_url, ''), excluded.thumbnail_url)
+                  END,
                   updated_at = CURRENT_TIMESTAMP
-              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
+              try {
+                await env.DB.prepare(`
+                  INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
+                  VALUES (?, ?, 'menu-videos', ?, ?, 'video/mp4', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    size = excluded.size,
+                    r2_key = COALESCE(excluded.r2_key, files.r2_key),
+                    file_url = excluded.file_url,
+                    last_imported = excluded.last_imported,
+                    updated_at = CURRENT_TIMESTAMP
+                `).bind(fileId, reqUserId, fileName, sizeBytes, extUpper, storageKey, fileUrl, Date.now()).run();
+              } catch (e) {}
             } else if (finalCategory === 'audio') {
               await env.DB.prepare(`
                 INSERT INTO audio_files (id, user_id, name, title, artist, size, size_bytes, date_formatted, r2_key, audio_url, updated_at)
@@ -5961,9 +5985,10 @@ export default {
             extension: extUpper,
             category: finalCategory === 'classeur' ? detectedNature : finalCategory,
             url: fileUrl,
-            previewUrl: (finalCategory === 'images' || detectedNature === 'images') ? fileUrl : undefined,
+            previewUrl: (finalCategory === 'images' || detectedNature === 'images') ? fileUrl : (finalCategory === 'videos' ? (thumbnailToSave || fileUrl) : undefined),
             videoUrl: (finalCategory === 'videos' || detectedNature === 'videos') ? fileUrl : undefined,
             audioUrl: (finalCategory === 'audio' || detectedNature === 'audio') ? fileUrl : undefined,
+            thumbnailUrl: finalCategory === 'videos' ? (thumbnailToSave || fileUrl) : undefined,
             date: dateFormatted,
             folderId: folderId || undefined,
             source: finalCategory === 'classeur' ? 'Classeur' : 'StudyCloud'
