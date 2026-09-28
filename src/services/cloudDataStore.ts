@@ -440,7 +440,7 @@ export const CloudDataStore = {
             if (cloudOverview !== null) {
               currentState.overview = cloudOverview;
               if (cloudOverview.recentFiles && Array.isArray(cloudOverview.recentFiles) && cloudOverview.recentFiles.length > 0) {
-                currentState.recentFiles = cloudOverview.recentFiles.filter(isNotLocallyDeleted);
+                currentState.recentFiles = cloudOverview.recentFiles.filter(isNotLocallyDeleted) as any;
               }
               notify();
               persistToIndexedDB().catch(() => {});

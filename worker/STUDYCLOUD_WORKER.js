@@ -2430,7 +2430,7 @@ async function processReferralAttribution(db, referralCode, newUserId, newUserNa
       }
     }
     const totalRewardDays = baseDays + extraMilestoneDays;
-    const referralId = generateId();
+    const referralId = crypto.randomUUID();
     await db.prepare(`
       INSERT INTO referrals (id, referrer_id, referred_user_id, referred_user_name, referred_user_email, reward_days, created_at)
       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -2491,7 +2491,7 @@ var index_default = {
             user.security_answer_1_hash && typeof user.security_answer_1_hash === "string" && user.security_answer_1_hash.trim().length > 0 && user.security_answer_2_hash && typeof user.security_answer_2_hash === "string" && user.security_answer_2_hash.trim().length > 0
           )
         };
-      }, generateId2 = function() {
+      }, generateId = function() {
         return crypto.randomUUID();
       }, isValidEmail = function(email) {
         if (!email || typeof email !== "string") return false;
@@ -3330,7 +3330,7 @@ var index_default = {
           } catch (e) {
           }
         }
-        const userId = generateId2();
+        const userId = generateId();
         const passwordHash = await hashPassword(password);
         const registrationPayload = JSON.stringify({
           userId,
@@ -3350,7 +3350,7 @@ var index_default = {
           await env.DB.prepare(`
             INSERT INTO email_verifications (id, user_id, email, token, payload, resend_count, block_stage, last_sent_at, expires_at)
             VALUES (?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP, ?)
-          `).bind(generateId2(), userId, cleanEmail, verificationToken, registrationPayload, expiresAt).run();
+          `).bind(generateId(), userId, cleanEmail, verificationToken, registrationPayload, expiresAt).run();
         } catch (insertErr) {
           if (String(insertErr).includes("FOREIGN KEY") || String(insertErr).includes("SQLITE_CONSTRAINT")) {
             try {
@@ -3361,7 +3361,7 @@ var index_default = {
             await env.DB.prepare(`
               INSERT INTO email_verifications (id, user_id, email, token, payload, resend_count, block_stage, last_sent_at, expires_at)
               VALUES (?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP, ?)
-            `).bind(generateId2(), userId, cleanEmail, verificationToken, registrationPayload, expiresAt).run();
+            `).bind(generateId(), userId, cleanEmail, verificationToken, registrationPayload, expiresAt).run();
           } else {
             throw insertErr;
           }
@@ -3487,7 +3487,7 @@ var index_default = {
           await env.DB.prepare(`
             INSERT INTO email_verifications (id, user_id, email, token, resend_count, block_stage, last_sent_at, expires_at)
             VALUES (?, ?, ?, ?, 1, 0, CURRENT_TIMESTAMP, ?)
-          `).bind(generateId2(), user?.id || generateId2(), cleanEmail, newToken, newExpiresAt).run();
+          `).bind(generateId(), user?.id || generateId(), cleanEmail, newToken, newExpiresAt).run();
           const clientOrigin = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
           await sendConfirmationEmail(cleanEmail, userName, newToken, clientOrigin, isLoginFlow);
           return jsonResponse({
@@ -3545,7 +3545,7 @@ var index_default = {
               jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
               const tokenHash = await hashToken(jwtToken);
               const expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
-              await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId2(), user.id, tokenHash, expiresAt).run();
+              await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId(), user.id, tokenHash, expiresAt).run();
               try {
                 await env.DB.prepare("UPDATE email_verifications SET confirmed_jwt = ? WHERE id = ?").bind(jwtToken, latestVerif.id).run();
               } catch (e3) {
@@ -3623,7 +3623,7 @@ var index_default = {
           if (record.payload) {
             try {
               const userData = JSON.parse(record.payload);
-              const userId = userData.userId || record.user_id || generateId2();
+              const userId = userData.userId || record.user_id || generateId();
               await env.DB.prepare(`
                 INSERT INTO users (
                   id, name, email, password_hash, provider, email_verified, is_onboarded,
@@ -3690,7 +3690,7 @@ var index_default = {
           const jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
           const tokenHash = await hashToken(jwtToken);
           const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
-          await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId2(), user.id, tokenHash, sessionExpiresAt).run();
+          await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId(), user.id, tokenHash, sessionExpiresAt).run();
           try {
             await env.DB.prepare(`
               UPDATE email_verifications SET
@@ -3785,7 +3785,7 @@ var index_default = {
         await env.DB.prepare(`
           INSERT INTO email_verifications (id, user_id, email, token, resend_count, block_stage, last_sent_at, expires_at)
           VALUES (?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP, ?)
-        `).bind(generateId2(), user.id, cleanEmail, verificationToken, expiresAt).run();
+        `).bind(generateId(), user.id, cleanEmail, verificationToken, expiresAt).run();
         const clientOrigin = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
         await sendConfirmationEmail(cleanEmail, user.name, verificationToken, clientOrigin, true);
         return jsonResponse({
@@ -3913,7 +3913,7 @@ var index_default = {
         await env.DB.prepare(`
           INSERT INTO password_resets (id, user_id, target_email, reset_code, attempts_today, last_requested_at, expires_at, used)
           VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 0)
-        `).bind(generateId2(), user.id, cleanTargetEmail, resetCode, count + 1, expiresAt).run();
+        `).bind(generateId(), user.id, cleanTargetEmail, resetCode, count + 1, expiresAt).run();
         const clientOrigin = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
         await sendPasswordResetEmail(cleanTargetEmail, user.name, resetCode, clientOrigin);
         return jsonResponse({
@@ -3979,7 +3979,7 @@ var index_default = {
         await cleanupExpiredUnfinishedAccounts(env.DB);
         let user = await env.DB.prepare("SELECT * FROM users WHERE google_id = ? OR LOWER(TRIM(email)) = ?").bind(profile.id, cleanGoogleEmail).first();
         if (!user) {
-          const userId = generateId2();
+          const userId = generateId();
           let newRefCode = generateReferralCode();
           try {
             let codeExists = await env.DB.prepare("SELECT id FROM users WHERE referral_code = ?").bind(newRefCode).first();
@@ -4021,7 +4021,7 @@ var index_default = {
         const token = await createJWT({ userId: user.id, email: user.email, name: user.name });
         const tokenHash = await hashToken(token);
         const expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
-        await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId2(), user.id, tokenHash, expiresAt).run();
+        await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId(), user.id, tokenHash, expiresAt).run();
         const safeUser = sanitizeUser(user);
         return jsonResponse({
           success: true,
@@ -4066,7 +4066,7 @@ var index_default = {
         try {
           const tokenHash = await hashToken(token);
           const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
-          await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId2(), user.id, tokenHash, sessionExpiresAt).run();
+          await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId(), user.id, tokenHash, sessionExpiresAt).run();
         } catch (e) {
         }
         const safeUser = sanitizeUser(user);
@@ -4082,7 +4082,7 @@ var index_default = {
         try {
           const tokenHash = await hashToken(token);
           const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
-          await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId2(), payload.userId, tokenHash, sessionExpiresAt).run();
+          await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId(), payload.userId, tokenHash, sessionExpiresAt).run();
         } catch (e) {
         }
         return jsonResponse({ success: true, isOnline: true, last_active_at: (/* @__PURE__ */ new Date()).toISOString() }, 200, origin);
@@ -6938,7 +6938,7 @@ var index_default = {
         } else {
           const existing = await env.DB.prepare("SELECT id FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).first();
           if (existing) return errorResponse("Un compte existe d\xE9j\xE0 avec cet email. Veuillez vous connecter.", 409, origin);
-          const newUserId = generateId2();
+          const newUserId = generateId();
           const pwdHash = await hashPassword(password);
           const cleanName = (name || cleanEmail.split("@")[0] || "\xC9tudiant").trim();
           const cleanCountry = country || "C\xF4te d'Ivoire";
@@ -6971,7 +6971,7 @@ var index_default = {
         const folderTitle = folder.title || "Partages re\xE7us";
         let matiere = await env.DB.prepare("SELECT id FROM matieres WHERE user_id = ? AND name = ?").bind(userId, folderTitle).first();
         if (!matiere) {
-          const matiereId = "mat-" + generateId2().substring(0, 8);
+          const matiereId = "mat-" + generateId().substring(0, 8);
           await env.DB.prepare(`
             INSERT INTO matieres (id, user_id, name, color, icon, updated_at)
             VALUES (?, ?, ?, '#2563eb', 'Folder', CURRENT_TIMESTAMP)
@@ -6980,7 +6980,7 @@ var index_default = {
         }
         let copiedCount = 0;
         for (const sf of sharedFiles) {
-          const newFileId = "file-" + generateId2();
+          const newFileId = "file-" + generateId();
           const ext = sf.name && sf.name.includes(".") ? sf.name.split(".").pop() || "" : "";
           await env.DB.prepare(`
             INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
@@ -7013,7 +7013,7 @@ var index_default = {
         const shareId = path.split("/")[3];
         await env.DB.prepare("UPDATE shared_folders SET downloads_count = downloads_count + 1 WHERE id = ? OR share_code = ?").bind(shareId, shareId).run();
         try {
-          const dlId = "dl-" + generateId2();
+          const dlId = "dl-" + generateId();
           const clientIp = request.headers.get("cf-connecting-ip") || "unknown";
           await env.DB.prepare(`
             INSERT INTO shared_folder_downloads (id, shared_folder_id, ip_address, created_at)

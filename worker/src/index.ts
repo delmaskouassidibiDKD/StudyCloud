@@ -2,6 +2,29 @@
  * StudyCloud - Cloudflare Worker Backend API
  * Gère la communication complète entre StudyCloud, Cloudflare D1 (SQL) et Cloudflare R2 (Storage).
  */
+interface D1PreparedStatement {
+  bind(...values: any[]): D1PreparedStatement;
+  first<T = any>(colName?: string): Promise<T | null>;
+  run<T = any>(): Promise<{ success: boolean; meta: any; results?: T[] }>;
+  all<T = any>(): Promise<{ success: boolean; meta: any; results: T[] }>;
+  raw<T = any>(): Promise<T[]>;
+}
+
+interface D1Database {
+  prepare(query: string): D1PreparedStatement;
+  dump(): Promise<ArrayBuffer>;
+  batch<T = any>(statements: D1PreparedStatement[]): Promise<{ success: boolean; meta: any; results?: T[] }[]>;
+  exec<T = any>(query: string): Promise<{ count: number; duration: number }>;
+}
+
+interface R2Bucket {
+  head(key: string): Promise<any>;
+  get(key: string, options?: any): Promise<any>;
+  put(key: string, value: any, options?: any): Promise<any>;
+  delete(keys: string | string[]): Promise<any>;
+  list(options?: any): Promise<any>;
+}
+
 export interface Env {
   DB?: D1Database;
   BUCKET?: R2Bucket;
@@ -2954,7 +2977,7 @@ async function processReferralAttribution(
     const totalRewardDays = baseDays + extraMilestoneDays;
 
     // 4. Enregistrer le parrainage dans la table referrals
-    const referralId = generateId();
+    const referralId = crypto.randomUUID();
     await db.prepare(`
       INSERT INTO referrals (id, referrer_id, referred_user_id, referred_user_name, referred_user_email, reward_days, created_at)
       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
