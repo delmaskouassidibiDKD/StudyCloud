@@ -28,7 +28,9 @@ import {
   Pencil,
   Link,
   AlertCircle,
-  RotateCcw
+  RotateCcw,
+  RotateCw,
+  Sparkles
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
@@ -83,6 +85,16 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   const [selectedVideo, setSelectedVideo] = useState<FileItem | null>(null);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Pagination & Défilement Infini (avec mise en cache instantanée)
+  const [displayMode, setDisplayMode] = useState<'infinite' | 'pagination'>(() => {
+    return (localStorage.getItem('studycloud_videos_display_mode') as 'infinite' | 'pagination') || 'infinite';
+  });
+  const [pageSize, setPageSize] = useState<number>(12);
+  const [visibleCount, setVisibleCount] = useState<number>(12);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
 
   // Progression d'enregistrement et gestion d'erreurs en temps réel (comme dans Mes Fichiers)
   const [savingProgress, setSavingProgress] = useState<Record<string, number>>({});
@@ -396,9 +408,6 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       CloudDataStore.addOptimisticFile(it as any);
     });
 
-    if (newItems.length > 0 && !selectedVideo) {
-      setSelectedVideo(newItems[0]);
-    }
     if (fileInputRef.current) fileInputRef.current.value = '';
     showToast(`${newItems.length} vidéo(s) ajoutée(s) — Enregistrement en cours...`);
 
@@ -535,6 +544,48 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       return 0;
     });
   }, [videosList, searchQuery]);
+
+  // Réinitialisation de la pagination lors d'un changement de recherche ou de taille de page
+  useEffect(() => {
+    setCurrentPage(1);
+    setVisibleCount(pageSize);
+  }, [searchQuery, pageSize]);
+
+  // Détection du défilement infini pour charger le lot suivant
+  useEffect(() => {
+    if (displayMode !== 'infinite') return;
+    if (visibleCount >= filteredVideos.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isLoadingMore) {
+          setIsLoadingMore(true);
+          setTimeout(() => {
+            setVisibleCount(prev => Math.min(prev + pageSize, filteredVideos.length));
+            setIsLoadingMore(false);
+          }, 250);
+        }
+      },
+      { rootMargin: '250px' }
+    );
+
+    const el = loadMoreSentinelRef.current;
+    if (el) observer.observe(el);
+
+    return () => observer.disconnect();
+  }, [displayMode, visibleCount, filteredVideos.length, isLoadingMore, pageSize]);
+
+  // Vidéos effectivement affichées dans la vue courante (mise en cache automatique)
+  const displayedVideos = useMemo(() => {
+    if (displayMode === 'infinite') {
+      return filteredVideos.slice(0, visibleCount);
+    } else {
+      const start = (currentPage - 1) * pageSize;
+      return filteredVideos.slice(start, start + pageSize);
+    }
+  }, [displayMode, filteredVideos, visibleCount, currentPage, pageSize]);
+
+  const totalPages = Math.ceil(filteredVideos.length / pageSize) || 1;
 
   const isAllChecked = filteredVideos.length > 0 && filteredVideos.every(v => selectedItemIds.includes(v.id));
 
@@ -1636,7 +1687,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
             fileName={file.name}
             fileId={file.id}
             fileSize={file.size}
-            autoPlay={true}
+            autoPlay={false}
             className="w-full h-full max-h-[calc(100vh-180px)] rounded-2xl"
           />
         </div>
@@ -1758,23 +1809,74 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
               : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
         }`}>
           <div className="space-y-3 sm:space-y-4">
-            {/* SOUS-TITRE : NOMBRE DE VIDÉOS DISPONIBLES (IMAGE 1) */}
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
-                {filteredVideos.length} vidéo{filteredVideos.length > 1 ? 's' : ''} disponible{filteredVideos.length > 1 ? 's' : ''}
-              </span>
-              {isSelectionMode && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedItemIds([]);
-                    setIsSelectionMode(false);
-                  }}
-                  className="text-xs text-purple-400 hover:text-purple-300 font-bold cursor-pointer"
-                >
-                  Quitter la sélection
-                </button>
-              )}
+            {/* SOUS-TITRE : NOMBRE DE VIDÉOS DISPONIBLES ET CONTRÔLE D'AFFICHAGE */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200/60 dark:border-white/5 pb-2 mb-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
+                  {displayMode === 'infinite'
+                    ? `Affichage de ${displayedVideos.length} sur ${filteredVideos.length} vidéo${filteredVideos.length > 1 ? 's' : ''}`
+                    : `Page ${currentPage} sur ${totalPages} (${filteredVideos.length} vidéo${filteredVideos.length > 1 ? 's' : ''})`
+                  }
+                </span>
+                {filteredVideos.length > 0 && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold hidden sm:inline-flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    En cache
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Sélecteur de mode d'affichage */}
+                <div className="flex items-center gap-0.5 bg-stone-200/70 dark:bg-[#0A0E18] p-0.5 rounded-lg border border-stone-300/60 dark:border-white/10 shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDisplayMode('infinite');
+                      localStorage.setItem('studycloud_videos_display_mode', 'infinite');
+                    }}
+                    className={`px-2 py-1 text-[10px] sm:text-xs font-bold rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                      displayMode === 'infinite'
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
+                    }`}
+                    title="Défilement infini avec chargement automatique au défilement"
+                  >
+                    <Sparkles className="w-3 h-3 text-purple-200" />
+                    <span className="hidden min-[480px]:inline">Défilement infini</span>
+                    <span className="inline min-[480px]:hidden">Infini</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDisplayMode('pagination');
+                      localStorage.setItem('studycloud_videos_display_mode', 'pagination');
+                    }}
+                    className={`px-2 py-1 text-[10px] sm:text-xs font-bold rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                      displayMode === 'pagination'
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
+                    }`}
+                    title="Pagination par pages numérotées"
+                  >
+                    <BookOpen className="w-3 h-3 text-purple-200" />
+                    <span>Pages</span>
+                  </button>
+                </div>
+
+                {isSelectionMode && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedItemIds([]);
+                      setIsSelectionMode(false);
+                    }}
+                    className="text-xs text-purple-400 hover:text-purple-300 font-bold cursor-pointer"
+                  >
+                    Quitter la sélection
+                  </button>
+                )}
+              </div>
             </div>
 
             {loading ? (
@@ -1791,14 +1893,95 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
                 </p>
               </div>
             ) : (
-              /* GRILLE DES CARTES VIDÉOS IDENTIQUE À L'IMAGE 1 */
-              <div className={`grid gap-3 sm:gap-4 ${
-                selectedVideo
-                  ? 'grid-cols-2 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-3'
-                  : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-              }`}>
-                {filteredVideos.map((vid, idx) => renderVideoCard(vid, idx))}
-              </div>
+              <>
+                {/* GRILLE DES CARTES VIDÉOS IDENTIQUE À L'IMAGE 1 */}
+                <div className={`grid gap-3 sm:gap-4 ${
+                  selectedVideo
+                    ? 'grid-cols-2 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-3'
+                    : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                }`}>
+                  {displayedVideos.map((vid, idx) => renderVideoCard(vid, idx))}
+                </div>
+
+                {/* Pied de liste : Défilement Infini OU Pagination classique */}
+                {displayMode === 'infinite' && (
+                  <div className="pt-5 pb-12 flex flex-col items-center justify-center">
+                    {visibleCount < filteredVideos.length ? (
+                      <div ref={loadMoreSentinelRef} className="flex flex-col items-center gap-2">
+                        {isLoadingMore ? (
+                          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-purple-950/50 border border-purple-500/40 text-purple-300 text-xs font-semibold animate-pulse shadow-lg">
+                            <div className="w-3.5 h-3.5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                            <span>Chargement des vidéos suivantes...</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVisibleCount(prev => Math.min(prev + pageSize, filteredVideos.length));
+                            }}
+                            className="px-5 py-2 rounded-full bg-[#0A0E18] hover:bg-[#141B2D] text-purple-300 hover:text-purple-200 border border-purple-500/40 hover:border-purple-400 text-xs font-bold transition-all cursor-pointer shadow-lg active:scale-95 flex items-center gap-1.5"
+                          >
+                            <RotateCw className="w-3.5 h-3.5 text-purple-400" />
+                            <span>Charger plus (+{Math.min(pageSize, filteredVideos.length - visibleCount)})</span>
+                          </button>
+                        )}
+                      </div>
+                    ) : filteredVideos.length > pageSize ? (
+                      <div className="py-2.5 px-4 rounded-xl bg-purple-950/20 border border-purple-500/20 text-purple-300 text-[11px] font-semibold flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Toutes les {filteredVideos.length} vidéos sont affichées et gardées en cache</span>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
+                {displayMode === 'pagination' && totalPages > 1 && (
+                  <div className="pt-5 pb-12 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
+                    <button
+                      type="button"
+                      disabled={currentPage <= 1}
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      className="px-3 py-1.5 rounded-lg border border-stone-300 dark:border-white/10 bg-white dark:bg-[#0A0E18] text-stone-800 dark:text-white text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-stone-100 dark:hover:bg-[#141B2D] transition-all flex items-center gap-1 cursor-pointer"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                      <span>Précédent</span>
+                    </button>
+
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+                      .map((p, idx, arr) => {
+                        const prev = arr[idx - 1];
+                        const hasGap = prev && p - prev > 1;
+                        return (
+                          <React.Fragment key={p}>
+                            {hasGap && <span className="px-1 text-stone-500 text-xs">...</span>}
+                            <button
+                              type="button"
+                              onClick={() => setCurrentPage(p)}
+                              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                currentPage === p
+                                  ? 'bg-purple-600 text-white shadow-md'
+                                  : 'bg-white dark:bg-[#0A0E18] text-stone-700 dark:text-stone-300 border border-stone-300 dark:border-white/10 hover:border-purple-400/40 hover:bg-stone-100 dark:hover:bg-[#141B2D]'
+                              }`}
+                            >
+                              {p}
+                            </button>
+                          </React.Fragment>
+                        );
+                      })}
+
+                    <button
+                      type="button"
+                      disabled={currentPage >= totalPages}
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      className="px-3 py-1.5 rounded-lg border border-stone-300 dark:border-white/10 bg-white dark:bg-[#0A0E18] text-stone-800 dark:text-white text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-stone-100 dark:hover:bg-[#141B2D] transition-all flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>Suivant</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
