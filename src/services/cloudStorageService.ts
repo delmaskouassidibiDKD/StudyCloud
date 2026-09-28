@@ -778,63 +778,71 @@ export const CloudStorageAPI = {
     uploadSource?: string,
     originalSizeBytes?: number,
     originalSizeFormatted?: string,
-    fileId?: string
+    fileId?: string,
+    onProgress?: (percent: number) => void
   ): Promise<{ success: boolean; category?: string; detectedCategory?: string; file?: FileItem; error?: string }> {
-    try {
-      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const sourceQuery = uploadSource ? `&source=${encodeURIComponent(uploadSource)}` : '';
-      const origSizeParam = originalSizeBytes ? `&originalSizeBytes=${encodeURIComponent(String(originalSizeBytes))}` : '';
-      const idParam = fileId ? `&id=${encodeURIComponent(fileId)}` : '';
-      const uploadUrl = `${baseUrl}/api/cloud/upload?category=${encodeURIComponent(category)}&name=${encodeURIComponent(fileName)}&folderId=${encodeURIComponent(folderId || '')}&userId=${getUserIdParam()}${sourceQuery}${origSizeParam}${idParam}`;
-      
-      const token = localStorage.getItem('sc_auth_token') || '';
-      const headers: Record<string, string> = {
-        'Content-Type': file.type || 'application/octet-stream',
-        'x-user-id': getCurrentUserId() || 'default-user',
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      if (fileId) {
-        headers['x-file-id'] = fileId;
-      }
-      if (uploadSource) {
-        headers['x-upload-source'] = uploadSource;
-      }
-      if (thumbnailDataUrl && thumbnailDataUrl.startsWith('data:image')) {
-        headers['x-thumbnail-data'] = thumbnailDataUrl;
-      }
-      if (originalSizeBytes) {
-        headers['x-original-size-bytes'] = String(originalSizeBytes);
-      }
-      if (originalSizeFormatted) {
-        headers['x-original-size'] = originalSizeFormatted;
-      }
+    return new Promise((resolve) => {
+      try {
+        const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+        const sourceQuery = uploadSource ? `&source=${encodeURIComponent(uploadSource)}` : '';
+        const origSizeParam = originalSizeBytes ? `&originalSizeBytes=${encodeURIComponent(String(originalSizeBytes))}` : '';
+        const idParam = fileId ? `&id=${encodeURIComponent(fileId)}` : '';
+        const uploadUrl = `${baseUrl}/api/cloud/upload?category=${encodeURIComponent(category)}&name=${encodeURIComponent(fileName)}&folderId=${encodeURIComponent(folderId || '')}&userId=${getUserIdParam()}${sourceQuery}${origSizeParam}${idParam}`;
 
-      const res = await fetchWithTimeout(uploadUrl, {
-        method: 'POST',
-        headers,
-        body: file,
-      }, 180000); // 3 minutes timeout pour éviter tout avortement prématuré de fichier média volumineux
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', uploadUrl, true);
+        xhr.timeout = 240000; // 4 minutes
 
-      if (!res.ok) {
-        let errorMsg = 'Erreur lors du téléversement';
-        try {
-          const errJson = await res.json();
-          if (errJson && errJson.error) errorMsg = errJson.error;
-        } catch {
-          const errText = await res.text();
-          if (errText) errorMsg = errText;
+        const token = localStorage.getItem('sc_auth_token') || '';
+        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+        xhr.setRequestHeader('x-user-id', getCurrentUserId() || 'default-user');
+        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        if (fileId) xhr.setRequestHeader('x-file-id', fileId);
+        if (uploadSource) xhr.setRequestHeader('x-upload-source', uploadSource);
+        if (thumbnailDataUrl && thumbnailDataUrl.startsWith('data:image')) xhr.setRequestHeader('x-thumbnail-data', thumbnailDataUrl);
+        if (originalSizeBytes) xhr.setRequestHeader('x-original-size-bytes', String(originalSizeBytes));
+        if (originalSizeFormatted) xhr.setRequestHeader('x-original-size', originalSizeFormatted);
+
+        if (xhr.upload && onProgress) {
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable && e.total > 0) {
+              const pct = Math.round((e.loaded / e.total) * 100);
+              onProgress(pct);
+            }
+          };
         }
-        return { success: false, error: errorMsg };
-      }
 
-      const json = await res.json();
-      return json;
-    } catch (e: any) {
-      console.error('[CloudStorageAPI] uploadFile error:', e);
-      return { success: false, error: e.message || 'Erreur réseau lors du téléversement' };
-    }
+        xhr.onload = () => {
+          try {
+            const json = JSON.parse(xhr.responseText);
+            if (xhr.status >= 200 && xhr.status < 300 && json.success) {
+              resolve(json);
+            } else {
+              resolve({ success: false, error: json.error || `Erreur serveur (${xhr.status})` });
+            }
+          } catch {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve({ success: true });
+            } else {
+              resolve({ success: false, error: `Erreur serveur HTTP ${xhr.status}` });
+            }
+          }
+        };
+
+        xhr.onerror = () => {
+          resolve({ success: false, error: 'Connexion réseau perdue ou interrompue' });
+        };
+
+        xhr.ontimeout = () => {
+          resolve({ success: false, error: 'Délai d\'envoi dépassé (connexion trop lente)' });
+        };
+
+        xhr.send(file);
+      } catch (e: any) {
+        console.error('[CloudStorageAPI] uploadFile error:', e);
+        resolve({ success: false, error: e.message || 'Erreur réseau lors du téléversement' });
+      }
+    });
   },
 
   async uploadFileToCategoryR2(
@@ -844,9 +852,10 @@ export const CloudStorageAPI = {
     folderId?: string,
     uploadSource?: string,
     originalSizeBytes?: number,
-    originalSizeFormatted?: string
+    originalSizeFormatted?: string,
+    onProgress?: (percent: number) => void
   ): Promise<{ success: boolean; id?: string; key?: string; url?: string; error?: string }> {
-    const res = await this.uploadFile(file, category as any, fileName, folderId, undefined, uploadSource, originalSizeBytes, originalSizeFormatted);
+    const res = await this.uploadFile(file, category as any, fileName, folderId, undefined, uploadSource, originalSizeBytes, originalSizeFormatted, undefined, onProgress);
     if (!res.success) {
       return { success: false, error: res.error };
     }

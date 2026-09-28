@@ -296,7 +296,11 @@ class UploadQueueManager {
           folderId,
           task.uploadSource,
           task.originalSizeBytes,
-          task.originalSizeFormatted
+          task.originalSizeFormatted,
+          (pct) => {
+            task.progress = Math.max(10, Math.min(99, pct));
+            this.notify();
+          }
         );
         uploadUrl = uploadRes.url;
         r2Key = uploadRes.key;
@@ -321,7 +325,11 @@ class UploadQueueManager {
           task.uploadSource,
           task.originalSizeBytes,
           task.originalSizeFormatted,
-          id
+          id,
+          (pct) => {
+            task.progress = Math.max(10, Math.min(99, pct));
+            this.notify();
+          }
         );
 
         if (res?.success && res.file) {

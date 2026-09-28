@@ -26,7 +26,9 @@ import {
   Copy,
   Pin,
   Pencil,
-  Link
+  Link,
+  AlertCircle,
+  RotateCcw
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
@@ -81,6 +83,106 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   const [selectedVideo, setSelectedVideo] = useState<FileItem | null>(null);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Progression d'enregistrement et gestion d'erreurs en temps réel (comme dans Mes Fichiers)
+  const [savingProgress, setSavingProgress] = useState<Record<string, number>>({});
+  const [savingErrors, setSavingErrors] = useState<Record<string, string>>({});
+
+  // Écoute en temps réel de la file d'attente d'upload liée au Cloudflare Worker (D1/R2)
+  useEffect(() => {
+    const unsubscribe = UploadQueue.subscribe((queueState) => {
+      const activeProg: Record<string, number> = {};
+      const activeErrs: Record<string, string> = {};
+
+      queueState.tasks.forEach(task => {
+        if (task.category === 'videos' || task.id.startsWith('vid-')) {
+          if (task.status === 'uploading' || task.status === 'pending') {
+            activeProg[task.id] = task.progress || 12;
+          } else if (task.status === 'completed') {
+            activeProg[task.id] = 100;
+          } else if (task.status === 'error') {
+            activeErrs[task.id] = task.error || "Non enregistré sur le Cloud";
+          }
+        }
+      });
+
+      setSavingProgress(prev => {
+        const next = { ...prev };
+        Object.entries(activeProg).forEach(([id, pct]) => {
+          if (pct >= 100) {
+            next[id] = 100;
+            // Une fois bien enregistré (100%), la ligne d'enregistrement disparaît après 600ms
+            setTimeout(() => {
+              setSavingProgress(curr => {
+                const clean = { ...curr };
+                delete clean[id];
+                return clean;
+              });
+            }, 600);
+          } else {
+            next[id] = pct;
+          }
+        });
+        // Si une tâche a échoué, on la retire de la barre de progression pour afficher l'alerte rouge
+        Object.keys(activeErrs).forEach(id => {
+          delete next[id];
+        });
+        return next;
+      });
+
+      setSavingErrors(prev => {
+        const next = { ...prev, ...activeErrs };
+        // Nettoyer les erreurs dont les tâches ont été réessayées avec succès
+        queueState.tasks.forEach(task => {
+          if ((task.status === 'uploading' || task.status === 'completed') && next[task.id]) {
+            delete next[task.id];
+          }
+        });
+        return next;
+      });
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  // Effacer une vidéo dont l'enregistrement a échoué (Bouton Croix X)
+  const handleDismissFailedUpload = (vidId: string) => {
+    UploadQueue.removeTask(vidId);
+    setSavingProgress(prev => {
+      const next = { ...prev };
+      delete next[vidId];
+      return next;
+    });
+    setSavingErrors(prev => {
+      const next = { ...prev };
+      delete next[vidId];
+      return next;
+    });
+    setVideosList(prev => prev.filter(v => v.id !== vidId));
+    CloudDataStore.removeFile(vidId);
+    deleteFileBlob(vidId).catch(() => {});
+    if (selectedVideo?.id === vidId) {
+      setSelectedVideo(null);
+    }
+    showToast("Vidéo non enregistrée retirée.");
+  };
+
+  // Réessayer l'enregistrement d'une vidéo échouée
+  const handleRetryUpload = (vidId: string) => {
+    setSavingErrors(prev => {
+      const next = { ...prev };
+      delete next[vidId];
+      return next;
+    });
+    setSavingProgress(prev => ({
+      ...prev,
+      [vidId]: 15
+    }));
+    UploadQueue.retryTask(vidId);
+    showToast("Nouvelle tentative d'enregistrement...");
+  };
 
   // État du menu 3 traits dédié à chaque vidéo (Image 2)
   const [activeMenuVideoId, setActiveMenuVideoId] = useState<string | null>(null);
@@ -165,16 +267,18 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     }
   };
 
-  // Import de vidéos
+  // Import de vidéos avec compression spécialisée et suivi temps réel
   const handleImportVideos = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const files = Array.from(e.target.files) as File[];
 
-    showToast(`Préparation de ${files.length} vidéo(s)...`);
+    showToast(`Optimisation et préparation de ${files.length} vidéo(s)...`);
 
     const newItemsWithFiles = await Promise.all(
       files.map(async (f, idx) => {
         const ext = f.name.includes('.') ? f.name.split('.').pop()?.toLowerCase() || 'mp4' : 'mp4';
+        
+        // Compression vidéo spécialisée (Canvas + MediaRecorder, bitrate optimisé et format adapté)
         const comp = await compressFile(f, 'videos');
         const fileId = `vid-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
         const localBlobUrl = URL.createObjectURL(comp.file);
@@ -201,16 +305,33 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
           isVideo: true
         };
 
-        return { file: comp.file, item };
+        return { 
+          file: comp.file, 
+          item,
+          originalSizeBytes: comp.originalSizeBytes,
+          originalSizeFormatted: comp.originalSizeFormatted
+        };
       })
     );
 
     const newItems = newItemsWithFiles.map(x => x.item);
+    
+    // 1. Affichage optimiste immédiat
     setVideosList(prev => [...newItems, ...prev]);
     CloudDataStore.setVideos([...newItems, ...videosList] as any);
 
-    UploadQueue.enqueueExisting(newItemsWithFiles, { category: 'videos' });
-    showToast(`${newItems.length} vidéo(s) importée(s) !`);
+    // 2. Initialiser la ligne de chargement temps réel à 12%
+    setSavingProgress(prev => {
+      const next = { ...prev };
+      newItems.forEach(it => {
+        next[it.id] = 12;
+      });
+      return next;
+    });
+
+    // 3. Liaison avec le Worker Cloudflare (R2/D1) via UploadQueue
+    UploadQueue.enqueueExisting(newItemsWithFiles, { category: 'videos', uploadSource: 'videos' });
+    showToast(`${newItems.length} vidéo(s) en cours d'enregistrement sur le Cloud...`);
 
     if (newItems.length > 0 && !selectedVideo) {
       setSelectedVideo(newItems[0]);
@@ -1068,17 +1189,31 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   };
 
   // =========================================================================
-  // RENDU D'UNE CARTE VIDÉO (IMAGE 1)
+  // RENDU D'UNE CARTE VIDÉO (IMAGE 1 & 2 AVEC SUIVI ENREGISTREMENT ET ERREUR ROUGE)
   // =========================================================================
   const renderVideoCard = (vid: FileItem, index: number) => {
     const isSelected = selectedVideo?.id === vid.id;
     const isMenuOpen = activeMenuVideoId === vid.id;
     const isChecked = selectedItemIds.includes(vid.id);
 
+    // Suivi d'enregistrement temps réel lié au Worker R2/D1 (comme Mes Fichiers)
+    const isSaving = savingProgress[vid.id] !== undefined;
+    const progressVal = savingProgress[vid.id] || 0;
+    const saveError = savingErrors[vid.id];
+    const hasFailed = Boolean(saveError);
+
     return (
       <div
         key={vid.id}
         onClick={() => {
+          if (hasFailed) {
+            showToast("Enregistrement échoué. Utilisez la croix pour effacer ou le bouton Réessayer.");
+            return;
+          }
+          if (isSaving) {
+            showToast("Enregistrement de la vidéo en cours... Veuillez patienter.");
+            return;
+          }
           if (isSelectionMode) {
             const next = isChecked
               ? selectedItemIds.filter(id => id !== vid.id)
@@ -1089,14 +1224,111 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
             setSelectedVideo(vid);
           }
         }}
-        className={`group relative aspect-[4/5] rounded-2xl bg-[#0A0E18] border transition-all duration-200 cursor-pointer select-none ${
-          isChecked
-            ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
-            : isSelected 
-              ? 'border-purple-500 ring-4 ring-purple-500/50 shadow-2xl scale-[1.02]' 
-              : 'border-white/10 hover:border-purple-400/50 shadow-md'
+        className={`group relative aspect-[4/5] rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none ${
+          hasFailed
+            ? 'border-rose-500 ring-4 ring-rose-500/50 shadow-2xl bg-rose-950/40 cursor-default'
+            : isSaving
+              ? 'border-emerald-500/40 cursor-wait'
+              : isChecked
+                ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02] cursor-pointer'
+                : isSelected 
+                  ? 'border-purple-500 ring-4 ring-purple-500/50 shadow-2xl scale-[1.02] cursor-pointer' 
+                  : 'border-white/10 hover:border-purple-400/50 shadow-md cursor-pointer'
         } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
       >
+        {/* 1. LIGNE DU HAUT QUI SE REMPLIT EN TEMPS RÉEL (OU DEVIENT ROUGE EN CAS D'ÉCHEC) */}
+        {isSaving && !hasFailed && (
+          <div className="absolute top-0 inset-x-0 h-1.5 bg-black/60 z-35 overflow-hidden pointer-events-none rounded-t-2xl">
+            <div 
+              className="h-full bg-emerald-400 transition-all duration-300 ease-out shadow-[0_0_10px_#34d399]"
+              style={{ width: `${progressVal}%` }}
+            />
+          </div>
+        )}
+        {hasFailed && (
+          <div className="absolute top-0 inset-x-0 h-1.5 bg-rose-500 z-35 overflow-hidden pointer-events-none rounded-t-2xl shadow-[0_0_10px_#f43f5e]" />
+        )}
+
+        {/* 2. OVERLAY D'ENREGISTREMENT EN TEMPS RÉEL */}
+        {isSaving && !hasFailed && (
+          <div className="absolute inset-0 z-30 bg-black/80 backdrop-blur-[2px] flex flex-col items-center justify-center p-3 text-white pointer-events-none rounded-2xl animate-in fade-in duration-200">
+            <div className="w-6 h-6 rounded-full border-2 border-white/20 border-t-emerald-400 animate-spin mb-2" />
+            <span className="text-xs font-black text-emerald-300 tracking-wider">
+              {progressVal}%
+            </span>
+            <span className="text-[10px] font-bold text-white/90 text-center leading-tight mt-1">
+              Enregistrement Cloud...
+            </span>
+            <span className="text-[8px] text-emerald-400/80 mt-0.5 font-mono">
+              Worker R2 en direct
+            </span>
+          </div>
+        )}
+
+        {/* 3. OVERLAY D'ÉCHEC : DEVIENT ROUGE, SIGNALE QUE C'EST PAS ENREGISTRÉ, AVEC BOUTON CROIX (X) POUR EFFACER */}
+        {hasFailed && (
+          <div className="absolute inset-0 z-30 bg-rose-950/92 backdrop-blur-[3px] border border-rose-500/50 flex flex-col items-center justify-between p-2.5 sm:p-3 text-white rounded-2xl animate-in fade-in duration-200">
+            {/* Haut de la carte d'échec : Badge et Bouton Croix (X) pour effacer */}
+            <div className="w-full flex justify-between items-center">
+              <span className="text-[9px] font-black uppercase tracking-wider text-rose-300 bg-rose-900/70 px-2 py-0.5 rounded-full border border-rose-500/40">
+                Non enregistré
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDismissFailedUpload(vid.id);
+                }}
+                className="w-6 h-6 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-lg transition-transform active:scale-90 cursor-pointer"
+                title="Effacer la vidéo non enregistrée (Croix)"
+              >
+                <X className="w-3.5 h-3.5 stroke-[2.5]" />
+              </button>
+            </div>
+
+            {/* Centre : Message d'avertissement */}
+            <div className="flex flex-col items-center text-center my-auto px-1">
+              <div className="w-8 h-8 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 mb-1.5 shadow-md">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <p className="text-[11px] font-black text-rose-200 leading-tight">
+                Échec d'enregistrement
+              </p>
+              <p className="text-[9px] text-rose-300/85 line-clamp-2 mt-1 leading-snug">
+                {saveError || "Fichier non enregistré sur le Cloud"}
+              </p>
+            </div>
+
+            {/* Bas : Boutons Réessayer et Effacer */}
+            <div className="w-full flex items-center gap-1.5 pt-1">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRetryUpload(vid.id);
+                }}
+                className="flex-1 py-1 px-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-white text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer active:scale-95 transition-all"
+                title="Réessayer l'enregistrement"
+              >
+                <RotateCcw className="w-3 h-3 text-emerald-400" />
+                <span>Réessayer</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDismissFailedUpload(vid.id);
+                }}
+                className="py-1 px-2 rounded-lg bg-rose-600/80 hover:bg-rose-600 text-white text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer active:scale-95 transition-all"
+                title="Effacer"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Effacer</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Conteneur média interne avec overflow-hidden : arrondit la vignette sans couper le menu déroulant */}
         <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
           <VideoCardPreview vid={vid} className="w-full h-full object-cover" />

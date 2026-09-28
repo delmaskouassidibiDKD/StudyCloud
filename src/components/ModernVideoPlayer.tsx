@@ -257,6 +257,71 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
     setShowSpeedMenu(false);
   };
 
+  // Détection adaptative de la connexion réseau (Network Information API)
+  const [networkInfo, setNetworkInfo] = useState<{
+    effectiveType: string;
+    downlink: number;
+    recommendedQuality: VideoQuality;
+    description: string;
+  }>(() => {
+    const nav = typeof navigator !== 'undefined' ? (navigator as any) : null;
+    const conn = nav?.connection || nav?.mozConnection || nav?.webkitConnection;
+    if (!conn) {
+      return { effectiveType: '4g', downlink: 10, recommendedQuality: '1080p', description: 'Haut débit standard' };
+    }
+    const eff = conn.effectiveType || '4g';
+    const dl = Number(conn.downlink || 10);
+    let rq: VideoQuality = '1080p';
+    let desc = '4G • Haut débit';
+    if (eff === 'slow-2g' || eff === '2g' || dl < 0.8) {
+      rq = '360p';
+      desc = `${eff.toUpperCase()} • Bas débit (${dl} Mb/s)`;
+    } else if (eff === '3g' || dl < 2.5) {
+      rq = '480p';
+      desc = `3G • Débit moyen (${dl} Mb/s)`;
+    } else if (dl < 6) {
+      rq = '720p';
+      desc = `4G • Bon débit (${dl} Mb/s)`;
+    } else {
+      rq = '1080p';
+      desc = `Très haut débit (${dl} Mb/s)`;
+    }
+    return { effectiveType: eff, downlink: dl, recommendedQuality: rq, description: desc };
+  });
+
+  useEffect(() => {
+    const nav = typeof navigator !== 'undefined' ? (navigator as any) : null;
+    const conn = nav?.connection || nav?.mozConnection || nav?.webkitConnection;
+    if (!conn) return;
+
+    const handleConnChange = () => {
+      const eff = conn.effectiveType || '4g';
+      const dl = Number(conn.downlink || 10);
+      let rq: VideoQuality = '1080p';
+      let desc = '4G • Haut débit';
+      if (eff === 'slow-2g' || eff === '2g' || dl < 0.8) {
+        rq = '360p';
+        desc = `${eff.toUpperCase()} • Bas débit (${dl} Mb/s)`;
+      } else if (eff === '3g' || dl < 2.5) {
+        rq = '480p';
+        desc = `3G • Débit moyen (${dl} Mb/s)`;
+      } else if (dl < 6) {
+        rq = '720p';
+        desc = `4G • Bon débit (${dl} Mb/s)`;
+      } else {
+        rq = '1080p';
+        desc = `Très haut débit (${dl} Mb/s)`;
+      }
+      setNetworkInfo({ effectiveType: eff, downlink: dl, recommendedQuality: rq, description: desc });
+      if (quality === 'auto') {
+        showNotification(`⚡ Débit réseau ajusté : ${desc} → Qualité ${rq.toUpperCase()}`);
+      }
+    };
+
+    conn.addEventListener?.('change', handleConnChange);
+    return () => conn.removeEventListener?.('change', handleConnChange);
+  }, [quality]);
+
   // Réglage de la qualité vidéo
   const handleQualityChange = (newQuality: VideoQuality) => {
     setQuality(newQuality);
@@ -264,11 +329,11 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
     setShowQualityMenu(false);
 
     const labels: Record<VideoQuality, string> = {
-      auto: 'Qualité : Auto (Recommandé)',
+      auto: `Qualité : Auto Adaptatif (${networkInfo.description} → ${networkInfo.recommendedQuality.toUpperCase()})`,
       '1080p': 'Qualité : 1080p Full HD',
       '720p': 'Qualité : 720p HD',
       '480p': 'Qualité : 480p SD',
-      '360p': 'Qualité : 360p Éco',
+      '360p': 'Qualité : 360p Économique',
     };
     showNotification(labels[newQuality]);
   };
@@ -768,7 +833,7 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
 
           {/* DROITE : Qualité, Vitesse, Cadrage, Répétition, PiP, Plein écran */}
           <div className="flex items-center gap-1 sm:gap-2 relative">
-            {/* SÉLECTEUR DE QUALITÉ VIDÉO (Demandé explicitement par l'utilisateur) */}
+            {/* SÉLECTEUR DE QUALITÉ VIDÉO ADAPTATIF RÉSEAU (Demandé explicitement) */}
             <div className="relative">
               <button
                 type="button"
@@ -776,24 +841,31 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
                   setShowQualityMenu(!showQualityMenu);
                   setShowSpeedMenu(false);
                 }}
-                className={`px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center gap-1 ${
+                className={`px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
                   quality !== 'auto'
                     ? 'bg-purple-600/30 text-purple-300 border-purple-500/50 shadow-sm'
-                    : 'bg-white/10 hover:bg-white/20 text-zinc-300 border-transparent'
+                    : 'bg-white/10 hover:bg-white/20 text-zinc-300 border-white/10'
                 }`}
-                title="Régler la qualité vidéo"
+                title="Régler la qualité vidéo (ou automatique selon la connexion)"
               >
                 <Sliders className="w-3 h-3 text-purple-400" />
-                <span className="uppercase">{quality}</span>
+                <span className="uppercase font-mono text-[11px]">
+                  {quality === 'auto' ? `Auto (${networkInfo.recommendedQuality})` : quality}
+                </span>
               </button>
 
               {showQualityMenu && (
-                <div className="absolute bottom-full right-0 mb-2 py-1.5 bg-zinc-900/95 backdrop-blur-md border border-zinc-700/80 rounded-xl shadow-2xl z-30 flex flex-col min-w-[150px]">
-                  <div className="px-3 py-1 text-[10px] uppercase font-bold text-zinc-500 tracking-wider border-b border-zinc-800">
-                    Qualité Vidéo
+                <div className="absolute bottom-full right-0 mb-2 py-1.5 bg-zinc-900/95 backdrop-blur-md border border-zinc-700/80 rounded-xl shadow-2xl z-30 flex flex-col min-w-[200px]">
+                  <div className="px-3 py-1.5 text-[10px] uppercase font-bold text-zinc-400 tracking-wider border-b border-zinc-800 flex items-center justify-between">
+                    <span>Qualité Vidéo</span>
+                    <span className="text-purple-400 font-mono text-[9px]">{networkInfo.description}</span>
                   </div>
                   {[
-                    { id: 'auto' as VideoQuality, label: 'Auto (Recommandé)', badge: 'ADAPTATIF' },
+                    {
+                      id: 'auto' as VideoQuality,
+                      label: 'Auto (Adaptatif selon connexion)',
+                      badge: `${networkInfo.recommendedQuality.toUpperCase()}`
+                    },
                     { id: '1080p' as VideoQuality, label: '1080p Full HD', badge: 'HD' },
                     { id: '720p' as VideoQuality, label: '720p HD', badge: 'HD' },
                     { id: '480p' as VideoQuality, label: '480p Standard', badge: 'SD' },
@@ -807,11 +879,11 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
                         quality === item.id ? 'text-purple-400 font-bold bg-purple-500/10' : 'text-zinc-300'
                       }`}
                     >
-                      <div className="flex items-center gap-1.5">
-                        {quality === item.id && <Check className="w-3.5 h-3.5 text-purple-400" />}
-                        <span>{item.label}</span>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {quality === item.id && <Check className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
+                        <span className="truncate">{item.label}</span>
                       </div>
-                      <span className="text-[9px] px-1 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono">
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono font-bold shrink-0">
                         {item.badge}
                       </span>
                     </button>
