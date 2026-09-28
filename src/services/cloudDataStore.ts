@@ -221,18 +221,35 @@ async function persistToIndexedDB(): Promise<void> {
   }
 }
 
+let tombstoneChecker: ((id: string) => boolean) | null = null;
+export function setTombstoneChecker(fn: (id: string) => boolean) {
+  tombstoneChecker = fn;
+}
+
+const deletionListeners = new Set<(id: string, category?: string) => void>();
+
 function getLocallyDeletedFileIds(): Set<string> {
+  const result = new Set<string>();
   try {
     const raw = localStorage.getItem('studycloud_deleted_file_ids');
     if (raw) {
       const arr = JSON.parse(raw);
       if (Array.isArray(arr)) {
-        const validIds = arr.filter(item => typeof item === 'string' && !/\.[a-z0-9]{2,5}$/i.test(item));
-        return new Set(validIds);
+        arr.forEach(item => {
+          if (typeof item === 'string' && !/\.[a-z0-9]{2,5}$/i.test(item)) {
+            result.add(item);
+          }
+        });
       }
     }
   } catch {}
-  return new Set();
+  return result;
+}
+
+function isItemDeleted(id: string): boolean {
+  if (!id) return false;
+  if (tombstoneChecker && tombstoneChecker(id)) return true;
+  return getLocallyDeletedFileIds().has(id);
 }
 
 function notify() {
@@ -250,6 +267,11 @@ export const CloudDataStore = {
   subscribe(listener: (state: CloudDataState) => void): () => void {
     listeners.add(listener);
     return () => { listeners.delete(listener); };
+  },
+
+  onDelete(listener: (id: string, category?: string) => void): () => void {
+    deletionListeners.add(listener);
+    return () => { deletionListeners.delete(listener); };
   },
 
   hasData(): boolean {
@@ -272,28 +294,22 @@ export const CloudDataStore = {
 
     inFlightSyncPromise = (async () => {
       try {
-        const locallyDeletedIds = getLocallyDeletedFileIds();
-        const isNotLocallyDeleted = (f: any) => !locallyDeletedIds.has(f.id);
+        const isNotLocallyDeleted = (f: any) => !isItemDeleted(f.id);
 
         const flag = (arr: any[]) => (arr || []).map((f: any) => ({
           ...f, isFavorite: currentState.favIdSet.has(f.id), isPinned: currentState.pinIdSet.has(f.id),
         }));
 
-        // Préserver les fichiers optimistes locaux (en cours d'upload ou récemment créés) qui ne sont pas encore renvoyés par l'API
+        // Préserver uniquement les fichiers locaux activement en cours d'upload qui ne sont pas encore renvoyés par l'API
         const mergeOptimistic = (serverList: FileItem[] | null, currentList: FileItem[]) => {
-          if (serverList === null) return currentList || [];
+          if (serverList === null) return (currentList || []).filter(c => !isItemDeleted(c.id));
           const serverIds = new Set(serverList.map(s => s.id));
           const pending = (currentList || []).filter(c => 
             !serverIds.has(c.id) && 
-            (c.isUploading || (c.id && (
-              c.id.startsWith('cf-') ||
-              c.id.startsWith('aud-') ||
-              c.id.startsWith('img-') ||
-              c.id.startsWith('vid-') ||
-              c.id.startsWith('file-')
-            )))
+            Boolean(c.isUploading) &&
+            !isItemDeleted(c.id)
           );
-          return [...pending, ...serverList];
+          return [...pending, ...serverList.filter(s => !isItemDeleted(s.id))];
         };
 
         const sortDesc = (a: any, b: any) => {
@@ -502,28 +518,28 @@ export const CloudDataStore = {
 
   setDocuments(docs: FileItem[]) {
     const serverIds = new Set(docs.map(s => s.id));
-    const pending = (currentState.documents || []).filter(c => !serverIds.has(c.id) && (c.isUploading || (c.id && (c.id.startsWith('cf-') || c.id.startsWith('file-')))));
+    const pending = (currentState.documents || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading));
     currentState = { ...currentState, documents: [...pending, ...docs] };
     persistToIndexedDB().catch(() => {});
     notify();
   },
   setVideos(videos: FileItem[]) {
     const serverIds = new Set(videos.map(s => s.id));
-    const pending = (currentState.videos || []).filter(c => !serverIds.has(c.id) && (c.isUploading || (c.id && (c.id.startsWith('vid-') || c.id.startsWith('cf-')))));
+    const pending = (currentState.videos || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading));
     currentState = { ...currentState, videos: [...pending, ...videos] };
     persistToIndexedDB().catch(() => {});
     notify();
   },
   setImages(images: FileItem[]) {
     const serverIds = new Set(images.map(s => s.id));
-    const pending = (currentState.images || []).filter(c => !serverIds.has(c.id) && (c.isUploading || (c.id && (c.id.startsWith('img-') || c.id.startsWith('cf-')))));
+    const pending = (currentState.images || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading));
     currentState = { ...currentState, images: [...pending, ...images] };
     persistToIndexedDB().catch(() => {});
     notify();
   },
   setAudio(audio: FileItem[]) {
     const serverIds = new Set(audio.map(s => s.id));
-    const pending = (currentState.audio || []).filter(c => !serverIds.has(c.id) && (c.isUploading || (c.id && (c.id.startsWith('aud-') || c.id.startsWith('cf-')))));
+    const pending = (currentState.audio || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading));
     currentState = { ...currentState, audio: [...pending, ...audio] };
     persistToIndexedDB().catch(() => {});
     notify();
@@ -604,6 +620,7 @@ export const CloudDataStore = {
   },
 
   removeFile(fileId: string, folderId?: string) {
+    deletionListeners.forEach(fn => { try { fn(fileId); } catch {} });
     const filterFn = (list: FileItem[]) => list.filter(f => f.id !== fileId);
     const updatedMap = { ...currentState.folderFilesMap };
     if (folderId && updatedMap[folderId]) {
@@ -632,6 +649,7 @@ export const CloudDataStore = {
 
   removeFiles(fileIds: string[]) {
     if (!fileIds || fileIds.length === 0) return;
+    fileIds.forEach(id => deletionListeners.forEach(fn => { try { fn(id); } catch {} }));
     const idSet = new Set(fileIds);
     const filterFn = (list: FileItem[]) => list.filter(f => !idSet.has(f.id));
     const updatedMap = { ...currentState.folderFilesMap };
@@ -658,6 +676,7 @@ export const CloudDataStore = {
   moveToTrash(items: FileItem | FileItem[]) {
     const arr = (Array.isArray(items) ? items : [items]).filter(Boolean);
     if (arr.length === 0) return;
+    arr.forEach(f => deletionListeners.forEach(fn => { try { fn(f.id, f.category); } catch {} }));
     const idSet = new Set(arr.map(f => f.id));
     const filterFn = (list: FileItem[]) => list.filter(f => !idSet.has(f.id));
     const updatedMap = { ...currentState.folderFilesMap };
@@ -727,6 +746,7 @@ export const CloudDataStore = {
   },
 
   emptyTrash() {
+    currentState.trash.forEach(t => deletionListeners.forEach(fn => { try { fn(t.id, 'trash'); } catch {} }));
     currentState = {
       ...currentState,
       trash: [],

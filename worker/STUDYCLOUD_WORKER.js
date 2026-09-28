@@ -2461,9 +2461,42 @@ async function ensureCloudMediaTables(db) {
       } catch (e) {
       }
     }
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS sync_items (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        category TEXT NOT NULL,
+        content TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        is_deleted INTEGER DEFAULT 0
+      )
+    `).run().catch(() => {
+    });
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_sync_items_user_time ON sync_items(user_id, updated_at)").run();
+    } catch (e) {
+    }
     isCloudMediaTablesInitialized = true;
   } catch (err) {
     console.error("[StudyCloud Cloud Media Tables Init Error]", err);
+  }
+}
+async function recordSyncItem(db, userId, id, category, contentObj, isDeleted = 0) {
+  if (!db || !userId || !id) return;
+  try {
+    const contentStr = typeof contentObj === "string" ? contentObj : JSON.stringify(contentObj || { id });
+    const now = Date.now();
+    await db.prepare(`
+      INSERT INTO sync_items (id, user_id, category, content, updated_at, is_deleted)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        category = excluded.category,
+        content = excluded.content,
+        updated_at = excluded.updated_at,
+        is_deleted = excluded.is_deleted
+    `).bind(id, userId, category, contentStr, now, isDeleted ? 1 : 0).run();
+  } catch (e) {
+    console.warn("[recordSyncItem Error]", e);
   }
 }
 async function recalculateAndSaveUserStorage(db, userId) {
@@ -4868,7 +4901,7 @@ var index_default = {
       if (path.startsWith("/api/files/") && method === "DELETE") {
         if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
         const id = path.split("/")[3];
-        const file = await env.DB.prepare("SELECT r2_key FROM files WHERE id = ?").bind(id).first();
+        const file = await env.DB.prepare("SELECT r2_key, user_id FROM files WHERE id = ?").bind(id).first();
         if (file && file.r2_key && env.BUCKET) {
           try {
             await env.BUCKET.delete(file.r2_key);
@@ -4876,6 +4909,23 @@ var index_default = {
           }
         }
         await env.DB.prepare("DELETE FROM files WHERE id = ?").bind(id).run();
+        await env.DB.prepare("DELETE FROM document_files WHERE id = ?").bind(id).run().catch(() => {
+        });
+        await env.DB.prepare("DELETE FROM audio_files WHERE id = ?").bind(id).run().catch(() => {
+        });
+        await env.DB.prepare("DELETE FROM image_files WHERE id = ?").bind(id).run().catch(() => {
+        });
+        await env.DB.prepare("DELETE FROM video_files WHERE id = ?").bind(id).run().catch(() => {
+        });
+        await env.DB.prepare("DELETE FROM classeur_files WHERE id = ?").bind(id).run().catch(() => {
+        });
+        await env.DB.prepare("DELETE FROM download_files WHERE id = ?").bind(id).run().catch(() => {
+        });
+        await env.DB.prepare("DELETE FROM media_thumbnails WHERE file_id = ?").bind(id).run().catch(() => {
+        });
+        if (file?.user_id) {
+          await recordSyncItem(env.DB, file.user_id, id, "files", { id }, 1);
+        }
         return jsonResponse({ success: true, message: "Fichier supprim\xE9" }, 200, origin);
       }
       if (path === "/api/storage/upload" && method === "PUT") {
@@ -5622,26 +5672,116 @@ var index_default = {
           recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
         }
+        const uploadedFileObj = {
+          id: fileId,
+          name: fileName,
+          size: sizeFormatted,
+          sizeBytes,
+          extension: extUpper,
+          category: finalCategory === "classeur" ? detectedNature : finalCategory,
+          url: fileUrl,
+          previewUrl: finalCategory === "images" || detectedNature === "images" ? fileUrl : finalCategory === "videos" ? thumbnailToSave || fileUrl : void 0,
+          videoUrl: finalCategory === "videos" || detectedNature === "videos" ? fileUrl : void 0,
+          audioUrl: finalCategory === "audio" || detectedNature === "audio" ? fileUrl : void 0,
+          thumbnailUrl: finalCategory === "videos" ? thumbnailToSave || fileUrl : void 0,
+          date: dateFormatted,
+          folderId: folderId || void 0,
+          source: finalCategory === "classeur" ? "Classeur" : "StudyCloud"
+        };
+        await recordSyncItem(env.DB, reqUserId, fileId, finalCategory, uploadedFileObj, 0);
         return jsonResponse({
           success: true,
           category: finalCategory,
           detectedCategory: detectedNature,
-          file: {
-            id: fileId,
-            name: fileName,
-            size: sizeFormatted,
-            sizeBytes,
-            extension: extUpper,
-            category: finalCategory === "classeur" ? detectedNature : finalCategory,
-            url: fileUrl,
-            previewUrl: finalCategory === "images" || detectedNature === "images" ? fileUrl : finalCategory === "videos" ? thumbnailToSave || fileUrl : void 0,
-            videoUrl: finalCategory === "videos" || detectedNature === "videos" ? fileUrl : void 0,
-            audioUrl: finalCategory === "audio" || detectedNature === "audio" ? fileUrl : void 0,
-            thumbnailUrl: finalCategory === "videos" ? thumbnailToSave || fileUrl : void 0,
-            date: dateFormatted,
-            folderId: folderId || void 0,
-            source: finalCategory === "classeur" ? "Classeur" : "StudyCloud"
+          file: uploadedFileObj
+        }, 200, origin);
+      }
+      if ((path === "/api/replication" || path === "/api/cloud/replication") && method === "POST") {
+        await ensureCloudMediaTables(env.DB);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        const payload = await request.json().catch(() => ({}));
+        const checkpoint = payload.checkpoint || {};
+        const incomingDocs = Array.isArray(payload.body) ? payload.body : Array.isArray(payload.documents) ? payload.documents : [];
+        const lastPulledAt = Number(checkpoint?.updated_at || checkpoint?.lastPulledAt || 0);
+        if (incomingDocs.length > 0) {
+          for (const doc of incomingDocs) {
+            if (!doc || !doc.id) continue;
+            const docId = String(doc.id);
+            const docCategory = doc.category || "documents";
+            const docContent = typeof doc.content === "string" ? doc.content : JSON.stringify(doc.content || doc);
+            const docUpdatedAt = Number(doc.updated_at || Date.now());
+            const isDel = doc.is_deleted ? 1 : 0;
+            await env.DB.prepare(`
+              INSERT INTO sync_items (id, user_id, category, content, updated_at, is_deleted)
+              VALUES (?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                category = excluded.category,
+                content = excluded.content,
+                updated_at = excluded.updated_at,
+                is_deleted = excluded.is_deleted
+            `).bind(docId, reqUserId, docCategory, docContent, docUpdatedAt, isDel).run();
+            if (isDel) {
+              await env.DB.prepare("DELETE FROM files WHERE id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
+              });
+              await env.DB.prepare("DELETE FROM document_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
+              });
+              await env.DB.prepare("DELETE FROM audio_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
+              });
+              await env.DB.prepare("DELETE FROM video_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
+              });
+              await env.DB.prepare("DELETE FROM image_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
+              });
+              await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
+              });
+              await env.DB.prepare("DELETE FROM download_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
+              });
+              await env.DB.prepare("DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
+              });
+            }
           }
+        }
+        if (lastPulledAt === 0) {
+          try {
+            const countCheck = await env.DB.prepare("SELECT COUNT(*) as count FROM sync_items WHERE user_id = ?").bind(reqUserId).first();
+            if (Number(countCheck?.count || 0) === 0) {
+              const [docs, imgs, vids, auds, cfiles, dls] = await Promise.all([
+                env.DB.prepare("SELECT id, name, size, size_bytes, file_url, preview_url, extension, document_category FROM document_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+                env.DB.prepare("SELECT id, name, size, size_bytes, image_url, thumbnail_url, extension FROM image_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+                env.DB.prepare("SELECT id, name, size, size_bytes, video_url, thumbnail_url, duration_sec FROM video_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+                env.DB.prepare("SELECT id, name, title, artist, album, audio_url, cover_url, size, size_bytes FROM audio_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+                env.DB.prepare("SELECT id, folder_id, name, size, size_bytes, category, extension, is_notepad, notepad_title, notepad_content FROM classeur_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+                env.DB.prepare("SELECT id, name, size, size_bytes, file_url, type, extension FROM download_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] }))
+              ]);
+              for (const d of docs?.results || []) await recordSyncItem(env.DB, reqUserId, d.id, "documents", d, 0);
+              for (const i of imgs?.results || []) await recordSyncItem(env.DB, reqUserId, i.id, "images", i, 0);
+              for (const v of vids?.results || []) await recordSyncItem(env.DB, reqUserId, v.id, "videos", v, 0);
+              for (const a of auds?.results || []) await recordSyncItem(env.DB, reqUserId, a.id, "audio", a, 0);
+              for (const c of cfiles?.results || []) await recordSyncItem(env.DB, reqUserId, c.id, "classeur", c, 0);
+              for (const dl of dls?.results || []) await recordSyncItem(env.DB, reqUserId, dl.id, "downloads", dl, 0);
+            }
+          } catch (e) {
+          }
+        }
+        const { results } = await env.DB.prepare(`
+          SELECT id, category, content, updated_at, is_deleted
+          FROM sync_items
+          WHERE user_id = ? AND updated_at > ?
+          ORDER BY updated_at ASC
+          LIMIT 400
+        `).bind(reqUserId, lastPulledAt).all();
+        const formattedResults = (results || []).map((r) => ({
+          id: r.id,
+          category: r.category,
+          content: r.content,
+          updated_at: Number(r.updated_at),
+          is_deleted: Boolean(r.is_deleted)
+        }));
+        const maxUpdatedAt = formattedResults.length > 0 ? Math.max(...formattedResults.map((r) => r.updated_at)) : lastPulledAt;
+        return jsonResponse({
+          success: true,
+          documents: formattedResults,
+          checkpoint: { updated_at: maxUpdatedAt }
         }, 200, origin);
       }
       if (path === "/api/cloud/storage-usage" && method === "GET") {
@@ -5915,6 +6055,11 @@ var index_default = {
               f.r2_key,
               f.file_url
             ).run();
+            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(f.id, reqUserId).run().catch(() => {
+            });
+            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(f.id, reqUserId).run().catch(() => {
+            });
+            await recordSyncItem(env.DB, reqUserId, f.id, "classeur", { id: f.id }, 1);
           }
           if (targetFolder) {
             await env.DB.prepare(`
@@ -5933,6 +6078,7 @@ var index_default = {
               (/* @__PURE__ */ new Date()).toLocaleDateString("fr-FR")
             ).run();
           }
+          await recordSyncItem(env.DB, reqUserId, folderId, "classeur_folder", { id: folderId }, 1);
           await env.DB.prepare(`
             DELETE FROM classeur_folders WHERE id = ? AND user_id = ?
           `).bind(folderId, reqUserId).run();
@@ -6063,6 +6209,27 @@ var index_default = {
             `).bind(id, reqUserId, folderId, name, sizeBytes, extension, r2Key, fileUrl, Date.now()).run();
           } catch (e) {
           }
+          await recordSyncItem(env.DB, reqUserId, id, "classeur", {
+            id,
+            userId: reqUserId,
+            folderId,
+            name,
+            size,
+            sizeBytes,
+            category,
+            extension,
+            source,
+            date: dateFormatted,
+            positionX,
+            positionY,
+            displayOrder,
+            isNotepad: Boolean(isNotepad),
+            noteTitle: notepadTitle,
+            content: notepadContent,
+            previewUrl,
+            r2Key,
+            url: fileUrl
+          }, 0);
           return jsonResponse({
             success: true,
             file: {
@@ -6200,9 +6367,31 @@ var index_default = {
         if (method === "DELETE") {
           const fileId = url.searchParams.get("id");
           if (!fileId) return errorResponse("id manquant", 400, origin);
-          const file = await env.DB.prepare(`
+          let file = await env.DB.prepare(`
             SELECT * FROM classeur_files WHERE id = ? AND user_id = ?
           `).bind(fileId, reqUserId).first();
+          if (!file) {
+            const rawFile = await env.DB.prepare(`
+              SELECT * FROM files WHERE id = ? AND user_id = ?
+            `).bind(fileId, reqUserId).first();
+            if (rawFile) {
+              file = {
+                id: rawFile.id,
+                user_id: rawFile.user_id,
+                name: rawFile.name,
+                size: formatBytes(rawFile.size || 0),
+                size_bytes: rawFile.size || 0,
+                category: "documents",
+                extension: rawFile.extension || "",
+                folder_id: rawFile.matiere_id || "",
+                is_notepad: 0,
+                notepad_title: "",
+                date_formatted: rawFile.created_at ? new Date(rawFile.created_at).toLocaleDateString("fr-FR") : "",
+                r2_key: rawFile.r2_key || "",
+                file_url: rawFile.file_url || ""
+              };
+            }
+          }
           if (file) {
             await env.DB.prepare(`
               INSERT INTO trash_files (
@@ -6228,6 +6417,13 @@ var index_default = {
               DELETE FROM classeur_files WHERE id = ? AND user_id = ?
             `).bind(fileId, reqUserId).run();
           }
+          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
+          });
+          await recordSyncItem(env.DB, reqUserId, fileId, "classeur", { id: fileId }, 1);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
+          });
           return jsonResponse({ success: true, message: "Fichier plac\xE9 dans la corbeille" }, 200, origin);
         }
       }
@@ -6248,12 +6444,12 @@ var index_default = {
             extraAuds = extra || [];
           } catch (e) {
           }
-          let trashedIdSet = new Set();
+          let trashedIdSet = /* @__PURE__ */ new Set();
           try {
             const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
-            trashedIdSet = new Set((trashList || []).map(t => t.id));
-          } catch (e) {}
-
+            trashedIdSet = new Set((trashList || []).map((t) => t.id));
+          } catch (e) {
+          }
           const seen = /* @__PURE__ */ new Set();
           const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
@@ -6393,6 +6589,29 @@ var index_default = {
             `).bind(id, reqUserId, name, sizeBytes, r2Key, audioUrl, Date.now()).run();
           } catch (e) {
           }
+          await recordSyncItem(env.DB, reqUserId, id, "audio", {
+            id,
+            userId: reqUserId,
+            name,
+            title,
+            artist,
+            album,
+            durationSec,
+            size,
+            sizeBytes,
+            date: dateFormatted,
+            lyricsSnippet,
+            fullLyrics: body.fullLyrics || [],
+            coverUrl,
+            thumbnailUrl: coverUrl,
+            previewUrl: coverUrl,
+            r2Key,
+            audioUrl,
+            url: audioUrl,
+            category: "audio",
+            isFavorite: false,
+            isPinned: false
+          }, 0);
           return jsonResponse({ success: true, message: "Audio enregistr\xE9" }, 200, origin);
         }
         if (method === "DELETE") {
@@ -6440,14 +6659,15 @@ var index_default = {
               file.audio_url
             ).run();
             await env.DB.prepare(`DELETE FROM audio_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
-            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
-            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
-            recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
-            });
-          } else {
-            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
           }
-          return jsonResponse({ success: true, message: "Audio déplacé dans la corbeille" }, 200, origin);
+          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
+          });
+          await recordSyncItem(env.DB, reqUserId, fileId, "audio", { id: fileId }, 1);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
+          });
+          return jsonResponse({ success: true, message: "Audio d\xE9plac\xE9 dans la corbeille" }, 200, origin);
         }
       }
       if (path === "/api/cloud/images") {
@@ -6467,12 +6687,12 @@ var index_default = {
             extraImgs = extra || [];
           } catch (e) {
           }
-          let trashedImgIdSet = new Set();
+          let trashedImgIdSet = /* @__PURE__ */ new Set();
           try {
             const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
-            trashedImgIdSet = new Set((trashList || []).map(t => t.id));
-          } catch (e) {}
-
+            trashedImgIdSet = new Set((trashList || []).map((t) => t.id));
+          } catch (e) {
+          }
           const seen = /* @__PURE__ */ new Set();
           const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
@@ -6589,14 +6809,53 @@ var index_default = {
             `).bind(id, reqUserId, name, sizeBytes, extension, r2Key, imageUrl, Date.now()).run();
           } catch (e) {
           }
+          await recordSyncItem(env.DB, reqUserId, id, "images", {
+            id,
+            userId: reqUserId,
+            name,
+            size,
+            sizeBytes,
+            width,
+            height,
+            extension,
+            date: dateFormatted,
+            r2Key,
+            previewUrl: imageUrl,
+            url: imageUrl,
+            thumbnailUrl: imageUrl,
+            category: "images",
+            isImage: true,
+            isFavorite: false,
+            isPinned: false
+          }, 0);
           return jsonResponse({ success: true, message: "Image enregistr\xE9e" }, 200, origin);
         }
         if (method === "DELETE") {
           const fileId = url.searchParams.get("id");
           if (!fileId) return errorResponse("id manquant", 400, origin);
-          const file = await env.DB.prepare(`
+          let file = await env.DB.prepare(`
             SELECT * FROM image_files WHERE id = ? AND user_id = ?
           `).bind(fileId, reqUserId).first();
+          if (!file) {
+            const rawFile = await env.DB.prepare(`
+              SELECT * FROM files WHERE id = ? AND user_id = ?
+            `).bind(fileId, reqUserId).first();
+            if (rawFile) {
+              file = {
+                id: rawFile.id,
+                user_id: rawFile.user_id,
+                name: rawFile.name,
+                size: formatBytes(rawFile.size || 0),
+                size_bytes: rawFile.size || 0,
+                extension: rawFile.extension || "jpg",
+                width: 0,
+                height: 0,
+                date_formatted: rawFile.created_at ? new Date(rawFile.created_at).toLocaleDateString("fr-FR") : "",
+                r2_key: rawFile.r2_key || "",
+                image_url: rawFile.file_url || ""
+              };
+            }
+          }
           if (file) {
             await env.DB.prepare(`
               INSERT INTO trash_files (
@@ -6611,19 +6870,20 @@ var index_default = {
               file.size,
               file.size_bytes,
               file.extension,
-              JSON.stringify({ width: file.width, height: file.height }),
+              JSON.stringify({ width: file.width || 0, height: file.height || 0 }),
               file.date_formatted,
               file.r2_key,
               file.image_url
             ).run();
             await env.DB.prepare(`DELETE FROM image_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
-            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
-            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
-            recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
-            });
-          } else {
-            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
           }
+          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
+          });
+          await recordSyncItem(env.DB, reqUserId, fileId, "images", { id: fileId }, 1);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
+          });
           return jsonResponse({ success: true, message: "Image d\xE9plac\xE9e dans la corbeille" }, 200, origin);
         }
       }
@@ -6644,12 +6904,12 @@ var index_default = {
             extraVids = extra || [];
           } catch (e) {
           }
-          let trashedVidIdSet = new Set();
+          let trashedVidIdSet = /* @__PURE__ */ new Set();
           try {
             const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
-            trashedVidIdSet = new Set((trashList || []).map(t => t.id));
-          } catch (e) {}
-
+            trashedVidIdSet = new Set((trashList || []).map((t) => t.id));
+          } catch (e) {
+          }
           const seen = /* @__PURE__ */ new Set();
           const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
@@ -6753,14 +7013,53 @@ var index_default = {
             `).bind(id, reqUserId, name, sizeBytes, extension, r2Key, videoUrl, Date.now()).run();
           } catch (e) {
           }
+          await recordSyncItem(env.DB, reqUserId, id, "videos", {
+            id,
+            userId: reqUserId,
+            name,
+            size,
+            sizeBytes,
+            durationSec,
+            resolution,
+            extension,
+            date: dateFormatted,
+            r2Key,
+            videoUrl,
+            url: videoUrl,
+            thumbnailUrl: thumbnailUrl || videoUrl,
+            category: "videos",
+            isVideo: true,
+            isFavorite: false,
+            isPinned: false
+          }, 0);
           return jsonResponse({ success: true, message: "Vid\xE9o enregistr\xE9e" }, 200, origin);
         }
         if (method === "DELETE") {
           const fileId = url.searchParams.get("id");
           if (!fileId) return errorResponse("id manquant", 400, origin);
-          const file = await env.DB.prepare(`
+          let file = await env.DB.prepare(`
             SELECT * FROM video_files WHERE id = ? AND user_id = ?
           `).bind(fileId, reqUserId).first();
+          if (!file) {
+            const rawFile = await env.DB.prepare(`
+              SELECT * FROM files WHERE id = ? AND user_id = ?
+            `).bind(fileId, reqUserId).first();
+            if (rawFile) {
+              file = {
+                id: rawFile.id,
+                user_id: rawFile.user_id,
+                name: rawFile.name,
+                size: formatBytes(rawFile.size || 0),
+                size_bytes: rawFile.size || 0,
+                extension: rawFile.extension || "mp4",
+                duration_sec: 0,
+                resolution: "1080p",
+                date_formatted: rawFile.created_at ? new Date(rawFile.created_at).toLocaleDateString("fr-FR") : "",
+                r2_key: rawFile.r2_key || "",
+                video_url: rawFile.file_url || ""
+              };
+            }
+          }
           if (file) {
             await env.DB.prepare(`
               INSERT INTO trash_files (
@@ -6775,19 +7074,20 @@ var index_default = {
               file.size,
               file.size_bytes,
               file.extension,
-              JSON.stringify({ durationSec: file.duration_sec, resolution: file.resolution }),
+              JSON.stringify({ durationSec: file.duration_sec || 0, resolution: file.resolution || "1080p" }),
               file.date_formatted,
               file.r2_key,
               file.video_url
             ).run();
             await env.DB.prepare(`DELETE FROM video_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
-            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
-            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
-            recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
-            });
-          } else {
-            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
           }
+          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
+          });
+          await recordSyncItem(env.DB, reqUserId, fileId, "videos", { id: fileId }, 1);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
+          });
           return jsonResponse({ success: true, message: "Vid\xE9o d\xE9plac\xE9e dans la corbeille" }, 200, origin);
         }
       }
@@ -6811,11 +7111,18 @@ var index_default = {
             extraDocs = extra || [];
           } catch (e) {
           }
+          let trashedDocIdSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
+            trashedDocIdSet = new Set((trashList || []).map((t) => t.id));
+          } catch (e) {
+          }
           const seen = /* @__PURE__ */ new Set();
           const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
           const addDoc = (d) => {
             const id = d.id;
+            if (trashedDocIdSet.has(id)) return;
             const name = d.name || "Document";
             const normKey = `${name.trim().toLowerCase()}_${d.size_bytes || d.size || 0}`;
             if (seen.has(id) || seenNames.has(normKey)) return;
@@ -6919,14 +7226,55 @@ var index_default = {
             `).bind(id, reqUserId, name, sizeBytes, extension, r2Key, fileUrl, Date.now()).run();
           } catch (e) {
           }
+          await recordSyncItem(env.DB, reqUserId, id, "documents", {
+            id,
+            userId: reqUserId,
+            name,
+            size,
+            sizeBytes,
+            extension,
+            documentCategory,
+            pageCount,
+            date: dateFormatted,
+            source,
+            r2Key,
+            previewUrl: previewUrl || fileUrl,
+            url: fileUrl,
+            category: "documents",
+            isNotepad: extension === "txt" || Boolean(body.notepadContent),
+            noteTitle: body.notepadTitle || "",
+            content: body.notepadContent || "",
+            isFavorite: false,
+            isPinned: false
+          }, 0);
           return jsonResponse({ success: true, message: "Document enregistr\xE9" }, 200, origin);
         }
         if (method === "DELETE") {
           const fileId = url.searchParams.get("id");
           if (!fileId) return errorResponse("id manquant", 400, origin);
-          const file = await env.DB.prepare(`
+          let file = await env.DB.prepare(`
             SELECT * FROM document_files WHERE id = ? AND user_id = ?
           `).bind(fileId, reqUserId).first();
+          if (!file) {
+            const rawFile = await env.DB.prepare(`
+              SELECT * FROM files WHERE id = ? AND user_id = ?
+            `).bind(fileId, reqUserId).first();
+            if (rawFile) {
+              file = {
+                id: rawFile.id,
+                user_id: rawFile.user_id,
+                name: rawFile.name,
+                size: formatBytes(rawFile.size || 0),
+                size_bytes: rawFile.size || 0,
+                extension: rawFile.extension || "pdf",
+                document_category: "COURS",
+                page_count: 1,
+                date_formatted: rawFile.created_at ? new Date(rawFile.created_at).toLocaleDateString("fr-FR") : "",
+                r2_key: rawFile.r2_key || "",
+                file_url: rawFile.file_url || ""
+              };
+            }
+          }
           if (file) {
             await env.DB.prepare(`
               INSERT INTO trash_files (
@@ -6941,15 +7289,20 @@ var index_default = {
               file.size,
               file.size_bytes,
               file.extension,
-              JSON.stringify({ documentCategory: file.document_category, pageCount: file.page_count }),
+              JSON.stringify({ documentCategory: file.document_category || "COURS", pageCount: file.page_count || 1 }),
               file.date_formatted,
               file.r2_key,
               file.file_url
             ).run();
             await env.DB.prepare(`DELETE FROM document_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
-            recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
-            });
           }
+          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
+          });
+          await recordSyncItem(env.DB, reqUserId, fileId, "documents", { id: fileId }, 1);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
+          });
           return jsonResponse({ success: true, message: "Document d\xE9plac\xE9 dans la corbeille" }, 200, origin);
         }
       }
@@ -6957,10 +7310,16 @@ var index_default = {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
+          let trashedDlIdSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
+            trashedDlIdSet = new Set((trashList || []).map((t) => t.id));
+          } catch (e) {
+          }
           const { results } = await env.DB.prepare(`
             SELECT * FROM download_files WHERE user_id = ? ORDER BY downloaded_at DESC
           `).bind(reqUserId).all();
-          const formatted = (results || []).map((dl) => ({
+          const formatted = (results || []).filter((dl) => !trashedDlIdSet.has(dl.id)).map((dl) => ({
             id: dl.id,
             userId: dl.user_id,
             name: dl.name,
@@ -7015,6 +7374,25 @@ var index_default = {
             r2Key,
             fileUrl
           ).run();
+          await recordSyncItem(env.DB, reqUserId, id, "downloads", {
+            id,
+            userId: reqUserId,
+            name,
+            size,
+            sizeBytes,
+            type,
+            extension,
+            sourceUrl,
+            source,
+            r2Key,
+            url: fileUrl,
+            previewUrl: fileUrl,
+            videoUrl: fileUrl,
+            audioUrl: fileUrl,
+            downloadedAt: (/* @__PURE__ */ new Date()).toISOString(),
+            date: (/* @__PURE__ */ new Date()).toISOString(),
+            category: "downloads"
+          }, 0);
           return jsonResponse({ success: true, message: "T\xE9l\xE9chargement enregistr\xE9" }, 200, origin);
         }
         if (method === "DELETE") {
@@ -7044,9 +7422,14 @@ var index_default = {
               dlFile.file_url
             ).run();
           }
-          await env.DB.prepare(`
-            DELETE FROM download_files WHERE id = ? AND user_id = ?
-          `).bind(fileId, reqUserId).run();
+          await env.DB.prepare(`DELETE FROM download_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
+          });
+          await recordSyncItem(env.DB, reqUserId, fileId, "downloads", { id: fileId }, 1);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
+          });
           return jsonResponse({ success: true, message: "T\xE9l\xE9chargement d\xE9plac\xE9 dans la corbeille" }, 200, origin);
         }
       }
@@ -7414,6 +7797,7 @@ var index_default = {
                 `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
               }
               await env.DB.prepare("DELETE FROM trash_files WHERE id = ? AND user_id = ?").bind(tid, reqUserId).run();
+              await recordSyncItem(env.DB, reqUserId, tid, srcCat, item, 0);
             }
           }
           return jsonResponse({ success: true, message: `${targetIds.length} \xE9l\xE9ment(s) restaur\xE9(s) avec succ\xE8s` }, 200, origin);
@@ -7437,6 +7821,11 @@ var index_default = {
             }
           }
           for (const item of itemsToDelete) {
+            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(item.id, reqUserId).run().catch(() => {
+            });
+            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(item.id, reqUserId).run().catch(() => {
+            });
+            await recordSyncItem(env.DB, reqUserId, item.id, item.category || "trash", { id: item.id }, 1);
             if (item.r2_key) {
               const catBucket = getBucketForCategory(rawEnv, item.category);
               if (catBucket) await catBucket.delete(item.r2_key).catch(() => {

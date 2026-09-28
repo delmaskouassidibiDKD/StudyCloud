@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { getDownloadedFiles, removeDownloadedFile, DownloadedItem } from '../services/downloadsManager';
 import { getFileBlobUrl } from '../services/localFileStorage';
+import { CloudDataStore } from '../services/cloudDataStore';
+import { CloudStorageAPI } from '../services/cloudStorageService';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
@@ -42,11 +44,34 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({ onBack, on
   };
 
   useEffect(() => {
+    // 1. Initial local items
     try {
       const items = getDownloadedFiles();
-      setDownloadedList(items);
+      if (items && items.length > 0) {
+        setDownloadedList(items);
+      } else if (CloudDataStore.getState().downloads?.length > 0) {
+        setDownloadedList(CloudDataStore.getState().downloads);
+      }
     } catch {}
-    setLoading(false);
+
+    // 2. Fetch from CloudStorageAPI
+    CloudStorageAPI.getDownloadsList()
+      .then((serverItems) => {
+        if (serverItems && Array.isArray(serverItems)) {
+          CloudDataStore.setDownloads(serverItems as any);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+
+    // 3. Subscribe to CloudDataStore for instant reactive sync
+    const unsubscribe = CloudDataStore.subscribe((state) => {
+      if (state.downloads) {
+        setDownloadedList(state.downloads);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   // Résolution du blob URL
@@ -70,13 +95,15 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({ onBack, on
     };
   }, [selectedItem?.id]);
 
-  const handleDeleteItem = (id: string) => {
+  const handleDeleteItem = async (id: string) => {
     removeDownloadedFile(id);
+    CloudDataStore.removeFile(id);
     setDownloadedList(prev => prev.filter(item => item.id !== id));
     if (selectedItem?.id === id) {
       setSelectedItem(null);
     }
     showToast('Élément retiré de vos téléchargements');
+    await CloudStorageAPI.deleteDownload(id).catch(() => {});
   };
 
   const filteredItems = useMemo(() => {

@@ -66,6 +66,10 @@ class ErrorBoundary extends React.Component {
 const initialHeight = window.innerHeight;
 document.documentElement.style.setProperty('--app-height', `${initialHeight}px`);
 
+// Démarrer la réplication continue en arrière-plan (Local-First + Cloudflare D1)
+import { LocalSyncReplication } from './services/localSyncReplication';
+LocalSyncReplication.startAutoReplication();
+
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>

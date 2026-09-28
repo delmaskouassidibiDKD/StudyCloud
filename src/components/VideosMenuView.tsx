@@ -297,7 +297,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
         if (isMounted && data && Array.isArray(data)) {
           setVideosList(prev => {
             const serverIds = new Set(data.map(v => v.id));
-            const pending = prev.filter(v => !serverIds.has(v.id));
+            const pending = prev.filter(v => !serverIds.has(v.id) && Boolean(v.isUploading));
             return [...pending, ...data];
           });
           CloudDataStore.setVideos(data as any);
@@ -313,7 +313,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
         setVideosList(prev => {
           const storeVideos = state.videos || [];
           const storeIds = new Set(storeVideos.map(v => v.id));
-          const pending = prev.filter(v => !storeIds.has(v.id));
+          const pending = prev.filter(v => !storeIds.has(v.id) && Boolean(v.isUploading));
           if (pending.length === 0) return storeVideos;
           return [...pending, ...storeVideos];
         });
