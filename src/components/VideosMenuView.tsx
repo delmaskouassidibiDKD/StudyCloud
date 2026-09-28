@@ -33,7 +33,7 @@ import {
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob } from '../services/localFileStorage';
-import { compressFile } from '../utils/fileCompressor';
+import { compressFile, formatBytes } from '../utils/fileCompressor';
 import { generateVideoThumbnail } from '../services/mediaPreviewService';
 import { FileItem } from './Page1FilesMenuView';
 import { UploadQueue } from '../services/uploadQueue';
@@ -87,6 +87,52 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   // Progression d'enregistrement et gestion d'erreurs en temps réel (comme dans Mes Fichiers)
   const [savingProgress, setSavingProgress] = useState<Record<string, number>>({});
   const [savingErrors, setSavingErrors] = useState<Record<string, string>>({});
+  const savingIntervalsRef = useRef<Record<string, any>>({});
+
+  // Animation et suivi en continu de la ligne de progression qui se remplit
+  const startSavingAnimation = (fileIds: string[]) => {
+    if (!fileIds || fileIds.length === 0) return;
+
+    // 1. Initialisation immédiate visible (12%)
+    setSavingProgress(prev => {
+      const next = { ...prev };
+      fileIds.forEach(id => {
+        next[id] = 12;
+      });
+      return next;
+    });
+
+    // 2. Progression animée en continu
+    fileIds.forEach(id => {
+      if (savingIntervalsRef.current[id]) {
+        clearInterval(savingIntervalsRef.current[id]);
+      }
+
+      let current = 12;
+      const interval = setInterval(() => {
+        if (savingErrors[id]) {
+          clearInterval(interval);
+          delete savingIntervalsRef.current[id];
+          return;
+        }
+
+        current += Math.floor(Math.random() * 10) + 8;
+        if (current >= 95) {
+          current = 95;
+          clearInterval(interval);
+          delete savingIntervalsRef.current[id];
+        }
+
+        setSavingProgress(prev => {
+          if (prev[id] === undefined) return prev;
+          const higher = Math.max(prev[id], current);
+          return { ...prev, [id]: higher };
+        });
+      }, 300);
+
+      savingIntervalsRef.current[id] = interval;
+    });
+  };
 
   // Écoute en temps réel de la file d'attente d'upload liée au Cloudflare Worker (D1/R2)
   useEffect(() => {
@@ -97,11 +143,19 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       queueState.tasks.forEach(task => {
         if (task.category === 'videos' || task.id.startsWith('vid-')) {
           if (task.status === 'uploading' || task.status === 'pending') {
-            activeProg[task.id] = task.progress || 12;
+            activeProg[task.id] = Math.max(task.progress || 12, 12);
           } else if (task.status === 'completed') {
             activeProg[task.id] = 100;
+            if (savingIntervalsRef.current[task.id]) {
+              clearInterval(savingIntervalsRef.current[task.id]);
+              delete savingIntervalsRef.current[task.id];
+            }
           } else if (task.status === 'error') {
             activeErrs[task.id] = task.error || "Non enregistré sur le Cloud";
+            if (savingIntervalsRef.current[task.id]) {
+              clearInterval(savingIntervalsRef.current[task.id]);
+              delete savingIntervalsRef.current[task.id];
+            }
           }
         }
       });
@@ -111,16 +165,16 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
         Object.entries(activeProg).forEach(([id, pct]) => {
           if (pct >= 100) {
             next[id] = 100;
-            // Une fois bien enregistré (100%), la ligne d'enregistrement disparaît après 600ms
+            // Une fois bien enregistré (100%), la ligne d'enregistrement disparaît après 400ms
             setTimeout(() => {
               setSavingProgress(curr => {
                 const clean = { ...curr };
                 delete clean[id];
                 return clean;
               });
-            }, 600);
+            }, 400);
           } else {
-            next[id] = pct;
+            next[id] = Math.max(prev[id] || 0, pct);
           }
         });
         // Si une tâche a échoué, on la retire de la barre de progression pour afficher l'alerte rouge
@@ -144,11 +198,16 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
 
     return () => {
       unsubscribe();
+      Object.values(savingIntervalsRef.current).forEach(int => clearInterval(int as any));
     };
   }, []);
 
   // Effacer une vidéo dont l'enregistrement a échoué (Bouton Croix X)
   const handleDismissFailedUpload = (vidId: string) => {
+    if (savingIntervalsRef.current[vidId]) {
+      clearInterval(savingIntervalsRef.current[vidId]);
+      delete savingIntervalsRef.current[vidId];
+    }
     UploadQueue.removeTask(vidId);
     setSavingProgress(prev => {
       const next = { ...prev };
@@ -176,10 +235,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       delete next[vidId];
       return next;
     });
-    setSavingProgress(prev => ({
-      ...prev,
-      [vidId]: 15
-    }));
+    startSavingAnimation([vidId]);
     UploadQueue.retryTask(vidId);
     showToast("Nouvelle tentative d'enregistrement...");
   };
@@ -225,13 +281,17 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     };
   }, []);
 
-  // Chargement et synchronisation avec CloudDataStore
+  // Chargement et synchronisation avec CloudDataStore (Fusion sécurisée pour ne jamais faire disparaître les vidéos en cours)
   useEffect(() => {
     let isMounted = true;
     CloudStorageAPI.getVideosList()
       .then((data) => {
         if (isMounted && data && Array.isArray(data)) {
-          setVideosList(data);
+          setVideosList(prev => {
+            const serverIds = new Set(data.map(v => v.id));
+            const pending = prev.filter(v => !serverIds.has(v.id));
+            return [...pending, ...data];
+          });
           CloudDataStore.setVideos(data as any);
         }
       })
@@ -241,8 +301,14 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       });
 
     const unsubscribe = CloudDataStore.subscribe((state) => {
-      if (isMounted) {
-        setVideosList(state.videos || []);
+      if (isMounted && state.videos) {
+        setVideosList(prev => {
+          const storeVideos = state.videos || [];
+          const storeIds = new Set(storeVideos.map(v => v.id));
+          const pending = prev.filter(v => !storeIds.has(v.id));
+          if (pending.length === 0) return storeVideos;
+          return [...pending, ...storeVideos];
+        });
       }
     });
 
@@ -267,76 +333,108 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     }
   };
 
-  // Import de vidéos avec compression spécialisée et suivi temps réel
-  const handleImportVideos = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Import de vidéos : affichage immédiat (0ms) avec ligne de chargement animée comme Mes Fichiers
+  const handleImportVideos = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const files = Array.from(e.target.files) as File[];
 
-    showToast(`Optimisation et préparation de ${files.length} vidéo(s)...`);
+    const newItems: FileItem[] = [];
+    const newFiles: { file: File; id: string }[] = [];
+    const now = Date.now();
 
-    const newItemsWithFiles = await Promise.all(
-      files.map(async (f, idx) => {
-        const ext = f.name.includes('.') ? f.name.split('.').pop()?.toLowerCase() || 'mp4' : 'mp4';
-        
-        // Compression vidéo spécialisée (Canvas + MediaRecorder, bitrate optimisé et format adapté)
-        const comp = await compressFile(f, 'videos');
-        const fileId = `vid-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
-        const localBlobUrl = URL.createObjectURL(comp.file);
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const ext = f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'MP4' : 'MP4';
+      const fileId = `vid-${now}-${i}-${Math.random().toString(36).substring(2, 6)}`;
+      const localBlobUrl = URL.createObjectURL(f);
 
-        await storeFileBlob(fileId, comp.file as any).catch(() => {});
+      // Sauvegarde immédiate du blob dans IndexedDB (0ms) pour lecture locale instantanée
+      storeFileBlob(fileId, f).catch(() => {});
 
-        let thumbUrl: string | undefined;
-        try {
-          thumbUrl = (await generateVideoThumbnail(comp.file)) || undefined;
-        } catch {}
+      const item: FileItem = {
+        id: fileId,
+        name: f.name,
+        category: 'videos',
+        source: 'Vidéos',
+        size: formatBytes(f.size),
+        sizeBytes: f.size,
+        date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+        extension: ext,
+        url: localBlobUrl,
+        videoUrl: localBlobUrl,
+        previewUrl: localBlobUrl,
+        isVideo: true
+      };
 
-        const item: FileItem = {
-          id: fileId,
-          name: f.name,
-          category: 'videos',
-          source: 'Vidéos',
-          size: comp.originalSizeFormatted,
-          sizeBytes: comp.originalSizeBytes,
-          date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
-          extension: ext.toUpperCase(),
-          url: localBlobUrl,
-          videoUrl: localBlobUrl,
-          previewUrl: thumbUrl || localBlobUrl,
-          isVideo: true
-        };
+      newItems.push(item);
+      newFiles.push({ file: f, id: fileId });
+    }
 
-        return { 
-          file: comp.file, 
-          item,
-          originalSizeBytes: comp.originalSizeBytes,
-          originalSizeFormatted: comp.originalSizeFormatted
-        };
-      })
-    );
+    if (newItems.length === 0) return;
 
-    const newItems = newItemsWithFiles.map(x => x.item);
-    
-    // 1. Affichage optimiste immédiat
+    // 1. AFFICHAGE IMMÉDIAT DANS LA GRILLE (0 milliseconde !)
     setVideosList(prev => [...newItems, ...prev]);
-    CloudDataStore.setVideos([...newItems, ...videosList] as any);
 
-    // 2. Initialiser la ligne de chargement temps réel à 12%
-    setSavingProgress(prev => {
-      const next = { ...prev };
-      newItems.forEach(it => {
-        next[it.id] = 12;
-      });
-      return next;
+    // 2. Démarrage immédiat de la ligne de progression qui se remplit
+    startSavingAnimation(newItems.map(it => it.id));
+
+    // 3. Ajout optimiste dans CloudDataStore
+    newItems.forEach(it => {
+      CloudDataStore.addOptimisticFile(it as any);
     });
-
-    // 3. Liaison avec le Worker Cloudflare (R2/D1) via UploadQueue
-    UploadQueue.enqueueExisting(newItemsWithFiles, { category: 'videos', uploadSource: 'videos' });
-    showToast(`${newItems.length} vidéo(s) en cours d'enregistrement sur le Cloud...`);
 
     if (newItems.length > 0 && !selectedVideo) {
       setSelectedVideo(newItems[0]);
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
+    showToast(`${newItems.length} vidéo(s) ajoutée(s) — Enregistrement en cours...`);
+
+    // 4. Traitement asynchrone en arrière-plan : compression spécialisée et upload Cloudflare Worker
+    (async () => {
+      const itemsWithFiles = await Promise.all(
+        newFiles.map(async ({ file, id }) => {
+          let fileToSend: File | Blob = file;
+          let origBytes = file.size;
+          let origFormatted = formatBytes(file.size);
+
+          try {
+            const comp = await compressFile(file, 'videos');
+            fileToSend = comp.file;
+            origBytes = comp.originalSizeBytes;
+            origFormatted = comp.originalSizeFormatted;
+            if (comp.file !== file) {
+              await storeFileBlob(id, comp.file as any).catch(() => {});
+            }
+          } catch (err) {
+            console.warn('[VideosMenuView] Compression vidéo échouée, utilisation brute:', err);
+          }
+
+          let thumbUrl: string | undefined;
+          try {
+            thumbUrl = (await generateVideoThumbnail(fileToSend)) || undefined;
+          } catch {}
+
+          const targetItem = newItems.find(it => it.id === id)!;
+          const updatedItem = {
+            ...targetItem,
+            size: origFormatted,
+            sizeBytes: origBytes,
+            previewUrl: thumbUrl || targetItem.previewUrl,
+            thumbnailUrl: thumbUrl || targetItem.previewUrl
+          };
+
+          return {
+            file: fileToSend,
+            item: updatedItem,
+            originalSizeBytes: origBytes,
+            originalSizeFormatted: origFormatted
+          };
+        })
+      );
+
+      // Transmission à UploadQueue pour envoi sur Worker R2 et confirmation D1
+      UploadQueue.enqueueExisting(itemsWithFiles, { category: 'videos', uploadSource: 'videos' });
+    })();
   };
 
   // Favoris
