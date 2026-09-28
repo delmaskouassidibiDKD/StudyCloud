@@ -124,6 +124,16 @@ import {
   isWhatsAppImage,
   EXTENSION_MAP
 } from '../services/fileTypeValidator';
+import { AudioMenuView } from './AudioMenuView';
+import { DocumentsMenuView } from './DocumentsMenuView';
+import { VideosMenuView } from './VideosMenuView';
+import { ImagesMenuView } from './ImagesMenuView';
+import { TrashMenuView } from './TrashMenuView';
+import { FavoritesMenuView } from './FavoritesMenuView';
+import { AppsMenuView } from './AppsMenuView';
+import { CloudSpaceMenuView } from './CloudSpaceMenuView';
+import { DownloadsMenuView } from './DownloadsMenuView';
+import { SecureFolderMenuView } from './SecureFolderMenuView';
 
 // Nettoyage immédiat de tout fichier figé en localStorage pour éviter le plantage QuotaExceededError
 if (typeof window !== 'undefined') {
@@ -318,6 +328,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Menu dédié indépendant actif
+  const [activeDedicatedMenu, setActiveDedicatedMenu] = useState<
+    'audio' | 'documents' | 'videos' | 'images' | 'trash' | 'favorites' | 'apps' | 'cloud-storage' | 'downloads' | 'secure-folder' | null
+  >(null);
 
   // =========================================================================
   // ÉTAT DE LA DIVISION EN DEUX (SPLIT SCREEN) & LECTEUR GRAND FORMAT
@@ -3637,6 +3651,48 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     icon: any,
     color: string
   ) => {
+    // Routage immédiat vers les composants 100% indépendants
+    if (id === 'audio') {
+      setActiveDedicatedMenu('audio');
+      return;
+    }
+    if (id === 'documents') {
+      setActiveDedicatedMenu('documents');
+      return;
+    }
+    if (id === 'videos') {
+      setActiveDedicatedMenu('videos');
+      return;
+    }
+    if (id === 'images') {
+      setActiveDedicatedMenu('images');
+      return;
+    }
+    if (id === 'trash') {
+      setActiveDedicatedMenu('trash');
+      return;
+    }
+    if (id === 'favorites') {
+      setActiveDedicatedMenu('favorites');
+      return;
+    }
+    if (id === 'apps' || id === 'applications') {
+      setActiveDedicatedMenu('apps');
+      return;
+    }
+    if (id === 'cloud-storage') {
+      setActiveDedicatedMenu('cloud-storage');
+      return;
+    }
+    if (id === 'downloads') {
+      setActiveDedicatedMenu('downloads');
+      return;
+    }
+    if (id === 'secure-folder') {
+      setActiveDedicatedMenu('secure-folder');
+      return;
+    }
+
     setSubSearchQuery('');
     setIsViewerMaximized(false);
     setIsMobilePlayerOpen(false);
@@ -10443,9 +10499,69 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       />
 
       {/* ========================================================================= */}
-      {/* SI UN SOUS-MENU EST OUVERT : NAVIGATION & AFFICHAGE                       */}
+      {/* MENUS 100% INDÉPENDANTS AVEC LEUR PROPRE CODE ET FICHIER DÉDIÉ            */}
       {/* ========================================================================= */}
-      {currentSubView ? (
+      {activeDedicatedMenu === 'audio' ? (
+        <AudioMenuView
+          onBack={() => setActiveDedicatedMenu(null)}
+          onOpenStudySpace={onOpenStudySpace}
+          onOpenCreateShareLink={onOpenCreateShareLink}
+        />
+      ) : activeDedicatedMenu === 'documents' ? (
+        <DocumentsMenuView
+          onBack={() => setActiveDedicatedMenu(null)}
+          onOpenStudySpace={onOpenStudySpace}
+          onOpenCreateShareLink={onOpenCreateShareLink}
+        />
+      ) : activeDedicatedMenu === 'videos' ? (
+        <VideosMenuView
+          onBack={() => setActiveDedicatedMenu(null)}
+          onOpenStudySpace={onOpenStudySpace}
+          onOpenCreateShareLink={onOpenCreateShareLink}
+        />
+      ) : activeDedicatedMenu === 'images' ? (
+        <ImagesMenuView
+          onBack={() => setActiveDedicatedMenu(null)}
+          onOpenStudySpace={onOpenStudySpace}
+          onOpenCreateShareLink={onOpenCreateShareLink}
+        />
+      ) : activeDedicatedMenu === 'trash' ? (
+        <TrashMenuView
+          onBack={() => setActiveDedicatedMenu(null)}
+        />
+      ) : activeDedicatedMenu === 'favorites' ? (
+        <FavoritesMenuView
+          onBack={() => setActiveDedicatedMenu(null)}
+          onOpenStudySpace={onOpenStudySpace}
+          onOpenCreateShareLink={onOpenCreateShareLink}
+        />
+      ) : activeDedicatedMenu === 'apps' ? (
+        <AppsMenuView
+          onBack={() => setActiveDedicatedMenu(null)}
+        />
+      ) : activeDedicatedMenu === 'cloud-storage' ? (
+        <CloudSpaceMenuView
+          onBack={() => setActiveDedicatedMenu(null)}
+          onNavigateToCategory={(cat) => {
+            if (cat === 'classeur') {
+              setActiveDedicatedMenu(null);
+              handleOpenSubMenu('classeur', 'classeur', 'Classeur', FolderArchive, 'text-orange-400');
+            } else {
+              setActiveDedicatedMenu(cat);
+            }
+          }}
+        />
+      ) : activeDedicatedMenu === 'downloads' ? (
+        <DownloadsMenuView
+          onBack={() => setActiveDedicatedMenu(null)}
+          onOpenStudySpace={onOpenStudySpace}
+        />
+      ) : activeDedicatedMenu === 'secure-folder' ? (
+        <SecureFolderMenuView
+          onBack={() => setActiveDedicatedMenu(null)}
+          onOpenStudySpace={onOpenStudySpace}
+        />
+      ) : currentSubView ? (
         <div className="flex-1 flex flex-col w-full animate-in fade-in duration-200 min-h-screen">
           
           {/* EN-TÊTE DU SOUS-MENU */}
@@ -12285,7 +12401,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   return (
                     <div
                       key={cat.id}
-                      onClick={() => handleOpenSubMenu('category', cat.id, cat.name, cat.icon, cat.color)}
+                      onClick={() => {
+                        if (['audio', 'documents', 'videos', 'images', 'downloads', 'apps'].includes(cat.id)) {
+                          setActiveDedicatedMenu(cat.id as any);
+                        } else {
+                          handleOpenSubMenu('category', cat.id, cat.name, cat.icon, cat.color);
+                        }
+                      }}
                       className="group rounded-2xl p-2.5 sm:p-3 flex items-center gap-2.5 transition-all duration-200 cursor-pointer select-none border shadow-md bg-[#04060A] hover:bg-[#0A0E18] border-white/10 hover:border-blue-400/50 active:scale-95"
                     >
                       <div className={`p-2 rounded-xl bg-black border border-white/10 shrink-0 group-hover:scale-110 transition-transform ${cat.color}`}>
@@ -12321,16 +12443,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     <div
                       key={col.id}
                       onClick={() => {
-                        if (col.id === 'secure-folder') {
-                          if (isSecureFolderUnlocked) {
-                            handleOpenSubMenu('collection', col.id, col.name, col.icon, col.color);
-                          } else {
-                            setPinTargetDestination('collection');
-                            setIsPinModalOpen(true);
-                            setSecurePinInput('');
-                            setSecurePinConfirmInput('');
-                            setSecurePinError(null);
-                          }
+                        if (col.id === 'favorites') {
+                          setActiveDedicatedMenu('favorites');
+                        } else if (col.id === 'trash') {
+                          setActiveDedicatedMenu('trash');
+                        } else if (col.id === 'cloud-storage') {
+                          setActiveDedicatedMenu('cloud-storage');
+                        } else if (col.id === 'secure-folder') {
+                          setActiveDedicatedMenu('secure-folder');
+                        } else if (col.id === 'apps') {
+                          setActiveDedicatedMenu('apps');
                         } else {
                           handleOpenSubMenu('collection', col.id, col.name, col.icon, col.color);
                         }
