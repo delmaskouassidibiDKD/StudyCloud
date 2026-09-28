@@ -123,6 +123,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   const [savingProgress, setSavingProgress] = useState<Record<string, number>>({});
   const [savingErrors, setSavingErrors] = useState<Record<string, string>>({});
   const savingIntervalsRef = useRef<Record<string, any>>({});
+  const pendingAudioItemsRef = useRef<Map<string, FileItem>>(new Map());
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -130,6 +131,34 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  // Helper pour fusionner les données serveur sans jamais écraser les sons locaux en cours d'enregistrement
+  const mergeAudioWithPending = (serverList: any[], currentList: FileItem[]): FileItem[] => {
+    if (!serverList || !Array.isArray(serverList)) return currentList || [];
+    const serverIds = new Set(serverList.map(t => t.id));
+
+    const pendingItems: FileItem[] = [];
+    pendingAudioItemsRef.current.forEach((pendingItem, id) => {
+      if (!serverIds.has(id)) {
+        const inCurrent = currentList.find(c => c.id === id);
+        pendingItems.push(inCurrent || pendingItem);
+      } else {
+        pendingAudioItemsRef.current.delete(id);
+      }
+    });
+
+    currentList.forEach(item => {
+      if (
+        (savingProgress[item.id] !== undefined || (item.id && item.id.startsWith('aud-'))) &&
+        !serverIds.has(item.id) &&
+        !pendingItems.some(p => p.id === item.id)
+      ) {
+        pendingItems.push(item);
+      }
+    });
+
+    return [...pendingItems, ...(serverList as FileItem[])];
   };
 
   // Fermer le menu 3 traits si on clique en dehors
@@ -148,14 +177,14 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     };
   }, []);
 
-  // Animation et suivi en continu de la ligne de progression qui se remplit
+  // Animation et suivi en continu de la ligne de progression qui se remplit (comme dans Mes fichiers)
   const startSavingAnimation = (fileIds: string[]) => {
     if (!fileIds || fileIds.length === 0) return;
 
     setSavingProgress(prev => {
       const next = { ...prev };
       fileIds.forEach(id => {
-        next[id] = 12;
+        next[id] = Math.max(next[id] || 0, 12);
       });
       return next;
     });
@@ -173,19 +202,27 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           return;
         }
 
-        current += Math.floor(Math.random() * 10) + 8;
-        if (current >= 95) {
-          current = 95;
+        current += Math.floor(Math.random() * 15) + 12;
+        if (current >= 100) {
+          current = 100;
           clearInterval(interval);
           delete savingIntervalsRef.current[id];
-        }
 
-        setSavingProgress(prev => {
-          if (prev[id] === undefined) return prev;
-          const higher = Math.max(prev[id], current);
-          return { ...prev, [id]: higher };
-        });
-      }, 300);
+          setSavingProgress(prev => ({ ...prev, [id]: 100 }));
+          setTimeout(() => {
+            setSavingProgress(curr => {
+              const clean = { ...curr };
+              delete clean[id];
+              return clean;
+            });
+          }, 450);
+        } else {
+          setSavingProgress(prev => {
+            if (prev[id] === undefined) return prev;
+            return { ...prev, [id]: Math.max(prev[id], current) };
+          });
+        }
+      }, 350);
 
       savingIntervalsRef.current[id] = interval;
     });
@@ -207,10 +244,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               clearInterval(savingIntervalsRef.current[task.id]);
               delete savingIntervalsRef.current[task.id];
             }
-            // Mise à jour immédiate dès confirmation d'enregistrement en base
+            // Mise à jour immédiate dès confirmation d'enregistrement en base en conservant les sons en cours
             CloudStorageAPI.getAudioList().then((data) => {
               if (data && Array.isArray(data)) {
-                setAudioList(data);
+                setAudioList(prev => mergeAudioWithPending(data, prev));
                 CloudDataStore.setAudio(data as any);
                 setSelectedTrack(curr => {
                   if (!curr) return null;
@@ -240,7 +277,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                 delete clean[id];
                 return clean;
               });
-            }, 400);
+            }, 450);
           } else {
             next[id] = Math.max(prev[id] || 0, pct);
           }
@@ -267,7 +304,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       if (!detail || detail.category === 'audio' || String(detail.fileId).startsWith('aud-')) {
         CloudStorageAPI.getAudioList().then((data) => {
           if (data && Array.isArray(data)) {
-            setAudioList(data);
+            setAudioList(prev => mergeAudioWithPending(data, prev));
             CloudDataStore.setAudio(data as any);
             setSelectedTrack(curr => {
               if (!curr) return null;
@@ -293,6 +330,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       clearInterval(savingIntervalsRef.current[audId]);
       delete savingIntervalsRef.current[audId];
     }
+    pendingAudioItemsRef.current.delete(audId);
     UploadQueue.removeTask(audId);
     setSavingProgress(prev => {
       const next = { ...prev };
@@ -332,7 +370,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     CloudStorageAPI.getAudioList()
       .then((data) => {
         if (isMounted && data && Array.isArray(data)) {
-          setAudioList(data);
+          setAudioList(prev => mergeAudioWithPending(data, prev));
           CloudDataStore.setAudio(data as any);
         }
       })
@@ -343,7 +381,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
     const unsubscribe = CloudDataStore.subscribe((state) => {
       if (isMounted) {
-        setAudioList(state.audio || []);
+        setAudioList(prev => mergeAudioWithPending(state.audio || [], prev));
       }
     });
 
@@ -424,91 +462,159 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     else setIsAudioRepeat('off');
   };
 
-  // Import audio avec extraction complète des tags ID3 & pochette d'album réelle (Artwork)
-  const handleImportAudio = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Import audio avec affichage immédiat (0ms), animation de progression en continu et extraction ID3 en arrière-plan
+  const handleImportAudio = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const files = Array.from(e.target.files) as File[];
 
-    showToast(`Préparation de ${files.length} son(s)...`);
+    const now = Date.now();
+    const newItems: FileItem[] = [];
+    const itemsWithFiles: { file: File | Blob; item: any; originalSizeBytes?: number; originalSizeFormatted?: string }[] = [];
 
-    const newItemsWithFiles = await Promise.all(
-      files.map(async (f, idx) => {
-        const ext = f.name.includes('.') ? f.name.split('.').pop()?.toLowerCase() || 'mp3' : 'mp3';
-        const comp = await compressFile(f, 'audio');
-        const fileId = `aud-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
-        const localBlobUrl = URL.createObjectURL(comp.file);
+    files.forEach((f, idx) => {
+      const ext = f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'MP3' : 'MP3';
+      const fileId = `aud-${now}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+      const localBlobUrl = URL.createObjectURL(f);
 
-        await storeFileBlob(fileId, comp.file as any).catch(() => {});
+      // 1. Sauvegarde locale IndexedDB (accès instantané 0ms)
+      storeFileBlob(fileId, f as any).catch(() => {});
 
-        let metaTitle: string | undefined;
-        let metaArtist: string | undefined;
-        let metaAlbum: string | undefined;
-        let coverUrl: string | undefined;
+      const sizeFormatted = f.size > 1048576 
+        ? `${(f.size / (1024 * 1024)).toFixed(1)} Mo` 
+        : `${Math.round(f.size / 1024)} Ko`;
 
-        // 1. Extraction ID3 via jsmediatags (Artwork, titre, artiste, album)
-        try {
-          const meta = await extractAudioMetadataWithTags(comp.file);
-          if (meta.title) metaTitle = meta.title;
-          if (meta.artist) metaArtist = meta.artist;
-          if (meta.album) metaAlbum = meta.album;
-          if (meta.coverUrl) coverUrl = meta.coverUrl;
-        } catch (tagErr) {
-          console.warn('[AudioMenuView] Erreur extraction jsmediatags:', tagErr);
-        }
+      // 2. Générer une pochette visuelle immédiate pour que l'apparence s'affiche dès la 1ère milliseconde
+      const initialCover = generateAudioCreatorCover(f.name, "Enregistrement en cours...");
+      setCachedMediaThumbnail(fileId, initialCover);
+      setCachedMediaThumbnail(localBlobUrl, initialCover);
 
-        // 2. Si pas encore de cover, tenter extractAudioCover
-        if (!coverUrl) {
-          try {
-            coverUrl = (await extractAudioCover(comp.file, metaTitle || f.name, metaArtist)) || undefined;
-          } catch {}
-        }
-        if (!coverUrl) {
-          coverUrl = generateAudioCreatorCover(metaTitle || f.name, metaArtist);
-        }
+      const item: FileItem = {
+        id: fileId,
+        name: f.name,
+        category: 'audio',
+        source: 'Audio',
+        artist: "Enregistrement en cours...",
+        album: undefined,
+        size: sizeFormatted,
+        sizeBytes: f.size,
+        date: "Aujourd'hui",
+        extension: ext,
+        url: localBlobUrl,
+        audioUrl: localBlobUrl,
+        coverUrl: initialCover,
+        thumbnailUrl: initialCover,
+        previewUrl: initialCover,
+        isAudio: true,
+        isUploading: true
+      };
 
-        // 3. Mise en cache immédiate locale et IndexedDB
-        if (coverUrl) {
-          setCachedMediaThumbnail(fileId, coverUrl);
-          setCachedMediaThumbnail(localBlobUrl, coverUrl);
-          storeThumbnailData(fileId, coverUrl).catch(() => {});
-          CloudStorageAPI.saveMediaThumbnail(fileId, 'audio', coverUrl, metaTitle || f.name).catch(() => {});
-        }
+      newItems.push(item);
+      pendingAudioItemsRef.current.set(fileId, item);
+      itemsWithFiles.push({
+        file: f,
+        item,
+        originalSizeBytes: f.size,
+        originalSizeFormatted: sizeFormatted
+      });
+    });
 
-        const item: FileItem = {
-          id: fileId,
-          name: f.name,
-          category: 'audio',
-          source: 'Audio',
-          artist: metaArtist || 'Menu Audio',
-          album: metaAlbum,
-          size: comp.originalSizeFormatted,
-          sizeBytes: comp.originalSizeBytes,
-          date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
-          extension: ext.toUpperCase(),
-          url: localBlobUrl,
-          audioUrl: localBlobUrl,
-          coverUrl,
-          thumbnailUrl: coverUrl,
-          previewUrl: coverUrl,
-          isAudio: true
-        };
+    if (newItems.length === 0) return;
 
-        return { file: comp.file, item };
-      })
-    );
-
-    const newItems = newItemsWithFiles.map(x => x.item);
+    // 1. AFFICHAGE IMMÉDIAT (0ms) DANS LA LISTE (exactement comme dans Mes fichiers)
     setAudioList(prev => [...newItems, ...prev]);
-    CloudDataStore.setAudio([...newItems, ...audioList] as any);
 
+    // 2. DÉMARRAGE IMMÉDIAT DE LA LIGNE QUI SE REMPLIT EN CONTINU
     startSavingAnimation(newItems.map(x => x.id));
-    UploadQueue.enqueueExisting(newItemsWithFiles, { category: 'audio' });
-    showToast(`${newItems.length} fichier(s) audio importé(s) !`);
 
-    if (newItems.length > 0 && !selectedTrack) {
-      setSelectedTrack(newItems[0]);
-    }
+    // 3. SYNCHRONISATION MULTI-MAGASIN IMMÉDIATE (CloudDataStore)
+    newItems.forEach(item => {
+      CloudDataStore.addOptimisticFile(item as any);
+    });
+
+    // 4. Sélection automatique si aucun son n'était joué
+    setSelectedTrack(curr => curr || newItems[0]);
+
     if (fileInputRef.current) fileInputRef.current.value = '';
+    showToast(`${newItems.length} son(s) en cours d'enregistrement...`);
+
+    // 5. En arrière-plan (non bloquant): extraction ID3 réelle (jsmediatags), pochette d'album & compression
+    (async () => {
+      for (const entry of itemsWithFiles) {
+        const rawFile = entry.file as File;
+        const currentItem = entry.item;
+
+        try {
+          // Extraction des tags ID3 (titre, artiste, album, Artwork pochette)
+          const meta = await extractAudioMetadataWithTags(rawFile).catch(() => ({} as any));
+          let coverUrl = meta.coverUrl;
+          if (!coverUrl) {
+            try {
+              coverUrl = (await extractAudioCover(rawFile, meta.title || rawFile.name, meta.artist)) || undefined;
+            } catch {}
+          }
+
+          if (coverUrl) {
+            setCachedMediaThumbnail(currentItem.id, coverUrl);
+            setCachedMediaThumbnail(currentItem.url || '', coverUrl);
+            storeThumbnailData(currentItem.id, coverUrl).catch(() => {});
+            CloudStorageAPI.saveMediaThumbnail(currentItem.id, 'audio', coverUrl, meta.title || rawFile.name).catch(() => {});
+          }
+
+          const updatedTitle = meta.title || rawFile.name;
+          const updatedArtist = meta.artist || 'Menu Audio';
+          const updatedAlbum = meta.album;
+
+          // Mise à jour douce de l'élément dans la liste sans aucun rechargement ni disparition
+          setAudioList(prev => prev.map(t => {
+            if (t.id === currentItem.id) {
+              const updated = {
+                ...t,
+                name: updatedTitle,
+                artist: updatedArtist,
+                album: updatedAlbum || t.album,
+                coverUrl: coverUrl || t.coverUrl,
+                thumbnailUrl: coverUrl || t.thumbnailUrl,
+                previewUrl: coverUrl || t.previewUrl,
+              };
+              pendingAudioItemsRef.current.set(currentItem.id, updated);
+              return updated;
+            }
+            return t;
+          }));
+
+          setSelectedTrack(curr => {
+            if (curr && curr.id === currentItem.id) {
+              return {
+                ...curr,
+                name: updatedTitle,
+                artist: updatedArtist,
+                album: updatedAlbum || curr.album,
+                coverUrl: coverUrl || curr.coverUrl,
+                thumbnailUrl: coverUrl || curr.thumbnailUrl,
+                previewUrl: coverUrl || curr.previewUrl,
+              };
+            }
+            return curr;
+          });
+
+          // Mettre à jour les données dans l'item pour l'UploadQueue
+          entry.item = {
+            ...currentItem,
+            name: updatedTitle,
+            artist: updatedArtist,
+            album: updatedAlbum,
+            coverUrl: coverUrl || currentItem.coverUrl,
+            thumbnailUrl: coverUrl || currentItem.thumbnailUrl,
+            previewUrl: coverUrl || currentItem.previewUrl,
+          };
+        } catch (err) {
+          console.warn('[AudioMenuView] Background ID3 metadata error:', err);
+        }
+      }
+
+      // Enqueue dans l'UploadQueue vers R2 + D1
+      UploadQueue.enqueueExisting(itemsWithFiles, { category: 'audio' });
+    })();
   };
 
   // Favoris
@@ -554,6 +660,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   const handleDeleteAudio = async (track: FileItem) => {
     if (!window.confirm(`Supprimer définitivement "${track.name}" ?`)) return;
 
+    pendingAudioItemsRef.current.delete(track.id);
     setAudioList(prev => prev.filter(t => t.id !== track.id));
     if (selectedTrack?.id === track.id) {
       setSelectedTrack(null);
@@ -1893,17 +2000,17 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                                 : 'bg-white dark:bg-slate-900/80 border-stone-200/90 dark:border-slate-800 hover:border-amber-400/60 hover:shadow-md cursor-pointer'
                       }`}
                     >
-                      {/* Ligne de progression en temps réel au-dessus de l'élément */}
+                      {/* Ligne de progression en temps réel collée en haut qui se remplit (comme dans Mes fichiers) */}
                       {isSaving && !hasFailed && (
-                        <div className="absolute top-0 inset-x-0 h-1 bg-black/40 z-20 overflow-hidden pointer-events-none rounded-t-2xl">
+                        <div className="absolute top-0 inset-x-0 h-1.5 bg-stone-900/40 dark:bg-black/60 z-30 overflow-hidden pointer-events-none rounded-t-2xl">
                           <div 
-                            className="h-full bg-amber-400 transition-all duration-300 ease-out shadow-[0_0_10px_#f59e0b]"
-                            style={{ width: `${progressVal}%` }}
+                            className="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-300 transition-all duration-300 ease-out shadow-[0_0_12px_#f59e0b]"
+                            style={{ width: `${Math.min(100, Math.max(10, progressVal))}%` }}
                           />
                         </div>
                       )}
                       {hasFailed && (
-                        <div className="absolute top-0 inset-x-0 h-1 bg-rose-500 z-20 overflow-hidden pointer-events-none rounded-t-2xl shadow-[0_0_10px_#f43f5e]" />
+                        <div className="absolute top-0 inset-x-0 h-1.5 bg-rose-500 z-30 overflow-hidden pointer-events-none rounded-t-2xl shadow-[0_0_10px_#f43f5e]" />
                       )}
 
                       {/* Vignette album + Titre + Artiste + Métadonnées */}
@@ -1930,6 +2037,11 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                             track={track}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                           />
+                          {isSaving && !hasFailed && (
+                            <div className="absolute inset-0 bg-black/35 backdrop-blur-[0.5px] flex items-center justify-center pointer-events-none">
+                              <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin shadow-sm" />
+                            </div>
+                          )}
                         </div>
 
                         <div className="min-w-0 flex-1">
@@ -2017,8 +2129,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                             </button>
                           </div>
                         ) : isSaving ? (
-                          <span className="text-[10px] text-amber-400 font-bold animate-pulse whitespace-nowrap">
-                            Enregistrement {progressVal}%
+                          <span className="text-[10px] text-amber-500 dark:text-amber-400 font-black animate-pulse whitespace-nowrap bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-400/30">
+                            Enregistrement {Math.round(progressVal)}%
                           </span>
                         ) : (
                           <span className="hidden sm:inline text-[11px] text-stone-400 dark:text-slate-500 whitespace-nowrap">

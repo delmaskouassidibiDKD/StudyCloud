@@ -207,6 +207,7 @@ export interface FileItem {
   r2Key?: string;
   isSyncError?: boolean;
   uploadError?: string;
+  isUploading?: boolean;
 }
 
 interface SubMenuView {

@@ -285,7 +285,13 @@ export const CloudDataStore = {
           const serverIds = new Set(serverList.map(s => s.id));
           const pending = (currentList || []).filter(c => 
             !serverIds.has(c.id) && 
-            (c.isUploading || (c.id && c.id.startsWith('cf-')))
+            (c.isUploading || (c.id && (
+              c.id.startsWith('cf-') ||
+              c.id.startsWith('aud-') ||
+              c.id.startsWith('img-') ||
+              c.id.startsWith('vid-') ||
+              c.id.startsWith('file-')
+            )))
           );
           return [...pending, ...serverList];
         };
@@ -494,10 +500,34 @@ export const CloudDataStore = {
     return inFlightSyncPromise;
   },
 
-  setDocuments(docs: FileItem[])             { currentState = { ...currentState, documents: docs };         persistToIndexedDB().catch(() => {}); notify(); },
-  setVideos(videos: FileItem[])              { currentState = { ...currentState, videos };                   persistToIndexedDB().catch(() => {}); notify(); },
-  setImages(images: FileItem[])              { currentState = { ...currentState, images };                   persistToIndexedDB().catch(() => {}); notify(); },
-  setAudio(audio: FileItem[])               { currentState = { ...currentState, audio };                    persistToIndexedDB().catch(() => {}); notify(); },
+  setDocuments(docs: FileItem[]) {
+    const serverIds = new Set(docs.map(s => s.id));
+    const pending = (currentState.documents || []).filter(c => !serverIds.has(c.id) && (c.isUploading || (c.id && (c.id.startsWith('cf-') || c.id.startsWith('file-')))));
+    currentState = { ...currentState, documents: [...pending, ...docs] };
+    persistToIndexedDB().catch(() => {});
+    notify();
+  },
+  setVideos(videos: FileItem[]) {
+    const serverIds = new Set(videos.map(s => s.id));
+    const pending = (currentState.videos || []).filter(c => !serverIds.has(c.id) && (c.isUploading || (c.id && (c.id.startsWith('vid-') || c.id.startsWith('cf-')))));
+    currentState = { ...currentState, videos: [...pending, ...videos] };
+    persistToIndexedDB().catch(() => {});
+    notify();
+  },
+  setImages(images: FileItem[]) {
+    const serverIds = new Set(images.map(s => s.id));
+    const pending = (currentState.images || []).filter(c => !serverIds.has(c.id) && (c.isUploading || (c.id && (c.id.startsWith('img-') || c.id.startsWith('cf-')))));
+    currentState = { ...currentState, images: [...pending, ...images] };
+    persistToIndexedDB().catch(() => {});
+    notify();
+  },
+  setAudio(audio: FileItem[]) {
+    const serverIds = new Set(audio.map(s => s.id));
+    const pending = (currentState.audio || []).filter(c => !serverIds.has(c.id) && (c.isUploading || (c.id && (c.id.startsWith('aud-') || c.id.startsWith('cf-')))));
+    currentState = { ...currentState, audio: [...pending, ...audio] };
+    persistToIndexedDB().catch(() => {});
+    notify();
+  },
   setDownloads(downloads: DownloadedItem[]) { currentState = { ...currentState, downloads };                 persistToIndexedDB().catch(() => {}); notify(); },
   setClasseurFolders(folders: ClasseurCreatedFolder[]) { currentState = { ...currentState, classeurFolders: folders }; persistToIndexedDB().catch(() => {}); notify(); },
   setFolderFilesMap(map: Record<string, FileItem[]>)   { currentState = { ...currentState, folderFilesMap: map };      persistToIndexedDB().catch(() => {}); notify(); },
