@@ -778,6 +778,11 @@ export const CloudStorageAPI = {
     return `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(fileId)}?userId=${getUserIdParam()}`;
   },
 
+  getFileUrl(fileId: string): string {
+    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+    return `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}?userId=${getUserIdParam()}`;
+  },
+
   async uploadFile(
     file: File | Blob,
     category: 'auto' | 'classeur' | 'audio' | 'images' | 'videos' | 'documents',
