@@ -12,15 +12,10 @@ interface ImageCardPreviewProps {
 }
 
 export const ImageCardPreview: React.FC<ImageCardPreviewProps> = ({ img, className, alt }) => {
+  const directUrl = img.previewUrl || img.url || (img.thumbnailUrl && !img.thumbnailUrl.includes('/api/cloud/thumbnail/') ? img.thumbnailUrl : '');
   const [src, setSrc] = useState<string | null>(() => {
-    if (img.previewUrl && (img.previewUrl.startsWith('data:image') || img.previewUrl.startsWith('blob:'))) {
-      return img.previewUrl;
-    }
-    if (img.thumbnailUrl && (img.thumbnailUrl.startsWith('data:image') || img.thumbnailUrl.startsWith('blob:'))) {
-      return img.thumbnailUrl;
-    }
-    if (img.url && (img.url.startsWith('data:image') || img.url.startsWith('blob:'))) {
-      return img.url;
+    if (directUrl && (directUrl.startsWith('data:image') || directUrl.startsWith('blob:') || directUrl.startsWith('http'))) {
+      return directUrl;
     }
     return getCachedMediaThumbnail(img.id || img.url || '');
   });
@@ -32,13 +27,10 @@ export const ImageCardPreview: React.FC<ImageCardPreviewProps> = ({ img, classNa
     let isMounted = true;
     setHasError(false);
 
-    // 1. Déjà une URL valide
-    if (img.previewUrl && (img.previewUrl.startsWith('data:image') || img.previewUrl.startsWith('blob:') || img.previewUrl.startsWith('http'))) {
-      setSrc(img.previewUrl);
-      return;
-    }
-    if (img.url && (img.url.startsWith('data:image') || img.url.startsWith('blob:') || img.url.startsWith('http'))) {
-      setSrc(img.url);
+    // 1. Déjà une URL valide directe
+    const candidateUrl = img.previewUrl || img.url || (img.thumbnailUrl && !img.thumbnailUrl.includes('/api/cloud/thumbnail/') ? img.thumbnailUrl : '');
+    if (candidateUrl && (candidateUrl.startsWith('data:image') || candidateUrl.startsWith('blob:') || candidateUrl.startsWith('http'))) {
+      setSrc(candidateUrl);
       return;
     }
 
@@ -46,13 +38,6 @@ export const ImageCardPreview: React.FC<ImageCardPreviewProps> = ({ img, classNa
       // 2. Recherche en cache IndexedDB local (0ms sans réseau)
       if (img.id) {
         try {
-          const idbThumb = await getThumbnailData(img.id);
-          if (idbThumb && isMounted) {
-            setSrc(idbThumb);
-            setCachedMediaThumbnail(img.id, idbThumb);
-            return;
-          }
-
           const blob = await getFileBlob(img.id);
           if (blob && isMounted) {
             const blobUrl = URL.createObjectURL(blob);
@@ -60,33 +45,26 @@ export const ImageCardPreview: React.FC<ImageCardPreviewProps> = ({ img, classNa
             setCachedMediaThumbnail(img.id, blobUrl);
             return;
           }
+
+          const idbThumb = await getThumbnailData(img.id);
+          if (idbThumb && isMounted) {
+            setSrc(idbThumb);
+            setCachedMediaThumbnail(img.id, idbThumb);
+            return;
+          }
         } catch {}
       }
 
-      // 3. Endpoint miniature serveur R2/D1 (/api/cloud/thumbnail/:fileId)
-      if (img.id && !img.id.startsWith('blob:') && !img.id.startsWith('img-')) {
-        const serverThumbUrl = CloudStorageAPI.getThumbnailUrl(img.id);
-        const testImg = new Image();
-        testImg.onload = () => {
-          if (isMounted) {
-            setSrc(serverThumbUrl);
-            setCachedMediaThumbnail(img.id, serverThumbUrl);
-          }
-        };
-        testImg.onerror = () => {
-          // 4. URL de streaming direct R2
-          if (isMounted) {
-            const fileUrl = (img as any).r2_key ? CloudStorageAPI.getFileUrl((img as any).r2_key) : CloudStorageAPI.getFileUrl(img.id);
-            setSrc(fileUrl);
-          }
-        };
-        testImg.src = serverThumbUrl;
-        return;
-      }
-
-      // 5. Fallback URL
+      // 3. URL de streaming direct R2 pour l'image (l'image est son propre aperçu)
       if (isMounted) {
-        setSrc(img.url || img.previewUrl || null);
+        const fileUrl = (img as any).r2_key 
+          ? CloudStorageAPI.getFileUrl((img as any).r2_key) 
+          : ((img as any).r2Key ? CloudStorageAPI.getFileUrl((img as any).r2Key) : (img.url || img.previewUrl));
+        if (fileUrl) {
+          setSrc(fileUrl);
+        } else {
+          setHasError(true);
+        }
       }
     }
 
@@ -116,7 +94,22 @@ export const ImageCardPreview: React.FC<ImageCardPreviewProps> = ({ img, classNa
       alt={alt || img.name}
       loading="lazy"
       onLoad={() => setLoaded(true)}
-      onError={() => setHasError(true)}
+      onError={() => {
+        // En cas d'erreur de chargement sur une URL distante, tenter le blob local si disponible
+        if (img.id && !src.startsWith('blob:') && !src.startsWith('data:image')) {
+          getFileBlob(img.id).then(blob => {
+            if (blob) {
+              const bUrl = URL.createObjectURL(blob);
+              setSrc(bUrl);
+              setHasError(false);
+            } else {
+              setHasError(true);
+            }
+          }).catch(() => setHasError(true));
+        } else {
+          setHasError(true);
+        }
+      }}
       className={`${imgClasses} ${loaded ? 'opacity-100' : 'opacity-80'} transition-opacity duration-200`}
     />
   );

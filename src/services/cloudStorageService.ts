@@ -813,7 +813,9 @@ export const CloudStorageAPI = {
         if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
         if (fileId) xhr.setRequestHeader('x-file-id', fileId);
         if (uploadSource) xhr.setRequestHeader('x-upload-source', uploadSource);
-        if (thumbnailDataUrl && thumbnailDataUrl.startsWith('data:image')) xhr.setRequestHeader('x-thumbnail-data', thumbnailDataUrl);
+        if (thumbnailDataUrl && thumbnailDataUrl.startsWith('data:image') && thumbnailDataUrl.length < 8000) {
+          xhr.setRequestHeader('x-thumbnail-data', thumbnailDataUrl);
+        }
         if (originalSizeBytes) xhr.setRequestHeader('x-original-size-bytes', String(originalSizeBytes));
         if (originalSizeFormatted) xhr.setRequestHeader('x-original-size', originalSizeFormatted);
 

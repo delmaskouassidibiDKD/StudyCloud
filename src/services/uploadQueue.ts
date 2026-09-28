@@ -16,6 +16,7 @@ import {
   generateVideoThumbnail,
   extractAudioCover,
   setCachedMediaThumbnail,
+  getCachedMediaThumbnail,
 } from './mediaPreviewService';
 
 export interface UploadTask {
@@ -265,17 +266,20 @@ class UploadQueueManager {
     const normName = fileName.toLowerCase();
 
     try {
-      // Étape A : Génération de la miniature réelle
-      let previewDataUrl: string | null = null;
-      if (category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/i)) {
-        previewDataUrl = await generateVideoThumbnail(file, fileName, fileName).catch(() => null);
-      } else if (category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma)$/i)) {
-        previewDataUrl = await extractAudioCover(file, fileName, 'Créateur StudyCloud').catch(() => null);
-      } else if (normName.endsWith('.pdf')) {
-        previewDataUrl = await generatePdfThumbnail(file, fileName).catch(() => null);
+      // Étape A : Génération / Réutilisation de la miniature réelle
+      let previewDataUrl: string | null = task.fileItem?.thumbnailUrl || task.fileItem?.previewUrl || null;
+      if (!previewDataUrl || !previewDataUrl.startsWith('data:image')) {
+        previewDataUrl = null;
+        if (category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/i)) {
+          previewDataUrl = getCachedMediaThumbnail(id) || await generateVideoThumbnail(file, id, fileName).catch(() => null);
+        } else if (category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma)$/i)) {
+          previewDataUrl = getCachedMediaThumbnail(id) || await extractAudioCover(file, fileName, 'Créateur StudyCloud').catch(() => null);
+        } else if (normName.endsWith('.pdf')) {
+          previewDataUrl = getCachedMediaThumbnail(id) || await generatePdfThumbnail(file, id).catch(() => null);
+        }
       }
 
-      if (previewDataUrl) {
+      if (previewDataUrl && previewDataUrl.startsWith('data:image')) {
         setCachedMediaThumbnail(id, previewDataUrl);
         CloudStorageAPI.saveMediaThumbnail(id, category, previewDataUrl, fileName).catch(() => {});
       }

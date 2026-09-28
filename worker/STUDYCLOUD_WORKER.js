@@ -4922,18 +4922,15 @@ var index_default = {
         if (!categoryBucket) {
           return errorResponse("Stockage R2 indisponible pour cette cat\xE9gorie", 503, origin);
         }
+        // Sécurité Multi-Tenant Stricte :
+        // Pour les fichiers sécurisés ou privés (coffre-fort), la clé R2 est isolée et réservée à son propriétaire
         const reqUserId = await extractRequestUserId();
         if (category === "secure") {
-          if (!reqUserId) {
+          if (!reqUserId || reqUserId === "default-user") {
             return errorResponse("Acc\xE8s refus\xE9 au dossier s\xE9curis\xE9 : authentification requise", 401, origin);
           }
           if (!key.startsWith(reqUserId + "/")) {
             return errorResponse("Acc\xE8s interdit aux donn\xE9es d'un autre utilisateur", 403, origin);
-          }
-        } else if (reqUserId && key.includes("/") && !key.startsWith(reqUserId + "/")) {
-          const keyOwnerId = key.split("/")[0];
-          if (keyOwnerId && keyOwnerId !== reqUserId && (keyOwnerId.startsWith("u_") || keyOwnerId.length > 8)) {
-            return errorResponse("Acc\xE8s interdit aux fichiers d'un autre utilisateur", 403, origin);
           }
         }
         const rangeHeader = request.headers.get("Range");
@@ -5100,19 +5097,45 @@ var index_default = {
         let fallbackDataUrl = "";
         if (env.DB) {
           try {
-            const thumbRow = await env.DB.prepare(
-              "SELECT * FROM media_thumbnails WHERE file_id = ? AND user_id = ? LIMIT 1"
-            ).bind(fileId, reqUserId).first();
+            let thumbRow = null;
+            if (reqUserId && reqUserId !== "default-user") {
+              thumbRow = await env.DB.prepare(
+                "SELECT * FROM media_thumbnails WHERE file_id = ? AND user_id = ? LIMIT 1"
+              ).bind(fileId, reqUserId).first();
+            }
+            if (!thumbRow) {
+              thumbRow = await env.DB.prepare(
+                "SELECT * FROM media_thumbnails WHERE file_id = ? LIMIT 1"
+              ).bind(fileId).first();
+            }
             if (thumbRow) {
               targetR2Key = thumbRow.r2_key;
               targetCategory = thumbRow.category || "videos";
               fallbackDataUrl = thumbRow.thumbnail_data || "";
             } else {
-              const vRow = await env.DB.prepare("SELECT thumbnail_url, r2_key FROM video_files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId).first();
-              if (vRow && vRow.thumbnail_url && !vRow.thumbnail_url.includes("/api/cloud/thumbnail/")) {
-                fallbackDataUrl = vRow.thumbnail_url;
+              let vRow = null;
+              if (reqUserId && reqUserId !== "default-user") {
+                vRow = await env.DB.prepare("SELECT thumbnail_url, r2_key, user_id FROM video_files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId).first();
               }
-              const dRow = await env.DB.prepare("SELECT preview_url, r2_key FROM document_files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId).first();
+              if (!vRow) {
+                vRow = await env.DB.prepare("SELECT thumbnail_url, r2_key, user_id FROM video_files WHERE id = ? LIMIT 1").bind(fileId).first();
+              }
+              if (vRow) {
+                if (vRow.thumbnail_url && !vRow.thumbnail_url.includes("/api/cloud/thumbnail/")) {
+                  fallbackDataUrl = vRow.thumbnail_url;
+                }
+                if (!targetR2Key && vRow.r2_key) {
+                  const owner = vRow.user_id || (reqUserId !== "default-user" ? reqUserId : "");
+                  if (owner) targetR2Key = `${owner}/thumbnails/${fileId}_thumb.jpg`;
+                }
+              }
+              let dRow = null;
+              if (reqUserId && reqUserId !== "default-user") {
+                dRow = await env.DB.prepare("SELECT preview_url, r2_key, user_id FROM document_files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId).first();
+              }
+              if (!dRow) {
+                dRow = await env.DB.prepare("SELECT preview_url, r2_key, user_id FROM document_files WHERE id = ? LIMIT 1").bind(fileId).first();
+              }
               if (dRow && dRow.preview_url && !dRow.preview_url.includes("/api/cloud/thumbnail/")) {
                 fallbackDataUrl = dRow.preview_url;
               }
@@ -5120,7 +5143,7 @@ var index_default = {
           } catch (e) {
           }
         }
-        if (!targetR2Key) {
+        if (!targetR2Key && reqUserId && reqUserId !== "default-user") {
           targetR2Key = `${reqUserId}/thumbnails/${fileId}_thumb.jpg`;
         }
         const bucket = getBucketForCategory(rawEnv, targetCategory) || rawEnv.BUCKET || env.BUCKET;
@@ -5360,9 +5383,10 @@ var index_default = {
           }
         });
         const fileUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(finalCategory)}/${encodeURIComponent(storageKey)}`;
-        let finalThumbnailUrl = "";
-        let thumbR2Key = "";
-        if (thumbnailToSave && thumbnailToSave.startsWith("data:image")) {
+        if (finalCategory === "images") {
+          // Pour les images, l'aperçu est directement le fichier image lui-même, aucun dossier thumbnails séparé
+          finalThumbnailUrl = fileUrl;
+        } else if (thumbnailToSave && thumbnailToSave.startsWith("data:image")) {
           try {
             const parts = thumbnailToSave.split(",");
             const mimeMatch = parts[0].match(/:(.*?);/);
@@ -5389,12 +5413,10 @@ var index_default = {
           }
         } else if (thumbnailToSave) {
           finalThumbnailUrl = thumbnailToSave;
-        } else if (finalCategory === "images") {
-          finalThumbnailUrl = fileUrl;
         } else {
           finalThumbnailUrl = `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(fileId)}?userId=${encodeURIComponent(reqUserId)}`;
         }
-        if (env.DB) {
+        if (env.DB && finalCategory !== "images") {
           try {
             const thumbId = `${reqUserId}_${fileId}`;
             await env.DB.prepare(`
