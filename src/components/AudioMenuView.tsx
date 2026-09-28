@@ -133,32 +133,18 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Helper pour fusionner les données serveur sans jamais écraser les sons locaux en cours d'enregistrement
+  // Helper pour fusionner les données serveur avec les sons en cours d'enregistrement (identique à Vidéos et Images)
   const mergeAudioWithPending = (serverList: any[], currentList: FileItem[]): FileItem[] => {
     if (!serverList || !Array.isArray(serverList)) return currentList || [];
     const serverIds = new Set(serverList.map(t => t.id));
-
-    const pendingItems: FileItem[] = [];
-    pendingAudioItemsRef.current.forEach((pendingItem, id) => {
-      if (!serverIds.has(id)) {
-        const inCurrent = currentList.find(c => c.id === id);
-        pendingItems.push(inCurrent || pendingItem);
-      } else {
-        pendingAudioItemsRef.current.delete(id);
-      }
-    });
-
-    currentList.forEach(item => {
-      if (
-        (savingProgress[item.id] !== undefined || (item.id && item.id.startsWith('aud-'))) &&
-        !serverIds.has(item.id) &&
-        !pendingItems.some(p => p.id === item.id)
-      ) {
-        pendingItems.push(item);
-      }
-    });
-
-    return [...pendingItems, ...(serverList as FileItem[])];
+    const pending = (currentList || []).filter(item => 
+      !serverIds.has(item.id) && (
+        item.isUploading ||
+        (savingProgress[item.id] !== undefined && savingProgress[item.id] < 100) ||
+        pendingAudioItemsRef.current.has(item.id)
+      )
+    );
+    return [...pending, ...(serverList as FileItem[])];
   };
 
   // Fermer le menu 3 traits si on clique en dehors
@@ -364,7 +350,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     showToast("Nouvelle tentative d'enregistrement...");
   };
 
-  // Chargement et synchronisation avec CloudDataStore
+  // Chargement et synchronisation avec CloudDataStore (identique au menu Vidéos)
   useEffect(() => {
     let isMounted = true;
     CloudStorageAPI.getAudioList()
@@ -379,8 +365,9 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
         if (isMounted) setLoading(false);
       });
 
+    // Subscriber simple comme Vidéos : conserve uniquement les items en cours d'upload
     const unsubscribe = CloudDataStore.subscribe((state) => {
-      if (isMounted) {
+      if (isMounted && state.audio) {
         setAudioList(prev => mergeAudioWithPending(state.audio || [], prev));
       }
     });
@@ -656,9 +643,15 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     setActiveMenuTrackId(null);
   };
 
-  // Suppression
+  // Suppression (identique au menu Vidéos : moveToTrash + persistance localStorage pour sync multi-appareils)
   const handleDeleteAudio = async (track: FileItem) => {
     if (!window.confirm(`Supprimer définitivement "${track.name}" ?`)) return;
+
+    const fileWithSource: FileItem = {
+      ...track,
+      isTrash: true,
+      category: 'audio'
+    };
 
     pendingAudioItemsRef.current.delete(track.id);
     setAudioList(prev => prev.filter(t => t.id !== track.id));
@@ -666,7 +659,19 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       setSelectedTrack(null);
       setIsAudioPlaying(false);
     }
-    CloudDataStore.removeFile(track.id);
+    setSelectedItemIds(prev => prev.filter(id => id !== track.id));
+
+    // Persister l'ID supprimé dans localStorage pour bloquer la resync (multi-appareils)
+    try {
+      const raw = localStorage.getItem('studycloud_deleted_file_ids');
+      const existing: string[] = raw ? JSON.parse(raw) : [];
+      if (!existing.includes(track.id)) {
+        existing.push(track.id);
+        localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(existing));
+      }
+    } catch {}
+
+    CloudDataStore.moveToTrash(fileWithSource as any);
     deleteFileBlob(track.id).catch(() => {});
     await CloudStorageAPI.deleteAudio(track.id).catch(() => {});
     showToast(`"${track.name}" supprimé`);
@@ -793,11 +798,22 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           originalSource: track.source || 'Audio',
           source: 'Dossier Sécurisé'
         };
+        pendingAudioItemsRef.current.delete(track.id);
         setAudioList(prev => prev.filter(t => t.id !== track.id));
         if (selectedTrack?.id === track.id) {
           setSelectedTrack(null);
           setIsAudioPlaying(false);
         }
+        setSelectedItemIds(prev => prev.filter(id => id !== track.id));
+        // Persister l'ID dans localStorage pour bloquer la resync
+        try {
+          const raw = localStorage.getItem('studycloud_deleted_file_ids');
+          const existing: string[] = raw ? JSON.parse(raw) : [];
+          if (!existing.includes(track.id)) {
+            existing.push(track.id);
+            localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(existing));
+          }
+        } catch {}
         CloudDataStore.moveToSecure(securedFile as any);
         CloudStorageAPI.moveToSecureFolder(track, 'audio').catch(console.error);
         showToast(`"${track.name}" verrouillé dans le dossier sécurisé !`);
@@ -2207,12 +2223,41 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => {
-              if (!window.confirm(`Supprimer ces ${selectedItemIds.length} sons sélectionnés ?`)) return;
+            onClick={async () => {
+              if (!window.confirm(`Supprimer les ${selectedItemIds.length} son(s) sélectionné(s) ?`)) return;
               const toDelete = filteredAudio.filter(t => selectedItemIds.includes(t.id));
-              toDelete.forEach(t => handleDeleteAudio(t));
+              const ids = toDelete.map(t => t.id);
+
+              // 1. Retrait immédiat de l'UI
+              setAudioList(prev => prev.filter(t => !ids.includes(t.id)));
+              if (selectedTrack && ids.includes(selectedTrack.id)) {
+                setSelectedTrack(null);
+                setIsAudioPlaying(false);
+              }
               setSelectedItemIds([]);
               setIsSelectionMode(false);
+
+              // 2. Persister les IDs dans localStorage pour bloquer la resync multi-appareils
+              try {
+                const raw = localStorage.getItem('studycloud_deleted_file_ids');
+                const existing: string[] = raw ? JSON.parse(raw) : [];
+                ids.forEach(id => {
+                  pendingAudioItemsRef.current.delete(id);
+                  if (!existing.includes(id)) existing.push(id);
+                });
+                localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(existing));
+              } catch {}
+
+              // 3. Déplacer vers la corbeille dans CloudDataStore
+              const trashedFiles = toDelete.map(t => ({ ...t, isTrash: true, category: 'audio' }));
+              CloudDataStore.moveToTrash(trashedFiles as any);
+
+              // 4. Supprimer du stockage local et du Cloud
+              for (const t of toDelete) {
+                deleteFileBlob(t.id).catch(() => {});
+                CloudStorageAPI.deleteAudio(t.id).catch(() => {});
+              }
+              showToast(`${toDelete.length} son(s) supprimé(s)`);
             }}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 font-semibold cursor-pointer"
           >

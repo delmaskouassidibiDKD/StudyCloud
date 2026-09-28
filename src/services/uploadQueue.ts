@@ -369,6 +369,22 @@ class UploadQueueManager {
         uploadProgress: 100,
       }, folderId);
 
+      // Si audio, sauvegarder également la métadonnée complète (artiste, album, etc.) dans D1
+      if (category === 'audio') {
+        const audioToSave = {
+          ...task.fileItem,
+          id: serverFileId || id,
+          url: uploadUrl || task.fileItem?.url,
+          audioUrl: uploadUrl || task.fileItem?.audioUrl || uploadUrl,
+          r2Key: r2Key || task.fileItem?.r2Key,
+          coverUrl: previewDataUrl || task.fileItem?.coverUrl,
+          thumbnailUrl: previewDataUrl || task.fileItem?.thumbnailUrl,
+          previewUrl: previewDataUrl || task.fileItem?.previewUrl,
+          isUploading: false,
+        };
+        CloudStorageAPI.saveAudio(audioToSave as any).catch(() => {});
+      }
+
       // Déclencher un événement global pour tout listener de mise à jour
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('studycloud_file_uploaded', {

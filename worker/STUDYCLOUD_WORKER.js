@@ -6248,11 +6248,18 @@ var index_default = {
             extraAuds = extra || [];
           } catch (e) {
           }
+          let trashedIdSet = new Set();
+          try {
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
+            trashedIdSet = new Set((trashList || []).map(t => t.id));
+          } catch (e) {}
+
           const seen = /* @__PURE__ */ new Set();
           const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
           const addAud = (a) => {
             const id = a.id;
+            if (trashedIdSet.has(id)) return;
             const name = a.name || "Audio";
             const normKey = `${name.trim().toLowerCase()}_${a.size_bytes || a.size || 0}`;
             if (seen.has(id) || seenNames.has(normKey)) return;
@@ -6391,9 +6398,29 @@ var index_default = {
         if (method === "DELETE") {
           const fileId = url.searchParams.get("id");
           if (!fileId) return errorResponse("id manquant", 400, origin);
-          const file = await env.DB.prepare(`
+          let file = await env.DB.prepare(`
             SELECT * FROM audio_files WHERE id = ? AND user_id = ?
           `).bind(fileId, reqUserId).first();
+          if (!file) {
+            const rawFile = await env.DB.prepare(`
+              SELECT * FROM files WHERE id = ? AND user_id = ?
+            `).bind(fileId, reqUserId).first();
+            if (rawFile) {
+              file = {
+                id: rawFile.id,
+                user_id: rawFile.user_id,
+                name: rawFile.name,
+                size: formatBytes(rawFile.size || 0),
+                size_bytes: rawFile.size || 0,
+                artist: "Artiste inconnu",
+                duration_sec: 0,
+                cover_url: rawFile.thumbnail_url || "",
+                date_formatted: rawFile.created_at ? new Date(rawFile.created_at).toLocaleDateString("fr-FR") : "",
+                r2_key: rawFile.r2_key || "",
+                audio_url: rawFile.file_url || ""
+              };
+            }
+          }
           if (file) {
             await env.DB.prepare(`
               INSERT INTO trash_files (
@@ -6407,16 +6434,20 @@ var index_default = {
               file.name,
               file.size,
               file.size_bytes,
-              JSON.stringify({ artist: file.artist, durationSec: file.duration_sec, coverUrl: file.cover_url }),
+              JSON.stringify({ artist: file.artist || "Artiste inconnu", durationSec: file.duration_sec || 0, coverUrl: file.cover_url || "" }),
               file.date_formatted,
               file.r2_key,
               file.audio_url
             ).run();
             await env.DB.prepare(`DELETE FROM audio_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
             recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
             });
+          } else {
+            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
           }
-          return jsonResponse({ success: true, message: "Audio d\xE9plac\xE9 dans la corbeille" }, 200, origin);
+          return jsonResponse({ success: true, message: "Audio déplacé dans la corbeille" }, 200, origin);
         }
       }
       if (path === "/api/cloud/images") {
@@ -6436,11 +6467,18 @@ var index_default = {
             extraImgs = extra || [];
           } catch (e) {
           }
+          let trashedImgIdSet = new Set();
+          try {
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
+            trashedImgIdSet = new Set((trashList || []).map(t => t.id));
+          } catch (e) {}
+
           const seen = /* @__PURE__ */ new Set();
           const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
           const addImg = (img) => {
             const id = img.id;
+            if (trashedImgIdSet.has(id)) return;
             const name = img.name || "Image";
             const normKey = `${name.trim().toLowerCase()}_${img.size_bytes || img.size || 0}`;
             if (seen.has(id) || seenNames.has(normKey)) return;
@@ -6579,8 +6617,12 @@ var index_default = {
               file.image_url
             ).run();
             await env.DB.prepare(`DELETE FROM image_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
+            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
             recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
             });
+          } else {
+            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
           }
           return jsonResponse({ success: true, message: "Image d\xE9plac\xE9e dans la corbeille" }, 200, origin);
         }
@@ -6602,11 +6644,18 @@ var index_default = {
             extraVids = extra || [];
           } catch (e) {
           }
+          let trashedVidIdSet = new Set();
+          try {
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
+            trashedVidIdSet = new Set((trashList || []).map(t => t.id));
+          } catch (e) {}
+
           const seen = /* @__PURE__ */ new Set();
           const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
           const addVid = (v) => {
             const id = v.id;
+            if (trashedVidIdSet.has(id)) return;
             const name = v.name || "Vid\xE9o";
             const normKey = `${name.trim().toLowerCase()}_${v.size_bytes || v.size || 0}`;
             if (seen.has(id) || seenNames.has(normKey)) return;
@@ -6732,8 +6781,12 @@ var index_default = {
               file.video_url
             ).run();
             await env.DB.prepare(`DELETE FROM video_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
+            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
             recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
             });
+          } else {
+            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
           }
           return jsonResponse({ success: true, message: "Vid\xE9o d\xE9plac\xE9e dans la corbeille" }, 200, origin);
         }
