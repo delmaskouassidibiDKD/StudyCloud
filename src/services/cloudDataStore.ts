@@ -312,7 +312,9 @@ export const CloudDataStore = {
         const isNotLocallyDeleted = (f: any) => !isItemDeleted(f.id);
 
         const flag = (arr: any[]) => (arr || []).map((f: any) => ({
-          ...f, isFavorite: currentState.favIdSet.has(f.id), isPinned: currentState.pinIdSet.has(f.id),
+          ...f,
+          isFavorite: currentState.favIdSet.has(f.id) || Boolean(f.isFavorite) || Boolean(f.is_favorite),
+          isPinned: currentState.pinIdSet.has(f.id) || Boolean(f.isPinned) || Boolean(f.is_pinned),
         }));
 
         // Préserver uniquement les fichiers locaux activement en cours d'upload qui ne sont pas encore renvoyés par l'API
@@ -341,6 +343,22 @@ export const CloudDataStore = {
             ...currentState.images,
             ...currentState.videos,
             ...currentState.audio,
+            ...currentState.classeurFolders.map(cf => ({
+              id: cf.id,
+              name: cf.name,
+              category: 'classeur' as const,
+              size: 'Dossier 3D',
+              date: 'Favori',
+              isFolder: true,
+              isFavorite: cf.isFavorite,
+              metadata: {
+                modelId: cf.modelId,
+                primaryColor: cf.primaryColor,
+                accentColor: cf.accentColor,
+                iconName: cf.iconName,
+                isFavorite: cf.isFavorite
+              }
+            } as any as FileItem)),
             ...Object.values(currentState.folderFilesMap).flat()
           ];
           if (currentState.overview?.recentFiles && currentState.overview.recentFiles.length > 0) {
@@ -348,7 +366,7 @@ export const CloudDataStore = {
           } else if (currentState.recentFiles && currentState.recentFiles.length > 0) {
             currentState.recentFiles = currentState.recentFiles.filter(isRecentEligible).slice(0, 6);
           }
-          currentState.favorites = allCurrent.filter(f => currentState.favIdSet.has(f.id));
+          currentState.favorites = allCurrent.filter(f => currentState.favIdSet.has(f.id) || Boolean(f.isFavorite));
         };
 
         // ── FLUX PARALLÈLES ET INDÉPENDANTS (HYDRATATION PROGRESSIVE) ─────────
@@ -359,19 +377,48 @@ export const CloudDataStore = {
         // 1. Favoris & Épinglés
         tasks.push(
           CloudStorageAPI.getFavorites().then(favsData => {
-            if (favsData !== null) {
-              currentState.favIdSet = new Set<string>((favsData || []).map((f: any) => f.item_id || f.id));
+            if (favsData !== null && Array.isArray(favsData)) {
+              const ids = favsData.map((f: any) => f.itemId || f.item_id || f.id).filter(Boolean);
+              currentState.favIdSet = new Set<string>(ids);
+
+              // Appliquer immédiatement isFavorite sur tous les fichiers déjà chargés en mémoire
+              const markFav = (list: FileItem[]) => list.map(item => ({
+                ...item,
+                isFavorite: currentState.favIdSet.has(item.id) || Boolean(item.isFavorite)
+              }));
+              currentState.documents = markFav(currentState.documents);
+              currentState.images = markFav(currentState.images);
+              currentState.videos = markFav(currentState.videos);
+              currentState.audio = markFav(currentState.audio);
+              currentState.classeurFolders = currentState.classeurFolders.map(cf => ({
+                ...cf,
+                isFavorite: currentState.favIdSet.has(cf.id) || Boolean(cf.isFavorite)
+              }));
+
               refreshDerived();
               notify();
+              persistToIndexedDB().catch(() => {});
             }
           }).catch(() => null)
         );
 
         tasks.push(
           CloudStorageAPI.getPinned().then(pinnedData => {
-            if (pinnedData !== null) {
-              currentState.pinIdSet = new Set<string>((pinnedData || []).map((p: any) => p.item_id || p.id));
+            if (pinnedData !== null && Array.isArray(pinnedData)) {
+              const ids = pinnedData.map((p: any) => p.itemId || p.item_id || p.id).filter(Boolean);
+              currentState.pinIdSet = new Set<string>(ids);
+
+              const markPin = (list: FileItem[]) => list.map(item => ({
+                ...item,
+                isPinned: currentState.pinIdSet.has(item.id) || Boolean(item.isPinned)
+              }));
+              currentState.documents = markPin(currentState.documents);
+              currentState.images = markPin(currentState.images);
+              currentState.videos = markPin(currentState.videos);
+              currentState.audio = markPin(currentState.audio);
+
               notify();
+              persistToIndexedDB().catch(() => {});
             }
           }).catch(() => null)
         );
@@ -646,6 +693,21 @@ export const CloudDataStore = {
       patch = maybeUpdates || {};
     }
 
+    if (patch.isFavorite !== undefined) {
+      if (patch.isFavorite) {
+        currentState.favIdSet.add(targetId);
+      } else {
+        currentState.favIdSet.delete(targetId);
+      }
+    }
+    if (patch.isPinned !== undefined) {
+      if (patch.isPinned) {
+        currentState.pinIdSet.add(targetId);
+      } else {
+        currentState.pinIdSet.delete(targetId);
+      }
+    }
+
     const updateFn = (list: FileItem[]) => list.map(f => (f.id === targetId || (patch.id && f.id === patch.id)) ? { ...f, ...patch } : f);
     const updatedMap = { ...currentState.folderFilesMap };
     if (targetFolderId && updatedMap[targetFolderId]) {
@@ -655,6 +717,31 @@ export const CloudDataStore = {
         updatedMap[k] = updateFn(updatedMap[k]);
       }
     }
+
+    const allCurrentCandidates = [
+      ...updateFn(currentState.documents),
+      ...updateFn(currentState.images),
+      ...updateFn(currentState.videos),
+      ...updateFn(currentState.audio),
+      ...currentState.classeurFolders.map(cf => ({
+        id: cf.id,
+        name: cf.name,
+        category: 'classeur' as const,
+        size: 'Dossier 3D',
+        date: 'Favori',
+        isFolder: true,
+        isFavorite: cf.isFavorite,
+        metadata: {
+          modelId: cf.modelId,
+          primaryColor: cf.primaryColor,
+          accentColor: cf.accentColor,
+          iconName: cf.iconName,
+          isFavorite: cf.isFavorite
+        }
+      } as any as FileItem)),
+      ...Object.values(updatedMap).flat()
+    ];
+
     currentState = {
       ...currentState,
       folderFilesMap: updatedMap,
@@ -664,7 +751,7 @@ export const CloudDataStore = {
       audio: updateFn(currentState.audio),
       secure: updateFn(currentState.secure),
       trash: updateFn(currentState.trash),
-      favorites: updateFn(currentState.favorites),
+      favorites: allCurrentCandidates.filter(f => currentState.favIdSet.has(f.id) || Boolean(f.isFavorite)),
       recentFiles: updateFn(currentState.recentFiles),
     };
     persistToIndexedDB().catch(() => {});
@@ -948,22 +1035,42 @@ export const CloudDataStore = {
     for (const k of Object.keys(updatedMap)) {
       updatedMap[k] = updateFav(updatedMap[k]);
     }
+    const updatedFolders = (currentState.classeurFolders || []).map(f => 
+      f.id === itemId ? { ...f, isFavorite: isFav } : f
+    );
     const allFiles = [
       ...updateFav(currentState.documents),
       ...updateFav(currentState.images),
       ...updateFav(currentState.videos),
       ...updateFav(currentState.audio),
+      ...updatedFolders.map(cf => ({
+        id: cf.id,
+        name: cf.name,
+        category: 'classeur' as const,
+        size: 'Dossier 3D',
+        date: 'Favori',
+        isFolder: true,
+        isFavorite: cf.isFavorite,
+        metadata: {
+          modelId: cf.modelId,
+          primaryColor: cf.primaryColor,
+          accentColor: cf.accentColor,
+          iconName: cf.iconName,
+          isFavorite: cf.isFavorite
+        }
+      } as any as FileItem)),
       ...Object.values(updatedMap).flat()
     ];
     currentState = {
       ...currentState,
       favIdSet: favSet,
+      classeurFolders: updatedFolders,
       documents: updateFav(currentState.documents),
       images: updateFav(currentState.images),
       videos: updateFav(currentState.videos),
       audio: updateFav(currentState.audio),
       folderFilesMap: updatedMap,
-      favorites: allFiles.filter(f => favSet.has(f.id)),
+      favorites: allFiles.filter(f => favSet.has(f.id) || Boolean(f.isFavorite)),
     };
     persistToIndexedDB().catch(() => {});
     notify();

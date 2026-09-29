@@ -491,7 +491,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     if (selectedImage?.id === img.id) {
       setSelectedImage(prev => (prev ? { ...prev, isFavorite: nextState } : null));
     }
-    CloudDataStore.updateFile(img.id, { isFavorite: nextState });
+    CloudDataStore.toggleFavorite(img.id, nextState);
     if (nextState) {
       await CloudStorageAPI.addFavorite(img.id, 'images').catch(() => {});
     } else {

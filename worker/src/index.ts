@@ -6779,13 +6779,15 @@ export default {
           try {
             const countCheck: any = await env.DB.prepare('SELECT COUNT(*) as count FROM sync_items WHERE user_id = ?').bind(reqUserId).first();
             if (Number(countCheck?.count || 0) === 0) {
-              const [docs, imgs, vids, auds, cfiles, dls]: any[] = await Promise.all([
+              const [docs, imgs, vids, auds, cfiles, dls, favs, pins]: any[] = await Promise.all([
                 env.DB.prepare('SELECT id, name, size, size_bytes, file_url, preview_url, extension, document_category FROM document_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare('SELECT id, name, size, size_bytes, image_url, thumbnail_url, extension FROM image_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare('SELECT id, name, size, size_bytes, video_url, thumbnail_url, duration_sec FROM video_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare('SELECT id, name, title, artist, album, audio_url, cover_url, size, size_bytes FROM audio_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare('SELECT id, folder_id, name, size, size_bytes, category, extension, is_notepad, notepad_title, notepad_content FROM classeur_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
-                env.DB.prepare('SELECT id, name, size, size_bytes, file_url, type, extension FROM download_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] }))
+                env.DB.prepare('SELECT id, name, size, size_bytes, file_url, type, extension FROM download_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
+                env.DB.prepare('SELECT id, item_id, category FROM user_favorites WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
+                env.DB.prepare('SELECT id, item_id, category FROM pinned_items WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] }))
               ]);
               for (const d of docs?.results || []) await recordSyncItem(env.DB, reqUserId, d.id, 'documents', d, 0);
               for (const i of imgs?.results || []) await recordSyncItem(env.DB, reqUserId, i.id, 'images', i, 0);
@@ -6793,6 +6795,8 @@ export default {
               for (const a of auds?.results || []) await recordSyncItem(env.DB, reqUserId, a.id, 'audio', a, 0);
               for (const c of cfiles?.results || []) await recordSyncItem(env.DB, reqUserId, c.id, 'classeur', c, 0);
               for (const dl of dls?.results || []) await recordSyncItem(env.DB, reqUserId, dl.id, 'downloads', dl, 0);
+              for (const f of favs?.results || []) await recordSyncItem(env.DB, reqUserId, f.id, 'favorites', { itemId: f.item_id, category: f.category }, 0);
+              for (const p of pins?.results || []) await recordSyncItem(env.DB, reqUserId, p.id, 'pinned', { itemId: p.item_id, category: p.category }, 0);
             }
           } catch (e) {}
         }
@@ -8883,7 +8887,64 @@ export default {
             WHERE user_id = ?
             ORDER BY created_at DESC
           `).bind(reqUserId).all<any>();
-          return jsonResponse({ success: true, data: results || [] }, 200, origin);
+
+          const favList = results || [];
+          const favItemIds: string[] = favList.map((f: any) => String(f.item_id)).filter(Boolean);
+
+          let items: any[] = [];
+          if (favItemIds.length > 0) {
+            const chunkSize = 50;
+            for (let i = 0; i < favItemIds.length; i += chunkSize) {
+              const chunk = favItemIds.slice(i, i + chunkSize);
+              const placeholders = chunk.map(() => '?').join(',');
+
+              const [docs, imgs, vids, auds, clFolders, clFiles]: any[] = await Promise.all([
+                env.DB.prepare(`SELECT id, name, size, size_bytes, file_url, preview_url, extension, document_category, created_at FROM document_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
+                env.DB.prepare(`SELECT id, name, size, size_bytes, image_url, thumbnail_url, extension, created_at FROM image_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
+                env.DB.prepare(`SELECT id, name, size, size_bytes, video_url, thumbnail_url, duration_sec, created_at FROM video_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
+                env.DB.prepare(`SELECT id, name, title, artist, album, audio_url, cover_url, size, size_bytes, created_at FROM audio_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
+                env.DB.prepare(`SELECT id, name, model_id, primary_color, accent_color, icon_name, created_at FROM classeur_folders WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
+                env.DB.prepare(`SELECT id, folder_id, name, size, size_bytes, category, extension, is_notepad, notepad_title, notepad_content, created_at FROM classeur_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] }))
+              ]);
+
+              const mapFile = (row: any, cat: string) => ({
+                id: row.id,
+                name: row.name || (row.title ? `${row.artist ? row.artist + ' - ' : ''}${row.title}` : 'Sans titre'),
+                category: cat === 'classeur_folder' ? 'classeur' : cat,
+                size: row.size || (cat === 'classeur_folder' ? 'Dossier 3D' : '0 o'),
+                sizeBytes: row.size_bytes || 0,
+                url: row.file_url || row.image_url || row.video_url || row.audio_url || '',
+                previewUrl: row.preview_url || row.thumbnail_url || row.image_url || row.cover_url || '',
+                thumbnailUrl: row.thumbnail_url || row.preview_url || row.cover_url || '',
+                extension: row.extension || (cat === 'classeur_folder' ? 'DOSSIER' : ''),
+                date: row.created_at || "Aujourd'hui",
+                isFavorite: true,
+                folderId: row.folder_id,
+                isFolder: cat === 'classeur_folder',
+                metadata: cat === 'classeur_folder' ? {
+                  modelId: row.model_id || '1',
+                  primaryColor: row.primary_color || '#EA580C',
+                  accentColor: row.accent_color || '#F97316',
+                  iconName: row.icon_name || 'Folder',
+                  isFavorite: true
+                } : undefined
+              });
+
+              for (const d of docs?.results || []) items.push(mapFile(d, 'documents'));
+              for (const img of imgs?.results || []) items.push(mapFile(img, 'images'));
+              for (const v of vids?.results || []) items.push(mapFile(v, 'videos'));
+              for (const a of auds?.results || []) items.push(mapFile(a, 'audio'));
+              for (const cf of clFolders?.results || []) items.push(mapFile(cf, 'classeur_folder'));
+              for (const c of clFiles?.results || []) items.push(mapFile(c, 'classeur'));
+            }
+          }
+
+          return jsonResponse({
+            success: true,
+            data: favList,
+            favIds: favItemIds,
+            items: items
+          }, 200, origin);
         }
 
         if (method === 'POST') {
@@ -8899,6 +8960,9 @@ export default {
             ON CONFLICT(id) DO UPDATE SET category = excluded.category
           `).bind(favId, reqUserId, itemId, category).run();
 
+          // Réplication Locale RxDB / Sync D1
+          await recordSyncItem(env.DB, reqUserId, favId, 'favorites', { itemId, category }, 0);
+
           return jsonResponse({ success: true, message: 'Ajouté aux favoris' }, 200, origin);
         }
 
@@ -8911,6 +8975,10 @@ export default {
             DELETE FROM user_favorites
             WHERE user_id = ? AND (item_id = ? OR id = ?)
           `).bind(reqUserId, itemId, itemId).run();
+
+          const favId = `fav_${reqUserId}_${itemId}`;
+          // Réplication Locale RxDB / Sync D1 (suppression)
+          await recordSyncItem(env.DB, reqUserId, favId, 'favorites', { itemId, category: 'favorites' }, 1);
 
           return jsonResponse({ success: true, message: 'Retiré des favoris' }, 200, origin);
         }
@@ -8945,6 +9013,9 @@ export default {
             ON CONFLICT(id) DO UPDATE SET category = excluded.category
           `).bind(pinId, reqUserId, itemId, category).run();
 
+          // Réplication Locale RxDB / Sync D1
+          await recordSyncItem(env.DB, reqUserId, pinId, 'pinned', { itemId, category }, 0);
+
           return jsonResponse({ success: true, message: 'Élément épinglé' }, 200, origin);
         }
 
@@ -8957,6 +9028,10 @@ export default {
             DELETE FROM pinned_items
             WHERE user_id = ? AND (item_id = ? OR id = ?)
           `).bind(reqUserId, itemId, itemId).run();
+
+          const pinId = `pin_${reqUserId}_${itemId}`;
+          // Réplication Locale RxDB / Sync D1 (suppression)
+          await recordSyncItem(env.DB, reqUserId, pinId, 'pinned', { itemId, category: 'pinned' }, 1);
 
           return jsonResponse({ success: true, message: 'Élément désépinglé' }, 200, origin);
         }

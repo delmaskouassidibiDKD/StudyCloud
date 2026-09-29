@@ -613,7 +613,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     if (selectedTrack?.id === track.id) {
       setSelectedTrack(prev => (prev ? { ...prev, isFavorite: nextState } : null));
     }
-    CloudDataStore.updateFile(track.id, { isFavorite: nextState });
+    CloudDataStore.toggleFavorite(track.id, nextState);
     if (nextState) {
       await CloudStorageAPI.addFavorite(track.id, 'audio').catch(() => {});
     } else {

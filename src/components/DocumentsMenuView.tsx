@@ -572,7 +572,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     if (selectedDoc?.id === doc.id) {
       setSelectedDoc(prev => (prev ? { ...prev, isFavorite: nextState } : null));
     }
-    CloudDataStore.updateFile(doc.id, { isFavorite: nextState });
+    CloudDataStore.toggleFavorite(doc.id, nextState);
     if (nextState) {
       await CloudStorageAPI.addFavorite(doc.id, 'documents').catch(() => {});
     } else {

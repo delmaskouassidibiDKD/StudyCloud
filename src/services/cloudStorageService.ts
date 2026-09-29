@@ -976,7 +976,7 @@ export const CloudStorageAPI = {
   // --------------------------------------------------------------------------
   // 10. FAVORIS (/api/cloud/favorites)
   // --------------------------------------------------------------------------
-  async getFavorites(): Promise<{ itemId: string; category: string }[]> {
+  async getFavorites(): Promise<{ itemId: string; item_id: string; id: string; category: string }[]> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const res = await fetchWithTimeout(`${baseUrl}/api/cloud/favorites?userId=${getUserIdParam()}`, {
@@ -984,13 +984,35 @@ export const CloudStorageAPI = {
       });
       if (!res.ok) return [];
       const json = await res.json();
-      return (json.data || []).map((row: any) => ({
-        itemId: row.item_id || row.itemId || row.id,
-        category: row.category || 'documents'
-      }));
+      return (json.data || []).map((row: any) => {
+        const idVal = row.item_id || row.itemId || row.id;
+        return {
+          itemId: idVal,
+          item_id: idVal,
+          id: idVal,
+          category: row.category || 'documents'
+        };
+      });
     } catch (e) {
       console.error('[CloudStorageAPI] getFavorites error:', e);
       return [];
+    }
+  },
+
+  async getFavoritesList(): Promise<{ favIds: string[]; items: FileItem[] }> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/favorites?userId=${getUserIdParam()}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return { favIds: [], items: [] };
+      const json = await res.json();
+      const favIds: string[] = (json.favIds || (json.data || []).map((r: any) => r.item_id || r.itemId || r.id)).filter(Boolean);
+      const items: FileItem[] = Array.isArray(json.items) ? json.items : [];
+      return { favIds, items };
+    } catch (e) {
+      console.error('[CloudStorageAPI] getFavoritesList error:', e);
+      return { favIds: [], items: [] };
     }
   },
 
@@ -1026,7 +1048,7 @@ export const CloudStorageAPI = {
   // --------------------------------------------------------------------------
   // 11. ÉPINGLÉS (/api/cloud/pinned)
   // --------------------------------------------------------------------------
-  async getPinned(): Promise<{ itemId: string; category: string }[]> {
+  async getPinned(): Promise<{ itemId: string; item_id: string; id: string; category: string }[]> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const res = await fetchWithTimeout(`${baseUrl}/api/cloud/pinned?userId=${getUserIdParam()}`, {
@@ -1034,10 +1056,15 @@ export const CloudStorageAPI = {
       });
       if (!res.ok) return [];
       const json = await res.json();
-      return (json.data || []).map((row: any) => ({
-        itemId: row.item_id || row.itemId || row.id,
-        category: row.category || 'documents'
-      }));
+      return (json.data || []).map((row: any) => {
+        const idVal = row.item_id || row.itemId || row.id;
+        return {
+          itemId: idVal,
+          item_id: idVal,
+          id: idVal,
+          category: row.category || 'documents'
+        };
+      });
     } catch (e) {
       console.error('[CloudStorageAPI] getPinned error:', e);
       return [];

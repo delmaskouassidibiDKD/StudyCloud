@@ -194,16 +194,42 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     };
   }, []);
 
-  // Chargement distant depuis l'API Cloudflare D1
+  // Chargement distant direct depuis Cloudflare D1 (Multi-appareils instantané)
   useEffect(() => {
-    CloudStorageAPI.getFavorites()
-      .then((data) => {
-        if (data && Array.isArray(data)) {
-          // Si l'API retourne des favoris distants, CloudDataStore se charge de refléter
-          setFavoritesList(getFavsFromStore());
+    let isMounted = true;
+    (async () => {
+      try {
+        setLoading(true);
+        const { favIds, items } = await CloudStorageAPI.getFavoritesList();
+        if (!isMounted) return;
+
+        if (favIds && favIds.length > 0) {
+          const s = CloudDataStore.getState();
+          favIds.forEach(id => s.favIdSet.add(id));
         }
-      })
-      .catch((err) => console.warn('[FavoritesMenuView] Sync favorites warning:', err));
+
+        if (items && items.length > 0) {
+          items.forEach(item => {
+            if (item.category === 'documents') CloudDataStore.addOptimisticFile(item, 'documents');
+            else if (item.category === 'images') CloudDataStore.addOptimisticFile(item, 'images');
+            else if (item.category === 'videos') CloudDataStore.addOptimisticFile(item, 'videos');
+            else if (item.category === 'audio') CloudDataStore.addOptimisticFile(item, 'audio');
+          });
+        }
+        setFavoritesList(getFavsFromStore());
+      } catch (err) {
+        console.warn('[FavoritesMenuView] Direct favorites load warning:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    })();
+
+    // Déclencher aussi la synchronisation globale
+    CloudDataStore.sync(true).catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Retirer un élément des favoris

@@ -305,7 +305,34 @@ export const LocalSyncReplication = {
       for (const doc of incomingDocs) {
         if (!doc || !doc.id) continue;
 
+        let parsedContent: any = doc.content;
+        if (typeof doc.content === 'string') {
+          try {
+            parsedContent = JSON.parse(doc.content);
+          } catch {
+            parsedContent = { id: doc.id };
+          }
+        }
+
         if (doc.is_deleted) {
+          // ── GESTION DES FAVORIS ET ÉPINGLÉS (DÉCOCHÉS) ──
+          if (doc.category === 'favorites') {
+            const favItemId = parsedContent?.itemId || doc.content?.itemId || doc.id.replace(/^fav_[^_]+_/, '');
+            if (favItemId) {
+              CloudDataStore.toggleFavorite(favItemId, false);
+            }
+            deletedCount++;
+            continue;
+          }
+          if (doc.category === 'pinned') {
+            const pinItemId = parsedContent?.itemId || doc.content?.itemId || doc.id.replace(/^pin_[^_]+_/, '');
+            if (pinItemId) {
+              CloudDataStore.togglePin(pinItemId, false);
+            }
+            deletedCount++;
+            continue;
+          }
+
           // ── SUPPRESSION MULTI-APPAREILS SANS RÉSUSCITATION ──
           if (doc.category === 'trash') {
             // Suppression définitive de la corbeille
@@ -325,6 +352,24 @@ export const LocalSyncReplication = {
             deletedCount++;
           }
         } else {
+          // ── FAVORIS ET ÉPINGLÉS MIS À JOUR PAR UN AUTRE APPAREIL ──
+          if (doc.category === 'favorites') {
+            const favItemId = parsedContent?.itemId || doc.content?.itemId || doc.id.replace(/^fav_[^_]+_/, '');
+            if (favItemId) {
+              CloudDataStore.toggleFavorite(favItemId, true);
+            }
+            upsertCount++;
+            continue;
+          }
+          if (doc.category === 'pinned') {
+            const pinItemId = parsedContent?.itemId || doc.content?.itemId || doc.id.replace(/^pin_[^_]+_/, '');
+            if (pinItemId) {
+              CloudDataStore.togglePin(pinItemId, true);
+            }
+            upsertCount++;
+            continue;
+          }
+
           // ── ÉLÉMENT CRÉÉ OU MIS À JOUR PAR UN AUTRE APPAREIL ──
           if (doc.category === 'trash') {
             // Les éléments de la corbeille sont valides et ne doivent pas être bloqués par un tombstone d'une autre catégorie
@@ -332,15 +377,6 @@ export const LocalSyncReplication = {
           } else if (inMemoryTombstones.has(doc.id)) {
             // Si localement marqué définitivement supprimé, ne pas ressusciter
             continue;
-          }
-
-          let parsedContent: any = doc.content;
-          if (typeof doc.content === 'string') {
-            try {
-              parsedContent = JSON.parse(doc.content);
-            } catch {
-              parsedContent = { id: doc.id };
-            }
           }
 
           if (doc.category === 'deleted_recent') {

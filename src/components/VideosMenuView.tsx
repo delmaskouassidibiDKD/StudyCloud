@@ -496,7 +496,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     if (selectedVideo?.id === vid.id) {
       setSelectedVideo(prev => (prev ? { ...prev, isFavorite: nextState } : null));
     }
-    CloudDataStore.updateFile(vid.id, { isFavorite: nextState });
+    CloudDataStore.toggleFavorite(vid.id, nextState);
     if (nextState) {
       await CloudStorageAPI.addFavorite(vid.id, 'videos').catch(() => {});
     } else {
