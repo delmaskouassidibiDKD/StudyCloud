@@ -41,7 +41,7 @@ import {
 import { CloudDataStore, FileItem } from '../services/cloudDataStore';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { getFileBlobUrl, deleteFileBlob } from '../services/localFileStorage';
-import { ClasseurCreatedFolder } from './Folder3DModels';
+import { ClasseurCreatedFolder, Classeur3DFolderCard, TxtDocumentSVG } from './Folder3DModels';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { ImageCardPreview } from './ImageCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
@@ -301,6 +301,11 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     if (!openedClasseurFolderId) return null;
     return (storeData.classeurFolders || []).find(f => f.id === openedClasseurFolderId) || null;
   }, [storeData.classeurFolders, openedClasseurFolderId]);
+
+  const parentFolder = useMemo(() => {
+    if (!openedFolder?.parentId) return null;
+    return (storeData.classeurFolders || []).find(f => f.id === openedFolder.parentId) || null;
+  }, [storeData.classeurFolders, openedFolder]);
 
   const filteredDownloads = useMemo(() => {
     const list = storeData.downloads || [];
@@ -592,13 +597,9 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   };
 
   // =========================================================================
-  // CARTE DOSSIER CLASSEUR (REFLET FIDÈLE DES VRAIS DOSSIERS)
+  // CARTE DOSSIER CLASSEUR (REFLET À L'IDENTIQUE DU VRAI MENU CLASSEUR)
   // =========================================================================
   const renderClasseurFolderCard = (folder: ClasseurCreatedFolder) => {
-    const filesInFolder = (storeData.folderFilesMap || {})[folder.id] || [];
-    const subFolderCount = (storeData.classeurFolders || []).filter(f => f.parentId === folder.id).length;
-    const totalItems = filesInFolder.length + subFolderCount;
-
     return (
       <div
         key={folder.id}
@@ -606,141 +607,224 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           setOpenedClasseurFolderId(folder.id);
           setActiveMenuFileId(null);
         }}
-        className="aspect-[3/4] rounded-2xl p-3 flex flex-col justify-between transition-all relative group select-none cursor-pointer active:scale-[0.98] shadow-md border-2 hover:scale-[1.02]"
-        style={{
-          background: `linear-gradient(160deg, ${folder.primaryColor}CC 0%, ${folder.primaryColor}88 100%)`,
-          borderColor: `${folder.primaryColor}80`,
-          boxShadow: `0 4px 20px ${folder.primaryColor}30`
-        }}
+        className="group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all select-none cursor-pointer flex flex-col justify-between"
         title={folder.name}
       >
-        {/* Icône dossier + badge items */}
-        <div className="flex items-center justify-between gap-1 z-20 relative">
-          <div
-            className="p-2 rounded-xl border border-white/30"
-            style={{ backgroundColor: `${folder.primaryColor}40` }}
-          >
-            <FolderArchive className="w-5 h-5 text-white stroke-[2.2]" />
+        {/* Badges Épinglé et Favori */}
+        {(folder.isPinned || folder.isFavorite) && (
+          <div className="absolute top-2 left-2 z-20 flex items-center gap-1 pointer-events-none">
+            {folder.isPinned && (
+              <span className="p-1 rounded-md bg-black/80 border border-blue-400/60 shadow-md flex items-center justify-center text-blue-400 backdrop-blur-sm" title="Épinglé">
+                <Pin className="w-3 h-3 rotate-45" />
+              </span>
+            )}
+            {folder.isFavorite && (
+              <span className="p-1 rounded-md bg-black/80 border border-amber-400/60 shadow-md flex items-center justify-center text-amber-400 backdrop-blur-sm" title="Favori">
+                <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+              </span>
+            )}
           </div>
-          <span className="text-[9px] font-bold bg-black/40 text-white border border-white/20 px-2 py-0.5 rounded-full shadow-sm">
-            {totalItems} élément{totalItems > 1 ? 's' : ''}
-          </span>
-        </div>
+        )}
 
-        {/* Aperçu miniature des fichiers */}
-        <div className="flex-1 w-full my-2 overflow-hidden rounded-xl bg-white/10 border border-white/20 flex flex-col items-center justify-center gap-1 p-2 pointer-events-none">
-          {filesInFolder.length === 0 && subFolderCount === 0 ? (
-            <div className="text-center">
-              <FolderArchive className="w-8 h-8 mx-auto text-white/40 mb-1" />
-              <p className="text-[9px] text-white/50 font-medium">Dossier vide</p>
-            </div>
-          ) : (
-            <div className="w-full space-y-1">
-              {subFolderCount > 0 && (
-                <div className="flex items-center gap-1.5 bg-white/10 rounded-lg px-2 py-1">
-                  <Folder className="w-3 h-3 text-white/70 shrink-0" />
-                  <span className="text-[9px] text-white/70 font-semibold truncate">{subFolderCount} sous-dossier{subFolderCount > 1 ? 's' : ''}</span>
-                </div>
-              )}
-              {filesInFolder.slice(0, 3).map((f, i) => (
-                <div key={i} className="flex items-center gap-1.5 bg-white/10 rounded-lg px-2 py-1">
-                  <FileText className="w-3 h-3 text-white/70 shrink-0" />
-                  <span className="text-[9px] text-white/70 font-medium truncate">{f.name}</span>
-                </div>
-              ))}
-              {filesInFolder.length > 3 && (
-                <p className="text-[8px] text-white/40 text-center">+{filesInFolder.length - 3} autres</p>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Nom du dossier */}
-        <div className="px-0.5">
-          <p className="text-[10px] sm:text-[11px] font-black text-white truncate drop-shadow-md" title={folder.name}>
-            {folder.name}
-          </p>
-          <p className="text-[8px] text-white/60 font-medium mt-0.5">{folder.dateText}</p>
+        {/* Le dossier 3D lui-même : Classeur3DFolderCard (Modèles 1, 2, 3, 4) */}
+        <div className="pt-2 pb-1 w-full">
+          <Classeur3DFolderCard folder={folder} />
         </div>
       </div>
     );
   };
 
   // =========================================================================
-  // CARTE DOCUMENT DANS UN DOSSIER CLASSEUR
+  // CARTE FICHIER DANS UN DOSSIER CLASSEUR (REFLET À L'IDENTIQUE DU CLASSEUR)
   // =========================================================================
   const renderClasseurCard = (doc: FileItem, index: number) => {
     const isMenuOpen = activeMenuFileId === doc.id;
     const isSelected = viewerFile?.id === doc.id;
     const alignRight = (index + 1) % 2 === 0 || (index + 1) % 4 === 0;
+    const isTxtNote = doc.isNotepad || doc.extension?.toLowerCase() === 'txt' || doc.name.toLowerCase().endsWith('.txt');
 
+    if (isTxtNote) {
+      return (
+        <div
+          key={doc.id}
+          onClick={() => setViewerFile(doc)}
+          className={`group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col justify-between select-none overflow-hidden cursor-pointer ${
+            isSelected
+              ? 'border-cyan-400 ring-2 ring-cyan-400/40 bg-[#14233C]'
+              : 'border-white/10 hover:border-cyan-400/50 hover:-translate-y-1'
+          } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
+        >
+          {/* Haut de carte : Badge TXT, Épinglé, Favori et Bouton 3 traits */}
+          <div className="flex items-center justify-between w-full mb-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                TXT
+              </span>
+              {doc.isPinned && (
+                <span className="p-0.5 rounded bg-black/60 text-blue-300 border border-blue-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
+                  <Pin className="w-3 h-3 rotate-45" />
+                </span>
+              )}
+              {doc.isFavorite && (
+                <span className="p-0.5 rounded bg-black/60 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
+                  <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                </span>
+              )}
+            </div>
+
+            <div 
+              className="relative studycloud-menu-trigger"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveMenuFileId(isMenuOpen ? null : doc.id);
+                }}
+                className={`p-1 sm:p-1.5 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm ${
+                  isMenuOpen
+                    ? 'border-cyan-400 ring-2 ring-cyan-400/50 opacity-100 bg-black'
+                    : 'border-white/30 opacity-90 group-hover:opacity-100'
+                }`}
+                title="Options de la note (3 traits)"
+              >
+                <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+              </button>
+              {renderOptionsMenu(doc, alignRight)}
+            </div>
+          </div>
+
+          {/* Illustration TXT Conforme strictement au Classeur (TxtDocumentSVG) */}
+          <div className="w-full flex-1 flex items-center justify-center py-2 min-h-[110px]">
+            <div className="w-24 sm:w-28 aspect-[160/215] drop-shadow-md group-hover:scale-105 transition-transform duration-200">
+              <TxtDocumentSVG />
+            </div>
+          </div>
+
+          {/* Bas de carte : Titre et détails */}
+          <div className="p-1.5 flex flex-col justify-between bg-black/30 rounded-xl mt-1.5">
+            <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-cyan-300 transition-colors" title={doc.name}>
+              {doc.name}
+            </p>
+            <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+              <span className="truncate">{doc.size || '0 o'}</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDownloadFile(doc);
+                }}
+                className="p-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded transition-all cursor-pointer active:scale-95"
+                title="Télécharger"
+              >
+                <Download className="w-2.5 h-2.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Fichiers multimédias ou documents importés dans le dossier
     return (
       <div
         key={doc.id}
         onClick={() => setViewerFile(doc)}
-        className={`aspect-[3/4] rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between transition-all relative group select-none cursor-pointer active:scale-98 shadow-md border-2 ${
+        className={`group relative bg-[#0E1526]/85 hover:bg-[#141E34] border rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col overflow-hidden select-none cursor-pointer ${
           isSelected
-            ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02]'
-            : isMenuOpen
-              ? 'z-50 ring-2 ring-orange-400 border-orange-300'
-              : 'border-orange-700/60 hover:border-orange-400/80 shadow-[2px_2px_0px_0px_#431407]'
-        }`}
-        style={{
-          background: 'linear-gradient(180deg, #A84411 0%, #7C2E08 100%)'
-        }}
+            ? 'border-orange-400 ring-2 ring-orange-400/40 bg-[#192238]'
+            : 'border-white/10 hover:border-orange-500/50 hover:-translate-y-1'
+        } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
       >
-        {/* Barre supérieure : Bouton 3 traits & Badge taille */}
-        <div className="flex items-center justify-between gap-1 z-20 relative">
-          <div className="relative studycloud-menu-trigger">
+        <div className="w-full h-24 sm:h-28 bg-slate-900/90 relative rounded-t-2xl flex items-center justify-center overflow-hidden">
+          {/* Badges Épinglé et Favori */}
+          {(doc.isPinned || doc.isFavorite) && (
+            <div className="absolute top-1.5 left-1.5 z-20 flex items-center gap-1 pointer-events-none">
+              {doc.isPinned && (
+                <span className="p-1 rounded-md bg-black/75 text-blue-400 border border-blue-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
+                  <Pin className="w-3 h-3 rotate-45" />
+                </span>
+              )}
+              {doc.isFavorite && (
+                <span className="p-1 rounded-md bg-black/75 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
+                  <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                </span>
+              )}
+            </div>
+          )}
+
+          {doc.category === 'images' || doc.isImage ? (
+            <img 
+              src={doc.previewUrl || doc.url} 
+              alt={doc.name}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              loading="lazy"
+            />
+          ) : (doc.category === 'videos' || Boolean(doc.videoUrl) || doc.isVideo) ? (
+            <VideoCardPreview vid={doc} />
+          ) : (doc.category === 'documents' || doc.isPdf) ? (
+            <DocumentCardPreview doc={doc} />
+          ) : ((doc.category as string) === 'audio' || Boolean(doc.audioUrl) || doc.isAudio) ? (
+            <AudioCardPreview track={doc} />
+          ) : doc.previewUrl ? (
+            <img 
+              src={doc.previewUrl} 
+              alt={doc.name}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              loading="lazy"
+            />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-3">
+              <FileText className="w-8 h-8 sm:w-10 sm:h-10 text-orange-400/85 stroke-[1.8]" />
+            </div>
+          )}
+
+          <div 
+            className="relative studycloud-menu-trigger"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                setActiveMenuFileId(prev => (prev === doc.id ? null : doc.id));
+                setActiveMenuFileId(isMenuOpen ? null : doc.id);
               }}
-              className="p-1 sm:p-1.5 rounded-lg bg-black/50 hover:bg-black/80 text-white border border-white/20 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-sm"
-              title="Options du document (3 traits)"
+              className={`absolute top-1.5 right-1.5 p-1 sm:p-1.5 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm z-20 ${
+                isMenuOpen
+                  ? 'border-orange-400 ring-2 ring-orange-400/50 opacity-100 bg-black'
+                  : 'border-white/30 opacity-90 group-hover:opacity-100'
+              }`}
+              title="Options du fichier (3 traits)"
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
 
-            {/* Menu 3 traits flottant au-dessus */}
             {renderOptionsMenu(doc, alignRight)}
           </div>
-
-          <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/50 text-white border border-white/20 px-1.5 py-0.5 rounded shadow-sm">
-            {doc.size || 'Document'}
-          </span>
         </div>
 
-        {/* Corps de carte / aperçu réel du document */}
-        <div className="flex-1 w-full my-1.5 overflow-hidden rounded-lg bg-white relative shadow-inner border border-white/20 flex flex-col justify-between pointer-events-none">
-          <DocumentCardPreview doc={doc} />
-        </div>
-
-        {/* Titre unique en bas */}
-        <div className="px-0.5 mb-1">
-          <p className="text-[9px] sm:text-[10px] font-black text-white truncate drop-shadow-md" title={doc.name}>
+        <div className="p-2 sm:p-2.5 flex flex-col justify-between bg-black/30 rounded-b-2xl">
+          <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-orange-400 transition-colors" title={doc.name}>
             {doc.name}
           </p>
-        </div>
-
-        {/* Pied de carte : Badge extension et bouton orange de téléchargement */}
-        <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1">
-          <span className="text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 bg-white text-orange-700 border border-white">
-            {doc.extension || 'PDF'}
-          </span>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDownloadFile(doc);
-            }}
-            className="p-1 sm:p-1.2 bg-orange-500 hover:bg-orange-600 text-white rounded border border-stone-900 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:scale-95"
-            title="Télécharger"
-          >
-            <Download className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-          </button>
+          <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+            <span className="truncate max-w-[85px] uppercase">{doc.extension || doc.category || 'DOC'}</span>
+            <div className="flex items-center gap-1.5">
+              <span className="shrink-0 font-medium">{doc.size || '0 o'}</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDownloadFile(doc);
+                }}
+                className="p-1 bg-orange-600 hover:bg-orange-500 text-white rounded transition-all cursor-pointer active:scale-95"
+                title="Télécharger"
+              >
+                <Download className="w-2.5 h-2.5" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -1273,6 +1357,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
               url={activeUrl}
               fileName={name}
               fileSize={file.size}
+              textContent={file.content}
               className="w-full h-full border-0 rounded-none shadow-none"
             />
           )}
@@ -1478,7 +1563,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             <div className="space-y-4 animate-in fade-in duration-200">
 
               {/* Fil d'Ariane / breadcrumb quand un dossier est ouvert */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => setOpenedClasseurFolderId(null)}
@@ -1490,6 +1575,18 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                 >
                   Classeur
                 </button>
+                {parentFolder && (
+                  <>
+                    <BreadcrumbChevron className="w-3.5 h-3.5 text-stone-400" />
+                    <button
+                      type="button"
+                      onClick={() => setOpenedClasseurFolderId(parentFolder.id)}
+                      className="text-xs font-bold text-orange-600 hover:text-orange-700 cursor-pointer"
+                    >
+                      {parentFolder.name}
+                    </button>
+                  </>
+                )}
                 {openedFolder && (
                   <>
                     <BreadcrumbChevron className="w-3.5 h-3.5 text-stone-400" />
