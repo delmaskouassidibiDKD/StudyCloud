@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ArrowLeft,
   Search,
@@ -10,18 +10,20 @@ import {
   Image as ImageIcon,
   Film,
   Music,
-  Download,
   FolderArchive,
   Check,
   CheckSquare,
   Square,
-  Maximize2,
-  Minimize2
+  Menu,
+  Play,
+  FileEdit
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
 import { deleteFileBlob } from '../services/localFileStorage';
 import { FileItem } from './Page1FilesMenuView';
+import { AudioCardPreview } from './AudioCardPreview';
+import { DocumentCardPreview } from './DocumentCardPreview';
 
 interface TrashMenuViewProps {
   onBack: () => void;
@@ -33,7 +35,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<'all' | 'documents' | 'images' | 'videos' | 'audio' | 'classeur'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'audio' | 'documents' | 'images' | 'videos' | 'classeur'>('all');
+
+  // UN SEUL menu 3-traits actif à la fois (ferme automatiquement tout autre menu)
+  const [activeMenuFileId, setActiveMenuFileId] = useState<string | null>(null);
 
   // Mode sélection
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -44,12 +49,41 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Chargement des fichiers de la corbeille
+  // Fermer le menu 3 traits si on clique en dehors
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent | PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (!target.closest('.studycloud-trash-menu-panel') && !target.closest('.studycloud-trash-menu-trigger')) {
+        setActiveMenuFileId(null);
+      }
+    };
+    window.addEventListener('pointerdown', handleOutsideClick);
+    return () => {
+      window.removeEventListener('pointerdown', handleOutsideClick);
+    };
+  }, []);
+
+  // Écoute en temps réel du CloudDataStore (synchronisation locale et réplication D1)
+  useEffect(() => {
+    const unsubscribe = CloudDataStore.subscribe((state) => {
+      if (Array.isArray(state.trash)) {
+        setTrashList(state.trash);
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  // Chargement initial depuis l'API distante
   useEffect(() => {
     let isMounted = true;
     CloudStorageAPI.getTrashFiles()
@@ -69,12 +103,12 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
     };
   }, []);
 
-  // Restaurer un fichier
+  // Restaurer un fichier individuel
   const handleRestore = async (file: FileItem) => {
     setTrashList(prev => prev.filter(f => f.id !== file.id));
     CloudDataStore.restoreFromTrash(file as any);
     await CloudStorageAPI.restoreTrashItem(file.id).catch(() => {});
-    showToast(`"${file.name}" a été restauré dans ${file.originalCategory || 'son menu'}`);
+    showToast(`"${file.name}" a été restauré dans son menu d'origine`);
   };
 
   // Supprimer définitivement un fichier
@@ -94,7 +128,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
       setTrashList([]);
       CloudDataStore.emptyTrash();
       allIds.forEach(id => deleteFileBlob(id).catch(() => {}));
-      await CloudStorageAPI.emptyTrash().catch(() => {});
+      await CloudStorageAPI.deleteTrashPermanently(allIds).catch(() => {});
       showToast('La corbeille a été vidée avec succès');
       setIsConfirmEmptyOpen(false);
     } catch (e) {
@@ -104,7 +138,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
     }
   };
 
-  // Restaurer la sélection
+  // Restaurer les éléments sélectionnés
   const handleRestoreSelected = async () => {
     const toRestore = trashList.filter(f => selectedIds.includes(f.id));
     for (const f of toRestore) {
@@ -114,7 +148,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
     setIsSelectionMode(false);
   };
 
-  // Supprimer définitivement la sélection
+  // Supprimer définitivement les éléments sélectionnés
   const handleDeleteSelected = async () => {
     const toDelete = trashList.filter(f => selectedIds.includes(f.id));
     for (const f of toDelete) {
@@ -124,62 +158,617 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
     setIsSelectionMode(false);
   };
 
-  // Filtrage
+  // Sélectionner / désélectionner un élément
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  };
+
+  const selectAll = () => {
+    setSelectedIds(filteredTrash.map(f => f.id));
+  };
+
+  // Filtrage selon catégorie et recherche
   const filteredTrash = useMemo(() => {
     let list = trashList;
 
     if (activeFilter !== 'all') {
       list = list.filter(f => {
-        const cat = f.originalCategory || f.category;
-        return cat === activeFilter;
+        const cat = (f.sourceCategory || f.originalCategory || f.category || '').toLowerCase();
+        if (activeFilter === 'audio') return cat === 'audio' || Boolean(f.isAudio);
+        if (activeFilter === 'documents') return cat === 'documents' || Boolean(f.isDocument);
+        if (activeFilter === 'images') return cat === 'images' || Boolean(f.isImage);
+        if (activeFilter === 'videos') return cat === 'videos' || Boolean(f.isVideo);
+        if (activeFilter === 'classeur') return cat === 'classeur' || cat === 'classeur_folder';
+        return true;
       });
     }
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
-      list = list.filter(f => f.name.toLowerCase().includes(q));
+      list = list.filter(f => f.name.toLowerCase().includes(q) || (f.artist && f.artist.toLowerCase().includes(q)));
     }
 
     return list;
   }, [trashList, activeFilter, searchQuery]);
 
-  // Icône par type
-  const getFileIcon = (file: FileItem) => {
-    const cat = file.originalCategory || file.category;
-    if (cat === 'images' || file.isImage) return <ImageIcon className="w-5 h-5 text-emerald-400" />;
-    if (cat === 'videos' || file.isVideo) return <Film className="w-5 h-5 text-purple-400" />;
-    if (cat === 'audio' || file.isAudio) return <Music className="w-5 h-5 text-amber-400" />;
-    if (cat === 'classeur') return <FolderArchive className="w-5 h-5 text-orange-400" />;
-    return <FileText className="w-5 h-5 text-blue-400" />;
+  // Groupement par catégorie pour affichage fidèle avec titres de sections
+  const categorized = useMemo(() => {
+    const audios: FileItem[] = [];
+    const documents: FileItem[] = [];
+    const images: FileItem[] = [];
+    const videos: FileItem[] = [];
+    const classeur: FileItem[] = [];
+    const others: FileItem[] = [];
+
+    filteredTrash.forEach(file => {
+      const cat = (file.sourceCategory || file.originalCategory || file.category || '').toLowerCase();
+      const ext = (file.extension || (file.name.includes('.') ? file.name.split('.').pop() || '' : '')).toLowerCase();
+
+      if (cat === 'audio' || file.isAudio || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes(ext)) {
+        audios.push(file);
+      } else if (cat === 'documents' || file.isDocument || ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt'].includes(ext)) {
+        documents.push(file);
+      } else if (cat === 'images' || file.isImage || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'bmp'].includes(ext)) {
+        images.push(file);
+      } else if (cat === 'videos' || file.isVideo || ['mp4', 'mov', 'mkv', 'webm', 'avi', '3gp'].includes(ext)) {
+        videos.push(file);
+      } else if (cat === 'classeur' || cat === 'classeur_folder') {
+        classeur.push(file);
+      } else {
+        others.push(file);
+      }
+    });
+
+    return { audios, documents, images, videos, classeur, others };
+  }, [filteredTrash]);
+
+  // =========================================================================
+  // MENU DÉDIÉ 3 TRAITS SUR CHAQUE CARTE (FIDÈLE À LA CAPTURE D'ÉCRAN)
+  // =========================================================================
+  const renderOptionsMenu = (file: FileItem) => {
+    if (activeMenuFileId !== file.id) return null;
+    const isChecked = selectedIds.includes(file.id);
+
+    return (
+      <div
+        className="studycloud-trash-menu-panel absolute left-2 top-8 z-50 w-56 sm:w-64 bg-[#0A0F1D] border-2 border-rose-500/80 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.95)] text-white animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col p-0.5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* En-tête : Titre du fichier, Sous-titre rouge CORBEILLE, et Croix de fermeture */}
+        <div className="px-3 py-2 border-b border-rose-500/20 flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] sm:text-xs font-black text-white truncate" title={file.name}>
+              {file.name}
+            </p>
+            <p className="text-[9px] font-bold text-rose-400 uppercase tracking-wider">
+              {file.size || '0 o'} • CORBEILLE
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveMenuFileId(null);
+            }}
+            className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+            title="Fermer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Options déroulantes */}
+        <div className="py-1 divide-y divide-white/5">
+          {/* Option 1 : Cocher / Décocher */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleSelect(file.id);
+              setIsSelectionMode(true);
+              setActiveMenuFileId(null);
+            }}
+            className="w-full px-3 py-2 flex items-center gap-2.5 text-xs font-bold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+          >
+            <CheckSquare className="w-4 h-4 shrink-0" />
+            <span>{isChecked ? 'Décocher' : 'Cocher'}</span>
+          </button>
+
+          {/* Option 2 : Tout cocher */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              selectAll();
+              setIsSelectionMode(true);
+              setActiveMenuFileId(null);
+            }}
+            className="w-full px-3 py-2 flex items-center gap-2.5 text-xs font-bold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+          >
+            <CheckSquare className="w-4 h-4 shrink-0" />
+            <span>Tout cocher</span>
+          </button>
+
+          {/* Option 3 : Restaurer */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRestore(file);
+              setActiveMenuFileId(null);
+            }}
+            className="w-full px-3 py-2 flex items-center gap-2.5 text-xs font-bold text-emerald-400 hover:bg-emerald-500/15 transition-colors cursor-pointer text-left"
+          >
+            <RotateCcw className="w-4 h-4 shrink-0" />
+            <span>Restaurer</span>
+          </button>
+
+          {/* Option 4 : Supprimer définitivement */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDeletePermanently(file);
+              setActiveMenuFileId(null);
+            }}
+            className="w-full px-3 py-2 flex items-center gap-2.5 text-xs font-bold text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
+          >
+            <Trash2 className="w-4 h-4 shrink-0" />
+            <span>Supprimer définitivement</span>
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // CARTE AUDIO CARRÉE AVEC APERÇU ET LOGO MÉLODIE
+  // =========================================================================
+  const renderAudioCard = (file: FileItem) => {
+    const isChecked = selectedIds.includes(file.id);
+    const isMenuOpen = activeMenuFileId === file.id;
+
+    return (
+      <div
+        key={file.id}
+        onClick={() => {
+          if (isSelectionMode) toggleSelect(file.id);
+        }}
+        className={`group relative aspect-square rounded-2xl overflow-hidden bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-lg select-none ${
+          isChecked
+            ? 'border-amber-400 ring-2 ring-amber-400/40'
+            : isMenuOpen
+            ? 'border-rose-500 ring-2 ring-rose-500/40'
+            : 'border-white/10 hover:border-amber-500/40'
+        }`}
+      >
+        {/* Arrière-plan : aperçu audio ou pochette créateur haute fidélité */}
+        <div className="absolute inset-0 z-0">
+          <AudioCardPreview track={file} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/60 pointer-events-none" />
+        </div>
+
+        {/* Logo mélodie central en filigrane */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+          <div className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-sm border border-amber-400/30 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+            <Music className="w-6 h-6 text-amber-400/90" />
+          </div>
+        </div>
+
+        {/* Barre supérieure : Bouton 3 traits, tag officiel et badge taille */}
+        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+            }}
+            className={`studycloud-trash-menu-trigger p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+              isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50' : 'border-white/20'
+            }`}
+            title="Options corbeille"
+          >
+            <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+          </button>
+
+          <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
+            {file.size || '108 Ko'}
+          </span>
+        </div>
+
+        {/* Menu déroulant indépendant */}
+        {renderOptionsMenu(file)}
+
+        {/* Barre inférieure : Titre, Artiste et bouton restauration directe */}
+        <div className="relative z-20 p-2.5 bg-black/70 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-black text-white truncate group-hover:text-amber-300 transition-colors" title={file.name}>
+              {file.name}
+            </p>
+            <p className="text-[10px] font-semibold text-amber-400/90 truncate uppercase tracking-wider">
+              {file.artist || 'CRÉATEUR AUDIO OFFICIEL'}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRestore(file);
+            }}
+            className="p-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 transition-all cursor-pointer active:scale-95 shrink-0"
+            title="Restaurer immédiatement"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // CARTE DOCUMENT (AVEC APERÇU MINIATURE DÉDIÉ ET BOUTON 3 TRAITS)
+  // =========================================================================
+  const renderDocumentCard = (file: FileItem) => {
+    const isChecked = selectedIds.includes(file.id);
+    const isMenuOpen = activeMenuFileId === file.id;
+
+    return (
+      <div
+        key={file.id}
+        onClick={() => {
+          if (isSelectionMode) toggleSelect(file.id);
+        }}
+        className={`group relative rounded-2xl overflow-hidden bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-lg select-none min-h-[220px] ${
+          isChecked
+            ? 'border-amber-400 ring-2 ring-amber-400/40'
+            : isMenuOpen
+            ? 'border-rose-500 ring-2 ring-rose-500/40'
+            : 'border-white/10 hover:border-blue-500/40'
+        }`}
+      >
+        {/* Barre supérieure : Bouton 3 traits & Badge taille */}
+        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+            }}
+            className={`studycloud-trash-menu-trigger p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+              isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50' : 'border-white/20'
+            }`}
+            title="Options corbeille"
+          >
+            <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+          </button>
+
+          <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
+            {file.size || '0 o'}
+          </span>
+        </div>
+
+        {/* Menu déroulant indépendant */}
+        {renderOptionsMenu(file)}
+
+        {/* Cadre d'aperçu du document (DocumentCardPreview fidèle) */}
+        <div className="relative z-10 flex-1 w-full px-2 py-1 flex items-center justify-center overflow-hidden">
+          <div className="w-full h-32 rounded-xl overflow-hidden bg-black/40 border border-white/10 flex items-center justify-center">
+            <DocumentCardPreview doc={file as any} />
+          </div>
+        </div>
+
+        {/* Barre inférieure : Nom du document & bouton restauration rapide */}
+        <div className="relative z-20 p-2.5 bg-black/70 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-black text-white truncate group-hover:text-blue-300 transition-colors" title={file.name}>
+              {file.name}
+            </p>
+            <p className="text-[10px] text-slate-400 truncate">
+              {file.date || 'Document'}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRestore(file);
+            }}
+            className="p-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 transition-all cursor-pointer active:scale-95 shrink-0"
+            title="Restaurer immédiatement"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // CARTE IMAGE (AVEC VIGNETTE DIRECTE ET BOUTON 3 TRAITS)
+  // =========================================================================
+  const renderImageCard = (file: FileItem) => {
+    const isChecked = selectedIds.includes(file.id);
+    const isMenuOpen = activeMenuFileId === file.id;
+    const imgUrl = file.previewUrl || file.thumbnailUrl || (file as any).imageUrl || file.url || '';
+
+    return (
+      <div
+        key={file.id}
+        onClick={() => {
+          if (isSelectionMode) toggleSelect(file.id);
+        }}
+        className={`group relative rounded-2xl overflow-hidden bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-lg select-none min-h-[200px] ${
+          isChecked
+            ? 'border-amber-400 ring-2 ring-amber-400/40'
+            : isMenuOpen
+            ? 'border-rose-500 ring-2 ring-rose-500/40'
+            : 'border-white/10 hover:border-emerald-500/40'
+        }`}
+      >
+        {/* Arrière-plan vignette */}
+        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden">
+          {imgUrl ? (
+            <img src={imgUrl} alt={file.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+          ) : (
+            <ImageIcon className="w-10 h-10 text-emerald-400/40" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-black/60 pointer-events-none" />
+        </div>
+
+        {/* Barre supérieure : Bouton 3 traits & Taille */}
+        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+            }}
+            className={`studycloud-trash-menu-trigger p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+              isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50' : 'border-white/20'
+            }`}
+            title="Options corbeille"
+          >
+            <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+          </button>
+
+          <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
+            {file.size || '0 o'}
+          </span>
+        </div>
+
+        {/* Menu déroulant indépendant */}
+        {renderOptionsMenu(file)}
+
+        {/* Barre inférieure : Nom & Restaurer */}
+        <div className="relative z-20 p-2.5 bg-black/70 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-black text-white truncate group-hover:text-emerald-300 transition-colors" title={file.name}>
+              {file.name}
+            </p>
+            <p className="text-[10px] text-slate-400 truncate">
+              {file.date || 'Image'}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRestore(file);
+            }}
+            className="p-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 transition-all cursor-pointer active:scale-95 shrink-0"
+            title="Restaurer immédiatement"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // CARTE VIDÉO (AVEC VIGNETTE VIDÉO, BADGE DURÉE ET BOUTON 3 TRAITS)
+  // =========================================================================
+  const renderVideoCard = (file: FileItem) => {
+    const isChecked = selectedIds.includes(file.id);
+    const isMenuOpen = activeMenuFileId === file.id;
+    const vidUrl = file.previewUrl || file.thumbnailUrl || (file as any).videoUrl || file.url || '';
+
+    return (
+      <div
+        key={file.id}
+        onClick={() => {
+          if (isSelectionMode) toggleSelect(file.id);
+        }}
+        className={`group relative rounded-2xl overflow-hidden bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-lg select-none min-h-[200px] ${
+          isChecked
+            ? 'border-amber-400 ring-2 ring-amber-400/40'
+            : isMenuOpen
+            ? 'border-rose-500 ring-2 ring-rose-500/40'
+            : 'border-white/10 hover:border-purple-500/40'
+        }`}
+      >
+        {/* Arrière-plan vignette vidéo */}
+        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden">
+          {vidUrl && !vidUrl.toLowerCase().endsWith('.mp4') ? (
+            <img src={vidUrl} alt={file.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-1.5">
+              <Film className="w-10 h-10 text-purple-400/60" />
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/60 pointer-events-none" />
+        </div>
+
+        {/* Bouton play stylisé au centre */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+          <div className="w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm border border-purple-400/40 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+            <Play className="w-4 h-4 fill-purple-400 text-purple-400 ml-0.5" />
+          </div>
+        </div>
+
+        {/* Barre supérieure : Bouton 3 traits & Taille */}
+        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+            }}
+            className={`studycloud-trash-menu-trigger p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+              isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50' : 'border-white/20'
+            }`}
+            title="Options corbeille"
+          >
+            <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+          </button>
+
+          <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
+            {file.size || '0 o'}
+          </span>
+        </div>
+
+        {/* Menu déroulant indépendant */}
+        {renderOptionsMenu(file)}
+
+        {/* Barre inférieure : Nom & Restaurer */}
+        <div className="relative z-20 p-2.5 bg-black/70 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-black text-white truncate group-hover:text-purple-300 transition-colors" title={file.name}>
+              {file.name}
+            </p>
+            <p className="text-[10px] text-slate-400 truncate">
+              {file.date || 'Vidéo'}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRestore(file);
+            }}
+            className="p-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 transition-all cursor-pointer active:scale-95 shrink-0"
+            title="Restaurer immédiatement"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // CARTE CLASSEUR / DOSSIER / NOTE
+  // =========================================================================
+  const renderClasseurCard = (file: FileItem) => {
+    const isChecked = selectedIds.includes(file.id);
+    const isMenuOpen = activeMenuFileId === file.id;
+
+    return (
+      <div
+        key={file.id}
+        onClick={() => {
+          if (isSelectionMode) toggleSelect(file.id);
+        }}
+        className={`group relative rounded-2xl overflow-hidden bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-lg select-none min-h-[190px] ${
+          isChecked
+            ? 'border-amber-400 ring-2 ring-amber-400/40'
+            : isMenuOpen
+            ? 'border-rose-500 ring-2 ring-rose-500/40'
+            : 'border-white/10 hover:border-orange-500/40'
+        }`}
+      >
+        {/* Barre supérieure : Bouton 3 traits & Taille */}
+        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+            }}
+            className={`studycloud-trash-menu-trigger p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+              isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50' : 'border-white/20'
+            }`}
+            title="Options corbeille"
+          >
+            <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+          </button>
+
+          <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
+            {file.size || '0 o'}
+          </span>
+        </div>
+
+        {/* Menu déroulant indépendant */}
+        {renderOptionsMenu(file)}
+
+        {/* Centre icône classeur */}
+        <div className="flex-1 flex flex-col items-center justify-center py-4">
+          <div className="w-14 h-14 rounded-2xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
+            {file.isNotepad ? (
+              <FileEdit className="w-7 h-7 text-orange-400" />
+            ) : (
+              <FolderArchive className="w-7 h-7 text-orange-400" />
+            )}
+          </div>
+        </div>
+
+        {/* Barre inférieure : Nom & Restaurer */}
+        <div className="relative z-20 p-2.5 bg-black/70 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-black text-white truncate group-hover:text-orange-300 transition-colors" title={file.name}>
+              {file.name}
+            </p>
+            <p className="text-[10px] text-slate-400 truncate">
+              {file.date || 'Classeur'}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRestore(file);
+            }}
+            className="p-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 transition-all cursor-pointer active:scale-95 shrink-0"
+            title="Restaurer immédiatement"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    );
   };
 
   return (
-    <div className="flex-1 flex flex-col w-full min-h-screen bg-[#070A12] text-white select-none animate-in fade-in duration-200">
-      {/* EN-TÊTE FIXE DU MENU CORBEILLE */}
-      <header className="sticky top-0 z-30 w-full bg-[#0A0E1A]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-white/10 shadow-lg">
+    <div ref={containerRef} className="flex-1 flex flex-col w-full min-h-screen bg-[#070A12] text-white select-none animate-in fade-in duration-200">
+      {/* EN-TÊTE FIXE DU MENU CORBEILLE (IDENTIQUE À L'IMAGE DE L'UTILISATEUR) */}
+      <header className="sticky top-0 z-30 w-full bg-[#0A0E1A]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-3 border-b border-white/10 shadow-lg">
         <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
-          {/* GAUCHE : Bouton Retour et Titre Corbeille */}
+          {/* GAUCHE : Bouton Retour rond, Icône Corbeille rouge et Titre StudyCloud */}
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <button
               type="button"
               onClick={onBack}
-              className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
-              title="Retour au gestionnaire de fichiers"
+              className="p-2 sm:p-2.5 rounded-full bg-[#182032] hover:bg-[#222c44] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm"
+              title="Retour"
             >
-              <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
-              <span className="hidden xs:inline">Retour</span>
+              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
             </button>
 
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-black border border-white/10 text-red-400">
-                <Trash2 className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 sm:p-2.5 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-400 shadow-md">
+                <Trash2 className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.2]" />
               </div>
               <div>
-                <h1 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
+                <h1 className="text-sm sm:text-base md:text-lg font-black text-white leading-tight">
                   Corbeille
                 </h1>
-                <p className="text-[10px] sm:text-[11px] font-semibold text-red-400/80 leading-tight">
-                  {trashList.length} élément{trashList.length > 1 ? 's' : ''} supprimé{trashList.length > 1 ? 's' : ''}
+                <p className="text-[11px] font-semibold text-slate-400 leading-tight">
+                  StudyCloud
                 </p>
               </div>
             </div>
@@ -187,8 +776,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
 
           {/* MILIEU : Barre de Recherche Corbeille */}
           <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-1 sm:px-2">
-            <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-red-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 transition-all shadow-inner gap-2">
-              <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400/80 shrink-0 stroke-[2.2]" />
+            <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-rose-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 transition-all shadow-inner gap-2">
+              <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400/80 shrink-0 stroke-[2.2]" />
               <input
                 type="text"
                 value={searchQuery}
@@ -208,18 +797,18 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
             </div>
           </div>
 
-          {/* DROITE : Bouton Vider la corbeille et Actions */}
+          {/* DROITE : Bouton Vider la corbeille & Mode sélection */}
           <div className="shrink-0 flex items-center gap-2">
             {trashList.length > 0 && (
               <button
                 type="button"
                 onClick={() => setIsConfirmEmptyOpen(true)}
-                className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/40 transition-all cursor-pointer active:scale-95 shadow-sm text-xs sm:text-sm font-bold"
+                className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/40 transition-all cursor-pointer active:scale-95 shadow-sm text-xs sm:text-sm font-bold"
                 title="Vider définitivement tous les éléments"
               >
                 <Trash2 className="w-4 h-4" />
-                <span className="hidden xs:inline">Vider la corbeille</span>
-                <span className="xs:hidden">Vider</span>
+                <span className="hidden sm:inline">Vider la corbeille</span>
+                <span className="sm:hidden">Vider</span>
               </button>
             )}
 
@@ -228,8 +817,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
               onClick={() => setIsSelectionMode(!isSelectionMode)}
               className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full border transition-all cursor-pointer shrink-0 active:scale-95 ${
                 isSelectionMode
-                  ? 'bg-red-500 text-white border-red-400 font-bold'
-                  : 'bg-[#04060A] hover:bg-[#0A0E18] text-white border-white/10'
+                  ? 'bg-rose-500 text-white border-rose-400 font-bold'
+                  : 'bg-[#182032] hover:bg-[#222c44] text-white border-white/10'
               }`}
               title={isSelectionMode ? 'Quitter la sélection' : 'Sélection multiple'}
             >
@@ -239,14 +828,14 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         </div>
 
         {/* ONGLETS DE FILTRAGE RAPIDE */}
-        <div className="flex items-center gap-1.5 sm:gap-2 mt-2.5 overflow-x-auto pb-1 scrollbar-none">
+        <div className="flex items-center gap-1.5 sm:gap-2 mt-3 overflow-x-auto pb-1 scrollbar-none">
           {[
-            { id: 'all', label: 'Tous' },
-            { id: 'documents', label: 'Documents' },
-            { id: 'images', label: 'Images' },
-            { id: 'videos', label: 'Vidéos' },
-            { id: 'audio', label: 'Audio' },
-            { id: 'classeur', label: 'Classeur' }
+            { id: 'all', label: 'TOUS' },
+            { id: 'audio', label: 'AUDIO' },
+            { id: 'documents', label: 'DOCUMENTS' },
+            { id: 'images', label: 'IMAGES' },
+            { id: 'videos', label: 'VIDÉOS' },
+            { id: 'classeur', label: 'CLASSEUR' }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -254,7 +843,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
               onClick={() => setActiveFilter(tab.id as any)}
               className={`px-3 py-1 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                 activeFilter === tab.id
-                  ? 'bg-red-500 text-white shadow-md shadow-red-500/20'
+                  ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
                   : 'bg-[#10162A] text-slate-300 hover:text-white hover:bg-[#192242] border border-white/10'
               }`}
             >
@@ -264,11 +853,11 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         </div>
       </header>
 
-      {/* BANDEAU DE SÉLECTION MULTIPLE */}
+      {/* BANDEAU DE SÉLECTION MULTIPLE FLOTTANT */}
       {isSelectionMode && (
-        <div className="w-full bg-[#0F1424] border-b border-red-500/30 px-3 sm:px-6 py-2 flex items-center justify-between gap-3 text-xs">
+        <div className="sticky top-[108px] z-20 w-full bg-[#0F1424] border-b border-rose-500/30 px-3 sm:px-6 py-2 flex items-center justify-between gap-3 text-xs shadow-md">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-red-400">
+            <span className="font-bold text-rose-400">
               {selectedIds.length} sélectionné(s)
             </span>
             <button
@@ -280,7 +869,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
                   setSelectedIds(filteredTrash.map(f => f.id));
                 }
               }}
-              className="text-stone-300 hover:text-white underline ml-2"
+              className="text-stone-300 hover:text-white underline ml-2 cursor-pointer"
             >
               {selectedIds.length === filteredTrash.length ? 'Tout désélectionner' : 'Tout sélectionner'}
             </button>
@@ -292,7 +881,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
                 <button
                   type="button"
                   onClick={handleRestoreSelected}
-                  className="px-3 py-1 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40 rounded-lg flex items-center gap-1 font-bold"
+                  className="px-3 py-1 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40 rounded-lg flex items-center gap-1 font-bold cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Restaurer ({selectedIds.length})</span>
@@ -301,10 +890,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
                 <button
                   type="button"
                   onClick={handleDeleteSelected}
-                  className="px-3 py-1 bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/40 rounded-lg flex items-center gap-1 font-bold"
+                  className="px-3 py-1 bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/40 rounded-lg flex items-center gap-1 font-bold cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Supprimer définitivement ({selectedIds.length})</span>
+                  <span>Supprimer ({selectedIds.length})</span>
                 </button>
               </>
             )}
@@ -314,7 +903,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
                 setIsSelectionMode(false);
                 setSelectedIds([]);
               }}
-              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded-lg"
+              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded-lg cursor-pointer"
             >
               Fermer
             </button>
@@ -322,17 +911,17 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         </div>
       )}
 
-      {/* CONTENU PRINCIPAL : LISTE DE LA CORBEILLE */}
-      <main className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-4 pb-32">
+      {/* CONTENU PRINCIPAL DE LA CORBEILLE */}
+      <main className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-5 pb-32">
         {loading ? (
-          <div className="py-20 flex flex-col items-center justify-center gap-3">
-            <div className="w-10 h-10 border-3 border-red-400 border-t-transparent rounded-full animate-spin" />
+          <div className="py-24 flex flex-col items-center justify-center gap-3">
+            <div className="w-10 h-10 border-3 border-rose-500 border-t-transparent rounded-full animate-spin" />
             <p className="text-sm font-semibold text-slate-400">Chargement de la corbeille...</p>
           </div>
         ) : filteredTrash.length === 0 ? (
           <div className="py-24 flex flex-col items-center justify-center text-center max-w-md mx-auto">
-            <div className="w-20 h-20 rounded-3xl bg-[#121829] border border-red-500/20 flex items-center justify-center mb-4 shadow-xl">
-              <Trash2 className="w-10 h-10 text-red-400 opacity-60 stroke-[1.5]" />
+            <div className="w-20 h-20 rounded-3xl bg-[#121829] border border-rose-500/20 flex items-center justify-center mb-4 shadow-xl">
+              <Trash2 className="w-10 h-10 text-rose-400 opacity-60 stroke-[1.5]" />
             </div>
             <h3 className="text-lg font-black text-white mb-1.5">
               {searchQuery ? 'Aucun élément trouvé' : 'La corbeille est vide'}
@@ -344,74 +933,84 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
             </p>
           </div>
         ) : (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between pb-2 text-xs font-bold text-slate-400">
-              <span>{filteredTrash.length} élément(s)</span>
-              <span className="hidden sm:inline">Restaurer pour renvoyer dans le dossier d'origine</span>
-            </div>
+          <div className="space-y-8">
+            {/* 1. SECTION FICHIERS AUDIO (CARRÉS AVEC LOGO MÉLODIE ET APERÇU) */}
+            {categorized.audios.length > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-amber-400 border-b border-amber-500/20 pb-1.5">
+                  <Music className="w-4 h-4" />
+                  <span>Fichiers Audio ({categorized.audios.length})</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+                  {categorized.audios.map(file => renderAudioCard(file))}
+                </div>
+              </section>
+            )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-              {filteredTrash.map((file) => {
-                const isChecked = selectedIds.includes(file.id);
+            {/* 2. SECTION DOCUMENTS */}
+            {categorized.documents.length > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-blue-400 border-b border-blue-500/20 pb-1.5">
+                  <FileText className="w-4 h-4" />
+                  <span>Documents ({categorized.documents.length})</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+                  {categorized.documents.map(file => renderDocumentCard(file))}
+                </div>
+              </section>
+            )}
 
-                return (
-                  <div
-                    key={file.id}
-                    className="group rounded-2xl p-3 bg-[#0B0F1D] hover:bg-[#121828] border border-white/10 hover:border-red-400/30 transition-all flex items-center justify-between gap-3"
-                  >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      {isSelectionMode ? (
-                        <div
-                          className="shrink-0 text-red-400 cursor-pointer"
-                          onClick={() => {
-                            if (isChecked) setSelectedIds(selectedIds.filter(id => id !== file.id));
-                            else setSelectedIds([...selectedIds, file.id]);
-                          }}
-                        >
-                          {isChecked ? <CheckSquare className="w-5 h-5 fill-red-500/20" /> : <Square className="w-5 h-5 text-slate-500" />}
-                        </div>
-                      ) : (
-                        <div className="p-2.5 rounded-xl bg-black/50 border border-white/10 shrink-0">
-                          {getFileIcon(file)}
-                        </div>
-                      )}
+            {/* 3. SECTION IMAGES */}
+            {categorized.images.length > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-emerald-400 border-b border-emerald-500/20 pb-1.5">
+                  <ImageIcon className="w-4 h-4" />
+                  <span>Images ({categorized.images.length})</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+                  {categorized.images.map(file => renderImageCard(file))}
+                </div>
+              </section>
+            )}
 
-                      <div className="min-w-0 flex-1">
-                        <h4 className="text-xs sm:text-sm font-bold text-white truncate" title={file.name}>
-                          {file.name}
-                        </h4>
-                        <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                          Origine : <span className="capitalize text-slate-300 font-semibold">{file.originalCategory || file.category}</span> • {file.size}
-                        </p>
-                      </div>
-                    </div>
+            {/* 4. SECTION VIDÉOS */}
+            {categorized.videos.length > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-purple-400 border-b border-purple-500/20 pb-1.5">
+                  <Film className="w-4 h-4" />
+                  <span>Vidéos ({categorized.videos.length})</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+                  {categorized.videos.map(file => renderVideoCard(file))}
+                </div>
+              </section>
+            )}
 
-                    {/* Actions directes : Restaurer & Supprimer définitivement */}
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleRestore(file)}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition-all active:scale-95"
-                        title="Restaurer à son emplacement d'origine"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Restaurer</span>
-                      </button>
+            {/* 5. SECTION CLASSEUR / DOSSIERS */}
+            {categorized.classeur.length > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-orange-400 border-b border-orange-500/20 pb-1.5">
+                  <FolderArchive className="w-4 h-4" />
+                  <span>Classeur & Dossiers ({categorized.classeur.length})</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+                  {categorized.classeur.map(file => renderClasseurCard(file))}
+                </div>
+              </section>
+            )}
 
-                      <button
-                        type="button"
-                        onClick={() => handleDeletePermanently(file)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 text-xs font-bold transition-all active:scale-95"
-                        title="Supprimer définitivement"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Supprimer</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            {/* 6. AUTRES FICHIERS */}
+            {categorized.others.length > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-slate-300 border-b border-white/10 pb-1.5">
+                  <FileText className="w-4 h-4" />
+                  <span>Autres Fichiers ({categorized.others.length})</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+                  {categorized.others.map(file => renderDocumentCard(file))}
+                </div>
+              </section>
+            )}
           </div>
         )}
       </main>
@@ -419,15 +1018,15 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
       {/* MODAL DE CONFIRMATION VIDER LA CORBEILLE */}
       {isConfirmEmptyOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-md rounded-3xl bg-[#0D1222] border border-red-500/30 p-6 shadow-2xl text-center space-y-4">
-            <div className="w-14 h-14 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-400 flex items-center justify-center mx-auto shadow-lg">
+          <div className="w-full max-w-md rounded-3xl bg-[#0D1222] border border-rose-500/40 p-6 shadow-2xl text-center space-y-4">
+            <div className="w-14 h-14 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-400 flex items-center justify-center mx-auto shadow-lg">
               <AlertTriangle className="w-7 h-7" />
             </div>
 
             <div>
               <h3 className="text-base font-black text-white">Vider toute la corbeille ?</h3>
               <p className="text-xs text-slate-300 mt-2 leading-relaxed">
-                Cette action supprimera définitivement les <span className="font-bold text-white">{trashList.length}</span> élément(s). Ils ne pourront plus être restaurés.
+                Cette action supprimera définitivement les <span className="font-bold text-white">{trashList.length}</span> élément(s). Ils seront effacés du stockage et ne pourront plus jamais être restaurés.
               </p>
             </div>
 
@@ -436,7 +1035,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
                 type="button"
                 onClick={() => setIsConfirmEmptyOpen(false)}
                 disabled={isProcessing}
-                className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs"
+                className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs cursor-pointer"
               >
                 Annuler
               </button>
@@ -444,7 +1043,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
                 type="button"
                 onClick={handleEmptyTrash}
                 disabled={isProcessing}
-                className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-xs shadow-lg shadow-red-600/30 flex items-center gap-1.5"
+                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-lg shadow-rose-600/30 flex items-center gap-1.5 cursor-pointer"
               >
                 {isProcessing ? 'Suppression...' : 'Oui, vider définitivement'}
               </button>
@@ -453,9 +1052,9 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         </div>
       )}
 
-      {/* TOAST FLOTTANT */}
+      {/* TOAST NOTIFICATION FLOTTANT */}
       {toastMessage && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0F1424] border border-red-500/40 text-red-300 px-4 py-2.5 rounded-full shadow-2xl text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0F1424] border border-rose-500/40 text-rose-300 px-4 py-2.5 rounded-full shadow-2xl text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
           <Check className="w-4 h-4 stroke-[3]" />
           <span>{toastMessage}</span>
         </div>

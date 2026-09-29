@@ -384,6 +384,13 @@ export const LocalSyncReplication = {
               } else {
                 CloudDataStore.setDocuments(state.documents.map(x => x.id === doc.id ? { ...x, ...fileItem } : x));
               }
+            } else if (cat === 'trash') {
+              const exists = state.trash.some(x => x.id === doc.id);
+              if (!exists) {
+                CloudDataStore.setTrashFiles([fileItem, ...state.trash]);
+              } else {
+                CloudDataStore.setTrashFiles(state.trash.map(x => x.id === doc.id ? { ...x, ...fileItem } : x));
+              }
             }
             upsertCount++;
           }

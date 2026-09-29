@@ -6375,11 +6375,22 @@ var index_default = {
             await env.DB.prepare(`
               DELETE FROM classeur_files WHERE id = ? AND user_id = ?
             `).bind(fileId, reqUserId).run();
+            await recordSyncItem(env.DB, reqUserId, fileId, "trash", {
+              id: file.id,
+              name: file.name,
+              size: file.size,
+              sizeBytes: file.size_bytes,
+              category: "classeur",
+              sourceCategory: "classeur",
+              originalFolderId: file.folder_id,
+              extension: file.extension || "txt",
+              date: file.date_formatted,
+              r2Key: file.r2_key,
+              url: file.file_url,
+              previewUrl: file.preview_url || file.file_url || ""
+            }, 0);
           }
-          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
-          });
-          await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
-          });
+          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
           await recordSyncItem(env.DB, reqUserId, fileId, "classeur", { id: fileId }, 1);
           recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
@@ -6592,11 +6603,24 @@ var index_default = {
               file.audio_url
             ).run();
             await env.DB.prepare(`DELETE FROM audio_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+            await recordSyncItem(env.DB, reqUserId, fileId, "trash", {
+              id: file.id,
+              name: file.name,
+              size: file.size,
+              sizeBytes: file.size_bytes,
+              category: "audio",
+              sourceCategory: "audio",
+              extension: "mp3",
+              date: file.date_formatted,
+              r2Key: file.r2_key,
+              url: file.audio_url,
+              previewUrl: file.cover_url || "",
+              coverUrl: file.cover_url || "",
+              artist: file.artist || "Artiste inconnu",
+              durationSec: file.duration_sec || 0
+            }, 0);
           }
-          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
-          });
-          await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
-          });
+          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
           await recordSyncItem(env.DB, reqUserId, fileId, "audio", { id: fileId }, 1);
           recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
@@ -6784,11 +6808,24 @@ var index_default = {
               file.image_url
             ).run();
             await env.DB.prepare(`DELETE FROM image_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+            await recordSyncItem(env.DB, reqUserId, fileId, "trash", {
+              id: file.id,
+              name: file.name,
+              size: file.size,
+              sizeBytes: file.size_bytes,
+              category: "images",
+              sourceCategory: "images",
+              extension: file.extension || "jpg",
+              date: file.date_formatted,
+              r2Key: file.r2_key,
+              url: file.image_url,
+              previewUrl: file.thumbnail_url || file.image_url || "",
+              thumbnailUrl: file.thumbnail_url || file.image_url || "",
+              width: file.width || 0,
+              height: file.height || 0
+            }, 0);
           }
-          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
-          });
-          await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
-          });
+          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
           await recordSyncItem(env.DB, reqUserId, fileId, "images", { id: fileId }, 1);
           recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
@@ -6964,11 +7001,24 @@ var index_default = {
               file.video_url
             ).run();
             await env.DB.prepare(`DELETE FROM video_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+            await recordSyncItem(env.DB, reqUserId, fileId, "trash", {
+              id: file.id,
+              name: file.name,
+              size: file.size,
+              sizeBytes: file.size_bytes,
+              category: "videos",
+              sourceCategory: "videos",
+              extension: file.extension || "mp4",
+              date: file.date_formatted,
+              r2Key: file.r2_key,
+              url: file.video_url,
+              previewUrl: file.thumbnail_url || file.video_url || "",
+              thumbnailUrl: file.thumbnail_url || file.video_url || "",
+              durationSec: file.duration_sec || 0,
+              resolution: file.resolution || "1080p"
+            }, 0);
           }
-          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
-          });
-          await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
-          });
+          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
           await recordSyncItem(env.DB, reqUserId, fileId, "videos", { id: fileId }, 1);
           recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
@@ -7154,11 +7204,23 @@ var index_default = {
               file.file_url
             ).run();
             await env.DB.prepare(`DELETE FROM document_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+            await recordSyncItem(env.DB, reqUserId, fileId, "trash", {
+              id: file.id,
+              name: file.name,
+              size: file.size,
+              sizeBytes: file.size_bytes,
+              category: "documents",
+              sourceCategory: "documents",
+              extension: file.extension || "pdf",
+              documentCategory: file.document_category || "COURS",
+              pageCount: file.page_count || 1,
+              date: file.date_formatted,
+              r2Key: file.r2_key,
+              url: file.file_url,
+              previewUrl: file.preview_url || file.file_url || ""
+            }, 0);
           }
-          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
-          });
-          await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
-          });
+          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
           await recordSyncItem(env.DB, reqUserId, fileId, "documents", { id: fileId }, 1);
           recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
@@ -7532,25 +7594,62 @@ var index_default = {
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
           const { results } = await env.DB.prepare(`
-            SELECT * FROM trash_files WHERE user_id = ? ORDER BY deleted_at DESC
+            SELECT t.*, m.thumbnail_url as m_thumbnail_url
+            FROM trash_files t
+            LEFT JOIN media_thumbnails m ON m.file_id = t.id AND m.user_id = t.user_id
+            WHERE t.user_id = ? 
+            ORDER BY t.deleted_at DESC
           `).bind(reqUserId).all();
-          const formatted = (results || []).map((t) => ({
-            id: t.id,
-            userId: t.user_id,
-            name: t.name,
-            size: t.size || "0 o",
-            sizeBytes: Number(t.size_bytes || 0),
-            category: t.category || "documents",
-            extension: t.extension || "",
-            sourceCategory: t.source_category || "documents",
-            originalFolderId: t.original_folder_id || "",
-            date: t.date_formatted || "",
-            deletedAt: t.deleted_at,
-            metadata: t.metadata_json ? JSON.parse(t.metadata_json) : {},
-            r2Key: t.r2_key || "",
-            url: t.file_url || "",
-            previewUrl: t.file_url || ""
-          }));
+          const formatted = (results || []).map((t) => {
+            let meta = {};
+            try {
+              meta = t.metadata_json ? (typeof t.metadata_json === "string" ? JSON.parse(t.metadata_json) : t.metadata_json) : {};
+            } catch (e) {
+              meta = {};
+            }
+            let finalUrl = t.file_url || "";
+            const cat = t.source_category || t.category || "documents";
+            if ((!finalUrl || finalUrl.startsWith("blob:")) && t.r2_key) {
+              finalUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(cat)}/${encodeURIComponent(t.r2_key)}`;
+            }
+            const preview = (t.m_thumbnail_url && !t.m_thumbnail_url.startsWith("blob:") ? t.m_thumbnail_url : null)
+              || meta.previewUrl
+              || meta.thumbnailUrl
+              || meta.coverUrl
+              || (cat === "images" ? finalUrl : null)
+              || "";
+
+            return {
+              id: t.id,
+              userId: t.user_id,
+              name: t.name,
+              size: t.size || "0 o",
+              sizeBytes: Number(t.size_bytes || 0),
+              category: t.category || "documents",
+              extension: t.extension || "",
+              sourceCategory: cat,
+              originalCategory: cat,
+              originalFolderId: t.original_folder_id || "",
+              date: t.date_formatted || "",
+              deletedAt: t.deleted_at,
+              metadata: meta,
+              r2Key: t.r2_key || "",
+              url: finalUrl,
+              previewUrl: preview,
+              thumbnailUrl: preview,
+              coverUrl: meta.coverUrl || preview,
+              title: meta.title || t.name,
+              artist: meta.artist || "Artiste inconnu",
+              album: meta.album || "",
+              durationSec: Number(meta.durationSec || meta.duration_sec || 0),
+              resolution: meta.resolution || "1080p",
+              width: Number(meta.width || 0),
+              height: Number(meta.height || 0),
+              isNotepad: Boolean(meta.isNotepad),
+              noteTitle: meta.notepadTitle || meta.noteTitle || "",
+              content: meta.notepadContent || meta.content || ""
+            };
+          });
           return jsonResponse({ success: true, data: formatted }, 200, origin);
         }
         if (method === "POST") {
@@ -7564,40 +7663,44 @@ var index_default = {
             if (item) {
               const srcCat = item.source_category || item.category || "documents";
               const origFolder = item.original_folder_id || "";
-              const meta = item.metadata_json ? JSON.parse(item.metadata_json) : {};
+              let meta = {};
+              try {
+                meta = item.metadata_json ? (typeof item.metadata_json === "string" ? JSON.parse(item.metadata_json) : item.metadata_json) : {};
+              } catch (e) {
+                meta = {};
+              }
               if (srcCat === "classeur_folder" || item.category === "folder") {
-                const fMeta = item.metadata_json ? JSON.parse(item.metadata_json) : {};
                 await env.DB.prepare(`
                   INSERT INTO classeur_folders (
                     id, user_id, parent_id, name, model_id, primary_color, accent_color,
                     icon_name, text_dark, position_x, position_y, display_order, zoom_level,
                     is_pinned, is_favorite, updated_at
                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                  ON CONFLICT(id) DO NOTHING
+                  ON CONFLICT(id) DO UPDATE SET name = excluded.name, updated_at = CURRENT_TIMESTAMP
                 `).bind(
                   item.id,
                   reqUserId,
-                  fMeta.parentId || fMeta.parent_id || null,
+                  meta.parentId || meta.parent_id || null,
                   item.name,
-                  fMeta.modelId || fMeta.model_id || "1",
-                  fMeta.primaryColor || fMeta.primary_color || "#EA580C",
-                  fMeta.accentColor || fMeta.accent_color || "#F97316",
-                  fMeta.iconName || fMeta.icon_name || "Folder",
-                  fMeta.textDark ? 1 : 0,
-                  Number(fMeta.positionX || fMeta.position_x || 0),
-                  Number(fMeta.positionY || fMeta.position_y || 0),
-                  Number(fMeta.displayOrder || fMeta.display_order || 0),
-                  Number(fMeta.zoomLevel || fMeta.zoom_level || 10),
-                  fMeta.isPinned ? 1 : 0,
-                  fMeta.isFavorite ? 1 : 0
+                  meta.modelId || meta.model_id || "1",
+                  meta.primaryColor || meta.primary_color || "#EA580C",
+                  meta.accentColor || meta.accent_color || "#F97316",
+                  meta.iconName || meta.icon_name || "Folder",
+                  meta.textDark ? 1 : 0,
+                  Number(meta.positionX || meta.position_y || 0),
+                  Number(meta.positionY || meta.position_y || 0),
+                  Number(meta.displayOrder || meta.display_order || 0),
+                  Number(meta.zoomLevel || meta.zoom_level || 10),
+                  meta.isPinned ? 1 : 0,
+                  meta.isFavorite ? 1 : 0
                 ).run();
               } else if (origFolder || srcCat === "classeur") {
                 await env.DB.prepare(`
                   INSERT INTO classeur_files (
                     id, user_id, folder_id, name, size, size_bytes, category, extension,
-                    date_formatted, is_notepad, notepad_title, notepad_content, r2_key, file_url, updated_at
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                  ON CONFLICT(id) DO NOTHING
+                    date_formatted, is_notepad, notepad_title, notepad_content, r2_key, file_url, preview_url, updated_at
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO UPDATE SET name = excluded.name, updated_at = CURRENT_TIMESTAMP
                 `).bind(
                   item.id,
                   reqUserId,
@@ -7605,58 +7708,120 @@ var index_default = {
                   item.name,
                   item.size,
                   item.size_bytes,
-                  item.category,
-                  item.extension,
+                  item.category || "documents",
+                  item.extension || "txt",
                   item.date_formatted,
                   meta.isNotepad ? 1 : 0,
                   meta.notepadTitle || "",
                   meta.content || "",
                   item.r2_key,
-                  item.file_url
+                  item.file_url,
+                  meta.previewUrl || item.file_url || ""
                 ).run();
               } else if (srcCat === "downloads") {
                 await env.DB.prepare(`
                   INSERT INTO download_files (id, user_id, name, size, size_bytes, category, extension, file_url, date_formatted, updated_at)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                  ON CONFLICT(id) DO NOTHING
+                  ON CONFLICT(id) DO UPDATE SET name = excluded.name, updated_at = CURRENT_TIMESTAMP
                 `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.category || "documents", item.extension || "", item.file_url, item.date_formatted).run();
               } else if (srcCat === "audio") {
                 await env.DB.prepare(`
-                  INSERT INTO audio_files (id, user_id, name, artist, duration_sec, size, size_bytes, audio_url, date_formatted, updated_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                  ON CONFLICT(id) DO NOTHING
+                  INSERT INTO audio_files (id, user_id, name, title, artist, album, duration_sec, size, size_bytes, date_formatted, r2_key, audio_url, cover_url, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO UPDATE SET name = excluded.name, title = excluded.title, audio_url = excluded.audio_url, cover_url = excluded.cover_url, updated_at = CURRENT_TIMESTAMP
                 `).bind(
                   item.id,
                   reqUserId,
                   item.name,
+                  meta.title || item.name,
                   meta.artist || "Artiste inconnu",
+                  meta.album || "",
                   Number(meta.durationSec || 0),
                   item.size,
                   item.size_bytes,
+                  item.date_formatted,
+                  item.r2_key,
                   item.file_url,
-                  item.date_formatted
+                  meta.coverUrl || ""
                 ).run();
               } else if (srcCat === "images") {
                 await env.DB.prepare(`
-                  INSERT INTO image_files (id, user_id, name, size, size_bytes, image_url, date_formatted, updated_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                  ON CONFLICT(id) DO NOTHING
-                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
+                  INSERT INTO image_files (id, user_id, name, size, size_bytes, width, height, extension, date_formatted, r2_key, image_url, thumbnail_url, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO UPDATE SET name = excluded.name, image_url = excluded.image_url, thumbnail_url = excluded.thumbnail_url, updated_at = CURRENT_TIMESTAMP
+                `).bind(
+                  item.id,
+                  reqUserId,
+                  item.name,
+                  item.size,
+                  item.size_bytes,
+                  Number(meta.width || 0),
+                  Number(meta.height || 0),
+                  item.extension || "jpg",
+                  item.date_formatted,
+                  item.r2_key,
+                  item.file_url,
+                  meta.thumbnailUrl || item.file_url || ""
+                ).run();
               } else if (srcCat === "videos") {
                 await env.DB.prepare(`
-                  INSERT INTO video_files (id, user_id, name, size, size_bytes, video_url, date_formatted, updated_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                  ON CONFLICT(id) DO NOTHING
-                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
+                  INSERT INTO video_files (id, user_id, name, size, size_bytes, duration_sec, resolution, extension, date_formatted, r2_key, video_url, thumbnail_url, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO UPDATE SET name = excluded.name, video_url = excluded.video_url, thumbnail_url = excluded.thumbnail_url, updated_at = CURRENT_TIMESTAMP
+                `).bind(
+                  item.id,
+                  reqUserId,
+                  item.name,
+                  item.size,
+                  item.size_bytes,
+                  Number(meta.durationSec || 0),
+                  meta.resolution || "1080p",
+                  item.extension || "mp4",
+                  item.date_formatted,
+                  item.r2_key,
+                  item.file_url,
+                  meta.thumbnailUrl || ""
+                ).run();
+              } else if (srcCat === "files" || srcCat === "study" || srcCat === "mes-fichiers") {
+                await env.DB.prepare(`
+                  INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO UPDATE SET name = excluded.name, file_url = excluded.file_url, updated_at = CURRENT_TIMESTAMP
+                `).bind(
+                  item.id,
+                  reqUserId,
+                  origFolder || meta.matiereId || null,
+                  item.name,
+                  item.size_bytes,
+                  meta.type || "application/octet-stream",
+                  item.extension || "",
+                  item.r2_key,
+                  item.file_url,
+                  Date.now()
+                ).run();
               } else {
                 await env.DB.prepare(`
-                  INSERT INTO document_files (id, user_id, name, size, size_bytes, file_url, date_formatted, updated_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                  ON CONFLICT(id) DO NOTHING
-                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
+                  INSERT INTO document_files (id, user_id, name, size, size_bytes, extension, document_category, page_count, date_formatted, r2_key, file_url, preview_url, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO UPDATE SET name = excluded.name, file_url = excluded.file_url, preview_url = excluded.preview_url, updated_at = CURRENT_TIMESTAMP
+                `).bind(
+                  item.id,
+                  reqUserId,
+                  item.name,
+                  item.size,
+                  item.size_bytes,
+                  item.extension || "pdf",
+                  meta.documentCategory || "COURS",
+                  Number(meta.pageCount || 1),
+                  item.date_formatted,
+                  item.r2_key,
+                  item.file_url,
+                  meta.previewUrl || item.file_url || ""
+                ).run();
               }
               await env.DB.prepare("DELETE FROM trash_files WHERE id = ? AND user_id = ?").bind(tid, reqUserId).run();
               await recordSyncItem(env.DB, reqUserId, tid, srcCat, item, 0);
+              await recordSyncItem(env.DB, reqUserId, tid, "trash", { id: tid }, 1);
             }
           }
           return jsonResponse({ success: true, message: `${targetIds.length} \xE9l\xE9ment(s) restaur\xE9(s) avec succ\xE8s` }, 200, origin);
@@ -7682,9 +7847,10 @@ var index_default = {
           for (const item of itemsToDelete) {
             await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(item.id, reqUserId).run().catch(() => {
             });
-            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(item.id, reqUserId).run().catch(() => {
-            });
-            await recordSyncItem(env.DB, reqUserId, item.id, item.category || "trash", { id: item.id }, 1);
+            await recordSyncItem(env.DB, reqUserId, item.id, "trash", { id: item.id }, 1);
+            if (item.category && item.category !== "trash") {
+              await recordSyncItem(env.DB, reqUserId, item.id, item.category, { id: item.id }, 1);
+            }
             if (item.r2_key) {
               const catBucket = getBucketForCategory(rawEnv, item.category);
               if (catBucket) await catBucket.delete(item.r2_key).catch(() => {
