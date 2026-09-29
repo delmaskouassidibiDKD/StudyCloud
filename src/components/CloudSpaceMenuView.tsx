@@ -71,21 +71,7 @@ export type CloudTabId =
   | 'secure-folder'
   | 'trash';
 
-// Les 12 applications éducatives StudyCloud
-const STUDY_APPS_LIST = [
-  { id: 'app-calc', name: 'Calculatrice Scientifique', category: 'Outils', icon: LayoutGrid, color: 'text-pink-400', desc: 'Calcul formel, trigonométrie et matrices' },
-  { id: 'app-board', name: 'Tableau Blanc Interactif', category: 'Étude', icon: Sparkles, color: 'text-cyan-400', desc: 'Dessin vectoriel et schémas scientifiques' },
-  { id: 'app-latex', name: 'Éditeur de Formules LaTeX', category: 'Maths', icon: FileCode, color: 'text-emerald-400', desc: "Rendu d'équations et export PDF" },
-  { id: 'app-pomo', name: 'Chronomètre & Pomodoro', category: 'Focus', icon: Clock, color: 'text-amber-400', desc: 'Gestion des sessions de travail et pauses' },
-  { id: 'app-dict', name: 'Dictionnaire Académique', category: 'Langues', icon: BookOpen, color: 'text-blue-400', desc: 'Définitions et terminologie scientifique' },
-  { id: 'app-quiz', name: 'Générateur de Quiz IA', category: 'Révision', icon: Sparkles, color: 'text-purple-400', desc: 'Auto-évaluation instantanée par cours' },
-  { id: 'app-notes', name: 'Bloc-Notes Express', category: 'Notes', icon: Pencil, color: 'text-rose-400', desc: 'Prise de notes rapides et brouillon' },
-  { id: 'app-flash', name: 'Flashcards de Mémorisation', category: 'Mémoire', icon: Layers, color: 'text-orange-400', desc: 'Cartes mémo avec répétition espacée' },
-  { id: 'app-sync', name: 'Cloud Drive Synchroniseur', category: 'Système', icon: Cloud, color: 'text-sky-400', desc: 'Sauvegarde automatique des cours' },
-  { id: 'app-pdf', name: 'Convertisseur PDF & Scan', category: 'Docs', icon: FileText, color: 'text-indigo-400', desc: 'Compression et fusion de documents' },
-  { id: 'app-audio', name: 'Studio Audio & Dictaphone', category: 'Médias', icon: Music, color: 'text-yellow-400', desc: 'Enregistrement de cours et podcasts' },
-  { id: 'app-planner', name: 'Planificateur de Devoirs', category: 'Planning', icon: CheckCircle2, color: 'text-teal-400', desc: 'Calendrier des examens et rendus' },
-];
+
 
 export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   onBack,
@@ -357,10 +343,6 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     return (storeData.secure || []).filter(s => !q || s.name.toLowerCase().includes(q));
   }, [storeData.secure, q]);
 
-  const filteredApps = useMemo(() => {
-    return STUDY_APPS_LIST.filter(app => !q || app.name.toLowerCase().includes(q) || app.desc.toLowerCase().includes(q));
-  }, [q]);
-
   // Éléments de la barre de carrousel horizontale de navigation
   const navTabs = [
     {
@@ -410,7 +392,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     {
       id: 'apps' as const,
       name: 'Applications',
-      countBadge: '12 installées',
+      countBadge: 'Indisponible',
       icon: LayoutGrid,
       color: 'text-pink-400',
     },
@@ -1036,43 +1018,6 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     );
   };
 
-  // =========================================================================
-  // CARTE APPLICATION
-  // =========================================================================
-  const renderAppCard = (app: typeof STUDY_APPS_LIST[0]) => {
-    const Icon = app.icon;
-
-    return (
-      <div
-        key={app.id}
-        onClick={() => showToast(`Lancement de l'application "${app.name}"...`)}
-        className="p-4 rounded-2xl bg-[#0A0D18] hover:bg-[#12182A] border border-white/10 hover:border-pink-400/50 transition-all flex flex-col justify-between group cursor-pointer shadow-sm active:scale-98"
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className={`p-3 rounded-2xl bg-black/50 border border-white/10 ${app.color} group-hover:scale-110 transition-transform`}>
-            <Icon className="w-6 h-6 stroke-[2.2]" />
-          </div>
-          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-slate-300">
-            {app.category}
-          </span>
-        </div>
-
-        <div className="mt-4">
-          <h4 className="text-xs sm:text-sm font-black text-white group-hover:text-pink-300 transition-colors truncate">
-            {app.name}
-          </h4>
-          <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-tight">
-            {app.desc}
-          </p>
-        </div>
-
-        <div className="mt-4 pt-2.5 border-t border-white/10 flex items-center justify-between text-xs font-bold text-pink-400">
-          <span>Ouvrir l'application</span>
-          <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-        </div>
-      </div>
-    );
-  };
 
   const handleCloseReader = () => {
     setViewerFile(null);
@@ -1739,15 +1684,17 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
 
           {/* ONGLET 7 : APPLICATIONS */}
           {activeTab === 'apps' && (
-            <div className="space-y-4 animate-in fade-in duration-200">
-              <div className="flex items-center justify-between">
-                <span className="text-xs sm:text-sm font-bold text-stone-700">
-                  {filteredApps.length} application{filteredApps.length > 1 ? 's' : ''} éducative{filteredApps.length > 1 ? 's' : ''} StudyCloud
-                </span>
-              </div>
-
-              <div className={`grid ${viewerFile ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'} gap-3.5`}>
-                {filteredApps.map(app => renderAppCard(app))}
+            <div className="min-h-[460px] flex flex-col items-center justify-center text-center px-4 py-20 animate-in fade-in duration-200">
+              <div className="max-w-lg mx-auto space-y-4">
+                <h3 className="text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+                  Ce menu n'est pas disponible pour le moment
+                </h3>
+                <p className="text-xs sm:text-sm text-stone-600 leading-relaxed font-normal">
+                  L'accès aux applications et aux outils intégrés est temporairement suspendu pour des travaux d'optimisation et de maintenance technique.
+                </p>
+                <p className="text-xs text-stone-500 font-medium">
+                  Ce service sera prochainement réactivé. Nous vous remercions pour votre compréhension.
+                </p>
               </div>
             </div>
           )}

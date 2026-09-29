@@ -11805,12 +11805,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
           {/* 7. APPLICATIONS */}
           {(currentSubView?.id === 'studycloud-category-apps' || (isCloudView && cloudActiveTab === 'apps')) && (
-            <div className="flex-1 w-full overflow-y-auto px-3 sm:px-6 md:px-10 lg:px-12 py-3 sm:py-4 pb-64 sm:pb-80">
-                <div className="py-28 text-center animate-in fade-in duration-200">
-                  <p className="text-sm sm:text-base font-semibold text-stone-600 dark:text-slate-300">
-                    Cette fonctionnalité n'est pas disponible pour le moment.
-                  </p>
-                </div>
+            <div className="flex-1 w-full flex flex-col items-center justify-center px-4 sm:px-6 md:px-10 text-center py-24 animate-in fade-in duration-200">
+              <div className="max-w-lg mx-auto space-y-4">
+                <h3 className="text-lg sm:text-xl font-bold text-stone-900 dark:text-white tracking-tight">
+                  Ce menu n'est pas disponible pour le moment
+                </h3>
+                <p className="text-xs sm:text-sm text-stone-600 dark:text-stone-300 leading-relaxed font-normal">
+                  L'accès aux applications et aux outils intégrés est temporairement suspendu pour des travaux d'optimisation et de maintenance technique.
+                </p>
+                <p className="text-xs text-stone-500 dark:text-stone-400 font-medium">
+                  Ce service sera prochainement réactivé. Nous vous remercions pour votre compréhension.
+                </p>
+              </div>
             </div>
           )}
 
