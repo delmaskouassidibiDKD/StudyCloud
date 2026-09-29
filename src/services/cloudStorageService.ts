@@ -1128,5 +1128,45 @@ export const CloudStorageAPI = {
       return false;
     }
   },
+
+  // --------------------------------------------------------------------------
+  // 15. MÉTHODES UTILITAIRES UNIFIÉES (Favoris, Épingles, Corbeille)
+  // --------------------------------------------------------------------------
+  async toggleFavorite(itemId: string, isFav: boolean, category: string = 'documents'): Promise<boolean> {
+    if (isFav) {
+      return this.addFavorite(itemId, category);
+    } else {
+      return this.removeFavorite(itemId);
+    }
+  },
+
+  async togglePin(itemId: string, isPinned: boolean, category: string = 'documents'): Promise<boolean> {
+    if (isPinned) {
+      return this.addPinned(itemId, category);
+    } else {
+      return this.removePinned(itemId);
+    }
+  },
+
+  async moveToTrash(itemId: string, category: string = 'documents', folderId?: string): Promise<boolean> {
+    try {
+      if (category === 'classeur' || folderId) {
+        return await this.deleteClasseurFile(itemId, folderId);
+      } else if (category === 'images') {
+        return await this.deleteImage(itemId);
+      } else if (category === 'videos') {
+        return await this.deleteVideo(itemId);
+      } else if (category === 'audio') {
+        return await this.deleteAudio(itemId);
+      } else if (category === 'downloads') {
+        return await this.deleteDownload(itemId);
+      } else {
+        return await this.deleteDocument(itemId);
+      }
+    } catch (e) {
+      console.error('[CloudStorageAPI] moveToTrash error:', e);
+      return false;
+    }
+  },
 };
 

@@ -222,7 +222,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       setStoreData(state);
     });
     // Forcer la synchronisation avec le cloud pour refléter en direct l'état le plus frais
-    CloudDataStore.syncFromCloud().catch(() => {});
+    CloudDataStore.sync(true).catch(() => {});
     return () => unsub();
   }, []);
 
@@ -303,20 +303,20 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   const handleToggleFavorite = (file: FileItem) => {
     const newFav = !file.isFavorite;
     CloudDataStore.toggleFavorite(file.id, newFav);
-    CloudStorageAPI.toggleFavorite(file.id, newFav).catch(() => {});
+    CloudStorageAPI.toggleFavorite(file.id, newFav, file.category || 'documents').catch(() => {});
     showToast(newFav ? `"${file.name}" ajouté aux favoris` : `"${file.name}" retiré des favoris`);
   };
 
   const handleTogglePin = (file: FileItem) => {
     const newPin = !file.isPinned;
     CloudDataStore.togglePin(file.id, newPin);
-    CloudStorageAPI.togglePin(file.id, newPin).catch(() => {});
+    CloudStorageAPI.togglePin(file.id, newPin, file.category || 'documents').catch(() => {});
     showToast(newPin ? `"${file.name}" épinglé en tête` : `"${file.name}" désépinglé`);
   };
 
   const handleDeleteFile = (file: FileItem) => {
     CloudDataStore.moveToTrash(file);
-    CloudStorageAPI.moveToTrash(file.id, file.category || 'documents').catch(() => {});
+    CloudStorageAPI.moveToTrash(file.id, file.category || 'documents', file.folderId).catch(() => {});
     showToast(`"${file.name}" déplacé vers la corbeille`);
     if (viewerFile?.id === file.id) setViewerFile(null);
   };
@@ -353,9 +353,10 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       setRenamingFile(null);
       return;
     }
-    const updated = { ...renamingFile, name: renameInputValue.trim() };
-    CloudDataStore.updateFile(updated);
-    showToast(`Fichier renommé en "${updated.name}"`);
+    const trimmed = renameInputValue.trim();
+    CloudDataStore.updateFile(renamingFile.id, { name: trimmed }, renamingFile.folderId);
+    CloudStorageAPI.renameItem(renamingFile.id, trimmed, renamingFile.category || 'documents', renamingFile.folderId).catch(() => {});
+    showToast(`Fichier renommé en "${trimmed}"`);
     setRenamingFile(null);
   };
 

@@ -295,6 +295,10 @@ export const CloudDataStore = {
 
   whenReady(): Promise<void> { return hydrationComplete; },
 
+  async syncFromCloud(force: boolean = false): Promise<void> {
+    return this.sync(force);
+  },
+
   async sync(force: boolean = false): Promise<void> {
     const now = Date.now();
     if (inFlightSyncPromise) return inFlightSyncPromise;
@@ -628,11 +632,24 @@ export const CloudDataStore = {
     notify();
   },
 
-  updateFile(fileId: string, updates: Partial<FileItem>, folderId?: string) {
-    const updateFn = (list: FileItem[]) => list.map(f => (f.id === fileId || (updates.id && f.id === updates.id)) ? { ...f, ...updates } : f);
+  updateFile(fileIdOrItem: string | (Partial<FileItem> & { id: string }), maybeUpdates?: Partial<FileItem>, maybeFolderId?: string) {
+    let targetId: string;
+    let patch: Partial<FileItem>;
+    let targetFolderId: string | undefined = maybeFolderId;
+
+    if (typeof fileIdOrItem === 'object' && fileIdOrItem !== null) {
+      targetId = fileIdOrItem.id;
+      patch = fileIdOrItem;
+      if (!targetFolderId) targetFolderId = (fileIdOrItem as any).folderId;
+    } else {
+      targetId = String(fileIdOrItem);
+      patch = maybeUpdates || {};
+    }
+
+    const updateFn = (list: FileItem[]) => list.map(f => (f.id === targetId || (patch.id && f.id === patch.id)) ? { ...f, ...patch } : f);
     const updatedMap = { ...currentState.folderFilesMap };
-    if (folderId && updatedMap[folderId]) {
-      updatedMap[folderId] = updateFn(updatedMap[folderId]);
+    if (targetFolderId && updatedMap[targetFolderId]) {
+      updatedMap[targetFolderId] = updateFn(updatedMap[targetFolderId]);
     } else {
       for (const k of Object.keys(updatedMap)) {
         updatedMap[k] = updateFn(updatedMap[k]);
@@ -912,6 +929,29 @@ export const CloudDataStore = {
       audio: updateFav(currentState.audio),
       folderFilesMap: updatedMap,
       favorites: allFiles.filter(f => favSet.has(f.id)),
+    };
+    persistToIndexedDB().catch(() => {});
+    notify();
+  },
+
+  togglePin(itemId: string, isPinned: boolean) {
+    const pinSet = new Set(currentState.pinIdSet);
+    if (isPinned) pinSet.add(itemId);
+    else pinSet.delete(itemId);
+
+    const updatePin = (list: FileItem[]) => list.map(f => f.id === itemId ? { ...f, isPinned } : f);
+    const updatedMap = { ...currentState.folderFilesMap };
+    for (const k of Object.keys(updatedMap)) {
+      updatedMap[k] = updatePin(updatedMap[k]);
+    }
+    currentState = {
+      ...currentState,
+      pinIdSet: pinSet,
+      documents: updatePin(currentState.documents),
+      images: updatePin(currentState.images),
+      videos: updatePin(currentState.videos),
+      audio: updatePin(currentState.audio),
+      folderFilesMap: updatedMap,
     };
     persistToIndexedDB().catch(() => {});
     notify();
