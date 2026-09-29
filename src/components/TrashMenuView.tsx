@@ -16,7 +16,12 @@ import {
   Square,
   Menu,
   Play,
-  FileEdit
+  FileEdit,
+  Eye,
+  Maximize2,
+  Minimize2,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
@@ -25,6 +30,10 @@ import { FileItem } from './Page1FilesMenuView';
 import { AudioCardPreview } from './AudioCardPreview';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { Classeur3DFolderCard, TxtDocumentSVG } from './Folder3DModels';
+import { ModernAudioPlayer } from './ModernAudioPlayer';
+import { ModernDocumentViewer } from './ModernDocumentViewer';
+import { ModernImageViewer } from './ModernImageViewer';
+import { ModernVideoPlayer } from './ModernVideoPlayer';
 
 const getDocumentTheme = (ext: string = 'PDF') => {
   const upper = (ext || 'PDF').toUpperCase();
@@ -82,6 +91,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'audio' | 'documents' | 'images' | 'videos' | 'classeur'>('all');
 
+  // Lecteur / visualiseur actif sur le panneau droit (split screen comme dans les autres menus)
+  const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
+  const [isViewerMaximized, setIsViewerMaximized] = useState(false);
+
   // UN SEUL menu 3-traits actif à la fois (ferme automatiquement tout autre menu)
   const [activeMenuFileId, setActiveMenuFileId] = useState<string | null>(null);
 
@@ -115,6 +128,21 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
       window.removeEventListener('pointerdown', handleOutsideClick);
     };
   }, []);
+
+  // Écoute de la touche Échap pour fermer le lecteur ou réduire le plein écran
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isViewerMaximized) {
+          setIsViewerMaximized(false);
+        } else if (selectedFile) {
+          setSelectedFile(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isViewerMaximized, selectedFile]);
 
   // Écoute en temps réel du CloudDataStore (synchronisation locale et réplication D1)
   useEffect(() => {
@@ -150,6 +178,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
 
   // Restaurer un fichier individuel
   const handleRestore = async (file: FileItem) => {
+    if (selectedFile?.id === file.id) {
+      setSelectedFile(null);
+      setIsViewerMaximized(false);
+    }
     setTrashList(prev => prev.filter(f => f.id !== file.id));
     CloudDataStore.restoreFromTrash(file as any);
     await CloudStorageAPI.restoreTrashItem(file.id).catch(() => {});
@@ -158,6 +190,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
 
   // Supprimer définitivement un fichier
   const handleDeletePermanently = async (file: FileItem) => {
+    if (selectedFile?.id === file.id) {
+      setSelectedFile(null);
+      setIsViewerMaximized(false);
+    }
     setTrashList(prev => prev.filter(f => f.id !== file.id));
     CloudDataStore.removeFile(file.id);
     deleteFileBlob(file.id).catch(() => {});
@@ -169,6 +205,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   const handleEmptyTrash = async () => {
     setIsProcessing(true);
     try {
+      setSelectedFile(null);
+      setIsViewerMaximized(false);
       const allIds = trashList.map(f => f.id);
       setTrashList([]);
       CloudDataStore.emptyTrash();
@@ -185,6 +223,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
 
   // Restaurer les éléments sélectionnés
   const handleRestoreSelected = async () => {
+    if (selectedFile && selectedIds.includes(selectedFile.id)) {
+      setSelectedFile(null);
+      setIsViewerMaximized(false);
+    }
     const toRestore = trashList.filter(f => selectedIds.includes(f.id));
     for (const f of toRestore) {
       await handleRestore(f);
@@ -195,6 +237,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
 
   // Supprimer définitivement les éléments sélectionnés
   const handleDeleteSelected = async () => {
+    if (selectedFile && selectedIds.includes(selectedFile.id)) {
+      setSelectedFile(null);
+      setIsViewerMaximized(false);
+    }
     const toDelete = trashList.filter(f => selectedIds.includes(f.id));
     for (const f of toDelete) {
       await handleDeletePermanently(f);
@@ -273,6 +319,43 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
     return { audios, documents, images, videos, classeur, others };
   }, [filteredTrash]);
 
+  // Détection précise du type pour charger le bon lecteur
+  const getFileType = (file: FileItem): 'audio' | 'video' | 'image' | 'folder' | 'note' | 'document' => {
+    const cat = (file.sourceCategory || file.originalCategory || file.category || '').toLowerCase();
+    const ext = (file.extension || (file.name.includes('.') ? file.name.split('.').pop() || '' : '')).toLowerCase();
+    const isFolder = Boolean(cat === 'classeur_folder' || file.category === 'folder' || (file as any).isFolder || (file as any).isClasseurFolder || (file.metadata && (file.metadata.model_id || file.metadata.modelId)));
+    const isNote = Boolean(file.isNotepad || file.category === 'notes' || file.name.endsWith('.txt') || ext === 'txt' || (file.metadata && file.metadata.isNotepad));
+
+    if (isFolder) return 'folder';
+    if (isNote) return 'note';
+    if (cat === 'audio' || file.isAudio || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes(ext)) return 'audio';
+    if (cat === 'videos' || file.isVideo || ['mp4', 'mov', 'mkv', 'webm', 'avi', '3gp'].includes(ext)) return 'video';
+    if (cat === 'images' || file.isImage || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'bmp'].includes(ext)) return 'image';
+    return 'document';
+  };
+
+  // Navigation vers l'élément précédent dans le lecteur
+  const handlePrevFile = () => {
+    if (!selectedFile) return;
+    const currentIndex = filteredTrash.findIndex(f => f.id === selectedFile.id);
+    if (currentIndex > 0) {
+      setSelectedFile(filteredTrash[currentIndex - 1]);
+    } else {
+      setSelectedFile(filteredTrash[filteredTrash.length - 1]);
+    }
+  };
+
+  // Navigation vers l'élément suivant dans le lecteur
+  const handleNextFile = () => {
+    if (!selectedFile) return;
+    const currentIndex = filteredTrash.findIndex(f => f.id === selectedFile.id);
+    if (currentIndex >= 0 && currentIndex < filteredTrash.length - 1) {
+      setSelectedFile(filteredTrash[currentIndex + 1]);
+    } else {
+      setSelectedFile(filteredTrash[0]);
+    }
+  };
+
   // =========================================================================
   // MENU DÉDIÉ 3 TRAITS FLOTTANT AU-DESSUS DE LA CARTE (SANS ÊTRE CONFONDU)
   // =========================================================================
@@ -312,6 +395,20 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
 
         {/* Options déroulantes */}
         <div className="py-1 divide-y divide-white/5">
+          {/* Option 0 : Ouvrir le lecteur / Lire l'aperçu */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedFile(file);
+              setActiveMenuFileId(null);
+            }}
+            className="w-full px-3 py-2 flex items-center gap-2.5 text-xs font-bold text-blue-400 hover:bg-blue-500/15 transition-colors cursor-pointer text-left"
+          >
+            <Eye className="w-4 h-4 shrink-0 text-blue-400" />
+            <span>Lire / Aperçu</span>
+          </button>
+
           {/* Option 1 : Cocher / Décocher */}
           <button
             type="button"
@@ -380,21 +477,32 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   const renderAudioCard = (file: FileItem, index: number) => {
     const isChecked = selectedIds.includes(file.id);
     const isMenuOpen = activeMenuFileId === file.id;
+    const isSelected = selectedFile?.id === file.id;
 
     return (
       <div
         key={file.id}
         onClick={() => {
-          if (isSelectionMode) toggleSelect(file.id);
+          if (isSelectionMode) {
+            toggleSelect(file.id);
+          } else {
+            setSelectedFile(file);
+          }
         }}
-        className={`group aspect-square rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none ${
-          isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 relative overflow-hidden'
+        className={`group aspect-square rounded-2xl bg-[#0A0D18] border transition-all duration-300 flex flex-col justify-between shadow-md select-none cursor-pointer ${
+          isMenuOpen
+            ? 'z-50 relative overflow-visible'
+            : isSelected
+            ? 'z-20 relative overflow-hidden'
+            : 'z-10 relative overflow-hidden'
         } ${
           isChecked
-            ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-xl'
+            ? 'border-amber-400 ring-4 ring-amber-400/40 shadow-xl scale-[1.02]'
+            : isSelected
+            ? 'border-amber-400 ring-2 ring-amber-400/90 shadow-2xl scale-[1.02]'
             : isMenuOpen
             ? 'border-rose-500 ring-2 ring-rose-500/40 shadow-2xl'
-            : 'border-stone-800/80 hover:border-amber-500/50'
+            : 'border-stone-800/80 hover:border-amber-500/50 hover:scale-[1.01]'
         }`}
       >
         {/* Arrière-plan : aperçu audio ou pochette créateur haute fidélité */}
@@ -469,6 +577,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   const renderDocumentCard = (file: FileItem, index: number) => {
     const isChecked = selectedIds.includes(file.id);
     const isMenuOpen = activeMenuFileId === file.id;
+    const isSelected = selectedFile?.id === file.id;
     const theme = getDocumentTheme(file.extension || (file.name.includes('.') ? file.name.split('.').pop() || 'PDF' : 'PDF'));
 
     return (
@@ -476,14 +585,20 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         key={file.id}
         style={{ background: theme.bg }}
         onClick={() => {
-          if (isSelectionMode) toggleSelect(file.id);
+          if (isSelectionMode) {
+            toggleSelect(file.id);
+          } else {
+            setSelectedFile(file);
+          }
         }}
-        className={`group aspect-[3/4] ${theme.border} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative select-none ${
+        className={`group aspect-[3/4] ${theme.border} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative select-none cursor-pointer ${
           isChecked
-            ? 'ring-4 ring-amber-400 shadow-2xl scale-[1.02] cursor-pointer'
+            ? 'ring-4 ring-amber-400 shadow-2xl scale-[1.02]'
+            : isSelected
+            ? 'ring-4 ring-white/90 shadow-2xl scale-[1.02] z-20'
             : isMenuOpen
             ? 'ring-4 ring-rose-500/80 shadow-2xl z-50 overflow-visible'
-            : 'hover:scale-[1.01] shadow-md cursor-pointer active:scale-98 z-10 overflow-hidden'
+            : 'hover:scale-[1.01] shadow-md active:scale-98 z-10 overflow-hidden'
         }`}
       >
         {/* Barre supérieure : Bouton 3 traits & Badge taille */}
@@ -552,22 +667,29 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   const renderImageCard = (file: FileItem, index: number) => {
     const isChecked = selectedIds.includes(file.id);
     const isMenuOpen = activeMenuFileId === file.id;
+    const isSelected = selectedFile?.id === file.id;
     const imgUrl = file.previewUrl || file.thumbnailUrl || (file as any).imageUrl || file.url || '';
 
     return (
       <div
         key={file.id}
         onClick={() => {
-          if (isSelectionMode) toggleSelect(file.id);
+          if (isSelectionMode) {
+            toggleSelect(file.id);
+          } else {
+            setSelectedFile(file);
+          }
         }}
-        className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none ${
-          isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 relative overflow-hidden'
+        className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all duration-300 flex flex-col justify-between shadow-md select-none cursor-pointer ${
+          isMenuOpen ? 'z-50 relative overflow-visible' : isSelected ? 'z-20 relative overflow-hidden' : 'z-10 relative overflow-hidden'
         } ${
           isChecked
-            ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-xl'
+            ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-xl scale-[1.02]'
+            : isSelected
+            ? 'border-emerald-400 ring-2 ring-emerald-400/90 shadow-2xl scale-[1.02]'
             : isMenuOpen
             ? 'border-rose-500 ring-2 ring-rose-500/40 shadow-2xl'
-            : 'border-stone-800/80 hover:border-emerald-500/50'
+            : 'border-stone-800/80 hover:border-emerald-500/50 hover:scale-[1.01]'
         }`}
       >
         {/* Arrière-plan vignette */}
@@ -639,22 +761,29 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   const renderVideoCard = (file: FileItem, index: number) => {
     const isChecked = selectedIds.includes(file.id);
     const isMenuOpen = activeMenuFileId === file.id;
+    const isSelected = selectedFile?.id === file.id;
     const vidUrl = file.previewUrl || file.thumbnailUrl || (file as any).videoUrl || file.url || '';
 
     return (
       <div
         key={file.id}
         onClick={() => {
-          if (isSelectionMode) toggleSelect(file.id);
+          if (isSelectionMode) {
+            toggleSelect(file.id);
+          } else {
+            setSelectedFile(file);
+          }
         }}
-        className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none ${
-          isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 relative overflow-hidden'
+        className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all duration-300 flex flex-col justify-between shadow-md select-none cursor-pointer ${
+          isMenuOpen ? 'z-50 relative overflow-visible' : isSelected ? 'z-20 relative overflow-hidden' : 'z-10 relative overflow-hidden'
         } ${
           isChecked
-            ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-xl'
+            ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-xl scale-[1.02]'
+            : isSelected
+            ? 'border-purple-400 ring-2 ring-purple-400/90 shadow-2xl scale-[1.02]'
             : isMenuOpen
             ? 'border-rose-500 ring-2 ring-rose-500/40 shadow-2xl'
-            : 'border-stone-800/80 hover:border-purple-500/50'
+            : 'border-stone-800/80 hover:border-purple-500/50 hover:scale-[1.01]'
         }`}
       >
         {/* Arrière-plan vignette vidéo */}
@@ -734,6 +863,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   // =========================================================================
   const renderClasseurCard = (file: FileItem, index: number) => {
     const isChecked = selectedIds.includes(file.id);
+    const isSelected = selectedFile?.id === file.id;
     const isMenuOpen = activeMenuFileId === file.id;
     const srcCat = (file.sourceCategory || file.originalCategory || file.category || '').toLowerCase();
     const isFolder = Boolean(srcCat === 'classeur_folder' || file.category === 'folder' || (file as any).isFolder || (file as any).isClasseurFolder || (file.metadata && (file.metadata.model_id || file.metadata.modelId)));
@@ -758,11 +888,17 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         <div
           key={file.id}
           onClick={() => {
-            if (isSelectionMode) toggleSelect(file.id);
+            if (isSelectionMode) {
+              toggleSelect(file.id);
+            } else {
+              setSelectedFile(file);
+            }
           }}
           className={`group relative rounded-2xl transition-all duration-200 flex flex-col justify-between shadow-lg select-none cursor-pointer bg-[#0A0D18] border p-2 sm:p-2.5 ${
             isChecked
               ? 'border-amber-400 ring-4 ring-amber-400/40 shadow-2xl'
+              : isSelected
+              ? 'border-orange-400 ring-2 ring-orange-400/90 shadow-2xl scale-[1.02] z-20'
               : isMenuOpen
               ? 'border-rose-500 ring-2 ring-rose-500/50 shadow-2xl z-50 overflow-visible'
               : 'border-stone-800/80 hover:border-orange-500/50 z-10 overflow-hidden'
@@ -830,11 +966,17 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         <div
           key={file.id}
           onClick={() => {
-            if (isSelectionMode) toggleSelect(file.id);
+            if (isSelectionMode) {
+              toggleSelect(file.id);
+            } else {
+              setSelectedFile(file);
+            }
           }}
           className={`group relative bg-[#0E1526] hover:bg-[#141E34] border rounded-2xl p-2 sm:p-2.5 shadow-lg transition-all duration-200 flex flex-col justify-between select-none cursor-pointer ${
             isChecked
               ? 'border-amber-400 ring-4 ring-amber-400/40 shadow-2xl'
+              : isSelected
+              ? 'border-cyan-400 ring-2 ring-cyan-400/90 shadow-2xl scale-[1.02] z-20'
               : isMenuOpen
               ? 'border-rose-500 ring-2 ring-rose-500/50 shadow-2xl z-50 overflow-visible'
               : 'border-white/10 hover:border-cyan-400/50 hover:-translate-y-1 z-10 overflow-hidden'
@@ -866,7 +1008,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
 
           {/* Illustration TXT Conforme strictement au Classeur (TxtDocumentSVG) */}
           <div className="w-full flex-1 flex items-center justify-center py-2 min-h-[110px] pointer-events-none">
-            <div className="w-24 sm:w-28 aspect-[160/215] drop-shadow-md group-hover:scale-105 transition-transform duration-200">
+            <div className="w-24 sm:w-28 drop-shadow-md group-hover:scale-105 transition-transform duration-200">
               <TxtDocumentSVG />
             </div>
           </div>
@@ -900,6 +1042,214 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
     return renderDocumentCard(file, index);
   };
 
+  // =========================================================================
+  // PANNEAU DE DROITE : LECTEUR DÉDIÉ PAR TYPE DE FICHIER (CORBEILLE)
+  // =========================================================================
+  const renderDedicatedReader = (file: FileItem) => {
+    const fileType = getFileType(file);
+
+    return (
+      <div className="w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none">
+        {/* Barre supérieure du lecteur */}
+        <div className="sticky top-0 z-30 w-full bg-[#0A0E1A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
+          {/* Navigation Précédent / Suivant et Titre du fichier */}
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={handlePrevFile}
+              className="p-1.5 rounded-full bg-black/60 hover:bg-[#1A2338] text-white border border-white/10 transition-colors cursor-pointer active:scale-95 shrink-0"
+              title="Élément précédent"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleNextFile}
+              className="p-1.5 rounded-full bg-black/60 hover:bg-[#1A2338] text-white border border-white/10 transition-colors cursor-pointer active:scale-95 shrink-0"
+              title="Élément suivant"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Icône du type */}
+            <div className="p-1.5 rounded-lg bg-black/80 border border-white/10 shrink-0">
+              {fileType === 'audio' && <Music className="w-3.5 h-3.5 text-amber-400" />}
+              {fileType === 'video' && <Film className="w-3.5 h-3.5 text-purple-400" />}
+              {fileType === 'image' && <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />}
+              {fileType === 'folder' && <FolderArchive className="w-3.5 h-3.5 text-orange-400" />}
+              {fileType === 'note' && <FileEdit className="w-3.5 h-3.5 text-cyan-400" />}
+              {fileType === 'document' && <FileText className="w-3.5 h-3.5 text-blue-400" />}
+            </div>
+
+            <div className="min-w-0 ml-1">
+              <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[130px] sm:max-w-[220px] md:max-w-[280px]" title={file.name}>
+                {file.name}
+              </p>
+              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold truncate">
+                <span>{file.size || '0 o'}</span>
+                <span>•</span>
+                <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 font-bold uppercase text-[9px] border border-rose-500/30">
+                  Corbeille
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Outils du lecteur à droite */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Bouton Restaurer rapide */}
+            <button
+              type="button"
+              onClick={() => handleRestore(file)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm"
+              title="Restaurer cet élément"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Restaurer</span>
+            </button>
+
+            {/* Bouton Supprimer définitivement */}
+            <button
+              type="button"
+              onClick={() => handleDeletePermanently(file)}
+              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm flex items-center gap-1"
+              title="Supprimer définitivement"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Supprimer</span>
+            </button>
+
+            {/* Bouton Agrandir / Réduire */}
+            <button
+              type="button"
+              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                isViewerMaximized ? 'bg-rose-600 text-white border-rose-400' : 'bg-black/60 hover:bg-[#1A2338] text-white border-white/10'
+              }`}
+              title={isViewerMaximized ? 'Réduire la vue' : 'Plein écran'}
+            >
+              {isViewerMaximized ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
+            </button>
+
+            {/* Bouton Fermer le lecteur */}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedFile(null);
+                setIsViewerMaximized(false);
+              }}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
+              title="Fermer le lecteur"
+            >
+              <X className="w-4 h-4 stroke-[2.5]" />
+            </button>
+          </div>
+        </div>
+
+        {/* Corps du lecteur selon le type */}
+        <div className="flex-1 w-full h-full overflow-hidden flex flex-col relative bg-[#04060A]">
+          {fileType === 'audio' && (
+            <div className="w-full h-full flex flex-col justify-center bg-[#070B14]">
+              <ModernAudioPlayer
+                fileId={file.id}
+                src={file.url}
+                fileName={file.name}
+                fileSize={file.size}
+                artist={file.artist || 'StudyCloud Corbeille'}
+                autoPlay={true}
+                className="w-full h-full border-0 rounded-none shadow-none"
+              />
+            </div>
+          )}
+
+          {fileType === 'video' && (
+            <div className="w-full h-full flex flex-col justify-center bg-black">
+              <ModernVideoPlayer
+                fileId={file.id}
+                src={file.url}
+                fileName={file.name}
+                fileSize={file.size}
+                className="w-full h-full border-0 rounded-none shadow-none"
+              />
+            </div>
+          )}
+
+          {fileType === 'image' && (
+            <div className="w-full h-full flex flex-col bg-[#070B14]">
+              <ModernImageViewer
+                fileId={file.id}
+                src={file.url}
+                fileName={file.name}
+                fileSize={file.size}
+                alt={file.name}
+                className="w-full h-full border-0 rounded-none shadow-none"
+              />
+            </div>
+          )}
+
+          {fileType === 'note' && (
+            <div className="w-full h-full flex flex-col bg-[#070B14] select-text">
+              <ModernDocumentViewer
+                fileId={file.id}
+                url={file.url}
+                fileName={file.name.endsWith('.txt') ? file.name : `${file.name}.txt`}
+                fileSize={file.size}
+                textContent={file.content || file.metadata?.notepadContent || file.metadata?.notepad_content || (file as any).notepadContent || ''}
+                className="w-full h-full border-0 rounded-none shadow-none"
+              />
+            </div>
+          )}
+
+          {fileType === 'document' && (
+            <div className="w-full h-full flex flex-col bg-[#070B14] select-text">
+              <ModernDocumentViewer
+                fileId={file.id}
+                url={file.url}
+                fileName={file.name}
+                fileSize={file.size}
+                className="w-full h-full border-0 rounded-none shadow-none"
+              />
+            </div>
+          )}
+
+          {fileType === 'folder' && (
+            <div className="w-full h-full overflow-y-auto bg-gradient-to-b from-[#0D1424] via-[#080B14] to-[#04060A] flex flex-col items-center justify-center p-6 text-center">
+              <div className="w-48 sm:w-56 drop-shadow-2xl mb-6 hover:scale-105 transition-transform duration-300 pointer-events-none">
+                <Classeur3DFolderCard folder={{
+                  id: file.id,
+                  name: file.name,
+                  modelId: file.metadata?.model_id || file.metadata?.modelId || '1',
+                  primaryColor: file.metadata?.primary_color || file.metadata?.primaryColor || '#EA580C',
+                  accentColor: file.metadata?.accent_color || file.metadata?.accentColor || '#F97316',
+                  iconName: file.metadata?.icon_name || file.metadata?.iconName || 'Folder',
+                  textDark: Boolean(file.metadata?.text_dark ?? file.metadata?.textDark),
+                  displayOrder: file.metadata?.display_order || 0,
+                  zoomLevel: file.metadata?.zoom_level || 10,
+                  itemCount: 0,
+                } as any} />
+              </div>
+              <h2 className="text-lg sm:text-xl font-black text-white mb-2">{file.name}</h2>
+              <p className="text-xs text-orange-400 font-bold uppercase tracking-wider mb-3 px-3 py-1 bg-orange-500/15 border border-orange-500/30 rounded-full inline-block">
+                Dossier 3D • Corbeille
+              </p>
+              <p className="text-xs text-slate-300 max-w-sm mb-6 leading-relaxed">
+                Ce dossier du Classeur est conservé dans la corbeille avec ses configurations 3D. Restaurez-le pour retrouver l'intégralité de ses éléments.
+              </p>
+              <button
+                type="button"
+                onClick={() => handleRestore(file)}
+                className="px-6 py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm flex items-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer active:scale-95"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Restaurer dans le Classeur</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div ref={containerRef} className="w-full h-full flex flex-col bg-white text-stone-900 select-none overflow-hidden animate-in fade-in duration-200">
       {/* EN-TÊTE FIXE DU MENU CORBEILLE (TOUJOURS ANCRÉ EN HAUT, NE BOUGE PAS AU DÉFILEMENT) */}
@@ -909,9 +1259,17 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <button
               type="button"
-              onClick={onBack}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                } else if (selectedFile) {
+                  setSelectedFile(null);
+                } else {
+                  onBack();
+                }
+              }}
               className="p-2 sm:p-2.5 rounded-full bg-[#182032] hover:bg-[#222c44] text-white border border-stone-700/50 transition-all cursor-pointer active:scale-95 shadow-sm"
-              title="Retour"
+              title={isViewerMaximized ? "Réduire la vue" : selectedFile ? "Fermer le lecteur" : "Retour"}
             >
               <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
             </button>
@@ -1068,109 +1426,156 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         </div>
       )}
 
-      {/* CONTENU PRINCIPAL DE LA CORBEILLE (TOTALEMENT BLANC ET DÉFILANT INDÉPENDAMMENT) */}
-      <main className="flex-1 w-full overflow-y-auto bg-white px-3 sm:px-6 md:px-10 lg:px-12 py-5 pb-64 sm:pb-80">
-        {loading ? (
-          <div className="py-24 flex flex-col items-center justify-center gap-3">
-            <div className="w-10 h-10 border-3 border-rose-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm font-semibold text-stone-500">Chargement de la corbeille...</p>
-          </div>
-        ) : filteredTrash.length === 0 ? (
-          <div className="py-24 flex flex-col items-center justify-center text-center max-w-md mx-auto">
-            <div className="w-20 h-20 rounded-3xl bg-rose-50 border border-rose-200 flex items-center justify-center mb-4 shadow-sm">
-              <Trash2 className="w-10 h-10 text-rose-500 opacity-60 stroke-[1.5]" />
+      {/* CONTENU PRINCIPAL DE LA CORBEILLE AVEC MODE SPLIT-SCREEN LORSQU'UN FICHIER EST SÉLECTIONNÉ */}
+      <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+        <main
+          className={`overflow-y-auto bg-white py-5 pb-64 sm:pb-80 transition-all duration-300 ${
+            isViewerMaximized && selectedFile
+              ? 'hidden'
+              : selectedFile
+              ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-200 px-3 sm:px-4'
+              : 'flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12'
+          }`}
+        >
+          {loading ? (
+            <div className="py-24 flex flex-col items-center justify-center gap-3">
+              <div className="w-10 h-10 border-3 border-rose-500 border-t-transparent rounded-full animate-spin" />
+              <p className="text-sm font-semibold text-stone-500">Chargement de la corbeille...</p>
             </div>
-            <h3 className="text-lg font-black text-stone-800 mb-1.5">
-              {searchQuery ? 'Aucun élément trouvé' : 'La corbeille est vide'}
-            </h3>
-            <p className="text-xs sm:text-sm text-stone-500 leading-relaxed">
-              {searchQuery
-                ? `Aucun élément de la corbeille ne correspond à "${searchQuery}".`
-                : 'Les fichiers supprimés depuis vos différents menus apparaîtront ici. Vous pourrez les restaurer à tout moment.'}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {/* 1. SECTION FICHIERS AUDIO (CARRÉS AVEC LOGO MÉLODIE ET APERÇU) */}
-            {categorized.audios.length > 0 && (
-              <section className="space-y-3">
-                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-amber-600 border-b border-stone-200 pb-2">
-                  <Music className="w-4 h-4" />
-                  <span>Fichiers Audio ({categorized.audios.length})</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-                  {categorized.audios.map((file, idx) => renderAudioCard(file, idx))}
-                </div>
-              </section>
-            )}
+          ) : filteredTrash.length === 0 ? (
+            <div className="py-24 flex flex-col items-center justify-center text-center max-w-md mx-auto">
+              <div className="w-20 h-20 rounded-3xl bg-rose-50 border border-rose-200 flex items-center justify-center mb-4 shadow-sm">
+                <Trash2 className="w-10 h-10 text-rose-500 opacity-60 stroke-[1.5]" />
+              </div>
+              <h3 className="text-lg font-black text-stone-800 mb-1.5">
+                {searchQuery ? 'Aucun élément trouvé' : 'La corbeille est vide'}
+              </h3>
+              <p className="text-xs sm:text-sm text-stone-500 leading-relaxed">
+                {searchQuery
+                  ? `Aucun élément de la corbeille ne correspond à "${searchQuery}".`
+                  : 'Les fichiers supprimés depuis vos différents menus apparaîtront ici. Vous pourrez les restaurer à tout moment.'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {/* 1. SECTION FICHIERS AUDIO (CARRÉS AVEC LOGO MÉLODIE ET APERÇU) */}
+              {categorized.audios.length > 0 && (
+                <section className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm sm:text-base font-black text-amber-600 border-b border-stone-200 pb-2">
+                    <Music className="w-4 h-4" />
+                    <span>Fichiers Audio ({categorized.audios.length})</span>
+                  </div>
+                  <div className={`grid gap-3 sm:gap-4 ${
+                    selectedFile
+                      ? 'grid-cols-2 lg:grid-cols-3'
+                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                  }`}>
+                    {categorized.audios.map((file, idx) => renderAudioCard(file, idx))}
+                  </div>
+                </section>
+              )}
 
-            {/* 2. SECTION CLASSEUR & DOSSIERS 3D */}
-            {categorized.classeur.length > 0 && (
-              <section className="space-y-3">
-                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-orange-600 border-b border-stone-200 pb-2">
-                  <FolderArchive className="w-4 h-4" />
-                  <span>Classeur & Dossiers ({categorized.classeur.length})</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-                  {categorized.classeur.map((file, idx) => renderClasseurCard(file, idx))}
-                </div>
-              </section>
-            )}
+              {/* 2. SECTION CLASSEUR & DOSSIERS 3D */}
+              {categorized.classeur.length > 0 && (
+                <section className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm sm:text-base font-black text-orange-600 border-b border-stone-200 pb-2">
+                    <FolderArchive className="w-4 h-4" />
+                    <span>Classeur & Dossiers ({categorized.classeur.length})</span>
+                  </div>
+                  <div className={`grid gap-3 sm:gap-4 ${
+                    selectedFile
+                      ? 'grid-cols-2 lg:grid-cols-3'
+                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                  }`}>
+                    {categorized.classeur.map((file, idx) => renderClasseurCard(file, idx))}
+                  </div>
+                </section>
+              )}
 
-            {/* 3. SECTION DOCUMENTS */}
-            {categorized.documents.length > 0 && (
-              <section className="space-y-3">
-                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-blue-600 border-b border-stone-200 pb-2">
-                  <FileText className="w-4 h-4" />
-                  <span>Documents ({categorized.documents.length})</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-                  {categorized.documents.map((file, idx) => renderDocumentCard(file, idx))}
-                </div>
-              </section>
-            )}
+              {/* 3. SECTION DOCUMENTS */}
+              {categorized.documents.length > 0 && (
+                <section className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm sm:text-base font-black text-blue-600 border-b border-stone-200 pb-2">
+                    <FileText className="w-4 h-4" />
+                    <span>Documents ({categorized.documents.length})</span>
+                  </div>
+                  <div className={`grid gap-3 sm:gap-4 ${
+                    selectedFile
+                      ? 'grid-cols-2 lg:grid-cols-3'
+                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                  }`}>
+                    {categorized.documents.map((file, idx) => renderDocumentCard(file, idx))}
+                  </div>
+                </section>
+              )}
 
-            {/* 4. SECTION IMAGES */}
-            {categorized.images.length > 0 && (
-              <section className="space-y-3">
-                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-emerald-600 border-b border-stone-200 pb-2">
-                  <ImageIcon className="w-4 h-4" />
-                  <span>Images ({categorized.images.length})</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-                  {categorized.images.map((file, idx) => renderImageCard(file, idx))}
-                </div>
-              </section>
-            )}
+              {/* 4. SECTION IMAGES */}
+              {categorized.images.length > 0 && (
+                <section className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm sm:text-base font-black text-emerald-600 border-b border-stone-200 pb-2">
+                    <ImageIcon className="w-4 h-4" />
+                    <span>Images ({categorized.images.length})</span>
+                  </div>
+                  <div className={`grid gap-3 sm:gap-4 ${
+                    selectedFile
+                      ? 'grid-cols-2 lg:grid-cols-3'
+                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                  }`}>
+                    {categorized.images.map((file, idx) => renderImageCard(file, idx))}
+                  </div>
+                </section>
+              )}
 
-            {/* 5. SECTION VIDÉOS */}
-            {categorized.videos.length > 0 && (
-              <section className="space-y-3">
-                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-purple-600 border-b border-stone-200 pb-2">
-                  <Film className="w-4 h-4" />
-                  <span>Vidéos ({categorized.videos.length})</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
-                  {categorized.videos.map((file, idx) => renderVideoCard(file, idx))}
-                </div>
-              </section>
-            )}
+              {/* 5. SECTION VIDÉOS */}
+              {categorized.videos.length > 0 && (
+                <section className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm sm:text-base font-black text-purple-600 border-b border-stone-200 pb-2">
+                    <Film className="w-4 h-4" />
+                    <span>Vidéos ({categorized.videos.length})</span>
+                  </div>
+                  <div className={`grid gap-3 sm:gap-4 ${
+                    selectedFile
+                      ? 'grid-cols-2 lg:grid-cols-3'
+                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
+                  }`}>
+                    {categorized.videos.map((file, idx) => renderVideoCard(file, idx))}
+                  </div>
+                </section>
+              )}
 
-            {/* 6. AUTRES FICHIERS */}
-            {categorized.others.length > 0 && (
-              <section className="space-y-3">
-                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-stone-700 border-b border-stone-200 pb-2">
-                  <FileText className="w-4 h-4" />
-                  <span>Autres Fichiers ({categorized.others.length})</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-                  {categorized.others.map((file, idx) => renderDocumentCard(file, idx))}
-                </div>
-              </section>
-            )}
-          </div>
+              {/* 6. AUTRES FICHIERS */}
+              {categorized.others.length > 0 && (
+                <section className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm sm:text-base font-black text-stone-700 border-b border-stone-200 pb-2">
+                    <FileText className="w-4 h-4" />
+                    <span>Autres Fichiers ({categorized.others.length})</span>
+                  </div>
+                  <div className={`grid gap-3 sm:gap-4 ${
+                    selectedFile
+                      ? 'grid-cols-2 lg:grid-cols-3'
+                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                  }`}>
+                    {categorized.others.map((file, idx) => renderDocumentCard(file, idx))}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
+        </main>
+
+        {/* PANNEAU DE DROITE : LECTEUR / APERÇU DÉDIÉ PAR TYPE DE FICHIER */}
+        {selectedFile && (
+          <aside
+            className={`transition-all duration-300 flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl ${
+              isViewerMaximized
+                ? 'fixed inset-0 z-50 w-full h-full'
+                : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-200 md:border-stone-800'
+            }`}
+          >
+            {renderDedicatedReader(selectedFile)}
+          </aside>
         )}
-      </main>
+      </div>
 
       {/* MODAL DE CONFIRMATION VIDER LA CORBEILLE */}
       {isConfirmEmptyOpen && (
