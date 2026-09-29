@@ -11,7 +11,7 @@ import { ScheduleMenuView } from './ScheduleMenuView';
 import { NotesMenuView } from './NotesMenuView';
 import { GradesMenuView } from './GradesMenuView';
 import { CalendarMenuView } from './CalendarMenuView';
-import { FavoritesMenuView } from './FavoritesMenuView';
+import { HomeFavoritesMenuView } from './HomeFavoritesMenuView';
 import { ClockMenuView } from './ClockMenuView';
 import { LevelMenuView } from './LevelMenuView';
 import { CalculatorMenuView } from './CalculatorMenuView';
@@ -1541,7 +1541,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'notes-menu' && <NotesMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'grades-menu' && <GradesMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'calendar-menu' && <CalendarMenuView onBack={() => setViewMode('home')} />}
-      {viewMode === 'favorites-menu' && <FavoritesMenuView onBack={() => setViewMode('home')} setActivePreviewItem={setActivePreviewItem} />}
+      {viewMode === 'favorites-menu' && <HomeFavoritesMenuView onBack={() => setViewMode('home')} setActivePreviewItem={setActivePreviewItem} />}
       {viewMode === 'clock-menu' && <ClockMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'level-menu' && <LevelMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'calculator-menu' && <CalculatorMenuView onBack={() => setViewMode('home')} />}
