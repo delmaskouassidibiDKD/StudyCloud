@@ -324,7 +324,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({ onBack, on
       {/* DISPOSITION SPLIT */}
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE */}
-        <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-6 py-4 pb-64 ${
+        <div className={`overflow-y-auto px-3 sm:px-6 py-4 pb-64 ${
           isViewerMaximized && selectedItem
             ? 'hidden'
             : selectedItem
@@ -396,7 +396,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({ onBack, on
 
         {/* PANNEAU DE DROITE : LECTEUR */}
         {selectedItem && (
-          <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+          <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
             isViewerMaximized && selectedItem
               ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]'
               : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'

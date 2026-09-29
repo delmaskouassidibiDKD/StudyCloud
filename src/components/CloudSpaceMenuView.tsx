@@ -226,8 +226,10 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     return () => unsub();
   }, []);
 
-  // Dès qu'un dossier du classeur est ouvert, rafraîchir immédiatement ses fichiers depuis le cloud
+  // Dès qu'un dossier du classeur change (ouverture, fermeture ou changement de dossier), fermer le lecteur et rafraîchir
   useEffect(() => {
+    setViewerFile(null);
+    setIsViewerMaximized(false);
     if (openedClasseurFolderId) {
       CloudStorageAPI.getClasseurFiles(openedClasseurFolderId).then((files) => {
         if (files) {
@@ -239,6 +241,12 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       }).catch(() => {});
     }
   }, [openedClasseurFolderId]);
+
+  // Fermer le lecteur dès qu'on change d'onglet dans l'espace cloud
+  useEffect(() => {
+    setViewerFile(null);
+    setIsViewerMaximized(false);
+  }, [activeTab]);
 
   // Fermer les menus 3 traits (fichiers ou dossiers) au clic en dehors
   useEffect(() => {
@@ -1961,6 +1969,8 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                     onClick={() => {
                       setActiveTab('classeur');
                       setActiveMenuFileId(null);
+                      setViewerFile(null);
+                      setIsViewerMaximized(false);
                     }}
                     className={`group relative flex items-center gap-2.5 px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl transition-all duration-200 cursor-pointer active:scale-95 shrink-0 ${
                       isSelected
@@ -1992,6 +2002,8 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   onClick={() => {
                     setActiveTab(item.id);
                     setActiveMenuFileId(null);
+                    setViewerFile(null);
+                    setIsViewerMaximized(false);
                   }}
                   className={`shrink-0 flex items-center gap-2.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl transition-all duration-200 cursor-pointer select-none active:scale-95 border ${
                     isSelected
@@ -2033,7 +2045,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           ========================================================================= */}
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-140px)]">
         {/* PANNEAU DE GAUCHE : CONTENU DYNAMIQUE SELON L'ONGLET */}
-        <main className={`transition-all duration-300 overflow-y-auto px-3 sm:px-6 py-5 pb-32 bg-stone-100 ${
+        <main className={`overflow-y-auto px-3 sm:px-6 py-5 pb-32 bg-stone-100 ${
           isViewerMaximized && viewerFile
             ? 'hidden'
             : viewerFile
@@ -2048,7 +2060,11 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
-                  onClick={() => setOpenedClasseurFolderId(null)}
+                  onClick={() => {
+                    setOpenedClasseurFolderId(null);
+                    setViewerFile(null);
+                    setIsViewerMaximized(false);
+                  }}
                   className={`text-xs font-bold transition-colors ${
                     openedClasseurFolderId
                       ? 'text-orange-600 hover:text-orange-700 cursor-pointer'
@@ -2062,7 +2078,11 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                     <BreadcrumbChevron className="w-3.5 h-3.5 text-stone-400" />
                     <button
                       type="button"
-                      onClick={() => setOpenedClasseurFolderId(parentFolder.id)}
+                      onClick={() => {
+                        setOpenedClasseurFolderId(parentFolder.id);
+                        setViewerFile(null);
+                        setIsViewerMaximized(false);
+                      }}
                       className="text-xs font-bold text-orange-600 hover:text-orange-700 cursor-pointer"
                     >
                       {parentFolder.name}
@@ -2381,7 +2401,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             PANNEAU DE DROITE : LECTEUR / VISIONNEUSE DÉDIÉE (SPLIT SCREEN)
             ========================================================================= */}
         {viewerFile && (
-          <div className={`transition-all duration-300 flex flex-col bg-[#04060A] text-white ${
+          <div className={`flex flex-col bg-[#04060A] text-white animate-in fade-in duration-150 ${
             isViewerMaximized
               ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)]'
               : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'

@@ -1938,7 +1938,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       {/* DISPOSITION SPLIT EN DEUX COLONNES (IMAGES 1 & 2) */}
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE DES SONS */}
-        <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+        <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
           selectedTrack
             ? `${isMobilePlayerOpen ? 'hidden md:block' : 'w-full'} md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80`
             : 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
@@ -2180,7 +2180,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
         {/* PANNEAU DE DROITE : LECTEUR AUDIO DÉDIÉ OU ÉTAT VIDE (IMAGES 1 & 2) */}
         {selectedTrack ? (
-          <div className={`transition-all duration-300 ${
+          <div className={`animate-in fade-in duration-150 ${
             isMobilePlayerOpen ? 'flex w-full min-h-[calc(100vh-120px)]' : 'hidden md:flex'
           } md:w-7/12 lg:w-7/12 xl:w-7/12 flex-col bg-[#090D1A] border-t md:border-t-0 md:border-l border-white/10`}>
             {renderAudioPlayer(selectedTrack)}

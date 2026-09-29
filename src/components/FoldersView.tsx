@@ -1612,7 +1612,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                       setActivePageIndex(0);
                       setViewMode('page1-files-menu');
                     }}
-                    className="group flex flex-col items-center cursor-pointer select-none transition-all duration-300 hover:scale-105 active:scale-95"
+                    className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-150 hover:scale-105 active:scale-[0.98]"
                   >
                     {/* Dossier 3D affiné, taille un peu réduite, teinté bleu doux avec bord orange et contour fin */}
                     <div className="w-24 h-21 sm:w-28 sm:h-24 md:w-32 md:h-28 transition-all duration-300 filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.15)] dark:drop-shadow-[0_10px_22px_rgba(0,0,0,0.45)] group-hover:drop-shadow-[0_14px_24px_rgba(56,189,248,0.35)]">

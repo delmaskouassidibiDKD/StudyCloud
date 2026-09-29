@@ -1827,7 +1827,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       {/* DISPOSITION SPLIT (IMAGE 4) */}
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE DES VIDÉOS (IMAGE 1) */}
-        <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+        <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
           isViewerMaximized && selectedVideo
             ? 'hidden'
             : selectedVideo
@@ -1916,7 +1916,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
 
         {/* PANNEAU DE DROITE : LECTEUR VIDÉO DÉDIÉ (IMAGE 4) */}
         {selectedVideo && (
-          <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+          <div className={`flex flex-col bg-[#04060A] animate-in fade-in duration-150 ${
             isViewerMaximized && selectedVideo
               ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]'
               : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'

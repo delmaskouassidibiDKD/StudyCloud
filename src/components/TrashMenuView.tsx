@@ -1429,7 +1429,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
       {/* CONTENU PRINCIPAL DE LA CORBEILLE AVEC MODE SPLIT-SCREEN LORSQU'UN FICHIER EST SÉLECTIONNÉ */}
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         <main
-          className={`overflow-y-auto bg-white py-5 pb-64 sm:pb-80 transition-all duration-300 ${
+          className={`overflow-y-auto bg-white py-5 pb-64 sm:pb-80 ${
             isViewerMaximized && selectedFile
               ? 'hidden'
               : selectedFile
@@ -1566,7 +1566,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         {/* PANNEAU DE DROITE : LECTEUR / APERÇU DÉDIÉ PAR TYPE DE FICHIER */}
         {selectedFile && (
           <aside
-            className={`transition-all duration-300 flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl ${
+            className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 ${
               isViewerMaximized
                 ? 'fixed inset-0 z-50 w-full h-full'
                 : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-200 md:border-stone-800'

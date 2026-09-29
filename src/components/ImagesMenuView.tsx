@@ -1817,7 +1817,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       {/* DISPOSITION SPLIT (IMAGE 5) */}
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE DES IMAGES (IMAGE 1) */}
-        <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+        <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
           isViewerMaximized && selectedImage
             ? 'hidden'
             : selectedImage
@@ -1905,7 +1905,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
 
         {/* PANNEAU DE DROITE : LECTEUR IMAGE DÉDIÉ (IMAGE 5) */}
         {selectedImage && (
-          <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+          <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
             isViewerMaximized && selectedImage
               ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]'
               : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'

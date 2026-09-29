@@ -401,7 +401,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const [dragOverFileId, setDragOverFileId] = useState<string | null>(null);
 
   // Liste ordonnée des dossiers 3D du Classeur (en mémoire de session)
-  const [classeur3DFolders, setClasseur3DFolders] = useState<ClasseurCreatedFolder[]>([]);
+  const [classeur3DFolders, setClasseur3DFolders] = useState<ClasseurCreatedFolder[]>(() => 
+    CloudDataStore.hasData() ? CloudDataStore.getState().classeurFolders : []
+  );
 
   // État d'ouverture du menu d'options 3 traits pour les dossiers 3D du Classeur
   const [activeFolderMenuId, setActiveFolderMenuId] = useState<string | null>(null);
@@ -454,6 +456,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Dossier 3D du Classeur actuellement ouvert pour afficher son menu dédié et ses fichiers
   const [opened3DFolder, setOpened3DFolder] = useState<ClasseurCreatedFolder | null>(null);
 
+  // Fermer immédiatement et proprement tout lecteur ouvert dès qu'on quitte ou change de dossier 3D
+  useEffect(() => {
+    setSelectedClasseurFile(null);
+    setSplitSelectedFile(null);
+    setIsViewerMaximized(false);
+  }, [opened3DFolder]);
+
   // Identifiant du dossier parent en cas de création de sous-dossier (dossier dans dossier)
   const [subFolderParentId, setSubFolderParentId] = useState<string | null>(null);
 
@@ -468,7 +477,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const [isNoteSavedIndicator, setIsNoteSavedIndicator] = useState<boolean>(true);
 
   // Table des fichiers par dossier 3D créé (en mémoire de session)
-  const [folderFilesMap, setFolderFilesMap] = useState<Record<string, FileItem[]>>({});
+  const [folderFilesMap, setFolderFilesMap] = useState<Record<string, FileItem[]>>(() => 
+    CloudDataStore.hasData() ? CloudDataStore.getState().folderFilesMap : {}
+  );
 
   const folderFileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingOverFolder, setIsDraggingOverFolder] = useState<boolean>(false);
@@ -1460,26 +1471,46 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Sous-page ouverte
   const [currentSubView, setCurrentSubView] = useState<SubMenuView | null>(null);
 
+  // Fermer immédiatement et proprement tous les lecteurs dès qu'on quitte ou change de sous-vue
+  useEffect(() => {
+    setSelectedDocFile(null);
+    setSelectedAudioTrack(null);
+    setSelectedVideoFile(null);
+    setSelectedImageFile(null);
+    setSelectedDownloadFile(null);
+    setSelectedClasseurFile(null);
+    setSelectedCollectionFile(null);
+    setSplitSelectedFile(null);
+    setIsViewerMaximized(false);
+  }, [currentSubView]);
+
   // État de l'onglet actif dans l'Espace Cloud (Classeur sélectionné par défaut comme demandé)
   const [cloudActiveTab, setCloudActiveTab] = useState<'classeur' | 'downloads' | 'images' | 'videos' | 'audio' | 'documents' | 'apps' | 'favorites' | 'secure-folder' | 'trash'>('classeur');
   const [selectedClasseurFolder, setSelectedClasseurFolder] = useState<string | null>(null);
-  const [trashFiles, setTrashFiles] = useState<FileItem[]>([]);
+  const [trashFiles, setTrashFiles] = useState<FileItem[]>(() => 
+    CloudDataStore.hasData() ? (CloudDataStore.getState().trash as any[]) : []
+  );
 
   // Suivi de l'état de chargement en direct de chaque catégorie / menu
-  const [loadingCategories, setLoadingCategories] = useState({
-    overview: true,
-    classeur: true,
-    documents: true,
-    images: true,
-    videos: true,
-    audio: true,
-    downloads: true,
-    trash: true,
-    secure: true,
-    favorites: true,
-    cloudStorage: true
+  const [loadingCategories, setLoadingCategories] = useState(() => {
+    const hasData = CloudDataStore.hasData();
+    return {
+      overview: !hasData,
+      classeur: !hasData,
+      documents: !hasData,
+      images: !hasData,
+      videos: !hasData,
+      audio: !hasData,
+      downloads: !hasData,
+      trash: !hasData,
+      secure: !hasData,
+      favorites: !hasData,
+      cloudStorage: !hasData
+    };
   });
-  const [cloudOverview, setCloudOverview] = useState<CloudOverviewData | null>(null);
+  const [cloudOverview, setCloudOverview] = useState<CloudOverviewData | null>(() => 
+    CloudDataStore.hasData() ? CloudDataStore.getState().overview : null
+  );
 
   // === Cache-First + Stale-While-Revalidate (architecture type Google Drive) ===
   useEffect(() => {
@@ -1902,22 +1933,32 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   // 1. DOCUMENTS (Stockage réel Cloudflare D1/R2 en mémoire de session)
-  const [documentsList, setDocumentsList] = useState<FileItem[]>([]);
+  const [documentsList, setDocumentsList] = useState<FileItem[]>(() => 
+    CloudDataStore.hasData() ? (CloudDataStore.getState().documents as any[]) : []
+  );
 
   // 2. IMAGES (Stockage réel Cloudflare D1/R2 en mémoire de session)
-  const [imagesList, setImagesList] = useState<FileItem[]>([]);
+  const [imagesList, setImagesList] = useState<FileItem[]>(() => 
+    CloudDataStore.hasData() ? (CloudDataStore.getState().images as any[]) : []
+  );
 
   // 3. VIDÉOS (Stockage réel Cloudflare D1/R2 en mémoire de session)
-  const [videosList, setVideosList] = useState<FileItem[]>([]);
+  const [videosList, setVideosList] = useState<FileItem[]>(() => 
+    CloudDataStore.hasData() ? (CloudDataStore.getState().videos as any[]) : []
+  );
 
   // 4. AUDIO / MUSIQUE (Stockage réel Cloudflare D1/R2 en mémoire de session)
-  const [audioList, setAudioList] = useState<FileItem[]>([]);
+  const [audioList, setAudioList] = useState<FileItem[]>(() => 
+    CloudDataStore.hasData() ? (CloudDataStore.getState().audio as any[]) : []
+  );
 
   // FICHIERS RÉCENTS : STUDYCLOUD (Strictement fichiers réels de l'utilisateur, 6 éléments max)
   const DEFAULT_RECENT_FILES: FileItem[] = [];
 
   // État des fichiers récents (en mémoire de session)
-  const [cloudRecentFiles, setCloudRecentFiles] = useState<FileItem[]>(DEFAULT_RECENT_FILES);
+  const [cloudRecentFiles, setCloudRecentFiles] = useState<FileItem[]>(() => 
+    CloudDataStore.hasData() ? ((CloudDataStore.getState().recentFiles || []) as any[]).slice(0, 6) : DEFAULT_RECENT_FILES
+  );
 
   // Helper pour vérifier strictement dans le compte de l'utilisateur si un fichier existe déjà dans son répertoire
   const checkDuplicateFiles = (
@@ -5817,6 +5858,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   } else {
                     setOpened3DFolder(null);
                   }
+                  setSelectedClasseurFile(null);
+                  setIsViewerMaximized(false);
                   setSplitSelectedFile(null);
                   setSubSearchQuery('');
                 }}
@@ -5849,6 +5892,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         type="button"
                         onClick={() => {
                           setOpened3DFolder(parentFolder);
+                          setSelectedClasseurFile(null);
+                          setIsViewerMaximized(false);
                           setSplitSelectedFile(null);
                           setSubSearchQuery('');
                         }}
@@ -10715,7 +10760,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onDrop={handleGlobalDrop}
-      className={`transition-colors duration-300 bg-[#F4F6F8] dark:bg-[#0C111D] text-stone-900 dark:text-slate-100 flex flex-col overflow-y-auto selection:bg-blue-600 selection:text-white ${
+      className={`animate-in fade-in duration-150 bg-[#F4F6F8] dark:bg-[#0C111D] text-stone-900 dark:text-slate-100 flex flex-col overflow-y-auto selection:bg-blue-600 selection:text-white ${
       isFullscreen
         ? 'fixed inset-0 z-[1000] w-screen h-screen'
         : 'fixed top-[64px] md:top-[68px] bottom-0 left-0 md:left-64 right-0 z-30 min-h-[calc(100vh-68px)]'
@@ -10864,6 +10909,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       } else {
                         setOpened3DFolder(null);
                       }
+                      setSelectedClasseurFile(null);
+                      setIsViewerMaximized(false);
                       setSplitSelectedFile(null);
                       setSubSearchQuery('');
                     }}
@@ -10896,6 +10943,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             type="button"
                             onClick={() => {
                               setOpened3DFolder(parentFolder);
+                              setSelectedClasseurFile(null);
+                              setIsViewerMaximized(false);
                               setSplitSelectedFile(null);
                               setSubSearchQuery('');
                             }}
@@ -11007,6 +11056,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     onClick={() => {
                       setCurrentSubView(null);
                       setOpened3DFolder(null);
+                      setSelectedClasseurFile(null);
+                      setIsViewerMaximized(false);
                       setSubSearchQuery('');
                       setSplitSelectedFile(null);
                       setIsSecureFolderUnlocked(false);
@@ -11355,7 +11406,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           {(currentSubView?.id === 'studycloud-category-documents' || (isCloudView && cloudActiveTab === 'documents')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : LISTE DES DOCUMENTS */}
-              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+              <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 isViewerMaximized 
                   ? 'hidden' 
                   : selectedDocFile
@@ -11395,7 +11446,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
               {/* PANNEAU DE DROITE : LECTEUR DOCUMENT INDÉPENDANT (IMAGE 1) */}
               {selectedDocFile && (
-                <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
                   isViewerMaximized 
                     ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
@@ -11410,7 +11461,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           {(currentSubView?.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : LISTE DES SONS */}
-              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+              <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 selectedAudioTrack
                   ? `${isMobilePlayerOpen ? 'hidden md:block' : 'w-full'} md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80`
                   : 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
@@ -11621,7 +11672,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
               {/* PANNEAU DE DROITE : LECTEUR AUDIO INDÉPENDANT (IMAGE 2 & IMAGE 3) */}
               {selectedAudioTrack ? (
-                <div className={`transition-all duration-300 ${
+                <div className={`animate-in fade-in duration-150 ${
                   isMobilePlayerOpen ? 'flex w-full min-h-[calc(100vh-120px)]' : 'hidden md:flex'
                 } md:w-7/12 lg:w-7/12 xl:w-7/12 flex-col bg-[#090D1A] border-t md:border-t-0 md:border-l border-white/10`}>
                   {renderAudioPlayer(selectedAudioTrack)}
@@ -11638,7 +11689,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           {(currentSubView?.id === 'studycloud-category-videos' || (isCloudView && cloudActiveTab === 'videos')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : LISTE DES VIDÉOS */}
-              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+              <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 isViewerMaximized 
                   ? 'hidden' 
                   : selectedVideoFile
@@ -11677,7 +11728,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
               {/* PANNEAU DE DROITE : LECTEUR VIDÉO INDÉPENDANT (IMAGE 4) */}
               {selectedVideoFile && (
-                <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
                   isViewerMaximized 
                     ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
@@ -11692,7 +11743,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           {(currentSubView?.id === 'studycloud-category-images' || (isCloudView && cloudActiveTab === 'images')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : LISTE DES IMAGES */}
-              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+              <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 isViewerMaximized 
                   ? 'hidden' 
                   : selectedImageFile
@@ -11731,7 +11782,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
               {/* PANNEAU DE DROITE : LECTEUR IMAGE INDÉPENDANT (IMAGE 5) */}
               {selectedImageFile && (
-                <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
                   isViewerMaximized 
                     ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
@@ -11746,7 +11797,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           {(currentSubView?.id === 'studycloud-category-downloads' || (isCloudView && cloudActiveTab === 'downloads')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : LISTE DES TÉLÉCHARGEMENTS */}
-              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+              <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 isViewerMaximized 
                   ? 'hidden' 
                   : selectedDownloadFile
@@ -11847,7 +11898,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
               {/* PANNEAU DE DROITE : LECTEUR INDÉPENDANT */}
               {selectedDownloadFile && (
-                <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
                   isViewerMaximized 
                     ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
@@ -11862,7 +11913,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           {(currentSubView?.id === 'studycloud-classeur-classeur' || (isCloudView && cloudActiveTab === 'classeur')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : ARBORESCENCE & FICHIERS */}
-              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+              <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 isViewerMaximized 
                   ? 'hidden' 
                   : opened3DFolder && selectedClasseurFile 
@@ -11990,8 +12041,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             return (
                               <motion.div
                                 key={folder.id}
-                                layout
-                                transition={{ type: 'spring', stiffness: 350, damping: 25 }}
                                 data-classeur-folder-id={folder.id}
                                 onPointerDown={(e) => handleFolderPointerDown(e, folder)}
                                 onClick={(e) => {
@@ -12099,7 +12148,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
               {/* PANNEAU DE DROITE : LECTEUR LORSQU'UN FICHIER DU DOSSIER EST OUVERT */}
               {opened3DFolder && selectedClasseurFile && (
-                <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
                   isViewerMaximized 
                     ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
@@ -12130,7 +12179,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           {/* 8. DOSSIER SÉCURISÉ */}
           {(currentSubView?.id === 'studycloud-collection-secure-folder' || (isCloudView && cloudActiveTab === 'secure-folder')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
-              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+              <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 isViewerMaximized 
                   ? 'hidden' 
                   : selectedCollectionFile
@@ -12185,7 +12234,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 </div>
               </div>
               {selectedCollectionFile && (
-                <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
                   isViewerMaximized 
                     ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
@@ -12199,7 +12248,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           {/* 9. FAVORIS */}
           {(currentSubView?.id === 'studycloud-collection-favorites' || (isCloudView && cloudActiveTab === 'favorites')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
-              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+              <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 isViewerMaximized 
                   ? 'hidden' 
                   : selectedCollectionFile
@@ -12272,7 +12321,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 </div>
               </div>
               {selectedCollectionFile && (
-                <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
                   isViewerMaximized 
                     ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
@@ -12286,7 +12335,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           {/* 10. CORBEILLE */}
           {(currentSubView?.id === 'studycloud-collection-trash' || (isCloudView && cloudActiveTab === 'trash')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
-              <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+              <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 isViewerMaximized 
                   ? 'hidden' 
                   : selectedCollectionFile
@@ -12388,7 +12437,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 </div>
               </div>
               {selectedCollectionFile && (
-                <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
+                <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
                   isViewerMaximized 
                     ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
