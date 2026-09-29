@@ -5,6 +5,7 @@ import {
   X,
   Cloud,
   FolderArchive,
+  Folder,
   Download,
   Image as ImageIcon,
   Film,
@@ -16,9 +17,8 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  ChevronRight as BreadcrumbChevron,
   Menu,
-  CheckSquare,
-  Square,
   Play,
   Pause,
   RotateCcw,
@@ -36,7 +36,8 @@ import {
 } from 'lucide-react';
 import { CloudDataStore, FileItem } from '../services/cloudDataStore';
 import { CloudStorageAPI } from '../services/cloudStorageService';
-import { getFileBlob, getFileBlobUrl, deleteFileBlob } from '../services/localFileStorage';
+import { getFileBlobUrl, deleteFileBlob } from '../services/localFileStorage';
+import { ClasseurCreatedFolder } from './Folder3DModels';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { ImageCardPreview } from './ImageCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
@@ -66,58 +67,6 @@ export type CloudTabId =
   | 'secure-folder'
   | 'trash';
 
-// Les 4 documents authentiques du Classeur StudyCloud issus des cours initiaux
-const DEFAULT_CLASSEUR_EXTRA_DOCS: FileItem[] = [
-  {
-    id: 'classeur-doc-1',
-    name: 'Fascicule complet - Circuits Électroniques & Lois de Kirchhoff.pdf',
-    category: 'classeur',
-    originalCategory: 'classeur',
-    source: 'Classeur StudyCloud',
-    size: '1.8 Mo',
-    sizeBytes: 1887436,
-    date: "Aujourd'hui, 09:30",
-    extension: 'PDF',
-    isPinned: true
-  },
-  {
-    id: 'classeur-doc-2',
-    name: 'Cahier de Révision - Mathématiques & Algèbre Linéaire.pdf',
-    category: 'classeur',
-    originalCategory: 'classeur',
-    source: 'Classeur StudyCloud',
-    size: '2.4 Mo',
-    sizeBytes: 2516582,
-    date: "Aujourd'hui, 08:15",
-    extension: 'PDF',
-    isPinned: false
-  },
-  {
-    id: 'classeur-doc-3',
-    name: 'Synthèse Pédagogique - Macroéconomie & Marchés Financiers.pdf',
-    category: 'classeur',
-    originalCategory: 'classeur',
-    source: 'Classeur StudyCloud',
-    size: '980 Ko',
-    sizeBytes: 1003520,
-    date: 'Hier, 16:40',
-    extension: 'PDF',
-    isPinned: false
-  },
-  {
-    id: 'classeur-doc-4',
-    name: "Guide d'Étude & Travaux Pratiques - Électronique Appliquée.pdf",
-    category: 'classeur',
-    originalCategory: 'classeur',
-    source: 'Classeur StudyCloud',
-    size: '3.1 Mo',
-    sizeBytes: 3250585,
-    date: 'Hier, 11:10',
-    extension: 'PDF',
-    isPinned: true
-  }
-];
-
 // Les 12 applications éducatives StudyCloud
 const STUDY_APPS_LIST = [
   { id: 'app-calc', name: 'Calculatrice Scientifique', category: 'Outils', icon: LayoutGrid, color: 'text-pink-400', desc: 'Calcul formel, trigonométrie et matrices' },
@@ -141,16 +90,15 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   onOpenStudySpace,
   onOpenCreateShareLink
 }) => {
-  // Onglet actif : 'classeur' par défaut exactement comme sur la photo
+  // Onglet actif : 'classeur' par défaut
   const [activeTab, setActiveTab] = useState<CloudTabId>('classeur');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Données locales issues de CloudDataStore (miroir sans table D1 dédiée)
+  // Navigation dans le classeur (dossier ouvert)
+  const [openedClasseurFolderId, setOpenedClasseurFolderId] = useState<string | null>(null);
+
+  // Données issues de CloudDataStore (miroir temps réel)
   const [storeData, setStoreData] = useState(() => CloudDataStore.getState());
-  const [classeurDocs, setClasseurDocs] = useState<FileItem[]>(() => {
-    const existing = CloudDataStore.getState().documents || [];
-    return [...DEFAULT_CLASSEUR_EXTRA_DOCS, ...existing];
-  });
 
   // Gestion du menu d'options 3 traits
   const [activeMenuFileId, setActiveMenuFileId] = useState<string | null>(null);
@@ -183,7 +131,6 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   useEffect(() => {
     const unsub = CloudDataStore.subscribe((state) => {
       setStoreData(state);
-      setClasseurDocs([...DEFAULT_CLASSEUR_EXTRA_DOCS, ...(state.documents || [])]);
     });
     return () => unsub();
   }, []);
@@ -311,9 +258,36 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   // =========================================================================
   const q = searchQuery.trim().toLowerCase();
 
-  const filteredClasseurDocs = useMemo(() => {
-    return classeurDocs.filter(d => !q || d.name.toLowerCase().includes(q));
-  }, [classeurDocs, q]);
+  // Dossiers Classeur racine (sans parentId)
+  const classeurRootFolders = useMemo(() => {
+    return (storeData.classeurFolders || []).filter(f => !f.parentId);
+  }, [storeData.classeurFolders]);
+
+  // Sous-dossiers du dossier ouvert
+  const classeurSubFolders = useMemo(() => {
+    if (!openedClasseurFolderId) return [];
+    return (storeData.classeurFolders || []).filter(f => f.parentId === openedClasseurFolderId);
+  }, [storeData.classeurFolders, openedClasseurFolderId]);
+
+  // Fichiers dans le dossier ouvert
+  const classeurFolderFiles = useMemo(() => {
+    if (!openedClasseurFolderId) return [];
+    const files = (storeData.folderFilesMap || {})[openedClasseurFolderId] || [];
+    return q ? files.filter(f => f.name.toLowerCase().includes(q)) : files;
+  }, [storeData.folderFilesMap, openedClasseurFolderId, q]);
+
+  // Dossiers filtrés par recherche (vue racine)
+  const filteredClasseurFolders = useMemo(() => {
+    return q
+      ? classeurRootFolders.filter(f => f.name.toLowerCase().includes(q))
+      : classeurRootFolders;
+  }, [classeurRootFolders, q]);
+
+  // Infos du dossier ouvert
+  const openedFolder = useMemo(() => {
+    if (!openedClasseurFolderId) return null;
+    return (storeData.classeurFolders || []).find(f => f.id === openedClasseurFolderId) || null;
+  }, [storeData.classeurFolders, openedClasseurFolderId]);
 
   const filteredDownloads = useMemo(() => {
     const list = storeData.downloads || [];
@@ -338,7 +312,6 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
 
   const filteredFavorites = useMemo(() => {
     const all = [
-      ...classeurDocs,
       ...(storeData.documents || []),
       ...(storeData.images || []),
       ...(storeData.videos || []),
@@ -347,7 +320,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     const unique = all.filter((f, idx, arr) => arr.findIndex(x => x.id === f.id) === idx);
     const favs = unique.filter(f => f.isFavorite || f.isPinned);
     return favs.filter(f => !q || f.name.toLowerCase().includes(q));
-  }, [classeurDocs, storeData.documents, storeData.images, storeData.videos, storeData.audio, q]);
+  }, [storeData.documents, storeData.images, storeData.videos, storeData.audio, q]);
 
   const filteredTrash = useMemo(() => {
     return (storeData.trash || []).filter(t => !q || t.name.toLowerCase().includes(q));
@@ -366,7 +339,9 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     {
       id: 'classeur' as const,
       name: 'Classeur',
-      countBadge: `${filteredClasseurDocs.length} docs`,
+      countBadge: classeurRootFolders.length > 0
+        ? `${classeurRootFolders.length} dossier${classeurRootFolders.length > 1 ? 's' : ''}`
+        : 'Vide',
       icon: FolderArchive,
       color: 'text-orange-400',
     },
@@ -608,16 +583,86 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   };
 
   // =========================================================================
-  // CARTE DOCUMENT DU CLASSEUR (EXACTE COMME DANS LA PHOTO DU CLIENT)
+  // CARTE DOSSIER CLASSEUR (REFLET FIDÈLE DES VRAIS DOSSIERS)
+  // =========================================================================
+  const renderClasseurFolderCard = (folder: ClasseurCreatedFolder) => {
+    const filesInFolder = (storeData.folderFilesMap || {})[folder.id] || [];
+    const subFolderCount = (storeData.classeurFolders || []).filter(f => f.parentId === folder.id).length;
+    const totalItems = filesInFolder.length + subFolderCount;
+
+    return (
+      <div
+        key={folder.id}
+        onClick={() => {
+          setOpenedClasseurFolderId(folder.id);
+          setActiveMenuFileId(null);
+        }}
+        className="aspect-[3/4] rounded-2xl p-3 flex flex-col justify-between transition-all relative group select-none cursor-pointer active:scale-[0.98] shadow-md border-2 hover:scale-[1.02]"
+        style={{
+          background: `linear-gradient(160deg, ${folder.primaryColor}CC 0%, ${folder.primaryColor}88 100%)`,
+          borderColor: `${folder.primaryColor}80`,
+          boxShadow: `0 4px 20px ${folder.primaryColor}30`
+        }}
+        title={folder.name}
+      >
+        {/* Icône dossier + badge items */}
+        <div className="flex items-center justify-between gap-1 z-20 relative">
+          <div
+            className="p-2 rounded-xl border border-white/30"
+            style={{ backgroundColor: `${folder.primaryColor}40` }}
+          >
+            <FolderArchive className="w-5 h-5 text-white stroke-[2.2]" />
+          </div>
+          <span className="text-[9px] font-bold bg-black/40 text-white border border-white/20 px-2 py-0.5 rounded-full shadow-sm">
+            {totalItems} élément{totalItems > 1 ? 's' : ''}
+          </span>
+        </div>
+
+        {/* Aperçu miniature des fichiers */}
+        <div className="flex-1 w-full my-2 overflow-hidden rounded-xl bg-white/10 border border-white/20 flex flex-col items-center justify-center gap-1 p-2 pointer-events-none">
+          {filesInFolder.length === 0 && subFolderCount === 0 ? (
+            <div className="text-center">
+              <FolderArchive className="w-8 h-8 mx-auto text-white/40 mb-1" />
+              <p className="text-[9px] text-white/50 font-medium">Dossier vide</p>
+            </div>
+          ) : (
+            <div className="w-full space-y-1">
+              {subFolderCount > 0 && (
+                <div className="flex items-center gap-1.5 bg-white/10 rounded-lg px-2 py-1">
+                  <Folder className="w-3 h-3 text-white/70 shrink-0" />
+                  <span className="text-[9px] text-white/70 font-semibold truncate">{subFolderCount} sous-dossier{subFolderCount > 1 ? 's' : ''}</span>
+                </div>
+              )}
+              {filesInFolder.slice(0, 3).map((f, i) => (
+                <div key={i} className="flex items-center gap-1.5 bg-white/10 rounded-lg px-2 py-1">
+                  <FileText className="w-3 h-3 text-white/70 shrink-0" />
+                  <span className="text-[9px] text-white/70 font-medium truncate">{f.name}</span>
+                </div>
+              ))}
+              {filesInFolder.length > 3 && (
+                <p className="text-[8px] text-white/40 text-center">+{filesInFolder.length - 3} autres</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Nom du dossier */}
+        <div className="px-0.5">
+          <p className="text-[10px] sm:text-[11px] font-black text-white truncate drop-shadow-md" title={folder.name}>
+            {folder.name}
+          </p>
+          <p className="text-[8px] text-white/60 font-medium mt-0.5">{folder.dateText}</p>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // CARTE DOCUMENT DANS UN DOSSIER CLASSEUR
   // =========================================================================
   const renderClasseurCard = (doc: FileItem, index: number) => {
     const isMenuOpen = activeMenuFileId === doc.id;
     const alignRight = (index + 1) % 2 === 0 || (index + 1) % 4 === 0;
-
-    // Rendu réaliste identique à la photo pour les fascicules d'étude
-    const isKirchhoff = doc.name.toLowerCase().includes('circuits') || doc.name.toLowerCase().includes('kirchhoff');
-    const isMath = doc.name.toLowerCase().includes('math') || doc.name.toLowerCase().includes('algèbre');
-    const isEco = doc.name.toLowerCase().includes('macro') || doc.name.toLowerCase().includes('financ');
 
     return (
       <div
@@ -652,62 +697,13 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           </div>
 
           <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/50 text-white border border-white/20 px-1.5 py-0.5 rounded shadow-sm">
-            {doc.size || '1.8 Mo'}
+            {doc.size || 'Document'}
           </span>
         </div>
 
-        {/* Corps de carte / aperçu schéma ou miniature (exactement comme sur l'image) */}
-        <div className="flex-1 w-full my-1.5 overflow-hidden rounded-lg bg-white p-2 relative shadow-inner border border-white/20 flex flex-col justify-between pointer-events-none">
-          {/* En-tête : CME et StudyCloud */}
-          <div className="flex items-center justify-between border-b border-stone-200 pb-1">
-            <span className="text-[9px] font-black text-red-600 tracking-tighter">cme</span>
-            <span className="text-[7px] font-bold bg-stone-900 text-white px-1 py-0.2 rounded">StudyCloud</span>
-          </div>
-
-          {/* Titre et définition */}
-          <div className="my-1">
-            <p className="text-[7px] sm:text-[8px] font-black text-stone-800 leading-tight uppercase line-clamp-2">
-              {isKirchhoff
-                ? 'AMPLIFICATEUR OPERATIONNEL EN REGIME LINEAIRE : MONTAGES DE..'
-                : isMath
-                ? 'ESPACES VECTORIELS & APPLICATIONS LINEAIRES : COURS COMPLET'
-                : isEco
-                ? 'MACROÉCONOMIE FINANCIÈRE & POLITIQUE MONÉTAIRE EUROPÉENNE'
-                : doc.name.replace(/\.[^/.]+$/, '').toUpperCase()}
-            </p>
-            <p className="text-[6px] text-stone-500 font-semibold mt-0.5">1. Définition</p>
-          </div>
-
-          {/* Schéma triangle d'amplificateur opérationnel identique à la photo */}
-          <div className="w-full h-12 flex items-center justify-center bg-stone-50 rounded border border-stone-200/80 my-0.5">
-            {isKirchhoff || (!isMath && !isEco) ? (
-              <svg className="w-full h-full max-h-11" viewBox="0 0 100 45" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <polygon points="35,5 35,40 70,22.5" fill="#FFFFFF" stroke="#1c1917" strokeWidth="1.5" />
-                <line x1="15" y1="14" x2="35" y2="14" stroke="#1c1917" strokeWidth="1.2" />
-                <line x1="15" y1="31" x2="35" y2="31" stroke="#1c1917" strokeWidth="1.2" />
-                <text x="38" y="16" fontSize="7" fontWeight="bold" fill="#1c1917">-</text>
-                <text x="38" y="33" fontSize="7" fontWeight="bold" fill="#1c1917">+</text>
-                <line x1="70" y1="22.5" x2="90" y2="22.5" stroke="#1c1917" strokeWidth="1.2" />
-                <text x="91" y="24" fontSize="6" fontWeight="bold" fill="#1c1917">Vs</text>
-              </svg>
-            ) : isMath ? (
-              <div className="text-[8px] font-mono font-bold text-stone-700 text-center leading-tight">
-                <div>{'det(A - λI) = 0'}</div>
-                <div className="text-[6px] text-stone-400 mt-0.5">{'Ker(f) ⊕ Im(f) = E'}</div>
-              </div>
-            ) : (
-              <div className="text-[8px] font-mono font-bold text-stone-700 text-center leading-tight">
-                <div>{'Y = C + I + G + (X - M)'}</div>
-                <div className="text-[6px] text-stone-400 mt-0.5">{'IS-LM & Courbe de Phillips'}</div>
-              </div>
-            )}
-          </div>
-
-          {/* Lignes de texte stylisées */}
-          <div className="space-y-0.5 opacity-60">
-            <div className="h-0.5 bg-stone-400 rounded-full w-full" />
-            <div className="h-0.5 bg-stone-400 rounded-full w-5/6" />
-          </div>
+        {/* Corps de carte / aperçu réel du document */}
+        <div className="flex-1 w-full my-1.5 overflow-hidden rounded-lg bg-white relative shadow-inner border border-white/20 flex flex-col justify-between pointer-events-none">
+          <DocumentCardPreview doc={doc} />
         </div>
 
         {/* Titre unique en bas */}
@@ -717,10 +713,10 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           </p>
         </div>
 
-        {/* Pied de carte : Badge PDF et bouton orange de téléchargement */}
+        {/* Pied de carte : Badge extension et bouton orange de téléchargement */}
         <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1">
-          <span className="text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 bg-white text-red-700 border border-white">
-            PDF
+          <span className="text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 bg-white text-orange-700 border border-white">
+            {doc.extension || 'PDF'}
           </span>
           <button
             type="button"
@@ -1035,32 +1031,32 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col w-full min-h-screen bg-[#070A12] text-white select-none animate-in fade-in duration-200">
+    <div className="flex-1 flex flex-col w-full min-h-screen bg-stone-100 text-stone-900 select-none animate-in fade-in duration-200">
       {/* =========================================================================
           1. EN-TÊTE FIXE DU MENU ESPACE CLOUD (NE BOUGE PAS LORS DU DÉFILEMENT)
           ========================================================================= */}
-      <header className="shrink-0 sticky top-0 z-30 w-full bg-[#0A0E1A]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 sm:py-3 border-b border-white/10 shadow-lg">
+      <header className="shrink-0 sticky top-0 z-30 w-full bg-stone-100/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 sm:py-3 border-b border-stone-200 shadow-sm">
         <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
           {/* GAUCHE : Bouton Retour rond, Icône Nuage cyan et Titre Espace Cloud */}
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <button
               type="button"
               onClick={onBack}
-              className="p-2 sm:p-2.5 rounded-full bg-[#182032] hover:bg-[#222c44] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm"
+              className="p-2 sm:p-2.5 rounded-full bg-[#182032] hover:bg-[#222c44] text-white border border-stone-700/50 transition-all cursor-pointer active:scale-95 shadow-sm"
               title="Retour au gestionnaire de fichiers"
             >
               <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
             </button>
 
             <div className="flex items-center gap-2 sm:gap-2.5">
-              <div className="p-2 rounded-xl bg-black border border-white/10 text-cyan-400 shadow-inner">
+              <div className="p-2 rounded-xl bg-[#182032] border border-stone-700/50 text-cyan-400 shadow-inner">
                 <Cloud className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
               </div>
               <div>
-                <h1 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
+                <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 leading-tight">
                   Espace Cloud
                 </h1>
-                <p className="text-[10px] sm:text-[11px] font-semibold text-slate-400 leading-tight">
+                <p className="text-[10px] sm:text-[11px] font-semibold text-stone-500 leading-tight">
                   StudyCloud
                 </p>
               </div>
@@ -1076,7 +1072,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Rechercher dans Espace..."
-                className="w-full pl-9 pr-8 py-1.5 sm:py-2 text-xs sm:text-sm rounded-full bg-[#04060A] text-white placeholder-slate-400 border border-white/10 focus:border-cyan-400/80 focus:ring-1 focus:ring-cyan-400/50 outline-none transition-all shadow-inner"
+                className="w-full pl-9 pr-8 py-1.5 sm:py-2 text-xs sm:text-sm rounded-full bg-[#04060A] text-white placeholder-slate-400 border border-stone-700/50 focus:border-cyan-400/80 focus:ring-1 focus:ring-cyan-400/50 outline-none transition-all shadow-inner"
               />
               {searchQuery && (
                 <button
@@ -1095,13 +1091,13 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       {/* =========================================================================
           2. CARROUSEL HORIZONTAL DES CATÉGORIES & COLLECTIONS
           ========================================================================= */}
-      <section className="shrink-0 w-full bg-[#070A12]/95 border-b border-white/10 px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 select-none z-20">
+      <section className="shrink-0 w-full bg-stone-100/95 border-b border-stone-200 px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 select-none z-20">
         <div className="relative flex items-center group">
           {/* Flèche gauche pour défilement rapide sur grand écran */}
           <button
             type="button"
             onClick={() => tabsScrollRef.current?.scrollBy({ left: -260, behavior: 'smooth' })}
-            className="hidden md:flex absolute left-0 z-30 w-7 h-7 rounded-full bg-black/80 hover:bg-slate-800 text-white items-center justify-center border border-white/15 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer -translate-x-1"
+            className="hidden md:flex absolute left-0 z-30 w-7 h-7 rounded-full bg-stone-800 hover:bg-stone-900 text-white items-center justify-center border border-stone-700 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer -translate-x-1"
             title="Défiler vers la gauche"
           >
             <ChevronLeft className="w-4 h-4 stroke-[2.2]" />
@@ -1139,7 +1135,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                     className={`group relative flex items-center gap-2.5 px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl transition-all duration-200 cursor-pointer active:scale-95 shrink-0 ${
                       isSelected
                         ? 'bg-gradient-to-r from-[#C25416] via-[#B8480C] to-[#A03D07] text-white border border-orange-300 ring-2 ring-orange-400/60 shadow-[0_4px_22px_rgba(184,72,12,0.65)] scale-[1.02]'
-                        : 'bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 hover:border-orange-400/40 opacity-80 hover:opacity-100'
+                        : 'bg-[#182032] hover:bg-[#222c44] text-white border border-stone-700/50 hover:border-orange-400/40 opacity-90 hover:opacity-100'
                     }`}
                     title="Classeur d'études"
                   >
@@ -1170,7 +1166,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   className={`shrink-0 flex items-center gap-2.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl transition-all duration-200 cursor-pointer select-none active:scale-95 border ${
                     isSelected
                       ? 'bg-[#0E1726] border-sky-400 text-white ring-2 ring-sky-400/80 shadow-[0_0_15px_rgba(56,189,248,0.35)] scale-[1.02]'
-                      : 'bg-[#04060A] hover:bg-[#0A0E18] border-white/10 text-white hover:border-white/25 shadow-sm'
+                      : 'bg-[#182032] hover:bg-[#222c44] border-stone-700/50 text-white hover:border-stone-500 shadow-sm'
                   }`}
                   title={item.name}
                 >
@@ -1181,7 +1177,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                     <span className="text-xs sm:text-sm font-bold text-white tracking-wide block leading-tight">
                       {item.name}
                     </span>
-                    <span className="text-[10px] sm:text-[11px] text-slate-400 font-medium block leading-tight">
+                    <span className="text-[10px] sm:text-[11px] text-slate-300 font-medium block leading-tight">
                       {item.countBadge}
                     </span>
                   </div>
@@ -1194,7 +1190,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           <button
             type="button"
             onClick={() => tabsScrollRef.current?.scrollBy({ left: 260, behavior: 'smooth' })}
-            className="hidden md:flex absolute right-0 z-30 w-7 h-7 rounded-full bg-black/80 hover:bg-slate-800 text-white items-center justify-center border border-white/15 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer translate-x-1"
+            className="hidden md:flex absolute right-0 z-30 w-7 h-7 rounded-full bg-stone-800 hover:bg-stone-900 text-white items-center justify-center border border-stone-700 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer translate-x-1"
             title="Défiler vers la droite"
           >
             <ChevronRight className="w-4 h-4 stroke-[2.2]" />
@@ -1205,22 +1201,103 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       {/* =========================================================================
           3. CONTENU PRINCIPAL DYNAMIQUE SELON L'ONGLET SÉLECTIONNÉ
           ========================================================================= */}
-      <main className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-5 pb-32 overflow-y-auto">
-        {/* ONGLET 1 : CLASSEUR (Sélectionné par défaut à l'ouverture) */}
+      <main className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-5 pb-32 overflow-y-auto bg-stone-100">
+        {/* ONGLET 1 : CLASSEUR — miroir fidèle du vrai menu Classeur */}
         {activeTab === 'classeur' && (
           <div className="space-y-4 animate-in fade-in duration-200">
-            {/* Compteur : "16 documents dans le classeur" exactement comme sur la photo */}
-            <div className="flex items-center justify-between">
-              <span className="text-xs sm:text-sm font-bold text-stone-400">
-                {filteredClasseurDocs.length} document{filteredClasseurDocs.length > 1 ? 's' : ''} dans le classeur
-                {searchQuery && ` • Filtré pour "${searchQuery}"`}
+
+            {/* Fil d'Ariane / breadcrumb quand un dossier est ouvert */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setOpenedClasseurFolderId(null)}
+                className={`text-xs font-bold transition-colors ${
+                  openedClasseurFolderId
+                    ? 'text-orange-600 hover:text-orange-700 cursor-pointer'
+                    : 'text-stone-700 cursor-default'
+                }`}
+              >
+                Classeur
+              </button>
+              {openedFolder && (
+                <>
+                  <BreadcrumbChevron className="w-3.5 h-3.5 text-stone-400" />
+                  <span
+                    className="text-xs font-black px-2 py-0.5 rounded-lg border"
+                    style={{
+                      color: openedFolder.primaryColor,
+                      borderColor: `${openedFolder.primaryColor}50`,
+                      backgroundColor: `${openedFolder.primaryColor}18`
+                    }}
+                  >
+                    {openedFolder.name}
+                  </span>
+                </>
+              )}
+
+              <span className="ml-auto text-xs font-medium text-stone-500">
+                {openedClasseurFolderId
+                  ? `${classeurFolderFiles.length + classeurSubFolders.length} élément${(classeurFolderFiles.length + classeurSubFolders.length) > 1 ? 's' : ''}`
+                  : classeurRootFolders.length > 0
+                    ? `${classeurRootFolders.length} dossier${classeurRootFolders.length > 1 ? 's' : ''}`
+                    : ''}
+                {searchQuery && ` • "${searchQuery}"`}
               </span>
             </div>
 
-            {/* Grille de cartes documents du classeur */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-              {filteredClasseurDocs.map((doc, idx) => renderClasseurCard(doc, idx))}
-            </div>
+            {/* VUE RACINE : liste des dossiers */}
+            {!openedClasseurFolderId && (
+              filteredClasseurFolders.length === 0 ? (
+                <div className="py-24 text-center text-stone-500 space-y-3">
+                  <FolderArchive className="w-16 h-16 mx-auto text-stone-400 opacity-60" />
+                  <p className="text-sm font-bold text-stone-800">
+                    {searchQuery ? 'Aucun dossier trouvé' : 'Le classeur est vide'}
+                  </p>
+                  <p className="text-xs text-stone-500">
+                    {searchQuery
+                      ? `Aucun résultat pour "${searchQuery}"`
+                      : 'Créez des dossiers dans le menu Classeur pour les voir ici'}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+                  {filteredClasseurFolders.map(folder => renderClasseurFolderCard(folder))}
+                </div>
+              )
+            )}
+
+            {/* VUE DOSSIER OUVERT : sous-dossiers + fichiers */}
+            {openedClasseurFolderId && (
+              <div className="space-y-6">
+                {/* Sous-dossiers */}
+                {classeurSubFolders.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-bold text-stone-700 uppercase tracking-wider">Sous-dossiers</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+                      {classeurSubFolders.map(f => renderClasseurFolderCard(f))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Fichiers dans ce dossier */}
+                {classeurFolderFiles.length > 0 ? (
+                  <div className="space-y-2">
+                    {classeurSubFolders.length > 0 && (
+                      <p className="text-[11px] font-bold text-stone-700 uppercase tracking-wider">Documents</p>
+                    )}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+                      {classeurFolderFiles.map((doc, idx) => renderClasseurCard(doc, idx))}
+                    </div>
+                  </div>
+                ) : classeurSubFolders.length === 0 ? (
+                  <div className="py-20 text-center text-stone-500 space-y-2">
+                    <FileText className="w-12 h-12 mx-auto text-stone-400" />
+                    <p className="text-sm font-bold text-stone-800">Ce dossier est vide</p>
+                    <p className="text-xs text-stone-500">Déplacez des documents ici depuis le menu Documents</p>
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
         )}
 
@@ -1228,15 +1305,15 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         {activeTab === 'downloads' && (
           <div className="space-y-4 animate-in fade-in duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-xs sm:text-sm font-bold text-stone-400">
+              <span className="text-xs sm:text-sm font-bold text-stone-700">
                 {filteredDownloads.length} fichier{filteredDownloads.length > 1 ? 's' : ''} téléchargé{filteredDownloads.length > 1 ? 's' : ''}
               </span>
             </div>
 
             {filteredDownloads.length === 0 ? (
-              <div className="py-20 text-center text-slate-400 space-y-2">
-                <Download className="w-12 h-12 mx-auto text-slate-600" />
-                <p className="text-sm font-bold">Aucun fichier téléchargé pour le moment</p>
+              <div className="py-20 text-center text-stone-500 space-y-2">
+                <Download className="w-12 h-12 mx-auto text-stone-400" />
+                <p className="text-sm font-bold text-stone-800">Aucun fichier téléchargé pour le moment</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
@@ -1250,15 +1327,15 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         {activeTab === 'images' && (
           <div className="space-y-4 animate-in fade-in duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-xs sm:text-sm font-bold text-stone-400">
+              <span className="text-xs sm:text-sm font-bold text-stone-700">
                 {filteredImages.length} image{filteredImages.length > 1 ? 's' : ''} dans l'espace cloud
               </span>
             </div>
 
             {filteredImages.length === 0 ? (
-              <div className="py-20 text-center text-slate-400 space-y-2">
-                <ImageIcon className="w-12 h-12 mx-auto text-slate-600" />
-                <p className="text-sm font-bold">Aucune image stockée pour le moment</p>
+              <div className="py-20 text-center text-stone-500 space-y-2">
+                <ImageIcon className="w-12 h-12 mx-auto text-stone-400" />
+                <p className="text-sm font-bold text-stone-800">Aucune image stockée pour le moment</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
@@ -1272,15 +1349,15 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         {activeTab === 'videos' && (
           <div className="space-y-4 animate-in fade-in duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-xs sm:text-sm font-bold text-stone-400">
+              <span className="text-xs sm:text-sm font-bold text-stone-700">
                 {filteredVideos.length} vidéo{filteredVideos.length > 1 ? 's' : ''} dans l'espace cloud
               </span>
             </div>
 
             {filteredVideos.length === 0 ? (
-              <div className="py-20 text-center text-slate-400 space-y-2">
-                <Film className="w-12 h-12 mx-auto text-slate-600" />
-                <p className="text-sm font-bold">Aucune vidéo enregistrée pour le moment</p>
+              <div className="py-20 text-center text-stone-500 space-y-2">
+                <Film className="w-12 h-12 mx-auto text-stone-400" />
+                <p className="text-sm font-bold text-stone-800">Aucune vidéo enregistrée pour le moment</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
@@ -1294,15 +1371,15 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         {activeTab === 'audio' && (
           <div className="space-y-4 animate-in fade-in duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-xs sm:text-sm font-bold text-stone-400">
+              <span className="text-xs sm:text-sm font-bold text-stone-700">
                 {filteredAudio.length} piste{filteredAudio.length > 1 ? 's' : ''} audio dans l'espace cloud
               </span>
             </div>
 
             {filteredAudio.length === 0 ? (
-              <div className="py-20 text-center text-slate-400 space-y-2">
-                <Music className="w-12 h-12 mx-auto text-slate-600" />
-                <p className="text-sm font-bold">Aucune piste audio enregistrée pour le moment</p>
+              <div className="py-20 text-center text-stone-500 space-y-2">
+                <Music className="w-12 h-12 mx-auto text-stone-400" />
+                <p className="text-sm font-bold text-stone-800">Aucune piste audio enregistrée pour le moment</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
@@ -1316,15 +1393,15 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         {activeTab === 'documents' && (
           <div className="space-y-4 animate-in fade-in duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-xs sm:text-sm font-bold text-stone-400">
+              <span className="text-xs sm:text-sm font-bold text-stone-700">
                 {filteredDocuments.length} document{filteredDocuments.length > 1 ? 's' : ''} dans l'espace cloud
               </span>
             </div>
 
             {filteredDocuments.length === 0 ? (
-              <div className="py-20 text-center text-slate-400 space-y-2">
-                <FileText className="w-12 h-12 mx-auto text-slate-600" />
-                <p className="text-sm font-bold">Aucun document publié pour le moment</p>
+              <div className="py-20 text-center text-stone-500 space-y-2">
+                <FileText className="w-12 h-12 mx-auto text-stone-400" />
+                <p className="text-sm font-bold text-stone-800">Aucun document publié pour le moment</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
@@ -1338,7 +1415,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         {activeTab === 'apps' && (
           <div className="space-y-4 animate-in fade-in duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-xs sm:text-sm font-bold text-stone-400">
+              <span className="text-xs sm:text-sm font-bold text-stone-700">
                 {filteredApps.length} application{filteredApps.length > 1 ? 's' : ''} éducative{filteredApps.length > 1 ? 's' : ''} StudyCloud
               </span>
             </div>
@@ -1353,16 +1430,16 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         {activeTab === 'favorites' && (
           <div className="space-y-4 animate-in fade-in duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-xs sm:text-sm font-bold text-stone-400">
+              <span className="text-xs sm:text-sm font-bold text-stone-700">
                 {filteredFavorites.length} fichier{filteredFavorites.length > 1 ? 's' : ''} favori{filteredFavorites.length > 1 ? 's' : ''}
               </span>
             </div>
 
             {filteredFavorites.length === 0 ? (
-              <div className="py-20 text-center text-slate-400 space-y-2">
-                <Star className="w-12 h-12 mx-auto text-slate-600" />
-                <p className="text-sm font-bold">Aucun fichier favori pour le moment</p>
-                <p className="text-xs text-slate-500">Ajoutez des fichiers en favoris avec le menu 3 traits</p>
+              <div className="py-20 text-center text-stone-500 space-y-2">
+                <Star className="w-12 h-12 mx-auto text-stone-400" />
+                <p className="text-sm font-bold text-stone-800">Aucun fichier favori pour le moment</p>
+                <p className="text-xs text-stone-500">Ajoutez des fichiers en favoris avec le menu 3 traits</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
@@ -1382,16 +1459,16 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         {activeTab === 'secure-folder' && (
           <div className="space-y-4 animate-in fade-in duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-xs sm:text-sm font-bold text-stone-400">
+              <span className="text-xs sm:text-sm font-bold text-stone-700">
                 {filteredSecure.length} fichier{filteredSecure.length > 1 ? 's' : ''} protégé{filteredSecure.length > 1 ? 's' : ''}
               </span>
             </div>
 
             {filteredSecure.length === 0 ? (
-              <div className="py-20 text-center text-slate-400 space-y-2">
-                <Lock className="w-12 h-12 mx-auto text-slate-600" />
-                <p className="text-sm font-bold">Dossier sécurisé vide</p>
-                <p className="text-xs text-slate-500">Déplacez des fichiers confidentiels ici avec le menu 3 traits</p>
+              <div className="py-20 text-center text-stone-500 space-y-2">
+                <Lock className="w-12 h-12 mx-auto text-stone-400" />
+                <p className="text-sm font-bold text-stone-800">Dossier sécurisé vide</p>
+                <p className="text-xs text-stone-500">Déplacez des fichiers confidentiels ici avec le menu 3 traits</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">

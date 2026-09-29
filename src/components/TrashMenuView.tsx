@@ -768,28 +768,28 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   return (
     <div ref={containerRef} className="w-full h-full flex flex-col bg-white text-stone-900 select-none overflow-hidden animate-in fade-in duration-200">
       {/* EN-TÊTE FIXE DU MENU CORBEILLE (TOUJOURS ANCRÉ EN HAUT, NE BOUGE PAS AU DÉFILEMENT) */}
-      <header className="shrink-0 z-30 w-full bg-[#0A0E1A] px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 sm:py-3 border-b border-white/10 shadow-lg">
+      <header className="shrink-0 z-30 w-full bg-stone-100/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 sm:py-3 border-b border-stone-200 shadow-sm">
         <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
           {/* GAUCHE : Bouton Retour rond, Icône Corbeille rouge et Titre StudyCloud */}
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <button
               type="button"
               onClick={onBack}
-              className="p-2 sm:p-2.5 rounded-full bg-[#182032] hover:bg-[#222c44] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm"
+              className="p-2 sm:p-2.5 rounded-full bg-[#182032] hover:bg-[#222c44] text-white border border-stone-700/50 transition-all cursor-pointer active:scale-95 shadow-sm"
               title="Retour"
             >
               <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
             </button>
 
             <div className="flex items-center gap-2.5">
-              <div className="p-2 sm:p-2.5 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-400 shadow-md">
+              <div className="p-2 sm:p-2.5 rounded-2xl bg-[#182032] border border-stone-700/50 text-rose-400 shadow-md">
                 <Trash2 className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.2]" />
               </div>
               <div>
-                <h1 className="text-sm sm:text-base md:text-lg font-black text-white leading-tight">
+                <h1 className="text-sm sm:text-base md:text-lg font-black text-stone-900 leading-tight">
                   Corbeille
                 </h1>
-                <p className="text-[11px] font-semibold text-slate-400 leading-tight">
+                <p className="text-[11px] font-semibold text-stone-500 leading-tight">
                   StudyCloud
                 </p>
               </div>
@@ -798,7 +798,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
 
           {/* MILIEU : Barre de Recherche Corbeille */}
           <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-1 sm:px-2">
-            <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-rose-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 transition-all shadow-inner gap-2">
+            <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-rose-500/50 border border-stone-700/50 rounded-full px-3.5 sm:px-4 py-1.5 transition-all shadow-inner gap-2">
               <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400/80 shrink-0 stroke-[2.2]" />
               <input
                 type="text"
@@ -825,7 +825,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
               <button
                 type="button"
                 onClick={() => setIsConfirmEmptyOpen(true)}
-                className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/40 transition-all cursor-pointer active:scale-95 shadow-sm text-xs sm:text-sm font-bold"
+                className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 border border-rose-500/40 transition-all cursor-pointer active:scale-95 shadow-sm text-xs sm:text-sm font-bold"
                 title="Vider définitivement tous les éléments"
               >
                 <Trash2 className="w-4 h-4" />
@@ -840,7 +840,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
               className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full border transition-all cursor-pointer shrink-0 active:scale-95 ${
                 isSelectionMode
                   ? 'bg-rose-500 text-white border-rose-400 font-bold'
-                  : 'bg-[#182032] hover:bg-[#222c44] text-white border-white/10'
+                  : 'bg-[#182032] hover:bg-[#222c44] text-white border-stone-700/50'
               }`}
               title={isSelectionMode ? 'Quitter la sélection' : 'Sélection multiple'}
             >
@@ -866,7 +866,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
               className={`px-3 py-1 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                 activeFilter === tab.id
                   ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
-                  : 'bg-[#10162A] text-slate-300 hover:text-white hover:bg-[#192242] border border-white/10'
+                  : 'bg-[#182032] text-slate-200 hover:text-white hover:bg-[#222c44] border border-stone-700/50'
               }`}
             >
               {tab.label}

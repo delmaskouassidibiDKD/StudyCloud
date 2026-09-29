@@ -169,7 +169,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
   }, [secureFiles, searchQuery]);
 
   return (
-    <div className="flex-1 flex flex-col w-full min-h-screen bg-[#070A12] text-white select-none animate-in fade-in duration-200">
+    <div className="flex-1 flex flex-col w-full min-h-screen bg-stone-100 text-stone-900 select-none animate-in fade-in duration-200">
       <input
         type="file"
         ref={fileInputRef}
@@ -179,13 +179,13 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
       />
 
       {/* EN-TÊTE FIXE DU MENU DOSSIER SÉCURISÉ */}
-      <header className="sticky top-0 z-30 w-full bg-[#0A0E1A]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-white/10 shadow-lg">
+      <header className="sticky top-0 z-30 w-full bg-stone-100/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-stone-200 shadow-sm">
         <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <button
               type="button"
               onClick={onBack}
-              className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
+              className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-stone-700/50 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
               title="Retour au gestionnaire de fichiers"
             >
               <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
@@ -193,14 +193,14 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
             </button>
 
             <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-black border border-white/10 text-blue-400">
+              <div className="p-2 rounded-xl bg-[#182032] border border-stone-700/50 text-blue-400">
                 {isUnlocked ? <Unlock className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" /> : <Lock className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />}
               </div>
               <div>
-                <h1 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
+                <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 leading-tight">
                   Dossier sécurisé
                 </h1>
-                <p className="text-[10px] sm:text-[11px] font-semibold text-blue-400/80 leading-tight">
+                <p className="text-[10px] sm:text-[11px] font-semibold text-blue-600 leading-tight">
                   {isUnlocked ? `${secureFiles.length} fichier(s) protégé(s)` : 'Coffre-fort verrouillé'}
                 </p>
               </div>
@@ -224,7 +224,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
                   setIsUnlocked(false);
                   showToast('Dossier sécurisé verrouillé 🔒');
                 }}
-                className="p-2 rounded-full bg-red-500/15 text-red-400 hover:bg-red-500/25 border border-red-500/30"
+                className="p-2 rounded-full bg-red-500/15 text-red-500 hover:bg-red-500/25 border border-red-500/30"
                 title="Verrouiller le coffre"
               >
                 <Lock className="w-4 h-4" />
@@ -237,16 +237,16 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
       {/* CONTENU : ÉCRAN DE VERROUILLAGE OU FICHIERS PROTÉGÉS */}
       {!isUnlocked ? (
         <div className="flex-1 flex flex-col items-center justify-center p-4">
-          <div className="w-full max-w-sm rounded-3xl bg-[#0D1222] border border-blue-500/30 p-6 sm:p-8 shadow-2xl text-center space-y-5">
-            <div className="w-16 h-16 rounded-3xl bg-blue-500/20 border border-blue-500/40 text-blue-400 flex items-center justify-center mx-auto shadow-xl">
+          <div className="w-full max-w-sm rounded-3xl bg-white border border-stone-200 p-6 sm:p-8 shadow-xl text-center space-y-5">
+            <div className="w-16 h-16 rounded-3xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center mx-auto shadow-sm">
               <KeyRound className="w-8 h-8 stroke-[2]" />
             </div>
 
             <div>
-              <h2 className="text-lg font-black text-white">
+              <h2 className="text-lg font-black text-stone-800">
                 {getStoredPin() ? 'Déverrouiller le Dossier Sécurisé' : 'Créer votre code secret'}
               </h2>
-              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+              <p className="text-xs text-stone-500 mt-1 leading-relaxed">
                 {getStoredPin()
                   ? 'Entrez votre code secret à plus de 4 caractères pour accéder à vos fichiers protégés.'
                   : 'Définissez un code secret à plus de 4 caractères pour protéger vos fichiers confidentiels.'}
@@ -305,11 +305,11 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
         <main className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-4 pb-32">
           {filteredFiles.length === 0 ? (
             <div className="py-24 flex flex-col items-center justify-center text-center max-w-md mx-auto">
-              <div className="w-20 h-20 rounded-3xl bg-[#121829] border border-blue-500/20 flex items-center justify-center mb-4 shadow-xl">
-                <ShieldCheck className="w-10 h-10 text-blue-400 opacity-60 stroke-[1.5]" />
+              <div className="w-20 h-20 rounded-3xl bg-white border border-stone-200 flex items-center justify-center mb-4 shadow-sm">
+                <ShieldCheck className="w-10 h-10 text-blue-500 opacity-60 stroke-[1.5]" />
               </div>
-              <h3 className="text-lg font-black text-white mb-1.5">Aucun fichier protégé</h3>
-              <p className="text-xs sm:text-sm text-slate-400 mb-6 leading-relaxed">
+              <h3 className="text-lg font-black text-stone-800 mb-1.5">Aucun fichier protégé</h3>
+              <p className="text-xs sm:text-sm text-stone-500 mb-6 leading-relaxed">
                 Glissez ou importez vos documents personnels, relevés ou notes confidentielles ici.
               </p>
               <button
@@ -381,3 +381,4 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
     </div>
   );
 };
+
