@@ -139,6 +139,17 @@ async function idbSet(key: string, value: any): Promise<void> {
   });
 }
 
+export const isRecentEligible = (file: any): boolean => {
+  if (!file) return false;
+  if (file.isNotepad) return false;
+  if (file.category === 'notes') return false;
+  const ext = (file.extension || (file.name ? file.name.split('.').pop() : '') || '').toLowerCase();
+  if (ext === 'txt') return false;
+  if (typeof file.name === 'string' && file.name.toLowerCase().endsWith('.txt')) return false;
+  if (file.type === 'text/plain') return false;
+  return true;
+};
+
 // Etat en memoire (Tier 1 - synchrone 0ms)
 const defaultState: CloudDataState = {
   overview: null, classeurFolders: [], folderFilesMap: {},
@@ -318,6 +329,7 @@ export const CloudDataStore = {
           return tB - tA;
         };
 
+
         // Recalcul des récents et favoris au fur et à mesure de l'arrivée des données
         const refreshDerived = () => {
           const allCurrent = [
@@ -327,8 +339,10 @@ export const CloudDataStore = {
             ...currentState.audio,
             ...Object.values(currentState.folderFilesMap).flat()
           ];
-          if (!currentState.overview?.recentFiles || currentState.overview.recentFiles.length === 0) {
-            currentState.recentFiles = allCurrent.sort(sortDesc).slice(0, 10);
+          if (currentState.overview?.recentFiles && currentState.overview.recentFiles.length > 0) {
+            currentState.recentFiles = currentState.overview.recentFiles.filter(isRecentEligible).slice(0, 6);
+          } else if (currentState.recentFiles && currentState.recentFiles.length > 0) {
+            currentState.recentFiles = currentState.recentFiles.filter(isRecentEligible).slice(0, 6);
           }
           currentState.favorites = allCurrent.filter(f => currentState.favIdSet.has(f.id));
         };
@@ -470,7 +484,7 @@ export const CloudDataStore = {
             if (cloudOverview !== null) {
               currentState.overview = cloudOverview;
               if (cloudOverview.recentFiles && Array.isArray(cloudOverview.recentFiles) && cloudOverview.recentFiles.length > 0) {
-                currentState.recentFiles = cloudOverview.recentFiles.filter(isNotLocallyDeleted) as any;
+                currentState.recentFiles = cloudOverview.recentFiles.filter(isNotLocallyDeleted).filter(isRecentEligible).slice(0, 6) as any;
               }
               notify();
               persistToIndexedDB().catch(() => {});
@@ -571,7 +585,10 @@ export const CloudDataStore = {
 
   addOptimisticFile(file: FileItem, folderId?: string) {
     const cat = file.category || 'documents';
-    const recent = [file, ...currentState.recentFiles.filter(f => f.id !== file.id)].slice(0, 6);
+    const isEligible = isRecentEligible(file);
+    const recent = isEligible
+      ? [file, ...currentState.recentFiles.filter(f => f.id !== file.id)].slice(0, 6)
+      : currentState.recentFiles;
     if (folderId) {
       const currentList = currentState.folderFilesMap[folderId] || [];
       currentState = {

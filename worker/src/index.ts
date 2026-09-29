@@ -6884,13 +6884,13 @@ export default {
           Number(downloadStat?.totalBytes || 0) +
           Number(secureStat?.totalBytes || 0);
 
-        // Récupérer les fichiers récents pour l'espace cloud (toutes catégories confondues, y compris classeur)
+        // Récupérer les fichiers récents pour l'espace cloud (toutes catégories confondues, sans les notes .txt)
         const [recentDocs, recentImages, recentAudio, recentVideos, recentClasseur] = await Promise.all([
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, created_at FROM document_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, created_at FROM document_files WHERE user_id = ? AND (name NOT LIKE "%.txt") ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all<any>(),
           env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, thumbnail_url as thumbnailUrl, "images" as category, created_at FROM image_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all<any>(),
           env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, cover_url as coverUrl, cover_url as previewUrl, artist, "audio" as category, created_at FROM audio_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all<any>(),
           env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, thumbnail_url as thumbnailUrl, thumbnail_url as previewUrl, "videos" as category, created_at FROM video_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all<any>(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, COALESCE(category, "documents") as category, created_at FROM classeur_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, COALESCE(category, "documents") as category, created_at FROM classeur_files WHERE user_id = ? AND (is_notepad IS NULL OR is_notepad = 0) AND (name NOT LIKE "%.txt") ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all<any>(),
         ]);
 
         const parseDateMs = (d: any): number => {
@@ -6900,13 +6900,21 @@ export default {
           return isNaN(t) ? 0 : t;
         };
 
+        const isEligibleRecent = (f: any): boolean => {
+          if (!f || !f.name) return false;
+          if (f.is_notepad || f.isNotepad) return false;
+          if (f.category === 'notes') return false;
+          if (typeof f.name === 'string' && f.name.toLowerCase().endsWith('.txt')) return false;
+          return true;
+        };
+
         const recentFiles = [
           ...(recentDocs?.results || []),
           ...(recentImages?.results || []),
           ...(recentAudio?.results || []),
           ...(recentVideos?.results || []),
           ...(recentClasseur?.results || []),
-        ].sort((a, b) => parseDateMs(b.created_at) - parseDateMs(a.created_at)).slice(0, 12);
+        ].filter(isEligibleRecent).sort((a, b) => parseDateMs(b.created_at) - parseDateMs(a.created_at)).slice(0, 6);
 
         return jsonResponse({
           success: true,

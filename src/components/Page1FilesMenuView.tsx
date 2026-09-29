@@ -109,7 +109,7 @@ import { ModernImageViewer } from './ModernImageViewer';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { PdfHorizontalViewer } from './PdfHorizontalViewer';
-import { CloudDataStore } from '../services/cloudDataStore';
+import { CloudDataStore, isRecentEligible } from '../services/cloudDataStore';
 import { LocalSyncReplication } from '../services/localSyncReplication';
 import { UploadQueue } from '../services/uploadQueue';
 import { UploadQueueWidget } from './UploadQueueWidget';
@@ -605,10 +605,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       });
       CloudStorageAPI.saveClasseurFile(f, folderId).catch(() => {});
     });
-    setCloudRecentFiles(prev => {
-      const existingIds = new Set(newFiles.map(f => f.id));
-      return [...newFiles, ...prev.filter(f => !existingIds.has(f.id))].slice(0, 6);
-    });
+    const eligibleRecent = newFiles.filter(isRecentEligible);
+    if (eligibleRecent.length > 0) {
+      setCloudRecentFiles(prev => {
+        const existingIds = new Set(eligibleRecent.map(f => f.id));
+        return [...eligibleRecent, ...prev.filter(f => !existingIds.has(f.id))].slice(0, 6);
+      });
+    }
 
     // Sauvegarde en arrière-plan via UploadQueue (max 2 parallèles, auto-retry, notifications)
     UploadQueue.enqueueExisting(
@@ -707,10 +710,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       });
       CloudStorageAPI.saveClasseurFile(f, folderId).catch(() => {});
     });
-    setCloudRecentFiles(prev => {
-      const existingIds = new Set(newFiles.map(f => f.id));
-      return [...newFiles, ...prev.filter(f => !existingIds.has(f.id))].slice(0, 6);
-    });
+    const eligibleRecent = newFiles.filter(isRecentEligible);
+    if (eligibleRecent.length > 0) {
+      setCloudRecentFiles(prev => {
+        const existingIds = new Set(eligibleRecent.map(f => f.id));
+        return [...eligibleRecent, ...prev.filter(f => !existingIds.has(f.id))].slice(0, 6);
+      });
+    }
 
     // Sauvegarde en arrière-plan via UploadQueue (max 2 parallèles, auto-retry, notifications)
     UploadQueue.enqueueExisting(
@@ -771,7 +777,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const newNoteFile: FileItem = {
       id: `note-${opened3DFolder.id}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       name: finalName,
-      category: 'documents',
+      category: 'notes',
       source: opened3DFolder.name,
       size: '0 o',
       sizeBytes: 0,
@@ -1498,12 +1504,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const cleanRecent = (list: FileItem[]) => {
         const seenIds = new Set<string>();
         return list.filter(f => {
+          if (!f || !f.id) return false;
           if (delIds.has(f.id)) return false;
           if (delRecent.has(f.id)) return false;
+          if (!isRecentEligible(f)) return false;
           if (seenIds.has(f.id)) return false;
           seenIds.add(f.id);
           return true;
-        });
+        }).slice(0, 6);
       };
       setClasseur3DFolders(cached.classeurFolders);
       setFolderFilesMap(cached.folderFilesMap);
@@ -1532,7 +1540,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const _delIds = getLocallyDeletedFileIds();
       const _delRecent = getDeletedRecentIds();
       const _isNotDeleted = (f: { id: string }) => !_delIds.has(f.id);
-      const _isNotDeletedRecent = (f: { id: string }) => _isNotDeleted(f) && !_delRecent.has(f.id);
+      const _isNotDeletedRecent = (f: any) => _isNotDeleted(f) && !_delRecent.has(f.id) && isRecentEligible(f);
       setDocumentsList(prev => {
         const stateIds = new Set(state.documents.map(d => d.id));
         const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || p.isUploading) && _isNotDeleted(p));
@@ -1562,7 +1570,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         const seen = new Set<string>();
         return merged.filter(f => { if (seen.has(f.id)) return false; seen.add(f.id); return true; });
       });
-      setCloudRecentFiles((state.recentFiles as any[]).filter(_isNotDeletedRecent));
+      setCloudRecentFiles((state.recentFiles as any[]).filter(_isNotDeletedRecent).slice(0, 6));
       setSecureFolderFiles(state.secure);
       setTrashFiles(state.trash);
       setCloudOverview(state.overview);
@@ -1954,6 +1962,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       );
     } catch {}
 
+    // Synchroniser avec les autres appareils via LocalSyncReplication
+    LocalSyncReplication.recordLocalUpsert(`deleted_recent_${fileId}`, 'deleted_recent', { fileId, deletedAt: Date.now() });
+
     // 3. S'assurer que le fichier est bien présent dans sa catégorie respective (sécurité renforcée)
     if (file) {
       const cat = file.category || detectFileCategory(file);
@@ -2237,7 +2248,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         [folderId]: [...newItems, ...(prev[folderId] || []).filter(f => !fileIds.includes(f.id))]
       }));
     }
-    setCloudRecentFiles(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))].slice(0, 6));
+    const eligibleRecent = newItems.filter(isRecentEligible);
+    if (eligibleRecent.length > 0) {
+      setCloudRecentFiles(prev => [...eligibleRecent, ...prev.filter(f => !fileIds.includes(f.id))].slice(0, 6));
+    }
 
     startSavingAnimation(fileIds);
 
@@ -2388,7 +2402,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       else if (item.category === 'audio') setAudioList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
       else setDocumentsList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
     });
-    setCloudRecentFiles(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))].slice(0, 6));
+    const eligibleRecent = newItems.filter(isRecentEligible);
+    if (eligibleRecent.length > 0) {
+      setCloudRecentFiles(prev => [...eligibleRecent, ...prev.filter(f => !fileIds.includes(f.id))].slice(0, 6));
+    }
 
     startSavingAnimation(fileIds);
     UploadQueue.enqueueExisting(newItemsWithFiles);
@@ -3674,23 +3691,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     handleSelectFile(file);
   };
 
-  // Filtrage selon la recherche (strictement 6 éléments maximum sur l'accueil, sans fichiers supprimés)
+  // Filtrage selon la recherche (strictement 6 éléments maximum sur l'accueil, sans notes ni fichiers effacés)
   const displayedFiles = useMemo(() => {
     const deletedRecentIds = getDeletedRecentIds();
     const locallyDeletedIds = getLocallyDeletedFileIds();
     const trashIdSet = new Set(trashFiles.map(t => t.id));
 
-    let sourceFiles = cloudRecentFiles;
-    if (!sourceFiles || sourceFiles.length === 0) {
-      const allLive = [...documentsList, ...imagesList, ...videosList, ...audioList];
-      sourceFiles = allLive.slice(0, 10);
-    }
+    const sourceFiles = Array.isArray(cloudRecentFiles) ? cloudRecentFiles : [];
 
     return sourceFiles.filter(f => {
+      if (!f || !f.id) return false;
       if (deletedRecentIds.has(f.id)) return false;
       if (locallyDeletedIds.has(f.id)) return false;
       if (trashIdSet.has(f.id)) return false;
       if (isMockFile(f)) return false;
+      if (!isRecentEligible(f)) return false;
 
       const matchQuery = searchQuery.trim() === '' || 
         f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -3698,7 +3713,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       
       return matchQuery;
     }).slice(0, 6);
-  }, [cloudRecentFiles, searchQuery, trashFiles, documentsList, imagesList, videosList, audioList]);
+  }, [cloudRecentFiles, searchQuery, trashFiles]);
 
   // Ouverture d'un sous-menu indépendant
   const handleOpenSubMenu = (

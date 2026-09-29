@@ -331,6 +331,18 @@ export const LocalSyncReplication = {
             }
           }
 
+          if (doc.category === 'deleted_recent') {
+            const targetId = parsedContent?.fileId || doc.id.replace(/^deleted_recent_/, '');
+            try {
+              const raw = localStorage.getItem('studycloud_deleted_recent_ids');
+              const set = new Set(raw ? JSON.parse(raw) : []);
+              if (targetId) set.add(targetId);
+              localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(set).slice(-500)));
+            } catch {}
+            CloudDataStore.setRecentFiles(CloudDataStore.getState().recentFiles.filter(f => f.id !== targetId));
+            continue;
+          }
+
           if (parsedContent && typeof parsedContent === 'object') {
             const cat = doc.category || parsedContent.category || 'documents';
             const fileItem: FileItem = {
