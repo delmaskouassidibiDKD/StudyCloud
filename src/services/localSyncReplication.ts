@@ -307,18 +307,30 @@ export const LocalSyncReplication = {
 
         if (doc.is_deleted) {
           // ── SUPPRESSION MULTI-APPAREILS SANS RÉSUSCITATION ──
-          inMemoryTombstones.add(doc.id);
-          CloudDataStore.removeFile(doc.id);
-          if (doc.category === 'classeur_folder') {
-            CloudDataStore.removeFolder(doc.id);
+          if (doc.category === 'trash') {
+            // Suppression définitive de la corbeille
+            inMemoryTombstones.add(doc.id);
+            saveTombstones();
+            CloudDataStore.permanentlyRemoveTrashFile(doc.id);
+            removeDownloadedFile(doc.id);
+            deleteFileBlob(doc.id).catch(() => {});
+            deletedCount++;
+          } else {
+            // Déplacement vers la corbeille ou retrait de la catégorie source
+            // Ne pas écraser la corbeille locale !
+            CloudDataStore.removeFileFromCategory(doc.id, doc.category);
+            if (doc.category === 'classeur_folder') {
+              CloudDataStore.removeFolder(doc.id);
+            }
+            deletedCount++;
           }
-          removeDownloadedFile(doc.id);
-          deleteFileBlob(doc.id).catch(() => {});
-          deletedCount++;
         } else {
           // ── ÉLÉMENT CRÉÉ OU MIS À JOUR PAR UN AUTRE APPAREIL ──
-          if (inMemoryTombstones.has(doc.id)) {
-            // Si localement marqué supprimé plus récemment, ne pas ressusciter
+          if (doc.category === 'trash') {
+            // Les éléments de la corbeille sont valides et ne doivent pas être bloqués par un tombstone d'une autre catégorie
+            inMemoryTombstones.delete(doc.id);
+          } else if (inMemoryTombstones.has(doc.id)) {
+            // Si localement marqué définitivement supprimé, ne pas ressusciter
             continue;
           }
 

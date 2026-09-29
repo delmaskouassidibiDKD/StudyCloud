@@ -6067,6 +6067,12 @@ var index_default = {
                 source_category, original_folder_id, metadata_json, date_formatted,
                 r2_key, file_url, deleted_at
               ) VALUES (?, ?, ?, ?, ?, ?, ?, 'classeur', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET 
+                name = excluded.name, size = excluded.size, size_bytes = excluded.size_bytes,
+                category = excluded.category, extension = excluded.extension,
+                source_category = excluded.source_category, original_folder_id = excluded.original_folder_id,
+                metadata_json = excluded.metadata_json, date_formatted = excluded.date_formatted,
+                r2_key = excluded.r2_key, file_url = excluded.file_url, deleted_at = CURRENT_TIMESTAMP
             `).bind(
               f.id,
               reqUserId,
@@ -6076,7 +6082,7 @@ var index_default = {
               f.category,
               f.extension,
               folderId,
-              JSON.stringify({ isNotepad: f.is_notepad, notepadTitle: f.notepad_title }),
+              JSON.stringify({ isNotepad: f.is_notepad, notepadTitle: f.notepad_title, notepadContent: f.notepad_content, previewUrl: f.preview_url }),
               f.date_formatted,
               f.r2_key,
               f.file_url
@@ -6086,6 +6092,24 @@ var index_default = {
             await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(f.id, reqUserId).run().catch(() => {
             });
             await recordSyncItem(env.DB, reqUserId, f.id, "classeur", { id: f.id }, 1);
+            await recordSyncItem(env.DB, reqUserId, f.id, "trash", {
+              id: f.id,
+              name: f.name,
+              size: f.size,
+              sizeBytes: f.size_bytes,
+              category: "classeur",
+              sourceCategory: "classeur",
+              originalFolderId: folderId,
+              extension: f.extension || "txt",
+              date: f.date_formatted,
+              r2Key: f.r2_key,
+              url: f.file_url,
+              previewUrl: f.preview_url || f.file_url || "",
+              isNotepad: Boolean(f.is_notepad),
+              noteTitle: f.notepad_title || "",
+              content: f.notepad_content || "",
+              metadata: { isNotepad: f.is_notepad, notepadTitle: f.notepad_title, notepadContent: f.notepad_content, previewUrl: f.preview_url }
+            }, 0);
           }
           if (targetFolder) {
             await env.DB.prepare(`
@@ -6094,7 +6118,12 @@ var index_default = {
                 source_category, original_folder_id, metadata_json, date_formatted,
                 r2_key, file_url, deleted_at
               ) VALUES (?, ?, ?, '1 dossier', 0, 'folder', 'folder', 'classeur_folder', ?, ?, ?, '', '', CURRENT_TIMESTAMP)
-              ON CONFLICT(id) DO UPDATE SET deleted_at = CURRENT_TIMESTAMP
+              ON CONFLICT(id) DO UPDATE SET 
+                name = excluded.name, size = excluded.size, size_bytes = excluded.size_bytes,
+                category = excluded.category, extension = excluded.extension,
+                source_category = excluded.source_category, original_folder_id = excluded.original_folder_id,
+                metadata_json = excluded.metadata_json, date_formatted = excluded.date_formatted,
+                deleted_at = CURRENT_TIMESTAMP
             `).bind(
               folderId,
               reqUserId,
@@ -6103,6 +6132,16 @@ var index_default = {
               JSON.stringify(targetFolder),
               (/* @__PURE__ */ new Date()).toLocaleDateString("fr-FR")
             ).run();
+            await recordSyncItem(env.DB, reqUserId, folderId, "trash", {
+              id: folderId,
+              name: targetFolder.name,
+              size: "1 dossier",
+              sizeBytes: 0,
+              category: "folder",
+              sourceCategory: "classeur_folder",
+              extension: "folder",
+              metadata: targetFolder
+            }, 0);
           }
           await recordSyncItem(env.DB, reqUserId, folderId, "classeur_folder", { id: folderId }, 1);
           await env.DB.prepare(`
@@ -6412,6 +6451,12 @@ var index_default = {
                 source_category, original_folder_id, metadata_json, date_formatted,
                 r2_key, file_url, deleted_at
               ) VALUES (?, ?, ?, ?, ?, ?, ?, 'classeur', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET 
+                name = excluded.name, size = excluded.size, size_bytes = excluded.size_bytes,
+                category = excluded.category, extension = excluded.extension,
+                source_category = excluded.source_category, original_folder_id = excluded.original_folder_id,
+                metadata_json = excluded.metadata_json, date_formatted = excluded.date_formatted,
+                r2_key = excluded.r2_key, file_url = excluded.file_url, deleted_at = CURRENT_TIMESTAMP
             `).bind(
               file.id,
               reqUserId,
@@ -6421,7 +6466,7 @@ var index_default = {
               file.category,
               file.extension,
               file.folder_id,
-              JSON.stringify({ isNotepad: file.is_notepad, notepadTitle: file.notepad_title }),
+              JSON.stringify({ isNotepad: file.is_notepad, notepadTitle: file.notepad_title, notepadContent: file.notepad_content, previewUrl: file.preview_url }),
               file.date_formatted,
               file.r2_key,
               file.file_url
@@ -6441,7 +6486,11 @@ var index_default = {
               date: file.date_formatted,
               r2Key: file.r2_key,
               url: file.file_url,
-              previewUrl: file.preview_url || file.file_url || ""
+              previewUrl: file.preview_url || file.file_url || "",
+              isNotepad: Boolean(file.is_notepad),
+              noteTitle: file.notepad_title || "",
+              content: file.notepad_content || "",
+              metadata: { isNotepad: file.is_notepad, notepadTitle: file.notepad_title, notepadContent: file.notepad_content, previewUrl: file.preview_url }
             }, 0);
           }
           await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {});
@@ -6645,6 +6694,12 @@ var index_default = {
                 source_category, original_folder_id, metadata_json, date_formatted,
                 r2_key, file_url, deleted_at
               ) VALUES (?, ?, ?, ?, ?, 'audio', 'mp3', 'audio', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET 
+                name = excluded.name, size = excluded.size, size_bytes = excluded.size_bytes,
+                category = excluded.category, extension = excluded.extension,
+                source_category = excluded.source_category, original_folder_id = excluded.original_folder_id,
+                metadata_json = excluded.metadata_json, date_formatted = excluded.date_formatted,
+                r2_key = excluded.r2_key, file_url = excluded.file_url, deleted_at = CURRENT_TIMESTAMP
             `).bind(
               file.id,
               reqUserId,
@@ -6849,6 +6904,12 @@ var index_default = {
                 source_category, original_folder_id, metadata_json, date_formatted,
                 r2_key, file_url, deleted_at
               ) VALUES (?, ?, ?, ?, ?, 'images', ?, 'images', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET 
+                name = excluded.name, size = excluded.size, size_bytes = excluded.size_bytes,
+                category = excluded.category, extension = excluded.extension,
+                source_category = excluded.source_category, original_folder_id = excluded.original_folder_id,
+                metadata_json = excluded.metadata_json, date_formatted = excluded.date_formatted,
+                r2_key = excluded.r2_key, file_url = excluded.file_url, deleted_at = CURRENT_TIMESTAMP
             `).bind(
               file.id,
               reqUserId,
@@ -7042,6 +7103,12 @@ var index_default = {
                 source_category, original_folder_id, metadata_json, date_formatted,
                 r2_key, file_url, deleted_at
               ) VALUES (?, ?, ?, ?, ?, 'videos', ?, 'videos', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET 
+                name = excluded.name, size = excluded.size, size_bytes = excluded.size_bytes,
+                category = excluded.category, extension = excluded.extension,
+                source_category = excluded.source_category, original_folder_id = excluded.original_folder_id,
+                metadata_json = excluded.metadata_json, date_formatted = excluded.date_formatted,
+                r2_key = excluded.r2_key, file_url = excluded.file_url, deleted_at = CURRENT_TIMESTAMP
             `).bind(
               file.id,
               reqUserId,
@@ -7245,6 +7312,12 @@ var index_default = {
                 source_category, original_folder_id, metadata_json, date_formatted,
                 r2_key, file_url, deleted_at
               ) VALUES (?, ?, ?, ?, ?, 'documents', ?, 'documents', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET 
+                name = excluded.name, size = excluded.size, size_bytes = excluded.size_bytes,
+                category = excluded.category, extension = excluded.extension,
+                source_category = excluded.source_category, original_folder_id = excluded.original_folder_id,
+                metadata_json = excluded.metadata_json, date_formatted = excluded.date_formatted,
+                r2_key = excluded.r2_key, file_url = excluded.file_url, deleted_at = CURRENT_TIMESTAMP
             `).bind(
               file.id,
               reqUserId,
@@ -7252,7 +7325,7 @@ var index_default = {
               file.size,
               file.size_bytes,
               file.extension,
-              JSON.stringify({ documentCategory: file.document_category || "COURS", pageCount: file.page_count || 1 }),
+              JSON.stringify({ documentCategory: file.document_category || "COURS", pageCount: file.page_count || 1, isNotepad: file.is_notepad, notepadTitle: file.notepad_title || "", notepadContent: file.notepad_content || "" }),
               file.date_formatted,
               file.r2_key,
               file.file_url
@@ -7383,7 +7456,12 @@ var index_default = {
                 source_category, original_folder_id, metadata_json, date_formatted,
                 r2_key, file_url, deleted_at
               ) VALUES (?, ?, ?, ?, ?, 'downloads', ?, 'downloads', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
-              ON CONFLICT(id) DO UPDATE SET deleted_at = CURRENT_TIMESTAMP
+              ON CONFLICT(id) DO UPDATE SET 
+                name = excluded.name, size = excluded.size, size_bytes = excluded.size_bytes,
+                category = excluded.category, extension = excluded.extension,
+                source_category = excluded.source_category, original_folder_id = excluded.original_folder_id,
+                metadata_json = excluded.metadata_json, date_formatted = excluded.date_formatted,
+                r2_key = excluded.r2_key, file_url = excluded.file_url, deleted_at = CURRENT_TIMESTAMP
             `).bind(
               dlFile.id,
               reqUserId,
@@ -7396,6 +7474,20 @@ var index_default = {
               dlFile.r2_key,
               dlFile.file_url
             ).run();
+            await recordSyncItem(env.DB, reqUserId, fileId, "trash", {
+              id: dlFile.id,
+              name: dlFile.name,
+              size: dlFile.size,
+              sizeBytes: dlFile.size_bytes,
+              category: "downloads",
+              sourceCategory: "downloads",
+              extension: dlFile.extension || "",
+              date: dlFile.downloaded_at || (/* @__PURE__ */ new Date()).toLocaleDateString("fr-FR"),
+              r2Key: dlFile.r2_key,
+              url: dlFile.file_url,
+              previewUrl: dlFile.file_url || "",
+              metadata: { sourceUrl: dlFile.source_url, source: dlFile.source }
+            }, 0);
           }
           await env.DB.prepare(`DELETE FROM download_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
           await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {

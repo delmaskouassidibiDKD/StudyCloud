@@ -509,7 +509,7 @@ export const CloudDataStore = {
         tasks.push(
           CloudStorageAPI.getTrashFiles().then(trash => {
             if (trash !== null) {
-              currentState.trash = flag(trash).filter(isNotLocallyDeleted);
+              currentState.trash = flag(trash);
               notify();
             }
           }).catch(() => null)
@@ -725,10 +725,45 @@ export const CloudDataStore = {
     notify();
   },
 
+  removeFileFromCategory(fileId: string, category?: string, folderId?: string) {
+    const filterFn = (list: FileItem[]) => list.filter(f => f.id !== fileId);
+    const updatedMap = { ...currentState.folderFilesMap };
+    if (folderId && updatedMap[folderId]) {
+      updatedMap[folderId] = filterFn(updatedMap[folderId]);
+    } else if (!category || category === 'classeur' || category === 'folder') {
+      for (const k of Object.keys(updatedMap)) {
+        updatedMap[k] = filterFn(updatedMap[k]);
+      }
+    }
+    currentState = {
+      ...currentState,
+      folderFilesMap: updatedMap,
+      documents: (!category || category === 'documents') ? filterFn(currentState.documents) : currentState.documents,
+      images: (!category || category === 'images') ? filterFn(currentState.images) : currentState.images,
+      videos: (!category || category === 'videos') ? filterFn(currentState.videos) : currentState.videos,
+      audio: (!category || category === 'audio') ? filterFn(currentState.audio) : currentState.audio,
+      downloads: (!category || category === 'downloads') ? (currentState.downloads || []).filter(d => d.id !== fileId) as any : currentState.downloads,
+      secure: (!category || category === 'secure') ? filterFn(currentState.secure) : currentState.secure,
+      recentFiles: filterFn(currentState.recentFiles),
+      favorites: filterFn(currentState.favorites),
+    };
+    persistToIndexedDB().catch(() => {});
+    notify();
+  },
+
+  permanentlyRemoveTrashFile(fileId: string) {
+    deletionListeners.forEach(fn => { try { fn(fileId, 'trash'); } catch {} });
+    currentState = {
+      ...currentState,
+      trash: currentState.trash.filter(f => f.id !== fileId),
+    };
+    persistToIndexedDB().catch(() => {});
+    notify();
+  },
+
   moveToTrash(items: FileItem | FileItem[]) {
     const arr = (Array.isArray(items) ? items : [items]).filter(Boolean);
     if (arr.length === 0) return;
-    arr.forEach(f => deletionListeners.forEach(fn => { try { fn(f.id, f.category); } catch {} }));
     const idSet = new Set(arr.map(f => f.id));
     const filterFn = (list: FileItem[]) => list.filter(f => !idSet.has(f.id));
     const updatedMap = { ...currentState.folderFilesMap };

@@ -24,6 +24,51 @@ import { deleteFileBlob } from '../services/localFileStorage';
 import { FileItem } from './Page1FilesMenuView';
 import { AudioCardPreview } from './AudioCardPreview';
 import { DocumentCardPreview } from './DocumentCardPreview';
+import { Classeur3DFolderCard, TxtDocumentSVG } from './Folder3DModels';
+
+const getDocumentTheme = (ext: string = 'PDF') => {
+  const upper = (ext || 'PDF').toUpperCase();
+  if (upper === 'PDF') {
+    return {
+      bg: 'linear-gradient(180deg, #dc2626 0%, #991b1b 100%)',
+      border: 'border-2 border-red-500 hover:border-red-400',
+      shadow: 'shadow-[2.5px_2.5px_0px_0px_#450a0a]',
+      badge: 'bg-white text-red-700 border-white',
+      typeBadge: 'PDF'
+    };
+  } else if (['DOC', 'DOCX'].includes(upper)) {
+    return {
+      bg: 'linear-gradient(180deg, #2563eb 0%, #1e40af 100%)',
+      border: 'border-2 border-blue-500 hover:border-blue-400',
+      shadow: 'shadow-[2.5px_2.5px_0px_0px_#172554]',
+      badge: 'bg-white text-blue-700 border-white',
+      typeBadge: 'DOCX'
+    };
+  } else if (['XLS', 'XLSX', 'CSV'].includes(upper)) {
+    return {
+      bg: 'linear-gradient(180deg, #0d9488 0%, #115e59 100%)',
+      border: 'border-2 border-emerald-500 hover:border-emerald-400',
+      shadow: 'shadow-[2.5px_2.5px_0px_0px_#022c22]',
+      badge: 'bg-white text-emerald-700 border-white',
+      typeBadge: 'XLSX'
+    };
+  } else if (['PPT', 'PPTX'].includes(upper)) {
+    return {
+      bg: 'linear-gradient(180deg, #ea580c 0%, #9a3412 100%)',
+      border: 'border-2 border-orange-500 hover:border-orange-400',
+      shadow: 'shadow-[2.5px_2.5px_0px_0px_#431407]',
+      badge: 'bg-white text-orange-700 border-white',
+      typeBadge: 'PPTX'
+    };
+  }
+  return {
+    bg: 'linear-gradient(180deg, #26272b 0%, #1c1c1f 100%)',
+    border: 'border-2 border-stone-700 hover:border-stone-500',
+    shadow: 'shadow-[2.5px_2.5px_0px_0px_#1c1917]',
+    badge: 'bg-white text-stone-900 border-white',
+    typeBadge: upper || 'DOC'
+  };
+};
 
 interface TrashMenuViewProps {
   onBack: () => void;
@@ -174,11 +219,15 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
     if (activeFilter !== 'all') {
       list = list.filter(f => {
         const cat = (f.sourceCategory || f.originalCategory || f.category || '').toLowerCase();
-        if (activeFilter === 'audio') return cat === 'audio' || Boolean(f.isAudio);
-        if (activeFilter === 'documents') return cat === 'documents' || Boolean(f.isDocument);
-        if (activeFilter === 'images') return cat === 'images' || Boolean(f.isImage);
-        if (activeFilter === 'videos') return cat === 'videos' || Boolean(f.isVideo);
-        if (activeFilter === 'classeur') return cat === 'classeur' || cat === 'classeur_folder';
+        const ext = (f.extension || (f.name.includes('.') ? f.name.split('.').pop() || '' : '')).toLowerCase();
+        const isNote = Boolean(f.isNotepad || f.category === 'notes' || f.name.endsWith('.txt') || ext === 'txt' || (f.metadata && f.metadata.isNotepad));
+        const isFolder = Boolean(cat === 'classeur_folder' || f.category === 'folder' || (f as any).isFolder || (f as any).isClasseurFolder || (f.metadata && (f.metadata.model_id || f.metadata.modelId)));
+
+        if (activeFilter === 'classeur') return cat === 'classeur' || cat === 'classeur_folder' || isNote || isFolder;
+        if (activeFilter === 'audio') return cat === 'audio' || Boolean(f.isAudio) || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes(ext);
+        if (activeFilter === 'documents') return (cat === 'documents' || Boolean(f.isDocument) || ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)) && !isNote && !isFolder;
+        if (activeFilter === 'images') return cat === 'images' || Boolean(f.isImage) || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'bmp'].includes(ext);
+        if (activeFilter === 'videos') return cat === 'videos' || Boolean(f.isVideo) || ['mp4', 'mov', 'mkv', 'webm', 'avi', '3gp'].includes(ext);
         return true;
       });
     }
@@ -203,17 +252,19 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
     filteredTrash.forEach(file => {
       const cat = (file.sourceCategory || file.originalCategory || file.category || '').toLowerCase();
       const ext = (file.extension || (file.name.includes('.') ? file.name.split('.').pop() || '' : '')).toLowerCase();
+      const isNote = Boolean(file.isNotepad || file.category === 'notes' || file.name.endsWith('.txt') || ext === 'txt' || (file.metadata && file.metadata.isNotepad));
+      const isFolder = Boolean(cat === 'classeur_folder' || file.category === 'folder' || (file as any).isFolder || (file as any).isClasseurFolder || (file.metadata && (file.metadata.model_id || file.metadata.modelId)));
 
-      if (cat === 'audio' || file.isAudio || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes(ext)) {
+      if (isFolder || isNote || cat === 'classeur' || cat === 'classeur_folder') {
+        classeur.push(file);
+      } else if (cat === 'audio' || file.isAudio || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes(ext)) {
         audios.push(file);
-      } else if (cat === 'documents' || file.isDocument || ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt'].includes(ext)) {
-        documents.push(file);
       } else if (cat === 'images' || file.isImage || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'bmp'].includes(ext)) {
         images.push(file);
       } else if (cat === 'videos' || file.isVideo || ['mp4', 'mov', 'mkv', 'webm', 'avi', '3gp'].includes(ext)) {
         videos.push(file);
-      } else if (cat === 'classeur' || cat === 'classeur_folder') {
-        classeur.push(file);
+      } else if (cat === 'documents' || file.isDocument || ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(ext)) {
+        documents.push(file);
       } else {
         others.push(file);
       }
@@ -418,25 +469,25 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   const renderDocumentCard = (file: FileItem, index: number) => {
     const isChecked = selectedIds.includes(file.id);
     const isMenuOpen = activeMenuFileId === file.id;
+    const theme = getDocumentTheme(file.extension || (file.name.includes('.') ? file.name.split('.').pop() || 'PDF' : 'PDF'));
 
     return (
       <div
         key={file.id}
+        style={{ background: theme.bg }}
         onClick={() => {
           if (isSelectionMode) toggleSelect(file.id);
         }}
-        className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none ${
-          isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 relative overflow-hidden'
-        } ${
+        className={`group aspect-[3/4] ${theme.border} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative select-none ${
           isChecked
-            ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-xl'
+            ? 'ring-4 ring-amber-400 shadow-2xl scale-[1.02] cursor-pointer'
             : isMenuOpen
-            ? 'border-rose-500 ring-2 ring-rose-500/40 shadow-2xl'
-            : 'border-stone-800/80 hover:border-blue-500/50'
+            ? 'ring-4 ring-rose-500/80 shadow-2xl z-50 overflow-visible'
+            : 'hover:scale-[1.01] shadow-md cursor-pointer active:scale-98 z-10 overflow-hidden'
         }`}
       >
         {/* Barre supérieure : Bouton 3 traits & Badge taille */}
-        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
+        <div className="relative z-20 flex items-center justify-between gap-1">
           <div className="relative studycloud-trash-menu-trigger">
             <button
               type="button"
@@ -456,28 +507,28 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
             {isMenuOpen && renderOptionsMenu(file, index)}
           </div>
 
-          <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
+          <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/40 text-white border border-black/20 px-1.5 py-0.5 rounded shadow-sm">
             {file.size || '0 o'}
           </span>
         </div>
 
-        {/* Cadre d'aperçu du document (DocumentCardPreview fidèle) */}
-        <div className="relative z-10 flex-1 w-full px-2 py-1 flex items-center justify-center overflow-hidden">
-          <div className="w-full h-full rounded-xl overflow-hidden bg-black/40 border border-white/10 flex items-center justify-center">
-            <DocumentCardPreview doc={file as any} />
-          </div>
+        {/* Cadre d'aperçu du document (DocumentCardPreview fidèle dans son feuillet blanc) */}
+        <div className="flex-1 w-full my-1.5 overflow-hidden rounded-lg bg-white relative shadow-inner border border-white/20 flex flex-col justify-between pointer-events-none">
+          <DocumentCardPreview doc={file as any} />
         </div>
 
-        {/* Barre inférieure : Nom du document & bouton restauration rapide */}
-        <div className="relative z-20 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-black text-white truncate group-hover:text-blue-300 transition-colors" title={file.name}>
-              {file.name}
-            </p>
-            <p className="text-[10px] text-slate-400 truncate">
-              {file.date || 'Document'}
-            </p>
-          </div>
+        {/* Titre unique en bas */}
+        <div className="px-0.5 mb-1">
+          <p className="text-[9px] sm:text-[10px] font-black text-white truncate drop-shadow-md" title={file.name}>
+            {file.name}
+          </p>
+        </div>
+
+        {/* Pied de carte : typeBadge et bouton restauration directe */}
+        <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1">
+          <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
+            {theme.typeBadge}
+          </span>
 
           <button
             type="button"
@@ -485,10 +536,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
               e.stopPropagation();
               handleRestore(file);
             }}
-            className="p-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 transition-all cursor-pointer active:scale-95 shrink-0"
+            className="p-1 sm:p-1.2 bg-emerald-500 hover:bg-emerald-600 text-white rounded border border-stone-900 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:scale-95"
             title="Restaurer immédiatement"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
+            <RotateCcw className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
           </button>
         </div>
       </div>
@@ -684,85 +735,169 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   const renderClasseurCard = (file: FileItem, index: number) => {
     const isChecked = selectedIds.includes(file.id);
     const isMenuOpen = activeMenuFileId === file.id;
+    const srcCat = (file.sourceCategory || file.originalCategory || file.category || '').toLowerCase();
+    const isFolder = Boolean(srcCat === 'classeur_folder' || file.category === 'folder' || (file as any).isFolder || (file as any).isClasseurFolder || (file.metadata && (file.metadata.model_id || file.metadata.modelId)));
+    const isNote = Boolean(file.isNotepad || file.category === 'notes' || file.name.endsWith('.txt') || file.extension === 'txt' || (file.metadata && file.metadata.isNotepad));
 
-    return (
-      <div
-        key={file.id}
-        onClick={() => {
-          if (isSelectionMode) toggleSelect(file.id);
-        }}
-        className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none ${
-          isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 relative overflow-hidden'
-        } ${
-          isChecked
-            ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-xl'
-            : isMenuOpen
-            ? 'border-rose-500 ring-2 ring-rose-500/40 shadow-2xl'
-            : 'border-stone-800/80 hover:border-orange-500/50'
-        }`}
-      >
-        {/* Barre supérieure : Bouton 3 traits & Taille */}
-        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
-          <div className="relative studycloud-trash-menu-trigger">
+    // 1. Rendu authentique du Dossier 3D du Classeur
+    if (isFolder) {
+      const folderData = {
+        id: file.id,
+        name: file.name,
+        modelId: file.metadata?.model_id || file.metadata?.modelId || '1',
+        primaryColor: file.metadata?.primary_color || file.metadata?.primaryColor || '#EA580C',
+        accentColor: file.metadata?.accent_color || file.metadata?.accentColor || '#F97316',
+        iconName: file.metadata?.icon_name || file.metadata?.iconName || 'Folder',
+        textDark: Boolean(file.metadata?.text_dark ?? file.metadata?.textDark),
+        displayOrder: file.metadata?.display_order || 0,
+        zoomLevel: file.metadata?.zoom_level || 10,
+        itemCount: 0,
+      };
+
+      return (
+        <div
+          key={file.id}
+          onClick={() => {
+            if (isSelectionMode) toggleSelect(file.id);
+          }}
+          className={`group relative rounded-2xl transition-all duration-200 flex flex-col justify-between shadow-lg select-none cursor-pointer bg-[#0A0D18] border p-2 sm:p-2.5 ${
+            isChecked
+              ? 'border-amber-400 ring-4 ring-amber-400/40 shadow-2xl'
+              : isMenuOpen
+              ? 'border-rose-500 ring-2 ring-rose-500/50 shadow-2xl z-50 overflow-visible'
+              : 'border-stone-800/80 hover:border-orange-500/50 z-10 overflow-hidden'
+          }`}
+        >
+          {/* Barre haute : Bouton 3 traits & Badge Dossier 3D */}
+          <div className="relative z-20 flex items-center justify-between gap-1 mb-1">
+            <div className="relative studycloud-trash-menu-trigger">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+                }}
+                className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+                  isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : 'border-white/20'
+                }`}
+                title="Options corbeille"
+              >
+                <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+              </button>
+              {isMenuOpen && renderOptionsMenu(file, index)}
+            </div>
+
+            <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/30">
+              Dossier 3D
+            </span>
+          </div>
+
+          {/* Rendu 3D conforme et interactif du dossier */}
+          <div className="w-full flex-1 flex items-center justify-center py-2 pointer-events-none min-h-[105px]">
+            <div className="w-24 sm:w-28 drop-shadow-lg group-hover:scale-105 transition-transform duration-200">
+              <Classeur3DFolderCard folder={folderData as any} />
+            </div>
+          </div>
+
+          {/* Barre basse : Nom & Bouton restaurer */}
+          <div className="relative z-20 p-2 bg-black/75 backdrop-blur-md border border-white/10 rounded-xl flex items-center justify-between gap-2 mt-1">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-black text-white truncate group-hover:text-orange-300 transition-colors" title={file.name}>
+                {file.name}
+              </p>
+              <p className="text-[9px] text-slate-400">Dossier corbeille</p>
+            </div>
+
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+                handleRestore(file);
               }}
-              className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
-                isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : 'border-white/20'
-              }`}
-              title="Options corbeille"
+              className="p-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 transition-all cursor-pointer active:scale-95 shrink-0"
+              title="Restaurer immédiatement"
             >
-              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+              <RotateCcw className="w-3.5 h-3.5" />
             </button>
-
-            {/* Menu indépendant qui flotte au-dessus sans être confondu */}
-            {isMenuOpen && renderOptionsMenu(file, index)}
-          </div>
-
-          <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
-            {file.size || '0 o'}
-          </span>
-        </div>
-
-        {/* Centre icône classeur */}
-        <div className="flex-1 flex flex-col items-center justify-center py-2">
-          <div className="w-12 h-12 rounded-2xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
-            {file.isNotepad ? (
-              <FileEdit className="w-6 h-6 text-orange-400" />
-            ) : (
-              <FolderArchive className="w-6 h-6 text-orange-400" />
-            )}
           </div>
         </div>
+      );
+    }
 
-        {/* Barre inférieure : Nom & Restaurer */}
-        <div className="relative z-20 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-black text-white truncate group-hover:text-orange-300 transition-colors" title={file.name}>
-              {file.name}
-            </p>
-            <p className="text-[10px] text-slate-400 truncate">
-              {file.date || 'Classeur'}
-            </p>
+    // 2. Rendu conforme de la Note TXT du Classeur (avec TxtDocumentSVG identique à l'original)
+    if (isNote) {
+      return (
+        <div
+          key={file.id}
+          onClick={() => {
+            if (isSelectionMode) toggleSelect(file.id);
+          }}
+          className={`group relative bg-[#0E1526] hover:bg-[#141E34] border rounded-2xl p-2 sm:p-2.5 shadow-lg transition-all duration-200 flex flex-col justify-between select-none cursor-pointer ${
+            isChecked
+              ? 'border-amber-400 ring-4 ring-amber-400/40 shadow-2xl'
+              : isMenuOpen
+              ? 'border-rose-500 ring-2 ring-rose-500/50 shadow-2xl z-50 overflow-visible'
+              : 'border-white/10 hover:border-cyan-400/50 hover:-translate-y-1 z-10 overflow-hidden'
+          }`}
+        >
+          {/* Haut de carte : Badge TXT et Bouton 3 traits */}
+          <div className="flex items-center justify-between z-20">
+            <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+              TXT
+            </span>
+
+            <div className="relative studycloud-trash-menu-trigger">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+                }}
+                className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+                  isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : 'border-white/20'
+                }`}
+                title="Options corbeille"
+              >
+                <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+              </button>
+              {isMenuOpen && renderOptionsMenu(file, index)}
+            </div>
           </div>
 
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleRestore(file);
-            }}
-            className="p-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 transition-all cursor-pointer active:scale-95 shrink-0"
-            title="Restaurer immédiatement"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button>
+          {/* Illustration TXT Conforme strictement au Classeur (TxtDocumentSVG) */}
+          <div className="w-full flex-1 flex items-center justify-center py-2 min-h-[110px] pointer-events-none">
+            <div className="w-24 sm:w-28 aspect-[160/215] drop-shadow-md group-hover:scale-105 transition-transform duration-200">
+              <TxtDocumentSVG />
+            </div>
+          </div>
+
+          {/* Bas de carte : Titre et bouton restauration rapide */}
+          <div className="p-1.5 flex items-center justify-between bg-black/40 border border-white/10 rounded-xl mt-1.5 gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-cyan-300 transition-colors" title={file.name}>
+                {file.name}
+              </p>
+              <p className="text-[9px] text-slate-400">{file.size || '0 o'}</p>
+            </div>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRestore(file);
+              }}
+              className="p-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 transition-all cursor-pointer active:scale-95 shrink-0"
+              title="Restaurer immédiatement"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
+
+    // 3. Autre document importé dans le classeur
+    return renderDocumentCard(file, index);
   };
 
   return (
@@ -969,7 +1104,20 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
               </section>
             )}
 
-            {/* 2. SECTION DOCUMENTS */}
+            {/* 2. SECTION CLASSEUR & DOSSIERS 3D */}
+            {categorized.classeur.length > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-orange-600 border-b border-stone-200 pb-2">
+                  <FolderArchive className="w-4 h-4" />
+                  <span>Classeur & Dossiers ({categorized.classeur.length})</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+                  {categorized.classeur.map((file, idx) => renderClasseurCard(file, idx))}
+                </div>
+              </section>
+            )}
+
+            {/* 3. SECTION DOCUMENTS */}
             {categorized.documents.length > 0 && (
               <section className="space-y-3">
                 <div className="flex items-center gap-2 text-sm sm:text-base font-black text-blue-600 border-b border-stone-200 pb-2">
@@ -982,7 +1130,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
               </section>
             )}
 
-            {/* 3. SECTION IMAGES */}
+            {/* 4. SECTION IMAGES */}
             {categorized.images.length > 0 && (
               <section className="space-y-3">
                 <div className="flex items-center gap-2 text-sm sm:text-base font-black text-emerald-600 border-b border-stone-200 pb-2">
@@ -995,7 +1143,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
               </section>
             )}
 
-            {/* 4. SECTION VIDÉOS */}
+            {/* 5. SECTION VIDÉOS */}
             {categorized.videos.length > 0 && (
               <section className="space-y-3">
                 <div className="flex items-center gap-2 text-sm sm:text-base font-black text-purple-600 border-b border-stone-200 pb-2">
@@ -1004,19 +1152,6 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
                   {categorized.videos.map((file, idx) => renderVideoCard(file, idx))}
-                </div>
-              </section>
-            )}
-
-            {/* 5. SECTION CLASSEUR / DOSSIERS */}
-            {categorized.classeur.length > 0 && (
-              <section className="space-y-3">
-                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-orange-600 border-b border-stone-200 pb-2">
-                  <FolderArchive className="w-4 h-4" />
-                  <span>Classeur & Dossiers ({categorized.classeur.length})</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-                  {categorized.classeur.map((file, idx) => renderClasseurCard(file, idx))}
                 </div>
               </section>
             )}
