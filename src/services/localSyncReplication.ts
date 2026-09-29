@@ -20,6 +20,7 @@ import { getCurrentUserId } from './userSync';
 import { CloudDataStore, FileItem, setTombstoneChecker } from './cloudDataStore';
 import { removeDownloadedFile } from './downloadsManager';
 import { deleteFileBlob } from './localFileStorage';
+import { setCachedMediaThumbnail } from './mediaPreviewService';
 
 export interface SyncDocument {
   id: string;
@@ -336,23 +337,53 @@ export const LocalSyncReplication = {
               size: parsedContent.size || '0 o',
             };
 
-            // Insérer dans la bonne catégorie si non présent
+            // Mise en cache de l'aperçu / vignette si disponible
+            const thumbUrl = (fileItem.previewUrl && !fileItem.previewUrl.startsWith('blob:')) 
+              ? fileItem.previewUrl 
+              : (fileItem.thumbnailUrl && !fileItem.thumbnailUrl.startsWith('blob:')) 
+                ? fileItem.thumbnailUrl 
+                : null;
+            if (thumbUrl) {
+              setCachedMediaThumbnail(doc.id, thumbUrl);
+            }
+
+            // Insérer ou mettre à jour dans la bonne catégorie
             const state = CloudDataStore.getState();
             if (cat === 'images') {
               const exists = state.images.some(x => x.id === doc.id);
-              if (!exists) CloudDataStore.setImages([fileItem, ...state.images]);
+              if (!exists) {
+                CloudDataStore.setImages([fileItem, ...state.images]);
+              } else {
+                CloudDataStore.setImages(state.images.map(x => x.id === doc.id ? { ...x, ...fileItem } : x));
+              }
             } else if (cat === 'videos') {
               const exists = state.videos.some(x => x.id === doc.id);
-              if (!exists) CloudDataStore.setVideos([fileItem, ...state.videos]);
+              if (!exists) {
+                CloudDataStore.setVideos([fileItem, ...state.videos]);
+              } else {
+                CloudDataStore.setVideos(state.videos.map(x => x.id === doc.id ? { ...x, ...fileItem } : x));
+              }
             } else if (cat === 'audio') {
               const exists = state.audio.some(x => x.id === doc.id);
-              if (!exists) CloudDataStore.setAudio([fileItem, ...state.audio]);
+              if (!exists) {
+                CloudDataStore.setAudio([fileItem, ...state.audio]);
+              } else {
+                CloudDataStore.setAudio(state.audio.map(x => x.id === doc.id ? { ...x, ...fileItem } : x));
+              }
             } else if (cat === 'downloads') {
               const exists = state.downloads.some(x => x.id === doc.id);
-              if (!exists) CloudDataStore.setDownloads([fileItem as any, ...state.downloads]);
+              if (!exists) {
+                CloudDataStore.setDownloads([fileItem as any, ...state.downloads]);
+              } else {
+                CloudDataStore.setDownloads(state.downloads.map(x => x.id === doc.id ? { ...x, ...fileItem } : x) as any);
+              }
             } else if (cat === 'documents') {
               const exists = state.documents.some(x => x.id === doc.id);
-              if (!exists) CloudDataStore.setDocuments([fileItem, ...state.documents]);
+              if (!exists) {
+                CloudDataStore.setDocuments([fileItem, ...state.documents]);
+              } else {
+                CloudDataStore.setDocuments(state.documents.map(x => x.id === doc.id ? { ...x, ...fileItem } : x));
+              }
             }
             upsertCount++;
           }

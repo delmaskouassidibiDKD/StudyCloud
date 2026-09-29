@@ -1971,29 +1971,11 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
               : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
         }`}>
           <div className="space-y-3 sm:space-y-4">
-            {/* Ligne d'en-tête de la liste avec filtres et compteurs */}
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            {/* Ligne d'en-tête de la liste */}
+            <div className="flex items-center justify-between">
               <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
                 {filteredDocuments.length} document{filteredDocuments.length > 1 ? 's' : ''} disponible{filteredDocuments.length > 1 ? 's' : ''}
               </span>
-
-              {/* Filtres par type */}
-              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
-                {(['all', 'pdf', 'cours', 'td', 'devoirs'] as const).map(tab => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setActiveFilter(tab)}
-                    className={`px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer uppercase ${
-                      activeFilter === tab
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'bg-stone-200 dark:bg-slate-800/80 text-stone-600 dark:text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    {tab === 'all' ? 'Tous' : tab}
-                  </button>
-                ))}
-              </div>
             </div>
 
             {loading ? (

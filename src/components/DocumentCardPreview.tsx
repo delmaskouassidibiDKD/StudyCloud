@@ -21,6 +21,26 @@ export const DocumentCardPreview: React.FC<DocumentCardPreviewProps> = ({ doc })
     return cached;
   });
 
+  // Mise à jour réactive dès qu'un nouvel aperçu est synchronisé depuis un autre ordinateur
+  useEffect(() => {
+    if (doc.previewUrl && (doc.previewUrl.startsWith('data:image') || doc.previewUrl.startsWith('http') || doc.previewUrl.startsWith('/'))) {
+      if (!doc.previewUrl.toLowerCase().endsWith('.pdf')) {
+        setThumbUrl(doc.previewUrl);
+        return;
+      }
+    }
+    if (doc.thumbnailUrl && (doc.thumbnailUrl.startsWith('data:image') || doc.thumbnailUrl.startsWith('http') || doc.thumbnailUrl.startsWith('/'))) {
+      if (!doc.thumbnailUrl.toLowerCase().endsWith('.pdf')) {
+        setThumbUrl(doc.thumbnailUrl);
+        return;
+      }
+    }
+    const cached = getCachedMediaThumbnail(doc.id || doc.url || '');
+    if (cached) {
+      setThumbUrl(cached);
+    }
+  }, [doc.id, doc.url, doc.previewUrl, doc.thumbnailUrl]);
+
   const ext = (doc.extension || (doc.name.includes('.') ? doc.name.split('.').pop() || 'PDF' : 'PDF')).toLowerCase();
   const isPdf = ext === 'pdf' || (doc.type && doc.type.includes('pdf'));
   const isExcel = ['xls', 'xlsx', 'csv'].includes(ext);
