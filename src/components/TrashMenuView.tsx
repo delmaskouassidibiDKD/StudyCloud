@@ -223,19 +223,21 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   }, [filteredTrash]);
 
   // =========================================================================
-  // MENU DÉDIÉ 3 TRAITS SUR CHAQUE CARTE (FIDÈLE À LA CAPTURE D'ÉCRAN)
+  // MENU DÉDIÉ 3 TRAITS FLOTTANT AU-DESSUS DE LA CARTE (SANS ÊTRE CONFONDU)
   // =========================================================================
-  const renderOptionsMenu = (file: FileItem) => {
+  const renderOptionsMenu = (file: FileItem, index?: number) => {
     if (activeMenuFileId !== file.id) return null;
     const isChecked = selectedIds.includes(file.id);
+    const isRightCol = typeof index === 'number' && ((index + 1) % 2 === 0 || (index + 1) % 3 === 0 || (index + 1) % 4 === 0);
+    const alignClass = isRightCol ? 'right-0' : 'left-0';
 
     return (
       <div
-        className="studycloud-trash-menu-panel absolute left-2 top-8 z-50 w-56 sm:w-64 bg-[#0A0F1D] border-2 border-rose-500/80 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.95)] text-white animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col p-0.5"
+        className={`studycloud-trash-menu-panel absolute ${alignClass} top-9 z-[150] w-56 sm:w-64 bg-[#0A0F1D] border-2 border-rose-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(244,63,94,0.35)] text-white animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col p-0.5`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* En-tête : Titre du fichier, Sous-titre rouge CORBEILLE, et Croix de fermeture */}
-        <div className="px-3 py-2 border-b border-rose-500/20 flex items-center justify-between gap-2">
+        <div className="px-3 py-2 bg-[#0E1527] border-b border-rose-500/25 flex items-center justify-between gap-2">
           <div className="min-w-0 flex-1">
             <p className="text-[11px] sm:text-xs font-black text-white truncate" title={file.name}>
               {file.name}
@@ -324,7 +326,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   // =========================================================================
   // CARTE AUDIO CARRÉE AVEC APERÇU ET LOGO MÉLODIE
   // =========================================================================
-  const renderAudioCard = (file: FileItem) => {
+  const renderAudioCard = (file: FileItem, index: number) => {
     const isChecked = selectedIds.includes(file.id);
     const isMenuOpen = activeMenuFileId === file.id;
 
@@ -334,16 +336,18 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         onClick={() => {
           if (isSelectionMode) toggleSelect(file.id);
         }}
-        className={`group relative aspect-square rounded-2xl overflow-hidden bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-lg select-none ${
+        className={`group aspect-square rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none ${
+          isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 relative overflow-hidden'
+        } ${
           isChecked
-            ? 'border-amber-400 ring-2 ring-amber-400/40'
+            ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-xl'
             : isMenuOpen
-            ? 'border-rose-500 ring-2 ring-rose-500/40'
-            : 'border-white/10 hover:border-amber-500/40'
+            ? 'border-rose-500 ring-2 ring-rose-500/40 shadow-2xl'
+            : 'border-stone-800/80 hover:border-amber-500/50'
         }`}
       >
         {/* Arrière-plan : aperçu audio ou pochette créateur haute fidélité */}
-        <div className="absolute inset-0 z-0">
+        <div className="absolute inset-0 z-0 overflow-hidden rounded-2xl pointer-events-none">
           <AudioCardPreview track={file} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/60 pointer-events-none" />
         </div>
@@ -355,32 +359,34 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
           </div>
         </div>
 
-        {/* Barre supérieure : Bouton 3 traits, tag officiel et badge taille */}
+        {/* Barre supérieure : Bouton 3 traits & badge taille */}
         <div className="relative z-20 p-2 flex items-center justify-between gap-1">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setActiveMenuFileId(prev => prev === file.id ? null : file.id);
-            }}
-            className={`studycloud-trash-menu-trigger p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
-              isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50' : 'border-white/20'
-            }`}
-            title="Options corbeille"
-          >
-            <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
-          </button>
+          <div className="relative studycloud-trash-menu-trigger">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+              }}
+              className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+                isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : 'border-white/20'
+              }`}
+              title="Options corbeille"
+            >
+              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+            </button>
+
+            {/* Menu indépendant qui flotte au-dessus sans être confondu */}
+            {isMenuOpen && renderOptionsMenu(file, index)}
+          </div>
 
           <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
             {file.size || '108 Ko'}
           </span>
         </div>
 
-        {/* Menu déroulant indépendant */}
-        {renderOptionsMenu(file)}
-
         {/* Barre inférieure : Titre, Artiste et bouton restauration directe */}
-        <div className="relative z-20 p-2.5 bg-black/70 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2">
+        <div className="relative z-20 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-black text-white truncate group-hover:text-amber-300 transition-colors" title={file.name}>
               {file.name}
@@ -409,7 +415,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   // =========================================================================
   // CARTE DOCUMENT (AVEC APERÇU MINIATURE DÉDIÉ ET BOUTON 3 TRAITS)
   // =========================================================================
-  const renderDocumentCard = (file: FileItem) => {
+  const renderDocumentCard = (file: FileItem, index: number) => {
     const isChecked = selectedIds.includes(file.id);
     const isMenuOpen = activeMenuFileId === file.id;
 
@@ -419,47 +425,51 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         onClick={() => {
           if (isSelectionMode) toggleSelect(file.id);
         }}
-        className={`group relative rounded-2xl overflow-hidden bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-lg select-none min-h-[220px] ${
+        className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none ${
+          isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 relative overflow-hidden'
+        } ${
           isChecked
-            ? 'border-amber-400 ring-2 ring-amber-400/40'
+            ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-xl'
             : isMenuOpen
-            ? 'border-rose-500 ring-2 ring-rose-500/40'
-            : 'border-white/10 hover:border-blue-500/40'
+            ? 'border-rose-500 ring-2 ring-rose-500/40 shadow-2xl'
+            : 'border-stone-800/80 hover:border-blue-500/50'
         }`}
       >
         {/* Barre supérieure : Bouton 3 traits & Badge taille */}
         <div className="relative z-20 p-2 flex items-center justify-between gap-1">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setActiveMenuFileId(prev => prev === file.id ? null : file.id);
-            }}
-            className={`studycloud-trash-menu-trigger p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
-              isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50' : 'border-white/20'
-            }`}
-            title="Options corbeille"
-          >
-            <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
-          </button>
+          <div className="relative studycloud-trash-menu-trigger">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+              }}
+              className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+                isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : 'border-white/20'
+              }`}
+              title="Options corbeille"
+            >
+              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+            </button>
+
+            {/* Menu indépendant qui flotte au-dessus sans être confondu */}
+            {isMenuOpen && renderOptionsMenu(file, index)}
+          </div>
 
           <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
             {file.size || '0 o'}
           </span>
         </div>
 
-        {/* Menu déroulant indépendant */}
-        {renderOptionsMenu(file)}
-
         {/* Cadre d'aperçu du document (DocumentCardPreview fidèle) */}
         <div className="relative z-10 flex-1 w-full px-2 py-1 flex items-center justify-center overflow-hidden">
-          <div className="w-full h-32 rounded-xl overflow-hidden bg-black/40 border border-white/10 flex items-center justify-center">
+          <div className="w-full h-full rounded-xl overflow-hidden bg-black/40 border border-white/10 flex items-center justify-center">
             <DocumentCardPreview doc={file as any} />
           </div>
         </div>
 
         {/* Barre inférieure : Nom du document & bouton restauration rapide */}
-        <div className="relative z-20 p-2.5 bg-black/70 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2">
+        <div className="relative z-20 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-black text-white truncate group-hover:text-blue-300 transition-colors" title={file.name}>
               {file.name}
@@ -488,7 +498,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   // =========================================================================
   // CARTE IMAGE (AVEC VIGNETTE DIRECTE ET BOUTON 3 TRAITS)
   // =========================================================================
-  const renderImageCard = (file: FileItem) => {
+  const renderImageCard = (file: FileItem, index: number) => {
     const isChecked = selectedIds.includes(file.id);
     const isMenuOpen = activeMenuFileId === file.id;
     const imgUrl = file.previewUrl || file.thumbnailUrl || (file as any).imageUrl || file.url || '';
@@ -499,16 +509,18 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         onClick={() => {
           if (isSelectionMode) toggleSelect(file.id);
         }}
-        className={`group relative rounded-2xl overflow-hidden bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-lg select-none min-h-[200px] ${
+        className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none ${
+          isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 relative overflow-hidden'
+        } ${
           isChecked
-            ? 'border-amber-400 ring-2 ring-amber-400/40'
+            ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-xl'
             : isMenuOpen
-            ? 'border-rose-500 ring-2 ring-rose-500/40'
-            : 'border-white/10 hover:border-emerald-500/40'
+            ? 'border-rose-500 ring-2 ring-rose-500/40 shadow-2xl'
+            : 'border-stone-800/80 hover:border-emerald-500/50'
         }`}
       >
         {/* Arrière-plan vignette */}
-        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden">
+        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden rounded-2xl pointer-events-none">
           {imgUrl ? (
             <img src={imgUrl} alt={file.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
           ) : (
@@ -519,30 +531,32 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
 
         {/* Barre supérieure : Bouton 3 traits & Taille */}
         <div className="relative z-20 p-2 flex items-center justify-between gap-1">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setActiveMenuFileId(prev => prev === file.id ? null : file.id);
-            }}
-            className={`studycloud-trash-menu-trigger p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
-              isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50' : 'border-white/20'
-            }`}
-            title="Options corbeille"
-          >
-            <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
-          </button>
+          <div className="relative studycloud-trash-menu-trigger">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+              }}
+              className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+                isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : 'border-white/20'
+              }`}
+              title="Options corbeille"
+            >
+              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+            </button>
+
+            {/* Menu indépendant qui flotte au-dessus sans être confondu */}
+            {isMenuOpen && renderOptionsMenu(file, index)}
+          </div>
 
           <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
             {file.size || '0 o'}
           </span>
         </div>
 
-        {/* Menu déroulant indépendant */}
-        {renderOptionsMenu(file)}
-
         {/* Barre inférieure : Nom & Restaurer */}
-        <div className="relative z-20 p-2.5 bg-black/70 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2">
+        <div className="relative z-20 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-black text-white truncate group-hover:text-emerald-300 transition-colors" title={file.name}>
               {file.name}
@@ -571,7 +585,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   // =========================================================================
   // CARTE VIDÉO (AVEC VIGNETTE VIDÉO, BADGE DURÉE ET BOUTON 3 TRAITS)
   // =========================================================================
-  const renderVideoCard = (file: FileItem) => {
+  const renderVideoCard = (file: FileItem, index: number) => {
     const isChecked = selectedIds.includes(file.id);
     const isMenuOpen = activeMenuFileId === file.id;
     const vidUrl = file.previewUrl || file.thumbnailUrl || (file as any).videoUrl || file.url || '';
@@ -582,16 +596,18 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         onClick={() => {
           if (isSelectionMode) toggleSelect(file.id);
         }}
-        className={`group relative rounded-2xl overflow-hidden bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-lg select-none min-h-[200px] ${
+        className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none ${
+          isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 relative overflow-hidden'
+        } ${
           isChecked
-            ? 'border-amber-400 ring-2 ring-amber-400/40'
+            ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-xl'
             : isMenuOpen
-            ? 'border-rose-500 ring-2 ring-rose-500/40'
-            : 'border-white/10 hover:border-purple-500/40'
+            ? 'border-rose-500 ring-2 ring-rose-500/40 shadow-2xl'
+            : 'border-stone-800/80 hover:border-purple-500/50'
         }`}
       >
         {/* Arrière-plan vignette vidéo */}
-        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden">
+        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden rounded-2xl pointer-events-none">
           {vidUrl && !vidUrl.toLowerCase().endsWith('.mp4') ? (
             <img src={vidUrl} alt={file.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
           ) : (
@@ -611,30 +627,32 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
 
         {/* Barre supérieure : Bouton 3 traits & Taille */}
         <div className="relative z-20 p-2 flex items-center justify-between gap-1">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setActiveMenuFileId(prev => prev === file.id ? null : file.id);
-            }}
-            className={`studycloud-trash-menu-trigger p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
-              isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50' : 'border-white/20'
-            }`}
-            title="Options corbeille"
-          >
-            <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
-          </button>
+          <div className="relative studycloud-trash-menu-trigger">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+              }}
+              className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+                isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : 'border-white/20'
+              }`}
+              title="Options corbeille"
+            >
+              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+            </button>
+
+            {/* Menu indépendant qui flotte au-dessus sans être confondu */}
+            {isMenuOpen && renderOptionsMenu(file, index)}
+          </div>
 
           <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
             {file.size || '0 o'}
           </span>
         </div>
 
-        {/* Menu déroulant indépendant */}
-        {renderOptionsMenu(file)}
-
         {/* Barre inférieure : Nom & Restaurer */}
-        <div className="relative z-20 p-2.5 bg-black/70 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2">
+        <div className="relative z-20 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-black text-white truncate group-hover:text-purple-300 transition-colors" title={file.name}>
               {file.name}
@@ -663,7 +681,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   // =========================================================================
   // CARTE CLASSEUR / DOSSIER / NOTE
   // =========================================================================
-  const renderClasseurCard = (file: FileItem) => {
+  const renderClasseurCard = (file: FileItem, index: number) => {
     const isChecked = selectedIds.includes(file.id);
     const isMenuOpen = activeMenuFileId === file.id;
 
@@ -673,51 +691,55 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         onClick={() => {
           if (isSelectionMode) toggleSelect(file.id);
         }}
-        className={`group relative rounded-2xl overflow-hidden bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-lg select-none min-h-[190px] ${
+        className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none ${
+          isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 relative overflow-hidden'
+        } ${
           isChecked
-            ? 'border-amber-400 ring-2 ring-amber-400/40'
+            ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-xl'
             : isMenuOpen
-            ? 'border-rose-500 ring-2 ring-rose-500/40'
-            : 'border-white/10 hover:border-orange-500/40'
+            ? 'border-rose-500 ring-2 ring-rose-500/40 shadow-2xl'
+            : 'border-stone-800/80 hover:border-orange-500/50'
         }`}
       >
         {/* Barre supérieure : Bouton 3 traits & Taille */}
         <div className="relative z-20 p-2 flex items-center justify-between gap-1">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setActiveMenuFileId(prev => prev === file.id ? null : file.id);
-            }}
-            className={`studycloud-trash-menu-trigger p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
-              isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50' : 'border-white/20'
-            }`}
-            title="Options corbeille"
-          >
-            <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
-          </button>
+          <div className="relative studycloud-trash-menu-trigger">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+              }}
+              className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+                isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : 'border-white/20'
+              }`}
+              title="Options corbeille"
+            >
+              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+            </button>
+
+            {/* Menu indépendant qui flotte au-dessus sans être confondu */}
+            {isMenuOpen && renderOptionsMenu(file, index)}
+          </div>
 
           <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
             {file.size || '0 o'}
           </span>
         </div>
 
-        {/* Menu déroulant indépendant */}
-        {renderOptionsMenu(file)}
-
         {/* Centre icône classeur */}
-        <div className="flex-1 flex flex-col items-center justify-center py-4">
-          <div className="w-14 h-14 rounded-2xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
+        <div className="flex-1 flex flex-col items-center justify-center py-2">
+          <div className="w-12 h-12 rounded-2xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
             {file.isNotepad ? (
-              <FileEdit className="w-7 h-7 text-orange-400" />
+              <FileEdit className="w-6 h-6 text-orange-400" />
             ) : (
-              <FolderArchive className="w-7 h-7 text-orange-400" />
+              <FolderArchive className="w-6 h-6 text-orange-400" />
             )}
           </div>
         </div>
 
         {/* Barre inférieure : Nom & Restaurer */}
-        <div className="relative z-20 p-2.5 bg-black/70 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2">
+        <div className="relative z-20 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-black text-white truncate group-hover:text-orange-300 transition-colors" title={file.name}>
               {file.name}
@@ -744,9 +766,9 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
   };
 
   return (
-    <div ref={containerRef} className="flex-1 flex flex-col w-full min-h-screen bg-[#070A12] text-white select-none animate-in fade-in duration-200">
-      {/* EN-TÊTE FIXE DU MENU CORBEILLE (IDENTIQUE À L'IMAGE DE L'UTILISATEUR) */}
-      <header className="sticky top-0 z-30 w-full bg-[#0A0E1A]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-3 border-b border-white/10 shadow-lg">
+    <div ref={containerRef} className="w-full h-full flex flex-col bg-white text-stone-900 select-none overflow-hidden animate-in fade-in duration-200">
+      {/* EN-TÊTE FIXE DU MENU CORBEILLE (TOUJOURS ANCRÉ EN HAUT, NE BOUGE PAS AU DÉFILEMENT) */}
+      <header className="shrink-0 z-30 w-full bg-[#0A0E1A] px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 sm:py-3 border-b border-white/10 shadow-lg">
         <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
           {/* GAUCHE : Bouton Retour rond, Icône Corbeille rouge et Titre StudyCloud */}
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
@@ -827,8 +849,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
           </div>
         </div>
 
-        {/* ONGLETS DE FILTRAGE RAPIDE */}
-        <div className="flex items-center gap-1.5 sm:gap-2 mt-3 overflow-x-auto pb-1 scrollbar-none">
+        {/* ONGLETS DE FILTRAGE RAPIDE FIXES DANS L'EN-TÊTE */}
+        <div className="flex items-center gap-1.5 sm:gap-2 mt-2.5 overflow-x-auto pb-0.5 scrollbar-none">
           {[
             { id: 'all', label: 'TOUS' },
             { id: 'audio', label: 'AUDIO' },
@@ -853,9 +875,9 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         </div>
       </header>
 
-      {/* BANDEAU DE SÉLECTION MULTIPLE FLOTTANT */}
+      {/* BANDEAU DE SÉLECTION MULTIPLE FLOTTANT FIXE SOUS L'EN-TÊTE */}
       {isSelectionMode && (
-        <div className="sticky top-[108px] z-20 w-full bg-[#0F1424] border-b border-rose-500/30 px-3 sm:px-6 py-2 flex items-center justify-between gap-3 text-xs shadow-md">
+        <div className="shrink-0 z-20 w-full bg-[#0F1424] border-b border-rose-500/30 px-3 sm:px-6 py-2 flex items-center justify-between gap-3 text-xs shadow-md">
           <div className="flex items-center gap-2">
             <span className="font-bold text-rose-400">
               {selectedIds.length} sélectionné(s)
@@ -903,7 +925,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
                 setIsSelectionMode(false);
                 setSelectedIds([]);
               }}
-              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded-lg cursor-pointer"
+              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg cursor-pointer"
             >
               Fermer
             </button>
@@ -911,22 +933,22 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         </div>
       )}
 
-      {/* CONTENU PRINCIPAL DE LA CORBEILLE */}
-      <main className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-5 pb-32">
+      {/* CONTENU PRINCIPAL DE LA CORBEILLE (TOTALEMENT BLANC ET DÉFILANT INDÉPENDAMMENT) */}
+      <main className="flex-1 w-full overflow-y-auto bg-white px-3 sm:px-6 md:px-10 lg:px-12 py-5 pb-64 sm:pb-80">
         {loading ? (
           <div className="py-24 flex flex-col items-center justify-center gap-3">
             <div className="w-10 h-10 border-3 border-rose-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm font-semibold text-slate-400">Chargement de la corbeille...</p>
+            <p className="text-sm font-semibold text-stone-500">Chargement de la corbeille...</p>
           </div>
         ) : filteredTrash.length === 0 ? (
           <div className="py-24 flex flex-col items-center justify-center text-center max-w-md mx-auto">
-            <div className="w-20 h-20 rounded-3xl bg-[#121829] border border-rose-500/20 flex items-center justify-center mb-4 shadow-xl">
-              <Trash2 className="w-10 h-10 text-rose-400 opacity-60 stroke-[1.5]" />
+            <div className="w-20 h-20 rounded-3xl bg-rose-50 border border-rose-200 flex items-center justify-center mb-4 shadow-sm">
+              <Trash2 className="w-10 h-10 text-rose-500 opacity-60 stroke-[1.5]" />
             </div>
-            <h3 className="text-lg font-black text-white mb-1.5">
+            <h3 className="text-lg font-black text-stone-800 mb-1.5">
               {searchQuery ? 'Aucun élément trouvé' : 'La corbeille est vide'}
             </h3>
-            <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+            <p className="text-xs sm:text-sm text-stone-500 leading-relaxed">
               {searchQuery
                 ? `Aucun élément de la corbeille ne correspond à "${searchQuery}".`
                 : 'Les fichiers supprimés depuis vos différents menus apparaîtront ici. Vous pourrez les restaurer à tout moment.'}
@@ -937,12 +959,12 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
             {/* 1. SECTION FICHIERS AUDIO (CARRÉS AVEC LOGO MÉLODIE ET APERÇU) */}
             {categorized.audios.length > 0 && (
               <section className="space-y-3">
-                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-amber-400 border-b border-amber-500/20 pb-1.5">
+                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-amber-600 border-b border-stone-200 pb-2">
                   <Music className="w-4 h-4" />
                   <span>Fichiers Audio ({categorized.audios.length})</span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-                  {categorized.audios.map(file => renderAudioCard(file))}
+                  {categorized.audios.map((file, idx) => renderAudioCard(file, idx))}
                 </div>
               </section>
             )}
@@ -950,12 +972,12 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
             {/* 2. SECTION DOCUMENTS */}
             {categorized.documents.length > 0 && (
               <section className="space-y-3">
-                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-blue-400 border-b border-blue-500/20 pb-1.5">
+                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-blue-600 border-b border-stone-200 pb-2">
                   <FileText className="w-4 h-4" />
                   <span>Documents ({categorized.documents.length})</span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-                  {categorized.documents.map(file => renderDocumentCard(file))}
+                  {categorized.documents.map((file, idx) => renderDocumentCard(file, idx))}
                 </div>
               </section>
             )}
@@ -963,12 +985,12 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
             {/* 3. SECTION IMAGES */}
             {categorized.images.length > 0 && (
               <section className="space-y-3">
-                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-emerald-400 border-b border-emerald-500/20 pb-1.5">
+                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-emerald-600 border-b border-stone-200 pb-2">
                   <ImageIcon className="w-4 h-4" />
                   <span>Images ({categorized.images.length})</span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-                  {categorized.images.map(file => renderImageCard(file))}
+                  {categorized.images.map((file, idx) => renderImageCard(file, idx))}
                 </div>
               </section>
             )}
@@ -976,12 +998,12 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
             {/* 4. SECTION VIDÉOS */}
             {categorized.videos.length > 0 && (
               <section className="space-y-3">
-                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-purple-400 border-b border-purple-500/20 pb-1.5">
+                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-purple-600 border-b border-stone-200 pb-2">
                   <Film className="w-4 h-4" />
                   <span>Vidéos ({categorized.videos.length})</span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
-                  {categorized.videos.map(file => renderVideoCard(file))}
+                  {categorized.videos.map((file, idx) => renderVideoCard(file, idx))}
                 </div>
               </section>
             )}
@@ -989,12 +1011,12 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
             {/* 5. SECTION CLASSEUR / DOSSIERS */}
             {categorized.classeur.length > 0 && (
               <section className="space-y-3">
-                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-orange-400 border-b border-orange-500/20 pb-1.5">
+                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-orange-600 border-b border-stone-200 pb-2">
                   <FolderArchive className="w-4 h-4" />
                   <span>Classeur & Dossiers ({categorized.classeur.length})</span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-                  {categorized.classeur.map(file => renderClasseurCard(file))}
+                  {categorized.classeur.map((file, idx) => renderClasseurCard(file, idx))}
                 </div>
               </section>
             )}
@@ -1002,12 +1024,12 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
             {/* 6. AUTRES FICHIERS */}
             {categorized.others.length > 0 && (
               <section className="space-y-3">
-                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-slate-300 border-b border-white/10 pb-1.5">
+                <div className="flex items-center gap-2 text-sm sm:text-base font-black text-stone-700 border-b border-stone-200 pb-2">
                   <FileText className="w-4 h-4" />
                   <span>Autres Fichiers ({categorized.others.length})</span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-                  {categorized.others.map(file => renderDocumentCard(file))}
+                  {categorized.others.map((file, idx) => renderDocumentCard(file, idx))}
                 </div>
               </section>
             )}
