@@ -925,11 +925,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   const [folderDragState, setFolderDragState] = useState<FolderDragState | null>(null);
   const [holdingFolderId, setHoldingFolderId] = useState<string | null>(null);
+  const justDraggedFolderRef = useRef<boolean>(false);
   const folderPointerDownRef = useRef<{
     x: number;
     y: number;
     currentX: number;
     currentY: number;
+    pointerType: string;
     folder: ClasseurCreatedFolder;
     cardRect: DOMRect;
     isDragging: boolean;
@@ -950,16 +952,39 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const deltaX = Math.abs(e.clientX - p.x);
       const deltaY = Math.abs(e.clientY - p.y);
 
-      // Si l'utilisateur bouge de manière significative (> 12px) avant la fin du maintien continu requis,
-      // on annule le timer de maintien pour éviter tout déplacement intempestif
-      if (!p.isHoldActive && (deltaX > 12 || deltaY > 12)) {
-        if (folderLongPressTimerRef.current) {
-          clearTimeout(folderLongPressTimerRef.current);
-          folderLongPressTimerRef.current = null;
+      // Si le glissement n'est pas encore actif
+      if (!p.isDragging) {
+        // Sur ordinateur avec souris : déclenchement immédiat et fluide dès 5px de déplacement (comme avant)
+        if (p.pointerType === 'mouse' && (deltaX > 5 || deltaY > 5)) {
+          if (folderLongPressTimerRef.current) {
+            clearTimeout(folderLongPressTimerRef.current);
+            folderLongPressTimerRef.current = null;
+          }
+          p.isDragging = true;
+          p.isHoldActive = true;
+          setHoldingFolderId(p.folder.id);
+          document.body.style.cursor = 'grabbing';
+          setFolderDragState({
+            folder: p.folder,
+            x: p.currentX,
+            y: p.currentY,
+            width: p.cardRect.width,
+            height: p.cardRect.height,
+            offsetX: p.x - p.cardRect.left,
+            offsetY: p.y - p.cardRect.top,
+          });
+        } else if (p.pointerType === 'touch') {
+          // Sur tactile : si mouvement significatif avant le maintien continu, annuler pour autoriser le défilement
+          if (!p.isHoldActive && (deltaX > 10 || deltaY > 10)) {
+            if (folderLongPressTimerRef.current) {
+              clearTimeout(folderLongPressTimerRef.current);
+              folderLongPressTimerRef.current = null;
+            }
+          }
         }
       }
 
-      // Le glissement est actif UNIQUEMENT après que le maintien continu ait été validé
+      // Le glissement est actif : mise à jour de la position et échange dynamique de position
       if (p.isDragging && p.isHoldActive) {
         setFolderDragState(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
 
@@ -999,11 +1024,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       if (p && !p.isDragging) {
         const deltaX = Math.abs(e.clientX - p.x);
         const deltaY = Math.abs(e.clientY - p.y);
-        // Clic simple rapide sans maintien continu : ouvre le dossier avec le curseur flèche normal
-        if (deltaX < 12 && deltaY < 12) {
+        // Clic simple rapide sans déplacement : ouvre le dossier avec le curseur flèche normal
+        if (deltaX < 6 && deltaY < 6) {
           setOpened3DFolder(p.folder);
         }
       } else if (p && p.isDragging) {
+        // Empêcher le clic parasite qui réouvrirait le dossier à la fin du glissement
+        justDraggedFolderRef.current = true;
+        setTimeout(() => {
+          justDraggedFolderRef.current = false;
+        }, 120);
+
         // Sauvegarde de l'ordre et des positions X/Y dans Cloudflare D1
         setClasseur3DFolders(currentFolders => {
           const reorderPayload = currentFolders.map((f, idx) => ({
@@ -1051,6 +1082,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     // Sur ordinateur avec souris : uniquement clic gauche
     if (e.pointerType === 'mouse' && e.button !== 0) return;
 
+    // Règle d'organisation : on ne peut pas déplacer un élément s'il est seul dans le dossier
+    const rootFolders = classeur3DFolders.filter(f => !f.parentId);
+    if (rootFolders.length <= 1) return;
+
     const cardElement = (e.currentTarget as HTMLElement);
     const rect = cardElement.getBoundingClientRect();
 
@@ -1059,6 +1094,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       y: e.clientY,
       currentX: e.clientX,
       currentY: e.clientY,
+      pointerType: e.pointerType,
       folder,
       cardRect: rect,
       isDragging: false,
@@ -1070,31 +1106,32 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       folderLongPressTimerRef.current = null;
     }
 
-    // Maintien continu obligatoire pour activer le glissement (sur ordinateur comme sur mobile)
-    folderLongPressTimerRef.current = setTimeout(() => {
-      if (folderPointerDownRef.current) {
-        folderPointerDownRef.current.isHoldActive = true;
-        folderPointerDownRef.current.isDragging = true;
-        setHoldingFolderId(folder.id);
+    // Sur mobile (tactile) uniquement : maintien bref (200ms) pour activer le glisser-déplacer
+    if (e.pointerType === 'touch') {
+      folderLongPressTimerRef.current = setTimeout(() => {
+        if (folderPointerDownRef.current) {
+          folderPointerDownRef.current.isHoldActive = true;
+          folderPointerDownRef.current.isDragging = true;
+          setHoldingFolderId(folder.id);
 
-        if (typeof navigator !== 'undefined' && navigator.vibrate) {
-          try { navigator.vibrate(35); } catch {}
+          if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            try { navigator.vibrate(35); } catch {}
+          }
+
+          document.body.style.cursor = 'grabbing';
+
+          setFolderDragState({
+            folder,
+            x: folderPointerDownRef.current.currentX,
+            y: folderPointerDownRef.current.currentY,
+            width: rect.width,
+            height: rect.height,
+            offsetX: folderPointerDownRef.current.x - rect.left,
+            offsetY: folderPointerDownRef.current.y - rect.top,
+          });
         }
-
-        // Le curseur devient la paume qui a saisi le fichier pour le déplacer
-        document.body.style.cursor = 'grabbing';
-
-        setFolderDragState({
-          folder,
-          x: folderPointerDownRef.current.currentX,
-          y: folderPointerDownRef.current.currentY,
-          width: rect.width,
-          height: rect.height,
-          offsetX: folderPointerDownRef.current.x - rect.left,
-          offsetY: folderPointerDownRef.current.y - rect.top,
-        });
-      }
-    }, 280);
+      }, 200);
+    }
   };
 
   const handleDeleteCreatedFolder = (folderId: string) => {
@@ -3479,7 +3516,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setViewerRotation(0);
     setDocCurrentPage(1);
 
-    const isNotepad = Boolean(file.isNotepad || file.extension === 'txt' || file.name.toLowerCase().endsWith('.txt'));
+    const isNotepad = Boolean(
+      file.isNotepad ||
+      file.extension === 'txt' ||
+      file.name.toLowerCase().endsWith('.txt') ||
+      file.category === 'notes' ||
+      file.type === 'text/plain'
+    );
 
     // URL de lecture : préserver le blob local s'il existe, sinon URL worker
     const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
@@ -3510,6 +3553,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       setNoteTextContent(file.content || '');
       setNoteTitleContent(file.noteTitle || '');
       setIsNoteSavedIndicator(true);
+
+      // Si le contenu n'est pas encore en mémoire, tenter de le charger depuis IndexedDB
+      if (!file.content && file.id) {
+        getFileBlob(file.id).then(blob => {
+          if (blob) {
+            blob.text().then(text => {
+              if (text) {
+                setNoteTextContent(text);
+                file.content = text;
+              }
+            }).catch(() => {});
+          }
+        }).catch(() => {});
+      }
     }
 
     // Si audio, démarrer l'écouteur et ouvrir le lecteur mobile si sur téléphone
@@ -5247,7 +5304,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     return (
       <div 
-        className={`studycloud-file-menu-panel absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-[100] w-64 bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.25)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col`}
+        className={`studycloud-file-menu-panel absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-[100] w-60 max-w-[calc(100vw-32px)] bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.25)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col`}
         onClick={(e) => e.stopPropagation()}
       >
           {/* En-tête de menu dédié avec nom du fichier et bouton fermeture */}
@@ -5691,6 +5748,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       <div 
         className="w-full relative pb-32 animate-in fade-in duration-200"
         onDragOver={(e) => {
+          // Si déplacement interne de fichier (réorganisation dans le dossier), ne pas afficher l'overlay d'importation
+          if (draggedFileId || !e.dataTransfer.types.includes('Files')) {
+            return;
+          }
           e.preventDefault();
           setIsDraggingOverFolder(true);
         }}
@@ -5701,6 +5762,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         onDrop={(e) => {
           e.preventDefault();
           setIsDraggingOverFolder(false);
+          if (draggedFileId) return;
           if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             handleDirectFilesImportToFolder(e.dataTransfer.files, folder.id);
           }
@@ -5902,7 +5964,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           <div 
             className="grid transition-all duration-200 w-full"
             style={{
-              gridTemplateColumns: 'repeat(auto-fill, minmax(177px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(165px, 205px))',
               gap: '16px'
             }}
           >
@@ -6054,10 +6116,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 return (
                   <div
                     key={file.id}
-                    draggable={!isSelectionMode && !isSaving}
+                    draggable={!isSelectionMode && !isSaving && sortedFiles.length > 1}
                     onDragStart={(e) => {
+                      if (sortedFiles.length <= 1) {
+                        e.preventDefault();
+                        return;
+                      }
                       e.stopPropagation();
                       e.dataTransfer.setData('text/plain', file.id);
+                      e.dataTransfer.setData('application/studycloud-file', file.id);
+                      e.dataTransfer.effectAllowed = 'move';
                       setDraggedFileId(file.id);
                     }}
                     onDragOver={(e) => {
@@ -6086,8 +6154,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       }
                       handleSelectFile(file);
                     }}
-                    className={`group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col justify-between select-none overflow-hidden ${
-                      isSaving ? 'cursor-wait' : 'cursor-pointer'
+                    className={`group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col justify-between select-none max-w-[215px] w-full ${
+                      isSaving ? 'cursor-wait' : sortedFiles.length > 1 ? 'cursor-grab' : 'cursor-pointer'
                     } ${
                       isBeingDragged
                         ? 'opacity-30 scale-95 border-dashed border-cyan-400 bg-cyan-500/10 cursor-grabbing'
@@ -6098,7 +6166,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         : isSelected
                         ? 'border-cyan-400 ring-2 ring-cyan-400/40 bg-[#14233C]'
                         : 'border-white/10 hover:border-cyan-400/50 hover:-translate-y-1'
-                    } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
+                    } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
                   >
                     {/* Petit trait en haut collé à la carte qui se remplit pendant l'enregistrement */}
                     {isSaving && (
@@ -6206,10 +6274,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               return (
                 <div
                   key={file.id}
-                  draggable={!isSelectionMode && !isSaving}
+                  draggable={!isSelectionMode && !isSaving && sortedFiles.length > 1}
                   onDragStart={(e) => {
+                    if (sortedFiles.length <= 1) {
+                      e.preventDefault();
+                      return;
+                    }
                     e.stopPropagation();
                     e.dataTransfer.setData('text/plain', file.id);
+                    e.dataTransfer.setData('application/studycloud-file', file.id);
+                    e.dataTransfer.effectAllowed = 'move';
                     setDraggedFileId(file.id);
                   }}
                   onDragOver={(e) => {
@@ -6238,8 +6312,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     }
                     handleSelectFile(file);
                   }}
-                  className={`group relative bg-[#0E1526]/85 hover:bg-[#141E34] border rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col overflow-hidden ${
-                    isSaving ? 'cursor-wait' : 'cursor-pointer'
+                  className={`group relative bg-[#0E1526]/85 hover:bg-[#141E34] border rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col max-w-[215px] w-full ${
+                    isSaving ? 'cursor-wait' : sortedFiles.length > 1 ? 'cursor-grab' : 'cursor-pointer'
                   } ${
                     isBeingDragged
                       ? 'opacity-30 scale-95 border-dashed border-orange-400 bg-orange-500/10 cursor-grabbing'
@@ -6250,7 +6324,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       : isSelected
                       ? 'border-orange-400 ring-2 ring-orange-400/40 bg-[#192238]'
                       : 'border-white/10 hover:border-orange-500/50 hover:-translate-y-1'
-                  } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
+                  } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
                 >
                   {/* Petit trait en haut collé à la carte qui se remplit pendant l'enregistrement */}
                   {isSaving && (
@@ -9542,6 +9616,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (isViewerMaximized) {
       setIsViewerMaximized(false);
     } else {
+      if (noteSaveTimeoutRef.current) {
+        clearTimeout(noteSaveTimeoutRef.current);
+        noteSaveTimeoutRef.current = null;
+      }
+      if (splitSelectedFile && (splitSelectedFile.isNotepad || splitSelectedFile.extension === 'txt' || splitSelectedFile.name.toLowerCase().endsWith('.txt') || splitSelectedFile.category === 'notes')) {
+        CloudStorageAPI.updateClasseurFile(splitSelectedFile.id, {
+          noteTitle: noteTitleContent,
+          content: noteTextContent,
+        }).catch(() => {});
+      }
+
       setSelectedDocFile(null);
       setSelectedVideoFile(null);
       setSelectedImageFile(null);
@@ -9620,8 +9705,168 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
   };
 
+  // 0. PAGE D'ÉCRITURE / BLOC-NOTES DÉDIÉE (ÉCRITURE DIRECTE, SANS BOUTON HORIZONTAL NI ZOOM)
+  const renderNoteWriterPage = (file: FileItem) => {
+    return (
+      <div className="w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-text">
+        {/* Barre supérieure dédiée à la page d'écriture (SANS bouton horizontal/vertical, SANS zoom) */}
+        <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0 select-none">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 flex items-center justify-center shrink-0 shadow-sm">
+              <FileEdit className="w-4 h-4 stroke-[2.2]" />
+            </div>
+
+            <div className="min-w-0 ml-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                  TXT
+                </span>
+                <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-[220px]" title={file.name}>
+                  {file.name}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] mt-0.5">
+                {isNoteSavedIndicator ? (
+                  <span className="text-emerald-400 font-bold flex items-center gap-1">
+                    <Check className="w-3 h-3 stroke-[3]" /> Enregistré
+                  </span>
+                ) : (
+                  <span className="text-amber-400 font-bold animate-pulse">
+                    Modifications en cours...
+                  </span>
+                )}
+                {file.size && (
+                  <span className="text-slate-400 font-medium hidden sm:inline">
+                    • {file.size}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Boutons d'action : Télécharger .txt, Partager, Agrandir, Fermer */}
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                const fullContent = (noteTitleContent ? `${noteTitleContent}\n\n` : '') + noteTextContent;
+                const blob = new Blob([fullContent], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = file.name.endsWith('.txt') ? file.name : `${file.name}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast(`"${file.name}" téléchargé !`);
+              }}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Télécharger la note (.txt)"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleShareFile(file)}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+              title="Partager"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              className={'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
+                isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+              )}
+              title={isViewerMaximized ? "Réduire la vue" : "Agrandir l'espace d'écriture"}
+            >
+              {isViewerMaximized ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCloseReader}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
+              title={isViewerMaximized ? "Réduire la vue" : "Fermer la page d'écriture"}
+            >
+              <X className="w-4 h-4 stroke-[2.5]" />
+            </button>
+          </div>
+        </div>
+
+        {/* Corps de la page d'écriture : Titre en majuscules + Zone de texte libre */}
+        <div className="flex-1 p-4 sm:p-6 overflow-hidden flex flex-col space-y-3 bg-[#070B14]/80 select-text">
+          {/* Titre dédié en majuscules limité à 2 lignes */}
+          <textarea
+            value={noteTitleContent}
+            rows={2}
+            placeholder="TITRE DE LA NOTE (EN MAJUSCULES)..."
+            onChange={(e) => {
+              const val = e.target.value.toUpperCase();
+              const lines = val.split('\n');
+              const limitedVal = lines.slice(0, 2).join('\n');
+              setNoteTitleContent(limitedVal);
+              setIsNoteSavedIndicator(false);
+              handleUpdateNoteContent(noteTextContent, limitedVal, file.id);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const currentLines = noteTitleContent.split('\n');
+                if (currentLines.length >= 2) e.preventDefault();
+              }
+            }}
+            className="w-full uppercase font-black text-sm sm:text-base md:text-lg text-cyan-300 placeholder:text-slate-500 placeholder:normal-case bg-transparent border-b border-white/10 pb-2 outline-none resize-none tracking-wide break-all [overflow-wrap:anywhere] [word-break:break-word] leading-snug selection:bg-cyan-500/30 shrink-0"
+            style={{ maxHeight: '4.2rem', lineHeight: '1.4' }}
+          />
+
+          {/* Zone de contenu principale de prise de notes */}
+          <textarea
+            autoFocus
+            value={noteTextContent}
+            onChange={(e) => {
+              const newText = e.target.value;
+              setNoteTextContent(newText);
+              setIsNoteSavedIndicator(false);
+              handleUpdateNoteContent(newText, noteTitleContent, file.id);
+            }}
+            placeholder="Écrivez vos notes, cours ou réflexions ici..."
+            className="w-full flex-1 bg-transparent text-slate-100 placeholder:text-slate-600 text-xs sm:text-sm md:text-base leading-relaxed resize-none outline-none font-sans no-scrollbar break-all [overflow-wrap:anywhere] [word-break:break-word] selection:bg-cyan-500/30"
+          />
+        </div>
+
+        {/* Barre inférieure : Statistiques et statut de synchronisation */}
+        <div className="px-4 sm:px-6 py-2 bg-[#070B14] border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400 shrink-0 select-none">
+          <div className="flex items-center gap-3">
+            <span>{noteTextContent.length} caractères</span>
+            <span>•</span>
+            <span>{noteTextContent.trim() ? noteTextContent.trim().split(/\s+/).length : 0} mots</span>
+            <span>•</span>
+            <span>{noteTextContent.split('\n').length} lignes</span>
+          </div>
+          <span className="text-[10px] text-slate-500 hidden sm:inline">
+            Sauvegardé automatiquement dans le dossier
+          </span>
+        </div>
+      </div>
+    );
+  };
+
   // 1. LECTEUR DOCUMENT DÉDIÉ (IMAGE 1)
   const renderDocumentReader = (file: FileItem) => {
+    const ext = (file.name || '').includes('.') ? (file.name || '').split('.').pop()?.toLowerCase() || '' : '';
+    const isNotepad = Boolean(
+      file.isNotepad ||
+      ext === 'txt' ||
+      file.name.toLowerCase().endsWith('.txt') ||
+      file.category === 'notes' ||
+      file.type === 'text/plain'
+    );
+    if (isNotepad) return renderNoteWriterPage(file);
+
     const isPdf = file.extension === 'pdf' || file.name.toLowerCase().endsWith('.pdf') || (file.url && file.url.toLowerCase().includes('.pdf')) || Boolean(file.type?.includes('pdf'));
     const pdfUrl = splitResolvedPdfUrl || file.url || '';
     const cleanPdfBase = pdfUrl.split('#')[0];
@@ -10379,10 +10624,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // 5. LECTEUR TÉLÉCHARGEMENT DÉDIÉ
   const renderDownloadReader = (file: FileItem | DownloadedItem) => {
     const ext = (file.name || '').includes('.') ? (file.name || '').split('.').pop()?.toLowerCase() || '' : '';
+    const isNotepad = Boolean(
+      (file as any).isNotepad ||
+      ext === 'txt' ||
+      (file.name || '').toLowerCase().endsWith('.txt') ||
+      file.category === 'notes' ||
+      (file as any).type === 'text/plain'
+    );
     const isVid = file.category === 'videos' || Boolean((file as any).videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(file.name);
     const isAud = file.category === 'audio' || Boolean((file as any).audioUrl) || isWhatsAppAudio(file.name, (file as any).type) || EXTENSION_MAP.audio.includes(ext) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name);
     const isImg = file.category === 'images' || Boolean((file as any).isImage) || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name);
     
+    if (isNotepad) return renderNoteWriterPage(file as FileItem);
     if (isVid) return renderVideoPlayer(file as FileItem);
     if (isAud) return renderAudioPlayer(file as FileItem);
     if (isImg) return renderImageViewer(file as FileItem);
@@ -10406,10 +10659,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // 6. LECTEUR CLASSEUR & COLLECTIONS DÉDIÉ
   const renderClasseurFileReader = (file: FileItem) => {
     const ext = (file.name || '').includes('.') ? (file.name || '').split('.').pop()?.toLowerCase() || '' : '';
+    const isNotepad = Boolean(
+      file.isNotepad ||
+      ext === 'txt' ||
+      file.name.toLowerCase().endsWith('.txt') ||
+      file.category === 'notes' ||
+      file.type === 'text/plain'
+    );
     const isVid = file.category === 'videos' || Boolean(file.videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(file.name);
     const isAud = file.category === 'audio' || Boolean(file.audioUrl) || isWhatsAppAudio(file.name, file.type) || EXTENSION_MAP.audio.includes(ext) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name);
     const isImg = file.category === 'images' || Boolean(file.isImage) || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name);
 
+    if (isNotepad) return renderNoteWriterPage(file);
     if (isVid) return renderVideoPlayer(file);
     if (isAud) return renderAudioPlayer(file);
     if (isImg) return renderImageViewer(file);
@@ -11719,6 +11980,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                 data-classeur-folder-id={folder.id}
                                 onPointerDown={(e) => handleFolderPointerDown(e, folder)}
                                 onClick={(e) => {
+                                  if (justDraggedFolderRef.current) return;
                                   if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('.studycloud-file-menu-panel') || (e.target as HTMLElement).closest('.studycloud-menu-trigger')) return;
                                   if (isSelectionMode) {
                                     toggleItemSelection(folder.id);
@@ -11735,7 +11997,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                       ? 'scale-105 shadow-2xl border-orange-400 bg-[#141E34] cursor-grabbing'
                                       : isFolderSelected
                                         ? 'border-amber-400 ring-2 ring-amber-400/50 bg-[#14233C] shadow-2xl scale-[1.01]'
-                                        : 'bg-[#0E1526]/85 hover:bg-[#141E34] border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1 cursor-pointer'
+                                        : `bg-[#0E1526]/85 hover:bg-[#141E34] border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1 ${classeur3DFolders.filter(f => !f.parentId).length > 1 ? 'cursor-grab' : 'cursor-pointer'}`
                                 }`}
                               >
                                 {/* Case à cocher carrée quand le mode sélection est actif */}
