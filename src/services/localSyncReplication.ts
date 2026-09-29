@@ -18,6 +18,7 @@ import { BehaviorSubject, Subject } from 'rxjs';
 import { getWorkerApiUrl } from './api';
 import { getCurrentUserId } from './userSync';
 import { CloudDataStore, FileItem, setTombstoneChecker } from './cloudDataStore';
+import { ClasseurCreatedFolder } from '../components/Folder3DModels';
 import { removeDownloadedFile } from './downloadsManager';
 import { deleteFileBlob } from './localFileStorage';
 import { setCachedMediaThumbnail } from './mediaPreviewService';
@@ -308,6 +309,9 @@ export const LocalSyncReplication = {
           // ── SUPPRESSION MULTI-APPAREILS SANS RÉSUSCITATION ──
           inMemoryTombstones.add(doc.id);
           CloudDataStore.removeFile(doc.id);
+          if (doc.category === 'classeur_folder') {
+            CloudDataStore.removeFolder(doc.id);
+          }
           removeDownloadedFile(doc.id);
           deleteFileBlob(doc.id).catch(() => {});
           deletedCount++;
@@ -390,6 +394,35 @@ export const LocalSyncReplication = {
                 CloudDataStore.setTrashFiles([fileItem, ...state.trash]);
               } else {
                 CloudDataStore.setTrashFiles(state.trash.map(x => x.id === doc.id ? { ...x, ...fileItem } : x));
+              }
+            } else if (cat === 'classeur_folder') {
+              const folder: ClasseurCreatedFolder = {
+                id: doc.id,
+                name: parsedContent.name || 'Dossier',
+                model: (Number(parsedContent.model || parsedContent.modelId || parsedContent.model_id || 1) as 1 | 2 | 3 | 4),
+                modelId: parsedContent.modelId || parsedContent.model_id || parsedContent.model || '1',
+                primaryColor: parsedContent.primaryColor || parsedContent.primary_color || '#EA580C',
+                accentColor: parsedContent.accentColor || parsedContent.accent_color || '#F97316',
+                secondaryColor: parsedContent.secondaryColor || parsedContent.secondary_color,
+                badge: parsedContent.badge,
+                iconType: parsedContent.iconType || parsedContent.icon_type,
+                iconName: parsedContent.iconName || parsedContent.icon_name || 'Folder',
+                textDark: Boolean(parsedContent.textDark ?? parsedContent.text_dark),
+                dateText: parsedContent.dateText || parsedContent.date_text || (parsedContent.createdAt ? new Date(parsedContent.createdAt).toLocaleDateString('fr-FR') : new Date(doc.updated_at).toLocaleDateString('fr-FR')),
+                createdAt: Number(parsedContent.createdAt || doc.updated_at || Date.now()),
+                parentId: parsedContent.parentId || parsedContent.parent_id || undefined,
+                positionX: Number(parsedContent.positionX ?? parsedContent.position_x ?? 0),
+                positionY: Number(parsedContent.positionY ?? parsedContent.position_y ?? 0),
+                displayOrder: Number(parsedContent.displayOrder ?? parsedContent.display_order ?? 0),
+                zoomLevel: Number(parsedContent.zoomLevel ?? parsedContent.zoom_level ?? 10),
+                isPinned: Boolean(parsedContent.isPinned ?? parsedContent.is_pinned),
+                isFavorite: Boolean(parsedContent.isFavorite ?? parsedContent.is_favorite),
+              };
+              CloudDataStore.addClasseurFolder(folder);
+            } else if (cat === 'classeur') {
+              const folderId = parsedContent.folderId || parsedContent.folder_id || fileItem.folderId;
+              if (folderId) {
+                CloudDataStore.addOptimisticFile({ ...fileItem, folderId }, folderId);
               }
             }
             upsertCount++;

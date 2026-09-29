@@ -437,9 +437,12 @@ export const CloudDataStore = {
         tasks.push(
           CloudStorageAPI.getClasseurFolders().then(async (folders) => {
             if (folders !== null) {
-              currentState.classeurFolders = (folders || []).map((f: any) => ({
+              const serverList = (folders || []).map((f: any) => ({
                 ...f, isFavorite: currentState.favIdSet.has(f.id), isPinned: currentState.pinIdSet.has(f.id),
               }));
+              const serverIds = new Set(serverList.map((s: any) => s.id));
+              const pendingFolders = (currentState.classeurFolders || []).filter(c => !serverIds.has(c.id) && !isItemDeleted(c.id));
+              currentState.classeurFolders = [...pendingFolders, ...serverList.filter((s: any) => !isItemDeleted(s.id))];
               currentState.isLoaded = true;
               notify();
 
@@ -447,9 +450,11 @@ export const CloudDataStore = {
               await Promise.all(currentState.classeurFolders.map(async (folder) => {
                 const files = await CloudStorageAPI.getClasseurFiles(folder.id).catch(() => null);
                 if (files !== null) {
-                  currentState.folderFilesMap[folder.id] = (files || []).map((file: any) => ({
-                    ...file, isFavorite: currentState.favIdSet.has(file.id), isPinned: currentState.pinIdSet.has(file.id),
-                  }));
+                  const currentFiles = currentState.folderFilesMap[folder.id] || [];
+                  currentState.folderFilesMap[folder.id] = mergeOptimistic(
+                    flag(files).filter(isNotLocallyDeleted),
+                    currentFiles.filter(isNotLocallyDeleted)
+                  );
                   refreshDerived();
                   notify();
                 }
@@ -546,6 +551,19 @@ export const CloudDataStore = {
   },
   setDownloads(downloads: DownloadedItem[]) { currentState = { ...currentState, downloads };                 persistToIndexedDB().catch(() => {}); notify(); },
   setClasseurFolders(folders: ClasseurCreatedFolder[]) { currentState = { ...currentState, classeurFolders: folders }; persistToIndexedDB().catch(() => {}); notify(); },
+  addClasseurFolder(folder: ClasseurCreatedFolder) {
+    if (isItemDeleted(folder.id)) return;
+    const exists = currentState.classeurFolders.some(f => f.id === folder.id);
+    const updated = exists
+      ? currentState.classeurFolders.map(f => f.id === folder.id ? { ...f, ...folder } : f)
+      : [folder, ...currentState.classeurFolders.filter(f => f.id !== folder.id)];
+    currentState = {
+      ...currentState,
+      classeurFolders: updated,
+    };
+    persistToIndexedDB().catch(() => {});
+    notify();
+  },
   setFolderFilesMap(map: Record<string, FileItem[]>)   { currentState = { ...currentState, folderFilesMap: map };      persistToIndexedDB().catch(() => {}); notify(); },
   setTrashFiles(trash: FileItem[])          { currentState = { ...currentState, trash };                    persistToIndexedDB().catch(() => {}); notify(); },
   setSecureFiles(secure: FileItem[])        { currentState = { ...currentState, secure };                   persistToIndexedDB().catch(() => {}); notify(); },
@@ -828,7 +846,8 @@ export const CloudDataStore = {
   },
 
   removeFolder(folderId: string) {
-    const updatedFolders = currentState.classeurFolders.filter(f => f.id !== folderId);
+    deletionListeners.forEach(fn => { try { fn(folderId, 'classeur_folder'); } catch {} });
+    const updatedFolders = currentState.classeurFolders.filter(f => f.id !== folderId && f.parentId !== folderId);
     const updatedMap = { ...currentState.folderFilesMap };
     delete updatedMap[folderId];
     currentState = {

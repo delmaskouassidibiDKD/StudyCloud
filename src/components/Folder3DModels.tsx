@@ -897,16 +897,22 @@ export const Classeur3DFolderCard: React.FC<{
   folder: ClasseurCreatedFolder;
   isDragging?: boolean;
 }> = ({ folder, isDragging }) => {
+  const activeModel: 1 | 2 | 3 | 4 = (folder.model === 1 || folder.model === 2 || folder.model === 3 || folder.model === 4)
+    ? folder.model
+    : (Number(folder.modelId) >= 1 && Number(folder.modelId) <= 4 ? Number(folder.modelId) as 1 | 2 | 3 | 4 : 1);
+
   const item: FolderModelItem = {
     id: folder.id,
-    model: folder.model,
+    model: activeModel,
     title: folder.name,
-    primaryColor: folder.primaryColor,
+    primaryColor: folder.primaryColor || '#E76239',
     secondaryColor: folder.secondaryColor,
     badge: folder.badge,
     iconType: folder.iconType,
     textDark: folder.textDark,
   };
+
+  const displayDate = folder.dateText || (folder.createdAt ? new Date(folder.createdAt).toLocaleDateString('fr-FR') : "Aujourd'hui");
 
   return (
     <div
@@ -914,17 +920,17 @@ export const Classeur3DFolderCard: React.FC<{
         isDragging ? 'opacity-25 scale-95' : ''
       }`}
     >
-      {folder.model === 1 && (
-        <FolderModel1SVG item={item} dateText={folder.dateText} />
+      {activeModel === 1 && (
+        <FolderModel1SVG item={item} dateText={displayDate} />
       )}
-      {folder.model === 2 && (
-        <FolderModel2SVG item={item} dateText={folder.dateText} />
+      {activeModel === 2 && (
+        <FolderModel2SVG item={item} dateText={displayDate} />
       )}
-      {folder.model === 3 && (
-        <FolderModel3SVG item={item} dateText={folder.dateText} />
+      {activeModel === 3 && (
+        <FolderModel3SVG item={item} dateText={displayDate} />
       )}
-      {folder.model === 4 && (
-        <FolderModel4SVG item={item} dateText={folder.dateText} />
+      {activeModel === 4 && (
+        <FolderModel4SVG item={item} dateText={displayDate} />
       )}
     </div>
   );

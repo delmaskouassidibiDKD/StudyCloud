@@ -110,6 +110,7 @@ import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { PdfHorizontalViewer } from './PdfHorizontalViewer';
 import { CloudDataStore } from '../services/cloudDataStore';
+import { LocalSyncReplication } from '../services/localSyncReplication';
 import { UploadQueue } from '../services/uploadQueue';
 import { UploadQueueWidget } from './UploadQueueWidget';
 import { compressFile } from '../utils/fileCompressor';
@@ -593,10 +594,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     startSavingAnimation(newFiles.map(f => f.id));
 
-    // Débloquer des récents supprimés et afficher dans les récents
+    // Débloquer des récents supprimés, synchroniser dans CloudDataStore et D1
     newFiles.forEach(f => {
       unmarkRecentLocallyDeleted(f.id);
       unmarkFileLocallyDeleted(f.id);
+      CloudDataStore.addOptimisticFile(f, folderId);
+      LocalSyncReplication.recordLocalUpsert(f.id, 'classeur', {
+        ...f,
+        folderId
+      });
+      CloudStorageAPI.saveClasseurFile(f, folderId).catch(() => {});
     });
     setCloudRecentFiles(prev => {
       const existingIds = new Set(newFiles.map(f => f.id));
@@ -693,6 +700,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     newFiles.forEach(f => {
       unmarkRecentLocallyDeleted(f.id);
       unmarkFileLocallyDeleted(f.id);
+      CloudDataStore.addOptimisticFile(f, folderId);
+      LocalSyncReplication.recordLocalUpsert(f.id, 'classeur', {
+        ...f,
+        folderId
+      });
+      CloudStorageAPI.saveClasseurFile(f, folderId).catch(() => {});
     });
     setCloudRecentFiles(prev => {
       const existingIds = new Set(newFiles.map(f => f.id));
@@ -776,6 +789,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       [opened3DFolder.id]: [newNoteFile, ...(prev[opened3DFolder.id] || [])]
     }));
     CloudDataStore.addOptimisticFile(newNoteFile as any, opened3DFolder.id);
+    LocalSyncReplication.recordLocalUpsert(newNoteFile.id, 'classeur', {
+      ...newNoteFile,
+      folderId: opened3DFolder.id
+    });
 
     // Persister dans la table D1 classeur_files
     CloudStorageAPI.saveClasseurFile(newNoteFile, opened3DFolder.id).catch(() => {});
@@ -1116,7 +1133,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           } as FileItem;
         });
         setTrashFiles(tPrev => [...folderTrashItems, ...deletedFolderFiles, ...tPrev.filter(t => !toDeleteIds.includes(t.id))]);
-        toDeleteIds.forEach(id => CloudDataStore.removeFolder(id));
+        toDeleteIds.forEach(id => {
+          LocalSyncReplication.recordLocalDeletion(id, 'classeur_folder');
+          CloudDataStore.removeFolder(id);
+        });
         CloudDataStore.moveToTrash([...folderTrashItems, ...deletedFolderFiles] as any);
         return next;
       });
@@ -2139,6 +2159,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         CloudStorageAPI.saveDocument(item as any).catch(() => {});
       } else if (targetCategory === 'classeur' && folderId) {
         CloudStorageAPI.saveClasseurFile(item as any, folderId).catch(() => {});
+        LocalSyncReplication.recordLocalUpsert(item.id, 'classeur', {
+          ...item,
+          folderId
+        });
       }
 
       // 2. Enregistrement universel D1 (comme Mes fichiers) pour synchronisation instantanée multi-appareils
@@ -8281,8 +8305,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         zoomLevel: folderZoomLevel
       };
 
-      // Nouveaux dossiers créés toujours en haut par défaut (index 0)
-      setClasseur3DFolders(prev => [created3DFolder, ...prev]);
+      // 1. Ajouter immédiatement dans CloudDataStore (RAM + IndexedDB)
+      CloudDataStore.addClasseurFolder(created3DFolder);
+
+      // 2. Enregistrer pour réplication locale RxDB/Hono
+      LocalSyncReplication.recordLocalUpsert(created3DFolder.id, 'classeur_folder', created3DFolder);
+
+      // 3. Nouveaux dossiers créés toujours en haut par défaut (index 0)
+      setClasseur3DFolders(prev => [created3DFolder, ...prev.filter(f => f.id !== created3DFolder.id)]);
       CloudStorageAPI.saveClasseurFolder(created3DFolder).catch(() => {});
       
       const newFolder = {

@@ -5706,6 +5706,8 @@ var index_default = {
               });
               await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
               });
+              await env.DB.prepare("DELETE FROM classeur_folders WHERE id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
+              });
               await env.DB.prepare("DELETE FROM download_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
               });
               await env.DB.prepare("DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
@@ -5717,13 +5719,14 @@ var index_default = {
           try {
             const countCheck = await env.DB.prepare("SELECT COUNT(*) as count FROM sync_items WHERE user_id = ?").bind(reqUserId).first();
             if (Number(countCheck?.count || 0) === 0) {
-              const [docs, imgs, vids, auds, cfiles, dls] = await Promise.all([
+              const [docs, imgs, vids, auds, cfiles, dls, cfolders] = await Promise.all([
                 env.DB.prepare("SELECT id, name, size, size_bytes, file_url, preview_url, extension, document_category FROM document_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare("SELECT id, name, size, size_bytes, image_url, thumbnail_url, extension FROM image_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare("SELECT id, name, size, size_bytes, video_url, thumbnail_url, duration_sec FROM video_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare("SELECT id, name, title, artist, album, audio_url, cover_url, size, size_bytes FROM audio_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare("SELECT id, folder_id, name, size, size_bytes, category, extension, is_notepad, notepad_title, notepad_content FROM classeur_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
-                env.DB.prepare("SELECT id, name, size, size_bytes, file_url, type, extension FROM download_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] }))
+                env.DB.prepare("SELECT id, name, size, size_bytes, file_url, type, extension FROM download_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+                env.DB.prepare("SELECT * FROM classeur_folders WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] }))
               ]);
               for (const d of docs?.results || []) await recordSyncItem(env.DB, reqUserId, d.id, "documents", d, 0);
               for (const i of imgs?.results || []) await recordSyncItem(env.DB, reqUserId, i.id, "images", i, 0);
@@ -5731,6 +5734,17 @@ var index_default = {
               for (const a of auds?.results || []) await recordSyncItem(env.DB, reqUserId, a.id, "audio", a, 0);
               for (const c of cfiles?.results || []) await recordSyncItem(env.DB, reqUserId, c.id, "classeur", c, 0);
               for (const dl of dls?.results || []) await recordSyncItem(env.DB, reqUserId, dl.id, "downloads", dl, 0);
+              for (const cf of cfolders?.results || []) {
+                await recordSyncItem(env.DB, reqUserId, cf.id, "classeur_folder", {
+                  ...cf,
+                  modelId: cf.model_id || "1",
+                  model: Number(cf.model_id || 1),
+                  primaryColor: cf.primary_color || "#EA580C",
+                  accentColor: cf.accent_color || "#F97316",
+                  iconName: cf.icon_name || "Folder",
+                  textDark: Boolean(cf.text_dark)
+                }, 0);
+              }
             }
           } catch (e) {
           }
@@ -5841,6 +5855,7 @@ var index_default = {
             parentId: f.parent_id,
             name: f.name,
             modelId: f.model_id || "1",
+            model: Number(f.model_id || 1),
             primaryColor: f.primary_color || "#EA580C",
             accentColor: f.accent_color || "#F97316",
             iconName: f.icon_name || "Folder",
@@ -5861,7 +5876,7 @@ var index_default = {
           const id = body.id || "f3d_" + crypto.randomUUID().substring(0, 10);
           const name = String(body.name || "Nouveau Dossier").trim();
           const parentId = body.parentId || null;
-          const modelId = String(body.modelId || "1");
+          const modelId = String(body.modelId || body.model || "1");
           const primaryColor = body.primaryColor || "#EA580C";
           const accentColor = body.accentColor || "#F97316";
           const iconName = body.iconName || "Folder";
@@ -5904,23 +5919,31 @@ var index_default = {
             displayOrder,
             zoomLevel
           ).run();
+          const folderObj = {
+            id,
+            userId: reqUserId,
+            parentId,
+            name,
+            modelId,
+            model: Number(modelId || 1),
+            primaryColor,
+            accentColor,
+            secondaryColor: body.secondaryColor,
+            badge: body.badge,
+            iconType: body.iconType,
+            iconName,
+            textDark: Boolean(textDark),
+            positionX,
+            positionY,
+            displayOrder,
+            zoomLevel,
+            dateText: body.dateText,
+            createdAt: Date.now()
+          };
+          await recordSyncItem(env.DB, reqUserId, id, "classeur_folder", folderObj, 0);
           return jsonResponse({
             success: true,
-            folder: {
-              id,
-              userId: reqUserId,
-              parentId,
-              name,
-              modelId,
-              primaryColor,
-              accentColor,
-              iconName,
-              textDark: Boolean(textDark),
-              positionX,
-              positionY,
-              displayOrder,
-              zoomLevel
-            }
+            folder: folderObj
           }, 200, origin);
         }
         if (method === "PUT") {
@@ -5944,6 +5967,18 @@ var index_default = {
                   item.id,
                   reqUserId
                 ).run();
+                const updatedF = await env.DB.prepare("SELECT * FROM classeur_folders WHERE id = ? AND user_id = ?").bind(item.id, reqUserId).first();
+                if (updatedF) {
+                  await recordSyncItem(env.DB, reqUserId, item.id, "classeur_folder", {
+                    ...updatedF,
+                    modelId: updatedF.model_id,
+                    model: Number(updatedF.model_id || 1),
+                    primaryColor: updatedF.primary_color,
+                    accentColor: updatedF.accent_color,
+                    iconName: updatedF.icon_name,
+                    textDark: Boolean(updatedF.text_dark)
+                  }, 0);
+                }
               }
             }
             return jsonResponse({ success: true, message: "Ordre et positions mis \xE0 jour" }, 200, origin);
@@ -5994,6 +6029,18 @@ var index_default = {
               UPDATE classeur_folders SET ${fields.join(", ")}
               WHERE id = ? AND user_id = ?
             `).bind(...values).run();
+            const updatedF = await env.DB.prepare("SELECT * FROM classeur_folders WHERE id = ? AND user_id = ?").bind(body.id, reqUserId).first();
+            if (updatedF) {
+              await recordSyncItem(env.DB, reqUserId, body.id, "classeur_folder", {
+                ...updatedF,
+                modelId: updatedF.model_id,
+                model: Number(updatedF.model_id || 1),
+                primaryColor: updatedF.primary_color,
+                accentColor: updatedF.accent_color,
+                iconName: updatedF.icon_name,
+                textDark: Boolean(updatedF.text_dark)
+              }, 0);
+            }
           }
           return jsonResponse({ success: true, message: "Dossier 3D mis \xE0 jour" }, 200, origin);
         }
