@@ -90,8 +90,15 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   // Données issues de CloudDataStore (miroir temps réel)
   const [storeData, setStoreData] = useState(() => CloudDataStore.getState());
 
-  // Gestion du menu d'options 3 traits
+  // Gestion du menu d'options 3 traits (fichiers et dossiers)
   const [activeMenuFileId, setActiveMenuFileId] = useState<string | null>(null);
+  const [activeMenuFolderId, setActiveMenuFolderId] = useState<string | null>(null);
+
+  // Éditeur de notes intégré (Bloc-notes)
+  const [noteTextContent, setNoteTextContent] = useState<string>('');
+  const [noteTitleContent, setNoteTitleContent] = useState<string>('');
+  const [isNoteSavedIndicator, setIsNoteSavedIndicator] = useState<boolean>(true);
+  const noteSaveTimeoutRef = useRef<any>(null);
 
   // Visionneuses / Lecteurs intégrés (Panneau latéral droit)
   const [viewerFile, setViewerFile] = useState<FileItem | null>(null);
@@ -119,6 +126,75 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     };
   }, [viewerFile?.id]);
 
+  // Initialiser les champs d'écriture si le fichier sélectionné est une note
+  useEffect(() => {
+    if (viewerFile) {
+      const isTxt = Boolean(
+        viewerFile.isNotepad ||
+        viewerFile.category === 'notes' ||
+        viewerFile.extension?.toLowerCase() === 'txt' ||
+        viewerFile.name.toLowerCase().endsWith('.txt') ||
+        viewerFile.type === 'text/plain'
+      );
+      if (isTxt) {
+        setNoteTextContent(viewerFile.content || '');
+        setNoteTitleContent(viewerFile.noteTitle || viewerFile.name.replace(/\.txt$/i, ''));
+        setIsNoteSavedIndicator(true);
+      }
+    }
+  }, [viewerFile?.id]);
+
+  // Sauvegarde automatique et fluide du contenu de la note
+  const handleUpdateNoteContent = (newText: string, newTitle: string, fileId?: string) => {
+    const targetId = fileId || viewerFile?.id;
+    if (!targetId) return;
+
+    const baseName = newTitle.trim() || 'Note sans titre';
+    const finalName = baseName.toLowerCase().endsWith('.txt') ? baseName : `${baseName}.txt`;
+    const byteSize = new Blob([newText]).size;
+    const formattedSize = byteSize > 1024 ? `${(byteSize / 1024).toFixed(1)} Ko` : `${byteSize} o`;
+
+    const updatedItem: Partial<FileItem> = {
+      id: targetId,
+      name: finalName,
+      noteTitle: newTitle,
+      content: newText,
+      size: formattedSize,
+      sizeBytes: byteSize,
+      date: 'À l’instant'
+    };
+
+    CloudDataStore.updateFile(targetId, updatedItem as any, openedClasseurFolderId || undefined);
+
+    if (viewerFile && viewerFile.id === targetId) {
+      setViewerFile(prev => prev ? { ...prev, ...updatedItem } : null);
+    }
+
+    if (noteSaveTimeoutRef.current) clearTimeout(noteSaveTimeoutRef.current);
+    noteSaveTimeoutRef.current = setTimeout(async () => {
+      try {
+        const fullFile: FileItem = {
+          ...(viewerFile || {}),
+          ...updatedItem,
+          id: targetId,
+          name: finalName,
+          category: 'notes',
+          extension: 'txt',
+          isNotepad: true
+        } as FileItem;
+
+        if (openedClasseurFolderId) {
+          await CloudStorageAPI.saveClasseurFile(fullFile, openedClasseurFolderId).catch(() => {});
+        } else {
+          await CloudStorageAPI.uploadFile(fullFile as any).catch(() => {});
+        }
+        setIsNoteSavedIndicator(true);
+      } catch {
+        setIsNoteSavedIndicator(true);
+      }
+    }, 600);
+  };
+
   // Audio en lecture
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
 
@@ -140,20 +216,37 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   const dragStartXRef = useRef(0);
   const dragScrollLeftRef = useRef(0);
 
-  // Écouter les changements dans CloudDataStore (synchronisation instantanée multi-menus)
+  // Synchronisation instantanée multi-menus et chargement frais du cloud
   useEffect(() => {
     const unsub = CloudDataStore.subscribe((state) => {
       setStoreData(state);
     });
+    // Forcer la synchronisation avec le cloud pour refléter en direct l'état le plus frais
+    CloudDataStore.syncFromCloud().catch(() => {});
     return () => unsub();
   }, []);
 
-  // Fermer le menu 3 traits au clic en dehors
+  // Dès qu'un dossier du classeur est ouvert, rafraîchir immédiatement ses fichiers depuis le cloud
+  useEffect(() => {
+    if (openedClasseurFolderId) {
+      CloudStorageAPI.getClasseurFiles(openedClasseurFolderId).then((files) => {
+        if (files) {
+          CloudDataStore.setFolderFilesMap({
+            ...CloudDataStore.getState().folderFilesMap,
+            [openedClasseurFolderId]: files
+          });
+        }
+      }).catch(() => {});
+    }
+  }, [openedClasseurFolderId]);
+
+  // Fermer les menus 3 traits (fichiers ou dossiers) au clic en dehors
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (!target.closest('.studycloud-file-menu-panel') && !target.closest('.studycloud-menu-trigger')) {
         setActiveMenuFileId(null);
+        setActiveMenuFolderId(null);
       }
     };
     window.addEventListener('mousedown', handleOutsideClick);
@@ -425,14 +518,14 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   ];
 
   // =========================================================================
-  // MENU D'OPTIONS 3 TRAITS FLOTTANT (DÉDIÉ À CHAQUE CARTE SANS ÊTRE CONFONDU)
+  // MENU D'OPTIONS 3 TRAITS FLOTTANT POUR LES FICHIERS
   // =========================================================================
-  const renderOptionsMenu = (file: FileItem, alignRight = false) => {
+  const renderOptionsMenu = (file: FileItem, _alignRight = true) => {
     if (activeMenuFileId !== file.id) return null;
 
     return (
       <div
-        className={`studycloud-file-menu-panel absolute ${alignRight ? 'right-0' : 'left-0'} top-9 z-50 w-56 sm:w-60 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_20px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col p-0.5`}
+        className="studycloud-file-menu-panel absolute right-0 top-9 z-50 w-56 sm:w-60 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_20px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col p-0.5"
         onClick={(e) => e.stopPropagation()}
       >
         {/* En-tête : Nom du fichier et bouton de fermeture */}
@@ -597,22 +690,234 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   };
 
   // =========================================================================
+  // ACTIONS ET MENU D'OPTIONS 3 TRAITS POUR LES DOSSIERS 3D DU CLASSEUR
+  // =========================================================================
+  const handleFolderAction = (action: string, folder: ClasseurCreatedFolder) => {
+    setActiveMenuFolderId(null);
+
+    switch (action) {
+      case 'open':
+        setOpenedClasseurFolderId(folder.id);
+        break;
+
+      case 'download': {
+        const directFiles = (storeData.folderFilesMap || {})[folder.id] || [];
+        if (directFiles.length === 0) {
+          showToast(`Le dossier "${folder.name}" est vide.`);
+        } else {
+          showToast(`Téléchargement de ${directFiles.length} fichier(s)...`);
+          directFiles.forEach((file, index) => {
+            setTimeout(() => {
+              handleDownloadFile(file);
+            }, index * 200);
+          });
+        }
+        break;
+      }
+
+      case 'favorite': {
+        const newFav = !folder.isFavorite;
+        CloudDataStore.setClasseurFolders(
+          (storeData.classeurFolders || []).map(f => f.id === folder.id ? { ...f, isFavorite: newFav } : f)
+        );
+        if (newFav) {
+          CloudStorageAPI.addFavorite(folder.id, 'classeur_folder').catch(() => {});
+          showToast('Dossier ajouté aux favoris !');
+        } else {
+          CloudStorageAPI.removeFavorite(folder.id).catch(() => {});
+          showToast('Dossier retiré des favoris');
+        }
+        break;
+      }
+
+      case 'pin': {
+        const newPin = !folder.isPinned;
+        CloudDataStore.setClasseurFolders(
+          (storeData.classeurFolders || []).map(f => f.id === folder.id ? { ...f, isPinned: newPin } : f)
+        );
+        if (newPin) {
+          CloudStorageAPI.addPinned(folder.id, 'classeur_folder').catch(() => {});
+          showToast(`"${folder.name}" épinglé en tête !`);
+        } else {
+          CloudStorageAPI.removePinned(folder.id).catch(() => {});
+          showToast(`"${folder.name}" désépinglé`);
+        }
+        break;
+      }
+
+      case 'rename': {
+        const newName = window.prompt('Modifier le nom du dossier :', folder.name);
+        if (newName && newName.trim() && newName.trim() !== folder.name) {
+          const trimmed = newName.trim();
+          CloudDataStore.renameFolder(folder.id, trimmed);
+          CloudStorageAPI.renameItem(folder.id, trimmed, 'classeur_folder').catch(() => {});
+          showToast(`Dossier renommé en "${trimmed}" !`);
+        }
+        break;
+      }
+
+      case 'share': {
+        if (navigator.share) {
+          navigator.share({
+            title: folder.name,
+            text: `Dossier StudyCloud : ${folder.name}`,
+            url: window.location.href,
+          }).catch(() => {});
+        } else {
+          try {
+            navigator.clipboard?.writeText(`${window.location.origin}${window.location.pathname}#classeur-${folder.id}`);
+            showToast('Lien du dossier copié dans le presse-papiers !');
+          } catch {
+            showToast(`Partage du dossier "${folder.name}"`);
+          }
+        }
+        break;
+      }
+
+      case 'delete': {
+        if (window.confirm(`Voulez-vous supprimer le dossier "${folder.name}" ?`)) {
+          CloudDataStore.removeFolder(folder.id);
+          CloudStorageAPI.deleteClasseurFolder(folder.id).catch(() => {});
+          if (openedClasseurFolderId === folder.id) {
+            setOpenedClasseurFolderId(null);
+          }
+          showToast(`Dossier "${folder.name}" supprimé !`);
+        }
+        break;
+      }
+
+      default:
+        break;
+    }
+  };
+
+  const renderFolder3DOptionsMenu = (folder: ClasseurCreatedFolder) => {
+    if (activeMenuFolderId !== folder.id) return null;
+
+    return (
+      <div 
+        className="studycloud-file-menu-panel absolute right-0 top-9 z-50 w-60 bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* En-tête de menu dédié */}
+        <div className="px-3 py-2 bg-slate-900 border-b border-white/10 flex items-center justify-between gap-2 shrink-0">
+          <div className="min-w-0">
+            <p className="text-[11px] font-black text-white truncate" title={folder.name}>
+              {folder.name}
+            </p>
+            <p className="text-[9px] font-semibold text-slate-400">
+              {folder.dateText || 'Dossier 3D'} • <span className="uppercase text-amber-400">CLASSEUR</span>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveMenuFolderId(null);
+            }}
+            className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+            title="Fermer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Options du dossier */}
+        <div className="max-h-[min(380px,calc(100vh-140px))] overflow-y-auto no-scrollbar py-1 divide-y divide-white/5">
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => handleFolderAction('open', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-cyan-300 hover:bg-cyan-500/15 transition-colors cursor-pointer text-left"
+            >
+              <Folder className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
+              <span>Ouvrir le dossier</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleFolderAction('download', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-blue-400 hover:bg-blue-500/15 transition-colors cursor-pointer text-left"
+            >
+              <Download className="w-3.5 h-3.5 shrink-0" />
+              <span>Télécharger le dossier</span>
+            </button>
+          </div>
+
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => handleFolderAction('favorite', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+            >
+              <Star className={`w-3.5 h-3.5 shrink-0 ${folder.isFavorite ? 'fill-amber-400' : ''}`} />
+              <span>{folder.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleFolderAction('pin', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-purple-400 hover:bg-purple-500/15 transition-colors cursor-pointer text-left"
+            >
+              <Pin className={`w-3.5 h-3.5 shrink-0 rotate-45 ${folder.isPinned ? 'fill-purple-400' : ''}`} />
+              <span>{folder.isPinned ? 'Désépingler' : 'Épingler en tête'}</span>
+            </button>
+          </div>
+
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => handleFolderAction('rename', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-blue-300 hover:bg-blue-500/15 transition-colors cursor-pointer text-left"
+            >
+              <Pencil className="w-3.5 h-3.5 shrink-0" />
+              <span>Renommer</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleFolderAction('share', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-sky-400 hover:bg-sky-500/15 transition-colors cursor-pointer text-left"
+            >
+              <Share2 className="w-3.5 h-3.5 shrink-0" />
+              <span>Partager</span>
+            </button>
+          </div>
+
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => handleFolderAction('delete', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
+            >
+              <Trash2 className="w-3.5 h-3.5 shrink-0" />
+              <span>Supprimer le dossier</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
   // CARTE DOSSIER CLASSEUR (REFLET À L'IDENTIQUE DU VRAI MENU CLASSEUR)
   // =========================================================================
   const renderClasseurFolderCard = (folder: ClasseurCreatedFolder) => {
+    const isFolderMenuOpen = activeMenuFolderId === folder.id;
+
     return (
       <div
         key={folder.id}
         onClick={() => {
           setOpenedClasseurFolderId(folder.id);
           setActiveMenuFileId(null);
+          setActiveMenuFolderId(null);
         }}
-        className="group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all select-none cursor-pointer flex flex-col justify-between"
+        className={`group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all select-none cursor-pointer flex flex-col justify-between ${
+          isFolderMenuOpen ? 'overflow-visible z-50 ring-2 ring-orange-400/50' : 'overflow-hidden z-10'
+        }`}
         title={folder.name}
       >
-        {/* Badges Épinglé et Favori */}
-        {(folder.isPinned || folder.isFavorite) && (
-          <div className="absolute top-2 left-2 z-20 flex items-center gap-1 pointer-events-none">
+        {/* Haut de carte : Badges (Épinglé, Favori) et Bouton 3 traits */}
+        <div className="flex items-center justify-between w-full mb-1 z-20 relative">
+          <div className="flex items-center gap-1">
             {folder.isPinned && (
               <span className="p-1 rounded-md bg-black/80 border border-blue-400/60 shadow-md flex items-center justify-center text-blue-400 backdrop-blur-sm" title="Épinglé">
                 <Pin className="w-3 h-3 rotate-45" />
@@ -624,7 +929,29 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
               </span>
             )}
           </div>
-        )}
+
+          <div 
+            className="relative studycloud-menu-trigger"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMenuFolderId(isFolderMenuOpen ? null : folder.id);
+              }}
+              className={`p-1 sm:p-1.5 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm ${
+                isFolderMenuOpen
+                  ? 'border-orange-400 ring-2 ring-orange-400/50 opacity-100 bg-black'
+                  : 'border-white/30 opacity-90 group-hover:opacity-100'
+              }`}
+              title="Options du dossier (3 traits)"
+            >
+              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+            </button>
+            {renderFolder3DOptionsMenu(folder)}
+          </div>
+        </div>
 
         {/* Le dossier 3D lui-même : Classeur3DFolderCard (Modèles 1, 2, 3, 4) */}
         <div className="pt-2 pb-1 w-full">
@@ -637,25 +964,30 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   // =========================================================================
   // CARTE FICHIER DANS UN DOSSIER CLASSEUR (REFLET À L'IDENTIQUE DU CLASSEUR)
   // =========================================================================
-  const renderClasseurCard = (doc: FileItem, index: number) => {
+  const renderClasseurCard = (doc: FileItem, _index: number) => {
     const isMenuOpen = activeMenuFileId === doc.id;
     const isSelected = viewerFile?.id === doc.id;
-    const alignRight = (index + 1) % 2 === 0 || (index + 1) % 4 === 0;
-    const isTxtNote = doc.isNotepad || doc.extension?.toLowerCase() === 'txt' || doc.name.toLowerCase().endsWith('.txt');
+    const isTxtNote = Boolean(
+      doc.isNotepad ||
+      doc.category === 'notes' ||
+      doc.extension?.toLowerCase() === 'txt' ||
+      doc.name.toLowerCase().endsWith('.txt') ||
+      doc.type === 'text/plain'
+    );
 
     if (isTxtNote) {
       return (
         <div
           key={doc.id}
           onClick={() => setViewerFile(doc)}
-          className={`group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col justify-between select-none overflow-hidden cursor-pointer ${
+          className={`group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col justify-between select-none cursor-pointer ${
             isSelected
               ? 'border-cyan-400 ring-2 ring-cyan-400/40 bg-[#14233C]'
               : 'border-white/10 hover:border-cyan-400/50 hover:-translate-y-1'
-          } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
+          } ${isMenuOpen ? 'overflow-visible z-50 ring-2 ring-cyan-400/50' : 'overflow-hidden z-10'}`}
         >
           {/* Haut de carte : Badge TXT, Épinglé, Favori et Bouton 3 traits */}
-          <div className="flex items-center justify-between w-full mb-1">
+          <div className="flex items-center justify-between w-full mb-1 z-20 relative">
             <div className="flex items-center gap-1.5">
               <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
                 TXT
@@ -691,7 +1023,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
-              {renderOptionsMenu(doc, alignRight)}
+              {renderOptionsMenu(doc)}
             </div>
           </div>
 
@@ -731,11 +1063,11 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       <div
         key={doc.id}
         onClick={() => setViewerFile(doc)}
-        className={`group relative bg-[#0E1526]/85 hover:bg-[#141E34] border rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col overflow-hidden select-none cursor-pointer ${
+        className={`group relative bg-[#0E1526]/85 hover:bg-[#141E34] border rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col select-none cursor-pointer ${
           isSelected
             ? 'border-orange-400 ring-2 ring-orange-400/40 bg-[#192238]'
             : 'border-white/10 hover:border-orange-500/50 hover:-translate-y-1'
-        } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
+        } ${isMenuOpen ? 'overflow-visible z-50 ring-2 ring-orange-400/50' : 'overflow-hidden z-10'}`}
       >
         <div className="w-full h-24 sm:h-28 bg-slate-900/90 relative rounded-t-2xl flex items-center justify-center overflow-hidden">
           {/* Badges Épinglé et Favori */}
@@ -779,29 +1111,30 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
               <FileText className="w-8 h-8 sm:w-10 sm:h-10 text-orange-400/85 stroke-[1.8]" />
             </div>
           )}
+        </div>
 
-          <div 
-            className="relative studycloud-menu-trigger"
-            onClick={(e) => e.stopPropagation()}
+        {/* Bouton 3 traits positionné au-dessus de la carte sans être coupé */}
+        <div 
+          className="absolute top-1.5 right-1.5 z-30 studycloud-menu-trigger"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveMenuFileId(isMenuOpen ? null : doc.id);
+            }}
+            className={`p-1 sm:p-1.5 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm ${
+              isMenuOpen
+                ? 'border-orange-400 ring-2 ring-orange-400/50 opacity-100 bg-black'
+                : 'border-white/30 opacity-90 group-hover:opacity-100'
+            }`}
+            title="Options du fichier (3 traits)"
           >
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setActiveMenuFileId(isMenuOpen ? null : doc.id);
-              }}
-              className={`absolute top-1.5 right-1.5 p-1 sm:p-1.5 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm z-20 ${
-                isMenuOpen
-                  ? 'border-orange-400 ring-2 ring-orange-400/50 opacity-100 bg-black'
-                  : 'border-white/30 opacity-90 group-hover:opacity-100'
-              }`}
-              title="Options du fichier (3 traits)"
-            >
-              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
-            </button>
+            <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+          </button>
 
-            {renderOptionsMenu(doc, alignRight)}
-          </div>
+          {renderOptionsMenu(doc)}
         </div>
 
         <div className="p-2 sm:p-2.5 flex flex-col justify-between bg-black/30 rounded-b-2xl">
@@ -810,20 +1143,17 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           </p>
           <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
             <span className="truncate max-w-[85px] uppercase">{doc.extension || doc.category || 'DOC'}</span>
-            <div className="flex items-center gap-1.5">
-              <span className="shrink-0 font-medium">{doc.size || '0 o'}</span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDownloadFile(doc);
-                }}
-                className="p-1 bg-orange-600 hover:bg-orange-500 text-white rounded transition-all cursor-pointer active:scale-95"
-                title="Télécharger"
-              >
-                <Download className="w-2.5 h-2.5" />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDownloadFile(doc);
+              }}
+              className="p-1 bg-orange-600 hover:bg-orange-500 text-white rounded transition-all cursor-pointer active:scale-95"
+              title="Télécharger"
+            >
+              <Download className="w-2.5 h-2.5" />
+            </button>
           </div>
         </div>
       </div>
@@ -848,7 +1178,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             : isMenuOpen
               ? 'z-50 ring-2 ring-blue-400 border-blue-300'
               : 'border-blue-700/60 hover:border-blue-400/80 shadow-[2px_2px_0px_0px_#172554]'
-        }`}
+        } ${isMenuOpen ? 'overflow-visible z-50' : 'overflow-hidden z-10'}`}
         style={{
           background: 'linear-gradient(180deg, #1e40af 0%, #172554 100%)'
         }}
@@ -915,16 +1245,16 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       <div
         key={img.id}
         onClick={() => setViewerFile(img)}
-        className={`aspect-[4/5] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative overflow-hidden group select-none cursor-pointer ${
+        className={`aspect-[4/5] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative group select-none cursor-pointer ${
           isSelected
             ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02]'
             : isMenuOpen
               ? 'z-50 ring-2 ring-emerald-400 border-emerald-400'
               : 'border-white/10 hover:border-emerald-400/60'
-        }`}
+        } ${isMenuOpen ? 'overflow-visible z-50' : 'overflow-hidden z-10'}`}
       >
         {/* Miniature réelle de l'image */}
-        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden">
+        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden rounded-2xl">
           <ImageCardPreview img={img} />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-black/60 pointer-events-none" />
         </div>
@@ -976,15 +1306,15 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       <div
         key={vid.id}
         onClick={() => setViewerFile(vid)}
-        className={`aspect-[4/5] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative overflow-hidden group select-none cursor-pointer ${
+        className={`aspect-[4/5] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative group select-none cursor-pointer ${
           isSelected
             ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02]'
             : isMenuOpen
               ? 'z-50 ring-2 ring-purple-400 border-purple-400'
               : 'border-white/10 hover:border-purple-400/60'
-        }`}
+        } ${isMenuOpen ? 'overflow-visible z-50' : 'overflow-hidden z-10'}`}
       >
-        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden">
+        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden rounded-2xl">
           <VideoCardPreview vid={vid} />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-black/60 pointer-events-none" />
         </div>
@@ -1045,13 +1375,13 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           setViewerFile(aud);
           setPlayingAudioId(aud.id);
         }}
-        className={`aspect-square rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative overflow-hidden group select-none cursor-pointer ${
+        className={`aspect-square rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative group select-none cursor-pointer ${
           isSelected
             ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02]'
             : isMenuOpen
               ? 'z-50 ring-2 ring-amber-400 border-amber-400'
               : 'border-white/10 hover:border-amber-400/60'
-        }`}
+        } ${isMenuOpen ? 'overflow-visible z-50' : 'overflow-hidden z-10'}`}
       >
         <div className="absolute inset-0 z-0 overflow-hidden rounded-2xl pointer-events-none">
           <AudioCardPreview track={aud} />
@@ -1185,12 +1515,163 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   const renderReader = (file: FileItem) => {
     const ext = (file.extension || '').toLowerCase();
     const name = file.name || 'Fichier';
+    const isTxtNote = Boolean(
+      file.isNotepad ||
+      file.category === 'notes' ||
+      ext === 'txt' ||
+      file.name.toLowerCase().endsWith('.txt') ||
+      file.type === 'text/plain'
+    );
     const isVideo = file.category === 'videos' || (file as any).isVideo || ['mp4', 'webm', 'mkv', 'mov', 'avi'].includes(ext);
     const isImage = file.category === 'images' || (file as any).isImage || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'bmp', 'ico'].includes(ext);
     const isAudio = file.category === 'audio' || (file as any).isAudio || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'].includes(ext);
-    const isPdf = ext === 'pdf' || (file.type && file.type.includes('pdf')) || (!isVideo && !isImage && !isAudio);
+    const isPdf = !isTxtNote && (ext === 'pdf' || (file.type && file.type.includes('pdf')) || (!isVideo && !isImage && !isAudio));
 
     const activeUrl = resolvedBlobUrl || file.url || file.previewUrl || (file as any).videoUrl || (file as any).audioUrl || '';
+
+    // Si c'est une note, ouvrir la véritable page d'écriture interactive (sans PDF ni bouton horizontal)
+    if (isTxtNote) {
+      return (
+        <div className="w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none">
+          {/* Barre supérieure de la page d'écriture */}
+          <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shrink-0">
+                BLOC-NOTES
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-[220px]" title={name}>
+                  {name}
+                </p>
+                <div className="flex items-center gap-1.5 text-[10px]">
+                  {isNoteSavedIndicator ? (
+                    <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse" />
+                      Enregistré
+                    </span>
+                  ) : (
+                    <span className="text-amber-400 font-semibold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block animate-ping" />
+                      Enregistrement...
+                    </span>
+                  )}
+                  {file.size && (
+                    <span className="text-slate-400 font-medium hidden sm:inline">
+                      • {file.size}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Actions de la note : Télécharger, Partager, Plein écran, Fermer */}
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const fullContent = (noteTitleContent ? `${noteTitleContent}\n\n` : '') + noteTextContent;
+                  const blob = new Blob([fullContent], { type: 'text/plain;charset=utf-8' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = file.name.endsWith('.txt') ? file.name : `${file.name}.txt`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                  showToast(`"${file.name}" téléchargé !`);
+                }}
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+                title="Télécharger la note (.txt)"
+              >
+                <Download className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleShare(file)}
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+                title="Partager"
+              >
+                <Share2 className="w-3.5 h-3.5 text-blue-400" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                  isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+                }`}
+                title={isViewerMaximized ? "Réduire la vue" : "Agrandir l'espace d'écriture"}
+              >
+                {isViewerMaximized ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCloseReader}
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
+                title={isViewerMaximized ? "Réduire la vue" : "Fermer la page d'écriture"}
+              >
+                <X className="w-4 h-4 stroke-[2.5]" />
+              </button>
+            </div>
+          </div>
+
+          {/* Corps de la page d'écriture : Titre en majuscules + Zone de texte libre */}
+          <div className="flex-1 p-4 sm:p-6 overflow-hidden flex flex-col space-y-3 bg-[#070B14]/80 select-text">
+            <textarea
+              value={noteTitleContent}
+              rows={2}
+              placeholder="TITRE DE LA NOTE (EN MAJUSCULES)..."
+              onChange={(e) => {
+                const val = e.target.value.toUpperCase();
+                const lines = val.split('\n');
+                const limitedVal = lines.slice(0, 2).join('\n');
+                setNoteTitleContent(limitedVal);
+                setIsNoteSavedIndicator(false);
+                handleUpdateNoteContent(noteTextContent, limitedVal, file.id);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const currentLines = noteTitleContent.split('\n');
+                  if (currentLines.length >= 2) e.preventDefault();
+                }
+              }}
+              className="w-full uppercase font-black text-sm sm:text-base md:text-lg text-cyan-300 placeholder:text-slate-500 placeholder:normal-case bg-transparent border-b border-white/10 pb-2 outline-none resize-none tracking-wide break-all [overflow-wrap:anywhere] [word-break:break-word] leading-snug selection:bg-cyan-500/30 shrink-0"
+              style={{ maxHeight: '4.2rem', lineHeight: '1.4' }}
+            />
+
+            <textarea
+              autoFocus
+              value={noteTextContent}
+              onChange={(e) => {
+                const newText = e.target.value;
+                setNoteTextContent(newText);
+                setIsNoteSavedIndicator(false);
+                handleUpdateNoteContent(newText, noteTitleContent, file.id);
+              }}
+              placeholder="Écrivez vos notes, cours ou réflexions ici..."
+              className="w-full flex-1 bg-transparent text-slate-100 placeholder:text-slate-600 text-xs sm:text-sm md:text-base leading-relaxed resize-none outline-none font-sans no-scrollbar break-all [overflow-wrap:anywhere] [word-break:break-word] selection:bg-cyan-500/30"
+            />
+          </div>
+
+          {/* Barre inférieure : Statistiques */}
+          <div className="px-4 sm:px-6 py-2 bg-[#070B14] border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400 shrink-0 select-none">
+            <div className="flex items-center gap-3">
+              <span>{noteTextContent.length} caractères</span>
+              <span>•</span>
+              <span>{noteTextContent.trim() ? noteTextContent.trim().split(/\s+/).length : 0} mots</span>
+              <span>•</span>
+              <span>{noteTextContent.split('\n').length} lignes</span>
+            </div>
+            <span className="text-[10px] text-slate-500 hidden sm:inline">
+              Sauvegardé automatiquement dans le dossier
+            </span>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none">
@@ -1628,7 +2109,13 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                     </p>
                   </div>
                 ) : (
-                  <div className={`grid ${gridColsClass} gap-3 sm:gap-4`}>
+                  <div 
+                    className="grid transition-all duration-200 w-full"
+                    style={{
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(165px, 205px))',
+                      gap: '16px'
+                    }}
+                  >
                     {filteredClasseurFolders.map(folder => renderClasseurFolderCard(folder))}
                   </div>
                 )
@@ -1641,7 +2128,13 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   {classeurSubFolders.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-[11px] font-bold text-stone-700 uppercase tracking-wider">Sous-dossiers</p>
-                      <div className={`grid ${gridColsClass} gap-3 sm:gap-4`}>
+                      <div 
+                        className="grid transition-all duration-200 w-full"
+                        style={{
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(165px, 205px))',
+                          gap: '16px'
+                        }}
+                      >
                         {classeurSubFolders.map(f => renderClasseurFolderCard(f))}
                       </div>
                     </div>
@@ -1653,7 +2146,13 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                       {classeurSubFolders.length > 0 && (
                         <p className="text-[11px] font-bold text-stone-700 uppercase tracking-wider">Documents</p>
                       )}
-                      <div className={`grid ${gridColsClass} gap-3 sm:gap-4`}>
+                      <div 
+                        className="grid transition-all duration-200 w-full"
+                        style={{
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(165px, 205px))',
+                          gap: '16px'
+                        }}
+                      >
                         {classeurFolderFiles.map((doc, idx) => renderClasseurCard(doc, idx))}
                       </div>
                     </div>
