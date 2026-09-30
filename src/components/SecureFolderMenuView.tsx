@@ -47,6 +47,7 @@ import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
+import { parseSizeToBytes } from './HeaderMenuControls';
 
 const getDocumentTheme = (ext: string = 'PDF') => {
   const upper = (ext || 'PDF').toUpperCase();
@@ -504,6 +505,21 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     await CloudStorageAPI.deleteSecureFilesToTrash(ids).catch(() => {});
     showToast(`${filesToTrash.length} fichier(s) déplacé(s) dans la corbeille 🗑️`);
   };
+
+  // Calcul dynamique de l'espace occupé par le dossier sécurisé
+  const totalSecureBytes = useMemo(() => {
+    return (secureFiles || []).reduce((acc, f) => acc + parseSizeToBytes(f?.size, f?.sizeBytes), 0);
+  }, [secureFiles]);
+
+  const formattedSecureSize = useMemo(() => {
+    if (totalSecureBytes > 0) {
+      if (totalSecureBytes < 1024) return `${totalSecureBytes} o`;
+      if (totalSecureBytes < 1024 * 1024) return `${(totalSecureBytes / 1024).toFixed(1)} Ko`;
+      if (totalSecureBytes < 1024 * 1024 * 1024) return `${(totalSecureBytes / (1024 * 1024)).toFixed(1)} Mo`;
+      return `${(totalSecureBytes / (1024 * 1024 * 1024)).toFixed(1)} Go`;
+    }
+    return '0 Mo';
+  }, [totalSecureBytes]);
 
   // 11. Filtrage par recherche
   const filteredFiles = useMemo(() => {
@@ -1569,7 +1585,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                   Dossier sécurisé
                 </h1>
                 <p className={`text-[10px] sm:text-[11px] font-semibold leading-tight ${isUnlocked ? 'text-emerald-600' : 'text-blue-600'}`}>
-                  {isUnlocked ? `${secureFiles.length} fichier(s) protégé(s)` : 'Coffre-fort verrouillé'}
+                  {isUnlocked ? `${secureFiles.length} fichier(s) protégé(s) • ${formattedSecureSize}` : 'Coffre-fort verrouillé'}
                 </p>
               </div>
             </div>

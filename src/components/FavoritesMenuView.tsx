@@ -39,7 +39,7 @@ import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
-import { HeaderMenuControls, applyFileSorting, type SortOption } from './HeaderMenuControls';
+import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
 
 const getDocumentTheme = (ext: string = 'PDF') => {
   const upper = (ext || 'PDF').toUpperCase();
@@ -314,6 +314,21 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     if ((f as any).isFolder || f.category === 'classeur') return 'folder';
     return 'document';
   };
+
+  // Calcul dynamique de l'espace occupé par les favoris
+  const totalFavoritesBytes = useMemo(() => {
+    return favoritesList.reduce((acc, f) => acc + parseSizeToBytes(f?.size, f?.sizeBytes), 0);
+  }, [favoritesList]);
+
+  const formattedFavoritesSize = useMemo(() => {
+    if (totalFavoritesBytes > 0) {
+      if (totalFavoritesBytes < 1024) return `${totalFavoritesBytes} o`;
+      if (totalFavoritesBytes < 1024 * 1024) return `${(totalFavoritesBytes / 1024).toFixed(1)} Ko`;
+      if (totalFavoritesBytes < 1024 * 1024 * 1024) return `${(totalFavoritesBytes / (1024 * 1024)).toFixed(1)} Mo`;
+      return `${(totalFavoritesBytes / (1024 * 1024 * 1024)).toFixed(1)} Go`;
+    }
+    return '0 Mo';
+  }, [totalFavoritesBytes]);
 
   // Filtrage et catégorisation dynamique
   const categorized = useMemo(() => {
@@ -1013,7 +1028,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                   Favoris
                 </h1>
                 <p className="text-[10px] sm:text-[11px] font-semibold text-amber-600 dark:text-amber-400 leading-tight">
-                  {favoritesList.length} élément{favoritesList.length > 1 ? 's' : ''} en favori
+                  {favoritesList.length} élément{favoritesList.length > 1 ? 's' : ''} en favori • {formattedFavoritesSize}
                 </p>
               </div>
             </div>

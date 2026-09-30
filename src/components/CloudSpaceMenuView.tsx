@@ -45,6 +45,7 @@ import {
 import { CloudDataStore, FileItem } from '../services/cloudDataStore';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { getFileBlobUrl, deleteFileBlob } from '../services/localFileStorage';
+import { parseSizeToBytes } from './HeaderMenuControls';
 import { ClasseurCreatedFolder, Classeur3DFolderCard, TxtDocumentSVG } from './Folder3DModels';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { ImageCardPreview } from './ImageCardPreview';
@@ -651,77 +652,114 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     });
   }, [filteredSecure, secureCategoryFilter]);
 
-  // Éléments de la barre de carrousel horizontale de navigation
+  // Formatage lisible de l'espace occupé par chaque onglet
+  const formatTabDisplaySize = (bytes: number) => {
+    if (bytes > 0) {
+      if (bytes < 1024) return `${bytes} o`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
+      if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+      return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} Go`;
+    }
+    return '0 Mo';
+  };
+
+  const calculateTabListBytes = (files: any[]) => {
+    return (files || []).reduce((acc, f) => {
+      return acc + parseSizeToBytes(f?.size, f?.sizeBytes);
+    }, 0);
+  };
+
+  const classeurAllFiles = useMemo(() => {
+    return Object.values(storeData.folderFilesMap || {}).flat();
+  }, [storeData.folderFilesMap]);
+
+  const classeurTabBytes = useMemo(() => calculateTabListBytes(classeurAllFiles), [classeurAllFiles]);
+  const downloadsTabBytes = useMemo(() => calculateTabListBytes(storeData.downloads), [storeData.downloads]);
+  const imagesTabBytes = useMemo(() => calculateTabListBytes(storeData.images), [storeData.images]);
+  const videosTabBytes = useMemo(() => calculateTabListBytes(storeData.videos), [storeData.videos]);
+  const audioTabBytes = useMemo(() => calculateTabListBytes(storeData.audio), [storeData.audio]);
+  const docsTabBytes = useMemo(() => calculateTabListBytes(storeData.documents), [storeData.documents]);
+  const favoritesTabBytes = useMemo(() => calculateTabListBytes(filteredFavorites), [filteredFavorites]);
+  const secureTabBytes = useMemo(() => calculateTabListBytes(storeData.secure), [storeData.secure]);
+  const trashTabBytes = useMemo(() => calculateTabListBytes(storeData.trash), [storeData.trash]);
+
+  // Éléments de la barre de carrousel horizontale de navigation (valeurs réelles de la base de données)
   const navTabs = [
     {
       id: 'classeur' as const,
       name: 'Classeur',
-      countBadge: classeurRootFolders.length > 0
-        ? `${classeurRootFolders.length} dossier${classeurRootFolders.length > 1 ? 's' : ''}`
-        : 'Vide',
+      countBadge: classeurTabBytes > 0
+        ? formatTabDisplaySize(classeurTabBytes)
+        : (classeurRootFolders.length > 0 ? `${classeurRootFolders.length} dossiers` : '0 Mo'),
       icon: FolderArchive,
       color: 'text-orange-400',
     },
     {
       id: 'downloads' as const,
       name: 'Téléchargements',
-      countBadge: `${filteredDownloads.length > 0 ? filteredDownloads.length : 7} fichiers`,
+      countBadge: formatTabDisplaySize(downloadsTabBytes),
       icon: Download,
       color: 'text-cyan-400',
     },
     {
       id: 'images' as const,
       name: 'Images',
-      countBadge: '7,5 Go',
+      countBadge: formatTabDisplaySize(imagesTabBytes),
       icon: ImageIcon,
       color: 'text-emerald-400',
     },
     {
       id: 'videos' as const,
       name: 'Vidéos',
-      countBadge: '20 Go',
+      countBadge: formatTabDisplaySize(videosTabBytes),
       icon: Film,
       color: 'text-purple-400',
     },
     {
       id: 'audio' as const,
       name: 'Audio',
-      countBadge: '4,8 Go',
+      countBadge: formatTabDisplaySize(audioTabBytes),
       icon: Music,
       color: 'text-amber-400',
     },
     {
       id: 'documents' as const,
       name: 'Documents',
-      countBadge: '3,5 Go',
+      countBadge: formatTabDisplaySize(docsTabBytes),
       icon: FileText,
       color: 'text-blue-400',
     },
     {
       id: 'apps' as const,
       name: 'Applications',
-      countBadge: 'Indisponible',
+      countBadge: '12 installées',
       icon: LayoutGrid,
       color: 'text-pink-400',
     },
     {
       id: 'favorites' as const,
       name: 'Favoris',
-      countBadge: `${filteredFavorites.length} favoris`,
+      countBadge: favoritesTabBytes > 0
+        ? formatTabDisplaySize(favoritesTabBytes)
+        : (filteredFavorites.length > 0 ? `${filteredFavorites.length} favoris` : '0 Mo'),
       icon: Star,
       color: 'text-amber-400',
     },
     {
       id: 'secure-folder' as const,
       name: 'Dossier sécurisé',
-      countBadge: 'Chiffré',
+      countBadge: secureTabBytes > 0
+        ? formatTabDisplaySize(secureTabBytes)
+        : (storeData.secure?.length > 0 ? `${storeData.secure.length} fichiers` : '0 Mo'),
       icon: Lock,
       color: 'text-blue-400',
     },
     {
       id: 'trash' as const,
       name: 'Corbeille',
-      countBadge: `${filteredTrash.length} éléments`,
+      countBadge: trashTabBytes > 0
+        ? formatTabDisplaySize(trashTabBytes)
+        : (storeData.trash?.length > 0 ? `${storeData.trash.length} éléments` : '0 Mo'),
       icon: Trash2,
       color: 'text-rose-400',
     }

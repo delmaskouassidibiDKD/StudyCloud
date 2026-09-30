@@ -52,8 +52,7 @@ export function getDownloadedFiles(): DownloadedItem[] {
           'TD_PREPA_ANA_2MIT.pdf',
           'Notes_Revision_Semestre_1.pdf'
         ].includes(item?.name);
-        const isLocalOnly = !item.url && !item.previewUrl && !item.videoUrl && !item.audioUrl && !(item as any).r2Key;
-        return !isLegacyMockId && !isMockName && !isLocalOnly;
+        return !isLegacyMockId && !isMockName;
       });
       if (clean.length !== parsed.length) {
         try {

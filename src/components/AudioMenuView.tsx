@@ -47,7 +47,7 @@ import { UploadQueue } from '../services/uploadQueue';
 import { AudioCardPreview } from './AudioCardPreview';
 import { getWorkerApiUrl } from '../services/api';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
-import { HeaderMenuControls, applyFileSorting, type SortOption } from './HeaderMenuControls';
+import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
 
 interface AudioMenuViewProps {
   onBack: () => void;
@@ -711,6 +711,21 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       showToast('Partage StudyCloud');
     }
   };
+
+  // Calcul dynamique de l'espace occupé par les fichiers audio
+  const totalAudioBytes = useMemo(() => {
+    return (audioList || []).reduce((acc, f) => acc + parseSizeToBytes(f?.size, f?.sizeBytes), 0);
+  }, [audioList]);
+
+  const formattedAudioSize = useMemo(() => {
+    if (totalAudioBytes > 0) {
+      if (totalAudioBytes < 1024) return `${totalAudioBytes} o`;
+      if (totalAudioBytes < 1024 * 1024) return `${(totalAudioBytes / 1024).toFixed(1)} Ko`;
+      if (totalAudioBytes < 1024 * 1024 * 1024) return `${(totalAudioBytes / (1024 * 1024)).toFixed(1)} Mo`;
+      return `${(totalAudioBytes / (1024 * 1024 * 1024)).toFixed(1)} Go`;
+    }
+    return '0 Mo';
+  }, [totalAudioBytes]);
 
   // Filtrage et tri (selon l'option sélectionnée)
   const filteredAudio = useMemo(() => {
@@ -1882,7 +1897,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                   Audio
                 </h1>
                 <p className="text-[10px] sm:text-[11px] font-semibold text-slate-400 leading-tight">
-                  StudyCloud
+                  {audioList.length} piste{audioList.length > 1 ? 's' : ''} • {formattedAudioSize}
                 </p>
               </div>
             </div>

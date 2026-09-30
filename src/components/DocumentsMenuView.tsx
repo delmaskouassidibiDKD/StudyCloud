@@ -47,7 +47,7 @@ import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { PdfHorizontalViewer } from './PdfHorizontalViewer';
 import { generatePdfThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
-import { HeaderMenuControls, applyFileSorting, type SortOption } from './HeaderMenuControls';
+import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
 
 interface DocumentsMenuViewProps {
   onBack: () => void;
@@ -1241,6 +1241,21 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     return typeof document !== 'undefined' ? createPortal(content, document.body) : null;
   };
 
+  // Calcul dynamique de l'espace occupé par les documents
+  const totalDocsBytes = useMemo(() => {
+    return (documentsList || []).reduce((acc, f) => acc + parseSizeToBytes(f?.size, f?.sizeBytes), 0);
+  }, [documentsList]);
+
+  const formattedDocsSize = useMemo(() => {
+    if (totalDocsBytes > 0) {
+      if (totalDocsBytes < 1024) return `${totalDocsBytes} o`;
+      if (totalDocsBytes < 1024 * 1024) return `${(totalDocsBytes / 1024).toFixed(1)} Ko`;
+      if (totalDocsBytes < 1024 * 1024 * 1024) return `${(totalDocsBytes / (1024 * 1024)).toFixed(1)} Mo`;
+      return `${(totalDocsBytes / (1024 * 1024 * 1024)).toFixed(1)} Go`;
+    }
+    return '0 Mo';
+  }, [totalDocsBytes]);
+
   // Filtrage et tri des documents
   const filteredDocuments = useMemo(() => {
     let list = [...documentsList];
@@ -1917,7 +1932,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                   Documents
                 </h1>
                 <p className="text-[10px] sm:text-[11px] font-semibold text-slate-400 leading-tight">
-                  StudyCloud
+                  {documentsList.length} document{documentsList.length > 1 ? 's' : ''} • {formattedDocsSize}
                 </p>
               </div>
             </div>

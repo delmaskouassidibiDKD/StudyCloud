@@ -140,7 +140,8 @@ import {
   type SortOption, 
   applyFileSorting, 
   restoreDefaultWallpaperAndAvatar,
-  HeaderMenuControls 
+  HeaderMenuControls,
+  parseSizeToBytes
 } from './HeaderMenuControls';
 
 // Nettoyage immédiat de tout fichier figé en localStorage pour éviter le plantage QuotaExceededError
@@ -1433,10 +1434,28 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return () => window.removeEventListener('keydown', handleDocKeyDown);
   }, [docLayoutMode, splitSelectedFile]);
 
-  // Téléchargements réels synchronisés (en mémoire de session)
-  const [downloadedItems, setDownloadedItems] = useState<DownloadedItem[]>([]);
+  // Téléchargements réels synchronisés (en mémoire de session et IndexedDB/localStorage)
+  const [downloadedItems, setDownloadedItems] = useState<DownloadedItem[]>(() => {
+    try {
+      const local = getDownloadedFiles();
+      if (local && local.length > 0) return local;
+    } catch {}
+    return CloudDataStore.getState().downloads || [];
+  });
 
   useEffect(() => {
+    try {
+      const local = getDownloadedFiles();
+      if (local && local.length > 0) {
+        setDownloadedItems(local);
+      } else {
+        const storeDls = CloudDataStore.getState().downloads;
+        if (storeDls && storeDls.length > 0) {
+          setDownloadedItems(storeDls);
+        }
+      }
+    } catch {}
+
     const handleUpdate = (e: any) => {
       if (e?.detail) {
         if (e.detail.deleted) {
@@ -2985,7 +3004,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       name: file.name,
       size: file.size,
       sizeBytes: file.sizeBytes,
-      category: file.category
+      category: file.category,
+      url: (file as any).url || (file as any).previewUrl || (file as any).videoUrl || (file as any).audioUrl,
+      previewUrl: (file as any).previewUrl,
+      extension: (file as any).extension
     });
 
     const fileItem = file as FileItem;
@@ -4362,24 +4384,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
       return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} Go`;
     }
-    return `${count} ${singularUnit}${count > 1 ? 's' : ''}`;
+    return '0 Mo';
   };
 
   const calculateListBytes = (files: (FileItem | DownloadedItem)[]) => {
-    return files.reduce((acc, f) => {
-      if (f.sizeBytes && typeof f.sizeBytes === 'number') return acc + f.sizeBytes;
-      if (typeof f.size === 'string') {
-        const match = f.size.match(/([\d.,]+)\s*([KkMmGgTt]?[oO])/);
-        if (match) {
-          const val = parseFloat(match[1].replace(',', '.'));
-          const unit = match[2].toUpperCase();
-          if (unit.startsWith('K')) return acc + val * 1024;
-          if (unit.startsWith('M')) return acc + val * 1024 * 1024;
-          if (unit.startsWith('G')) return acc + val * 1024 * 1024 * 1024;
-          return acc + val;
-        }
-      }
-      return acc;
+    return (files || []).reduce((acc, f) => {
+      return acc + parseSizeToBytes(f?.size, (f as any)?.sizeBytes);
     }, 0);
   };
 
@@ -4388,6 +4398,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const audioTotalBytes = useMemo(() => calculateListBytes(audioList), [audioList]);
   const docsTotalBytes = useMemo(() => calculateListBytes(documentsList), [documentsList]);
   const downloadsTotalBytes = useMemo(() => calculateListBytes(downloadedItems), [downloadedItems]);
+  const classeurFiles = useMemo(() => Object.values(folderFilesMap || {}).flat(), [folderFilesMap]);
+  const classeurTotalBytes = useMemo(() => calculateListBytes(classeurFiles), [classeurFiles]);
+  const favoritesTotalBytes = useMemo(() => calculateListBytes(favoriteFiles), [favoriteFiles]);
+  const secureTotalBytes = useMemo(() => calculateListBytes(secureFolderFiles), [secureFolderFiles]);
+  const trashTotalBytes = useMemo(() => calculateListBytes(trashFiles), [trashFiles]);
+
+  const totalCloudStorageBytes = useMemo(() => {
+    const sumLocal = imagesTotalBytes + videosTotalBytes + audioTotalBytes + docsTotalBytes + downloadsTotalBytes + classeurTotalBytes + secureTotalBytes;
+    if (cloudOverview?.totalBytes && cloudOverview.totalBytes > sumLocal) {
+      return cloudOverview.totalBytes;
+    }
+    return sumLocal;
+  }, [imagesTotalBytes, videosTotalBytes, audioTotalBytes, docsTotalBytes, downloadsTotalBytes, classeurTotalBytes, secureTotalBytes, cloudOverview?.totalBytes]);
 
   // Catégories StudyCloud calculées dynamiquement depuis la base de données en direct
   const categories = useMemo(() => [
@@ -4459,7 +4482,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       name: 'Favoris',
       subtitle: loadingCategories.favorites
         ? 'Chargement...'
-        : `${favoriteFiles.length} favori${favoriteFiles.length > 1 ? 's' : ''}`,
+        : (favoritesTotalBytes > 0 
+            ? formatCategoryDisplaySize(favoritesTotalBytes, favoriteFiles.length, 'favori') 
+            : (favoriteFiles.length > 0 ? `${favoriteFiles.length} favoris` : '0 Mo')),
       icon: Star,
       color: 'text-amber-400'
     },
@@ -4468,7 +4493,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       name: 'Dossier sécurisé',
       subtitle: loadingCategories.secure
         ? 'Chargement...'
-        : `${secureFolderFiles.length} fichier${secureFolderFiles.length > 1 ? 's' : ''}`,
+        : (secureTotalBytes > 0 
+            ? formatCategoryDisplaySize(secureTotalBytes, secureFolderFiles.length, 'fichier') 
+            : (secureFolderFiles.length > 0 ? `${secureFolderFiles.length} fichiers` : '0 Mo')),
       icon: Lock,
       color: 'text-blue-400'
     },
@@ -4477,7 +4504,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       name: 'Espace Cloud',
       subtitle: loadingCategories.cloudStorage
         ? 'Chargement...'
-        : (cloudOverview?.totalFormatted || 'Cloud D1/R2'),
+        : formatCategoryDisplaySize(totalCloudStorageBytes, 0, ''),
       icon: Cloud,
       color: 'text-sky-400'
     },
@@ -4486,16 +4513,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       name: 'Corbeille',
       subtitle: loadingCategories.trash
         ? 'Chargement...'
-        : `${trashFiles.length} élément${trashFiles.length > 1 ? 's' : ''}`,
+        : (trashTotalBytes > 0 
+            ? formatCategoryDisplaySize(trashTotalBytes, trashFiles.length, 'élément') 
+            : (trashFiles.length > 0 ? `${trashFiles.length} éléments` : '0 Mo')),
       icon: Trash2,
       color: 'text-rose-400'
     }
   ], [
     loadingCategories,
-    favoriteFiles.length,
-    secureFolderFiles.length,
-    trashFiles.length,
-    cloudOverview
+    favoritesTotalBytes, favoriteFiles.length,
+    secureTotalBytes, secureFolderFiles.length,
+    trashTotalBytes, trashFiles.length,
+    totalCloudStorageBytes
   ]);
 
   // Éléments de la barre horizontale de navigation Espace Cloud
@@ -4557,7 +4586,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       name: 'Favoris',
       subtitle: loadingCategories.favorites
         ? 'Chargement...'
-        : `${favoriteFiles.length} favori${favoriteFiles.length > 1 ? 's' : ''}`,
+        : (favoritesTotalBytes > 0 
+            ? formatCategoryDisplaySize(favoritesTotalBytes, favoriteFiles.length, 'favori') 
+            : (favoriteFiles.length > 0 ? `${favoriteFiles.length} favoris` : '0 Mo')),
       icon: Star,
       color: 'text-amber-400'
     },
@@ -4566,7 +4597,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       name: 'Dossier sécurisé',
       subtitle: loadingCategories.secure
         ? 'Chargement...'
-        : `${secureFolderFiles.length} fichier${secureFolderFiles.length > 1 ? 's' : ''}`,
+        : (secureTotalBytes > 0 
+            ? formatCategoryDisplaySize(secureTotalBytes, secureFolderFiles.length, 'fichier') 
+            : (secureFolderFiles.length > 0 ? `${secureFolderFiles.length} fichiers` : '0 Mo')),
       icon: Lock,
       color: 'text-blue-400'
     },
@@ -4575,7 +4608,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       name: 'Corbeille',
       subtitle: loadingCategories.trash
         ? 'Chargement...'
-        : `${trashFiles.length} élément${trashFiles.length > 1 ? 's' : ''}`,
+        : (trashTotalBytes > 0 
+            ? formatCategoryDisplaySize(trashTotalBytes, trashFiles.length, 'élément') 
+            : (trashFiles.length > 0 ? `${trashFiles.length} éléments` : '0 Mo')),
       icon: Trash2,
       color: 'text-rose-400'
     }
@@ -4586,9 +4621,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     videosTotalBytes, videosList.length,
     audioTotalBytes, audioList.length,
     docsTotalBytes, documentsList.length,
-    favoriteFiles.length,
-    secureFolderFiles.length,
-    trashFiles.length
+    favoritesTotalBytes, favoriteFiles.length,
+    secureTotalBytes, secureFolderFiles.length,
+    trashTotalBytes, trashFiles.length
   ]);
 
   // Helper pour l'affichage progressif animé lors de l'accès direct et rapide à un menu
@@ -13361,9 +13396,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <div className="p-2 sm:p-2.5 rounded-xl bg-black/40 border border-white/20 shrink-0 group-hover:scale-110 transition-transform">
                   <FolderArchive className="w-5 h-5 sm:w-6 sm:h-6 text-white stroke-[2.2]" />
                 </div>
-                <span className="text-base sm:text-lg md:text-xl font-black text-white tracking-wide drop-shadow-sm">
-                  Classeur
-                </span>
+                <div className="text-left">
+                  <span className="text-base sm:text-lg md:text-xl font-black text-white tracking-wide drop-shadow-sm block leading-tight">
+                    Classeur
+                  </span>
+                  <span className="text-[10px] sm:text-xs font-bold text-orange-200 block leading-tight">
+                    {classeurTotalBytes > 0 
+                      ? formatCategoryDisplaySize(classeurTotalBytes, classeurFiles.length, 'fichier') 
+                      : (classeur3DFolders.length > 0 ? `${classeur3DFolders.length} dossier${classeur3DFolders.length > 1 ? 's' : ''}` : '0 Mo')}
+                  </span>
+                </div>
               </button>
             </div>
 

@@ -42,7 +42,7 @@ import { UploadQueue } from '../services/uploadQueue';
 import { ImageCardPreview } from './ImageCardPreview';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
-import { HeaderMenuControls, applyFileSorting, type SortOption } from './HeaderMenuControls';
+import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
 
 interface ImagesMenuViewProps {
   onBack: () => void;
@@ -547,6 +547,21 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       showToast('Partage StudyCloud');
     }
   };
+
+  // Calcul dynamique de l'espace occupé par les images
+  const totalImagesBytes = useMemo(() => {
+    return (imagesList || []).reduce((acc, f) => acc + parseSizeToBytes(f?.size, f?.sizeBytes), 0);
+  }, [imagesList]);
+
+  const formattedImagesSize = useMemo(() => {
+    if (totalImagesBytes > 0) {
+      if (totalImagesBytes < 1024) return `${totalImagesBytes} o`;
+      if (totalImagesBytes < 1024 * 1024) return `${(totalImagesBytes / 1024).toFixed(1)} Ko`;
+      if (totalImagesBytes < 1024 * 1024 * 1024) return `${(totalImagesBytes / (1024 * 1024)).toFixed(1)} Mo`;
+      return `${(totalImagesBytes / (1024 * 1024 * 1024)).toFixed(1)} Go`;
+    }
+    return '0 Mo';
+  }, [totalImagesBytes]);
 
   // Filtrage et tri (selon l'option sélectionnée)
   const filteredImages = useMemo(() => {
@@ -1761,7 +1776,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
                   Images
                 </h1>
                 <p className="text-[10px] sm:text-[11px] font-semibold text-slate-400 leading-tight">
-                  StudyCloud
+                  {imagesList.length} image{imagesList.length > 1 ? 's' : ''} • {formattedImagesSize}
                 </p>
               </div>
             </div>

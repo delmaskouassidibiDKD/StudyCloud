@@ -43,7 +43,7 @@ import { VideoCardPreview } from './VideoCardPreview';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { getWorkerApiUrl } from '../services/api';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
-import { HeaderMenuControls, applyFileSorting, type SortOption } from './HeaderMenuControls';
+import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
 
 interface VideosMenuViewProps {
   onBack: () => void;
@@ -560,6 +560,21 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       showToast('Partage StudyCloud');
     }
   };
+
+  // Calcul dynamique de l'espace occupé par les vidéos
+  const totalVideosBytes = useMemo(() => {
+    return (videosList || []).reduce((acc, f) => acc + parseSizeToBytes(f?.size, f?.sizeBytes), 0);
+  }, [videosList]);
+
+  const formattedVideosSize = useMemo(() => {
+    if (totalVideosBytes > 0) {
+      if (totalVideosBytes < 1024) return `${totalVideosBytes} o`;
+      if (totalVideosBytes < 1024 * 1024) return `${(totalVideosBytes / 1024).toFixed(1)} Ko`;
+      if (totalVideosBytes < 1024 * 1024 * 1024) return `${(totalVideosBytes / (1024 * 1024)).toFixed(1)} Mo`;
+      return `${(totalVideosBytes / (1024 * 1024 * 1024)).toFixed(1)} Go`;
+    }
+    return '0 Mo';
+  }, [totalVideosBytes]);
 
   // Filtrage et tri (selon l'option sélectionnée)
   const filteredVideos = useMemo(() => {
@@ -1771,7 +1786,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
                   Vidéos
                 </h1>
                 <p className="text-[10px] sm:text-[11px] font-semibold text-slate-400 leading-tight">
-                  StudyCloud
+                  {videosList.length} vidéo{videosList.length > 1 ? 's' : ''} • {formattedVideosSize}
                 </p>
               </div>
             </div>

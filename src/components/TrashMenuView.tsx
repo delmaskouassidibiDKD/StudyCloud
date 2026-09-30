@@ -35,7 +35,7 @@ import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
-import { HeaderMenuControls, applyFileSorting, type SortOption } from './HeaderMenuControls';
+import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
 
 const getDocumentTheme = (ext: string = 'PDF') => {
   const upper = (ext || 'PDF').toUpperCase();
@@ -295,6 +295,20 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
   const selectAll = () => {
     setSelectedIds(filteredTrash.map(f => f.id));
   };
+
+  const totalTrashBytes = useMemo(() => {
+    return trashList.reduce((acc, f) => acc + parseSizeToBytes(f?.size, f?.sizeBytes), 0);
+  }, [trashList]);
+
+  const formattedTrashSize = useMemo(() => {
+    if (totalTrashBytes > 0) {
+      if (totalTrashBytes < 1024) return `${totalTrashBytes} o`;
+      if (totalTrashBytes < 1024 * 1024) return `${(totalTrashBytes / 1024).toFixed(1)} Ko`;
+      if (totalTrashBytes < 1024 * 1024 * 1024) return `${(totalTrashBytes / (1024 * 1024)).toFixed(1)} Mo`;
+      return `${(totalTrashBytes / (1024 * 1024 * 1024)).toFixed(1)} Go`;
+    }
+    return '0 Mo';
+  }, [totalTrashBytes]);
 
   // Filtrage selon catégorie et recherche
   const filteredTrash = useMemo(() => {
@@ -1321,7 +1335,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                   Corbeille
                 </h1>
                 <p className="text-[11px] font-semibold text-stone-500 leading-tight">
-                  StudyCloud
+                  {trashList.length} élément{trashList.length > 1 ? 's' : ''} • {formattedTrashSize}
                 </p>
               </div>
             </div>

@@ -24,7 +24,7 @@ import { CloudStorageAPI } from '../services/cloudStorageService';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
-import { HeaderMenuControls, applyFileSorting, type SortOption } from './HeaderMenuControls';
+import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
 
 interface DownloadsMenuViewProps {
   onBack: () => void;
@@ -142,6 +142,20 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
     showToast('Élément retiré de vos téléchargements');
     await CloudStorageAPI.deleteDownload(id).catch(() => {});
   };
+
+  const totalDownloadBytes = useMemo(() => {
+    return downloadedList.reduce((acc, f) => acc + parseSizeToBytes(f?.size, f?.sizeBytes), 0);
+  }, [downloadedList]);
+
+  const formattedDownloadSize = useMemo(() => {
+    if (totalDownloadBytes > 0) {
+      if (totalDownloadBytes < 1024) return `${totalDownloadBytes} o`;
+      if (totalDownloadBytes < 1024 * 1024) return `${(totalDownloadBytes / 1024).toFixed(1)} Ko`;
+      if (totalDownloadBytes < 1024 * 1024 * 1024) return `${(totalDownloadBytes / (1024 * 1024)).toFixed(1)} Mo`;
+      return `${(totalDownloadBytes / (1024 * 1024 * 1024)).toFixed(1)} Go`;
+    }
+    return '0 Mo';
+  }, [totalDownloadBytes]);
 
   const filteredItems = useMemo(() => {
     let list = downloadedList;
@@ -289,7 +303,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
                   Téléchargements
                 </h1>
                 <p className="text-[10px] sm:text-[11px] font-semibold text-sky-600 leading-tight">
-                  {downloadedList.length} fichier{downloadedList.length > 1 ? 's' : ''} enregistré{downloadedList.length > 1 ? 's' : ''} hors-ligne
+                  {downloadedList.length} fichier{downloadedList.length > 1 ? 's' : ''} • {formattedDownloadSize}
                 </p>
               </div>
             </div>
