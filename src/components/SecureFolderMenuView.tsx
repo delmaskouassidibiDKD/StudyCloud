@@ -22,7 +22,11 @@ import {
   Square,
   Settings,
   AlertCircle,
-  ExternalLink
+  ExternalLink,
+  Menu,
+  Play,
+  Share2,
+  FolderArchive
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
@@ -30,6 +34,54 @@ import { storeFileBlob, getFileBlobUrl, deleteFileBlob } from '../services/local
 import { compressFile } from '../utils/fileCompressor';
 import { FileItem } from './Page1FilesMenuView';
 import { UploadQueue } from '../services/uploadQueue';
+import { AudioCardPreview } from './AudioCardPreview';
+import { DocumentCardPreview } from './DocumentCardPreview';
+import { VideoCardPreview } from './VideoCardPreview';
+import { Classeur3DFolderCard } from './Folder3DModels';
+
+const getDocumentTheme = (ext: string = 'PDF') => {
+  const upper = (ext || 'PDF').toUpperCase();
+  if (upper === 'PDF') {
+    return {
+      bg: 'linear-gradient(180deg, #dc2626 0%, #991b1b 100%)',
+      border: 'border-2 border-red-500 hover:border-red-400',
+      shadow: 'shadow-[2.5px_2.5px_0px_0px_#450a0a]',
+      badge: 'bg-white text-red-700 border-white',
+      typeBadge: 'PDF'
+    };
+  } else if (['DOC', 'DOCX'].includes(upper)) {
+    return {
+      bg: 'linear-gradient(180deg, #2563eb 0%, #1e40af 100%)',
+      border: 'border-2 border-blue-500 hover:border-blue-400',
+      shadow: 'shadow-[2.5px_2.5px_0px_0px_#172554]',
+      badge: 'bg-white text-blue-700 border-white',
+      typeBadge: 'DOCX'
+    };
+  } else if (['XLS', 'XLSX', 'CSV'].includes(upper)) {
+    return {
+      bg: 'linear-gradient(180deg, #0d9488 0%, #115e59 100%)',
+      border: 'border-2 border-emerald-500 hover:border-emerald-400',
+      shadow: 'shadow-[2.5px_2.5px_0px_0px_#022c22]',
+      badge: 'bg-white text-emerald-700 border-white',
+      typeBadge: 'XLSX'
+    };
+  } else if (['PPT', 'PPTX'].includes(upper)) {
+    return {
+      bg: 'linear-gradient(180deg, #ea580c 0%, #9a3412 100%)',
+      border: 'border-2 border-orange-500 hover:border-orange-400',
+      shadow: 'shadow-[2.5px_2.5px_0px_0px_#431407]',
+      badge: 'bg-white text-orange-700 border-white',
+      typeBadge: 'PPTX'
+    };
+  }
+  return {
+    bg: 'linear-gradient(180deg, #26272b 0%, #1c1c1f 100%)',
+    border: 'border-2 border-stone-700 hover:border-stone-500',
+    shadow: 'shadow-[2.5px_2.5px_0px_0px_#1c1917]',
+    badge: 'bg-white text-stone-900 border-white',
+    typeBadge: upper || 'DOC'
+  };
+};
 
 interface SecureFolderMenuViewProps {
   onBack: () => void;
@@ -65,6 +117,24 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
 
   // Prévisualisation multimédia
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
+
+  // Menu d'options 3 traits
+  const [activeMenuFileId, setActiveMenuFileId] = useState<string | null>(null);
+  // Filtre par catégorie
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'audio' | 'documents' | 'images' | 'videos'>('all');
+
+  // Fermeture du menu déroulant 3 traits lors d'un clic extérieur
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (!target.closest('.studycloud-sec-menu-trigger') && !target.closest('.studycloud-sec-menu-panel')) {
+        setActiveMenuFileId(null);
+      }
+    };
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, []);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inactivityTimerRef = useRef<any>(null);
@@ -414,6 +484,602 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
     );
   }, [secureFiles, searchQuery]);
 
+  // Détection du type de média
+  const getFileType = (f: FileItem): 'audio' | 'video' | 'image' | 'folder' | 'document' => {
+    if (
+      f.category === 'audio' ||
+      (f as any).isAudio ||
+      Boolean((f as any).audioUrl) ||
+      /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(f.name)
+    ) return 'audio';
+    if (
+      f.category === 'videos' ||
+      (f as any).isVideo ||
+      Boolean((f as any).videoUrl) ||
+      /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(f.name)
+    ) return 'video';
+    if (
+      f.category === 'images' ||
+      (f as any).isImage ||
+      Boolean((f as any).imageUrl) ||
+      /\.(jpe?g|png|webp|gif|svg|avif|ico|bmp|tiff)$/i.test(f.name)
+    ) return 'image';
+    if (
+      (f as any).isFolder ||
+      f.category === 'classeur' ||
+      f.category === 'classeur_folder'
+    ) return 'folder';
+    return 'document';
+  };
+
+  // Compteurs par catégorie
+  const categoryCounts = useMemo(() => {
+    const counts = { all: filteredFiles.length, audio: 0, documents: 0, images: 0, videos: 0 };
+    filteredFiles.forEach(f => {
+      const t = getFileType(f);
+      if (t === 'audio') counts.audio++;
+      else if (t === 'image') counts.images++;
+      else if (t === 'video') counts.videos++;
+      else counts.documents++;
+    });
+    return counts;
+  }, [filteredFiles]);
+
+  // Fichiers affichés selon le filtre de catégorie actif
+  const displayedFiles = useMemo(() => {
+    if (categoryFilter === 'all') return filteredFiles;
+    return filteredFiles.filter(f => {
+      const t = getFileType(f);
+      if (categoryFilter === 'audio') return t === 'audio';
+      if (categoryFilter === 'images') return t === 'image';
+      if (categoryFilter === 'videos') return t === 'video';
+      if (categoryFilter === 'documents') return t === 'document' || t === 'folder';
+      return true;
+    });
+  }, [filteredFiles, categoryFilter]);
+
+  // Menu d'options 3 traits
+  const renderOptionsMenu = (file: FileItem) => {
+    return (
+      <div
+        className="studycloud-sec-menu-panel absolute top-8 left-0 z-50 bg-[#0E1526] text-white rounded-xl shadow-2xl border border-white/20 py-1.5 w-48 text-xs font-semibold animate-in fade-in duration-150"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            handleRestore(file);
+            setActiveMenuFileId(null);
+          }}
+          className="w-full text-left px-3.5 py-2 hover:bg-emerald-500/20 flex items-center gap-2.5 text-emerald-400 transition-colors cursor-pointer border-b border-white/10"
+        >
+          <Unlock className="w-3.5 h-3.5" />
+          <span>Déverrouiller le fichier</span>
+        </button>
+
+        {onOpenStudySpace && (
+          <button
+            type="button"
+            onClick={() => {
+              onOpenStudySpace(file, 'Dossier sécurisé');
+              setActiveMenuFileId(null);
+            }}
+            className="w-full text-left px-3.5 py-2 hover:bg-white/10 flex items-center gap-2.5 text-slate-200 transition-colors cursor-pointer"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-sky-400" />
+            <span>Espace d'étude</span>
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={() => {
+            handleDownload(file);
+            setActiveMenuFileId(null);
+          }}
+          className="w-full text-left px-3.5 py-2 hover:bg-white/10 flex items-center gap-2.5 text-slate-200 transition-colors cursor-pointer"
+        >
+          <Download className="w-3.5 h-3.5 text-purple-400" />
+          <span>Télécharger</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            handleDeleteToTrash(file);
+            setActiveMenuFileId(null);
+          }}
+          className="w-full text-left px-3.5 py-2 hover:bg-rose-500/20 flex items-center gap-2.5 text-rose-400 transition-colors cursor-pointer border-t border-white/10"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          <span>Mettre à la corbeille</span>
+        </button>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // CARTE AUDIO CARRÉE AUTHENTIQUE (aspect-square, AudioCardPreview, logo mélodie)
+  // =========================================================================
+  const renderAudioCard = (file: FileItem) => {
+    const isSelected = selectedIds.has(file.id);
+    const isMenuOpen = activeMenuFileId === file.id;
+
+    return (
+      <div
+        key={file.id}
+        onClick={() => setPreviewFile(file)}
+        className={`group relative aspect-square rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 cursor-pointer select-none shadow-md ${
+          isSelected
+            ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
+            : isMenuOpen
+            ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-2xl'
+            : 'border-white/10 hover:border-amber-400/50 hover:scale-[1.01]'
+        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
+      >
+        {/* Arrière-plan : aperçu audio haute fidélité */}
+        <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
+          <AudioCardPreview
+            track={file}
+            className="w-full h-full object-cover opacity-45 group-hover:scale-105 group-hover:opacity-65 transition-all duration-300"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent" />
+
+          {/* AU MILIEU : LE LOGO DE MUSIQUE / MÉLODIE DÉTAILLÉ & NET */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 flex items-center justify-center shadow-[0_8px_25px_rgba(245,158,11,0.55)] group-hover:scale-110 transition-all duration-300 border-2 border-white/30 ring-2 ring-black/40 relative">
+              <div className="absolute inset-1.5 rounded-full border border-white/20 pointer-events-none" />
+              <svg
+                className="w-6 h-6 sm:w-7 sm:h-7 text-white filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] relative z-10"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path d="M2.5 10.5C2.5 7.8 4.2 5.5 6.5 4.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.8" />
+                <path d="M21.5 10.5C21.5 7.8 19.8 5.5 17.5 4.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.8" />
+                <path d="M9 16.5V5.5L20 3.5V14.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M9 9.5L20 7.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <ellipse cx="6" cy="16.5" rx="3" ry="2.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.8" transform="rotate(-15 6 16.5)" />
+                <ellipse cx="17" cy="14.5" rx="3" ry="2.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.8" transform="rotate(-15 17 14.5)" />
+              </svg>
+            </div>
+          </div>
+
+          {/* Titre et Artiste en bas sur dégradé sombre */}
+          <div className="absolute inset-x-0 bottom-0 p-2 sm:p-2.5 bg-gradient-to-t from-black/95 via-black/60 to-transparent">
+            <p className="text-[10px] sm:text-xs font-bold text-white truncate drop-shadow-sm">{file.name}</p>
+            <p className="text-[9px] text-amber-300/90 font-semibold truncate">{file.artist || file.source || 'Fichier Audio'}</p>
+          </div>
+        </div>
+
+        {/* Barre supérieure : Bouton 3 traits, Checkbox & Badge Sécurisé */}
+        <div className="absolute top-1.5 sm:top-2 left-1.5 sm:left-2 z-20 flex items-center gap-1.5">
+          <div className="relative studycloud-sec-menu-trigger">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+              }}
+              className={`p-1 sm:p-1.2 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm ${
+                isMenuOpen ? 'border-amber-400 ring-2 ring-amber-400/50 bg-black' : 'border-white/30'
+              }`}
+              title="Options (3 traits)"
+            >
+              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+            </button>
+            {isMenuOpen && renderOptionsMenu(file)}
+          </div>
+
+          <button
+            type="button"
+            onClick={(e) => toggleSelect(file.id, e)}
+            className="p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
+            title={isSelected ? "Désélectionner" : "Sélectionner"}
+          >
+            {isSelected ? (
+              <CheckSquare className="w-4 h-4 fill-amber-400 text-stone-950" />
+            ) : (
+              <Square className="w-4 h-4 text-white" />
+            )}
+          </button>
+
+          <span className="p-1 rounded-md bg-black/75 text-emerald-400 border border-emerald-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Protégé">
+            <Lock className="w-3 h-3 text-blue-400" />
+          </span>
+        </div>
+
+        {/* Haut droit : Taille */}
+        <div className="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 z-10">
+          <span className="text-[10px] sm:text-xs font-black text-white bg-black/70 px-1.5 py-0.5 rounded border border-white/20 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
+            {file.size || 'Audio'}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // CARTE IMAGE AUTHENTIQUE (aspect-[4/3], vignette réelle, bouton 3 traits)
+  // =========================================================================
+  const renderImageCard = (file: FileItem) => {
+    const isMenuOpen = activeMenuFileId === file.id;
+    const isSelected = selectedIds.has(file.id);
+    const imgUrl = file.previewUrl || file.thumbnailUrl || (file as any).imageUrl || file.url || '';
+
+    return (
+      <div
+        key={file.id}
+        onClick={() => setPreviewFile(file)}
+        className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
+          isMenuOpen
+            ? 'z-50 relative overflow-visible'
+            : isSelected
+            ? 'z-20 relative overflow-hidden'
+            : 'z-10 relative overflow-hidden'
+        } ${
+          isSelected
+            ? 'border-emerald-400 ring-4 ring-emerald-400/90 shadow-2xl scale-[1.02]'
+            : isMenuOpen
+            ? 'border-blue-400 ring-2 ring-blue-400/40 shadow-2xl'
+            : 'border-stone-800/80 hover:border-emerald-500/50 hover:scale-[1.01]'
+        }`}
+      >
+        {/* Arrière-plan vignette */}
+        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden rounded-2xl pointer-events-none">
+          {imgUrl ? (
+            <img src={imgUrl} alt={file.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+          ) : (
+            <ImageIcon className="w-10 h-10 text-emerald-400/40" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-black/60 pointer-events-none" />
+        </div>
+
+        {/* Barre supérieure : Bouton 3 traits, Checkbox & Badge Sécurisé / Taille */}
+        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1.5">
+            <div className="relative studycloud-sec-menu-trigger">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+                }}
+                className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+                  isMenuOpen ? 'border-blue-400 ring-2 ring-blue-400/50 bg-black' : 'border-white/20'
+                }`}
+                title="Options"
+              >
+                <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+              </button>
+              {isMenuOpen && renderOptionsMenu(file)}
+            </div>
+
+            <button
+              type="button"
+              onClick={(e) => toggleSelect(file.id, e)}
+              className="p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
+              title={isSelected ? "Désélectionner" : "Sélectionner"}
+            >
+              {isSelected ? (
+                <CheckSquare className="w-4 h-4 fill-emerald-400 text-stone-950" />
+              ) : (
+                <Square className="w-4 h-4 text-white" />
+              )}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <span className="p-1 rounded-md bg-black/75 text-emerald-400 border border-emerald-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Protégé">
+              <Lock className="w-3 h-3 text-blue-400" />
+            </span>
+            <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
+              {file.size || '0 o'}
+            </span>
+          </div>
+        </div>
+
+        {/* Barre inférieure : Nom & Date */}
+        <div className="relative z-20 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-black text-white truncate group-hover:text-emerald-300 transition-colors" title={file.name}>
+              {file.name}
+            </p>
+            <p className="text-[10px] text-slate-400 truncate">
+              {file.date || 'Image sécurisée'}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // CARTE VIDÉO AUTHENTIQUE (aspect-[4/3], VideoCardPreview, bouton play central)
+  // =========================================================================
+  const renderVideoCard = (file: FileItem) => {
+    const isMenuOpen = activeMenuFileId === file.id;
+    const isSelected = selectedIds.has(file.id);
+
+    return (
+      <div
+        key={file.id}
+        onClick={() => setPreviewFile(file)}
+        className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
+          isMenuOpen
+            ? 'z-50 relative overflow-visible'
+            : isSelected
+            ? 'z-20 relative overflow-hidden'
+            : 'z-10 relative overflow-hidden'
+        } ${
+          isSelected
+            ? 'border-purple-400 ring-4 ring-purple-400/90 shadow-2xl scale-[1.02]'
+            : isMenuOpen
+            ? 'border-blue-400 ring-2 ring-blue-400/40 shadow-2xl'
+            : 'border-stone-800/80 hover:border-purple-500/50 hover:scale-[1.01]'
+        }`}
+      >
+        {/* Arrière-plan vignette vidéo */}
+        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden rounded-2xl pointer-events-none">
+          <VideoCardPreview vid={file} />
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-black/60 pointer-events-none" />
+        </div>
+
+        {/* Bouton play stylisé au centre */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+          <div className="w-10 h-10 rounded-full bg-white/95 text-stone-950 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+            <Play className="w-4 h-4 fill-stone-950 ml-0.5" />
+          </div>
+        </div>
+
+        {/* Barre supérieure : Bouton 3 traits, Checkbox & Badge Sécurisé / Taille */}
+        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1.5">
+            <div className="relative studycloud-sec-menu-trigger">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+                }}
+                className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+                  isMenuOpen ? 'border-blue-400 ring-2 ring-blue-400/50 bg-black' : 'border-white/20'
+                }`}
+                title="Options"
+              >
+                <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+              </button>
+              {isMenuOpen && renderOptionsMenu(file)}
+            </div>
+
+            <button
+              type="button"
+              onClick={(e) => toggleSelect(file.id, e)}
+              className="p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
+              title={isSelected ? "Désélectionner" : "Sélectionner"}
+            >
+              {isSelected ? (
+                <CheckSquare className="w-4 h-4 fill-purple-400 text-stone-950" />
+              ) : (
+                <Square className="w-4 h-4 text-white" />
+              )}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <span className="p-1 rounded-md bg-black/75 text-emerald-400 border border-emerald-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Protégé">
+              <Lock className="w-3 h-3 text-blue-400" />
+            </span>
+            <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
+              {file.size || '0 o'}
+            </span>
+          </div>
+        </div>
+
+        {/* Barre inférieure : Nom & Date */}
+        <div className="relative z-20 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-black text-white truncate group-hover:text-purple-300 transition-colors" title={file.name}>
+              {file.name}
+            </p>
+            <p className="text-[10px] text-slate-400 truncate">
+              {file.date || 'Vidéo sécurisée'}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // CARTE DOCUMENT AUTHENTIQUE (aspect-[3/4], thème couleur, DocumentCardPreview)
+  // =========================================================================
+  const renderDocumentCard = (file: FileItem) => {
+    const isMenuOpen = activeMenuFileId === file.id;
+    const isSelected = selectedIds.has(file.id);
+    const theme = getDocumentTheme(file.extension || (file.name.includes('.') ? file.name.split('.').pop() || 'PDF' : 'PDF'));
+
+    return (
+      <div
+        key={file.id}
+        style={{ background: theme.bg }}
+        onClick={() => setPreviewFile(file)}
+        className={`group aspect-[3/4] ${theme.border} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative select-none cursor-pointer ${
+          isSelected
+            ? 'ring-4 ring-white/90 shadow-2xl scale-[1.02] z-20'
+            : isMenuOpen
+            ? 'ring-4 ring-blue-400/80 shadow-2xl z-50 overflow-visible'
+            : 'hover:scale-[1.01] shadow-md active:scale-98 z-10 overflow-hidden'
+        }`}
+      >
+        {/* Barre supérieure : Bouton 3 traits, Checkbox & Badge Sécurisé / Taille */}
+        <div className="relative z-20 flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1">
+            <div className="relative studycloud-sec-menu-trigger">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+                }}
+                className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+                  isMenuOpen ? 'border-blue-400 ring-2 ring-blue-400/50 bg-black' : 'border-white/20'
+                }`}
+                title="Options"
+              >
+                <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+              </button>
+              {isMenuOpen && renderOptionsMenu(file)}
+            </div>
+
+            <button
+              type="button"
+              onClick={(e) => toggleSelect(file.id, e)}
+              className="p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
+              title={isSelected ? "Désélectionner" : "Sélectionner"}
+            >
+              {isSelected ? (
+                <CheckSquare className="w-4 h-4 fill-white text-stone-950" />
+              ) : (
+                <Square className="w-4 h-4 text-white" />
+              )}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <span className="p-0.5 rounded bg-black/60 text-blue-300 border border-blue-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Protégé">
+              <Lock className="w-2.5 h-2.5 text-blue-300" />
+            </span>
+            <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/40 text-white border border-black/20 px-1.5 py-0.5 rounded shadow-sm">
+              {file.size || '0 o'}
+            </span>
+          </div>
+        </div>
+
+        {/* Cadre d'aperçu du document */}
+        <div className="flex-1 w-full my-1.5 overflow-hidden rounded-lg bg-white relative shadow-inner border border-white/20 flex flex-col justify-between pointer-events-none">
+          <DocumentCardPreview doc={file as any} />
+        </div>
+
+        {/* Titre unique en bas */}
+        <div className="px-0.5 mb-1">
+          <p className="text-[9px] sm:text-[10px] font-black text-white truncate drop-shadow-md" title={file.name}>
+            {file.name}
+          </p>
+        </div>
+
+        {/* Pied de carte : typeBadge et bouton de déverrouillage / téléchargement */}
+        <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1">
+          <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
+            {theme.typeBadge}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRestore(file);
+              }}
+              className="p-1 rounded-md bg-black/40 hover:bg-emerald-500/30 text-emerald-400 border border-white/20 transition-all cursor-pointer active:scale-95"
+              title="Déverrouiller vers l'emplacement d'origine"
+            >
+              <Unlock className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDownload(file);
+              }}
+              className="p-1 rounded-md bg-black/40 hover:bg-white/20 text-white border border-white/20 transition-all cursor-pointer active:scale-95"
+              title="Télécharger"
+            >
+              <Download className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // CARTE DOSSIER / CLASSEUR 3D AUTHENTIQUE (aspect-[4/3], Classeur3DFolderCard)
+  // =========================================================================
+  const renderClasseurCard = (file: FileItem) => {
+    const isMenuOpen = activeMenuFileId === file.id;
+    const isSelected = selectedIds.has(file.id);
+    const folderData = (file as any).folderData || file;
+
+    return (
+      <div
+        key={file.id}
+        onClick={() => setPreviewFile(file)}
+        className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
+          isMenuOpen
+            ? 'z-50 relative overflow-visible'
+            : isSelected
+            ? 'z-20 relative overflow-hidden'
+            : 'z-10 relative overflow-hidden'
+        } ${
+          isSelected
+            ? 'border-orange-400 ring-4 ring-orange-400/90 shadow-2xl scale-[1.02]'
+            : isMenuOpen
+            ? 'border-blue-400 ring-2 ring-blue-400/40 shadow-2xl'
+            : 'border-white/10 hover:border-orange-400/50 hover:scale-[1.01]'
+        }`}
+      >
+        {/* Barre supérieure : Bouton 3 traits, Checkbox & Badge Sécurisé */}
+        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1.5">
+            <div className="relative studycloud-sec-menu-trigger">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+                }}
+                className="p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border border-white/20 transition-all cursor-pointer active:scale-90 shadow-md"
+                title="Options"
+              >
+                <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+              </button>
+              {isMenuOpen && renderOptionsMenu(file)}
+            </div>
+
+            <button
+              type="button"
+              onClick={(e) => toggleSelect(file.id, e)}
+              className="p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
+              title={isSelected ? "Désélectionner" : "Sélectionner"}
+            >
+              {isSelected ? (
+                <CheckSquare className="w-4 h-4 fill-orange-400 text-stone-950" />
+              ) : (
+                <Square className="w-4 h-4 text-white" />
+              )}
+            </button>
+          </div>
+
+          <span className="p-1 rounded-md bg-black/75 text-emerald-400 border border-emerald-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Protégé">
+            <Lock className="w-3 h-3 text-blue-400" />
+          </span>
+        </div>
+
+        {/* Représentation 3D du dossier */}
+        <div className="pt-2 pb-1 w-full px-2 flex items-center justify-center">
+          <Classeur3DFolderCard folder={folderData as any} />
+        </div>
+
+        {/* Nom du dossier en bas */}
+        <div className="p-2 bg-black/70 backdrop-blur-md border-t border-white/10 text-center">
+          <p className="text-xs font-bold text-white truncate" title={file.name}>
+            {file.name}
+          </p>
+        </div>
+      </div>
+    );
+  };
+
   // Icône selon catégorie
   const renderCategoryIcon = (category: string) => {
     switch (category) {
@@ -607,37 +1273,103 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
       ) : (
         /* VUE DES FICHIERS PROTÉGÉS */
         <main className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-4 pb-36">
-          {/* Statistiques et sélection */}
+          {/* Filtres par catégorie et sélection */}
           {secureFiles.length > 0 && (
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setCategoryFilter('all')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                    categoryFilter === 'all'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
+                  }`}
+                >
+                  Tout ({categoryCounts.all})
+                </button>
+                {categoryCounts.audio > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setCategoryFilter('audio')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                      categoryFilter === 'audio'
+                        ? 'bg-amber-500 text-black shadow-md'
+                        : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
+                    }`}
+                  >
+                    <Music className="w-3.5 h-3.5" />
+                    <span>Audios ({categoryCounts.audio})</span>
+                  </button>
+                )}
+                {categoryCounts.documents > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setCategoryFilter('documents')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                      categoryFilter === 'documents'
+                        ? 'bg-blue-500 text-white shadow-md'
+                        : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
+                    }`}
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Documents ({categoryCounts.documents})</span>
+                  </button>
+                )}
+                {categoryCounts.images > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setCategoryFilter('images')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                      categoryFilter === 'images'
+                        ? 'bg-emerald-600 text-white shadow-md'
+                        : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
+                    }`}
+                  >
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    <span>Images ({categoryCounts.images})</span>
+                  </button>
+                )}
+                {categoryCounts.videos > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setCategoryFilter('videos')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                      categoryFilter === 'videos'
+                        ? 'bg-purple-600 text-white shadow-md'
+                        : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
+                    }`}
+                  >
+                    <Film className="w-3.5 h-3.5" />
+                    <span>Vidéos ({categoryCounts.videos})</span>
+                  </button>
+                )}
+              </div>
+
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={selectAll}
                   className="flex items-center gap-1.5 text-xs font-bold text-stone-600 hover:text-stone-900 px-2.5 py-1 rounded-lg hover:bg-stone-200 transition-colors"
                 >
-                  {selectedIds.size === filteredFiles.length && filteredFiles.length > 0 ? (
+                  {selectedIds.size === displayedFiles.length && displayedFiles.length > 0 ? (
                     <CheckSquare className="w-4 h-4 text-blue-600" />
                   ) : (
                     <Square className="w-4 h-4 text-stone-400" />
                   )}
-                  <span>{selectedIds.size === filteredFiles.length && filteredFiles.length > 0 ? 'Tout désélectionner' : 'Tout sélectionner'}</span>
+                  <span>{selectedIds.size === displayedFiles.length && displayedFiles.length > 0 ? 'Tout désélectionner' : 'Tout sélectionner'}</span>
                 </button>
               </div>
-
-              <span className="text-xs font-semibold text-stone-500">
-                {filteredFiles.length} élément{filteredFiles.length > 1 ? 's' : ''}
-              </span>
             </div>
           )}
 
-          {filteredFiles.length === 0 ? (
+          {displayedFiles.length === 0 ? (
             <div className="py-24 flex flex-col items-center justify-center text-center max-w-md mx-auto">
               <div className="w-20 h-20 rounded-3xl bg-white border border-stone-200 flex items-center justify-center mb-4 shadow-sm">
                 <ShieldCheck className="w-10 h-10 text-blue-500 opacity-60 stroke-[1.5]" />
               </div>
               <h3 className="text-lg font-black text-stone-800 mb-1.5">
-                {searchQuery ? 'Aucun résultat trouvé' : 'Aucun fichier protégé'}
+                {searchQuery ? 'Aucun résultat trouvé' : 'Aucun fichier protégé dans cette catégorie'}
               </h3>
               <p className="text-xs sm:text-sm text-stone-500 mb-6 leading-relaxed">
                 {searchQuery
@@ -656,97 +1388,14 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {filteredFiles.map((file) => {
-                const isSelected = selectedIds.has(file.id);
-                return (
-                  <div
-                    key={file.id}
-                    onClick={() => setPreviewFile(file)}
-                    className={`group relative rounded-2xl p-3.5 bg-[#0B0F1D] hover:bg-[#121828] border transition-all cursor-pointer shadow-sm flex flex-col justify-between gap-3 ${
-                      isSelected ? 'border-blue-500 ring-2 ring-blue-500/30 bg-[#10172e]' : 'border-white/10 hover:border-blue-400/40'
-                    }`}
-                  >
-                    {/* En-tête de carte : Case à cocher + Icône catégorie */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <button
-                          type="button"
-                          onClick={(e) => toggleSelect(file.id, e)}
-                          className="shrink-0 p-0.5 rounded text-stone-400 hover:text-white"
-                        >
-                          {isSelected ? (
-                            <CheckSquare className="w-4 h-4 text-blue-400" />
-                          ) : (
-                            <Square className="w-4 h-4 opacity-40 group-hover:opacity-100 transition-opacity" />
-                          )}
-                        </button>
-                        <div className="p-2 rounded-xl bg-white/5 border border-white/10 shrink-0">
-                          {renderCategoryIcon(file.category)}
-                        </div>
-                      </div>
-
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300 border border-blue-500/20 uppercase">
-                        {file.extension || file.category}
-                      </span>
-                    </div>
-
-                    {/* Informations du fichier */}
-                    <div className="min-w-0 my-1">
-                      <h4 className="text-xs sm:text-sm font-bold text-white truncate" title={file.name}>
-                        {file.name}
-                      </h4>
-                      <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                        {file.size} • {file.date}
-                      </p>
-                    </div>
-
-                    {/* Barre d'actions individuelles */}
-                    <div className="pt-2 border-t border-white/5 flex items-center justify-between gap-1" onClick={(e) => e.stopPropagation()}>
-                      {/* Espace d'étude */}
-                      {onOpenStudySpace && (
-                        <button
-                          type="button"
-                          onClick={() => onOpenStudySpace(file, 'Dossier sécurisé')}
-                          className="p-1.5 rounded-lg border border-white/10 text-emerald-400 hover:bg-emerald-500/10"
-                          title="Ouvrir dans l'Espace d'étude"
-                        >
-                          <BookOpen className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-
-                      {/* Télécharger */}
-                      <button
-                        type="button"
-                        onClick={() => handleDownload(file)}
-                        className="p-1.5 rounded-lg border border-white/10 text-slate-300 hover:bg-white/10 hover:text-white"
-                        title="Télécharger"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                      </button>
-
-                      {/* Déverrouiller vers l'origine */}
-                      <button
-                        type="button"
-                        onClick={() => handleRestore(file)}
-                        className="p-1.5 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"
-                        title="Déverrouiller vers l'emplacement d'origine"
-                      >
-                        <Unlock className="w-3.5 h-3.5" />
-                      </button>
-
-                      {/* Mettre dans la corbeille */}
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteToTrash(file)}
-                        className="p-1.5 rounded-lg border border-rose-500/30 text-rose-400 hover:bg-rose-500/20"
-                        title="Mettre à la corbeille"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+              {displayedFiles.map((file) => {
+                const fType = getFileType(file);
+                if (fType === 'audio') return renderAudioCard(file);
+                if (fType === 'image') return renderImageCard(file);
+                if (fType === 'video') return renderVideoCard(file);
+                if (fType === 'folder') return renderClasseurCard(file);
+                return renderDocumentCard(file);
               })}
             </div>
           )}
@@ -874,14 +1523,15 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
                   autoPlay
                   className="max-h-[70vh] max-w-full rounded-xl shadow-lg"
                 />
-              ) : previewFile.category === 'audio' ? (
-                <div className="w-full max-w-md p-6 rounded-2xl bg-white/5 border border-white/10 text-center space-y-4">
-                  <div className="w-20 h-20 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
-                    <Music className="w-10 h-10" />
+              ) : previewFile.category === 'audio' || getFileType(previewFile) === 'audio' ? (
+                <div className="w-full max-w-md p-6 rounded-3xl bg-[#0F1424] border border-white/15 text-center space-y-4 shadow-2xl">
+                  <div className="w-40 h-40 sm:w-48 sm:h-48 rounded-2xl overflow-hidden mx-auto shadow-2xl border border-white/20 relative group bg-black">
+                    <AudioCardPreview track={previewFile} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                   </div>
                   <div>
-                    <h4 className="text-base font-bold text-white truncate">{previewFile.name}</h4>
-                    <p className="text-xs text-slate-400 mt-1">{previewFile.size}</p>
+                    <h4 className="text-base font-bold text-white truncate px-2">{previewFile.name}</h4>
+                    <p className="text-xs text-amber-300 font-semibold mt-0.5">{previewFile.artist || previewFile.source || 'Fichier Audio'}</p>
+                    <p className="text-[11px] text-slate-400 mt-1">{previewFile.size} • {previewFile.date}</p>
                   </div>
                   <audio
                     src={previewFile.url || previewFile.previewUrl}
