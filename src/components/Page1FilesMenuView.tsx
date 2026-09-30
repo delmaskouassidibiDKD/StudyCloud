@@ -6576,7 +6576,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       handleSelectFile(file);
                     }}
                     className={`group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col justify-between select-none max-w-[215px] w-full ${
-                      isSaving ? 'cursor-wait' : sortedFiles.length > 1 ? 'cursor-grab' : 'cursor-pointer'
+                      isSaving ? 'cursor-wait' : sortedFiles.length > 1 ? 'cursor-pointer active:cursor-grab' : 'cursor-pointer'
                     } ${
                       isBeingDragged
                         ? 'opacity-30 scale-95 border-dashed border-cyan-400 bg-cyan-500/10 cursor-grabbing'
@@ -6734,7 +6734,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     handleSelectFile(file);
                   }}
                   className={`group relative bg-[#0E1526]/85 hover:bg-[#141E34] border rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col max-w-[215px] w-full ${
-                    isSaving ? 'cursor-wait' : sortedFiles.length > 1 ? 'cursor-grab' : 'cursor-pointer'
+                    isSaving ? 'cursor-wait' : sortedFiles.length > 1 ? 'cursor-pointer active:cursor-grab' : 'cursor-pointer'
                   } ${
                     isBeingDragged
                       ? 'opacity-30 scale-95 border-dashed border-orange-400 bg-orange-500/10 cursor-grabbing'
@@ -11320,7 +11320,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         <div className="flex-1 flex flex-col w-full animate-in fade-in duration-200 min-h-screen">
           
           {/* EN-TÊTE DU SOUS-MENU */}
-          <div className={`sticky top-0 z-30 w-full bg-[#F4F6F8]/95 dark:bg-[#0C111D]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-stone-300/70 dark:border-slate-800/60 shadow-xs ${
+          <div className={`sticky top-0 z-30 w-full bg-[#04060A] backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-white/30 shadow-xs ${
             isViewerMaximized ? 'hidden' : ''
           }`}>
             {(opened3DFolder && !isCloudView) ? (
@@ -12601,7 +12601,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                       ? 'scale-105 shadow-2xl border-orange-400 bg-[#141E34] cursor-grabbing'
                                       : isFolderSelected
                                         ? 'border-amber-400 ring-2 ring-amber-400/50 bg-[#14233C] shadow-2xl scale-[1.01]'
-                                        : `bg-[#0E1526]/85 hover:bg-[#141E34] border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1 ${classeur3DFolders.filter(f => !f.parentId).length > 1 ? 'cursor-grab' : 'cursor-pointer'}`
+                                        : `bg-[#0E1526]/85 hover:bg-[#141E34] border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1 ${classeur3DFolders.filter(f => !f.parentId).length > 1 ? 'cursor-pointer active:cursor-grab' : 'cursor-pointer'}`
                                 }`}
                               >
                                 {/* Case à cocher carrée quand le mode sélection est actif */}
@@ -12994,7 +12994,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         /* ========================================================================= */
         <>
           {/* EN-TÊTE FIXE / STICKY : Barre de recherche pilule AU MILIEU */}
-          <div className="sticky top-0 z-30 w-full bg-[#F4F6F8]/95 dark:bg-[#0C111D]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 pt-2.5 pb-2.5 border-b border-stone-300/70 dark:border-slate-800/60 shadow-xs">
+          <div className="sticky top-0 z-30 w-full bg-[#04060A] backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 pt-2.5 pb-2.5 border-b border-white/30 shadow-xs">
             <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
               
               {/* GAUCHE : Bouton Retour rapide vers l'accueil (ferme aussi la recherche en cours) */}

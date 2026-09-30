@@ -1879,7 +1879,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       />
 
       {/* EN-TÊTE FIXE DU MENU AUDIO */}
-      <header className="sticky top-0 z-30 w-full bg-[#0A0E1A]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-white/10 shadow-lg">
+      <header className="sticky top-0 z-30 w-full bg-[#04060A] backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-white/30 shadow-lg">
         <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
           {/* GAUCHE : Bouton Retour et Titre Audio */}
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
@@ -2147,16 +2147,20 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                             title={isAudioPlaying ? 'Lecture en cours' : 'En pause'}
                           >
                             <span
-                              className={`w-1 rounded-full bg-amber-400 transition-all ${isAudioPlaying ? 'h-5 animate-pulse' : 'h-1.5'}`}
+                              className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-1' : ''}`}
+                              style={{ height: isAudioPlaying ? undefined : '5px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }}
                             />
                             <span
-                              className={`w-1 rounded-full bg-amber-300 transition-all ${isAudioPlaying ? 'h-3 animate-pulse delay-75' : 'h-3'}`}
+                              className={`w-1 rounded-full bg-amber-300 ${isAudioPlaying ? 'music-bar-2' : ''}`}
+                              style={{ height: isAudioPlaying ? undefined : '14px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }}
                             />
                             <span
-                              className={`w-1 rounded-full bg-yellow-400 transition-all ${isAudioPlaying ? 'h-4 animate-pulse delay-150' : 'h-2'}`}
+                              className={`w-1 rounded-full bg-yellow-400 ${isAudioPlaying ? 'music-bar-3' : ''}`}
+                              style={{ height: isAudioPlaying ? undefined : '9px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }}
                             />
                             <span
-                              className={`w-1 rounded-full bg-amber-400 transition-all ${isAudioPlaying ? 'h-2 animate-pulse' : 'h-1'}`}
+                              className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-4' : ''}`}
+                              style={{ height: isAudioPlaying ? undefined : '4px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }}
                             />
                           </div>
                         )}

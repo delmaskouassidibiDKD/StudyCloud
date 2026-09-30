@@ -45,6 +45,8 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
 }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
+  const animFrameRef = useRef<number | null>(null);
+  const [tick, setTick] = useState<number>(0);
 
   const [resolvedSrc, setResolvedSrc] = useState<string>('');
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -57,6 +59,28 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
   const [hasError, setHasError] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [showSpeedMenu, setShowSpeedMenu] = useState<boolean>(false);
+
+  // Boucle d'animation pour l'égaliseur
+  useEffect(() => {
+    if (isPlaying) {
+      const loop = () => {
+        setTick(Date.now());
+        animFrameRef.current = requestAnimationFrame(loop);
+      };
+      animFrameRef.current = requestAnimationFrame(loop);
+    } else {
+      if (animFrameRef.current !== null) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+    }
+    return () => {
+      if (animFrameRef.current !== null) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+    };
+  }, [isPlaying]);
 
   // Résolution de la source audio avec fallback IndexedDB
   const resolveAudioSource = useCallback(async () => {
@@ -238,7 +262,7 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
                 isPlaying ? 'opacity-100' : 'opacity-40'
               }`}
               style={{
-                height: isPlaying ? `${Math.max(6, Math.sin(Date.now() / 200 + idx) * (h / 2) + h / 2)}px` : '4px'
+                height: isPlaying ? `${Math.max(4, Math.sin(tick / 200 + idx * 0.8) * (h / 2) + h / 2)}px` : '4px'
               }}
             />
           ))}

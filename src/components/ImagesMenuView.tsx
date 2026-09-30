@@ -1749,7 +1749,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       {renderTransferFolderModal()}
 
       {/* EN-TÊTE FIXE DU MENU IMAGES (IMAGE 1) */}
-      <header className="sticky top-0 z-30 w-full bg-[#0A0E1A]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-white/10 shadow-lg">
+      <header className="sticky top-0 z-30 w-full bg-[#04060A] backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-white/30 shadow-lg">
         <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
           {/* GAUCHE : Retour et Titre */}
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
