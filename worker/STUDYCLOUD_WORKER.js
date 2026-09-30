@@ -2526,8 +2526,8 @@ async function cleanUserFavoriteOnDelete(db, userId, itemId) {
       })
     ]);
     const favSyncId = `fav_${userId}_${itemId}`;
-    await recordSyncItem(db, userId, favSyncId, "favorites", { itemId, isFavorite: false, is_favorite: 0 }, true);
-    await recordSyncItem(db, userId, itemId, "favorites", { itemId, isFavorite: false, is_favorite: 0 }, true);
+    await recordSyncItem(db, userId, favSyncId, "favorites", { itemId, isFavorite: false, is_favorite: 0 }, 1);
+    await recordSyncItem(db, userId, itemId, "favorites", { itemId, isFavorite: false, is_favorite: 0 }, 1);
   } catch (e) {
     console.warn("[cleanUserFavoriteOnDelete Error]", e);
   }

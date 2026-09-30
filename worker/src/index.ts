@@ -2988,7 +2988,7 @@ async function ensureCloudMediaTables(db: any) {
   }
 }
 
-async function recordSyncItem(db: any, userId: string, id: string, category: string, contentObj: any, isDeleted: number = 0) {
+async function recordSyncItem(db: any, userId: string, id: string, category: string, contentObj: any, isDeleted: number | boolean = 0) {
   if (!db || !userId || !id) return;
   try {
     const contentStr = typeof contentObj === 'string' ? contentObj : JSON.stringify(contentObj || { id });
@@ -3034,8 +3034,8 @@ async function cleanUserFavoriteOnDelete(db: any, userId: string, itemId: string
 
     // 3. Émet un tombstone dans sync_items pour réplication temps réel instantanée sur tous les appareils
     const favSyncId = `fav_${userId}_${itemId}`;
-    await recordSyncItem(db, userId, favSyncId, 'favorites', { itemId, isFavorite: false, is_favorite: 0 }, true);
-    await recordSyncItem(db, userId, itemId, 'favorites', { itemId, isFavorite: false, is_favorite: 0 }, true);
+    await recordSyncItem(db, userId, favSyncId, 'favorites', { itemId, isFavorite: false, is_favorite: 0 }, 1);
+    await recordSyncItem(db, userId, itemId, 'favorites', { itemId, isFavorite: false, is_favorite: 0 }, 1);
   } catch (e) {
     console.warn('[cleanUserFavoriteOnDelete Error]', e);
   }
