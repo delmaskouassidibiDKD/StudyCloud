@@ -22,6 +22,7 @@ import {
   Eye,
   Maximize2,
   Minimize2,
+  Copy,
   ChevronLeft,
   ChevronRight,
   Sparkles,
@@ -1098,16 +1099,35 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           ) : categorized.total === 0 ? (
             <div className="py-24 flex flex-col items-center justify-center text-center max-w-md mx-auto">
               <div className="w-20 h-20 rounded-3xl bg-white dark:bg-[#111827] border border-stone-200 dark:border-white/10 flex items-center justify-center mb-4 shadow-sm">
-                <Star className="w-10 h-10 text-amber-500 opacity-60 fill-amber-500/20 stroke-[1.5]" />
+                {sortOption === 'duplicates' ? (
+                  <Copy className="w-10 h-10 text-amber-500 opacity-60 stroke-[1.5]" />
+                ) : (
+                  <Star className="w-10 h-10 text-amber-500 opacity-60 fill-amber-500/20 stroke-[1.5]" />
+                )}
               </div>
               <h3 className="text-lg font-black text-stone-800 dark:text-white mb-1.5">
-                {searchQuery ? 'Aucun résultat trouvé' : 'Aucun favori pour le moment'}
+                {sortOption === 'duplicates'
+                  ? 'Aucun résultat pour les doublons'
+                  : searchQuery
+                    ? 'Aucun résultat trouvé'
+                    : 'Aucun favori pour le moment'}
               </h3>
               <p className="text-xs sm:text-sm text-stone-500 dark:text-slate-400 leading-relaxed">
-                {searchQuery
-                  ? `Aucun élément favori ne correspond à "${searchQuery}".`
-                  : 'Pour ajouter un fichier en favori, cliquez sur l’étoile ⭐ ou dans les options (•••) d’un fichier ou dossier.'}
+                {sortOption === 'duplicates'
+                  ? 'Aucun fichier doublon dans vos favoris. Tous les éléments sont uniques.'
+                  : searchQuery
+                    ? `Aucun élément favori ne correspond à "${searchQuery}".`
+                    : 'Pour ajouter un fichier en favori, cliquez sur l’étoile ⭐ ou dans les options (•••) d’un fichier ou dossier.'}
               </p>
+              {sortOption === 'duplicates' && (
+                <button
+                  type="button"
+                  onClick={() => setSortOption('recent')}
+                  className="mt-4 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-md transition-all active:scale-95 cursor-pointer"
+                >
+                  Afficher tous les favoris
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-8">

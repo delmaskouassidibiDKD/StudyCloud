@@ -21,7 +21,8 @@ import {
   Maximize2,
   Minimize2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Copy
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore, unmarkItemDeleted } from '../services/cloudDataStore';
@@ -1490,16 +1491,35 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
           ) : filteredTrash.length === 0 ? (
             <div className="py-24 flex flex-col items-center justify-center text-center max-w-md mx-auto">
               <div className="w-20 h-20 rounded-3xl bg-rose-50 border border-rose-200 flex items-center justify-center mb-4 shadow-sm">
-                <Trash2 className="w-10 h-10 text-rose-500 opacity-60 stroke-[1.5]" />
+                {sortOption === 'duplicates' ? (
+                  <Copy className="w-10 h-10 text-rose-500 opacity-60 stroke-[1.5]" />
+                ) : (
+                  <Trash2 className="w-10 h-10 text-rose-500 opacity-60 stroke-[1.5]" />
+                )}
               </div>
               <h3 className="text-lg font-black text-stone-800 mb-1.5">
-                {searchQuery ? 'Aucun élément trouvé' : 'La corbeille est vide'}
+                {sortOption === 'duplicates'
+                  ? 'Aucun résultat pour les doublons'
+                  : searchQuery
+                    ? 'Aucun élément trouvé'
+                    : 'La corbeille est vide'}
               </h3>
               <p className="text-xs sm:text-sm text-stone-500 leading-relaxed">
-                {searchQuery
-                  ? `Aucun élément de la corbeille ne correspond à "${searchQuery}".`
-                  : 'Les fichiers supprimés depuis vos différents menus apparaîtront ici. Vous pourrez les restaurer à tout moment.'}
+                {sortOption === 'duplicates'
+                  ? 'Aucun fichier doublon dans la corbeille. Tous les éléments sont uniques.'
+                  : searchQuery
+                    ? `Aucun élément de la corbeille ne correspond à "${searchQuery}".`
+                    : 'Les fichiers supprimés depuis vos différents menus apparaîtront ici. Vous pourrez les restaurer à tout moment.'}
               </p>
+              {sortOption === 'duplicates' && (
+                <button
+                  type="button"
+                  onClick={() => setSortOption('recent')}
+                  className="mt-4 px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs shadow-md transition-all active:scale-95 cursor-pointer"
+                >
+                  Afficher tous les éléments
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-8">

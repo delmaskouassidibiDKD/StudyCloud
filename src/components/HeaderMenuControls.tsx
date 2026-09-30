@@ -12,6 +12,9 @@ import {
   X
 } from 'lucide-react';
 
+import { CloudDataStore, FileItem } from '../services/cloudDataStore';
+import { CloudStorageAPI } from '../services/cloudStorageService';
+
 export type SortOption = 'recent' | 'oldest' | 'pinned' | 'duplicates' | 'size-desc';
 
 export interface HeaderMenuControlsProps {
@@ -41,82 +44,323 @@ export function parseSizeToBytes(sizeStr?: string | number, sizeBytes?: number):
   return val;
 }
 
-export function parseDateToTime(dateStr?: string, timestamp?: number): number {
-  if (typeof timestamp === 'number' && !isNaN(timestamp)) return timestamp;
-  if (!dateStr) return 0;
-  const parsed = Date.parse(dateStr);
-  if (!isNaN(parsed)) return parsed;
-  const dm = dateStr.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
-  if (dm) {
-    return new Date(parseInt(dm[3], 10), parseInt(dm[2], 10) - 1, parseInt(dm[1], 10)).getTime();
+const MONTH_MAP: Record<string, number> = {
+  'janv': 0, 'janvier': 0, 'jan': 0,
+  'févr': 1, 'février': 1, 'fevr': 1, 'fevrier': 1, 'feb': 1,
+  'mars': 2, 'mar': 2,
+  'avr': 3, 'avril': 3, 'apr': 3,
+  'mai': 4, 'may': 4,
+  'juin': 5, 'jun': 5,
+  'juil': 6, 'juillet': 6, 'jul': 6,
+  'août': 7, 'aout': 7, 'aug': 7,
+  'sept': 8, 'septembre': 8, 'sep': 8,
+  'oct': 9, 'octobre': 9,
+  'nov': 10, 'novembre': 10,
+  'déc': 11, 'décembre': 11, 'dec': 11, 'decembre': 11
+};
+
+export function getFileTimestamp(item: any): number {
+  if (!item) return 0;
+
+  // 1. Champs temporels directs (numériques ou chaînes ISO)
+  for (const field of ['timestamp', 'importedAt', 'createdAt', 'created_at', 'updated_at', 'last_imported', 'lastModified', 'downloadedAt']) {
+    const val = item[field];
+    if (typeof val === 'number' && !isNaN(val) && val > 0) {
+      return val < 10000000000 ? val * 1000 : val;
+    }
+    if (typeof val === 'string' && val.trim()) {
+      const parsed = Date.parse(val);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
   }
+
+  // 2. Timestamp milliseconde incrusté dans l'identifiant (ex: doc-1790781234567 ou 1790781234567)
+  if (item.id && typeof item.id === 'string') {
+    const match = item.id.match(/1[6-9]\d{11,12}/);
+    if (match) {
+      const parsed = parseInt(match[0], 10);
+      if (!isNaN(parsed) && parsed > 1000000000000) return parsed;
+    }
+  }
+
+  // 3. Date incluse dans le nom du fichier (ex: Screenshot_20260930_103941 ou 2026-09-30)
+  if (item.name && typeof item.name === 'string') {
+    const matchDate = item.name.match(/20\d{2}[-_]?(0[1-9]|1[0-2])[-_]?([0-2][0-9]|3[01])(?:[-_]?([01][0-9]|2[0-3])([0-5][0-9])([0-5][0-9]))?/);
+    if (matchDate) {
+      const full = matchDate[0].replace(/[-_]/g, '');
+      if (full.length >= 8) {
+        const year = parseInt(full.substring(0, 4), 10);
+        const month = parseInt(full.substring(4, 6), 10) - 1;
+        const day = parseInt(full.substring(6, 8), 10);
+        const hour = full.length >= 10 ? parseInt(full.substring(8, 10), 10) : 12;
+        const min = full.length >= 12 ? parseInt(full.substring(10, 12), 10) : 0;
+        const sec = full.length >= 14 ? parseInt(full.substring(12, 14), 10) : 0;
+        const d = new Date(year, month, day, hour, min, sec).getTime();
+        if (!isNaN(d) && d > 0) return d;
+      }
+    }
+  }
+
+  // 4. Analyse des dates textuelles en français dans le champ `date`
+  if (item.date && typeof item.date === 'string') {
+    const raw = item.date.trim().toLowerCase();
+
+    // "À l'instant", "À l’instant"
+    if (raw.includes("l'instant") || raw.includes("l’instant")) {
+      return Date.now();
+    }
+
+    // "Aujourd'hui, 14:30" ou "Aujourd'hui"
+    if (raw.includes("aujourd'hui") || raw.includes("aujourd’hui")) {
+      const now = new Date();
+      const timeMatch = raw.match(/(\d{1,2})[:h](\d{2})/);
+      if (timeMatch) {
+        now.setHours(parseInt(timeMatch[1], 10), parseInt(timeMatch[2], 10), 0, 0);
+      }
+      return now.getTime();
+    }
+
+    // "Hier, 10:15" ou "Hier"
+    if (raw.includes("hier")) {
+      const yesterday = new Date(Date.now() - 86400000);
+      const timeMatch = raw.match(/(\d{1,2})[:h](\d{2})/);
+      if (timeMatch) {
+        yesterday.setHours(parseInt(timeMatch[1], 10), parseInt(timeMatch[2], 10), 0, 0);
+      }
+      return yesterday.getTime();
+    }
+
+    // "Il y a X jours"
+    const daysAgoMatch = raw.match(/il y a (\d+)\s*jour/);
+    if (daysAgoMatch) {
+      const days = parseInt(daysAgoMatch[1], 10);
+      return Date.now() - days * 86400000;
+    }
+
+    // Date "DD/MM/YYYY" ou "DD-MM-YYYY" ou "DD.MM.YYYY"
+    const dm = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+    if (dm) {
+      const d = new Date(parseInt(dm[3], 10), parseInt(dm[2], 10) - 1, parseInt(dm[1], 10)).getTime();
+      if (!isNaN(d) && d > 0) return d;
+    }
+
+    // Date "DD [mois] YYYY" (ex: "30 sept. 2026", "25 septembre 2026")
+    const frMatch = raw.match(/^(\d{1,2})\s+([a-zéû.]+)\s+(\d{4})/);
+    if (frMatch) {
+      const day = parseInt(frMatch[1], 10);
+      const mStr = frMatch[2].replace('.', '').toLowerCase();
+      const year = parseInt(frMatch[3], 10);
+      const month = MONTH_MAP[mStr];
+      if (month !== undefined) {
+        const d = new Date(year, month, day, 12, 0, 0).getTime();
+        if (!isNaN(d) && d > 0) return d;
+      }
+    }
+
+    // Fallback ISO standard
+    const stdParsed = Date.parse(item.date);
+    if (!isNaN(stdParsed) && stdParsed > 0) return stdParsed;
+  }
+
   return 0;
 }
 
-export function isDuplicateFile(file: any, allFiles: any[]): boolean {
-  if (!file || !file.name) return false;
-  const cleanName = (str: string) => {
-    return str.trim().toLowerCase().replace(/\s*\(\d+\)(\.[^.]*)?$/, '$1').replace(/\s*-\s*copie(\.[^.]*)?$/, '$1');
+export const parseDateToTime = getFileTimestamp;
+
+export function isItemPinned(item: any): boolean {
+  if (!item) return false;
+  if (item.isPinned === true || item.is_pinned === true || item.is_pinned === 1) return true;
+  if (!item.id) return false;
+
+  try {
+    const pinSet = CloudDataStore.getState()?.pinIdSet;
+    if (pinSet && pinSet.has(item.id)) return true;
+  } catch {}
+
+  try {
+    const rawLocal = localStorage.getItem('studycloud_pinned_ids');
+    if (rawLocal) {
+      const arr = JSON.parse(rawLocal);
+      if (Array.isArray(arr) && arr.includes(item.id)) return true;
+    }
+  } catch {}
+
+  return false;
+}
+
+export function getAllDatabaseFiles(): any[] {
+  const allFiles: any[] = [];
+  const seenIds = new Set<string>();
+
+  const addItems = (arr: any[]) => {
+    if (!Array.isArray(arr)) return;
+    for (const item of arr) {
+      if (item && item.id && !seenIds.has(item.id)) {
+        seenIds.add(item.id);
+        allFiles.push(item);
+      }
+    }
   };
+
+  try {
+    const store = CloudDataStore.getState();
+    addItems(store.documents || []);
+    addItems(store.images || []);
+    addItems(store.videos || []);
+    addItems(store.audio || []);
+    addItems(store.downloads || []);
+    addItems(store.secure || []);
+    addItems(store.trash || []);
+    addItems(store.recentFiles || []);
+    if (store.folderFilesMap) {
+      for (const folderList of Object.values(store.folderFilesMap)) {
+        addItems(folderList);
+      }
+    }
+  } catch {}
+
+  try {
+    const userFiles = JSON.parse(localStorage.getItem('unifolder_user_files') || '[]');
+    addItems(userFiles);
+  } catch {}
+
+  try {
+    const menuItems = JSON.parse(localStorage.getItem('unifolder_files_menu_items') || '[]');
+    addItems(menuItems);
+  } catch {}
+
+  return allFiles;
+}
+
+export function isDuplicateFile(file: any, comparisonPool?: any[]): boolean {
+  if (!file || !file.name) return false;
+
+  const pool = comparisonPool && comparisonPool.length > 0 ? comparisonPool : getAllDatabaseFiles();
+
+  const normalizeName = (str: string): string => {
+    return str
+      .trim()
+      .toLowerCase()
+      .replace(/\s*-\s*copie(\s*\(\d+\))?(\.[^.]*)?$/i, '$2')
+      .replace(/\s*\(\d+\)(\.[^.]*)?$/i, '$1')
+      .trim();
+  };
+
   const exactName = file.name.trim().toLowerCase();
-  const baseName = cleanName(file.name);
-  const sizeStr = file.size?.trim().toLowerCase();
+  const baseName = normalizeName(file.name);
+  const sizeBytes = parseSizeToBytes(file.size, file.sizeBytes);
+  const ext = (file.extension || file.name.split('.').pop() || '').trim().toLowerCase();
 
-  for (const f of allFiles) {
-    if (f.id === file.id) continue;
-    const otherExact = f.name?.trim().toLowerCase();
-    const otherBase = f.name ? cleanName(f.name) : '';
-    const otherSize = f.size?.trim().toLowerCase();
+  for (const other of pool) {
+    if (other.id === file.id) continue;
+    if (!other.name) continue;
 
-    if (otherExact === exactName) return true;
-    if (otherBase === baseName && baseName.length > 3) return true;
-    if (sizeStr && sizeStr !== '0 b' && sizeStr !== '0 ko' && otherSize === sizeStr && file.extension && f.extension && file.extension.toLowerCase() === f.extension.toLowerCase()) {
+    const otherExact = other.name.trim().toLowerCase();
+    const otherBase = normalizeName(other.name);
+    const otherBytes = parseSizeToBytes(other.size, other.sizeBytes);
+    const otherExt = (other.extension || other.name.split('.').pop() || '').trim().toLowerCase();
+
+    // 1. Nom de fichier strictement identique
+    if (otherExact === exactName) {
+      return true;
+    }
+
+    // 2. Nom de base identique après suppression de suffixes (ex: fichier (1).pdf vs fichier.pdf ou - Copie)
+    if (baseName.length >= 3 && otherBase === baseName) {
+      return true;
+    }
+
+    // 3. Même taille en octets (> 100 octets) et même extension
+    if (sizeBytes > 100 && otherBytes > 100 && sizeBytes === otherBytes && ext && ext === otherExt) {
+      return true;
+    }
+
+    // 4. Même clé R2 distante ou URL cloud
+    if (file.r2Key && other.r2Key && file.r2Key === other.r2Key) {
+      return true;
+    }
+    if (file.url && other.url && file.url === other.url && !file.url.startsWith('blob:')) {
       return true;
     }
   }
+
   return false;
 }
 
 export function applyFileSorting<T extends { name: string; size?: string; sizeBytes?: number; date?: string; isPinned?: boolean; id: string; extension?: string }>(
   list: T[],
-  sortOption: SortOption
+  sortOption: SortOption,
+  comparisonPool?: any[]
 ): T[] {
   let result = [...list];
 
   if (sortOption === 'pinned') {
-    result.sort((a, b) => {
-      const pA = Boolean(a.isPinned);
-      const pB = Boolean(b.isPinned);
-      if (pA && !pB) return -1;
-      if (!pA && pB) return 1;
-      return 0;
+    const withIndex = result.map((item, idx) => ({
+      item,
+      idx,
+      pinned: isItemPinned(item),
+      t: getFileTimestamp(item)
+    }));
+
+    withIndex.sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      if (a.t > 0 && b.t > 0 && a.t !== b.t) return b.t - a.t;
+      return a.idx - b.idx;
     });
+
+    return withIndex.map(x => x.item);
   } else if (sortOption === 'duplicates') {
-    const dupes = list.filter(item => isDuplicateFile(item, list));
+    const pool = comparisonPool && comparisonPool.length > 0 ? comparisonPool : getAllDatabaseFiles();
+    const dupes = list.filter(item => isDuplicateFile(item, pool));
+
+    // Regrouper les doublons côte à côte
     dupes.sort((a, b) => {
-      const nA = a.name.trim().toLowerCase().replace(/\s*\(\d+\)(\.[^.]*)?$/, '$1');
-      const nB = b.name.trim().toLowerCase().replace(/\s*\(\d+\)(\.[^.]*)?$/, '$1');
+      const nA = a.name.trim().toLowerCase().replace(/\s*-\s*copie.*$/i, '').replace(/\s*\(\d+\).*$/i, '');
+      const nB = b.name.trim().toLowerCase().replace(/\s*-\s*copie.*$/i, '').replace(/\s*\(\d+\).*$/i, '');
       if (nA === nB) return a.name.localeCompare(b.name);
       return nA.localeCompare(nB);
     });
+
     return dupes;
   } else if (sortOption === 'size-desc') {
     result.sort((a, b) => parseSizeToBytes(b.size, b.sizeBytes) - parseSizeToBytes(a.size, a.sizeBytes));
   } else if (sortOption === 'oldest') {
-    result.sort((a, b) => {
-      const tA = parseDateToTime(a.date, (a as any).timestamp || (a as any).createdAt);
-      const tB = parseDateToTime(b.date, (b as any).timestamp || (b as any).createdAt);
-      if (tA && tB && tA !== tB) return tA - tB;
-      return 0;
+    const withIndex = result.map((item, idx) => ({
+      item,
+      idx,
+      t: getFileTimestamp(item)
+    }));
+
+    withIndex.sort((a, b) => {
+      if (a.t > 0 && b.t > 0 && a.t !== b.t) {
+        return a.t - b.t; // plus ancien d'abord
+      }
+      if (a.t > 0 && b.t === 0) return -1;
+      if (a.t === 0 && b.t > 0) return 1;
+      // Si pas de timestamp différent, inverser l'ordre initial garanti
+      return b.idx - a.idx;
     });
+
+    return withIndex.map(x => x.item);
   } else {
     // 'recent'
-    result.sort((a, b) => {
-      const tA = parseDateToTime(a.date, (a as any).timestamp || (a as any).createdAt);
-      const tB = parseDateToTime(b.date, (b as any).timestamp || (b as any).createdAt);
-      if (tA && tB && tA !== tB) return tB - tA;
-      return 0;
+    const withIndex = result.map((item, idx) => ({
+      item,
+      idx,
+      t: getFileTimestamp(item)
+    }));
+
+    withIndex.sort((a, b) => {
+      if (a.t > 0 && b.t > 0 && a.t !== b.t) {
+        return b.t - a.t; // plus récent d'abord
+      }
+      if (a.t > 0 && b.t === 0) return -1;
+      if (a.t === 0 && b.t > 0) return 1;
+      return a.idx - b.idx;
     });
+
+    return withIndex.map(x => x.item);
   }
 
   return result;
@@ -159,6 +403,11 @@ export const HeaderMenuControls: React.FC<HeaderMenuControlsProps> = ({
   const handleSelectSort = (option: SortOption) => {
     onSortChange(option);
     setIsMenuOpen(false);
+    if (option === 'duplicates') {
+      CloudDataStore.sync(true).catch(() => {});
+    } else if (option === 'pinned') {
+      CloudStorageAPI.getPinned().catch(() => {});
+    }
   };
 
   const handleRestore = () => {

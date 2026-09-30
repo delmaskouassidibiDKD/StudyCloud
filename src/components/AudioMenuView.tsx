@@ -1975,15 +1975,19 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               </div>
             ) : filteredAudio.length === 0 ? (
               <div className="py-20 text-center text-stone-500 dark:text-slate-400">
-                <Music className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
-                <p className="text-sm font-semibold">
+                {sortOption === 'duplicates' ? (
+                  <Copy className="w-12 h-12 mx-auto mb-3 opacity-40 stroke-[1.5] text-rose-400" />
+                ) : (
+                  <Music className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
+                )}
+                <p className={`text-sm font-semibold ${sortOption === 'duplicates' ? 'text-rose-400' : ''}`}>
                   {sortOption === 'duplicates'
-                    ? 'Aucun fichier doublon trouvé'
+                    ? 'Aucun résultat pour les doublons'
                     : 'Aucun son disponible'}
                 </p>
                 <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
                   {sortOption === 'duplicates'
-                    ? 'Toutes vos pistes audio sont uniques. Aucun doublon détecté.'
+                    ? 'Tous vos fichiers audio sont uniques dans la base de données. Aucun doublon détecté.'
                     : 'Ce dossier ne contient aucun fichier audio pour le moment.'}
                 </p>
                 {sortOption === 'duplicates' && (

@@ -6195,7 +6195,26 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         {renderSelectionBanner(allOpenedFolderItems)}
 
         {/* Fichiers et sous-dossiers du dossier OU État vide */}
-        {totalItems === 0 ? (
+        {sortOption === 'duplicates' && sortedFiles.length === 0 ? (
+          <div className="py-20 sm:py-28 flex flex-col items-center justify-center text-center text-stone-500 dark:text-slate-400 rounded-3xl border-2 border-dashed border-white/10 p-6 bg-black/20">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mb-4 shadow-sm">
+              <Copy className="w-8 h-8 sm:w-10 sm:h-10 stroke-[1.8]" />
+            </div>
+            <h3 className="text-base sm:text-lg font-bold text-rose-400">
+              Aucun résultat pour les doublons
+            </h3>
+            <p className="text-xs text-stone-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
+              Tous les fichiers de ce dossier sont uniques dans la base de données. Aucun doublon détecté.
+            </p>
+            <button
+              type="button"
+              onClick={() => setSortOption('recent')}
+              className="mt-4 px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs shadow-md transition-all active:scale-95 cursor-pointer"
+            >
+              Afficher tous les fichiers
+            </button>
+          </div>
+        ) : totalItems === 0 ? (
           <div className="py-20 sm:py-28 flex flex-col items-center justify-center text-center text-stone-500 dark:text-slate-400 rounded-3xl border-2 border-dashed border-white/10 p-6 bg-black/20">
             <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-orange-500/10 border border-orange-500/20 text-orange-400 flex items-center justify-center mb-4 shadow-sm">
               <FolderArchive className="w-8 h-8 sm:w-10 sm:h-10 stroke-[1.8]" />
@@ -11739,11 +11758,30 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     renderCategoryProgressiveSkeleton('Documents', 'grid', 'text-blue-400')
                   ) : filteredDocuments.length === 0 ? (
                     <div className="py-20 text-center text-stone-500 dark:text-slate-400">
-                      <FileText className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-blue-400" />
-                      <p className="text-sm font-semibold">Aucun document disponible</p>
-                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                        Ce dossier ne contient aucun document pour le moment.
-                      </p>
+                      {sortOption === 'duplicates' ? (
+                        <>
+                          <Copy className="w-12 h-12 mx-auto mb-3 opacity-40 stroke-[1.5] text-rose-400" />
+                          <p className="text-sm font-semibold text-rose-400">Aucun résultat pour les doublons</p>
+                          <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                            Tous vos documents sont uniques dans la base de données. Aucun doublon détecté.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setSortOption('recent')}
+                            className="mt-3 px-4 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                          >
+                            Afficher tous les documents
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-blue-400" />
+                          <p className="text-sm font-semibold">Aucun document disponible</p>
+                          <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                            Ce dossier ne contient aucun document pour le moment.
+                          </p>
+                        </>
+                      )}
                     </div>
                   ) : (
                     <div className={`grid gap-2.5 sm:gap-3.5 ${
@@ -11799,11 +11837,30 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     renderCategoryProgressiveSkeleton('Audio', 'audio-list', 'text-amber-400')
                   ) : filteredAudio.length === 0 ? (
                     <div className="py-20 text-center text-stone-500 dark:text-slate-400">
-                      <Music className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
-                      <p className="text-sm font-semibold">Aucun son disponible</p>
-                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                        Ce dossier ne contient aucun fichier audio pour le moment.
-                      </p>
+                      {sortOption === 'duplicates' ? (
+                        <>
+                          <Copy className="w-12 h-12 mx-auto mb-3 opacity-40 stroke-[1.5] text-rose-400" />
+                          <p className="text-sm font-semibold text-rose-400">Aucun résultat pour les doublons</p>
+                          <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                            Tous vos fichiers audio sont uniques dans la base de données. Aucun doublon détecté.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setSortOption('recent')}
+                            className="mt-3 px-4 py-1.5 rounded-full bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                          >
+                            Afficher tous les sons
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <Music className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
+                          <p className="text-sm font-semibold">Aucun son disponible</p>
+                          <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                            Ce dossier ne contient aucun fichier audio pour le moment.
+                          </p>
+                        </>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -12021,11 +12078,30 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     renderCategoryProgressiveSkeleton('Vidéos', 'grid', 'text-purple-400')
                   ) : filteredVideos.length === 0 ? (
                     <div className="py-20 text-center text-stone-500 dark:text-slate-400">
-                      <Film className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-purple-400" />
-                      <p className="text-sm font-semibold">Aucune vidéo disponible</p>
-                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                        Ce dossier ne contient aucune vidéo pour le moment.
-                      </p>
+                      {sortOption === 'duplicates' ? (
+                        <>
+                          <Copy className="w-12 h-12 mx-auto mb-3 opacity-40 stroke-[1.5] text-rose-400" />
+                          <p className="text-sm font-semibold text-rose-400">Aucun résultat pour les doublons</p>
+                          <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                            Toutes vos vidéos sont uniques dans la base de données. Aucun doublon détecté.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setSortOption('recent')}
+                            className="mt-3 px-4 py-1.5 rounded-full bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                          >
+                            Afficher toutes les vidéos
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <Film className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-purple-400" />
+                          <p className="text-sm font-semibold">Aucune vidéo disponible</p>
+                          <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                            Ce dossier ne contient aucune vidéo pour le moment.
+                          </p>
+                        </>
+                      )}
                     </div>
                   ) : (
                     <div className={`grid gap-2 sm:gap-3 ${
@@ -12075,11 +12151,30 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     renderCategoryProgressiveSkeleton('Images', 'grid', 'text-emerald-400')
                   ) : filteredImages.length === 0 ? (
                     <div className="py-20 text-center text-stone-500 dark:text-slate-400">
-                      <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-emerald-400" />
-                      <p className="text-sm font-semibold">Aucune image disponible</p>
-                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                        Ce dossier ne contient aucune image pour le moment.
-                      </p>
+                      {sortOption === 'duplicates' ? (
+                        <>
+                          <Copy className="w-12 h-12 mx-auto mb-3 opacity-40 stroke-[1.5] text-rose-400" />
+                          <p className="text-sm font-semibold text-rose-400">Aucun résultat pour les doublons</p>
+                          <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                            Toutes vos images sont uniques dans la base de données. Aucun doublon détecté.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setSortOption('recent')}
+                            className="mt-3 px-4 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                          >
+                            Afficher toutes les images
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-emerald-400" />
+                          <p className="text-sm font-semibold">Aucune image disponible</p>
+                          <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                            Ce dossier ne contient aucune image pour le moment.
+                          </p>
+                        </>
+                      )}
                     </div>
                   ) : (
                     <div className={`grid gap-2 sm:gap-3 ${
@@ -12129,9 +12224,26 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     renderCategoryProgressiveSkeleton('Téléchargements', 'grid', 'text-sky-400')
                   ) : filteredDownloads.length === 0 ? (
                     <div className="py-16 text-center text-stone-500 dark:text-slate-400">
-                      <Download className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5]" />
-                      <p className="text-sm font-semibold">Aucun fichier téléchargé</p>
-                      <p className="text-xs opacity-70 mt-1">Les fichiers téléchargés s'afficheront ici avec leur vue dédiée.</p>
+                      {sortOption === 'duplicates' ? (
+                        <>
+                          <Copy className="w-12 h-12 mx-auto mb-3 opacity-40 stroke-[1.5] text-rose-400" />
+                          <p className="text-sm font-semibold text-rose-400">Aucun résultat pour les doublons</p>
+                          <p className="text-xs opacity-70 mt-1">Tous vos fichiers téléchargés sont uniques. Aucun doublon détecté.</p>
+                          <button
+                            type="button"
+                            onClick={() => setSortOption('recent')}
+                            className="mt-3 px-4 py-1.5 rounded-full bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                          >
+                            Afficher tous les téléchargements
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5]" />
+                          <p className="text-sm font-semibold">Aucun fichier téléchargé</p>
+                          <p className="text-xs opacity-70 mt-1">Les fichiers téléchargés s'afficheront ici avec leur vue dédiée.</p>
+                        </>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-6">

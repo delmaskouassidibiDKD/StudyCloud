@@ -14,7 +14,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Copy
 } from 'lucide-react';
 import { getDownloadedFiles, removeDownloadedFile, DownloadedItem } from '../services/downloadsManager';
 import { getFileBlobUrl } from '../services/localFileStorage';
@@ -358,15 +359,19 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
             </div>
           ) : filteredItems.length === 0 ? (
             <div className="py-20 text-center text-stone-500">
-              <Download className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-sky-500" />
-              <p className="text-sm font-bold text-stone-800">
+              {sortOption === 'duplicates' ? (
+                <Copy className="w-12 h-12 mx-auto mb-3 opacity-40 stroke-[1.5] text-rose-500" />
+              ) : (
+                <Download className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-sky-500" />
+              )}
+              <p className={`text-sm font-bold ${sortOption === 'duplicates' ? 'text-rose-500' : 'text-stone-800'}`}>
                 {sortOption === 'duplicates'
-                  ? 'Aucun fichier doublon trouvé'
+                  ? 'Aucun résultat pour les doublons'
                   : 'Aucun fichier téléchargé'}
               </p>
               <p className="text-xs text-stone-500 mt-1 max-w-sm mx-auto">
                 {sortOption === 'duplicates'
-                  ? 'Tous vos fichiers téléchargés sont uniques.'
+                  ? 'Tous vos fichiers téléchargés sont uniques dans la base de données. Aucun doublon détecté.'
                   : "Les fichiers téléchargés pour une lecture hors-ligne s'afficheront ici."}
               </p>
               {sortOption === 'duplicates' && (

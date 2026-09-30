@@ -725,6 +725,34 @@ export const CloudDataStore = {
   setSecureFiles(secure: FileItem[])        { currentState = { ...currentState, secure };                   persistToIndexedDB().catch(() => {}); notify(); },
   setRecentFiles(recent: FileItem[])        { currentState = { ...currentState, recentFiles: recent };      persistToIndexedDB().catch(() => {}); notify(); },
 
+  getAllFiles(): FileItem[] {
+    const seen = new Set<string>();
+    const list: FileItem[] = [];
+    const add = (items?: any[]) => {
+      if (!Array.isArray(items)) return;
+      for (const item of items) {
+        if (item && item.id && !seen.has(item.id)) {
+          seen.add(item.id);
+          list.push(item);
+        }
+      }
+    };
+    add(currentState.documents);
+    add(currentState.images);
+    add(currentState.videos);
+    add(currentState.audio);
+    add(currentState.downloads as any[]);
+    add(currentState.secure);
+    add(currentState.trash);
+    add(currentState.recentFiles);
+    if (currentState.folderFilesMap) {
+      for (const folderList of Object.values(currentState.folderFilesMap)) {
+        add(folderList);
+      }
+    }
+    return list;
+  },
+
   addOptimisticFile(file: FileItem, folderId?: string) {
     const cat = file.category || 'documents';
     const isEligible = isRecentEligible(file);
