@@ -7487,7 +7487,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             handleSelectFile(aud);
           }
         }}
-        className={`group relative aspect-square rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 ${
+        className={`group relative aspect-[3/4] rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 ${
           isSaving ? 'cursor-wait select-none' : 'cursor-pointer'
         } ${
           isChecked
@@ -12240,7 +12240,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           {filteredSecureFiles.map((file, idx) => {
                             if (file.category === 'images') return renderImageCard(file, idx);
                             if (file.category === 'videos') return renderVideoCard(file, idx);
-                            if (file.category === 'audio') return renderAudioItem(file);
+                            if (file.category === 'audio') return renderAudioSquareCard(file, idx, filteredSecureFiles);
                             return renderDocumentCard(file, idx, filteredSecureFiles);
                           })}
                         </div>
@@ -12328,7 +12328,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           }
                           if (file.category === 'images') return renderImageCard(file, idx);
                           if (file.category === 'videos') return renderVideoCard(file, idx);
-                          if (file.category === 'audio') return renderAudioItem(file);
+                          if (file.category === 'audio') return renderAudioSquareCard(file, idx, favoriteFiles);
                           return renderDocumentCard(file, idx, favoriteFiles);
                         })}
                       </div>

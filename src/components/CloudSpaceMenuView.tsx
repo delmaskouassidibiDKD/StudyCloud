@@ -14,6 +14,7 @@ import {
   LayoutGrid,
   Star,
   Lock,
+  Unlock,
   Trash2,
   ChevronLeft,
   ChevronRight,
@@ -73,6 +74,51 @@ export type CloudTabId =
 
 
 
+// Thème de couleur officiel par extension (PDF rouge, Word bleu, Excel vert, PPT orange, etc.)
+export const getDocumentTheme = (ext: string = 'PDF') => {
+  const upper = ext.toUpperCase();
+  if (upper === 'PDF') {
+    return {
+      bg: 'linear-gradient(180deg, #dc2626 0%, #991b1b 100%)',
+      border: 'border-2 border-red-500 hover:border-red-400',
+      shadow: 'shadow-[2.5px_2.5px_0px_0px_#450a0a]',
+      badge: 'bg-white text-red-700 border-white',
+      typeBadge: 'PDF'
+    };
+  } else if (['DOC', 'DOCX'].includes(upper)) {
+    return {
+      bg: 'linear-gradient(180deg, #2563eb 0%, #1e40af 100%)',
+      border: 'border-2 border-blue-500 hover:border-blue-400',
+      shadow: 'shadow-[2.5px_2.5px_0px_0px_#172554]',
+      badge: 'bg-white text-blue-700 border-white',
+      typeBadge: 'DOCX'
+    };
+  } else if (['XLS', 'XLSX', 'CSV'].includes(upper)) {
+    return {
+      bg: 'linear-gradient(180deg, #0d9488 0%, #115e59 100%)',
+      border: 'border-2 border-emerald-500 hover:border-emerald-400',
+      shadow: 'shadow-[2.5px_2.5px_0px_0px_#022c22]',
+      badge: 'bg-white text-emerald-700 border-white',
+      typeBadge: 'XLSX'
+    };
+  } else if (['PPT', 'PPTX'].includes(upper)) {
+    return {
+      bg: 'linear-gradient(180deg, #ea580c 0%, #9a3412 100%)',
+      border: 'border-2 border-orange-500 hover:border-orange-400',
+      shadow: 'shadow-[2.5px_2.5px_0px_0px_#431407]',
+      badge: 'bg-white text-orange-700 border-white',
+      typeBadge: 'PPTX'
+    };
+  }
+  return {
+    bg: 'linear-gradient(180deg, #26272b 0%, #1c1c1f 100%)',
+    border: 'border-2 border-stone-700 hover:border-stone-500',
+    shadow: 'shadow-[2.5px_2.5px_0px_0px_#1c1917]',
+    badge: 'bg-white text-stone-900 border-white',
+    typeBadge: upper || 'DOC'
+  };
+};
+
 export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   onBack,
   onOpenPricing,
@@ -93,6 +139,12 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   // Gestion du menu d'options 3 traits (fichiers et dossiers)
   const [activeMenuFileId, setActiveMenuFileId] = useState<string | null>(null);
   const [activeMenuFolderId, setActiveMenuFolderId] = useState<string | null>(null);
+
+  // Gestion du dossier sécurisé (code PIN et filtre de catégorie)
+  const [isSecureFolderUnlocked, setIsSecureFolderUnlocked] = useState(false);
+  const [securePinInput, setSecurePinInput] = useState('');
+  const [securePinError, setSecurePinError] = useState<string | null>(null);
+  const [secureCategoryFilter, setSecureCategoryFilter] = useState<'all' | 'documents' | 'images' | 'videos' | 'audio' | 'classeur'>('all');
 
   // Éditeur de notes intégré (Bloc-notes)
   const [noteTextContent, setNoteTextContent] = useState<string>('');
@@ -343,6 +395,49 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     showToast(`"${file.name}" supprimé définitivement`);
   };
 
+  const handleRestoreFromSecure = async (file: FileItem) => {
+    CloudDataStore.restoreFromSecure(file);
+    try {
+      await CloudStorageAPI.restoreFromSecureFolder(file.id);
+    } catch (e) {}
+    showToast(`"${file.name}" retiré du dossier sécurisé`);
+  };
+
+  const handleUnlockSecureFolder = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const stored = localStorage.getItem('studycloud_secure_folder_pin');
+    const trimmed = securePinInput.trim();
+    if (!stored) {
+      if (trimmed.length >= 4) {
+        localStorage.setItem('studycloud_secure_folder_pin', trimmed);
+        try {
+          await CloudStorageAPI.setSecurePin(trimmed);
+        } catch (err) {}
+        setIsSecureFolderUnlocked(true);
+        setSecurePinInput('');
+        setSecurePinError(null);
+        showToast('Code secret configuré ! Coffre-fort déverrouillé.');
+      } else {
+        setIsSecureFolderUnlocked(true);
+        showToast('Dossier sécurisé déverrouillé.');
+      }
+      return;
+    }
+    const isLocalOk = trimmed === stored.trim();
+    let isWorkerOk = false;
+    try {
+      isWorkerOk = await CloudStorageAPI.verifySecurePin(trimmed);
+    } catch (err) {}
+
+    if (isLocalOk || isWorkerOk) {
+      setIsSecureFolderUnlocked(true);
+      setSecurePinInput('');
+      setSecurePinError(null);
+    } else {
+      setSecurePinError('Code incorrect. Veuillez réessayer.');
+    }
+  };
+
   const handleShareFile = (file: FileItem) => {
     if (onOpenCreateShareLink) {
       onOpenCreateShareLink([file]);
@@ -450,6 +545,52 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   const filteredSecure = useMemo(() => {
     return (storeData.secure || []).filter(s => !q || s.name.toLowerCase().includes(q));
   }, [storeData.secure, q]);
+
+  // Statistiques par catégorie dans le dossier sécurisé (reflète le vrai menu sécurisé)
+  const secureCounts = useMemo(() => {
+    const counts = { all: filteredSecure.length, documents: 0, images: 0, videos: 0, audio: 0, classeur: 0 };
+    filteredSecure.forEach(f => {
+      const cat = (f.category || '').toLowerCase();
+      const ext = (f.extension || f.name.split('.').pop() || '').toLowerCase();
+      if (cat === 'audio' || (f as any).isAudio || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'].includes(ext)) {
+        counts.audio++;
+      } else if (cat === 'images' || (f as any).isImage || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext)) {
+        counts.images++;
+      } else if (cat === 'videos' || (f as any).isVideo || ['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext)) {
+        counts.videos++;
+      } else if (cat === 'classeur' || cat === 'notes' || (f as any).isFolder || ext === 'txt') {
+        counts.classeur++;
+      } else {
+        counts.documents++;
+      }
+    });
+    return counts;
+  }, [filteredSecure]);
+
+  // Fichiers filtrés selon la catégorie sélectionnée dans le dossier sécurisé
+  const displayedSecureFiles = useMemo(() => {
+    if (secureCategoryFilter === 'all') return filteredSecure;
+    return filteredSecure.filter(f => {
+      const cat = (f.category || '').toLowerCase();
+      const ext = (f.extension || f.name.split('.').pop() || '').toLowerCase();
+      if (secureCategoryFilter === 'audio') {
+        return cat === 'audio' || (f as any).isAudio || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'].includes(ext);
+      }
+      if (secureCategoryFilter === 'images') {
+        return cat === 'images' || (f as any).isImage || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext);
+      }
+      if (secureCategoryFilter === 'videos') {
+        return cat === 'videos' || (f as any).isVideo || ['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext);
+      }
+      if (secureCategoryFilter === 'classeur') {
+        return cat === 'classeur' || cat === 'notes' || (f as any).isFolder || ext === 'txt';
+      }
+      if (secureCategoryFilter === 'documents') {
+        return cat === 'documents' || (!['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'mp4', 'webm', 'mov', 'avi', 'mkv', 'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'].includes(ext) && cat !== 'classeur' && !['txt'].includes(ext));
+      }
+      return true;
+    });
+  }, [filteredSecure, secureCategoryFilter]);
 
   // Éléments de la barre de carrousel horizontale de navigation
   const navTabs = [
@@ -652,6 +793,23 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
               <span>Détails & Propriétés</span>
             </button>
           </div>
+
+          {/* Option Dossier sécurisé : Déverrouiller / Sortir du dossier sécurisé */}
+          {(activeTab === 'secure-folder' || file.isSecure) && (
+            <div className="py-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveMenuFileId(null);
+                  handleRestoreFromSecure(file);
+                }}
+                className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+              >
+                <Unlock className="w-3.5 h-3.5 shrink-0" />
+                <span>Sortir du dossier sécurisé</span>
+              </button>
+            </div>
+          )}
 
           {/* Section 4 : Supprimer / Déplacer à la corbeille */}
           <div className="py-1">
@@ -1177,20 +1335,22 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     const isMenuOpen = activeMenuFileId === doc.id;
     const isSelected = viewerFile?.id === doc.id;
     const alignRight = (index + 1) % 2 === 0 || (index + 1) % 4 === 0;
+    const docExt = doc.extension || (doc.name.includes('.') ? doc.name.split('.').pop() || 'PDF' : 'PDF');
+    const theme = getDocumentTheme(docExt);
 
     return (
       <div
         key={doc.id}
         onClick={() => setViewerFile(doc)}
-        className={`aspect-[3/4] rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between transition-all relative group select-none cursor-pointer active:scale-98 shadow-md border-2 ${
+        className={`aspect-[3/4] rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between transition-all relative group select-none cursor-pointer active:scale-98 shadow-md ${
           isSelected
             ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02]'
             : isMenuOpen
-              ? 'z-50 ring-2 ring-blue-400 border-blue-300'
-              : 'border-blue-700/60 hover:border-blue-400/80 shadow-[2px_2px_0px_0px_#172554]'
+              ? 'z-50 ring-2 ring-amber-400 border-amber-300'
+              : `${theme.border} ${theme.shadow}`
         } ${isMenuOpen ? 'overflow-visible z-50' : 'overflow-hidden z-10'}`}
         style={{
-          background: 'linear-gradient(180deg, #1e40af 0%, #172554 100%)'
+          background: theme.bg
         }}
       >
         <div className="flex items-center justify-between gap-1 z-20 relative">
@@ -1224,8 +1384,8 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         </div>
 
         <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1">
-          <span className="text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 bg-white text-blue-700 border border-white">
-            {doc.extension || 'DOC'}
+          <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
+            {theme.typeBadge}
           </span>
           <button
             type="button"
@@ -1255,7 +1415,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       <div
         key={img.id}
         onClick={() => setViewerFile(img)}
-        className={`aspect-[4/5] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative group select-none cursor-pointer ${
+        className={`aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative group select-none cursor-pointer ${
           isSelected
             ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02]'
             : isMenuOpen
@@ -1316,7 +1476,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       <div
         key={vid.id}
         onClick={() => setViewerFile(vid)}
-        className={`aspect-[4/5] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative group select-none cursor-pointer ${
+        className={`aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative group select-none cursor-pointer ${
           isSelected
             ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02]'
             : isMenuOpen
@@ -1370,7 +1530,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   };
 
   // =========================================================================
-  // CARTE AUDIO CARRÉE AVEC LOGO MÉLODIE ET APERÇU
+  // CARTE AUDIO AUTHENTIQUE
   // =========================================================================
   const renderAudioCard = (aud: FileItem, index: number) => {
     const isMenuOpen = activeMenuFileId === aud.id;
@@ -1385,7 +1545,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           setViewerFile(aud);
           setPlayingAudioId(aud.id);
         }}
-        className={`aspect-square rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative group select-none cursor-pointer ${
+        className={`aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative group select-none cursor-pointer ${
           isSelected
             ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02]'
             : isMenuOpen
@@ -2346,25 +2506,112 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             </div>
           )}
 
-          {/* ONGLET 9 : DOSSIER SÉCURISÉ */}
+          {/* ONGLET 9 : DOSSIER SÉCURISÉ (REFLET STRICT DU VRAI MENU SÉCURISÉ) */}
           {activeTab === 'secure-folder' && (
             <div className="space-y-4 animate-in fade-in duration-200">
-              <div className="flex items-center justify-between">
-                <span className="text-xs sm:text-sm font-bold text-stone-700">
-                  {filteredSecure.length} fichier{filteredSecure.length > 1 ? 's' : ''} protégé{filteredSecure.length > 1 ? 's' : ''}
-                </span>
-              </div>
-
-              {filteredSecure.length === 0 ? (
-                <div className="py-20 text-center text-stone-500 space-y-2">
-                  <Lock className="w-12 h-12 mx-auto text-stone-400" />
-                  <p className="text-sm font-bold text-stone-800">Dossier sécurisé vide</p>
-                  <p className="text-xs text-stone-500">Déplacez des fichiers confidentiels ici avec le menu 3 traits</p>
+              {!isSecureFolderUnlocked ? (
+                <div className="py-16 sm:py-24 text-center max-w-sm mx-auto space-y-4 animate-in fade-in duration-200">
+                  <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto text-amber-400 shadow-md">
+                    <Lock className="w-8 h-8 stroke-[1.8]" />
+                  </div>
+                  <div>
+                    <h4 className="text-base sm:text-lg font-bold text-white tracking-tight">Dossier sécurisé protégé</h4>
+                    <p className="text-xs text-stone-400 mt-1">Saisissez votre code PIN pour accéder à vos fichiers confidentiels</p>
+                  </div>
+                  <form onSubmit={handleUnlockSecureFolder} className="space-y-3 pt-2">
+                    <input
+                      type="password"
+                      maxLength={10}
+                      value={securePinInput}
+                      onChange={(e) => {
+                        setSecurePinInput(e.target.value);
+                        setSecurePinError(null);
+                      }}
+                      placeholder="Code secret"
+                      autoFocus
+                      className="w-full text-center tracking-[0.4em] text-lg font-bold py-2.5 px-4 rounded-xl bg-black/60 border border-white/20 text-white placeholder:text-stone-500 focus:outline-none focus:border-amber-400"
+                    />
+                    {securePinError && (
+                      <p className="text-xs text-rose-400 font-medium">{securePinError}</p>
+                    )}
+                    <button
+                      type="submit"
+                      className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md active:scale-95 cursor-pointer"
+                    >
+                      Déverrouiller
+                    </button>
+                  </form>
                 </div>
               ) : (
-                <div className={`grid ${gridColsClass} gap-3 sm:gap-4`}>
-                  {filteredSecure.map((file, idx) => renderDocumentCard(file, idx))}
-                </div>
+                <>
+                  {/* Barre supérieure : Filtres de catégorie & Compteur */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-white/10">
+                    <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                      {[
+                        { id: 'all' as const, label: 'Tous', count: secureCounts.all, icon: Layers },
+                        { id: 'documents' as const, label: 'Documents', count: secureCounts.documents, icon: FileText },
+                        { id: 'images' as const, label: 'Images', count: secureCounts.images, icon: ImageIcon },
+                        { id: 'videos' as const, label: 'Vidéos', count: secureCounts.videos, icon: Film },
+                        { id: 'audio' as const, label: 'Audio', count: secureCounts.audio, icon: Music },
+                        { id: 'classeur' as const, label: 'Classeur', count: secureCounts.classeur, icon: FolderArchive },
+                      ].map((cat) => {
+                        const Icon = cat.icon;
+                        const isCatSelected = secureCategoryFilter === cat.id;
+                        return (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => setSecureCategoryFilter(cat.id)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer shrink-0 border ${
+                              isCatSelected
+                                ? 'bg-amber-500 text-stone-950 border-amber-400 shadow-sm'
+                                : 'bg-[#182032] text-stone-300 border-white/10 hover:border-amber-400/50 hover:text-white'
+                            }`}
+                          >
+                            <Icon className="w-3.5 h-3.5" />
+                            <span>{cat.label}</span>
+                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                              isCatSelected ? 'bg-stone-950/20 text-stone-950' : 'bg-black/40 text-stone-400'
+                            }`}>
+                              {cat.count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <span className="text-xs sm:text-sm font-bold text-stone-400 shrink-0">
+                      {displayedSecureFiles.length} fichier{displayedSecureFiles.length > 1 ? 's' : ''} protégé{displayedSecureFiles.length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  {displayedSecureFiles.length === 0 ? (
+                    <div className="py-20 text-center text-stone-500 space-y-2">
+                      <Lock className="w-12 h-12 mx-auto text-amber-400/40" />
+                      <p className="text-sm font-bold text-stone-300">
+                        {secureCategoryFilter === 'all'
+                          ? 'Dossier sécurisé vide'
+                          : `Aucun fichier ${secureCategoryFilter} dans le dossier sécurisé`}
+                      </p>
+                      <p className="text-xs text-stone-500">Déplacez des fichiers confidentiels ici avec le menu 3 traits</p>
+                    </div>
+                  ) : (
+                    <div className={`grid ${gridColsClass} gap-3 sm:gap-4`}>
+                      {displayedSecureFiles.map((file, idx) => {
+                        const ext = (file.extension || file.name.split('.').pop() || '').toLowerCase();
+                        const isAudio = file.category === 'audio' || (file as any).isAudio || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'].includes(ext);
+                        const isImage = file.category === 'images' || (file as any).isImage || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext);
+                        const isVideo = file.category === 'videos' || (file as any).isVideo || ['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext);
+                        const isClasseur = file.category === 'classeur' || file.category === 'notes' || (file as any).isFolder;
+
+                        if (isImage) return renderImageCard(file, idx);
+                        if (isVideo) return renderVideoCard(file, idx);
+                        if (isAudio) return renderAudioCard(file, idx);
+                        if (isClasseur) return renderClasseurCard(file, idx);
+                        return renderDocumentCard(file, idx);
+                      })}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

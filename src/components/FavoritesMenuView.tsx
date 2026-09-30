@@ -393,7 +393,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
       <div
         key={file.id}
         onClick={() => setSelectedFile(file)}
-        className={`group aspect-square rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
+        className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
           isMenuOpen
             ? 'z-50 relative overflow-visible'
             : isSelected
@@ -492,7 +492,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
       <div
         key={file.id}
         onClick={() => setSelectedFile(file)}
-        className={`group aspect-[4/3] rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
+        className={`group aspect-[3/4] rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
           isMenuOpen
             ? 'z-50 relative overflow-visible'
             : isSelected
@@ -646,7 +646,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
       <div
         key={file.id}
         onClick={() => setSelectedFile(file)}
-        className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
+        className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
           isMenuOpen ? 'z-50 relative overflow-visible' : isSelected ? 'z-20 relative overflow-hidden' : 'z-10 relative overflow-hidden'
         } ${
           isSelected
@@ -730,7 +730,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
       <div
         key={file.id}
         onClick={() => setSelectedFile(file)}
-        className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
+        className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
           isMenuOpen ? 'z-50 relative overflow-visible' : isSelected ? 'z-20 relative overflow-hidden' : 'z-10 relative overflow-hidden'
         } ${
           isSelected
