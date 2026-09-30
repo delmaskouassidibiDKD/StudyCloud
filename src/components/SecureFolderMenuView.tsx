@@ -1029,7 +1029,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
             : isMenuOpen
             ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-2xl'
             : 'border-white/10 hover:border-amber-400/50 hover:scale-[1.01]'
-        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
+        } ${isMenuOpen ? 'z-[100] relative overflow-visible' : isChecked ? 'z-20 relative overflow-hidden' : 'z-10 overflow-hidden'}`}
       >
         {/* Arrière-plan : aperçu audio haute fidélité */}
         <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
@@ -1067,8 +1067,8 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
         </div>
 
         {/* Barre supérieure : Bouton 3 traits, Checkbox & Badge Sécurisé */}
-        <div className="absolute top-1.5 sm:top-2 left-1.5 sm:left-2 z-20 flex items-center gap-1.5">
-          <div className="relative studycloud-sec-menu-trigger">
+        <div className={`absolute top-1.5 sm:top-2 left-1.5 sm:left-2 flex items-center gap-1.5 ${isMenuOpen ? 'z-[80]' : 'z-20'}`}>
+          <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
               onClick={(e) => {
@@ -1128,7 +1128,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
         onClick={() => setSelectedFile(file)}
         className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
           isMenuOpen
-            ? 'z-50 relative overflow-visible'
+            ? 'z-[100] relative overflow-visible'
             : isChecked
             ? 'z-20 relative overflow-hidden'
             : 'z-10 relative overflow-hidden'
@@ -1153,9 +1153,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
         </div>
 
         {/* Barre supérieure : Bouton 3 traits, Checkbox & Badge Sécurisé / Taille */}
-        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
+        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
           <div className="flex items-center gap-1.5">
-            <div className="relative studycloud-sec-menu-trigger">
+            <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
               <button
                 type="button"
                 onClick={(e) => {
@@ -1196,8 +1196,8 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
           </div>
         </div>
 
-        {/* Barre inférieure : Nom & Date */}
-        <div className="relative z-20 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
+        {/* Barre inférieure : Nom & Date (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
+        <div className="relative z-10 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-black text-white truncate group-hover:text-emerald-300 transition-colors" title={file.name}>
               {file.name}
@@ -1225,7 +1225,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
         onClick={() => setSelectedFile(file)}
         className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
           isMenuOpen
-            ? 'z-50 relative overflow-visible'
+            ? 'z-[100] relative overflow-visible'
             : isChecked
             ? 'z-20 relative overflow-hidden'
             : 'z-10 relative overflow-hidden'
@@ -1253,9 +1253,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
         </div>
 
         {/* Barre supérieure : Bouton 3 traits, Checkbox & Badge Sécurisé / Taille */}
-        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
+        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
           <div className="flex items-center gap-1.5">
-            <div className="relative studycloud-sec-menu-trigger">
+            <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
               <button
                 type="button"
                 onClick={(e) => {
@@ -1296,8 +1296,8 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
           </div>
         </div>
 
-        {/* Barre inférieure : Nom & Date */}
-        <div className="relative z-20 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
+        {/* Barre inférieure : Nom & Date (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
+        <div className="relative z-10 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-black text-white truncate group-hover:text-purple-300 transition-colors" title={file.name}>
               {file.name}
@@ -1331,14 +1331,14 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
             : isCurrentViewer
             ? 'ring-4 ring-blue-400 shadow-2xl scale-[1.02] z-20'
             : isMenuOpen
-            ? 'ring-4 ring-blue-400/80 shadow-2xl z-50 overflow-visible'
+            ? 'ring-4 ring-blue-400/80 shadow-2xl z-[100] relative overflow-visible'
             : 'hover:scale-[1.01] shadow-md active:scale-98 z-10 overflow-hidden'
         }`}
       >
         {/* Barre supérieure : Bouton 3 traits, Checkbox & Badge Sécurisé / Taille */}
-        <div className="relative z-20 flex items-center justify-between gap-1">
+        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} flex items-center justify-between gap-1`}>
           <div className="flex items-center gap-1">
-            <div className="relative studycloud-sec-menu-trigger">
+            <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
               <button
                 type="button"
                 onClick={(e) => {
@@ -1385,14 +1385,14 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
         </div>
 
         {/* Titre unique en bas */}
-        <div className="px-0.5 mb-1">
+        <div className="px-0.5 mb-1 relative z-10">
           <p className="text-[9px] sm:text-[10px] font-black text-white truncate drop-shadow-md" title={file.name}>
             {file.name}
           </p>
         </div>
 
         {/* Pied de carte : typeBadge et bouton de déverrouillage / téléchargement */}
-        <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1">
+        <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1 relative z-10">
           <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
             {theme.typeBadge}
           </span>
@@ -1440,7 +1440,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
         onClick={() => setSelectedFile(file)}
         className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
           isMenuOpen
-            ? 'z-50 relative overflow-visible'
+            ? 'z-[100] relative overflow-visible'
             : isChecked
             ? 'z-20 relative overflow-hidden'
             : 'z-10 relative overflow-hidden'
@@ -1455,9 +1455,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
         }`}
       >
         {/* Barre supérieure : Bouton 3 traits, Checkbox & Badge Sécurisé */}
-        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
+        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
           <div className="flex items-center gap-1.5">
-            <div className="relative studycloud-sec-menu-trigger">
+            <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
               <button
                 type="button"
                 onClick={(e) => {
@@ -1496,8 +1496,8 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
           <Classeur3DFolderCard folder={folderData as any} />
         </div>
 
-        {/* Nom du dossier en bas */}
-        <div className="p-2 bg-black/70 backdrop-blur-md border-t border-white/10 text-center">
+        {/* Nom du dossier en bas (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
+        <div className="relative z-10 p-2 bg-black/70 backdrop-blur-md border-t border-white/10 text-center">
           <p className="text-xs font-bold text-white truncate" title={file.name}>
             {file.name}
           </p>

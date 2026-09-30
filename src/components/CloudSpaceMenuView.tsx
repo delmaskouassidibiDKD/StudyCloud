@@ -731,7 +731,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
 
     return (
       <div
-        className="studycloud-file-menu-panel absolute right-0 top-9 z-50 w-56 sm:w-60 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_20px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col p-0.5"
+        className="studycloud-file-menu-panel absolute right-0 top-9 z-[150] w-56 sm:w-60 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_20px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col p-0.5"
         onClick={(e) => e.stopPropagation()}
       >
         {/* En-tête : Nom du fichier et bouton de fermeture */}
@@ -1398,18 +1398,18 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         key={doc.id}
         onClick={() => setViewerFile(doc)}
         className={`aspect-[3/4] rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between transition-all relative group select-none cursor-pointer active:scale-98 shadow-md ${
-          isSelected
-            ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02]'
-            : isMenuOpen
-              ? 'z-50 ring-2 ring-amber-400 border-amber-300'
-              : `${theme.border} ${theme.shadow}`
-        } ${isMenuOpen ? 'overflow-visible z-50' : 'overflow-hidden z-10'}`}
+          isMenuOpen
+            ? 'overflow-visible z-[100] ring-2 ring-amber-400 border-amber-300'
+            : isSelected
+            ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02] overflow-hidden'
+            : `${theme.border} ${theme.shadow} overflow-hidden z-10`
+        }`}
         style={{
           background: theme.bg
         }}
       >
-        <div className="flex items-center justify-between gap-1 z-20 relative">
-          <div className="relative studycloud-menu-trigger">
+        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} flex items-center justify-between gap-1`}>
+          <div className={`relative studycloud-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
               onClick={(e) => {
@@ -1432,13 +1432,13 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           <DocumentCardPreview doc={doc} />
         </div>
 
-        <div className="px-0.5 mb-1">
+        <div className="px-0.5 mb-1 relative z-10">
           <p className="text-[9px] sm:text-[10px] font-black text-white truncate drop-shadow-md" title={doc.name}>
             {doc.name}
           </p>
         </div>
 
-        <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1">
+        <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1 relative z-10">
           <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
             {theme.typeBadge}
           </span>
@@ -1471,12 +1471,12 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         key={img.id}
         onClick={() => setViewerFile(img)}
         className={`aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative group select-none cursor-pointer ${
-          isSelected
-            ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02]'
-            : isMenuOpen
-              ? 'z-50 ring-2 ring-emerald-400 border-emerald-400'
-              : 'border-white/10 hover:border-emerald-400/60'
-        } ${isMenuOpen ? 'overflow-visible z-50' : 'overflow-hidden z-10'}`}
+          isMenuOpen
+            ? 'overflow-visible z-[100] ring-2 ring-emerald-400 border-emerald-400'
+            : isSelected
+            ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02] overflow-hidden'
+            : 'border-white/10 hover:border-emerald-400/60 overflow-hidden z-10'
+        }`}
       >
         {/* Miniature réelle de l'image */}
         <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden rounded-2xl">
@@ -1485,8 +1485,8 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         </div>
 
         {/* Barre supérieure : 3 traits & taille */}
-        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
-          <div className="relative studycloud-menu-trigger">
+        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
+          <div className={`relative studycloud-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
               onClick={(e) => {
@@ -1506,8 +1506,8 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           </span>
         </div>
 
-        {/* Pied de carte : Nom de l'image */}
-        <div className="relative z-20 p-2.5 bg-black/80 backdrop-blur-md border-t border-white/10">
+        {/* Pied de carte : Nom de l'image (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
+        <div className="relative z-10 p-2.5 bg-black/80 backdrop-blur-md border-t border-white/10">
           <p className="text-[10px] sm:text-xs font-black text-white truncate group-hover:text-emerald-300 transition-colors" title={img.name}>
             {img.name}
           </p>
@@ -1532,12 +1532,12 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         key={vid.id}
         onClick={() => setViewerFile(vid)}
         className={`aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative group select-none cursor-pointer ${
-          isSelected
-            ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02]'
-            : isMenuOpen
-              ? 'z-50 ring-2 ring-purple-400 border-purple-400'
-              : 'border-white/10 hover:border-purple-400/60'
-        } ${isMenuOpen ? 'overflow-visible z-50' : 'overflow-hidden z-10'}`}
+          isMenuOpen
+            ? 'overflow-visible z-[100] ring-2 ring-purple-400 border-purple-400'
+            : isSelected
+            ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02] overflow-hidden'
+            : 'border-white/10 hover:border-purple-400/60 overflow-hidden z-10'
+        }`}
       >
         <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden rounded-2xl">
           <VideoCardPreview vid={vid} />
@@ -1551,8 +1551,8 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           </div>
         </div>
 
-        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
-          <div className="relative studycloud-menu-trigger">
+        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
+          <div className={`relative studycloud-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
               onClick={(e) => {
@@ -1572,7 +1572,8 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           </span>
         </div>
 
-        <div className="relative z-20 p-2.5 bg-black/80 backdrop-blur-md border-t border-white/10">
+        {/* Pied de carte : Nom de la vidéo (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
+        <div className="relative z-10 p-2.5 bg-black/80 backdrop-blur-md border-t border-white/10">
           <p className="text-[10px] sm:text-xs font-black text-white truncate group-hover:text-purple-300 transition-colors" title={vid.name}>
             {vid.name}
           </p>
@@ -1601,12 +1602,12 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           setPlayingAudioId(aud.id);
         }}
         className={`aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative group select-none cursor-pointer ${
-          isSelected
-            ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02]'
-            : isMenuOpen
-              ? 'z-50 ring-2 ring-amber-400 border-amber-400'
-              : 'border-white/10 hover:border-amber-400/60'
-        } ${isMenuOpen ? 'overflow-visible z-50' : 'overflow-hidden z-10'}`}
+          isMenuOpen
+            ? 'overflow-visible z-[100] ring-2 ring-amber-400 border-amber-400'
+            : isSelected
+            ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02] overflow-hidden'
+            : 'border-white/10 hover:border-amber-400/60 overflow-hidden z-10'
+        }`}
       >
         <div className="absolute inset-0 z-0 overflow-hidden rounded-2xl pointer-events-none">
           <AudioCardPreview track={aud} />
@@ -1624,8 +1625,8 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           </div>
         </div>
 
-        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
-          <div className="relative studycloud-menu-trigger">
+        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
+          <div className={`relative studycloud-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
               onClick={(e) => {
@@ -1645,7 +1646,8 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           </span>
         </div>
 
-        <div className="relative z-20 p-2.5 bg-black/80 backdrop-blur-md border-t border-white/10">
+        {/* Pied de carte : Nom de l'audio (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
+        <div className="relative z-10 p-2.5 bg-black/80 backdrop-blur-md border-t border-white/10">
           <p className="text-[10px] sm:text-xs font-black text-white truncate group-hover:text-amber-300 transition-colors" title={aud.name}>
             {aud.name}
           </p>

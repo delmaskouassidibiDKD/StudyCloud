@@ -520,7 +520,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         }}
         className={`group aspect-square rounded-2xl bg-[#0A0D18] border transition-all duration-300 flex flex-col justify-between shadow-md select-none cursor-pointer ${
           isMenuOpen
-            ? 'z-50 relative overflow-visible'
+            ? 'z-[100] relative overflow-visible'
             : isSelected
             ? 'z-20 relative overflow-hidden'
             : 'z-10 relative overflow-hidden'
@@ -548,8 +548,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         </div>
 
         {/* Barre supérieure : Bouton 3 traits & badge taille */}
-        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
-          <div className="relative studycloud-trash-menu-trigger">
+        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
+          <div className={`relative studycloud-trash-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
               onClick={(e) => {
@@ -573,8 +573,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
           </span>
         </div>
 
-        {/* Barre inférieure : Titre, Artiste et bouton restauration directe */}
-        <div className="relative z-20 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
+        {/* Barre inférieure : Titre, Artiste et bouton restauration directe (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
+        <div className="relative z-10 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-black text-white truncate group-hover:text-amber-300 transition-colors" title={file.name}>
               {file.name}
@@ -626,13 +626,13 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
             : isSelected
             ? 'ring-4 ring-white/90 shadow-2xl scale-[1.02] z-20'
             : isMenuOpen
-            ? 'ring-4 ring-rose-500/80 shadow-2xl z-50 overflow-visible'
+            ? 'ring-4 ring-rose-500/80 shadow-2xl z-[100] relative overflow-visible'
             : 'hover:scale-[1.01] shadow-md active:scale-98 z-10 overflow-hidden'
         }`}
       >
         {/* Barre supérieure : Bouton 3 traits & Badge taille */}
-        <div className="relative z-20 flex items-center justify-between gap-1">
-          <div className="relative studycloud-trash-menu-trigger">
+        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} flex items-center justify-between gap-1`}>
+          <div className={`relative studycloud-trash-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
               onClick={(e) => {
@@ -662,14 +662,14 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         </div>
 
         {/* Titre unique en bas */}
-        <div className="px-0.5 mb-1">
+        <div className="px-0.5 mb-1 relative z-10">
           <p className="text-[9px] sm:text-[10px] font-black text-white truncate drop-shadow-md" title={file.name}>
             {file.name}
           </p>
         </div>
 
         {/* Pied de carte : typeBadge et bouton restauration directe */}
-        <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1">
+        <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1 relative z-10">
           <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
             {theme.typeBadge}
           </span>
@@ -710,7 +710,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
           }
         }}
         className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all duration-300 flex flex-col justify-between shadow-md select-none cursor-pointer ${
-          isMenuOpen ? 'z-50 relative overflow-visible' : isSelected ? 'z-20 relative overflow-hidden' : 'z-10 relative overflow-hidden'
+          isMenuOpen ? 'z-[100] relative overflow-visible' : isSelected ? 'z-20 relative overflow-hidden' : 'z-10 relative overflow-hidden'
         } ${
           isChecked
             ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-xl scale-[1.02]'
@@ -732,8 +732,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         </div>
 
         {/* Barre supérieure : Bouton 3 traits & Taille */}
-        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
-          <div className="relative studycloud-trash-menu-trigger">
+        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
+          <div className={`relative studycloud-trash-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
               onClick={(e) => {
@@ -757,8 +757,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
           </span>
         </div>
 
-        {/* Barre inférieure : Nom & Restaurer */}
-        <div className="relative z-20 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
+        {/* Barre inférieure : Nom & Restaurer (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
+        <div className="relative z-10 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-black text-white truncate group-hover:text-emerald-300 transition-colors" title={file.name}>
               {file.name}
@@ -804,7 +804,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
           }
         }}
         className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all duration-300 flex flex-col justify-between shadow-md select-none cursor-pointer ${
-          isMenuOpen ? 'z-50 relative overflow-visible' : isSelected ? 'z-20 relative overflow-hidden' : 'z-10 relative overflow-hidden'
+          isMenuOpen ? 'z-[100] relative overflow-visible' : isSelected ? 'z-20 relative overflow-hidden' : 'z-10 relative overflow-hidden'
         } ${
           isChecked
             ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-xl scale-[1.02]'
@@ -835,8 +835,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
         </div>
 
         {/* Barre supérieure : Bouton 3 traits & Taille */}
-        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
-          <div className="relative studycloud-trash-menu-trigger">
+        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
+          <div className={`relative studycloud-trash-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
               onClick={(e) => {
@@ -860,8 +860,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
           </span>
         </div>
 
-        {/* Barre inférieure : Nom & Restaurer */}
-        <div className="relative z-20 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
+        {/* Barre inférieure : Nom & Restaurer (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
+        <div className="relative z-10 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-black text-white truncate group-hover:text-purple-300 transition-colors" title={file.name}>
               {file.name}
@@ -929,13 +929,13 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
               : isSelected
               ? 'border-orange-400 ring-2 ring-orange-400/90 shadow-2xl scale-[1.02] z-20'
               : isMenuOpen
-              ? 'border-rose-500 ring-2 ring-rose-500/50 shadow-2xl z-50 overflow-visible'
+              ? 'border-rose-500 ring-2 ring-rose-500/50 shadow-2xl z-[100] relative overflow-visible'
               : 'border-stone-800/80 hover:border-orange-500/50 z-10 overflow-hidden'
           }`}
         >
           {/* Barre haute : Bouton 3 traits & Badge Dossier 3D */}
-          <div className="relative z-20 flex items-center justify-between gap-1 mb-1">
-            <div className="relative studycloud-trash-menu-trigger">
+          <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} flex items-center justify-between gap-1 mb-1`}>
+            <div className={`relative studycloud-trash-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
               <button
                 type="button"
                 onClick={(e) => {
@@ -964,8 +964,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
             </div>
           </div>
 
-          {/* Barre basse : Nom & Bouton restaurer */}
-          <div className="relative z-20 p-2 bg-black/75 backdrop-blur-md border border-white/10 rounded-xl flex items-center justify-between gap-2 mt-1">
+          {/* Barre basse : Nom & Bouton restaurer (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
+          <div className="relative z-10 p-2 bg-black/75 backdrop-blur-md border border-white/10 rounded-xl flex items-center justify-between gap-2 mt-1">
             <div className="min-w-0 flex-1">
               <p className="text-xs font-black text-white truncate group-hover:text-orange-300 transition-colors" title={file.name}>
                 {file.name}
@@ -1007,17 +1007,17 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
               : isSelected
               ? 'border-cyan-400 ring-2 ring-cyan-400/90 shadow-2xl scale-[1.02] z-20'
               : isMenuOpen
-              ? 'border-rose-500 ring-2 ring-rose-500/50 shadow-2xl z-50 overflow-visible'
+              ? 'border-rose-500 ring-2 ring-rose-500/50 shadow-2xl z-[100] relative overflow-visible'
               : 'border-white/10 hover:border-cyan-400/50 hover:-translate-y-1 z-10 overflow-hidden'
           }`}
         >
           {/* Haut de carte : Badge TXT et Bouton 3 traits */}
-          <div className="flex items-center justify-between z-20">
+          <div className={`flex items-center justify-between ${isMenuOpen ? 'relative z-[80]' : 'relative z-20'}`}>
             <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
               TXT
             </span>
 
-            <div className="relative studycloud-trash-menu-trigger">
+            <div className={`relative studycloud-trash-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
               <button
                 type="button"
                 onClick={(e) => {
@@ -1042,8 +1042,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
             </div>
           </div>
 
-          {/* Bas de carte : Titre et bouton restauration rapide */}
-          <div className="p-1.5 flex items-center justify-between bg-black/40 border border-white/10 rounded-xl mt-1.5 gap-2">
+          {/* Bas de carte : Titre et bouton restauration rapide (z-10) */}
+          <div className="p-1.5 flex items-center justify-between bg-black/40 border border-white/10 rounded-xl mt-1.5 gap-2 relative z-10">
             <div className="min-w-0 flex-1">
               <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-cyan-300 transition-colors" title={file.name}>
                 {file.name}

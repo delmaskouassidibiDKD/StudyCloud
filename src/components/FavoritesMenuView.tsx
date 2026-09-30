@@ -335,7 +335,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
   const renderOptionsMenu = (file: FileItem) => {
     return (
       <div
-        className="studycloud-fav-menu-panel absolute top-8 left-0 z-50 bg-[#0E1526] text-white rounded-xl shadow-2xl border border-white/20 py-1.5 w-48 text-xs font-semibold animate-in fade-in duration-150"
+        className="studycloud-fav-menu-panel absolute top-8 left-0 z-[150] bg-[#0E1526] text-white rounded-xl shadow-2xl border border-white/20 py-1.5 w-48 text-xs font-semibold animate-in fade-in duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -395,7 +395,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         onClick={() => setSelectedFile(file)}
         className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
           isMenuOpen
-            ? 'z-50 relative overflow-visible'
+            ? 'z-[100] relative overflow-visible'
             : isSelected
             ? 'z-20 relative overflow-hidden'
             : 'z-10 relative overflow-hidden'
@@ -421,8 +421,8 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         </div>
 
         {/* Barre supérieure : Bouton 3 traits & Étoile Favori */}
-        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
-          <div className="relative studycloud-fav-menu-trigger">
+        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
+          <div className={`relative studycloud-fav-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
               onClick={(e) => {
@@ -452,8 +452,8 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           </button>
         </div>
 
-        {/* Barre inférieure : Titre & Taille */}
-        <div className="relative z-20 p-2.5 bg-black/80 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
+        {/* Barre inférieure : Titre & Taille (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
+        <div className="relative z-10 p-2.5 bg-black/80 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-black text-white truncate group-hover:text-amber-300 transition-colors" title={file.name}>
               {file.name}
@@ -494,7 +494,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         onClick={() => setSelectedFile(file)}
         className={`group aspect-[3/4] rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
           isMenuOpen
-            ? 'z-50 relative overflow-visible'
+            ? 'z-[100] relative overflow-visible'
             : isSelected
             ? 'z-20 relative overflow-hidden'
             : 'z-10 relative overflow-hidden'
@@ -519,8 +519,8 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         </div>
 
         {/* Bouton 3 traits en haut à droite */}
-        <div className="relative z-20 p-2 flex items-center justify-end">
-          <div className="relative studycloud-fav-menu-trigger">
+        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-end`}>
+          <div className={`relative studycloud-fav-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
               onClick={(e) => {
@@ -541,8 +541,8 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           <Classeur3DFolderCard folder={folderData as any} />
         </div>
 
-        {/* Nom du dossier en bas */}
-        <div className="p-2 bg-black/70 backdrop-blur-md border-t border-white/10 text-center">
+        {/* Nom du dossier en bas (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
+        <div className="relative z-10 p-2 bg-black/70 backdrop-blur-md border-t border-white/10 text-center">
           <p className="text-xs font-bold text-white truncate" title={file.name}>
             {file.name}
           </p>
@@ -568,13 +568,13 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           isSelected
             ? 'ring-4 ring-white/90 shadow-2xl scale-[1.02] z-20'
             : isMenuOpen
-            ? 'ring-4 ring-amber-400/80 shadow-2xl z-50 overflow-visible'
+            ? 'ring-4 ring-amber-400/80 shadow-2xl z-[100] relative overflow-visible'
             : 'hover:scale-[1.01] shadow-md active:scale-98 z-10 overflow-hidden'
         }`}
       >
         {/* Barre supérieure : Bouton 3 traits & Étoile Favori */}
-        <div className="relative z-20 flex items-center justify-between gap-1">
-          <div className="relative studycloud-fav-menu-trigger">
+        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} flex items-center justify-between gap-1`}>
+          <div className={`relative studycloud-fav-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
               onClick={(e) => {
@@ -615,14 +615,14 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         </div>
 
         {/* Titre unique en bas */}
-        <div className="px-0.5 mb-1">
+        <div className="px-0.5 mb-1 relative z-10">
           <p className="text-[9px] sm:text-[10px] font-black text-white truncate drop-shadow-md" title={file.name}>
             {file.name}
           </p>
         </div>
 
         {/* Pied de carte : typeBadge */}
-        <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1">
+        <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1 relative z-10">
           <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
             {theme.typeBadge}
           </span>
@@ -647,7 +647,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         key={file.id}
         onClick={() => setSelectedFile(file)}
         className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
-          isMenuOpen ? 'z-50 relative overflow-visible' : isSelected ? 'z-20 relative overflow-hidden' : 'z-10 relative overflow-hidden'
+          isMenuOpen ? 'z-[100] relative overflow-visible' : isSelected ? 'z-20 relative overflow-hidden' : 'z-10 relative overflow-hidden'
         } ${
           isSelected
             ? 'border-emerald-400 ring-2 ring-emerald-400/90 shadow-2xl scale-[1.02]'
@@ -667,8 +667,8 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         </div>
 
         {/* Barre supérieure : Bouton 3 traits & Étoile Favori */}
-        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
-          <div className="relative studycloud-fav-menu-trigger">
+        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
+          <div className={`relative studycloud-fav-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
               onClick={(e) => {
@@ -703,8 +703,8 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           </div>
         </div>
 
-        {/* Barre inférieure : Nom & Date */}
-        <div className="relative z-20 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
+        {/* Barre inférieure : Nom & Date (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
+        <div className="relative z-10 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-black text-white truncate group-hover:text-emerald-300 transition-colors" title={file.name}>
               {file.name}
@@ -731,7 +731,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         key={file.id}
         onClick={() => setSelectedFile(file)}
         className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
-          isMenuOpen ? 'z-50 relative overflow-visible' : isSelected ? 'z-20 relative overflow-hidden' : 'z-10 relative overflow-hidden'
+          isMenuOpen ? 'z-[100] relative overflow-visible' : isSelected ? 'z-20 relative overflow-hidden' : 'z-10 relative overflow-hidden'
         } ${
           isSelected
             ? 'border-purple-400 ring-2 ring-purple-400/90 shadow-2xl scale-[1.02]'
@@ -760,8 +760,8 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         </div>
 
         {/* Barre supérieure : Bouton 3 traits & Étoile Favori */}
-        <div className="relative z-20 p-2 flex items-center justify-between gap-1">
-          <div className="relative studycloud-fav-menu-trigger">
+        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
+          <div className={`relative studycloud-fav-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
               onClick={(e) => {
@@ -796,8 +796,8 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           </div>
         </div>
 
-        {/* Barre inférieure : Nom & Date */}
-        <div className="relative z-20 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
+        {/* Barre inférieure : Nom & Date (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
+        <div className="relative z-10 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-black text-white truncate group-hover:text-purple-300 transition-colors" title={file.name}>
               {file.name}
