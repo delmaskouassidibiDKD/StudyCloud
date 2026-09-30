@@ -1517,13 +1517,55 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const imageFileInputRef = useRef<HTMLInputElement>(null); // Menu Images
   const documentFileInputRef = useRef<HTMLInputElement>(null); // Menu Documents
   const classeurFolderFileInputRef = useRef<HTMLInputElement>(null); // Dossier ouvert du Classeur
-  const [isUploading, setIsUploading] = useState(false);
+  // Référence pour préserver la sélection lors de la transition vers un menu
+  const preserveSelectionFileIdRef = useRef<string | null>(null);
 
   // Sous-page ouverte
   const [currentSubView, setCurrentSubView] = useState<SubMenuView | null>(null);
 
   // Fermer immédiatement et proprement tous les lecteurs dès qu'on quitte ou change de sous-vue
+  // (sauf si un fichier vient d'être sélectionné pour lecture dans le nouveau menu)
   useEffect(() => {
+    // Si on quitte vers l'accueil (currentSubView null), tout réinitialiser
+    if (!currentSubView) {
+      preserveSelectionFileIdRef.current = null;
+      setSelectedDocFile(null);
+      setSelectedAudioTrack(null);
+      setSelectedVideoFile(null);
+      setSelectedImageFile(null);
+      setSelectedDownloadFile(null);
+      setSelectedClasseurFile(null);
+      setSelectedCollectionFile(null);
+      setSplitSelectedFile(null);
+      setIsViewerMaximized(false);
+      return;
+    }
+
+    // Si un fichier vient d'être sélectionné pour ce menu, le conserver impérativement pour la lecture
+    if (preserveSelectionFileIdRef.current) {
+      if (!splitSelectedFile || splitSelectedFile.id === preserveSelectionFileIdRef.current) {
+        return;
+      }
+    }
+
+    // Si le fichier sélectionné actuel correspond à la sous-vue active, ne pas le fermer
+    if (splitSelectedFile) {
+      const viewId = currentSubView.id;
+      const cat = splitSelectedFile.category;
+      const isImg = cat === 'images' || splitSelectedFile.isImage;
+      const isVid = cat === 'videos' || splitSelectedFile.isVideo || Boolean(splitSelectedFile.videoUrl);
+      const isAud = cat === 'audio' || splitSelectedFile.isAudio || Boolean(splitSelectedFile.audioUrl);
+      const isDoc = !isImg && !isVid && !isAud;
+
+      if (viewId === 'studycloud-category-documents' && (isDoc || selectedDocFile?.id === splitSelectedFile.id)) return;
+      if (viewId === 'studycloud-category-images' && (isImg || selectedImageFile?.id === splitSelectedFile.id)) return;
+      if (viewId === 'studycloud-category-videos' && (isVid || selectedVideoFile?.id === splitSelectedFile.id)) return;
+      if (viewId === 'studycloud-category-audio' && (isAud || selectedAudioTrack?.id === splitSelectedFile.id)) return;
+      if (viewId === 'studycloud-category-downloads') return;
+      if (viewId.startsWith('studycloud-classeur-') || currentSubView.type === 'classeur' || currentSubView.type === 'folder') return;
+    }
+
+    preserveSelectionFileIdRef.current = null;
     setSelectedDocFile(null);
     setSelectedAudioTrack(null);
     setSelectedVideoFile(null);
@@ -1533,7 +1575,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setSelectedCollectionFile(null);
     setSplitSelectedFile(null);
     setIsViewerMaximized(false);
-  }, [currentSubView]);
+  }, [currentSubView, splitSelectedFile]);
 
   // État de l'onglet actif dans l'Espace Cloud (Classeur sélectionné par défaut comme demandé)
   const [cloudActiveTab, setCloudActiveTab] = useState<'classeur' | 'downloads' | 'images' | 'videos' | 'audio' | 'documents' | 'apps' | 'favorites' | 'secure-folder' | 'trash'>('classeur');
@@ -3622,7 +3664,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
     if (isVid) setSelectedVideoFile(file);
     if (isImg) setSelectedImageFile(file);
-    if (opened3DFolder) setSelectedClasseurFile(file);
+    if (opened3DFolder || file.folderId || (file as any).originalFolderId || file.category === 'classeur') setSelectedClasseurFile(file);
     setSelectedDownloadFile(file);
     setSelectedCollectionFile(file);
 
@@ -3706,6 +3748,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // CLIC SUR UN FICHIER RÉCENT :
   // Bascule automatiquement et de manière fluide dans le menu correspondant et active le lecteur
   const handleRecentFileClick = (file: FileItem) => {
+    preserveSelectionFileIdRef.current = file.id;
+    setActiveDedicatedMenu(null);
+    setIsSelectionMode(false);
+    setSelectedItemIds([]);
+
     const normName = (file.name || '').toLowerCase();
     const ext = normName.includes('.') ? normName.split('.').pop() || '' : '';
 
@@ -4271,18 +4318,26 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   }, [allGlobalSearchableFiles, searchQuery, searchCategoryFilter]);
 
   const handleSearchResultClick = (file: FileItem) => {
+    preserveSelectionFileIdRef.current = file.id;
     if (searchQuery.trim()) {
       saveRecentSearch(searchQuery);
     }
     setSearchQuery('');
     setShowRecentSearchesMenu(false);
     setActiveDedicatedMenu(null);
+    setIsSelectionMode(false);
+    setSelectedItemIds([]);
 
     // Si le fichier appartient à un dossier du Classeur 3D
     const classeurFolderId = file.folderId || file.originalFolderId;
     if (classeurFolderId || file.category === 'classeur' || file.source === 'classeur_folder') {
       const folder = classeur3DFolders.find(f => f.id === (classeurFolderId || file.id));
       if (folder) {
+        setFolderFilesMap(prev => {
+          const list = prev[folder.id] || [];
+          if (list.some(f => f.id === file.id || (file.name && f.name === file.name))) return prev;
+          return { ...prev, [folder.id]: [file, ...list] };
+        });
         setOpened3DFolder(folder);
         setSelectedClasseurFolder(folder);
         setCurrentSubView({
