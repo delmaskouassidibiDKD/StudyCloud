@@ -5874,6 +5874,12 @@ var index_default = {
             WHERE user_id = ?
             ORDER BY display_order ASC, created_at ASC
           `).bind(reqUserId).all();
+          let favSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId).all();
+            favSet = new Set((fList || []).map((f) => String(f.item_id)));
+          } catch (e) {
+          }
           const formatted = (results || []).map((f) => ({
             id: f.id,
             userId: f.user_id,
@@ -5889,7 +5895,7 @@ var index_default = {
             displayOrder: Number(f.display_order || 0),
             zoomLevel: Number(f.zoom_level || 10),
             isPinned: Boolean(f.is_pinned),
-            isFavorite: Boolean(f.is_favorite),
+            isFavorite: Boolean(f.is_favorite || favSet.has(f.id)),
             createdAt: f.created_at,
             updatedAt: f.updated_at
           }));
@@ -6461,6 +6467,12 @@ var index_default = {
             trashedIdSet = new Set((trashList || []).map((t) => t.id));
           } catch (e) {
           }
+          let favAudSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId).all();
+            favAudSet = new Set((fList || []).map((f) => String(f.item_id)));
+          } catch (e) {
+          }
           const seen = /* @__PURE__ */ new Set();
           const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
@@ -6517,7 +6529,7 @@ var index_default = {
               audioUrl: finalUrl,
               url: finalUrl,
               category: "audio",
-              isFavorite: Boolean(a.is_favorite),
+              isFavorite: Boolean(a.is_favorite || favAudSet.has(a.id)),
               isPinned: Boolean(a.is_pinned)
             });
           };
@@ -6704,6 +6716,12 @@ var index_default = {
             trashedImgIdSet = new Set((trashList || []).map((t) => t.id));
           } catch (e) {
           }
+          let favImgSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId).all();
+            favImgSet = new Set((fList || []).map((f) => String(f.item_id)));
+          } catch (e) {
+          }
           const seen = /* @__PURE__ */ new Set();
           const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
@@ -6741,7 +6759,7 @@ var index_default = {
               thumbnailUrl: finalUrl,
               category: "images",
               isImage: true,
-              isFavorite: Boolean(img.is_favorite),
+              isFavorite: Boolean(img.is_favorite || favImgSet.has(img.id)),
               isPinned: Boolean(img.is_pinned)
             });
           };
@@ -6921,6 +6939,12 @@ var index_default = {
             trashedVidIdSet = new Set((trashList || []).map((t) => t.id));
           } catch (e) {
           }
+          let favVidSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId).all();
+            favVidSet = new Set((fList || []).map((f) => String(f.item_id)));
+          } catch (e) {
+          }
           const seen = /* @__PURE__ */ new Set();
           const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
@@ -6952,7 +6976,7 @@ var index_default = {
               thumbnailUrl: v.thumbnail_url || finalUrl,
               category: "videos",
               isVideo: true,
-              isFavorite: Boolean(v.is_favorite),
+              isFavorite: Boolean(v.is_favorite || favVidSet.has(v.id)),
               isPinned: Boolean(v.is_pinned)
             });
           };
@@ -7128,6 +7152,12 @@ var index_default = {
             trashedDocIdSet = new Set((trashList || []).map((t) => t.id));
           } catch (e) {
           }
+          let favDocSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId).all();
+            favDocSet = new Set((fList || []).map((f) => String(f.item_id)));
+          } catch (e) {
+          }
           const seen = /* @__PURE__ */ new Set();
           const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
@@ -7161,7 +7191,7 @@ var index_default = {
               isNotepad: d.extension === "txt" || Boolean(d.notepad_content),
               noteTitle: d.notepad_title || "",
               content: d.notepad_content || "",
-              isFavorite: Boolean(d.is_favorite),
+              isFavorite: Boolean(d.is_favorite || favDocSet.has(d.id)),
               isPinned: Boolean(d.is_pinned)
             });
           };
@@ -7994,6 +8024,22 @@ var index_default = {
             VALUES (?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET category = excluded.category
           `).bind(favId, reqUserId, itemId, category).run();
+          await Promise.all([
+            env.DB.prepare("UPDATE document_files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+            }),
+            env.DB.prepare("UPDATE image_files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+            }),
+            env.DB.prepare("UPDATE video_files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+            }),
+            env.DB.prepare("UPDATE audio_files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+            }),
+            env.DB.prepare("UPDATE classeur_folders SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+            }),
+            env.DB.prepare("UPDATE classeur_files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+            }),
+            env.DB.prepare("UPDATE files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+            })
+          ]);
           await recordSyncItem(env.DB, reqUserId, favId, "favorites", { itemId, category }, 0);
           return jsonResponse({ success: true, message: "Ajout\xE9 aux favoris" }, 200, origin);
         }
@@ -8005,6 +8051,22 @@ var index_default = {
             DELETE FROM user_favorites
             WHERE user_id = ? AND (item_id = ? OR id = ?)
           `).bind(reqUserId, itemId, itemId).run();
+          await Promise.all([
+            env.DB.prepare("UPDATE document_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+            }),
+            env.DB.prepare("UPDATE image_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+            }),
+            env.DB.prepare("UPDATE video_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+            }),
+            env.DB.prepare("UPDATE audio_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+            }),
+            env.DB.prepare("UPDATE classeur_folders SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+            }),
+            env.DB.prepare("UPDATE classeur_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+            }),
+            env.DB.prepare("UPDATE files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+            })
+          ]);
           const favId = `fav_${reqUserId}_${itemId}`;
           await recordSyncItem(env.DB, reqUserId, favId, "favorites", { itemId, category: "favorites" }, 1);
           return jsonResponse({ success: true, message: "Retir\xE9 des favoris" }, 200, origin);

@@ -379,6 +379,7 @@ export const CloudDataStore = {
         // Recalcul des récents et favoris au fur et à mesure de l'arrivée des données
         const refreshDerived = () => {
           const allCurrent = [
+            ...(currentState.favorites || []),
             ...currentState.documents,
             ...currentState.images,
             ...currentState.videos,
@@ -406,7 +407,14 @@ export const CloudDataStore = {
           } else if (currentState.recentFiles && currentState.recentFiles.length > 0) {
             currentState.recentFiles = currentState.recentFiles.filter(isRecentEligible).slice(0, 6);
           }
-          currentState.favorites = allCurrent.filter(f => currentState.favIdSet.has(f.id) || Boolean(f.isFavorite));
+          const seen = new Set<string>();
+          currentState.favorites = allCurrent
+            .filter(f => currentState.favIdSet.has(f.id) || Boolean(f.isFavorite))
+            .filter(f => {
+              if (seen.has(f.id)) return false;
+              seen.add(f.id);
+              return true;
+            });
         };
 
         // ── FLUX PARALLÈLES ET INDÉPENDANTS (HYDRATATION PROGRESSIVE) ─────────
@@ -416,10 +424,9 @@ export const CloudDataStore = {
 
         // 1. Favoris & Épinglés
         tasks.push(
-          CloudStorageAPI.getFavorites().then(favsData => {
-            if (favsData !== null && Array.isArray(favsData)) {
-              const ids = favsData.map((f: any) => f.itemId || f.item_id || f.id).filter(Boolean);
-              currentState.favIdSet = new Set<string>(ids);
+          CloudStorageAPI.getFavoritesList().then(({ favIds, items }) => {
+            if (favIds !== null && Array.isArray(favIds)) {
+              currentState.favIdSet = new Set<string>(favIds);
 
               // Appliquer immédiatement isFavorite sur tous les fichiers déjà chargés en mémoire
               const markFav = (list: FileItem[]) => list.map(item => ({
@@ -434,6 +441,14 @@ export const CloudDataStore = {
                 ...cf,
                 isFavorite: currentState.favIdSet.has(cf.id) || Boolean(cf.isFavorite)
               }));
+
+              if (Array.isArray(items) && items.length > 0) {
+                const existingMap = new Map(currentState.favorites.map(f => [f.id, f]));
+                items.forEach(it => {
+                  existingMap.set(it.id, { ...it, isFavorite: true });
+                });
+                currentState.favorites = Array.from(existingMap.values());
+              }
 
               refreshDerived();
               notify();

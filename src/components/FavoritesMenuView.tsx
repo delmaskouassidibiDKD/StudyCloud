@@ -210,13 +210,23 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
 
         if (items && items.length > 0) {
           items.forEach(item => {
-            if (item.category === 'documents') CloudDataStore.addOptimisticFile(item, 'documents');
-            else if (item.category === 'images') CloudDataStore.addOptimisticFile(item, 'images');
-            else if (item.category === 'videos') CloudDataStore.addOptimisticFile(item, 'videos');
-            else if (item.category === 'audio') CloudDataStore.addOptimisticFile(item, 'audio');
+            const withFav = { ...item, isFavorite: true };
+            if (item.category === 'classeur' || item.isFolder) {
+              CloudDataStore.addClasseurFolder(withFav as any);
+            } else {
+              CloudDataStore.addOptimisticFile(withFav);
+            }
           });
+          const combined = [...items.map(it => ({ ...it, isFavorite: true })), ...getFavsFromStore()];
+          const seen = new Set<string>();
+          setFavoritesList(combined.filter(f => {
+            if (!f || !f.id || seen.has(f.id)) return false;
+            seen.add(f.id);
+            return true;
+          }));
+        } else {
+          setFavoritesList(getFavsFromStore());
         }
-        setFavoritesList(getFavsFromStore());
       } catch (err) {
         console.warn('[FavoritesMenuView] Direct favorites load warning:', err);
       } finally {
