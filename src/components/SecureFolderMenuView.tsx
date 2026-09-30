@@ -599,7 +599,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
   };
 
   // =========================================================================
-  // CARTE AUDIO CARRÉE AUTHENTIQUE (aspect-square, AudioCardPreview, logo mélodie)
+  // CARTE AUDIO AUTHENTIQUE (aspect-[3/4] comme les documents, AudioCardPreview, logo mélodie)
   // =========================================================================
   const renderAudioCard = (file: FileItem) => {
     const isSelected = selectedIds.has(file.id);
@@ -609,7 +609,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
       <div
         key={file.id}
         onClick={() => setPreviewFile(file)}
-        className={`group relative aspect-square rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 cursor-pointer select-none shadow-md ${
+        className={`group relative aspect-[3/4] rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 cursor-pointer select-none shadow-md ${
           isSelected
             ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
             : isMenuOpen
@@ -700,7 +700,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
   };
 
   // =========================================================================
-  // CARTE IMAGE AUTHENTIQUE (aspect-[4/3], vignette réelle, bouton 3 traits)
+  // CARTE IMAGE AUTHENTIQUE (aspect-[3/4] comme les documents, vignette réelle, bouton 3 traits)
   // =========================================================================
   const renderImageCard = (file: FileItem) => {
     const isMenuOpen = activeMenuFileId === file.id;
@@ -711,7 +711,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
       <div
         key={file.id}
         onClick={() => setPreviewFile(file)}
-        className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
+        className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
           isMenuOpen
             ? 'z-50 relative overflow-visible'
             : isSelected
@@ -795,7 +795,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
   };
 
   // =========================================================================
-  // CARTE VIDÉO AUTHENTIQUE (aspect-[4/3], VideoCardPreview, bouton play central)
+  // CARTE VIDÉO AUTHENTIQUE (aspect-[3/4] comme les documents, VideoCardPreview, bouton play central)
   // =========================================================================
   const renderVideoCard = (file: FileItem) => {
     const isMenuOpen = activeMenuFileId === file.id;
@@ -805,7 +805,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
       <div
         key={file.id}
         onClick={() => setPreviewFile(file)}
-        className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
+        className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
           isMenuOpen
             ? 'z-50 relative overflow-visible'
             : isSelected
@@ -1003,7 +1003,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
   };
 
   // =========================================================================
-  // CARTE DOSSIER / CLASSEUR 3D AUTHENTIQUE (aspect-[4/3], Classeur3DFolderCard)
+  // CARTE DOSSIER / CLASSEUR 3D AUTHENTIQUE (aspect-[3/4] comme les documents, Classeur3DFolderCard)
   // =========================================================================
   const renderClasseurCard = (file: FileItem) => {
     const isMenuOpen = activeMenuFileId === file.id;
@@ -1014,7 +1014,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
       <div
         key={file.id}
         onClick={() => setPreviewFile(file)}
-        className={`group aspect-[4/3] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
+        className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
           isMenuOpen
             ? 'z-50 relative overflow-visible'
             : isSelected
@@ -1066,7 +1066,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
         </div>
 
         {/* Représentation 3D du dossier */}
-        <div className="pt-2 pb-1 w-full px-2 flex items-center justify-center">
+        <div className="pt-2 pb-1 w-full px-2 flex items-center justify-center my-auto">
           <Classeur3DFolderCard folder={folderData as any} />
         </div>
 
