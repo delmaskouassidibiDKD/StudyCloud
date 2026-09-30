@@ -34,6 +34,8 @@ import {
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
+import { useVideosList } from '../hooks/useCloudQueries';
+import { invalidateCloudQueries } from '../services/queryClient';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
 import { compressFile, formatBytes } from '../utils/fileCompressor';
 import { generateVideoThumbnail, setCachedMediaThumbnail, getCachedMediaThumbnail } from '../services/mediaPreviewService';
@@ -80,6 +82,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   isFullscreen = false,
   onToggleFullscreen
 }) => {
+  const { data: serverVideos = [], isLoading: isVideosQueryLoading } = useVideosList();
   const [videosList, setVideosList] = useState<FileItem[]>(() => {
     return CloudDataStore.getState().videos || [];
   });
@@ -322,42 +325,17 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     };
   }, []);
 
-  // Chargement et synchronisation avec CloudDataStore (Fusion sécurisée pour ne jamais faire disparaître les vidéos en cours)
+  // Synchronisation continue ultra-légère avec TanStack Query
   useEffect(() => {
-    let isMounted = true;
-    CloudStorageAPI.getVideosList()
-      .then((data) => {
-        if (isMounted && data && Array.isArray(data)) {
-          setVideosList(prev => {
-            const serverIds = new Set(data.map(v => v.id));
-            const pending = prev.filter(v => !serverIds.has(v.id) && Boolean(v.isUploading));
-            return [...pending, ...data];
-          });
-          CloudDataStore.setVideos(data as any);
-        }
-      })
-      .catch((err) => console.warn('[VideosMenuView] Error fetching videos:', err))
-      .finally(() => {
-        if (isMounted) setLoading(false);
+    if (serverVideos && Array.isArray(serverVideos)) {
+      setVideosList(prev => {
+        const serverIds = new Set(serverVideos.map(v => v.id));
+        const pending = prev.filter(v => !serverIds.has(v.id) && Boolean(v.isUploading));
+        return [...pending, ...serverVideos];
       });
-
-    const unsubscribe = CloudDataStore.subscribe((state) => {
-      if (isMounted && state.videos) {
-        setVideosList(prev => {
-          const storeVideos = state.videos || [];
-          const storeIds = new Set(storeVideos.map(v => v.id));
-          const pending = prev.filter(v => !storeIds.has(v.id) && Boolean(v.isUploading));
-          if (pending.length === 0) return storeVideos;
-          return [...pending, ...storeVideos];
-        });
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, []);
+      setLoading(false);
+    }
+  }, [serverVideos]);
 
   // Navigation vidéo dans le lecteur split
   const handleNavigateVideo = (direction: 'prev' | 'next') => {
@@ -535,6 +513,8 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     CloudDataStore.moveToTrash(fileWithSource as any);
     deleteFileBlob(vid.id).catch(() => {});
     await CloudStorageAPI.deleteVideo(vid.id).catch(() => {});
+    invalidateCloudQueries.videos().catch(() => {});
+    invalidateCloudQueries.overview().catch(() => {});
     showToast(`"${vid.name}" supprimé`);
   };
 

@@ -14,7 +14,6 @@
  *      et enregistré dans la liste locale des tombstones afin d'empêcher toute résurrection.
  */
 
-import { BehaviorSubject, Subject } from 'rxjs';
 import { getWorkerApiUrl } from './api';
 import { getCurrentUserId } from './userSync';
 import { CloudDataStore, FileItem, setTombstoneChecker, setTombstoneRemover, unmarkItemDeleted, setRestoreUpsertNotifier, setFavoriteSyncNotifier } from './cloudDataStore';
@@ -22,6 +21,7 @@ import { ClasseurCreatedFolder } from '../components/Folder3DModels';
 import { removeDownloadedFile } from './downloadsManager';
 import { deleteFileBlob } from './localFileStorage';
 import { setCachedMediaThumbnail } from './mediaPreviewService';
+import { invalidateCloudQueries } from './queryClient';
 
 export interface SyncDocument {
   id: string;
@@ -131,15 +131,43 @@ function getAuthHeaders(): Record<string, string> {
   return headers;
 }
 
-// État observable avec RxJS
-const replicationStatus$ = new BehaviorSubject<ReplicationStatus>({
+// État observable ultra-léger sans RxJS
+let _currentStatus: ReplicationStatus = {
   isReplicating: false,
   lastReplicatedAt: 0,
   pendingPushCount: 0,
   lastError: null,
-});
+};
 
-const onSyncEvents$ = new Subject<{ type: 'pull' | 'push'; count: number }>();
+const statusListeners = new Set<(status: ReplicationStatus) => void>();
+const eventListeners = new Set<(event: { type: 'pull' | 'push'; count: number }) => void>();
+
+const replicationStatus$ = {
+  getValue: () => _currentStatus,
+  next: (newStatus: ReplicationStatus) => {
+    _currentStatus = newStatus;
+    statusListeners.forEach(fn => { try { fn(newStatus); } catch {} });
+  },
+  asObservable: () => ({
+    subscribe: (fn: (status: ReplicationStatus) => void) => {
+      statusListeners.add(fn);
+      fn(_currentStatus);
+      return { unsubscribe: () => statusListeners.delete(fn) };
+    }
+  })
+};
+
+const onSyncEvents$ = {
+  next: (event: { type: 'pull' | 'push'; count: number }) => {
+    eventListeners.forEach(fn => { try { fn(event); } catch {} });
+  },
+  asObservable: () => ({
+    subscribe: (fn: (event: { type: 'pull' | 'push'; count: number }) => void) => {
+      eventListeners.add(fn);
+      return { unsubscribe: () => eventListeners.delete(fn) };
+    }
+  })
+};
 
 // Initialiser les tombstones
 loadTombstones();
@@ -198,7 +226,21 @@ export const LocalSyncReplication = {
       pendingPushCount: nextQueue.length,
     });
 
-    // Déclencher la réplication immédiatement
+    // Invalider immédiatement le cache TanStack Query correspondant
+    try {
+      if (category === 'audio') invalidateCloudQueries.audio();
+      else if (category === 'videos') invalidateCloudQueries.videos();
+      else if (category === 'images') invalidateCloudQueries.images();
+      else if (category === 'documents') invalidateCloudQueries.documents();
+      else if (category.includes('classeur')) {
+        invalidateCloudQueries.classeurFolders();
+        invalidateCloudQueries.classeurFiles();
+      }
+      invalidateCloudQueries.overview();
+      invalidateCloudQueries.favorites();
+    } catch {}
+
+    // Déclencher la synchronisation si en ligne
     this.replicate().catch(() => {});
   },
 
@@ -251,6 +293,20 @@ export const LocalSyncReplication = {
       ...replicationStatus$.getValue(),
       pendingPushCount: queue.length,
     });
+
+    // Invalider immédiatement le cache TanStack Query correspondant
+    try {
+      if (category === 'audio') invalidateCloudQueries.audio();
+      else if (category === 'videos') invalidateCloudQueries.videos();
+      else if (category === 'images') invalidateCloudQueries.images();
+      else if (category === 'documents') invalidateCloudQueries.documents();
+      else if (category.includes('classeur')) {
+        invalidateCloudQueries.classeurFolders();
+        invalidateCloudQueries.classeurFiles();
+      }
+      invalidateCloudQueries.overview();
+      invalidateCloudQueries.favorites();
+    } catch {}
 
     this.replicate().catch(() => {});
   },
@@ -576,30 +632,21 @@ export const LocalSyncReplication = {
     if (isStarted) return () => {};
     isStarted = true;
 
-    // 1. Première réplication immédiate
-    this.replicate().catch(() => {});
-
-    // 2. Réplication périodique toutes les 8 secondes
-    replicationInterval = setInterval(() => {
-      this.replicate().catch(() => {});
-    }, 8000);
-
-    // 3. Réplication dès que l'onglet redevient visible (changement d'appareil ou d'onglet)
+    // Réplication dès que l'onglet redevient visible (invalidation intelligente TanStack Query)
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        this.replicate().catch(() => {});
+        invalidateCloudQueries.all().catch(() => {});
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
 
-    // 4. Réplication dès que la connexion internet revient
+    // Réplication dès que la connexion internet revient
     const onOnline = () => {
-      this.replicate().catch(() => {});
+      invalidateCloudQueries.all().catch(() => {});
     };
     window.addEventListener('online', onOnline);
 
     return () => {
-      if (replicationInterval) clearInterval(replicationInterval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('online', onOnline);
       isStarted = false;

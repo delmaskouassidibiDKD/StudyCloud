@@ -34,6 +34,8 @@ import {
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
+import { useImagesList } from '../hooks/useCloudQueries';
+import { invalidateCloudQueries } from '../services/queryClient';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
 import { compressFile, formatBytes } from '../utils/fileCompressor';
 import { setCachedMediaThumbnail, getCachedMediaThumbnail } from '../services/mediaPreviewService';
@@ -79,6 +81,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
   isFullscreen = false,
   onToggleFullscreen
 }) => {
+  const { data: serverImages = [], isLoading: isImagesQueryLoading } = useImagesList();
   const [imagesList, setImagesList] = useState<FileItem[]>(() => {
     return CloudDataStore.getState().images || [];
   });
@@ -341,42 +344,17 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     showToast("Nouvelle tentative d'enregistrement...");
   };
 
-  // Chargement et synchronisation avec CloudDataStore (Fusion sécurisée pour ne jamais faire disparaître les images en cours)
+  // Synchronisation continue ultra-légère avec TanStack Query
   useEffect(() => {
-    let isMounted = true;
-    CloudStorageAPI.getImagesList()
-      .then((data) => {
-        if (isMounted && data && Array.isArray(data)) {
-          setImagesList(prev => {
-            const serverIds = new Set(data.map(i => i.id));
-            const pending = prev.filter(i => !serverIds.has(i.id));
-            return [...pending, ...data];
-          });
-          CloudDataStore.setImages(data as any);
-        }
-      })
-      .catch((err) => console.warn('[ImagesMenuView] Error fetching images:', err))
-      .finally(() => {
-        if (isMounted) setLoading(false);
+    if (serverImages && Array.isArray(serverImages)) {
+      setImagesList(prev => {
+        const serverIds = new Set(serverImages.map(i => i.id));
+        const pending = prev.filter(i => !serverIds.has(i.id));
+        return [...pending, ...serverImages];
       });
-
-    const unsubscribe = CloudDataStore.subscribe((state) => {
-      if (isMounted && state.images) {
-        setImagesList(prev => {
-          const storeImages = state.images || [];
-          const storeIds = new Set(storeImages.map(i => i.id));
-          const pending = prev.filter(i => !storeIds.has(i.id));
-          if (pending.length === 0) return storeImages;
-          return [...pending, ...storeImages];
-        });
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, []);
+      setLoading(false);
+    }
+  }, [serverImages]);
 
   // Navigation image dans le lecteur split
   const handleNavigateImage = (direction: 'prev' | 'next') => {
@@ -522,6 +500,8 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     CloudDataStore.removeFile(img.id);
     deleteFileBlob(img.id).catch(() => {});
     await CloudStorageAPI.deleteImage(img.id).catch(() => {});
+    invalidateCloudQueries.images().catch(() => {});
+    invalidateCloudQueries.overview().catch(() => {});
     showToast(`"${img.name}" supprimée`);
   };
 

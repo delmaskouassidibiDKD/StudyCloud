@@ -11,6 +11,7 @@
 import { CloudDataStore, FileItem } from './cloudDataStore';
 import { CloudStorageAPI } from './cloudStorageService';
 import { storeFileBlob } from './localFileStorage';
+import { invalidateCloudQueries } from './queryClient';
 import {
   generatePdfThumbnail,
   generateVideoThumbnail,
@@ -384,6 +385,16 @@ class UploadQueueManager {
         };
         CloudStorageAPI.saveAudio(audioToSave as any).catch(() => {});
       }
+
+      // Invalider immédiatement le cache TanStack Query
+      try {
+        if (category === 'audio') invalidateCloudQueries.audio();
+        else if (category === 'videos') invalidateCloudQueries.videos();
+        else if (category === 'images') invalidateCloudQueries.images();
+        else if (category === 'documents') invalidateCloudQueries.documents();
+        else if (category === 'classeur') invalidateCloudQueries.classeurFiles(folderId);
+        invalidateCloudQueries.overview();
+      } catch {}
 
       // Déclencher un événement global pour tout listener de mise à jour
       if (typeof window !== 'undefined') {

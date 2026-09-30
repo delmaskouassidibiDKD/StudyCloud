@@ -38,6 +38,8 @@ import {
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
+import { useDocumentsList } from '../hooks/useCloudQueries';
+import { invalidateCloudQueries } from '../services/queryClient';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob, getFileBlob } from '../services/localFileStorage';
 import { compressFile } from '../utils/fileCompressor';
 import { FileItem } from './Page1FilesMenuView';
@@ -137,10 +139,15 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
   isFullscreen = false,
   onToggleFullscreen
 }) => {
+  const { data: serverDocuments = [], isLoading: isDocumentsQueryLoading } = useDocumentsList();
   const [documentsList, setDocumentsList] = useState<FileItem[]>(() => {
     return CloudDataStore.getState().documents || [];
   });
   const [loading, setLoading] = useState(true);
+
+  // Pagination / Chargement par morceaux (24 documents par lot pour DOM ultra-léger et 0 OOM)
+  const BATCH_SIZE = 24;
+  const [visibleCount, setVisibleCount] = useState<number>(BATCH_SIZE);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<SortOption>('recent');
   const [activeFilter, setActiveFilter] = useState<'all' | 'pdf' | 'cours' | 'td' | 'devoirs' | 'txt'>('all');
@@ -361,42 +368,17 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     showToast("Nouvelle tentative d'enregistrement...");
   };
 
-  // Chargement et synchronisation avec CloudDataStore
+  // Synchronisation continue ultra-légère avec TanStack Query
   useEffect(() => {
-    let isMounted = true;
-    CloudStorageAPI.getDocumentsList()
-      .then((data) => {
-        if (isMounted && data && Array.isArray(data)) {
-          setDocumentsList(prev => {
-            const serverIds = new Set(data.map(d => d.id));
-            const pending = prev.filter(d => !serverIds.has(d.id) && Boolean(d.isUploading));
-            return [...pending, ...data];
-          });
-          CloudDataStore.setDocuments(data as any);
-        }
-      })
-      .catch((err) => console.warn('[DocumentsMenuView] Error fetching documents:', err))
-      .finally(() => {
-        if (isMounted) setLoading(false);
+    if (serverDocuments && Array.isArray(serverDocuments)) {
+      setDocumentsList(prev => {
+        const serverIds = new Set(serverDocuments.map(d => d.id));
+        const pending = prev.filter(d => !serverIds.has(d.id) && Boolean(d.isUploading));
+        return [...pending, ...serverDocuments];
       });
-
-    const unsubscribe = CloudDataStore.subscribe((state) => {
-      if (isMounted && state.documents) {
-        setDocumentsList(prev => {
-          const storeDocs = state.documents || [];
-          const storeIds = new Set(storeDocs.map(d => d.id));
-          const pending = prev.filter(d => !storeIds.has(d.id) && Boolean(d.isUploading));
-          if (pending.length === 0) return storeDocs;
-          return [...pending, ...storeDocs];
-        });
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, []);
+      setLoading(false);
+    }
+  }, [serverDocuments]);
 
   // Résolution du Blob URL quand un document est sélectionné
   useEffect(() => {
@@ -631,6 +613,8 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     CloudDataStore.removeFile(doc.id);
     deleteFileBlob(doc.id).catch(() => {});
     await CloudStorageAPI.deleteDocument(doc.id).catch(() => {});
+    invalidateCloudQueries.documents().catch(() => {});
+    invalidateCloudQueries.overview().catch(() => {});
     showToast(`"${doc.name}" supprimé`);
     setActiveMenuDocId(null);
   };
@@ -2051,14 +2035,28 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                 )}
               </div>
             ) : (
-              /* GRILLE DES CARTES DE DOCUMENTS (IMAGE 1) */
-              <div className={`grid gap-2.5 sm:gap-3.5 ${
-                selectedDoc
-                  ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3'
-                  : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-              }`}>
-                {filteredDocuments.map((doc, idx) => renderDocumentCard(doc, idx))}
-              </div>
+              <>
+                {/* GRILLE DES CARTES DE DOCUMENTS (IMAGE 1) */}
+                <div className={`grid gap-2.5 sm:gap-3.5 ${
+                  selectedDoc
+                    ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3'
+                    : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                }`}>
+                  {filteredDocuments.slice(0, visibleCount).map((doc, idx) => renderDocumentCard(doc, idx))}
+                </div>
+
+                {visibleCount < filteredDocuments.length && (
+                  <div className="pt-4 pb-6 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount(c => c + 24)}
+                      className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                    >
+                      Charger plus de documents ({filteredDocuments.length - visibleCount} restants)
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

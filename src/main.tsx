@@ -66,16 +66,19 @@ class ErrorBoundary extends React.Component {
 const initialHeight = window.innerHeight;
 document.documentElement.style.setProperty('--app-height', `${initialHeight}px`);
 
-// Démarrer la réplication continue en arrière-plan (Local-First + Cloudflare D1)
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './services/queryClient';
 import { LocalSyncReplication } from './services/localSyncReplication';
 LocalSyncReplication.startAutoReplication();
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </QueryClientProvider>
     </ErrorBoundary>
   </React.StrictMode>,
 );

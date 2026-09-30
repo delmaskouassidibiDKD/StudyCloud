@@ -39,6 +39,8 @@ import {
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
+import { useAudioList } from '../hooks/useCloudQueries';
+import { invalidateCloudQueries } from '../services/queryClient';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
 import { compressFile } from '../utils/fileCompressor';
 import { extractAudioCover, generateAudioCreatorCover, extractAudioMetadataWithTags, setCachedMediaThumbnail } from '../services/mediaPreviewService';
@@ -91,10 +93,15 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   isFullscreen = false,
   onToggleFullscreen
 }) => {
+  const { data: serverAudio = [], isLoading: isAudioQueryLoading } = useAudioList();
   const [audioList, setAudioList] = useState<FileItem[]>(() => {
     return CloudDataStore.getState().audio || [];
   });
   const [loading, setLoading] = useState(true);
+
+  // Pagination / Chargement par lots (30 sons à la fois pour un DOM ultra-léger et zéro OOM)
+  const BATCH_SIZE = 30;
+  const [visibleCount, setVisibleCount] = useState<number>(BATCH_SIZE);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<SortOption>('recent');
   const [selectedTrack, setSelectedTrack] = useState<FileItem | null>(null);
@@ -356,33 +363,13 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     showToast("Nouvelle tentative d'enregistrement...");
   };
 
-  // Chargement et synchronisation avec CloudDataStore (identique au menu Vidéos)
+  // Synchronisation continue ultra-légère avec TanStack Query
   useEffect(() => {
-    let isMounted = true;
-    CloudStorageAPI.getAudioList()
-      .then((data) => {
-        if (isMounted && data && Array.isArray(data)) {
-          setAudioList(prev => mergeAudioWithPending(data, prev));
-          CloudDataStore.setAudio(data as any);
-        }
-      })
-      .catch((err) => console.warn('[AudioMenuView] Error fetching audio:', err))
-      .finally(() => {
-        if (isMounted) setLoading(false);
-      });
-
-    // Subscriber simple comme Vidéos : conserve uniquement les items en cours d'upload
-    const unsubscribe = CloudDataStore.subscribe((state) => {
-      if (isMounted && state.audio) {
-        setAudioList(prev => mergeAudioWithPending(state.audio || [], prev));
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, []);
+    if (serverAudio && Array.isArray(serverAudio)) {
+      setAudioList(prev => mergeAudioWithPending(serverAudio, prev));
+      setLoading(false);
+    }
+  }, [serverAudio]);
 
   // Résolution du Blob URL lors du changement de piste
   useEffect(() => {
@@ -685,6 +672,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     CloudDataStore.moveToTrash(fileWithSource as any);
     deleteFileBlob(track.id).catch(() => {});
     await CloudStorageAPI.deleteAudio(track.id).catch(() => {});
+    invalidateCloudQueries.audio().catch(() => {});
+    invalidateCloudQueries.overview().catch(() => {});
     showToast(`"${track.name}" supprimé`);
     setActiveMenuTrackId(null);
   };
@@ -2022,7 +2011,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               </div>
             ) : (
               <div className="space-y-2">
-                {filteredAudio.map((track) => {
+                {filteredAudio.slice(0, visibleCount).map((track) => {
                   const isSelected = selectedTrack?.id === track.id;
                   const isMenuOpen = activeMenuTrackId === track.id;
                   const isChecked = selectedItemIds.includes(track.id);
@@ -2256,6 +2245,18 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                     </div>
                   );
                 })}
+
+                {visibleCount < filteredAudio.length && (
+                  <div className="pt-4 pb-6 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount(c => c + 30)}
+                      className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                    >
+                      Afficher plus ({filteredAudio.length - visibleCount} restants)
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

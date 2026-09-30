@@ -30,6 +30,8 @@ import {
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore, FileItem, isItemDeleted } from '../services/cloudDataStore';
+import { useFavoritesList } from '../hooks/useCloudQueries';
+import { invalidateCloudQueries } from '../services/queryClient';
 import { getFileBlobUrl, deleteFileBlob, formatFileSize } from '../services/localFileStorage';
 import { AudioCardPreview } from './AudioCardPreview';
 import { DocumentCardPreview } from './DocumentCardPreview';
@@ -156,6 +158,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     });
   };
 
+  const { data: serverFavData, isLoading: isFavQueryLoading } = useFavoritesList();
   const [favoritesList, setFavoritesList] = useState<FileItem[]>(() => getFavsFromStore());
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -212,55 +215,35 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     };
   }, []);
 
-  // Chargement distant direct depuis Cloudflare D1 (Multi-appareils instantané)
+  // Synchronisation continue ultra-légère avec TanStack Query
   useEffect(() => {
-    let isMounted = true;
-    (async () => {
-      try {
-        setLoading(true);
-        const { favIds, items } = await CloudStorageAPI.getFavoritesList();
-        if (!isMounted) return;
+    if (!serverFavData) return;
+    const { favIds, items } = serverFavData;
+    const s = CloudDataStore.getState();
+    const trashIds = new Set((s.trash || []).map(t => t.id));
 
-        const s = CloudDataStore.getState();
-        const trashIds = new Set((s.trash || []).map(t => t.id));
-
-        // Purger immédiatement les favoris orphelins (dans la corbeille ou marqués supprimés)
-        (favIds || []).forEach(id => {
-          if (trashIds.has(id) || isItemDeleted(id)) {
-            s.favIdSet.delete(id);
-            CloudStorageAPI.removeFavorite(id).catch(() => {});
-          } else {
-            s.favIdSet.add(id);
-          }
-        });
-
-        const validItems = (items || []).filter(item => item && item.id && !trashIds.has(item.id) && !isItemDeleted(item.id));
-
-        if (validItems.length > 0) {
-          validItems.forEach(item => {
-            const withFav = { ...item, isFavorite: true, isTrash: false };
-            if (item.category === 'classeur' || item.isFolder) {
-              CloudDataStore.addClasseurFolder(withFav as any);
-            } else {
-              CloudDataStore.addOptimisticFile(withFav);
-            }
-          });
-        }
-        setFavoritesList(getFavsFromStore());
-      } catch (err) {
-        console.warn('[FavoritesMenuView] Direct favorites load warning:', err);
-      } finally {
-        if (isMounted) setLoading(false);
+    (favIds || []).forEach(id => {
+      if (trashIds.has(id) || isItemDeleted(id)) {
+        s.favIdSet.delete(id);
+      } else {
+        s.favIdSet.add(id);
       }
-    })();
+    });
 
-    // Déclencher aussi la synchronisation globale
-    CloudDataStore.sync(true).catch(() => {});
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    const validItems = (items || []).filter(item => item && item.id && !trashIds.has(item.id) && !isItemDeleted(item.id));
+    if (validItems.length > 0) {
+      validItems.forEach(item => {
+        const withFav = { ...item, isFavorite: true, isTrash: false };
+        if (item.category === 'classeur' || item.isFolder) {
+          CloudDataStore.addClasseurFolder(withFav as any);
+        } else {
+          CloudDataStore.addOptimisticFile(withFav);
+        }
+      });
+    }
+    setFavoritesList(getFavsFromStore());
+    setLoading(false);
+  }, [serverFavData]);
 
   // Retirer un élément des favoris
   const handleRemoveFavorite = async (file: FileItem) => {
@@ -274,6 +257,8 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     // Mettre à jour dans CloudDataStore
     CloudDataStore.toggleFavorite(file.id, false);
     await CloudStorageAPI.removeFavorite(file.id).catch(() => {});
+    invalidateCloudQueries.favorites().catch(() => {});
+    invalidateCloudQueries.overview().catch(() => {});
     showToast(`« ${file.name} » retiré des favoris`);
   };
 
