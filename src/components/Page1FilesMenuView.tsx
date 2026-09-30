@@ -1196,6 +1196,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       });
       return prev.filter(f => !toDeleteIds.includes(f.id));
     });
+    showToast(targetFolder ? `Dossier "${targetFolder.name}" déplacé dans la corbeille` : 'Dossier déplacé dans la corbeille');
   };
 
   // Lecteur Vidéo
@@ -1869,8 +1870,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     showToast('Corbeille vidée.');
   };
 
-  const showToast = (_msg?: string) => {
-    // Désactivé : aucun message lors des clics sur les boutons
+  const toastTimerRef = useRef<any>(null);
+  const showToast = (msg?: string) => {
+    if (!msg) return;
+    setToastMessage(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => {
+      setToastMessage(null);
+    }, 2500);
   };
 
   const [profileToastMessage, setProfileToastMessage] = useState<string | null>(null);
@@ -10765,7 +10772,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         ? 'fixed inset-0 z-[1000] w-screen h-screen'
         : 'fixed top-[64px] md:top-[68px] bottom-0 left-0 md:left-64 right-0 z-30 min-h-[calc(100vh-68px)]'
     }`}>
-      
+      {/* Toast Notification universel en haut au milieu */}
+      {toastMessage && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999] px-4 py-2 bg-stone-900/95 dark:bg-black/95 text-white border border-white/20 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.5)] text-xs sm:text-sm font-semibold flex items-center gap-2.5 backdrop-blur-md animate-in fade-in slide-in-from-top-4 duration-200 pointer-events-none whitespace-nowrap">
+          <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
+            <Check className="w-3 h-3 stroke-[3]" />
+          </div>
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
       {/* 1. Input DÉDIÉ pour l'Accueil : Routage automatique intelligent */}
       <input
         type="file"

@@ -2053,6 +2053,11 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                             track={track}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                           />
+                          {track.isFavorite && (
+                            <div className="absolute top-1 left-1 z-20 p-0.5 rounded bg-black/75 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
+                              <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
+                            </div>
+                          )}
                           {isSaving && !hasFailed && (
                             <div className="absolute inset-0 bg-black/35 backdrop-blur-[0.5px] flex items-center justify-center pointer-events-none">
                               <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin shadow-sm" />
@@ -2061,11 +2066,19 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                         </div>
 
                         <div className="min-w-0 flex-1">
-                          <h4 className={`text-xs sm:text-sm font-bold truncate leading-tight ${
-                            isSelected ? 'text-amber-600 dark:text-amber-300 font-black' : 'text-stone-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors'
-                          }`}>
-                            {track.name}
-                          </h4>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <h4 className={`text-xs sm:text-sm font-bold truncate leading-tight ${
+                              isSelected ? 'text-amber-600 dark:text-amber-300 font-black' : 'text-stone-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors'
+                            }`}>
+                              {track.name}
+                            </h4>
+                            {track.isFavorite && (
+                              <Star className="w-3.5 h-3.5 shrink-0 fill-amber-400 text-amber-400 drop-shadow-sm" title="Favori" />
+                            )}
+                            {track.isPinned && (
+                              <Pin className="w-3 h-3 shrink-0 rotate-45 text-purple-400" title="Épinglé" />
+                            )}
+                          </div>
                           <p className="text-[11px] sm:text-xs text-stone-500 dark:text-slate-400 font-medium truncate mt-0.5">
                             {track.artist || 'Artiste inconnu'}
                           </p>
@@ -2098,6 +2111,23 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                             />
                           </div>
                         )}
+
+                        {/* Bouton favori direct */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleFavorite(track);
+                          }}
+                          className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                            track.isFavorite
+                              ? 'text-amber-400 hover:bg-amber-400/10'
+                              : 'text-stone-300 dark:text-slate-600 hover:text-amber-400 hover:bg-white/10'
+                          }`}
+                          title={track.isFavorite ? 'Retirer des favoris' : 'Mettre en favori'}
+                        >
+                          <Star className={`w-4 h-4 ${track.isFavorite ? 'fill-amber-400 text-amber-400' : ''}`} />
+                        </button>
 
                         {/* Bouton lecture rapide */}
                         <button
