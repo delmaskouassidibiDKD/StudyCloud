@@ -24,7 +24,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
-import { CloudDataStore } from '../services/cloudDataStore';
+import { CloudDataStore, unmarkItemDeleted } from '../services/cloudDataStore';
 import { deleteFileBlob } from '../services/localFileStorage';
 import { FileItem } from './Page1FilesMenuView';
 import { AudioCardPreview } from './AudioCardPreview';
@@ -182,7 +182,18 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
       setSelectedFile(null);
       setIsViewerMaximized(false);
     }
-    setTrashList(prev => prev.filter(f => f.id !== file.id));
+    const isFolder = file.category === 'folder' || file.category === 'classeur_folder' || (file as any).model;
+    const restoredFolderId = isFolder ? file.id : null;
+
+    setTrashList(prev => prev.filter(f => {
+      if (f.id === file.id) return false;
+      if (restoredFolderId && (f.folderId === restoredFolderId || (f as any).original_folder_id === restoredFolderId)) {
+        return false;
+      }
+      return true;
+    }));
+
+    unmarkItemDeleted(file.id);
     CloudDataStore.restoreFromTrash(file as any);
     await CloudStorageAPI.restoreTrashItem(file.id).catch(() => {});
     window.dispatchEvent(new Event('unifolder_data_restored'));
@@ -230,7 +241,21 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
     }
     const toRestore = trashList.filter(f => selectedIds.includes(f.id));
     const idsToRestore = toRestore.map(f => f.id);
-    setTrashList(prev => prev.filter(f => !selectedIds.includes(f.id)));
+    const restoredFolderIds = new Set(
+      toRestore
+        .filter(f => f.category === 'folder' || f.category === 'classeur_folder' || (f as any).model)
+        .map(f => f.id)
+    );
+
+    setTrashList(prev => prev.filter(f => {
+      if (selectedIds.includes(f.id)) return false;
+      if (restoredFolderIds.size > 0 && ((f.folderId && restoredFolderIds.has(f.folderId)) || ((f as any).original_folder_id && restoredFolderIds.has((f as any).original_folder_id)))) {
+        return false;
+      }
+      return true;
+    }));
+
+    idsToRestore.forEach(id => unmarkItemDeleted(id));
     CloudDataStore.restoreFromTrash(toRestore as any);
     await CloudStorageAPI.restoreMultipleTrash(idsToRestore).catch(() => {});
     window.dispatchEvent(new Event('unifolder_data_restored'));

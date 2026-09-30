@@ -7786,6 +7786,64 @@ var index_default = {
                   fMeta.isPinned ? 1 : 0,
                   fMeta.isFavorite ? 1 : 0
                 ).run();
+                const { results: childTrashFiles } = await env.DB.prepare(`
+                  SELECT * FROM trash_files WHERE user_id = ? AND original_folder_id = ?
+                `).bind(reqUserId, tid).all();
+                if (childTrashFiles && childTrashFiles.length > 0) {
+                  for (const cFile of childTrashFiles) {
+                    const cMeta = cFile.metadata_json ? JSON.parse(cFile.metadata_json) : {};
+                    await env.DB.prepare(`
+                      INSERT INTO classeur_files (
+                        id, user_id, folder_id, name, size, size_bytes, category, extension,
+                        date_formatted, is_notepad, notepad_title, notepad_content, r2_key, file_url, updated_at
+                      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                      ON CONFLICT(id) DO UPDATE SET
+                        name = excluded.name,
+                        size = excluded.size,
+                        size_bytes = excluded.size_bytes,
+                        date_formatted = excluded.date_formatted,
+                        is_notepad = excluded.is_notepad,
+                        notepad_title = excluded.notepad_title,
+                        notepad_content = excluded.notepad_content,
+                        file_url = excluded.file_url,
+                        updated_at = CURRENT_TIMESTAMP
+                    `).bind(
+                      cFile.id,
+                      reqUserId,
+                      tid,
+                      cFile.name,
+                      cFile.size,
+                      cFile.size_bytes,
+                      cFile.category || "documents",
+                      cFile.extension || "",
+                      cFile.date_formatted,
+                      cMeta.isNotepad ? 1 : 0,
+                      cMeta.notepadTitle || "",
+                      cMeta.content || "",
+                      cFile.r2_key,
+                      cFile.file_url
+                    ).run();
+                    await env.DB.prepare("DELETE FROM trash_files WHERE id = ? AND user_id = ?").bind(cFile.id, reqUserId).run();
+                    const childPayload = {
+                      id: cFile.id,
+                      name: cFile.name,
+                      size: cFile.size || "0 o",
+                      sizeBytes: Number(cFile.size_bytes || 0),
+                      category: "classeur",
+                      extension: cFile.extension || "",
+                      date: cFile.date_formatted || (/* @__PURE__ */ new Date()).toLocaleDateString("fr-FR"),
+                      url: cFile.file_url || "",
+                      previewUrl: cFile.file_url || "",
+                      thumbnailUrl: cFile.file_url || "",
+                      folderId: tid,
+                      originalFolderId: tid,
+                      metadata: cMeta,
+                      isFolder: false,
+                      isTrash: false
+                    };
+                    await recordSyncItem(env.DB, reqUserId, cFile.id, "classeur", childPayload, 0);
+                  }
+                }
               } else if (origFolder || srcCat === "classeur") {
                 await env.DB.prepare(`
                   INSERT INTO classeur_files (
@@ -7893,6 +7951,7 @@ var index_default = {
               }
               await env.DB.prepare("DELETE FROM trash_files WHERE id = ? AND user_id = ?").bind(tid, reqUserId).run();
               const finalCategory = srcCat === "classeur_folder" || item.category === "folder" ? "classeur_folder" : srcCat;
+              const isFolderItem = finalCategory === "classeur_folder";
               const syncPayload = {
                 id: item.id,
                 name: item.name,
@@ -7907,10 +7966,21 @@ var index_default = {
                 folderId: origFolder || void 0,
                 originalFolderId: origFolder || void 0,
                 metadata: meta,
-                isFolder: finalCategory === "classeur_folder",
-                isTrash: false
+                isFolder: isFolderItem,
+                isTrash: false,
+                ...isFolderItem ? {
+                  model: meta.model || meta.model_id || meta.modelId || "1",
+                  primaryColor: meta.primaryColor || meta.primary_color || "#EA580C",
+                  accentColor: meta.accentColor || meta.accent_color || "#F97316",
+                  iconName: meta.iconName || meta.icon_name || "Folder",
+                  textDark: meta.textDark ?? false,
+                  position: meta.position || { x: Number(meta.positionX || meta.position_x || 0), y: Number(meta.positionY || meta.position_y || 0) },
+                  displayOrder: Number(meta.displayOrder || meta.display_order || 0),
+                  zoomLevel: Number(meta.zoomLevel || meta.zoom_level || 10),
+                  isPinned: meta.isPinned ?? false,
+                  isFavorite: meta.isFavorite ?? false
+                } : {}
               };
-              await recordSyncItem(env.DB, reqUserId, tid, "trash", { id: tid }, 1);
               await recordSyncItem(env.DB, reqUserId, tid, finalCategory, syncPayload, 0);
             }
           }

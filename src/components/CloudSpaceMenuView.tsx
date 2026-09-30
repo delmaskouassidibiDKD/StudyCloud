@@ -184,9 +184,9 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         } as FileItem;
 
         if (openedClasseurFolderId) {
-          await CloudStorageAPI.saveClasseurFile(fullFile, openedClasseurFolderId).catch(() => {});
+          await CloudStorageAPI.saveClasseurFile(fullFile as any, openedClasseurFolderId).catch(() => {});
         } else {
-          await CloudStorageAPI.uploadFile(fullFile as any).catch(() => {});
+          await CloudStorageAPI.saveClasseurFile(fullFile as any, 'default').catch(() => {});
         }
         setIsNoteSavedIndicator(true);
       } catch {

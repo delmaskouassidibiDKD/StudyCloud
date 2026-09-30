@@ -10,6 +10,7 @@ import { CloudStorageAPI, CloudOverviewData } from './cloudStorageService';
 import { ClasseurCreatedFolder } from '../components/Folder3DModels';
 import { DownloadedItem } from './downloadsManager';
 import { getCurrentUserId } from './userSync';
+import { detectFileCategory } from './fileTypeValidator';
 
 export interface FileItem {
   id: string;
@@ -19,8 +20,8 @@ export interface FileItem {
   date: string;
   timestamp?: number;
   type?: string;
-  category?: 'classeur' | 'downloads' | 'images' | 'videos' | 'audio' | 'documents' | 'trash' | 'secure';
-  originalCategory?: 'classeur' | 'downloads' | 'images' | 'videos' | 'audio' | 'documents' | 'trash' | 'secure';
+  category?: 'classeur' | 'downloads' | 'images' | 'videos' | 'audio' | 'documents' | 'trash' | 'secure' | 'folder' | 'classeur_folder' | 'apps' | string;
+  originalCategory?: 'classeur' | 'downloads' | 'images' | 'videos' | 'audio' | 'documents' | 'trash' | 'secure' | 'folder' | 'classeur_folder' | 'apps' | string;
   url?: string;
   previewUrl?: string;
   thumbnailUrl?: string;
@@ -262,6 +263,11 @@ export function setTombstoneRemover(fn: (id: string) => void) {
   tombstoneRemover = fn;
 }
 
+let restoreUpsertNotifier: ((id: string, category: string, content: any) => void) | null = null;
+export function setRestoreUpsertNotifier(fn: (id: string, category: string, content: any) => void) {
+  restoreUpsertNotifier = fn;
+}
+
 export function unmarkItemDeleted(id: string) {
   if (!id) return;
   try {
@@ -297,6 +303,7 @@ function isItemDeleted(id: string): boolean {
   if (currentState.videos.some(v => v.id === id)) return false;
   if (currentState.audio.some(a => a.id === id)) return false;
   if (currentState.classeurFolders.some(f => f.id === id)) return false;
+  if ((currentState.downloads || []).some((d: any) => d.id === id)) return false;
   if (Object.values(currentState.folderFilesMap).some(list => list.some(f => f.id === id))) return false;
 
   if (tombstoneChecker && tombstoneChecker(id)) return true;
@@ -894,7 +901,15 @@ export const CloudDataStore = {
   },
 
   permanentlyRemoveTrashFile(fileId: string) {
-    deletionListeners.forEach(fn => { try { fn(fileId, 'trash'); } catch {} });
+    currentState = {
+      ...currentState,
+      trash: currentState.trash.filter(f => f.id !== fileId),
+    };
+    persistToIndexedDB().catch(() => {});
+    notify();
+  },
+
+  removeTrashFileQuietly(fileId: string) {
     currentState = {
       ...currentState,
       trash: currentState.trash.filter(f => f.id !== fileId),
@@ -934,14 +949,26 @@ export const CloudDataStore = {
   restoreFromTrash(items: FileItem | FileItem[]) {
     const arr = (Array.isArray(items) ? items : [items]).filter(Boolean);
     if (arr.length === 0) return;
-    const idSet = new Set(arr.map(f => f.id));
+    const initialIdSet = new Set(arr.map(f => f.id));
 
-    // Dégager activement les tombstones et marques de suppression locale
-    arr.forEach(file => {
+    // 1. Si un dossier est restauré, identifier et restaurer simultanément tous les fichiers
+    // qui étaient contenus dans ce dossier et qui se trouvent dans la corbeille
+    const folderIds = new Set(
+      arr.filter(f => f.category === 'classeur_folder' || f.category === 'folder' || (f as any).isFolder || (f as any).sourceCategory === 'classeur_folder').map(f => f.id)
+    );
+    const childFilesInTrash = folderIds.size > 0
+      ? currentState.trash.filter(t => (t.originalFolderId && folderIds.has(t.originalFolderId)) || ((t as any).folderId && folderIds.has((t as any).folderId)))
+      : [];
+
+    const allToRestore = [...arr, ...childFilesInTrash.filter(c => !initialIdSet.has(c.id))];
+    const allIdSet = new Set(allToRestore.map(f => f.id));
+
+    // 2. Dégager activement les tombstones et marques de suppression locale
+    allToRestore.forEach(file => {
       unmarkItemDeleted(file.id);
     });
 
-    const newTrash = currentState.trash.filter(t => !idSet.has(t.id));
+    const newTrash = currentState.trash.filter(t => !allIdSet.has(t.id));
     let newDocs = [...currentState.documents];
     let newImgs = [...currentState.images];
     let newVids = [...currentState.videos];
@@ -950,41 +977,95 @@ export const CloudDataStore = {
     let newFolders = [...currentState.classeurFolders];
     const updatedMap = { ...currentState.folderFilesMap };
 
-    arr.forEach(file => {
+    allToRestore.forEach(file => {
       const isFolder = file.category === 'classeur_folder' || file.category === 'folder' || (file as any).isFolder || (file as any).sourceCategory === 'classeur_folder';
       const meta = (file as any).metadata || {};
-      const restored = { ...file, isTrash: false };
+      const restored: FileItem = {
+        ...file,
+        isTrash: false,
+      };
 
       if (isFolder) {
-        const restoredFolder: ClasseurFolder = {
+        const folderModel = Number(meta.model || meta.modelId || meta.model_id || 1);
+        const validModel: 1 | 2 | 3 | 4 = (folderModel >= 1 && folderModel <= 4) ? (folderModel as 1 | 2 | 3 | 4) : 1;
+        const restoredFolder: ClasseurCreatedFolder = {
           id: file.id,
-          name: file.name,
-          modelId: meta.modelId || '1',
-          primaryColor: meta.primaryColor || '#EA580C',
-          accentColor: meta.accentColor || '#F97316',
-          iconName: meta.iconName || 'Folder',
-          textDark: meta.textDark || false,
-          positionX: meta.positionX || 0,
-          positionY: meta.positionY || 0,
-          displayOrder: meta.displayOrder || 0,
-          zoomLevel: meta.zoomLevel || 10,
-          parentId: meta.parentId,
-          isPinned: meta.isPinned || false,
-          isFavorite: meta.isFavorite || false,
+          name: file.name || 'Dossier',
+          model: validModel,
+          modelId: meta.modelId || meta.model_id || String(validModel),
+          primaryColor: meta.primaryColor || meta.primary_color || '#EA580C',
+          accentColor: meta.accentColor || meta.accent_color || '#F97316',
+          secondaryColor: meta.secondaryColor || meta.secondary_color,
+          badge: meta.badge,
+          iconType: meta.iconType || meta.icon_type,
+          iconName: meta.iconName || meta.icon_name || 'Folder',
+          textDark: Boolean(meta.textDark ?? meta.text_dark),
+          dateText: meta.dateText || meta.date_text || file.date || new Date().toLocaleDateString('fr-FR'),
+          createdAt: Number(meta.createdAt || Date.now()),
+          positionX: Number(meta.positionX ?? meta.position_x ?? 0),
+          positionY: Number(meta.positionY ?? meta.position_y ?? 0),
+          displayOrder: Number(meta.displayOrder ?? meta.display_order ?? 0),
+          zoomLevel: Number(meta.zoomLevel ?? meta.zoom_level ?? 10),
+          parentId: meta.parentId || meta.parent_id || undefined,
+          isPinned: Boolean(meta.isPinned ?? meta.is_pinned),
+          isFavorite: Boolean(meta.isFavorite ?? meta.is_favorite),
         };
         newFolders = [restoredFolder, ...newFolders.filter(f => f.id !== file.id)];
-      } else if (file.originalFolderId && updatedMap[file.originalFolderId]) {
-        updatedMap[file.originalFolderId] = [restored, ...updatedMap[file.originalFolderId].filter(f => f.id !== file.id)];
-      } else if (file.category === 'images' || (file as any).isImage) {
-        newImgs = [restored, ...newImgs.filter(f => f.id !== file.id)];
-      } else if (file.category === 'videos' || !!file.videoUrl || (file as any).isVideo) {
-        newVids = [restored, ...newVids.filter(f => f.id !== file.id)];
-      } else if (file.category === 'audio' || !!file.audioUrl || (file as any).isAudio) {
-        newAuds = [restored, ...newAuds.filter(f => f.id !== file.id)];
-      } else if (file.category === 'downloads') {
-        newDls = [restored as any, ...newDls.filter(f => f.id !== file.id)];
+        if (restoreUpsertNotifier) {
+          try { restoreUpsertNotifier(file.id, 'classeur_folder', restoredFolder); } catch {}
+        }
       } else {
-        newDocs = [restored, ...newDocs.filter(f => f.id !== file.id)];
+        const targetFolderId = file.originalFolderId || (file as any).folderId;
+        const rawCat = (file.sourceCategory || file.originalCategory || file.category || '').toLowerCase();
+
+        if (targetFolderId && (rawCat === 'classeur' || file.originalFolderId || (file as any).folderId)) {
+          restored.category = 'classeur';
+          restored.originalFolderId = targetFolderId;
+          restored.folderId = targetFolderId;
+          if (!updatedMap[targetFolderId]) updatedMap[targetFolderId] = [];
+          updatedMap[targetFolderId] = [restored, ...updatedMap[targetFolderId].filter(f => f.id !== file.id)];
+          if (restoreUpsertNotifier) {
+            try { restoreUpsertNotifier(file.id, 'classeur', restored); } catch {}
+          }
+        } else {
+          // Détection intelligente de la catégorie pour un placement immédiat et exact
+          let detectedCat = rawCat;
+          if (!detectedCat || detectedCat === 'trash' || detectedCat === 'folder') {
+            detectedCat = detectFileCategory({ name: file.name, type: file.type });
+          }
+
+          if (detectedCat === 'images' || (file as any).isImage) {
+            restored.category = 'images';
+            newImgs = [restored, ...newImgs.filter(f => f.id !== file.id)];
+            if (restoreUpsertNotifier) {
+              try { restoreUpsertNotifier(file.id, 'images', restored); } catch {}
+            }
+          } else if (detectedCat === 'videos' || !!file.videoUrl || (file as any).isVideo) {
+            restored.category = 'videos';
+            newVids = [restored, ...newVids.filter(f => f.id !== file.id)];
+            if (restoreUpsertNotifier) {
+              try { restoreUpsertNotifier(file.id, 'videos', restored); } catch {}
+            }
+          } else if (detectedCat === 'audio' || !!file.audioUrl || (file as any).isAudio) {
+            restored.category = 'audio';
+            newAuds = [restored, ...newAuds.filter(f => f.id !== file.id)];
+            if (restoreUpsertNotifier) {
+              try { restoreUpsertNotifier(file.id, 'audio', restored); } catch {}
+            }
+          } else if (detectedCat === 'downloads') {
+            restored.category = 'downloads';
+            newDls = [restored as any, ...newDls.filter(f => f.id !== file.id)];
+            if (restoreUpsertNotifier) {
+              try { restoreUpsertNotifier(file.id, 'downloads', restored); } catch {}
+            }
+          } else {
+            restored.category = 'documents';
+            newDocs = [restored, ...newDocs.filter(f => f.id !== file.id)];
+            if (restoreUpsertNotifier) {
+              try { restoreUpsertNotifier(file.id, 'documents', restored); } catch {}
+            }
+          }
+        }
       }
     });
 

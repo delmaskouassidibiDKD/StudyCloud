@@ -17,7 +17,7 @@
 import { BehaviorSubject, Subject } from 'rxjs';
 import { getWorkerApiUrl } from './api';
 import { getCurrentUserId } from './userSync';
-import { CloudDataStore, FileItem, setTombstoneChecker, setTombstoneRemover, unmarkItemDeleted } from './cloudDataStore';
+import { CloudDataStore, FileItem, setTombstoneChecker, setTombstoneRemover, unmarkItemDeleted, setRestoreUpsertNotifier } from './cloudDataStore';
 import { ClasseurCreatedFolder } from '../components/Folder3DModels';
 import { removeDownloadedFile } from './downloadsManager';
 import { deleteFileBlob } from './localFileStorage';
@@ -385,13 +385,11 @@ export const LocalSyncReplication = {
           } else {
             // Si le serveur nous renvoie un élément actif (is_deleted: false),
             // il s'agit d'un élément créé, modifié ou RESTAURÉ depuis la corbeille !
-            if (inMemoryTombstones.has(doc.id)) {
-              inMemoryTombstones.delete(doc.id);
-              saveTombstones();
-              unmarkItemDeleted(doc.id);
-            }
-            // S'assurer de le retirer de la corbeille locale s'il y résidait
-            CloudDataStore.permanentlyRemoveTrashFile(doc.id);
+            inMemoryTombstones.delete(doc.id);
+            saveTombstones();
+            unmarkItemDeleted(doc.id);
+            // S'assurer de le retirer de la corbeille locale s'il y résidait SANS déclencher de fausse suppression
+            CloudDataStore.removeTrashFileQuietly(doc.id);
           }
 
           if (doc.category === 'deleted_recent') {
@@ -471,33 +469,36 @@ export const LocalSyncReplication = {
                 CloudDataStore.setTrashFiles(state.trash.map(x => x.id === doc.id ? { ...x, ...fileItem } : x));
               }
             } else if (cat === 'classeur_folder') {
+              const meta = parsedContent.metadata || parsedContent;
+              const folderModel = Number(parsedContent.model || meta.model || parsedContent.modelId || meta.modelId || parsedContent.model_id || meta.model_id || 1);
+              const validModel: 1 | 2 | 3 | 4 = (folderModel >= 1 && folderModel <= 4) ? (folderModel as 1 | 2 | 3 | 4) : 1;
               const folder: ClasseurCreatedFolder = {
                 id: doc.id,
-                name: parsedContent.name || 'Dossier',
-                model: (Number(parsedContent.model || parsedContent.modelId || parsedContent.model_id || 1) as 1 | 2 | 3 | 4),
-                modelId: parsedContent.modelId || parsedContent.model_id || parsedContent.model || '1',
-                primaryColor: parsedContent.primaryColor || parsedContent.primary_color || '#EA580C',
-                accentColor: parsedContent.accentColor || parsedContent.accent_color || '#F97316',
-                secondaryColor: parsedContent.secondaryColor || parsedContent.secondary_color,
-                badge: parsedContent.badge,
-                iconType: parsedContent.iconType || parsedContent.icon_type,
-                iconName: parsedContent.iconName || parsedContent.icon_name || 'Folder',
-                textDark: Boolean(parsedContent.textDark ?? parsedContent.text_dark),
-                dateText: parsedContent.dateText || parsedContent.date_text || (parsedContent.createdAt ? new Date(parsedContent.createdAt).toLocaleDateString('fr-FR') : new Date(doc.updated_at).toLocaleDateString('fr-FR')),
-                createdAt: Number(parsedContent.createdAt || doc.updated_at || Date.now()),
-                parentId: parsedContent.parentId || parsedContent.parent_id || undefined,
-                positionX: Number(parsedContent.positionX ?? parsedContent.position_x ?? 0),
-                positionY: Number(parsedContent.positionY ?? parsedContent.position_y ?? 0),
-                displayOrder: Number(parsedContent.displayOrder ?? parsedContent.display_order ?? 0),
-                zoomLevel: Number(parsedContent.zoomLevel ?? parsedContent.zoom_level ?? 10),
-                isPinned: Boolean(parsedContent.isPinned ?? parsedContent.is_pinned),
-                isFavorite: Boolean(parsedContent.isFavorite ?? parsedContent.is_favorite),
+                name: parsedContent.name || meta.name || 'Dossier',
+                model: validModel,
+                modelId: parsedContent.modelId || meta.modelId || parsedContent.model_id || meta.model_id || String(validModel),
+                primaryColor: parsedContent.primaryColor || meta.primaryColor || parsedContent.primary_color || meta.primary_color || '#EA580C',
+                accentColor: parsedContent.accentColor || meta.accentColor || parsedContent.accent_color || meta.accent_color || '#F97316',
+                secondaryColor: parsedContent.secondaryColor || meta.secondaryColor || parsedContent.secondary_color || meta.secondary_color,
+                badge: parsedContent.badge || meta.badge,
+                iconType: parsedContent.iconType || meta.iconType || parsedContent.icon_type || meta.icon_type,
+                iconName: parsedContent.iconName || meta.iconName || parsedContent.icon_name || meta.icon_name || 'Folder',
+                textDark: Boolean(parsedContent.textDark ?? meta.textDark ?? parsedContent.text_dark ?? meta.text_dark),
+                dateText: parsedContent.dateText || meta.dateText || parsedContent.date_text || meta.date_text || (parsedContent.createdAt ? new Date(parsedContent.createdAt).toLocaleDateString('fr-FR') : new Date(doc.updated_at).toLocaleDateString('fr-FR')),
+                createdAt: Number(parsedContent.createdAt || meta.createdAt || doc.updated_at || Date.now()),
+                parentId: parsedContent.parentId || meta.parentId || parsedContent.parent_id || meta.parent_id || undefined,
+                positionX: Number(parsedContent.positionX ?? meta.positionX ?? parsedContent.position_x ?? meta.position_x ?? 0),
+                positionY: Number(parsedContent.positionY ?? meta.positionY ?? parsedContent.position_y ?? meta.position_y ?? 0),
+                displayOrder: Number(parsedContent.displayOrder ?? meta.displayOrder ?? parsedContent.display_order ?? meta.display_order ?? 0),
+                zoomLevel: Number(parsedContent.zoomLevel ?? meta.zoomLevel ?? parsedContent.zoom_level ?? meta.zoom_level ?? 10),
+                isPinned: Boolean(parsedContent.isPinned ?? meta.isPinned ?? parsedContent.is_pinned ?? meta.is_pinned),
+                isFavorite: Boolean(parsedContent.isFavorite ?? meta.isFavorite ?? parsedContent.is_favorite ?? meta.is_favorite),
               };
               CloudDataStore.addClasseurFolder(folder);
             } else if (cat === 'classeur') {
-              const folderId = parsedContent.folderId || parsedContent.folder_id || fileItem.folderId;
+              const folderId = parsedContent.folderId || parsedContent.folder_id || fileItem.folderId || fileItem.originalFolderId;
               if (folderId) {
-                CloudDataStore.addOptimisticFile({ ...fileItem, folderId }, folderId);
+                CloudDataStore.addOptimisticFile({ ...fileItem, folderId, originalFolderId: folderId, category: 'classeur' }, folderId);
               }
             }
             upsertCount++;
@@ -592,8 +593,16 @@ export const LocalSyncReplication = {
 setTombstoneChecker((id: string) => LocalSyncReplication.isTombstone(id));
 setTombstoneRemover((id: string) => LocalSyncReplication.removeTombstone(id));
 
+// Notifier la réplication lors d'une restauration depuis la corbeille
+setRestoreUpsertNotifier((item: any, category: string) => {
+  if (item && item.id) {
+    LocalSyncReplication.recordLocalUpsert(item.id, category, item);
+  }
+});
+
 // Écouter toutes les suppressions locales de CloudDataStore pour réplication immédiate
 CloudDataStore.onDelete((id: string, category?: string) => {
+  if (isReplicating) return;
   LocalSyncReplication.recordLocalDeletion(id, category);
 });
 
