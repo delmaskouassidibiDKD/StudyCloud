@@ -601,6 +601,10 @@ export const CloudStorageAPI = {
     }
   },
 
+  async isSecureFolderConfigured(): Promise<boolean> {
+    return this.checkSecurePinConfigured();
+  },
+
   async setSecurePin(pin: string, oldPin?: string): Promise<{ success: boolean; error?: string }> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
@@ -671,16 +675,34 @@ export const CloudStorageAPI = {
     }
   },
 
-  async restoreFromSecureFolder(fileId: string): Promise<boolean> {
+  async restoreFromSecureFolder(fileIdOrIds: string | string[]): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/secure/files?id=${encodeURIComponent(fileId)}&userId=${getUserIdParam()}`, {
+      const ids = Array.isArray(fileIdOrIds) ? fileIdOrIds : [fileIdOrIds];
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/secure/files?action=restore&userId=${getUserIdParam()}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
+        body: JSON.stringify({ ids, action: 'restore' }),
       });
       return res.ok;
     } catch (e) {
       console.error('[CloudStorageAPI] restoreFromSecureFolder error:', e);
+      return false;
+    }
+  },
+
+  async deleteSecureFilesToTrash(fileIdOrIds: string | string[]): Promise<boolean> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const ids = Array.isArray(fileIdOrIds) ? fileIdOrIds : [fileIdOrIds];
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/secure/files?action=trash&userId=${getUserIdParam()}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ ids, action: 'trash' }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('[CloudStorageAPI] deleteSecureFilesToTrash error:', e);
       return false;
     }
   },

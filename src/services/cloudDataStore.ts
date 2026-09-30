@@ -1215,6 +1215,30 @@ export const CloudDataStore = {
     notify();
   },
 
+  deleteSecureToTrash(items: FileItem | FileItem[]) {
+    const arr = (Array.isArray(items) ? items : [items]).filter(Boolean);
+    if (arr.length === 0) return;
+    const idSet = new Set(arr.map(f => f.id));
+    const newSecure = currentState.secure.filter(s => !idSet.has(s.id));
+    const trashedItems = arr.map(f => ({
+      ...f,
+      isTrash: true,
+      isFavorite: false,
+      isSecure: false,
+      sourceCategory: 'secure',
+      date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+    }));
+    const newTrash = [...trashedItems, ...currentState.trash.filter(t => !idSet.has(t.id))];
+
+    currentState = {
+      ...currentState,
+      secure: newSecure,
+      trash: newTrash,
+    };
+    persistToIndexedDB().catch(() => {});
+    notify();
+  },
+
   removeFolder(folderId: string) {
     notifyFavoriteChange(folderId, false, 'classeur_folder');
     const childFiles = currentState.folderFilesMap[folderId] || [];
