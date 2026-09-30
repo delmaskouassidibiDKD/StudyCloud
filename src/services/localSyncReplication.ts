@@ -17,7 +17,7 @@
 import { BehaviorSubject, Subject } from 'rxjs';
 import { getWorkerApiUrl } from './api';
 import { getCurrentUserId } from './userSync';
-import { CloudDataStore, FileItem, setTombstoneChecker } from './cloudDataStore';
+import { CloudDataStore, FileItem, setTombstoneChecker, setTombstoneRemover, unmarkItemDeleted } from './cloudDataStore';
 import { ClasseurCreatedFolder } from '../components/Folder3DModels';
 import { removeDownloadedFile } from './downloadsManager';
 import { deleteFileBlob } from './localFileStorage';
@@ -163,6 +163,14 @@ export const LocalSyncReplication = {
 
   getAllTombstones(): Set<string> {
     return inMemoryTombstones;
+  },
+
+  removeTombstone(id: string) {
+    if (!id) return;
+    inMemoryTombstones.delete(id);
+    saveTombstones();
+    const queue = getOutgoingQueue().filter(item => item.id !== id);
+    saveOutgoingQueue(queue);
   },
 
   /**
@@ -374,9 +382,16 @@ export const LocalSyncReplication = {
           if (doc.category === 'trash') {
             // Les éléments de la corbeille sont valides et ne doivent pas être bloqués par un tombstone d'une autre catégorie
             inMemoryTombstones.delete(doc.id);
-          } else if (inMemoryTombstones.has(doc.id)) {
-            // Si localement marqué définitivement supprimé, ne pas ressusciter
-            continue;
+          } else {
+            // Si le serveur nous renvoie un élément actif (is_deleted: false),
+            // il s'agit d'un élément créé, modifié ou RESTAURÉ depuis la corbeille !
+            if (inMemoryTombstones.has(doc.id)) {
+              inMemoryTombstones.delete(doc.id);
+              saveTombstones();
+              unmarkItemDeleted(doc.id);
+            }
+            // S'assurer de le retirer de la corbeille locale s'il y résidait
+            CloudDataStore.permanentlyRemoveTrashFile(doc.id);
           }
 
           if (doc.category === 'deleted_recent') {
@@ -573,8 +588,9 @@ export const LocalSyncReplication = {
   }
 };
 
-// Relier le vérificateur de tombstones à CloudDataStore
+// Relier le vérificateur et le destructeur de tombstones à CloudDataStore
 setTombstoneChecker((id: string) => LocalSyncReplication.isTombstone(id));
+setTombstoneRemover((id: string) => LocalSyncReplication.removeTombstone(id));
 
 // Écouter toutes les suppressions locales de CloudDataStore pour réplication immédiate
 CloudDataStore.onDelete((id: string, category?: string) => {

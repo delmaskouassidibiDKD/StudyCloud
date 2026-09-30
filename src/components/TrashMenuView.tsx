@@ -185,6 +185,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
     setTrashList(prev => prev.filter(f => f.id !== file.id));
     CloudDataStore.restoreFromTrash(file as any);
     await CloudStorageAPI.restoreTrashItem(file.id).catch(() => {});
+    window.dispatchEvent(new Event('unifolder_data_restored'));
     showToast(`"${file.name}" a été restauré dans son menu d'origine`);
   };
 
@@ -228,9 +229,12 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
       setIsViewerMaximized(false);
     }
     const toRestore = trashList.filter(f => selectedIds.includes(f.id));
-    for (const f of toRestore) {
-      await handleRestore(f);
-    }
+    const idsToRestore = toRestore.map(f => f.id);
+    setTrashList(prev => prev.filter(f => !selectedIds.includes(f.id)));
+    CloudDataStore.restoreFromTrash(toRestore as any);
+    await CloudStorageAPI.restoreMultipleTrash(idsToRestore).catch(() => {});
+    window.dispatchEvent(new Event('unifolder_data_restored'));
+    showToast(`${toRestore.length} élément(s) restauré(s) dans leur menu d'origine`);
     setSelectedIds([]);
     setIsSelectionMode(false);
   };

@@ -257,8 +257,48 @@ function getLocallyDeletedFileIds(): Set<string> {
   return result;
 }
 
+let tombstoneRemover: ((id: string) => void) | null = null;
+export function setTombstoneRemover(fn: (id: string) => void) {
+  tombstoneRemover = fn;
+}
+
+export function unmarkItemDeleted(id: string) {
+  if (!id) return;
+  try {
+    const raw = localStorage.getItem('studycloud_deleted_file_ids');
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        const next = arr.filter((x: any) => x !== id);
+        localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(next));
+      }
+    }
+  } catch {}
+  try {
+    const rawRecent = localStorage.getItem('studycloud_deleted_recent_ids');
+    if (rawRecent) {
+      const arrRecent = JSON.parse(rawRecent);
+      if (Array.isArray(arrRecent)) {
+        const nextRecent = arrRecent.filter((x: any) => x !== id);
+        localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(nextRecent));
+      }
+    }
+  } catch {}
+  if (tombstoneRemover) {
+    try { tombstoneRemover(id); } catch {}
+  }
+}
+
 function isItemDeleted(id: string): boolean {
   if (!id) return false;
+  // Si l'élément est actuellement actif dans le store local (hors corbeille), il n'est JAMAIS supprimé
+  if (currentState.documents.some(d => d.id === id)) return false;
+  if (currentState.images.some(i => i.id === id)) return false;
+  if (currentState.videos.some(v => v.id === id)) return false;
+  if (currentState.audio.some(a => a.id === id)) return false;
+  if (currentState.classeurFolders.some(f => f.id === id)) return false;
+  if (Object.values(currentState.folderFilesMap).some(list => list.some(f => f.id === id))) return false;
+
   if (tombstoneChecker && tombstoneChecker(id)) return true;
   return getLocallyDeletedFileIds().has(id);
 }
@@ -880,17 +920,45 @@ export const CloudDataStore = {
     const arr = (Array.isArray(items) ? items : [items]).filter(Boolean);
     if (arr.length === 0) return;
     const idSet = new Set(arr.map(f => f.id));
+
+    // Dégager activement les tombstones et marques de suppression locale
+    arr.forEach(file => {
+      unmarkItemDeleted(file.id);
+    });
+
     const newTrash = currentState.trash.filter(t => !idSet.has(t.id));
     let newDocs = [...currentState.documents];
     let newImgs = [...currentState.images];
     let newVids = [...currentState.videos];
     let newAuds = [...currentState.audio];
     let newDls  = [...currentState.downloads];
+    let newFolders = [...currentState.classeurFolders];
     const updatedMap = { ...currentState.folderFilesMap };
 
     arr.forEach(file => {
+      const isFolder = file.category === 'classeur_folder' || file.category === 'folder' || (file as any).isFolder || (file as any).sourceCategory === 'classeur_folder';
+      const meta = (file as any).metadata || {};
       const restored = { ...file, isTrash: false };
-      if (file.originalFolderId && updatedMap[file.originalFolderId]) {
+
+      if (isFolder) {
+        const restoredFolder: ClasseurFolder = {
+          id: file.id,
+          name: file.name,
+          modelId: meta.modelId || '1',
+          primaryColor: meta.primaryColor || '#EA580C',
+          accentColor: meta.accentColor || '#F97316',
+          iconName: meta.iconName || 'Folder',
+          textDark: meta.textDark || false,
+          positionX: meta.positionX || 0,
+          positionY: meta.positionY || 0,
+          displayOrder: meta.displayOrder || 0,
+          zoomLevel: meta.zoomLevel || 10,
+          parentId: meta.parentId,
+          isPinned: meta.isPinned || false,
+          isFavorite: meta.isFavorite || false,
+        };
+        newFolders = [restoredFolder, ...newFolders.filter(f => f.id !== file.id)];
+      } else if (file.originalFolderId && updatedMap[file.originalFolderId]) {
         updatedMap[file.originalFolderId] = [restored, ...updatedMap[file.originalFolderId].filter(f => f.id !== file.id)];
       } else if (file.category === 'images' || (file as any).isImage) {
         newImgs = [restored, ...newImgs.filter(f => f.id !== file.id)];
@@ -908,6 +976,7 @@ export const CloudDataStore = {
     currentState = {
       ...currentState,
       trash: newTrash,
+      classeurFolders: newFolders,
       documents: newDocs,
       images: newImgs,
       videos: newVids,

@@ -7725,7 +7725,20 @@ var index_default = {
                     icon_name, text_dark, position_x, position_y, display_order, zoom_level,
                     is_pinned, is_favorite, updated_at
                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                  ON CONFLICT(id) DO NOTHING
+                  ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    model_id = excluded.model_id,
+                    primary_color = excluded.primary_color,
+                    accent_color = excluded.accent_color,
+                    icon_name = excluded.icon_name,
+                    text_dark = excluded.text_dark,
+                    position_x = excluded.position_x,
+                    position_y = excluded.position_y,
+                    display_order = excluded.display_order,
+                    zoom_level = excluded.zoom_level,
+                    is_pinned = excluded.is_pinned,
+                    is_favorite = excluded.is_favorite,
+                    updated_at = CURRENT_TIMESTAMP
                 `).bind(
                   item.id,
                   reqUserId,
@@ -7749,7 +7762,16 @@ var index_default = {
                     id, user_id, folder_id, name, size, size_bytes, category, extension,
                     date_formatted, is_notepad, notepad_title, notepad_content, r2_key, file_url, updated_at
                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                  ON CONFLICT(id) DO NOTHING
+                  ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    size = excluded.size,
+                    size_bytes = excluded.size_bytes,
+                    date_formatted = excluded.date_formatted,
+                    is_notepad = excluded.is_notepad,
+                    notepad_title = excluded.notepad_title,
+                    notepad_content = excluded.notepad_content,
+                    file_url = excluded.file_url,
+                    updated_at = CURRENT_TIMESTAMP
                 `).bind(
                   item.id,
                   reqUserId,
@@ -7770,13 +7792,27 @@ var index_default = {
                 await env.DB.prepare(`
                   INSERT INTO download_files (id, user_id, name, size, size_bytes, category, extension, file_url, date_formatted, updated_at)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                  ON CONFLICT(id) DO NOTHING
+                  ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    size = excluded.size,
+                    size_bytes = excluded.size_bytes,
+                    file_url = excluded.file_url,
+                    date_formatted = excluded.date_formatted,
+                    updated_at = CURRENT_TIMESTAMP
                 `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.category || "documents", item.extension || "", item.file_url, item.date_formatted).run();
               } else if (srcCat === "audio") {
                 await env.DB.prepare(`
                   INSERT INTO audio_files (id, user_id, name, artist, duration_sec, size, size_bytes, audio_url, date_formatted, updated_at)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                  ON CONFLICT(id) DO NOTHING
+                  ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    artist = excluded.artist,
+                    duration_sec = excluded.duration_sec,
+                    size = excluded.size,
+                    size_bytes = excluded.size_bytes,
+                    audio_url = excluded.audio_url,
+                    date_formatted = excluded.date_formatted,
+                    updated_at = CURRENT_TIMESTAMP
                 `).bind(
                   item.id,
                   reqUserId,
@@ -7792,23 +7828,60 @@ var index_default = {
                 await env.DB.prepare(`
                   INSERT INTO image_files (id, user_id, name, size, size_bytes, image_url, date_formatted, updated_at)
                   VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                  ON CONFLICT(id) DO NOTHING
+                  ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    size = excluded.size,
+                    size_bytes = excluded.size_bytes,
+                    image_url = excluded.image_url,
+                    date_formatted = excluded.date_formatted,
+                    updated_at = CURRENT_TIMESTAMP
                 `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
               } else if (srcCat === "videos") {
                 await env.DB.prepare(`
                   INSERT INTO video_files (id, user_id, name, size, size_bytes, video_url, date_formatted, updated_at)
                   VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                  ON CONFLICT(id) DO NOTHING
+                  ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    size = excluded.size,
+                    size_bytes = excluded.size_bytes,
+                    video_url = excluded.video_url,
+                    date_formatted = excluded.date_formatted,
+                    updated_at = CURRENT_TIMESTAMP
                 `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
               } else {
                 await env.DB.prepare(`
                   INSERT INTO document_files (id, user_id, name, size, size_bytes, file_url, date_formatted, updated_at)
                   VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                  ON CONFLICT(id) DO NOTHING
+                  ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    size = excluded.size,
+                    size_bytes = excluded.size_bytes,
+                    file_url = excluded.file_url,
+                    date_formatted = excluded.date_formatted,
+                    updated_at = CURRENT_TIMESTAMP
                 `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
               }
               await env.DB.prepare("DELETE FROM trash_files WHERE id = ? AND user_id = ?").bind(tid, reqUserId).run();
-              await recordSyncItem(env.DB, reqUserId, tid, srcCat, item, 0);
+              const finalCategory = srcCat === "classeur_folder" || item.category === "folder" ? "classeur_folder" : srcCat;
+              const syncPayload = {
+                id: item.id,
+                name: item.name,
+                size: item.size || "0 o",
+                sizeBytes: Number(item.size_bytes || 0),
+                category: finalCategory,
+                extension: item.extension || "",
+                date: item.date_formatted || (/* @__PURE__ */ new Date()).toLocaleDateString("fr-FR"),
+                url: item.file_url || "",
+                previewUrl: item.file_url || "",
+                thumbnailUrl: item.file_url || "",
+                folderId: origFolder || void 0,
+                originalFolderId: origFolder || void 0,
+                metadata: meta,
+                isFolder: finalCategory === "classeur_folder",
+                isTrash: false
+              };
+              await recordSyncItem(env.DB, reqUserId, tid, "trash", { id: tid }, 1);
+              await recordSyncItem(env.DB, reqUserId, tid, finalCategory, syncPayload, 0);
             }
           }
           return jsonResponse({ success: true, message: `${targetIds.length} \xE9l\xE9ment(s) restaur\xE9(s) avec succ\xE8s` }, 200, origin);

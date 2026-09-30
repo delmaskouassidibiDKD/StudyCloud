@@ -332,6 +332,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   const handleRestoreFromTrash = (file: FileItem) => {
     CloudDataStore.restoreFromTrash(file);
     CloudStorageAPI.restoreTrashItem(file.id).catch(() => {});
+    window.dispatchEvent(new Event('unifolder_data_restored'));
     showToast(`"${file.name}" restauré avec succès`);
   };
 
