@@ -38,6 +38,7 @@ import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
+import { HeaderMenuControls, applyFileSorting, type SortOption } from './HeaderMenuControls';
 
 const getDocumentTheme = (ext: string = 'PDF') => {
   const upper = (ext || 'PDF').toUpperCase();
@@ -88,14 +89,19 @@ interface FavoritesMenuViewProps {
   onOpenStudySpace?: (file?: any, folderName?: string, folderFiles?: any[]) => void;
   onOpenCreateShareLink?: (items: any[]) => void;
   setActivePreviewItem?: (item: any) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
   onBack,
   onOpenStudySpace,
   onOpenCreateShareLink,
-  setActivePreviewItem
+  setActivePreviewItem,
+  isFullscreen = false,
+  onToggleFullscreen
 }) => {
+  const [sortOption, setSortOption] = useState<SortOption>('recent');
   // Récupérer les éléments favoris depuis CloudDataStore
   const getFavsFromStore = (): FileItem[] => {
     const s = CloudDataStore.getState();
@@ -317,6 +323,8 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
       list = list.filter(f => f.name.toLowerCase().includes(q));
     }
 
+    list = applyFileSorting(list, sortOption);
+
     const audios = list.filter(f => getFileType(f) === 'audio');
     const images = list.filter(f => getFileType(f) === 'image');
     const videos = list.filter(f => getFileType(f) === 'video');
@@ -327,7 +335,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     });
 
     return { audios, images, videos, classeur, documents, total: list.length };
-  }, [favoritesList, searchQuery]);
+  }, [favoritesList, searchQuery, sortOption]);
 
   // =========================================================================
   // MENU D'OPTIONS 3 TRAITS SUR CHAQUE CARTE
@@ -1031,6 +1039,16 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                 </button>
               )}
             </div>
+          </div>
+
+          {/* DROITE : Plein écran (entouré en rouge) + Bouton 3 traits derrière lui */}
+          <div className="shrink-0 flex items-center gap-1.5 sm:gap-2">
+            <HeaderMenuControls
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={onToggleFullscreen}
+              sortOption={sortOption}
+              onSortChange={setSortOption}
+            />
           </div>
         </div>
 

@@ -47,11 +47,14 @@ import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { PdfHorizontalViewer } from './PdfHorizontalViewer';
 import { generatePdfThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
+import { HeaderMenuControls, applyFileSorting, type SortOption } from './HeaderMenuControls';
 
 interface DocumentsMenuViewProps {
   onBack: () => void;
   onOpenStudySpace?: (file?: any, folderName?: string, folderFiles?: any[]) => void;
   onOpenCreateShareLink?: (items: any[]) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 function formatBytes(bytes: number, decimals = 1) {
@@ -130,13 +133,16 @@ const getDocumentTheme = (ext: string = 'PDF') => {
 export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
   onBack,
   onOpenStudySpace,
-  onOpenCreateShareLink
+  onOpenCreateShareLink,
+  isFullscreen = false,
+  onToggleFullscreen
 }) => {
   const [documentsList, setDocumentsList] = useState<FileItem[]>(() => {
     return CloudDataStore.getState().documents || [];
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortOption, setSortOption] = useState<SortOption>('recent');
   const [activeFilter, setActiveFilter] = useState<'all' | 'pdf' | 'cours' | 'td' | 'devoirs' | 'txt'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
@@ -1235,7 +1241,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     return typeof document !== 'undefined' ? createPortal(content, document.body) : null;
   };
 
-  // Filtrage et tri des documents (avec tri des documents épinglés en tête)
+  // Filtrage et tri des documents
   const filteredDocuments = useMemo(() => {
     let list = [...documentsList];
     if (searchQuery.trim()) {
@@ -1254,12 +1260,8 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       list = list.filter(d => ['txt', 'md'].includes((d.extension || '').toLowerCase()));
     }
 
-    return list.sort((a, b) => {
-      if (a.isPinned && !b.isPinned) return -1;
-      if (!a.isPinned && b.isPinned) return 1;
-      return 0;
-    });
-  }, [documentsList, searchQuery, activeFilter]);
+    return applyFileSorting(list, sortOption);
+  }, [documentsList, searchQuery, activeFilter, sortOption]);
 
   // =========================================================================
   // RENDU DU MENU 3 TRAITS DÉDIÉ ET INDÉPENDANT POUR CHAQUE DOCUMENT (IMAGE 2)
@@ -1966,6 +1968,14 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
               <Plus className="w-4 h-4 text-blue-400 stroke-[2.5]" />
               <span>+ Importer</span>
             </button>
+
+            {/* Bouton Plein écran (entouré en rouge) + Bouton 3 traits derrière lui */}
+            <HeaderMenuControls
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={onToggleFullscreen}
+              sortOption={sortOption}
+              onSortChange={setSortOption}
+            />
           </div>
         </div>
       </header>
@@ -1996,10 +2006,25 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             ) : filteredDocuments.length === 0 ? (
               <div className="py-20 text-center text-stone-500 dark:text-slate-400">
                 <FileText className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-blue-400" />
-                <p className="text-sm font-semibold">Aucun document disponible</p>
-                <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                  Ce dossier ne contient aucun document pour le moment.
+                <p className="text-sm font-semibold">
+                  {sortOption === 'duplicates'
+                    ? 'Aucun fichier doublon trouvé'
+                    : 'Aucun document disponible'}
                 </p>
+                <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                  {sortOption === 'duplicates'
+                    ? 'Tous vos documents sont uniques. Aucun doublon détecté.'
+                    : 'Ce dossier ne contient aucun document pour le moment.'}
+                </p>
+                {sortOption === 'duplicates' && (
+                  <button
+                    type="button"
+                    onClick={() => setSortOption('recent')}
+                    className="mt-3 px-4 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                  >
+                    Afficher tous les documents
+                  </button>
+                )}
               </div>
             ) : (
               /* GRILLE DES CARTES DE DOCUMENTS (IMAGE 1) */

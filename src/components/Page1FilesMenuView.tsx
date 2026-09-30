@@ -81,7 +81,8 @@ import {
   Square,
   UserCheck,
   Palette,
-  Loader2
+  Loader2,
+  ArrowDownWideNarrow
 } from 'lucide-react';
 import { getWorkerApiUrl, StudyCloudAPI } from '../services/api';
 import { getDownloadedFiles, recordDownloadedFile, removeDownloadedFile, clearLegacyDownloadedFiles, DownloadedItem } from '../services/downloadsManager';
@@ -135,6 +136,12 @@ import { AppsMenuView } from './AppsMenuView';
 import { CloudSpaceMenuView } from './CloudSpaceMenuView';
 import { DownloadsMenuView } from './DownloadsMenuView';
 import { SecureFolderMenuView } from './SecureFolderMenuView';
+import { 
+  type SortOption, 
+  applyFileSorting, 
+  restoreDefaultWallpaperAndAvatar,
+  HeaderMenuControls 
+} from './HeaderMenuControls';
 
 // Nettoyage immédiat de tout fichier figé en localStorage pour éviter le plantage QuotaExceededError
 if (typeof window !== 'undefined') {
@@ -400,7 +407,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const [isPlayerMenuOpen, setIsPlayerMenuOpen] = useState(false);
   // État du menu 3 traits supérieur (Tri et bouton œil)
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
-  const [sortOption, setSortOption] = useState<'recent' | 'oldest' | 'pinned'>('recent');
+  const [sortOption, setSortOption] = useState<SortOption>('recent');
   const [isEyeViewActive, setIsEyeViewActive] = useState(false);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
@@ -4032,17 +4039,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // Fonction de tri universelle appliquée aux listes selon l'option sélectionnée (menu 3 traits)
   const applySorting = (list: FileItem[]): FileItem[] => {
-    let result = [...list];
-    if (sortOption === 'pinned') {
-      result.sort((a, b) => {
-        if (a.isPinned && !b.isPinned) return -1;
-        if (!a.isPinned && b.isPinned) return 1;
-        return 0;
-      });
-    } else if (sortOption === 'oldest') {
-      result.reverse();
-    }
-    return result;
+    return applyFileSorting(list, sortOption);
   };
 
   // Liste des documents pour le sous-menu Documents (Image 1) - Filtrage strict par nature
@@ -7058,6 +7055,46 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <span>Ceux qui sont épinglés</span>
               </div>
               {sortOption === 'pinned' && <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+            </button>
+
+            {/* Fichiers doublons */}
+            <button
+              type="button"
+              onClick={() => {
+                setSortOption('duplicates');
+                setIsHeaderMenuOpen(false);
+              }}
+              className={`w-full px-3 py-2 flex items-center justify-between text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer text-left ${
+                sortOption === 'duplicates'
+                  ? 'bg-rose-600/20 text-rose-400'
+                  : 'text-slate-100 hover:bg-white/10'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Copy className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                <span>Fichiers doublons</span>
+              </div>
+              {sortOption === 'duplicates' && <Check className="w-3.5 h-3.5 text-rose-400 shrink-0" />}
+            </button>
+
+            {/* Trier par plus lourd au moyen */}
+            <button
+              type="button"
+              onClick={() => {
+                setSortOption('size-desc');
+                setIsHeaderMenuOpen(false);
+              }}
+              className={`w-full px-3 py-2 flex items-center justify-between text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer text-left ${
+                sortOption === 'size-desc'
+                  ? 'bg-emerald-600/20 text-emerald-400'
+                  : 'text-slate-100 hover:bg-white/10'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <ArrowDownWideNarrow className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                <span>Trier par plus lourd au moyen</span>
+              </div>
+              {sortOption === 'size-desc' && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
             </button>
           </div>
 
@@ -11070,34 +11107,46 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           onBack={() => setActiveDedicatedMenu(null)}
           onOpenStudySpace={onOpenStudySpace}
           onOpenCreateShareLink={onOpenCreateShareLink}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
         />
       ) : activeDedicatedMenu === 'documents' ? (
         <DocumentsMenuView
           onBack={() => setActiveDedicatedMenu(null)}
           onOpenStudySpace={onOpenStudySpace}
           onOpenCreateShareLink={onOpenCreateShareLink}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
         />
       ) : activeDedicatedMenu === 'videos' ? (
         <VideosMenuView
           onBack={() => setActiveDedicatedMenu(null)}
           onOpenStudySpace={onOpenStudySpace}
           onOpenCreateShareLink={onOpenCreateShareLink}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
         />
       ) : activeDedicatedMenu === 'images' ? (
         <ImagesMenuView
           onBack={() => setActiveDedicatedMenu(null)}
           onOpenStudySpace={onOpenStudySpace}
           onOpenCreateShareLink={onOpenCreateShareLink}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
         />
       ) : activeDedicatedMenu === 'trash' ? (
         <TrashMenuView
           onBack={() => setActiveDedicatedMenu(null)}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
         />
       ) : activeDedicatedMenu === 'favorites' ? (
         <FavoritesMenuView
           onBack={() => setActiveDedicatedMenu(null)}
           onOpenStudySpace={onOpenStudySpace}
           onOpenCreateShareLink={onOpenCreateShareLink}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
         />
       ) : activeDedicatedMenu === 'apps' ? (
         <AppsMenuView
@@ -11114,16 +11163,22 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               setActiveDedicatedMenu(cat);
             }
           }}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
         />
       ) : activeDedicatedMenu === 'downloads' ? (
         <DownloadsMenuView
           onBack={() => setActiveDedicatedMenu(null)}
           onOpenStudySpace={onOpenStudySpace}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
         />
       ) : activeDedicatedMenu === 'secure-folder' ? (
         <SecureFolderMenuView
           onBack={() => setActiveDedicatedMenu(null)}
           onOpenStudySpace={onOpenStudySpace}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
         />
       ) : currentSubView ? (
         <div className="flex-1 flex flex-col w-full animate-in fade-in duration-200 min-h-screen">
@@ -11281,6 +11336,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       <Maximize2 className="w-4 h-4 stroke-[2.2]" />
                     )}
                   </button>
+
+                  {/* Bouton 3 traits d'en-tête derrière le bouton zoom */}
+                  <div className="relative studycloud-menu-trigger">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsHeaderMenuOpen(!isHeaderMenuOpen);
+                      }}
+                      className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full ${
+                        isHeaderMenuOpen ? 'bg-amber-500/20 text-amber-400 border-amber-400/40' : 'bg-[#04060A] hover:bg-[#0A0E18] text-white border-white/10'
+                      } border transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm`}
+                      title="Options d'affichage et de tri (3 traits)"
+                    >
+                      <Menu className="w-4 h-4 stroke-[2.2]" />
+                    </button>
+
+                    {renderHeaderOptionsMenu()}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -11458,7 +11532,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   <button
                     type="button"
                     onClick={() => setIsFullscreen(!isFullscreen)}
-                    className="hidden md:flex items-center justify-center w-9 h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                    className="flex items-center justify-center w-9 h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
                     title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet"}
                   >
                     {isFullscreen ? (

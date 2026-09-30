@@ -23,16 +23,25 @@ import { CloudStorageAPI } from '../services/cloudStorageService';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
+import { HeaderMenuControls, applyFileSorting, type SortOption } from './HeaderMenuControls';
 
 interface DownloadsMenuViewProps {
   onBack: () => void;
   onOpenStudySpace?: (file?: any, folderName?: string, folderFiles?: any[]) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
-export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({ onBack, onOpenStudySpace }) => {
+export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
+  onBack,
+  onOpenStudySpace,
+  isFullscreen = false,
+  onToggleFullscreen
+}) => {
   const [downloadedList, setDownloadedList] = useState<DownloadedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortOption, setSortOption] = useState<SortOption>('recent');
   const [selectedItem, setSelectedItem] = useState<DownloadedItem | null>(null);
   const [resolvedBlobUrl, setResolvedBlobUrl] = useState<string>('');
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
@@ -134,10 +143,13 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({ onBack, on
   };
 
   const filteredItems = useMemo(() => {
-    if (!searchQuery.trim()) return downloadedList;
-    const q = searchQuery.toLowerCase().trim();
-    return downloadedList.filter(d => (d.name || '').toLowerCase().includes(q));
-  }, [downloadedList, searchQuery]);
+    let list = downloadedList;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(d => (d.name || '').toLowerCase().includes(q));
+    }
+    return applyFileSorting(list, sortOption);
+  }, [downloadedList, searchQuery, sortOption]);
 
   const getItemIcon = (item: DownloadedItem) => {
     const ext = (item.extension || '').toLowerCase();
@@ -305,8 +317,8 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({ onBack, on
             </div>
           </div>
 
-          {/* DROITE : Espace d'étude */}
-          <div className="shrink-0 flex items-center gap-2">
+          {/* DROITE : Espace d'étude & Fullscreen & 3 traits */}
+          <div className="shrink-0 flex items-center gap-1.5 sm:gap-2">
             {onOpenStudySpace && (
               <button
                 type="button"
@@ -317,6 +329,14 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({ onBack, on
                 <span>Espace d'étude</span>
               </button>
             )}
+
+            {/* Bouton Plein écran (entouré en rouge) + Bouton 3 traits derrière lui */}
+            <HeaderMenuControls
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={onToggleFullscreen}
+              sortOption={sortOption}
+              onSortChange={setSortOption}
+            />
           </div>
         </div>
       </header>
@@ -339,10 +359,25 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({ onBack, on
           ) : filteredItems.length === 0 ? (
             <div className="py-20 text-center text-stone-500">
               <Download className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-sky-500" />
-              <p className="text-sm font-bold text-stone-800">Aucun fichier téléchargé</p>
-              <p className="text-xs text-stone-500 mt-1 max-w-sm mx-auto">
-                Les fichiers téléchargés pour une lecture hors-ligne s'afficheront ici.
+              <p className="text-sm font-bold text-stone-800">
+                {sortOption === 'duplicates'
+                  ? 'Aucun fichier doublon trouvé'
+                  : 'Aucun fichier téléchargé'}
               </p>
+              <p className="text-xs text-stone-500 mt-1 max-w-sm mx-auto">
+                {sortOption === 'duplicates'
+                  ? 'Tous vos fichiers téléchargés sont uniques.'
+                  : "Les fichiers téléchargés pour une lecture hors-ligne s'afficheront ici."}
+              </p>
+              {sortOption === 'duplicates' && (
+                <button
+                  type="button"
+                  onClick={() => setSortOption('recent')}
+                  className="mt-3 px-4 py-1.5 rounded-full bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                >
+                  Afficher tous les téléchargements
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-2">

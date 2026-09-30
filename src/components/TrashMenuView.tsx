@@ -34,6 +34,7 @@ import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
+import { HeaderMenuControls, applyFileSorting, type SortOption } from './HeaderMenuControls';
 
 const getDocumentTheme = (ext: string = 'PDF') => {
   const upper = (ext || 'PDF').toUpperCase();
@@ -81,14 +82,21 @@ const getDocumentTheme = (ext: string = 'PDF') => {
 
 interface TrashMenuViewProps {
   onBack: () => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
-export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
+export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
+  onBack,
+  isFullscreen = false,
+  onToggleFullscreen
+}) => {
   const [trashList, setTrashList] = useState<FileItem[]>(() => {
     return CloudDataStore.getState().trash || [];
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortOption, setSortOption] = useState<SortOption>('recent');
   const [activeFilter, setActiveFilter] = useState<'all' | 'audio' | 'documents' | 'images' | 'videos' | 'classeur'>('all');
 
   // Lecteur / visualiseur actif sur le panneau droit (split screen comme dans les autres menus)
@@ -312,8 +320,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
       list = list.filter(f => f.name.toLowerCase().includes(q) || (f.artist && f.artist.toLowerCase().includes(q)));
     }
 
-    return list;
-  }, [trashList, activeFilter, searchQuery]);
+    return applyFileSorting(list, sortOption);
+  }, [trashList, activeFilter, searchQuery, sortOption]);
 
   // Groupement par catégorie pour affichage fidèle avec titres de sections
   const categorized = useMemo(() => {
@@ -1368,6 +1376,14 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({ onBack }) => {
             >
               <CheckSquare className="w-4 h-4" />
             </button>
+
+            {/* Bouton Plein écran (entouré en rouge) + Bouton 3 traits derrière lui */}
+            <HeaderMenuControls
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={onToggleFullscreen}
+              sortOption={sortOption}
+              onSortChange={setSortOption}
+            />
           </div>
         </div>
 

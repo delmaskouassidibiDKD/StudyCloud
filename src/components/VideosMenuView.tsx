@@ -43,11 +43,14 @@ import { VideoCardPreview } from './VideoCardPreview';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { getWorkerApiUrl } from '../services/api';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
+import { HeaderMenuControls, applyFileSorting, type SortOption } from './HeaderMenuControls';
 
 interface VideosMenuViewProps {
   onBack: () => void;
   onOpenStudySpace?: (file?: any, folderName?: string, folderFiles?: any[]) => void;
   onOpenCreateShareLink?: (items: any[]) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 // Fonction utilitaire pour calculer le nom d'un doublon
@@ -73,13 +76,16 @@ const computeDuplicateName = (originalName: string, existingNames: string[]): st
 export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   onBack,
   onOpenStudySpace,
-  onOpenCreateShareLink
+  onOpenCreateShareLink,
+  isFullscreen = false,
+  onToggleFullscreen
 }) => {
   const [videosList, setVideosList] = useState<FileItem[]>(() => {
     return CloudDataStore.getState().videos || [];
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortOption, setSortOption] = useState<SortOption>('recent');
 
   // Lecteur vidéo actif (split à droite - Image 4)
   const [selectedVideo, setSelectedVideo] = useState<FileItem | null>(null);
@@ -555,24 +561,20 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     }
   };
 
-  // Filtrage et tri (épinglés en tête)
+  // Filtrage et tri (selon l'option sélectionnée)
   const filteredVideos = useMemo(() => {
     let list = videosList;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter(v => v.name.toLowerCase().includes(q));
     }
-    return [...list].sort((a, b) => {
-      if (a.isPinned && !b.isPinned) return -1;
-      if (!a.isPinned && b.isPinned) return 1;
-      return 0;
-    });
-  }, [videosList, searchQuery]);
+    return applyFileSorting(list, sortOption);
+  }, [videosList, searchQuery, sortOption]);
 
-  // Réinitialisation du défilement infini lors d'une nouvelle recherche
+  // Réinitialisation du défilement infini lors d'une nouvelle recherche ou tri
   useEffect(() => {
     setVisibleCount(BATCH_SIZE);
-  }, [searchQuery]);
+  }, [searchQuery, sortOption]);
 
   // Détection du défilement infini pour charger le lot suivant (12 vidéos par lot)
   useEffect(() => {
@@ -1820,6 +1822,14 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
               <Plus className="w-4 h-4 text-purple-400 stroke-[2.5]" />
               <span>+ Importer</span>
             </button>
+
+            {/* Bouton Plein écran (entouré en rouge) + Bouton 3 traits derrière lui */}
+            <HeaderMenuControls
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={onToggleFullscreen}
+              sortOption={sortOption}
+              onSortChange={setSortOption}
+            />
           </div>
         </div>
       </header>
@@ -1871,10 +1881,25 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
             ) : filteredVideos.length === 0 ? (
               <div className="py-20 text-center text-stone-500 dark:text-slate-400">
                 <Film className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-purple-400" />
-                <p className="text-sm font-semibold">Aucune vidéo disponible</p>
-                <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                  Ce dossier ne contient aucune vidéo pour le moment.
+                <p className="text-sm font-semibold">
+                  {sortOption === 'duplicates'
+                    ? 'Aucun fichier doublon trouvé'
+                    : 'Aucune vidéo disponible'}
                 </p>
+                <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                  {sortOption === 'duplicates'
+                    ? 'Toutes vos vidéos sont uniques. Aucun doublon détecté.'
+                    : 'Ce dossier ne contient aucune vidéo pour le moment.'}
+                </p>
+                {sortOption === 'duplicates' && (
+                  <button
+                    type="button"
+                    onClick={() => setSortOption('recent')}
+                    className="mt-3 px-4 py-1.5 rounded-full bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                  >
+                    Afficher toutes les vidéos
+                  </button>
+                )}
               </div>
             ) : (
               <>

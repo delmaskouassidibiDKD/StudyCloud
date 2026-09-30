@@ -42,11 +42,14 @@ import { UploadQueue } from '../services/uploadQueue';
 import { ImageCardPreview } from './ImageCardPreview';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
+import { HeaderMenuControls, applyFileSorting, type SortOption } from './HeaderMenuControls';
 
 interface ImagesMenuViewProps {
   onBack: () => void;
   onOpenStudySpace?: (file?: any, folderName?: string, folderFiles?: any[]) => void;
   onOpenCreateShareLink?: (items: any[]) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 // Fonction utilitaire pour calculer le nom d'un doublon
@@ -72,13 +75,16 @@ const computeDuplicateName = (originalName: string, existingNames: string[]): st
 export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
   onBack,
   onOpenStudySpace,
-  onOpenCreateShareLink
+  onOpenCreateShareLink,
+  isFullscreen = false,
+  onToggleFullscreen
 }) => {
   const [imagesList, setImagesList] = useState<FileItem[]>(() => {
     return CloudDataStore.getState().images || [];
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortOption, setSortOption] = useState<SortOption>('recent');
 
   // Lecteur d'image actif (split à droite - Image 5)
   const [selectedImage, setSelectedImage] = useState<FileItem | null>(null);
@@ -542,24 +548,20 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     }
   };
 
-  // Filtrage et tri (épinglés en tête)
+  // Filtrage et tri (selon l'option sélectionnée)
   const filteredImages = useMemo(() => {
     let list = imagesList;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter(i => i.name.toLowerCase().includes(q));
     }
-    return [...list].sort((a, b) => {
-      if (a.isPinned && !b.isPinned) return -1;
-      if (!a.isPinned && b.isPinned) return 1;
-      return 0;
-    });
-  }, [imagesList, searchQuery]);
+    return applyFileSorting(list, sortOption);
+  }, [imagesList, searchQuery, sortOption]);
 
-  // Réinitialisation du défilement infini lors d'une nouvelle recherche
+  // Réinitialisation du défilement infini lors d'une nouvelle recherche ou tri
   useEffect(() => {
     setVisibleCount(BATCH_SIZE);
-  }, [searchQuery]);
+  }, [searchQuery, sortOption]);
 
   // Détection du défilement infini pour charger le lot suivant (12 images par lot)
   useEffect(() => {
@@ -1810,6 +1812,16 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
               <Plus className="w-4 h-4 text-emerald-400 stroke-[2.5]" />
               <span>+ Importer</span>
             </button>
+
+            {/* Bouton Plein écran (entouré en rouge) + Bouton 3 traits derrière lui */}
+            <HeaderMenuControls
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={onToggleFullscreen}
+              sortOption={sortOption}
+              onSortChange={setSortOption}
+              isImageMenu={true}
+              onRestoreWallpaper={() => showToast("Fond d'écran et photo de profil d'origine restaurés !")}
+            />
           </div>
         </div>
       </header>
@@ -1860,10 +1872,25 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
             ) : filteredImages.length === 0 ? (
               <div className="py-20 text-center text-stone-500 dark:text-slate-400">
                 <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-emerald-400" />
-                <p className="text-sm font-semibold">Aucune image disponible</p>
-                <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                  Ce dossier ne contient aucune image pour le moment.
+                <p className="text-sm font-semibold">
+                  {sortOption === 'duplicates'
+                    ? 'Aucun fichier doublon trouvé'
+                    : 'Aucune image disponible'}
                 </p>
+                <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                  {sortOption === 'duplicates'
+                    ? 'Toutes vos images sont uniques. Aucun doublon détecté.'
+                    : 'Ce dossier ne contient aucune image pour le moment.'}
+                </p>
+                {sortOption === 'duplicates' && (
+                  <button
+                    type="button"
+                    onClick={() => setSortOption('recent')}
+                    className="mt-3 px-4 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                  >
+                    Afficher toutes les images
+                  </button>
+                )}
               </div>
             ) : (
               <>

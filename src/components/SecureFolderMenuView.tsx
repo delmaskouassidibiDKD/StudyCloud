@@ -95,9 +95,16 @@ const getDocumentTheme = (ext: string = 'PDF') => {
 interface SecureFolderMenuViewProps {
   onBack: () => void;
   onOpenStudySpace?: (file?: any, folderName?: string, folderFiles?: any[]) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
-export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBack, onOpenStudySpace }) => {
+export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ 
+  onBack, 
+  onOpenStudySpace,
+  isFullscreen,
+  onToggleFullscreen 
+}) => {
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [hasServerPin, setHasServerPin] = useState<boolean | null>(null);
   const [securePinInput, setSecurePinInput] = useState('');
@@ -1591,11 +1598,27 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
             </div>
           )}
 
-          {/* Bloc Droite : Actions Déverrouillé */}
-          {isUnlocked && (
-            <div className="shrink-0 flex items-center gap-1.5 sm:gap-2 order-2 sm:order-3">
-              {/* Menu 3 traits général */}
-              <div className="relative studycloud-sec-menu-trigger">
+          {/* Bloc Droite : Actions */}
+          <div className="shrink-0 flex items-center gap-1.5 sm:gap-2 order-2 sm:order-3">
+            {onToggleFullscreen && (
+              <button
+                type="button"
+                onClick={onToggleFullscreen}
+                className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-stone-700/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet"}
+              >
+                {isFullscreen ? (
+                  <Minimize2 className="w-4 h-4 stroke-[2.2]" />
+                ) : (
+                  <Maximize2 className="w-4 h-4 stroke-[2.2]" />
+                )}
+              </button>
+            )}
+
+            {isUnlocked && (
+              <>
+                {/* Menu 3 traits général */}
+                <div className="relative studycloud-sec-menu-trigger">
                 <button
                   type="button"
                   onClick={() => setIsHeaderMenuOpen(!isHeaderMenuOpen)}
@@ -1759,10 +1782,11 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
                 <Lock className="w-3.5 h-3.5 stroke-[2.5]" />
                 <span className="hidden xs:inline">Verrouiller</span>
               </button>
-            </div>
+            </>
           )}
         </div>
-      </header>
+      </div>
+    </header>
 
       {/* CONTENU PRINCIPAL */}
       {!isUnlocked ? (

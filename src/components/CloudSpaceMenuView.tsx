@@ -61,6 +61,8 @@ interface CloudSpaceMenuViewProps {
   onNavigateToCategory?: (category: 'audio' | 'documents' | 'videos' | 'images' | 'trash' | 'classeur') => void;
   onOpenStudySpace?: (file?: any, folderName?: string, folderFiles?: any[]) => void;
   onOpenCreateShareLink?: (items: any[]) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 export type CloudTabId =
@@ -127,7 +129,9 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   onOpenPricing,
   onNavigateToCategory,
   onOpenStudySpace,
-  onOpenCreateShareLink
+  onOpenCreateShareLink,
+  isFullscreen,
+  onToggleFullscreen
 }) => {
   // Onglet actif : 'classeur' par défaut
   const [activeTab, setActiveTab] = useState<CloudTabId>('classeur');
@@ -2140,6 +2144,21 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                 </button>
               )}
             </div>
+
+            {onToggleFullscreen && (
+              <button
+                type="button"
+                onClick={onToggleFullscreen}
+                className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-stone-700/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet"}
+              >
+                {isFullscreen ? (
+                  <Minimize2 className="w-4 h-4 stroke-[2.2]" />
+                ) : (
+                  <Maximize2 className="w-4 h-4 stroke-[2.2]" />
+                )}
+              </button>
+            )}
           </div>
         </div>
       </header>

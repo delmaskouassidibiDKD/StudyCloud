@@ -47,11 +47,14 @@ import { UploadQueue } from '../services/uploadQueue';
 import { AudioCardPreview } from './AudioCardPreview';
 import { getWorkerApiUrl } from '../services/api';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
+import { HeaderMenuControls, applyFileSorting, type SortOption } from './HeaderMenuControls';
 
 interface AudioMenuViewProps {
   onBack: () => void;
   onOpenStudySpace?: (file?: any, folderName?: string, folderFiles?: any[]) => void;
   onOpenCreateShareLink?: (items: any[]) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 function formatAudioTime(seconds: number): string {
@@ -84,13 +87,16 @@ const computeDuplicateName = (originalName: string, existingNames: string[]): st
 export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   onBack,
   onOpenStudySpace,
-  onOpenCreateShareLink
+  onOpenCreateShareLink,
+  isFullscreen = false,
+  onToggleFullscreen
 }) => {
   const [audioList, setAudioList] = useState<FileItem[]>(() => {
     return CloudDataStore.getState().audio || [];
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortOption, setSortOption] = useState<SortOption>('recent');
   const [selectedTrack, setSelectedTrack] = useState<FileItem | null>(null);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -706,7 +712,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     }
   };
 
-  // Filtrage et tri (avec épinglés en tête)
+  // Filtrage et tri (selon l'option sélectionnée)
   const filteredAudio = useMemo(() => {
     let list = audioList;
     if (searchQuery.trim()) {
@@ -715,12 +721,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
         t => t.name.toLowerCase().includes(q) || (t.artist && t.artist.toLowerCase().includes(q))
       );
     }
-    return [...list].sort((a, b) => {
-      if (a.isPinned && !b.isPinned) return -1;
-      if (!a.isPinned && b.isPinned) return 1;
-      return 0;
-    });
-  }, [audioList, searchQuery]);
+    return applyFileSorting(list, sortOption);
+  }, [audioList, searchQuery, sortOption]);
 
   const isAllChecked = filteredAudio.length > 0 && filteredAudio.every(t => selectedItemIds.includes(t.id));
 
@@ -1931,6 +1933,14 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               <Plus className="w-4 h-4 text-amber-400 stroke-[2.5]" />
               <span>+ Importer</span>
             </button>
+
+            {/* Bouton Plein écran (entouré en rouge) + Bouton 3 traits derrière lui */}
+            <HeaderMenuControls
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={onToggleFullscreen}
+              sortOption={sortOption}
+              onSortChange={setSortOption}
+            />
           </div>
         </div>
       </header>
@@ -1966,10 +1976,25 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
             ) : filteredAudio.length === 0 ? (
               <div className="py-20 text-center text-stone-500 dark:text-slate-400">
                 <Music className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
-                <p className="text-sm font-semibold">Aucun son disponible</p>
-                <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                  Ce dossier ne contient aucun fichier audio pour le moment.
+                <p className="text-sm font-semibold">
+                  {sortOption === 'duplicates'
+                    ? 'Aucun fichier doublon trouvé'
+                    : 'Aucun son disponible'}
                 </p>
+                <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                  {sortOption === 'duplicates'
+                    ? 'Toutes vos pistes audio sont uniques. Aucun doublon détecté.'
+                    : 'Ce dossier ne contient aucun fichier audio pour le moment.'}
+                </p>
+                {sortOption === 'duplicates' && (
+                  <button
+                    type="button"
+                    onClick={() => setSortOption('recent')}
+                    className="mt-3 px-4 py-1.5 rounded-full bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                  >
+                    Afficher tous les sons
+                  </button>
+                )}
               </div>
             ) : (
               <div className="space-y-2">
