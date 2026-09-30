@@ -37,7 +37,10 @@ import {
   Minimize2,
   ZoomIn,
   ZoomOut,
-  RotateCw
+  RotateCw,
+  Eye,
+  EyeOff,
+  AlertCircle
 } from 'lucide-react';
 import { CloudDataStore, FileItem } from '../services/cloudDataStore';
 import { CloudStorageAPI } from '../services/cloudStorageService';
@@ -143,8 +146,27 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   // Gestion du dossier sécurisé (code PIN et filtre de catégorie)
   const [isSecureFolderUnlocked, setIsSecureFolderUnlocked] = useState(false);
   const [securePinInput, setSecurePinInput] = useState('');
+  const [securePinConfirmInput, setSecurePinConfirmInput] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [hasServerPin, setHasServerPin] = useState<boolean | null>(null);
+  const [isSubmittingPin, setIsSubmittingPin] = useState(false);
   const [securePinError, setSecurePinError] = useState<string | null>(null);
   const [secureCategoryFilter, setSecureCategoryFilter] = useState<'all' | 'documents' | 'images' | 'videos' | 'audio' | 'classeur'>('all');
+
+  // Détection du code PIN : vérification locale ET distante auprès du Worker Cloudflare
+  useEffect(() => {
+    const localPin = localStorage.getItem('studycloud_secure_folder_pin');
+    if (localPin) {
+      setHasServerPin(true);
+    }
+    CloudStorageAPI.isSecureFolderConfigured()
+      .then((configured) => {
+        setHasServerPin(configured || Boolean(localStorage.getItem('studycloud_secure_folder_pin')));
+      })
+      .catch(() => {
+        setHasServerPin(Boolean(localStorage.getItem('studycloud_secure_folder_pin')));
+      });
+  }, []);
 
   // Éditeur de notes intégré (Bloc-notes)
   const [noteTextContent, setNoteTextContent] = useState<string>('');
@@ -405,37 +427,70 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
 
   const handleUnlockSecureFolder = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const stored = localStorage.getItem('studycloud_secure_folder_pin');
+    if (isSubmittingPin) return;
+
     const trimmed = securePinInput.trim();
-    if (!stored) {
-      if (trimmed.length >= 4) {
-        localStorage.setItem('studycloud_secure_folder_pin', trimmed);
-        try {
-          await CloudStorageAPI.setSecurePin(trimmed);
-        } catch (err) {}
-        setIsSecureFolderUnlocked(true);
-        setSecurePinInput('');
-        setSecurePinError(null);
-        showToast('Code secret configuré ! Coffre-fort déverrouillé.');
-      } else {
-        setIsSecureFolderUnlocked(true);
-        showToast('Dossier sécurisé déverrouillé.');
-      }
+    if (!trimmed) {
+      setSecurePinError('Veuillez saisir votre code secret.');
       return;
     }
-    const isLocalOk = trimmed === stored.trim();
+
+    const stored = localStorage.getItem('studycloud_secure_folder_pin');
+    const isConfigured = hasServerPin ?? Boolean(stored);
+
+    setIsSubmittingPin(true);
+
+    // 1. Si déjà configuré ou si un code est fourni, tester d'abord la validation en ligne ou locale
+    const isLocalOk = stored ? trimmed === stored.trim() : false;
     let isWorkerOk = false;
     try {
       isWorkerOk = await CloudStorageAPI.verifySecurePin(trimmed);
-    } catch (err) {}
+    } catch {}
 
     if (isLocalOk || isWorkerOk) {
+      localStorage.setItem('studycloud_secure_folder_pin', trimmed);
+      setHasServerPin(true);
       setIsSecureFolderUnlocked(true);
       setSecurePinInput('');
+      setSecurePinConfirmInput('');
       setSecurePinError(null);
-    } else {
-      setSecurePinError('Code incorrect. Veuillez réessayer.');
+      setIsSubmittingPin(false);
+      showToast('Dossier sécurisé déverrouillé ✅');
+      return;
     }
+
+    // 2. Si non configuré (premier enregistrement)
+    if (!isConfigured) {
+      if (trimmed.length < 4) {
+        setSecurePinError('Le code secret doit comporter au moins 4 caractères.');
+        setIsSubmittingPin(false);
+        return;
+      }
+      if (trimmed !== securePinConfirmInput.trim()) {
+        setSecurePinError('La confirmation ne correspond pas au code saisi.');
+        setIsSubmittingPin(false);
+        return;
+      }
+      try {
+        localStorage.setItem('studycloud_secure_folder_pin', trimmed);
+        await CloudStorageAPI.setSecurePin(trimmed).catch(() => {});
+        setHasServerPin(true);
+        setIsSecureFolderUnlocked(true);
+        setSecurePinInput('');
+        setSecurePinConfirmInput('');
+        setSecurePinError(null);
+        showToast('Code secret configuré avec succès ! Coffre-fort déverrouillé.');
+      } catch (err: any) {
+        setSecurePinError(err.message || 'Erreur lors de la configuration.');
+      } finally {
+        setIsSubmittingPin(false);
+      }
+      return;
+    }
+
+    // 3. Sinon le code est incorrect
+    setIsSubmittingPin(false);
+    setSecurePinError('Code incorrect. Veuillez réessayer.');
   };
 
   const handleShareFile = (file: FileItem) => {
@@ -2510,37 +2565,87 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           {activeTab === 'secure-folder' && (
             <div className="space-y-4 animate-in fade-in duration-200">
               {!isSecureFolderUnlocked ? (
-                <div className="py-16 sm:py-24 text-center max-w-sm mx-auto space-y-4 animate-in fade-in duration-200">
-                  <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto text-amber-400 shadow-md">
-                    <Lock className="w-8 h-8 stroke-[1.8]" />
+                <div className="py-6 sm:py-12 flex items-center justify-center p-2 sm:p-4">
+                  <div className="w-full max-w-md p-6 sm:p-8 rounded-3xl bg-[#090D16] border border-amber-500/30 shadow-[0_20px_60px_rgba(0,0,0,0.8),0_0_40px_rgba(245,158,11,0.15)] flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-amber-500/25 via-amber-600/15 to-transparent border border-amber-500/40 text-amber-400 flex items-center justify-center mb-5 shadow-[0_0_25px_rgba(245,158,11,0.25)]">
+                      <Lock className="w-8 h-8 sm:w-10 sm:h-10 stroke-[2.2]" />
+                    </div>
+
+                    <h3 className="text-lg sm:text-xl font-black text-white tracking-tight">
+                      {hasServerPin === false ? "Définir votre code de sécurité" : "Dossier Sécurisé Verrouillé"}
+                    </h3>
+
+                    <p className="text-xs sm:text-sm text-slate-400 mt-2 max-w-xs leading-relaxed">
+                      {hasServerPin === false
+                        ? "Pour sécuriser vos fichiers, définissez un code secret. Le code doit comporter plus de 4 caractères."
+                        : "Veuillez saisir votre code secret pour accéder à vos fichiers protégés."}
+                    </p>
+
+                    <form onSubmit={handleUnlockSecureFolder} className="w-full mt-6 space-y-4">
+                      <div className="w-full text-left">
+                        <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                          {hasServerPin === false ? "Nouveau code (au moins 4 caractères)" : "Code secret"}
+                        </label>
+                        <div className="relative flex items-center">
+                          <input
+                            type={showPassword ? "text" : "password"}
+                            value={securePinInput}
+                            onChange={(e) => {
+                              setSecurePinInput(e.target.value);
+                              setSecurePinError(null);
+                            }}
+                            placeholder={hasServerPin === false ? "Au moins 4 caractères..." : "Entrez votre code..."}
+                            autoFocus
+                            className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-sm tracking-wider pr-10"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 p-1 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                            title={showPassword ? "Masquer le code" : "Afficher le code"}
+                          >
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {hasServerPin === false && (
+                        <div className="w-full text-left">
+                          <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                            Confirmer le code
+                          </label>
+                          <div className="relative flex items-center">
+                            <input
+                              type={showPassword ? "text" : "password"}
+                              value={securePinConfirmInput}
+                              onChange={(e) => {
+                                setSecurePinConfirmInput(e.target.value);
+                                setSecurePinError(null);
+                              }}
+                              placeholder="Retapez le code..."
+                              className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-sm tracking-wider"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {securePinError && (
+                        <div className="flex items-center gap-1.5 p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-semibold text-left">
+                          <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                          <span>{securePinError}</span>
+                        </div>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={isSubmittingPin}
+                        className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 hover:from-amber-400 hover:via-amber-500 hover:to-orange-500 disabled:opacity-50 text-black font-black text-xs sm:text-sm tracking-wide shadow-[0_4px_20px_rgba(245,158,11,0.4)] transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        <Lock className="w-4 h-4" />
+                        <span>{isSubmittingPin ? "Vérification..." : (hasServerPin === false ? "Enregistrer et déverrouiller" : "Déverrouiller le dossier")}</span>
+                      </button>
+                    </form>
                   </div>
-                  <div>
-                    <h4 className="text-base sm:text-lg font-bold text-white tracking-tight">Dossier sécurisé protégé</h4>
-                    <p className="text-xs text-stone-400 mt-1">Saisissez votre code PIN pour accéder à vos fichiers confidentiels</p>
-                  </div>
-                  <form onSubmit={handleUnlockSecureFolder} className="space-y-3 pt-2">
-                    <input
-                      type="password"
-                      maxLength={10}
-                      value={securePinInput}
-                      onChange={(e) => {
-                        setSecurePinInput(e.target.value);
-                        setSecurePinError(null);
-                      }}
-                      placeholder="Code secret"
-                      autoFocus
-                      className="w-full text-center tracking-[0.4em] text-lg font-bold py-2.5 px-4 rounded-xl bg-black/60 border border-white/20 text-white placeholder:text-stone-500 focus:outline-none focus:border-amber-400"
-                    />
-                    {securePinError && (
-                      <p className="text-xs text-rose-400 font-medium">{securePinError}</p>
-                    )}
-                    <button
-                      type="submit"
-                      className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md active:scale-95 cursor-pointer"
-                    >
-                      Déverrouiller
-                    </button>
-                  </form>
                 </div>
               ) : (
                 <>
