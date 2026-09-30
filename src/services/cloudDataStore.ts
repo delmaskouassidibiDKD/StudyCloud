@@ -268,6 +268,35 @@ export function setRestoreUpsertNotifier(fn: (id: string, category: string, cont
   restoreUpsertNotifier = fn;
 }
 
+let favoriteSyncNotifier: ((favId: string, itemId: string, isFav: boolean, category?: string) => void) | null = null;
+export function setFavoriteSyncNotifier(fn: (favId: string, itemId: string, isFav: boolean, category?: string) => void) {
+  favoriteSyncNotifier = fn;
+}
+
+export function notifyFavoriteChange(itemId: string, isFav: boolean, category?: string) {
+  if (!itemId) return;
+  const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
+  const favId = `fav_${userId}_${itemId}`;
+
+  if (isFav) {
+    currentState.favIdSet.add(itemId);
+  } else {
+    currentState.favIdSet.delete(itemId);
+    currentState.favorites = (currentState.favorites || []).filter(f => f.id !== itemId);
+  }
+
+  if (favoriteSyncNotifier) {
+    try { favoriteSyncNotifier(favId, itemId, isFav, category); } catch {}
+  }
+
+  // Persistance Cloudflare D1 en arrière-plan
+  if (isFav) {
+    CloudStorageAPI.addFavorite(itemId, category || 'documents').catch(() => {});
+  } else {
+    CloudStorageAPI.removeFavorite(itemId).catch(() => {});
+  }
+}
+
 export function unmarkItemDeleted(id: string) {
   if (!id) return;
   try {
@@ -295,7 +324,7 @@ export function unmarkItemDeleted(id: string) {
   }
 }
 
-function isItemDeleted(id: string): boolean {
+export function isItemDeleted(id: string): boolean {
   if (!id) return false;
   // Si l'élément est actuellement actif dans le store local (hors corbeille), il n'est JAMAIS supprimé
   if (currentState.documents.some(d => d.id === id)) return false;
@@ -821,6 +850,7 @@ export const CloudDataStore = {
   },
 
   removeFile(fileId: string, folderId?: string) {
+    notifyFavoriteChange(fileId, false);
     deletionListeners.forEach(fn => { try { fn(fileId); } catch {} });
     const filterFn = (list: FileItem[]) => list.filter(f => f.id !== fileId);
     const updatedMap = { ...currentState.folderFilesMap };
@@ -850,7 +880,10 @@ export const CloudDataStore = {
 
   removeFiles(fileIds: string[]) {
     if (!fileIds || fileIds.length === 0) return;
-    fileIds.forEach(id => deletionListeners.forEach(fn => { try { fn(id); } catch {} }));
+    fileIds.forEach(id => {
+      notifyFavoriteChange(id, false);
+      deletionListeners.forEach(fn => { try { fn(id); } catch {} });
+    });
     const idSet = new Set(fileIds);
     const filterFn = (list: FileItem[]) => list.filter(f => !idSet.has(f.id));
     const updatedMap = { ...currentState.folderFilesMap };
@@ -875,6 +908,7 @@ export const CloudDataStore = {
   },
 
   removeFileFromCategory(fileId: string, category?: string, folderId?: string) {
+    notifyFavoriteChange(fileId, false, category);
     const filterFn = (list: FileItem[]) => list.filter(f => f.id !== fileId);
     const updatedMap = { ...currentState.folderFilesMap };
     if (folderId && updatedMap[folderId]) {
@@ -922,24 +956,37 @@ export const CloudDataStore = {
     const arr = (Array.isArray(items) ? items : [items]).filter(Boolean);
     if (arr.length === 0) return;
     const idSet = new Set(arr.map(f => f.id));
+
+    // Supprimer définitivement et immédiatement tous les éléments mis en corbeille des Favoris
+    arr.forEach(f => {
+      notifyFavoriteChange(f.id, false, f.category);
+      if (f.category === 'classeur_folder' || f.category === 'folder' || (f as any).model) {
+        const childFiles = currentState.folderFilesMap[f.id] || [];
+        childFiles.forEach(cf => notifyFavoriteChange(cf.id, false, cf.category));
+      }
+    });
+
     const filterFn = (list: FileItem[]) => list.filter(f => !idSet.has(f.id));
+    const clearFavFn = (list: FileItem[]) => list.map(f => idSet.has(f.id) ? { ...f, isFavorite: false } : f);
+
     const updatedMap = { ...currentState.folderFilesMap };
     for (const k of Object.keys(updatedMap)) {
       updatedMap[k] = filterFn(updatedMap[k]);
     }
-    const trashedItems = arr.map(f => ({ ...f, isTrash: true }));
+    const trashedItems = arr.map(f => ({ ...f, isTrash: true, isFavorite: false }));
     const existingTrash = currentState.trash.filter(t => !idSet.has(t.id));
     currentState = {
       ...currentState,
       folderFilesMap: updatedMap,
-      documents: filterFn(currentState.documents),
-      images: filterFn(currentState.images),
-      videos: filterFn(currentState.videos),
-      audio: filterFn(currentState.audio),
+      documents: filterFn(clearFavFn(currentState.documents)),
+      images: filterFn(clearFavFn(currentState.images)),
+      videos: filterFn(clearFavFn(currentState.videos)),
+      audio: filterFn(clearFavFn(currentState.audio)),
       downloads: (currentState.downloads || []).filter(d => !idSet.has(d.id)) as any,
+      classeurFolders: currentState.classeurFolders.map(cf => idSet.has(cf.id) ? { ...cf, isFavorite: false } : cf),
       secure: filterFn(currentState.secure),
       recentFiles: filterFn(currentState.recentFiles),
-      favorites: filterFn(currentState.favorites),
+      favorites: currentState.favorites.filter(f => !idSet.has(f.id)),
       trash: [...trashedItems, ...existingTrash],
     };
     persistToIndexedDB().catch(() => {});
@@ -983,7 +1030,9 @@ export const CloudDataStore = {
       const restored: FileItem = {
         ...file,
         isTrash: false,
+        isFavorite: false, // Définitivement non-favori lors de la restauration
       };
+      currentState.favIdSet.delete(file.id);
 
       if (isFolder) {
         const folderModel = Number(meta.model || meta.modelId || meta.model_id || 1);
@@ -1008,7 +1057,7 @@ export const CloudDataStore = {
           zoomLevel: Number(meta.zoomLevel ?? meta.zoom_level ?? 10),
           parentId: meta.parentId || meta.parent_id || undefined,
           isPinned: Boolean(meta.isPinned ?? meta.is_pinned),
-          isFavorite: Boolean(meta.isFavorite ?? meta.is_favorite),
+          isFavorite: false, // Définitivement non-favori
         };
         newFolders = [restoredFolder, ...newFolders.filter(f => f.id !== file.id)];
         if (restoreUpsertNotifier) {
@@ -1167,6 +1216,9 @@ export const CloudDataStore = {
   },
 
   removeFolder(folderId: string) {
+    notifyFavoriteChange(folderId, false, 'classeur_folder');
+    const childFiles = currentState.folderFilesMap[folderId] || [];
+    childFiles.forEach(cf => notifyFavoriteChange(cf.id, false, cf.category));
     deletionListeners.forEach(fn => { try { fn(folderId, 'classeur_folder'); } catch {} });
     const updatedFolders = currentState.classeurFolders.filter(f => f.id !== folderId && f.parentId !== folderId);
     const updatedMap = { ...currentState.folderFilesMap };
@@ -1175,6 +1227,7 @@ export const CloudDataStore = {
       ...currentState,
       classeurFolders: updatedFolders,
       folderFilesMap: updatedMap,
+      favorites: currentState.favorites.filter(f => f.id !== folderId && !childFiles.some(cf => cf.id === f.id)),
     };
     persistToIndexedDB().catch(() => {});
     notify();
@@ -1191,6 +1244,7 @@ export const CloudDataStore = {
   },
 
   toggleFavorite(itemId: string, isFav: boolean) {
+    notifyFavoriteChange(itemId, isFav);
     const favSet = new Set(currentState.favIdSet);
     if (isFav) favSet.add(itemId);
     else favSet.delete(itemId);
@@ -1203,11 +1257,13 @@ export const CloudDataStore = {
     const updatedFolders = (currentState.classeurFolders || []).map(f => 
       f.id === itemId ? { ...f, isFavorite: isFav } : f
     );
+    const trashIds = new Set((currentState.trash || []).map(t => t.id));
     const allFiles = [
       ...updateFav(currentState.documents),
       ...updateFav(currentState.images),
       ...updateFav(currentState.videos),
       ...updateFav(currentState.audio),
+      ...((currentState.downloads || []) as FileItem[]).map(f => f.id === itemId ? { ...f, isFavorite: isFav } : f),
       ...updatedFolders.map(cf => ({
         id: cf.id,
         name: cf.name,
@@ -1234,8 +1290,9 @@ export const CloudDataStore = {
       images: updateFav(currentState.images),
       videos: updateFav(currentState.videos),
       audio: updateFav(currentState.audio),
+      downloads: (currentState.downloads || []).map(f => f.id === itemId ? { ...f, isFavorite: isFav } : f) as any,
       folderFilesMap: updatedMap,
-      favorites: allFiles.filter(f => favSet.has(f.id) || Boolean(f.isFavorite)),
+      favorites: allFiles.filter(f => (favSet.has(f.id) || Boolean(f.isFavorite)) && !trashIds.has(f.id) && !isItemDeleted(f.id)),
     };
     persistToIndexedDB().catch(() => {});
     notify();

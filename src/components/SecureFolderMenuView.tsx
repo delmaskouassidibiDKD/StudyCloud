@@ -92,7 +92,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
     }
   };
 
-  // Chargement des fichiers protégés une fois déverrouillé
+  // Chargement et synchronisation réactive des fichiers protégés une fois déverrouillé
   useEffect(() => {
     if (!isUnlocked) return;
     CloudStorageAPI.getSecureFiles()
@@ -103,6 +103,16 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
         }
       })
       .catch(() => {});
+
+    const unsubscribe = CloudDataStore.subscribe((state) => {
+      if (state.secure) {
+        setSecureFiles(state.secure);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [isUnlocked]);
 
   // Import dans le dossier sécurisé

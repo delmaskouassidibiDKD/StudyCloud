@@ -28,7 +28,7 @@ import {
   Pin
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
-import { CloudDataStore, FileItem } from '../services/cloudDataStore';
+import { CloudDataStore, FileItem, isItemDeleted } from '../services/cloudDataStore';
 import { getFileBlobUrl, deleteFileBlob, formatFileSize } from '../services/localFileStorage';
 import { AudioCardPreview } from './AudioCardPreview';
 import { DocumentCardPreview } from './DocumentCardPreview';
@@ -99,35 +99,46 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
   // Récupérer les éléments favoris depuis CloudDataStore
   const getFavsFromStore = (): FileItem[] => {
     const s = CloudDataStore.getState();
+    const trashIds = new Set((s.trash || []).map(t => t.id));
+
+    const isEligibleFav = (f: FileItem) => {
+      if (!f || !f.id) return false;
+      if (f.isTrash || trashIds.has(f.id) || isItemDeleted(f.id)) return false;
+      return Boolean(f.isFavorite || s.favIdSet.has(f.id));
+    };
+
     const all: FileItem[] = [
-      ...(s.favorites || []),
-      ...(s.documents || []).filter(f => f.isFavorite),
-      ...(s.images || []).filter(f => f.isFavorite),
-      ...(s.videos || []).filter(f => f.isFavorite),
-      ...(s.audio || []).filter(f => f.isFavorite),
-      ...Object.values(s.folderFilesMap || {}).flat().filter(f => f.isFavorite),
+      ...(s.favorites || []).filter(isEligibleFav),
+      ...(s.documents || []).filter(isEligibleFav),
+      ...(s.images || []).filter(isEligibleFav),
+      ...(s.videos || []).filter(isEligibleFav),
+      ...(s.audio || []).filter(isEligibleFav),
+      ...((s.downloads || []) as any[]).filter(isEligibleFav),
+      ...Object.values(s.folderFilesMap || {}).flat().filter(isEligibleFav),
     ];
 
     // Dossiers 3D du classeur marqués en favoris
-    const favFolders = (s.classeurFolders || []).filter(f => f.isFavorite).map(f => ({
-      id: f.id,
-      name: f.name,
-      category: 'classeur' as const,
-      size: 'Dossier 3D',
-      date: 'Favori',
-      isFolder: true,
-      metadata: {
-        modelId: f.modelId,
-        primaryColor: f.primaryColor,
-        accentColor: f.accentColor,
-        iconName: f.iconName,
-        textDark: f.textDark,
-        displayOrder: f.displayOrder,
-        zoomLevel: f.zoomLevel,
-        isPinned: f.isPinned,
-        isFavorite: true
-      }
-    } as any as FileItem));
+    const favFolders = (s.classeurFolders || [])
+      .filter(f => !trashIds.has(f.id) && !isItemDeleted(f.id) && (f.isFavorite || s.favIdSet.has(f.id)))
+      .map(f => ({
+        id: f.id,
+        name: f.name,
+        category: 'classeur' as const,
+        size: 'Dossier 3D',
+        date: 'Favori',
+        isFolder: true,
+        metadata: {
+          modelId: f.modelId,
+          primaryColor: f.primaryColor,
+          accentColor: f.accentColor,
+          iconName: f.iconName,
+          textDark: f.textDark,
+          displayOrder: f.displayOrder,
+          zoomLevel: f.zoomLevel,
+          isPinned: f.isPinned,
+          isFavorite: true
+        }
+      } as any as FileItem));
     all.push(...favFolders);
 
     const seen = new Set<string>();
@@ -203,30 +214,32 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         const { favIds, items } = await CloudStorageAPI.getFavoritesList();
         if (!isMounted) return;
 
-        if (favIds && favIds.length > 0) {
-          const s = CloudDataStore.getState();
-          favIds.forEach(id => s.favIdSet.add(id));
-        }
+        const s = CloudDataStore.getState();
+        const trashIds = new Set((s.trash || []).map(t => t.id));
 
-        if (items && items.length > 0) {
-          items.forEach(item => {
-            const withFav = { ...item, isFavorite: true };
+        // Purger immédiatement les favoris orphelins (dans la corbeille ou marqués supprimés)
+        (favIds || []).forEach(id => {
+          if (trashIds.has(id) || isItemDeleted(id)) {
+            s.favIdSet.delete(id);
+            CloudStorageAPI.removeFavorite(id).catch(() => {});
+          } else {
+            s.favIdSet.add(id);
+          }
+        });
+
+        const validItems = (items || []).filter(item => item && item.id && !trashIds.has(item.id) && !isItemDeleted(item.id));
+
+        if (validItems.length > 0) {
+          validItems.forEach(item => {
+            const withFav = { ...item, isFavorite: true, isTrash: false };
             if (item.category === 'classeur' || item.isFolder) {
               CloudDataStore.addClasseurFolder(withFav as any);
             } else {
               CloudDataStore.addOptimisticFile(withFav);
             }
           });
-          const combined = [...items.map(it => ({ ...it, isFavorite: true })), ...getFavsFromStore()];
-          const seen = new Set<string>();
-          setFavoritesList(combined.filter(f => {
-            if (!f || !f.id || seen.has(f.id)) return false;
-            seen.add(f.id);
-            return true;
-          }));
-        } else {
-          setFavoritesList(getFavsFromStore());
         }
+        setFavoritesList(getFavsFromStore());
       } catch (err) {
         console.warn('[FavoritesMenuView] Direct favorites load warning:', err);
       } finally {

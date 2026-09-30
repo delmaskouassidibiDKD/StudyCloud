@@ -17,7 +17,7 @@
 import { BehaviorSubject, Subject } from 'rxjs';
 import { getWorkerApiUrl } from './api';
 import { getCurrentUserId } from './userSync';
-import { CloudDataStore, FileItem, setTombstoneChecker, setTombstoneRemover, unmarkItemDeleted, setRestoreUpsertNotifier } from './cloudDataStore';
+import { CloudDataStore, FileItem, setTombstoneChecker, setTombstoneRemover, unmarkItemDeleted, setRestoreUpsertNotifier, setFavoriteSyncNotifier } from './cloudDataStore';
 import { ClasseurCreatedFolder } from '../components/Folder3DModels';
 import { removeDownloadedFile } from './downloadsManager';
 import { deleteFileBlob } from './localFileStorage';
@@ -342,6 +342,9 @@ export const LocalSyncReplication = {
           }
 
           // ── SUPPRESSION MULTI-APPAREILS SANS RÉSUSCITATION ──
+          // Règle d'or : Toute suppression d'élément supprime DÉFINITIVEMENT cet élément des favoris sur TOUS les appareils
+          CloudDataStore.toggleFavorite(doc.id, false);
+
           if (doc.category === 'trash') {
             // Suppression définitive de la corbeille
             inMemoryTombstones.add(doc.id);
@@ -597,6 +600,15 @@ setTombstoneRemover((id: string) => LocalSyncReplication.removeTombstone(id));
 setRestoreUpsertNotifier((item: any, category: string) => {
   if (item && item.id) {
     LocalSyncReplication.recordLocalUpsert(item.id, category, item);
+  }
+});
+
+// Synchroniser immédiatement les favoris vers tous les appareils
+setFavoriteSyncNotifier((favId: string, itemId: string, isFav: boolean, category?: string) => {
+  if (isFav) {
+    LocalSyncReplication.recordLocalUpsert(favId, 'favorites', { itemId, category: category || 'documents' });
+  } else {
+    LocalSyncReplication.recordLocalDeletion(favId, 'favorites');
   }
 });
 
