@@ -310,6 +310,28 @@ export const LocalSyncReplication = {
       let deletedCount = 0;
       let upsertCount = 0;
 
+      const state = CloudDataStore.getState();
+      let nextImages = [...state.images];
+      let nextVideos = [...state.videos];
+      let nextAudio = [...state.audio];
+      let nextDocuments = [...state.documents];
+      let nextDownloads = [...(state.downloads || [])];
+      let nextTrash = [...state.trash];
+      let nextClasseurFolders = [...state.classeurFolders];
+      const nextFolderFilesMap: Record<string, FileItem[]> = {};
+      for (const k of Object.keys(state.folderFilesMap || {})) {
+        nextFolderFilesMap[k] = [...state.folderFilesMap[k]];
+      }
+
+      let imagesChanged = false;
+      let videosChanged = false;
+      let audioChanged = false;
+      let documentsChanged = false;
+      let downloadsChanged = false;
+      let trashChanged = false;
+      let foldersChanged = false;
+      let folderFilesChanged = false;
+
       for (const doc of incomingDocs) {
         if (!doc || !doc.id) continue;
 
@@ -342,11 +364,9 @@ export const LocalSyncReplication = {
           }
 
           // ── SUPPRESSION MULTI-APPAREILS SANS RÉSUSCITATION ──
-          // Règle d'or : Toute suppression d'élément supprime DÉFINITIVEMENT cet élément des favoris sur TOUS les appareils
           CloudDataStore.toggleFavorite(doc.id, false);
 
           if (doc.category === 'trash') {
-            // Suppression définitive de la corbeille
             inMemoryTombstones.add(doc.id);
             saveTombstones();
             CloudDataStore.permanentlyRemoveTrashFile(doc.id);
@@ -354,8 +374,6 @@ export const LocalSyncReplication = {
             deleteFileBlob(doc.id).catch(() => {});
             deletedCount++;
           } else {
-            // Déplacement vers la corbeille ou retrait de la catégorie source
-            // Ne pas écraser la corbeille locale !
             CloudDataStore.removeFileFromCategory(doc.id, doc.category);
             if (doc.category === 'classeur_folder') {
               CloudDataStore.removeFolder(doc.id);
@@ -383,15 +401,11 @@ export const LocalSyncReplication = {
 
           // ── ÉLÉMENT CRÉÉ OU MIS À JOUR PAR UN AUTRE APPAREIL ──
           if (doc.category === 'trash') {
-            // Les éléments de la corbeille sont valides et ne doivent pas être bloqués par un tombstone d'une autre catégorie
             inMemoryTombstones.delete(doc.id);
           } else {
-            // Si le serveur nous renvoie un élément actif (is_deleted: false),
-            // il s'agit d'un élément créé, modifié ou RESTAURÉ depuis la corbeille !
             inMemoryTombstones.delete(doc.id);
             saveTombstones();
             unmarkItemDeleted(doc.id);
-            // S'assurer de le retirer de la corbeille locale s'il y résidait SANS déclencher de fausse suppression
             CloudDataStore.removeTrashFileQuietly(doc.id);
           }
 
@@ -417,7 +431,7 @@ export const LocalSyncReplication = {
               size: parsedContent.size || '0 o',
             };
 
-            // Mise en cache de l'aperçu / vignette si disponible
+            // Mise en cache de l'aperçu / vignette si disponible (URL externe sûre)
             const thumbUrl = (fileItem.previewUrl && !fileItem.previewUrl.startsWith('blob:')) 
               ? fileItem.previewUrl 
               : (fileItem.thumbnailUrl && !fileItem.thumbnailUrl.startsWith('blob:')) 
@@ -427,50 +441,37 @@ export const LocalSyncReplication = {
               setCachedMediaThumbnail(doc.id, thumbUrl);
             }
 
-            // Insérer ou mettre à jour dans la bonne catégorie
-            const state = CloudDataStore.getState();
+            // Insérer ou mettre à jour dans la liste en mémoire (batching)
             if (cat === 'images') {
-              const exists = state.images.some(x => x.id === doc.id);
-              if (!exists) {
-                CloudDataStore.setImages([fileItem, ...state.images]);
-              } else {
-                CloudDataStore.setImages(state.images.map(x => x.id === doc.id ? { ...x, ...fileItem } : x));
-              }
+              const idx = nextImages.findIndex(x => x.id === doc.id);
+              if (idx < 0) nextImages.unshift(fileItem);
+              else nextImages[idx] = { ...nextImages[idx], ...fileItem };
+              imagesChanged = true;
             } else if (cat === 'videos') {
-              const exists = state.videos.some(x => x.id === doc.id);
-              if (!exists) {
-                CloudDataStore.setVideos([fileItem, ...state.videos]);
-              } else {
-                CloudDataStore.setVideos(state.videos.map(x => x.id === doc.id ? { ...x, ...fileItem } : x));
-              }
+              const idx = nextVideos.findIndex(x => x.id === doc.id);
+              if (idx < 0) nextVideos.unshift(fileItem);
+              else nextVideos[idx] = { ...nextVideos[idx], ...fileItem };
+              videosChanged = true;
             } else if (cat === 'audio') {
-              const exists = state.audio.some(x => x.id === doc.id);
-              if (!exists) {
-                CloudDataStore.setAudio([fileItem, ...state.audio]);
-              } else {
-                CloudDataStore.setAudio(state.audio.map(x => x.id === doc.id ? { ...x, ...fileItem } : x));
-              }
+              const idx = nextAudio.findIndex(x => x.id === doc.id);
+              if (idx < 0) nextAudio.unshift(fileItem);
+              else nextAudio[idx] = { ...nextAudio[idx], ...fileItem };
+              audioChanged = true;
             } else if (cat === 'downloads') {
-              const exists = state.downloads.some(x => x.id === doc.id);
-              if (!exists) {
-                CloudDataStore.setDownloads([fileItem as any, ...state.downloads]);
-              } else {
-                CloudDataStore.setDownloads(state.downloads.map(x => x.id === doc.id ? { ...x, ...fileItem } : x) as any);
-              }
+              const idx = nextDownloads.findIndex(x => x.id === doc.id);
+              if (idx < 0) nextDownloads.unshift(fileItem as any);
+              else nextDownloads[idx] = { ...nextDownloads[idx], ...fileItem } as any;
+              downloadsChanged = true;
             } else if (cat === 'documents') {
-              const exists = state.documents.some(x => x.id === doc.id);
-              if (!exists) {
-                CloudDataStore.setDocuments([fileItem, ...state.documents]);
-              } else {
-                CloudDataStore.setDocuments(state.documents.map(x => x.id === doc.id ? { ...x, ...fileItem } : x));
-              }
+              const idx = nextDocuments.findIndex(x => x.id === doc.id);
+              if (idx < 0) nextDocuments.unshift(fileItem);
+              else nextDocuments[idx] = { ...nextDocuments[idx], ...fileItem };
+              documentsChanged = true;
             } else if (cat === 'trash') {
-              const exists = state.trash.some(x => x.id === doc.id);
-              if (!exists) {
-                CloudDataStore.setTrashFiles([fileItem, ...state.trash]);
-              } else {
-                CloudDataStore.setTrashFiles(state.trash.map(x => x.id === doc.id ? { ...x, ...fileItem } : x));
-              }
+              const idx = nextTrash.findIndex(x => x.id === doc.id);
+              if (idx < 0) nextTrash.unshift(fileItem);
+              else nextTrash[idx] = { ...nextTrash[idx], ...fileItem };
+              trashChanged = true;
             } else if (cat === 'classeur_folder') {
               const meta = parsedContent.metadata || parsedContent;
               const folderModel = Number(parsedContent.model || meta.model || parsedContent.modelId || meta.modelId || parsedContent.model_id || meta.model_id || 1);
@@ -497,11 +498,20 @@ export const LocalSyncReplication = {
                 isPinned: Boolean(parsedContent.isPinned ?? meta.isPinned ?? parsedContent.is_pinned ?? meta.is_pinned),
                 isFavorite: Boolean(parsedContent.isFavorite ?? meta.isFavorite ?? parsedContent.is_favorite ?? meta.is_favorite),
               };
-              CloudDataStore.addClasseurFolder(folder);
+              const fIdx = nextClasseurFolders.findIndex(f => f.id === folder.id);
+              if (fIdx < 0) nextClasseurFolders.unshift(folder);
+              else nextClasseurFolders[fIdx] = { ...nextClasseurFolders[fIdx], ...folder };
+              foldersChanged = true;
             } else if (cat === 'classeur') {
               const folderId = parsedContent.folderId || parsedContent.folder_id || fileItem.folderId || fileItem.originalFolderId;
               if (folderId) {
-                CloudDataStore.addOptimisticFile({ ...fileItem, folderId, originalFolderId: folderId, category: 'classeur' }, folderId);
+                if (!nextFolderFilesMap[folderId]) nextFolderFilesMap[folderId] = [];
+                const list = nextFolderFilesMap[folderId];
+                const itemIdx = list.findIndex(f => f.id === fileItem.id);
+                const fullItem = { ...fileItem, folderId, originalFolderId: folderId, category: 'classeur' as const };
+                if (itemIdx < 0) list.unshift(fullItem);
+                else list[itemIdx] = { ...list[itemIdx], ...fullItem };
+                folderFilesChanged = true;
               }
             }
             upsertCount++;
@@ -509,14 +519,29 @@ export const LocalSyncReplication = {
         }
       }
 
+      // Appliquer les mises à jour groupées une seule fois (élimine les centaines de notify)
+      if (imagesChanged) CloudDataStore.setImages(nextImages);
+      if (videosChanged) CloudDataStore.setVideos(nextVideos);
+      if (audioChanged) CloudDataStore.setAudio(nextAudio);
+      if (documentsChanged) CloudDataStore.setDocuments(nextDocuments);
+      if (downloadsChanged) CloudDataStore.setDownloads(nextDownloads as any);
+      if (trashChanged) CloudDataStore.setTrashFiles(nextTrash);
+      if (foldersChanged) CloudDataStore.setClasseurFolders(nextClasseurFolders);
+      if (folderFilesChanged) CloudDataStore.setFolderFilesMap(nextFolderFilesMap);
+
       if (deletedCount > 0) {
         saveTombstones();
       }
 
-      // Mettre à jour le checkpoint
-      const newCheckpoint = Number(resJson.checkpoint?.updated_at || currentCheckpoint);
-      if (newCheckpoint > currentCheckpoint) {
-        saveCheckpoint(newCheckpoint);
+      // Mettre à jour le checkpoint (toujours progresser si des documents ont été reçus)
+      const serverCheckpoint = Number(resJson.checkpoint?.updated_at || 0);
+      const maxIncomingTs = incomingDocs.reduce((max, d) => Math.max(max, Number(d.updated_at) || 0), 0);
+      const targetCheckpoint = Math.max(serverCheckpoint, maxIncomingTs);
+
+      if (targetCheckpoint > currentCheckpoint) {
+        saveCheckpoint(targetCheckpoint);
+      } else if (incomingDocs.length > 0) {
+        saveCheckpoint(Math.max(currentCheckpoint + 1, Date.now()));
       }
 
       if (incomingDocs.length > 0) {

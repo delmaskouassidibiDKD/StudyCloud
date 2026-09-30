@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { extractAudioCover, generateAudioCreatorCover, getCachedMediaThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
-import { CloudStorageAPI } from '../services/cloudStorageService';
+import React, { useState, useEffect, useRef } from 'react';
+import { generateAudioCreatorCover, getCachedMediaThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { getWorkerApiUrl } from '../services/api';
 import { getFileBlob } from '../services/localFileStorage';
 import { FileItem } from './Page1FilesMenuView';
@@ -14,11 +13,9 @@ function isImageCover(url?: string): boolean {
   if (!url || typeof url !== 'string') return false;
   const clean = url.toLowerCase().split('?')[0];
   if (clean.startsWith('data:image')) return true;
+  if (clean.startsWith('blob:')) return true;
   if (clean.includes('/api/cloud/thumbnail')) return true;
   if (clean.match(/\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i)) {
-    return false;
-  }
-  if (clean.startsWith('blob:')) {
     return false;
   }
   if (clean.match(/\.(jpg|jpeg|png|webp|svg|gif|avif|ico|bmp)$/i)) {
@@ -46,90 +43,46 @@ export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track, class
   });
 
   const [hasError, setHasError] = useState(false);
-  const targetAudioUrl = track.audioUrl || track.url || '';
+  const attemptedRef = useRef<string | null>(null);
   const imgClass = className || "w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none";
 
-  // Synchronisation dynamique si l'objet track change
+  // Charger la miniature locale ou en cache une seule fois par identifiant de piste
   useEffect(() => {
-    setHasError(false);
-    if (isImageCover(track.coverUrl)) {
-      setCoverUrl(track.coverUrl!);
+    if (!track.id || attemptedRef.current === track.id) return;
+    attemptedRef.current = track.id;
+
+    // Si on a déjà une image valide directe, rien à charger
+    if (isImageCover(track.coverUrl) || isImageCover(track.thumbnailUrl) || isImageCover(track.previewUrl)) {
       return;
     }
-    if (isImageCover(track.thumbnailUrl)) {
-      setCoverUrl(track.thumbnailUrl!);
-      return;
-    }
-    if (isImageCover(track.previewUrl)) {
-      setCoverUrl(track.previewUrl!);
-      return;
-    }
-    const cached = getCachedMediaThumbnail(track.id || track.audioUrl || track.url || '');
-    if (isImageCover(cached || undefined)) {
+
+    const cached = getCachedMediaThumbnail(track.id);
+    if (cached && isImageCover(cached)) {
       setCoverUrl(cached);
       return;
     }
-    if (track.id && !track.id.startsWith('blob:')) {
-      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      setCoverUrl(`${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(track.id)}`);
-      return;
-    }
-    setCoverUrl(null);
-  }, [track.id, track.coverUrl, track.thumbnailUrl, track.previewUrl]);
 
-  useEffect(() => {
+    // Tenter de lire depuis IndexedDB local uniquement (sans réseau)
     let isMounted = true;
-    // Si on a déjà une vraie image en base64 / blob / lien vérifié, pas besoin de réextraire
-    if (coverUrl && isImageCover(coverUrl) && !coverUrl.includes('/api/cloud/thumbnail')) return;
-
-    async function loadCover() {
-      // 1. Tenter d'extraire la pochette ID3 directement du blob IndexedDB local
-      if (track.id) {
-        try {
-          const blob = await getFileBlob(track.id);
-          if (blob && isMounted) {
-            const url = await extractAudioCover(blob, track.name, track.artist || track.source);
-            if (isMounted && url && isImageCover(url) && !url.includes('/api/cloud/thumbnail')) {
-              setCoverUrl(url);
-              setCachedMediaThumbnail(track.id, url);
-              if (track.id && !track.id.startsWith('blob:')) {
-                CloudStorageAPI.saveMediaThumbnail(track.id, 'audio', url, track.name).catch(() => {});
-              }
-              return;
+    getFileBlob(track.id).then((blob) => {
+      if (isMounted && blob) {
+        import('../services/mediaPreviewService').then(({ extractAudioMetadataWithTags }) => {
+          extractAudioMetadataWithTags(blob).then((meta) => {
+            if (isMounted && meta.coverUrl) {
+              setCoverUrl(meta.coverUrl);
+              setCachedMediaThumbnail(track.id, meta.coverUrl);
             }
-          }
-        } catch {}
+          }).catch(() => {});
+        }).catch(() => {});
       }
-
-      // 2. Tenter avec l'URL audio distante
-      const sourceToExtract = targetAudioUrl || (track as any).blobUrl;
-      if (sourceToExtract) {
-        try {
-          const url = await extractAudioCover(sourceToExtract, track.name, track.artist || track.source);
-          if (isMounted && url && isImageCover(url) && !url.includes('/api/cloud/thumbnail')) {
-            setCoverUrl(url);
-            setCachedMediaThumbnail(track.id || sourceToExtract, url);
-            if (track.id && !track.id.startsWith('blob:')) {
-              CloudStorageAPI.saveMediaThumbnail(track.id, 'audio', url, track.name).catch(() => {});
-            }
-            return;
-          }
-        } catch {}
-      }
-
-      // 3. Fallback officiel pochette vinyle haute fidélité
-      if (isMounted && !coverUrl) {
-        const fallback = generateAudioCreatorCover(track.name, track.artist || track.source);
-        setCoverUrl(fallback);
-      }
-    }
-
-    loadCover();
+    }).catch(() => {});
 
     return () => {
       isMounted = false;
     };
-  }, [track.id, targetAudioUrl, coverUrl, track.name, track.artist, track.source]);
+  }, [track.id, track.coverUrl, track.thumbnailUrl, track.previewUrl]);
+
+  const fallbackSvg = generateAudioCreatorCover(track.name, track.artist || track.source);
 
   if (coverUrl && !hasError) {
     return (
@@ -138,28 +91,11 @@ export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track, class
         alt={track.name}
         className={imgClass}
         loading="lazy"
-        onError={async () => {
-          if (track.id) {
-            try {
-              const blob = await getFileBlob(track.id);
-              if (blob) {
-                const localCover = await extractAudioCover(blob, track.name, track.artist || track.source);
-                if (localCover && isImageCover(localCover) && !localCover.includes('/api/cloud/thumbnail')) {
-                  setCoverUrl(localCover);
-                  setCachedMediaThumbnail(track.id, localCover);
-                  setHasError(false);
-                  return;
-                }
-              }
-            } catch {}
-          }
-          setHasError(true);
-        }}
+        onError={() => setHasError(true)}
       />
     );
   }
 
-  const fallbackSvg = generateAudioCreatorCover(track.name, track.artist || track.source);
   return (
     <img
       src={fallbackSvg}

@@ -167,11 +167,11 @@ export async function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Pro
     if (!result.coverUrl) {
       try {
         let p = 0;
-        const max = Math.min(bytes.length - 8, 2 * 1024 * 1024);
+        const max = Math.min(bytes.length - 8, 512 * 1024);
         while (p < max) {
           if (bytes[p] === 0x63 && bytes[p + 1] === 0x6f && bytes[p + 2] === 0x76 && bytes[p + 3] === 0x72) {
             let dataPos = p + 4;
-            while (dataPos < Math.min(p + 512, bytes.length - 8)) {
+            while (dataPos < Math.min(p + 256, bytes.length - 8)) {
               if (bytes[dataPos + 4] === 0x64 && bytes[dataPos + 5] === 0x61 && bytes[dataPos + 6] === 0x74 && bytes[dataPos + 7] === 0x61) {
                 const dataSize = (bytes[dataPos] << 24) | (bytes[dataPos + 1] << 16) | (bytes[dataPos + 2] << 8) | bytes[dataPos + 3];
                 const imgStart = dataPos + 16;
@@ -186,42 +186,11 @@ export async function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Pro
               }
               dataPos++;
             }
+            break;
           }
           p++;
         }
       } catch {}
-    }
-
-    // 3. Scanner binaire direct en secours (recherche des signatures d'images JPEG / PNG intégrées)
-    if (!result.coverUrl) {
-      for (let i = 0; i < Math.min(bytes.length - 200, 3 * 1024 * 1024); i++) {
-        // En-tête JPEG: 0xFF 0xD8 0xFF
-        if (bytes[i] === 0xFF && bytes[i + 1] === 0xD8 && bytes[i + 2] === 0xFF && (bytes[i + 3] === 0xE0 || bytes[i + 3] === 0xE1 || bytes[i + 3] === 0xDB)) {
-          for (let j = i + 100; j < Math.min(bytes.length - 1, i + 2 * 1024 * 1024); j++) {
-            if (bytes[j] === 0xFF && bytes[j + 1] === 0xD9) {
-              const imgBytes = bytes.subarray(i, j + 2);
-              if (imgBytes.length > 500) {
-                result.coverUrl = `data:image/jpeg;base64,${bytesToBase64(imgBytes)}`;
-                break;
-              }
-            }
-          }
-          if (result.coverUrl) break;
-        }
-        // En-tête PNG: 0x89 0x50 0x4E 0x47
-        if (bytes[i] === 0x89 && bytes[i + 1] === 0x50 && bytes[i + 2] === 0x4E && bytes[i + 3] === 0x47) {
-          for (let j = i + 50; j < Math.min(bytes.length - 8, i + 2 * 1024 * 1024); j++) {
-            if (bytes[j] === 0x49 && bytes[j + 1] === 0x45 && bytes[j + 2] === 0x4E && bytes[j + 3] === 0x44) {
-              const imgBytes = bytes.subarray(i, j + 8);
-              if (imgBytes.length > 500) {
-                result.coverUrl = `data:image/png;base64,${bytesToBase64(imgBytes)}`;
-                break;
-              }
-            }
-          }
-          if (result.coverUrl) break;
-        }
-      }
     }
   } catch (e) {
     console.warn('[mediaPreviewService] Extraction métadonnées audio:', e);
@@ -462,19 +431,9 @@ export async function extractAudioCover(
       if (fileOrBlob.startsWith('data:image')) {
         return fileOrBlob;
       }
-      if (fileOrBlob.startsWith('http') || fileOrBlob.startsWith('/') || fileOrBlob.startsWith('blob:')) {
-        try {
-          const resp = await fetch(fileOrBlob, {
-            headers: { Range: 'bytes=0-4194303' },
-          });
-          if (resp && (resp.ok || resp.status === 206)) {
-            targetBlob = await resp.blob();
-          }
-        } catch {
-          // Si le range request échoue (ex: CORS), fallback sur cover SVG
-          return generateAudioCreatorCover(title || '', artist);
-        }
-      }
+      // Ne JAMAIS télécharger des flux de 4 Mo sur le réseau juste pour extraire une miniature
+      // Utiliser directement la pochette créateur officielle instantanée
+      return generateAudioCreatorCover(title || '', artist);
     } else if (fileOrBlob instanceof Blob) {
       targetBlob = fileOrBlob;
     }
@@ -483,7 +442,7 @@ export async function extractAudioCover(
       return generateAudioCreatorCover(title || '', artist);
     }
 
-    // 1. Tenter d'abord avec jsmediatags (gère ID3v2.2, ID3v2.3, ID3v2.4, MP4/M4A covr, FLAC)
+    // 1. Tenter d'extraire la pochette via métadonnées ID3/MP4
     try {
       const meta = await extractAudioMetadataWithTags(targetBlob);
       if (meta.coverUrl) {
@@ -491,15 +450,14 @@ export async function extractAudioCover(
       }
     } catch {}
 
-    // 2. Scanner binaire direct sur 4 Mo en secours
-    const maxScanLen = Math.min(targetBlob.size, 4 * 1024 * 1024);
+    // 2. Scanner rapide ID3 APIC sur max 256 Ko (fichiers locaux)
+    const maxScanLen = Math.min(targetBlob.size, 256 * 1024);
     const headerSlice = targetBlob.slice(0, maxScanLen);
     const buffer = await headerSlice.arrayBuffer();
     const bytes = new Uint8Array(buffer);
 
     // Vérifier l'en-tête ID3 (0x49, 0x44, 0x33)
     if (bytes.length > 10 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
-      // Taille syncsafe ID3
       const tagSize = ((bytes[6] & 0x7f) << 21) |
                       ((bytes[7] & 0x7f) << 14) |
                       ((bytes[8] & 0x7f) << 7) |
@@ -516,7 +474,6 @@ export async function extractAudioCover(
           bytes[offset + 2] === 0x49 && // I
           bytes[offset + 3] === 0x43    // C
         ) {
-          // Taille du frame APIC
           const frameSize = (bytes[offset + 4] << 24) |
                             (bytes[offset + 5] << 16) |
                             (bytes[offset + 6] << 8) |
@@ -526,19 +483,15 @@ export async function extractAudioCover(
             let p = offset + 10;
             const encoding = bytes[p++];
             
-            // MIME type (chaîne terminée par 0)
             let mime = '';
             while (p < maxScan && bytes[p] !== 0) {
               mime += String.fromCharCode(bytes[p++]);
             }
-            p++; // Sauter le zéro terminal du MIME
-
-            if (!mime || mime.length < 3) mime = 'image/jpeg';
-
-            // Picture type (ex: 0x03 Front cover)
             p++;
 
-            // Description (sauter jusqu'au terminateur)
+            if (!mime || mime.length < 3) mime = 'image/jpeg';
+            p++; // Picture type
+
             if (encoding === 0 || encoding === 3) {
               while (p < maxScan && bytes[p] !== 0) p++;
               p++;
@@ -547,19 +500,12 @@ export async function extractAudioCover(
               p += 2;
             }
 
-            // Données binaires de l'image
             const imgBytes = bytes.slice(p, offset + 10 + frameSize);
             if (imgBytes.length > 100) {
-              // Convertir en Blob puis en DataURL
-              let binary = '';
-              const len = imgBytes.byteLength;
-              for (let i = 0; i < len; i++) {
-                binary += String.fromCharCode(imgBytes[i]);
-              }
-              const base64 = btoa(binary);
-              return `data:${mime};base64,${base64}`;
+              return `data:${mime};base64,${bytesToBase64(imgBytes)}`;
             }
           }
+          break; // Sortir après le frame APIC
         }
         offset++;
       }
