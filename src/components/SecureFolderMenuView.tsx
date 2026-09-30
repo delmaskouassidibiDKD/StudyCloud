@@ -26,7 +26,12 @@ import {
   Menu,
   Play,
   Share2,
-  FolderArchive
+  FolderArchive,
+  ChevronLeft,
+  ChevronRight,
+  Maximize2,
+  Minimize2,
+  FileEdit
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
@@ -38,6 +43,10 @@ import { AudioCardPreview } from './AudioCardPreview';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
 import { Classeur3DFolderCard } from './Folder3DModels';
+import { ModernAudioPlayer } from './ModernAudioPlayer';
+import { ModernDocumentViewer } from './ModernDocumentViewer';
+import { ModernImageViewer } from './ModernImageViewer';
+import { ModernVideoPlayer } from './ModernVideoPlayer';
 
 const getDocumentTheme = (ext: string = 'PDF') => {
   const upper = (ext || 'PDF').toUpperCase();
@@ -115,11 +124,13 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
   const [changePinError, setChangePinError] = useState<string | null>(null);
   const [isChangingPin, setIsChangingPin] = useState(false);
 
-  // Prévisualisation multimédia
-  const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
+  // Prévisualisation multimédia latérale (comme dans la corbeille)
+  const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
+  const [isViewerMaximized, setIsViewerMaximized] = useState(false);
 
   // Menu d'options 3 traits
   const [activeMenuFileId, setActiveMenuFileId] = useState<string | null>(null);
+  const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   // Filtre par catégorie
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'audio' | 'documents' | 'images' | 'videos'>('all');
 
@@ -130,6 +141,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
       if (!target) return;
       if (!target.closest('.studycloud-sec-menu-trigger') && !target.closest('.studycloud-sec-menu-panel')) {
         setActiveMenuFileId(null);
+        setIsHeaderMenuOpen(false);
       }
     };
     window.addEventListener('click', handleClickOutside);
@@ -237,7 +249,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
       inactivityTimerRef.current = setTimeout(() => {
         setIsUnlocked(false);
         setSelectedIds(new Set());
-        setPreviewFile(null);
+        setSelectedFile(null);
         showToast('Dossier sécurisé reverrouillé par inactivité 🔒');
       }, 3 * 60 * 1000); // 3 minutes
     };
@@ -246,7 +258,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
       if (document.hidden) {
         setIsUnlocked(false);
         setSelectedIds(new Set());
-        setPreviewFile(null);
+        setSelectedFile(null);
       }
     };
 
@@ -381,6 +393,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
       next.delete(file.id);
       return next;
     });
+    if (selectedFile?.id === file.id) {
+      setSelectedFile(null);
+    }
 
     CloudDataStore.restoreFromSecure([file]);
     await CloudStorageAPI.restoreFromSecureFolder(file.id).catch(() => {});
@@ -395,6 +410,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
       next.delete(file.id);
       return next;
     });
+    if (selectedFile?.id === file.id) {
+      setSelectedFile(null);
+    }
 
     deleteFileBlob(file.id).catch(() => {});
     CloudDataStore.deleteSecureToTrash([file]);
@@ -429,8 +447,8 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
   };
 
   // 10. Actions Groupées (Sélection multiple)
-  const toggleSelect = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const toggleSelect = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -440,10 +458,10 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
   };
 
   const selectAll = () => {
-    if (selectedIds.size === filteredFiles.length) {
+    if (selectedIds.size === displayedFiles.length && displayedFiles.length > 0) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredFiles.map(f => f.id)));
+      setSelectedIds(new Set(displayedFiles.map(f => f.id)));
     }
   };
 
@@ -453,6 +471,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
 
     setSecureFiles(prev => prev.filter(f => !selectedIds.has(f.id)));
     const ids: string[] = Array.from(selectedIds);
+    if (selectedFile && selectedIds.has(selectedFile.id)) {
+      setSelectedFile(null);
+    }
     setSelectedIds(new Set());
 
     CloudDataStore.restoreFromSecure(filesToRestore);
@@ -466,6 +487,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
 
     setSecureFiles(prev => prev.filter(f => !selectedIds.has(f.id)));
     const ids: string[] = Array.from(selectedIds);
+    if (selectedFile && selectedIds.has(selectedFile.id)) {
+      setSelectedFile(null);
+    }
     setSelectedIds(new Set());
 
     filesToTrash.forEach(f => deleteFileBlob(f.id).catch(() => {}));
@@ -538,62 +562,449 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
     });
   }, [filteredFiles, categoryFilter]);
 
+  // Navigation vers l'élément précédent dans le lecteur
+  const handlePrevFile = () => {
+    if (!selectedFile || displayedFiles.length === 0) return;
+    const currentIndex = displayedFiles.findIndex(f => f.id === selectedFile.id);
+    if (currentIndex > 0) {
+      setSelectedFile(displayedFiles[currentIndex - 1]);
+    } else {
+      setSelectedFile(displayedFiles[displayedFiles.length - 1]);
+    }
+  };
+
+  // Navigation vers l'élément suivant dans le lecteur
+  const handleNextFile = () => {
+    if (!selectedFile || displayedFiles.length === 0) return;
+    const currentIndex = displayedFiles.findIndex(f => f.id === selectedFile.id);
+    if (currentIndex >= 0 && currentIndex < displayedFiles.length - 1) {
+      setSelectedFile(displayedFiles[currentIndex + 1]);
+    } else {
+      setSelectedFile(displayedFiles[0]);
+    }
+  };
+
   // Menu d'options 3 traits
-  const renderOptionsMenu = (file: FileItem) => {
+  const renderOptionsMenu = (file: FileItem, index?: number) => {
+    if (activeMenuFileId !== file.id) return null;
+    const isChecked = selectedIds.has(file.id);
+    const allChecked = displayedFiles.length > 0 && selectedIds.size === displayedFiles.length;
+    const hasSelection = selectedIds.size > 0;
+    const isRightCol = typeof index === 'number' && ((index + 1) % 2 === 0 || (index + 1) % 3 === 0 || (index + 1) % 4 === 0);
+    const alignClass = isRightCol ? 'right-0' : 'left-0';
+
     return (
       <div
-        className="studycloud-sec-menu-panel absolute top-8 left-0 z-50 bg-[#0E1526] text-white rounded-xl shadow-2xl border border-white/20 py-1.5 w-48 text-xs font-semibold animate-in fade-in duration-150"
+        className={`studycloud-sec-menu-panel absolute ${alignClass} top-9 z-[150] w-60 sm:w-64 bg-[#0A0F1D] border-2 border-blue-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.35)] text-white animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col p-0.5`}
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          type="button"
-          onClick={() => {
-            handleRestore(file);
-            setActiveMenuFileId(null);
-          }}
-          className="w-full text-left px-3.5 py-2 hover:bg-emerald-500/20 flex items-center gap-2.5 text-emerald-400 transition-colors cursor-pointer border-b border-white/10"
-        >
-          <Unlock className="w-3.5 h-3.5" />
-          <span>Déverrouiller le fichier</span>
-        </button>
-
-        {onOpenStudySpace && (
+        {/* En-tête : Titre du fichier et badge Dossier Sécurisé */}
+        <div className="px-3 py-2 bg-[#0E1527] border-b border-blue-500/25 flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] sm:text-xs font-black text-white truncate" title={file.name}>
+              {file.name}
+            </p>
+            <p className="text-[9px] font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1">
+              <span>{file.size || '0 o'}</span>
+              <span>•</span>
+              <span className="flex items-center gap-0.5 text-emerald-400">
+                <Lock className="w-2.5 h-2.5" /> SÉCURISÉ
+              </span>
+            </p>
+          </div>
           <button
             type="button"
-            onClick={() => {
-              onOpenStudySpace(file, 'Dossier sécurisé');
+            onClick={(e) => {
+              e.stopPropagation();
               setActiveMenuFileId(null);
             }}
-            className="w-full text-left px-3.5 py-2 hover:bg-white/10 flex items-center gap-2.5 text-slate-200 transition-colors cursor-pointer"
+            className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+            title="Fermer"
           >
-            <BookOpen className="w-3.5 h-3.5 text-sky-400" />
-            <span>Espace d'étude</span>
+            <X className="w-3.5 h-3.5" />
           </button>
-        )}
+        </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            handleDownload(file);
-            setActiveMenuFileId(null);
-          }}
-          className="w-full text-left px-3.5 py-2 hover:bg-white/10 flex items-center gap-2.5 text-slate-200 transition-colors cursor-pointer"
-        >
-          <Download className="w-3.5 h-3.5 text-purple-400" />
-          <span>Télécharger</span>
-        </button>
+        {/* Options */}
+        <div className="py-1 divide-y divide-white/5">
+          {/* Option 0 : Ouvrir le lecteur sur le côté droit */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedFile(file);
+              setActiveMenuFileId(null);
+            }}
+            className="w-full px-3 py-2 flex items-center gap-2.5 text-xs font-bold text-sky-400 hover:bg-sky-500/15 transition-colors cursor-pointer text-left"
+          >
+            <Eye className="w-4 h-4 shrink-0 text-sky-400" />
+            <span>Lire / Aperçu à droite</span>
+          </button>
 
-        <button
-          type="button"
-          onClick={() => {
-            handleDeleteToTrash(file);
-            setActiveMenuFileId(null);
-          }}
-          className="w-full text-left px-3.5 py-2 hover:bg-rose-500/20 flex items-center gap-2.5 text-rose-400 transition-colors cursor-pointer border-t border-white/10"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-          <span>Mettre à la corbeille</span>
-        </button>
+          {/* Option 1 : Cocher / Décocher ce fichier */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleSelect(file.id);
+              setActiveMenuFileId(null);
+            }}
+            className="w-full px-3 py-2 flex items-center gap-2.5 text-xs font-bold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+          >
+            {isChecked ? <CheckSquare className="w-4 h-4 shrink-0 text-amber-400" /> : <Square className="w-4 h-4 shrink-0 text-amber-400" />}
+            <span>{isChecked ? 'Décocher ce fichier' : 'Cocher ce fichier'}</span>
+          </button>
+
+          {/* Option 2 : Tout cocher (Sélectionner tout) */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              selectAll();
+              setActiveMenuFileId(null);
+            }}
+            className="w-full px-3 py-2 flex items-center gap-2.5 text-xs font-bold text-amber-300 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+          >
+            <CheckSquare className="w-4 h-4 shrink-0 text-amber-300" />
+            <span>{allChecked ? 'Tout décocher' : 'Tout cocher (Sélectionner tout)'}</span>
+          </button>
+
+          {/* Option 3 : Déverrouiller ce fichier */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRestore(file);
+              setActiveMenuFileId(null);
+            }}
+            className="w-full px-3 py-2 flex items-center gap-2.5 text-xs font-bold text-emerald-400 hover:bg-emerald-500/15 transition-colors cursor-pointer text-left"
+          >
+            <Unlock className="w-4 h-4 shrink-0 text-emerald-400" />
+            <span>Déverrouiller ce fichier</span>
+          </button>
+
+          {/* Option 4 : Tout déverrouiller */}
+          <button
+            type="button"
+            onClick={async (e) => {
+              e.stopPropagation();
+              setActiveMenuFileId(null);
+              if (hasSelection) {
+                await handleBatchRestore();
+              } else {
+                const toUnlock = [...displayedFiles];
+                setSecureFiles(prev => prev.filter(f => !toUnlock.some(u => u.id === f.id)));
+                setSelectedIds(new Set());
+                if (selectedFile && toUnlock.some(u => u.id === selectedFile.id)) setSelectedFile(null);
+                CloudDataStore.restoreFromSecure(toUnlock);
+                await CloudStorageAPI.restoreFromSecureFolder(toUnlock.map(f => f.id)).catch(() => {});
+                showToast(`${toUnlock.length} fichier(s) déverrouillé(s) avec succès 🔓`);
+              }
+            }}
+            className="w-full px-3 py-2 flex items-center gap-2.5 text-xs font-bold text-teal-300 hover:bg-teal-500/15 transition-colors cursor-pointer text-left"
+          >
+            <Unlock className="w-4 h-4 shrink-0 text-teal-300" />
+            <span>{hasSelection ? `Tout déverrouiller (${selectedIds.size} cochés)` : `Tout déverrouiller (${displayedFiles.length} fichiers)`}</span>
+          </button>
+
+          {/* Option 5 : Mettre à la corbeille */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDeleteToTrash(file);
+              setActiveMenuFileId(null);
+            }}
+            className="w-full px-3 py-2 flex items-center gap-2.5 text-xs font-bold text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
+          >
+            <Trash2 className="w-4 h-4 shrink-0 text-rose-400" />
+            <span>Mettre à la corbeille</span>
+          </button>
+
+          {/* Option 6 : Tout mettre à la corbeille */}
+          <button
+            type="button"
+            onClick={async (e) => {
+              e.stopPropagation();
+              setActiveMenuFileId(null);
+              if (hasSelection) {
+                await handleBatchTrash();
+              } else {
+                const toTrash = [...displayedFiles];
+                setSecureFiles(prev => prev.filter(f => !toTrash.some(t => t.id === f.id)));
+                setSelectedIds(new Set());
+                if (selectedFile && toTrash.some(t => t.id === selectedFile.id)) setSelectedFile(null);
+                toTrash.forEach(f => deleteFileBlob(f.id).catch(() => {}));
+                CloudDataStore.deleteSecureToTrash(toTrash);
+                await CloudStorageAPI.deleteSecureFilesToTrash(toTrash.map(f => f.id)).catch(() => {});
+                showToast(`${toTrash.length} fichier(s) déplacé(s) dans la corbeille 🗑️`);
+              }
+            }}
+            className="w-full px-3 py-2 flex items-center gap-2.5 text-xs font-bold text-rose-500 hover:bg-rose-500/20 transition-colors cursor-pointer text-left"
+          >
+            <Trash2 className="w-4 h-4 shrink-0 text-rose-500" />
+            <span>{hasSelection ? `Tout mettre à la corbeille (${selectedIds.size} cochés)` : `Tout mettre à la corbeille (${displayedFiles.length} fichiers)`}</span>
+          </button>
+
+          {/* Option 7 : Espace d'étude */}
+          {onOpenStudySpace && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenStudySpace(file, 'Dossier sécurisé');
+                setActiveMenuFileId(null);
+              }}
+              className="w-full px-3 py-2 flex items-center gap-2.5 text-xs font-bold text-indigo-300 hover:bg-indigo-500/15 transition-colors cursor-pointer text-left"
+            >
+              <BookOpen className="w-4 h-4 shrink-0 text-indigo-400" />
+              <span>Espace d'étude</span>
+            </button>
+          )}
+
+          {/* Option 8 : Télécharger */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDownload(file);
+              setActiveMenuFileId(null);
+            }}
+            className="w-full px-3 py-2 flex items-center gap-2.5 text-xs font-bold text-purple-300 hover:bg-purple-500/15 transition-colors cursor-pointer text-left"
+          >
+            <Download className="w-4 h-4 shrink-0 text-purple-400" />
+            <span>Télécharger</span>
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // PANNEAU DE DROITE : LECTEUR DÉDIÉ PAR TYPE DE FICHIER (DOSSIER SÉCURISÉ)
+  // EXACTEMENT COMME CELUI DE LA CORBEILLE AVEC SORTIE SUR LE CÔTÉ DROIT
+  // =========================================================================
+  const renderDedicatedReader = (file: FileItem) => {
+    const fileType = getFileType(file);
+
+    return (
+      <div className="w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none">
+        {/* Barre supérieure du lecteur */}
+        <div className="sticky top-0 z-30 w-full bg-[#0A0E1A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
+          {/* Navigation Précédent / Suivant et Titre du fichier */}
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={handlePrevFile}
+              className="p-1.5 rounded-full bg-black/60 hover:bg-[#1A2338] text-white border border-white/10 transition-colors cursor-pointer active:scale-95 shrink-0"
+              title="Élément précédent"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleNextFile}
+              className="p-1.5 rounded-full bg-black/60 hover:bg-[#1A2338] text-white border border-white/10 transition-colors cursor-pointer active:scale-95 shrink-0"
+              title="Élément suivant"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Icône du type */}
+            <div className="p-1.5 rounded-lg bg-black/80 border border-white/10 shrink-0">
+              {fileType === 'audio' && <Music className="w-3.5 h-3.5 text-amber-400" />}
+              {fileType === 'video' && <Film className="w-3.5 h-3.5 text-purple-400" />}
+              {fileType === 'image' && <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />}
+              {fileType === 'folder' && <FolderArchive className="w-3.5 h-3.5 text-orange-400" />}
+              {fileType === 'document' && <FileText className="w-3.5 h-3.5 text-blue-400" />}
+            </div>
+
+            <div className="min-w-0 ml-1">
+              <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[130px] sm:max-w-[200px] md:max-w-[260px]" title={file.name}>
+                {file.name}
+              </p>
+              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold truncate">
+                <span>{file.size || '0 o'}</span>
+                <span>•</span>
+                <span className="px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 font-bold uppercase text-[9px] border border-blue-500/30 flex items-center gap-0.5">
+                  <Lock className="w-2.5 h-2.5" /> Dossier Sécurisé
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Outils du lecteur à droite */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Bouton Déverrouiller rapide */}
+            <button
+              type="button"
+              onClick={() => {
+                handleRestore(file);
+                if (selectedFile?.id === file.id) setSelectedFile(null);
+              }}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm"
+              title="Déverrouiller vers l'emplacement d'origine"
+            >
+              <Unlock className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Déverrouiller</span>
+            </button>
+
+            {/* Bouton Espace d'étude */}
+            {onOpenStudySpace && (
+              <button
+                type="button"
+                onClick={() => onOpenStudySpace(file, 'Dossier sécurisé')}
+                className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm"
+                title="Ouvrir dans l'Espace d'étude"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Étudier</span>
+              </button>
+            )}
+
+            {/* Bouton Télécharger */}
+            <button
+              type="button"
+              onClick={() => handleDownload(file)}
+              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm flex items-center gap-1"
+              title="Télécharger"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Télécharger</span>
+            </button>
+
+            {/* Bouton Mettre à la corbeille */}
+            <button
+              type="button"
+              onClick={() => {
+                handleDeleteToTrash(file);
+                if (selectedFile?.id === file.id) setSelectedFile(null);
+              }}
+              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm flex items-center gap-1"
+              title="Mettre à la corbeille"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Corbeille</span>
+            </button>
+
+            {/* Bouton Agrandir / Réduire */}
+            <button
+              type="button"
+              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-[#1A2338] text-white border-white/10'
+              }`}
+              title={isViewerMaximized ? 'Réduire la vue' : 'Plein écran'}
+            >
+              {isViewerMaximized ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
+            </button>
+
+            {/* Bouton Fermer le lecteur */}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedFile(null);
+                setIsViewerMaximized(false);
+              }}
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-blue-600/80 hover:bg-blue-600 text-white flex items-center justify-center border border-blue-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
+              title="Fermer le lecteur"
+            >
+              <X className="w-4 h-4 stroke-[2.5]" />
+            </button>
+          </div>
+        </div>
+
+        {/* Corps du lecteur selon le type */}
+        <div className="flex-1 w-full h-full overflow-hidden flex flex-col relative bg-[#04060A]">
+          {fileType === 'audio' && (
+            <div className="w-full h-full flex flex-col justify-center bg-[#070B14]">
+              <ModernAudioPlayer
+                fileId={file.id}
+                src={file.url}
+                fileName={file.name}
+                fileSize={file.size}
+                artist={file.artist || 'StudyCloud Sécurisé'}
+                autoPlay={true}
+                className="w-full h-full border-0 rounded-none shadow-none"
+              />
+            </div>
+          )}
+
+          {fileType === 'video' && (
+            <div className="w-full h-full flex flex-col justify-center bg-black">
+              <ModernVideoPlayer
+                fileId={file.id}
+                src={file.url}
+                fileName={file.name}
+                fileSize={file.size}
+                className="w-full h-full border-0 rounded-none shadow-none"
+              />
+            </div>
+          )}
+
+          {fileType === 'image' && (
+            <div className="w-full h-full flex flex-col bg-[#070B14]">
+              <ModernImageViewer
+                fileId={file.id}
+                src={file.url}
+                fileName={file.name}
+                fileSize={file.size}
+                alt={file.name}
+                className="w-full h-full border-0 rounded-none shadow-none"
+              />
+            </div>
+          )}
+
+          {fileType === 'document' && (
+            <div className="w-full h-full flex flex-col bg-[#070B14] select-text">
+              <ModernDocumentViewer
+                fileId={file.id}
+                url={file.url}
+                fileName={file.name}
+                fileSize={file.size}
+                textContent={file.content || file.metadata?.notepadContent || file.metadata?.notepad_content || (file as any).notepadContent || ''}
+                className="w-full h-full border-0 rounded-none shadow-none"
+              />
+            </div>
+          )}
+
+          {fileType === 'folder' && (
+            <div className="w-full h-full overflow-y-auto bg-gradient-to-b from-[#0D1424] via-[#080B14] to-[#04060A] flex flex-col items-center justify-center p-6 text-center">
+              <div className="w-48 sm:w-56 drop-shadow-2xl mb-6 hover:scale-105 transition-transform duration-300 pointer-events-none">
+                <Classeur3DFolderCard folder={{
+                  id: file.id,
+                  name: file.name,
+                  modelId: file.metadata?.model_id || file.metadata?.modelId || '1',
+                  primaryColor: file.metadata?.primary_color || file.metadata?.primaryColor || '#2563EB',
+                  accentColor: file.metadata?.accent_color || file.metadata?.accentColor || '#3B82F6',
+                  iconName: file.metadata?.icon_name || file.metadata?.iconName || 'Folder',
+                  textDark: Boolean(file.metadata?.text_dark ?? file.metadata?.textDark),
+                  displayOrder: file.metadata?.display_order || 0,
+                  zoomLevel: file.metadata?.zoom_level || 10,
+                  itemCount: 0,
+                } as any} />
+              </div>
+              <h2 className="text-lg sm:text-xl font-black text-white mb-2">{file.name}</h2>
+              <p className="text-xs text-blue-400 font-bold uppercase tracking-wider mb-3 px-3 py-1 bg-blue-500/15 border border-blue-500/30 rounded-full inline-block">
+                Dossier 3D • Dossier Sécurisé
+              </p>
+              <p className="text-xs text-slate-300 max-w-sm mb-6 leading-relaxed">
+                Ce dossier du Classeur est conservé dans le dossier sécurisé. Déverrouillez-le pour retrouver l'intégralité de ses éléments.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  handleRestore(file);
+                  if (selectedFile?.id === file.id) setSelectedFile(null);
+                }}
+                className="px-6 py-2.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm flex items-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer active:scale-95"
+              >
+                <Unlock className="w-4 h-4" />
+                <span>Déverrouiller dans le Classeur</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -601,17 +1012,20 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
   // =========================================================================
   // CARTE AUDIO AUTHENTIQUE (aspect-[3/4] comme les documents, AudioCardPreview, logo mélodie)
   // =========================================================================
-  const renderAudioCard = (file: FileItem) => {
-    const isSelected = selectedIds.has(file.id);
+  const renderAudioCard = (file: FileItem, index?: number) => {
+    const isChecked = selectedIds.has(file.id);
     const isMenuOpen = activeMenuFileId === file.id;
+    const isCurrentViewer = selectedFile?.id === file.id;
 
     return (
       <div
         key={file.id}
-        onClick={() => setPreviewFile(file)}
+        onClick={() => setSelectedFile(file)}
         className={`group relative aspect-[3/4] rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 cursor-pointer select-none shadow-md ${
-          isSelected
+          isChecked
             ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
+            : isCurrentViewer
+            ? 'border-blue-500 ring-4 ring-blue-500/80 shadow-2xl scale-[1.02]'
             : isMenuOpen
             ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-2xl'
             : 'border-white/10 hover:border-amber-400/50 hover:scale-[1.01]'
@@ -668,16 +1082,16 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
-            {isMenuOpen && renderOptionsMenu(file)}
+            {isMenuOpen && renderOptionsMenu(file, index)}
           </div>
 
           <button
             type="button"
             onClick={(e) => toggleSelect(file.id, e)}
             className="p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
-            title={isSelected ? "Désélectionner" : "Sélectionner"}
+            title={isChecked ? "Désélectionner" : "Sélectionner"}
           >
-            {isSelected ? (
+            {isChecked ? (
               <CheckSquare className="w-4 h-4 fill-amber-400 text-stone-950" />
             ) : (
               <Square className="w-4 h-4 text-white" />
@@ -702,24 +1116,27 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
   // =========================================================================
   // CARTE IMAGE AUTHENTIQUE (aspect-[3/4] comme les documents, vignette réelle, bouton 3 traits)
   // =========================================================================
-  const renderImageCard = (file: FileItem) => {
+  const renderImageCard = (file: FileItem, index?: number) => {
     const isMenuOpen = activeMenuFileId === file.id;
-    const isSelected = selectedIds.has(file.id);
+    const isChecked = selectedIds.has(file.id);
+    const isCurrentViewer = selectedFile?.id === file.id;
     const imgUrl = file.previewUrl || file.thumbnailUrl || (file as any).imageUrl || file.url || '';
 
     return (
       <div
         key={file.id}
-        onClick={() => setPreviewFile(file)}
+        onClick={() => setSelectedFile(file)}
         className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
           isMenuOpen
             ? 'z-50 relative overflow-visible'
-            : isSelected
+            : isChecked
             ? 'z-20 relative overflow-hidden'
             : 'z-10 relative overflow-hidden'
         } ${
-          isSelected
+          isChecked
             ? 'border-emerald-400 ring-4 ring-emerald-400/90 shadow-2xl scale-[1.02]'
+            : isCurrentViewer
+            ? 'border-blue-500 ring-4 ring-blue-500/80 shadow-2xl scale-[1.02]'
             : isMenuOpen
             ? 'border-blue-400 ring-2 ring-blue-400/40 shadow-2xl'
             : 'border-stone-800/80 hover:border-emerald-500/50 hover:scale-[1.01]'
@@ -752,16 +1169,16 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
-              {isMenuOpen && renderOptionsMenu(file)}
+              {isMenuOpen && renderOptionsMenu(file, index)}
             </div>
 
             <button
               type="button"
               onClick={(e) => toggleSelect(file.id, e)}
               className="p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
-              title={isSelected ? "Désélectionner" : "Sélectionner"}
+              title={isChecked ? "Désélectionner" : "Sélectionner"}
             >
-              {isSelected ? (
+              {isChecked ? (
                 <CheckSquare className="w-4 h-4 fill-emerald-400 text-stone-950" />
               ) : (
                 <Square className="w-4 h-4 text-white" />
@@ -797,23 +1214,26 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
   // =========================================================================
   // CARTE VIDÉO AUTHENTIQUE (aspect-[3/4] comme les documents, VideoCardPreview, bouton play central)
   // =========================================================================
-  const renderVideoCard = (file: FileItem) => {
+  const renderVideoCard = (file: FileItem, index?: number) => {
     const isMenuOpen = activeMenuFileId === file.id;
-    const isSelected = selectedIds.has(file.id);
+    const isChecked = selectedIds.has(file.id);
+    const isCurrentViewer = selectedFile?.id === file.id;
 
     return (
       <div
         key={file.id}
-        onClick={() => setPreviewFile(file)}
+        onClick={() => setSelectedFile(file)}
         className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
           isMenuOpen
             ? 'z-50 relative overflow-visible'
-            : isSelected
+            : isChecked
             ? 'z-20 relative overflow-hidden'
             : 'z-10 relative overflow-hidden'
         } ${
-          isSelected
+          isChecked
             ? 'border-purple-400 ring-4 ring-purple-400/90 shadow-2xl scale-[1.02]'
+            : isCurrentViewer
+            ? 'border-blue-500 ring-4 ring-blue-500/80 shadow-2xl scale-[1.02]'
             : isMenuOpen
             ? 'border-blue-400 ring-2 ring-blue-400/40 shadow-2xl'
             : 'border-stone-800/80 hover:border-purple-500/50 hover:scale-[1.01]'
@@ -849,16 +1269,16 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
-              {isMenuOpen && renderOptionsMenu(file)}
+              {isMenuOpen && renderOptionsMenu(file, index)}
             </div>
 
             <button
               type="button"
               onClick={(e) => toggleSelect(file.id, e)}
               className="p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
-              title={isSelected ? "Désélectionner" : "Sélectionner"}
+              title={isChecked ? "Désélectionner" : "Sélectionner"}
             >
-              {isSelected ? (
+              {isChecked ? (
                 <CheckSquare className="w-4 h-4 fill-purple-400 text-stone-950" />
               ) : (
                 <Square className="w-4 h-4 text-white" />
@@ -894,19 +1314,22 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
   // =========================================================================
   // CARTE DOCUMENT AUTHENTIQUE (aspect-[3/4], thème couleur, DocumentCardPreview)
   // =========================================================================
-  const renderDocumentCard = (file: FileItem) => {
+  const renderDocumentCard = (file: FileItem, index?: number) => {
     const isMenuOpen = activeMenuFileId === file.id;
-    const isSelected = selectedIds.has(file.id);
+    const isChecked = selectedIds.has(file.id);
+    const isCurrentViewer = selectedFile?.id === file.id;
     const theme = getDocumentTheme(file.extension || (file.name.includes('.') ? file.name.split('.').pop() || 'PDF' : 'PDF'));
 
     return (
       <div
         key={file.id}
         style={{ background: theme.bg }}
-        onClick={() => setPreviewFile(file)}
+        onClick={() => setSelectedFile(file)}
         className={`group aspect-[3/4] ${theme.border} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative select-none cursor-pointer ${
-          isSelected
+          isChecked
             ? 'ring-4 ring-white/90 shadow-2xl scale-[1.02] z-20'
+            : isCurrentViewer
+            ? 'ring-4 ring-blue-400 shadow-2xl scale-[1.02] z-20'
             : isMenuOpen
             ? 'ring-4 ring-blue-400/80 shadow-2xl z-50 overflow-visible'
             : 'hover:scale-[1.01] shadow-md active:scale-98 z-10 overflow-hidden'
@@ -929,16 +1352,16 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
-              {isMenuOpen && renderOptionsMenu(file)}
+              {isMenuOpen && renderOptionsMenu(file, index)}
             </div>
 
             <button
               type="button"
               onClick={(e) => toggleSelect(file.id, e)}
               className="p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
-              title={isSelected ? "Désélectionner" : "Sélectionner"}
+              title={isChecked ? "Désélectionner" : "Sélectionner"}
             >
-              {isSelected ? (
+              {isChecked ? (
                 <CheckSquare className="w-4 h-4 fill-white text-stone-950" />
               ) : (
                 <Square className="w-4 h-4 text-white" />
@@ -1005,24 +1428,27 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
   // =========================================================================
   // CARTE DOSSIER / CLASSEUR 3D AUTHENTIQUE (aspect-[3/4] comme les documents, Classeur3DFolderCard)
   // =========================================================================
-  const renderClasseurCard = (file: FileItem) => {
+  const renderClasseurCard = (file: FileItem, index?: number) => {
     const isMenuOpen = activeMenuFileId === file.id;
-    const isSelected = selectedIds.has(file.id);
+    const isChecked = selectedIds.has(file.id);
+    const isCurrentViewer = selectedFile?.id === file.id;
     const folderData = (file as any).folderData || file;
 
     return (
       <div
         key={file.id}
-        onClick={() => setPreviewFile(file)}
+        onClick={() => setSelectedFile(file)}
         className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
           isMenuOpen
             ? 'z-50 relative overflow-visible'
-            : isSelected
+            : isChecked
             ? 'z-20 relative overflow-hidden'
             : 'z-10 relative overflow-hidden'
         } ${
-          isSelected
+          isChecked
             ? 'border-orange-400 ring-4 ring-orange-400/90 shadow-2xl scale-[1.02]'
+            : isCurrentViewer
+            ? 'border-blue-500 ring-4 ring-blue-500/80 shadow-2xl scale-[1.02]'
             : isMenuOpen
             ? 'border-blue-400 ring-2 ring-blue-400/40 shadow-2xl'
             : 'border-white/10 hover:border-orange-400/50 hover:scale-[1.01]'
@@ -1043,16 +1469,16 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
-              {isMenuOpen && renderOptionsMenu(file)}
+              {isMenuOpen && renderOptionsMenu(file, index)}
             </div>
 
             <button
               type="button"
               onClick={(e) => toggleSelect(file.id, e)}
               className="p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
-              title={isSelected ? "Désélectionner" : "Sélectionner"}
+              title={isChecked ? "Désélectionner" : "Sélectionner"}
             >
-              {isSelected ? (
+              {isChecked ? (
                 <CheckSquare className="w-4 h-4 fill-orange-400 text-stone-950" />
               ) : (
                 <Square className="w-4 h-4 text-white" />
@@ -1111,12 +1537,20 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <button
               type="button"
-              onClick={onBack}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                } else if (selectedFile) {
+                  setSelectedFile(null);
+                } else {
+                  onBack();
+                }
+              }}
               className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-stone-700/50 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
-              title="Retour au gestionnaire de fichiers"
+              title={isViewerMaximized ? "Réduire la vue" : selectedFile ? "Fermer le lecteur" : "Retour au gestionnaire de fichiers"}
             >
               <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
-              <span className="hidden xs:inline">Retour</span>
+              <span className="hidden xs:inline">{isViewerMaximized ? "Réduire" : selectedFile ? "Fermer" : "Retour"}</span>
             </button>
 
             <div className="flex items-center gap-2">
@@ -1160,6 +1594,138 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
           {/* Bloc Droite : Actions Déverrouillé */}
           {isUnlocked && (
             <div className="shrink-0 flex items-center gap-1.5 sm:gap-2 order-2 sm:order-3">
+              {/* Menu 3 traits général */}
+              <div className="relative studycloud-sec-menu-trigger">
+                <button
+                  type="button"
+                  onClick={() => setIsHeaderMenuOpen(!isHeaderMenuOpen)}
+                  className={`p-2 rounded-full border transition-all cursor-pointer active:scale-95 shadow-sm ${
+                    isHeaderMenuOpen
+                      ? 'bg-blue-600 text-white border-blue-400'
+                      : 'bg-[#182032] hover:bg-[#222c44] text-white border-stone-700/50'
+                  }`}
+                  title="Options du dossier sécurisé (3 traits)"
+                >
+                  <Menu className="w-4 h-4 stroke-[2.2]" />
+                </button>
+
+                {isHeaderMenuOpen && (
+                  <div
+                    className="studycloud-sec-menu-panel absolute right-0 top-11 z-[150] w-64 bg-[#0A0F1D] border-2 border-blue-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.35)] text-white animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col p-1 text-xs font-bold"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="px-3 py-2 bg-[#0E1527] border-b border-blue-500/25 flex items-center justify-between">
+                      <span className="text-white font-black">Options du Dossier</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsHeaderMenuOpen(false)}
+                        className="p-1 rounded text-slate-400 hover:text-white"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="py-1 divide-y divide-white/5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          selectAll();
+                          setIsHeaderMenuOpen(false);
+                        }}
+                        className="w-full px-3 py-2 flex items-center gap-2.5 text-amber-300 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+                      >
+                        <CheckSquare className="w-4 h-4 text-amber-300" />
+                        <span>{selectedIds.size === displayedFiles.length && displayedFiles.length > 0 ? 'Tout décocher' : 'Tout cocher (Sélectionner tout)'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setIsHeaderMenuOpen(false);
+                          if (selectedIds.size > 0) {
+                            await handleBatchRestore();
+                          } else {
+                            const toUnlock = [...displayedFiles];
+                            setSecureFiles(prev => prev.filter(f => !toUnlock.some(u => u.id === f.id)));
+                            setSelectedIds(new Set());
+                            if (selectedFile && toUnlock.some(u => u.id === selectedFile.id)) setSelectedFile(null);
+                            CloudDataStore.restoreFromSecure(toUnlock);
+                            await CloudStorageAPI.restoreFromSecureFolder(toUnlock.map(f => f.id)).catch(() => {});
+                            showToast(`${toUnlock.length} fichier(s) déverrouillé(s) avec succès 🔓`);
+                          }
+                        }}
+                        className="w-full px-3 py-2 flex items-center gap-2.5 text-emerald-400 hover:bg-emerald-500/15 transition-colors cursor-pointer text-left"
+                      >
+                        <Unlock className="w-4 h-4 text-emerald-400" />
+                        <span>{selectedIds.size > 0 ? `Tout déverrouiller (${selectedIds.size} cochés)` : `Tout déverrouiller (${displayedFiles.length} fichiers)`}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setIsHeaderMenuOpen(false);
+                          if (selectedIds.size > 0) {
+                            await handleBatchTrash();
+                          } else {
+                            const toTrash = [...displayedFiles];
+                            setSecureFiles(prev => prev.filter(f => !toTrash.some(t => t.id === f.id)));
+                            setSelectedIds(new Set());
+                            if (selectedFile && toTrash.some(t => t.id === selectedFile.id)) setSelectedFile(null);
+                            toTrash.forEach(f => deleteFileBlob(f.id).catch(() => {}));
+                            CloudDataStore.deleteSecureToTrash(toTrash);
+                            await CloudStorageAPI.deleteSecureFilesToTrash(toTrash.map(f => f.id)).catch(() => {});
+                            showToast(`${toTrash.length} fichier(s) déplacé(s) dans la corbeille 🗑️`);
+                          }
+                        }}
+                        className="w-full px-3 py-2 flex items-center gap-2.5 text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
+                      >
+                        <Trash2 className="w-4 h-4 text-rose-400" />
+                        <span>{selectedIds.size > 0 ? `Tout mettre à la corbeille (${selectedIds.size} cochés)` : `Tout mettre à la corbeille (${displayedFiles.length} fichiers)`}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsHeaderMenuOpen(false);
+                          fileInputRef.current?.click();
+                        }}
+                        className="w-full px-3 py-2 flex items-center gap-2.5 text-blue-400 hover:bg-blue-500/15 transition-colors cursor-pointer text-left"
+                      >
+                        <Plus className="w-4 h-4 text-blue-400" />
+                        <span>Ajouter des fichiers confidentiels</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsHeaderMenuOpen(false);
+                          setShowChangePinModal(true);
+                        }}
+                        className="w-full px-3 py-2 flex items-center gap-2.5 text-slate-300 hover:bg-white/10 transition-colors cursor-pointer text-left"
+                      >
+                        <Settings className="w-4 h-4 text-slate-400" />
+                        <span>Changer le code secret</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsHeaderMenuOpen(false);
+                          setIsUnlocked(false);
+                          setSelectedIds(new Set());
+                          setSelectedFile(null);
+                          showToast('Dossier sécurisé verrouillé 🔒');
+                        }}
+                        className="w-full px-3 py-2 flex items-center gap-2.5 text-red-400 hover:bg-red-500/15 transition-colors cursor-pointer text-left"
+                      >
+                        <Lock className="w-4 h-4 text-red-400" />
+                        <span>Verrouiller le coffre</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={() => setShowChangePinModal(true)}
@@ -1184,7 +1750,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
                 onClick={() => {
                   setIsUnlocked(false);
                   setSelectedIds(new Set());
-                  setPreviewFile(null);
+                  setSelectedFile(null);
                   showToast('Dossier sécurisé verrouillé 🔒');
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/15 text-red-600 hover:bg-red-500/25 border border-red-500/30 text-xs font-bold transition-all cursor-pointer active:scale-95"
@@ -1271,135 +1837,164 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
           </div>
         </div>
       ) : (
-        /* VUE DES FICHIERS PROTÉGÉS */
-        <main className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-4 pb-36">
-          {/* Filtres par catégorie et sélection */}
-          {secureFiles.length > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setCategoryFilter('all')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                    categoryFilter === 'all'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
-                  }`}
-                >
-                  Tout ({categoryCounts.all})
-                </button>
-                {categoryCounts.audio > 0 && (
+        /* VUE DES FICHIERS PROTÉGÉS AVEC MODE SPLIT-SCREEN LATÉRAL (COMME DANS LA CORBEILLE) */
+        <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+          <main
+            className={`overflow-y-auto bg-stone-100 py-4 pb-36 ${
+              isViewerMaximized && selectedFile
+                ? 'hidden'
+                : selectedFile
+                ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-200 px-3 sm:px-4'
+                : 'flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12'
+            }`}
+          >
+            {/* Filtres par catégorie et sélection */}
+            {secureFiles.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setCategoryFilter('audio')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                      categoryFilter === 'audio'
-                        ? 'bg-amber-500 text-black shadow-md'
+                    onClick={() => setCategoryFilter('all')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                      categoryFilter === 'all'
+                        ? 'bg-blue-600 text-white shadow-md'
                         : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
                     }`}
                   >
-                    <Music className="w-3.5 h-3.5" />
-                    <span>Audios ({categoryCounts.audio})</span>
+                    Tout ({categoryCounts.all})
                   </button>
-                )}
-                {categoryCounts.documents > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setCategoryFilter('documents')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                      categoryFilter === 'documents'
-                        ? 'bg-blue-500 text-white shadow-md'
-                        : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
-                    }`}
-                  >
-                    <FileText className="w-3.5 h-3.5" />
-                    <span>Documents ({categoryCounts.documents})</span>
-                  </button>
-                )}
-                {categoryCounts.images > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setCategoryFilter('images')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                      categoryFilter === 'images'
-                        ? 'bg-emerald-600 text-white shadow-md'
-                        : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
-                    }`}
-                  >
-                    <ImageIcon className="w-3.5 h-3.5" />
-                    <span>Images ({categoryCounts.images})</span>
-                  </button>
-                )}
-                {categoryCounts.videos > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setCategoryFilter('videos')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                      categoryFilter === 'videos'
-                        ? 'bg-purple-600 text-white shadow-md'
-                        : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
-                    }`}
-                  >
-                    <Film className="w-3.5 h-3.5" />
-                    <span>Vidéos ({categoryCounts.videos})</span>
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={selectAll}
-                  className="flex items-center gap-1.5 text-xs font-bold text-stone-600 hover:text-stone-900 px-2.5 py-1 rounded-lg hover:bg-stone-200 transition-colors"
-                >
-                  {selectedIds.size === displayedFiles.length && displayedFiles.length > 0 ? (
-                    <CheckSquare className="w-4 h-4 text-blue-600" />
-                  ) : (
-                    <Square className="w-4 h-4 text-stone-400" />
+                  {categoryCounts.audio > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setCategoryFilter('audio')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                        categoryFilter === 'audio'
+                          ? 'bg-amber-500 text-black shadow-md'
+                          : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
+                      }`}
+                    >
+                      <Music className="w-3.5 h-3.5" />
+                      <span>Audios ({categoryCounts.audio})</span>
+                    </button>
                   )}
-                  <span>{selectedIds.size === displayedFiles.length && displayedFiles.length > 0 ? 'Tout désélectionner' : 'Tout sélectionner'}</span>
-                </button>
-              </div>
-            </div>
-          )}
+                  {categoryCounts.documents > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setCategoryFilter('documents')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                        categoryFilter === 'documents'
+                          ? 'bg-blue-500 text-white shadow-md'
+                          : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
+                      }`}
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>Documents ({categoryCounts.documents})</span>
+                    </button>
+                  )}
+                  {categoryCounts.images > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setCategoryFilter('images')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                        categoryFilter === 'images'
+                          ? 'bg-emerald-600 text-white shadow-md'
+                          : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
+                      }`}
+                    >
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      <span>Images ({categoryCounts.images})</span>
+                    </button>
+                  )}
+                  {categoryCounts.videos > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setCategoryFilter('videos')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                        categoryFilter === 'videos'
+                          ? 'bg-purple-600 text-white shadow-md'
+                          : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
+                      }`}
+                    >
+                      <Film className="w-3.5 h-3.5" />
+                      <span>Vidéos ({categoryCounts.videos})</span>
+                    </button>
+                  )}
+                </div>
 
-          {displayedFiles.length === 0 ? (
-            <div className="py-24 flex flex-col items-center justify-center text-center max-w-md mx-auto">
-              <div className="w-20 h-20 rounded-3xl bg-white border border-stone-200 flex items-center justify-center mb-4 shadow-sm">
-                <ShieldCheck className="w-10 h-10 text-blue-500 opacity-60 stroke-[1.5]" />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={selectAll}
+                    className="flex items-center gap-1.5 text-xs font-bold text-stone-600 hover:text-stone-900 px-2.5 py-1 rounded-lg hover:bg-stone-200 transition-colors"
+                  >
+                    {selectedIds.size === displayedFiles.length && displayedFiles.length > 0 ? (
+                      <CheckSquare className="w-4 h-4 text-blue-600" />
+                    ) : (
+                      <Square className="w-4 h-4 text-stone-400" />
+                    )}
+                    <span>{selectedIds.size === displayedFiles.length && displayedFiles.length > 0 ? 'Tout désélectionner' : 'Tout sélectionner'}</span>
+                  </button>
+                </div>
               </div>
-              <h3 className="text-lg font-black text-stone-800 mb-1.5">
-                {searchQuery ? 'Aucun résultat trouvé' : 'Aucun fichier protégé dans cette catégorie'}
-              </h3>
-              <p className="text-xs sm:text-sm text-stone-500 mb-6 leading-relaxed">
-                {searchQuery
-                  ? `Aucun fichier ne correspond à votre recherche "${searchQuery}".`
-                  : 'Importez ou déplacez vos documents confidentiels, relevés ou notes secrètes ici.'}
-              </p>
-              {!searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-5 py-2.5 rounded-full bg-blue-500 hover:bg-blue-400 text-black font-black text-sm shadow-lg shadow-blue-500/20 transition-all cursor-pointer active:scale-95 flex items-center gap-2"
-                >
-                  <Plus className="w-4 h-4 stroke-[3]" />
-                  <span>Ajouter un fichier confidentiel</span>
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-              {displayedFiles.map((file) => {
-                const fType = getFileType(file);
-                if (fType === 'audio') return renderAudioCard(file);
-                if (fType === 'image') return renderImageCard(file);
-                if (fType === 'video') return renderVideoCard(file);
-                if (fType === 'folder') return renderClasseurCard(file);
-                return renderDocumentCard(file);
-              })}
-            </div>
+            )}
+
+            {displayedFiles.length === 0 ? (
+              <div className="py-24 flex flex-col items-center justify-center text-center max-w-md mx-auto">
+                <div className="w-20 h-20 rounded-3xl bg-white border border-stone-200 flex items-center justify-center mb-4 shadow-sm">
+                  <ShieldCheck className="w-10 h-10 text-blue-500 opacity-60 stroke-[1.5]" />
+                </div>
+                <h3 className="text-lg font-black text-stone-800 mb-1.5">
+                  {searchQuery ? 'Aucun résultat trouvé' : 'Aucun fichier protégé dans cette catégorie'}
+                </h3>
+                <p className="text-xs sm:text-sm text-stone-500 mb-6 leading-relaxed">
+                  {searchQuery
+                    ? `Aucun fichier ne correspond à votre recherche "${searchQuery}".`
+                    : 'Importez ou déplacez vos documents confidentiels, relevés ou notes secrètes ici.'}
+                </p>
+                {!searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-5 py-2.5 rounded-full bg-blue-500 hover:bg-blue-400 text-black font-black text-sm shadow-lg shadow-blue-500/20 transition-all cursor-pointer active:scale-95 flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4 stroke-[3]" />
+                    <span>Ajouter un fichier confidentiel</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div
+                className={`grid gap-3 sm:gap-4 ${
+                  selectedFile
+                    ? 'grid-cols-2 lg:grid-cols-3'
+                    : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                }`}
+              >
+                {displayedFiles.map((file, idx) => {
+                  const fType = getFileType(file);
+                  if (fType === 'audio') return renderAudioCard(file, idx);
+                  if (fType === 'image') return renderImageCard(file, idx);
+                  if (fType === 'video') return renderVideoCard(file, idx);
+                  if (fType === 'folder') return renderClasseurCard(file, idx);
+                  return renderDocumentCard(file, idx);
+                })}
+              </div>
+            )}
+          </main>
+
+          {/* PANNEAU DE DROITE : LECTEUR / APERÇU DÉDIÉ (COMME DANS LA CORBEILLE) */}
+          {selectedFile && (
+            <aside
+              className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 ${
+                isViewerMaximized
+                  ? 'fixed inset-0 z-50 w-full h-full'
+                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-200 md:border-stone-800'
+              }`}
+            >
+              {renderDedicatedReader(selectedFile)}
+            </aside>
           )}
-        </main>
+        </div>
       )}
 
       {/* BARRE D'ACTIONS FLOTTANTE LORS DE LA SÉLECTION MULTIPLE */}
@@ -1419,7 +2014,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
             title="Restaurer vers les menus d'origine"
           >
             <Unlock className="w-3.5 h-3.5" />
-            <span>Déverrouiller</span>
+            <span>Tout déverrouiller</span>
           </button>
 
           {/* Supprimer vers la corbeille */}
@@ -1430,7 +2025,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
             title="Mettre dans la corbeille"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            <span>Corbeille</span>
+            <span>Tout à la corbeille</span>
           </button>
 
           {/* Annuler sélection */}
@@ -1442,140 +2037,6 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ onBa
           >
             <X className="w-4 h-4" />
           </button>
-        </div>
-      )}
-
-      {/* MODAL DE PRÉVISUALISATION MULTIMÉDIA */}
-      {previewFile && (
-        <div
-          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200"
-          onClick={() => setPreviewFile(null)}
-        >
-          <div
-            className="w-full max-w-3xl bg-[#090D1A] border border-white/15 rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* En-tête de la visionneuse */}
-            <div className="px-5 py-3.5 border-b border-white/10 flex items-center justify-between gap-3 bg-[#05070F]">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="p-2 rounded-xl bg-white/5 border border-white/10">
-                  {renderCategoryIcon(previewFile.category)}
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-sm font-bold text-white truncate">{previewFile.name}</h3>
-                  <p className="text-[11px] text-slate-400">{previewFile.size} • {previewFile.date}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handleDownload(previewFile)}
-                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white"
-                  title="Télécharger"
-                >
-                  <Download className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleRestore(previewFile);
-                    setPreviewFile(null);
-                  }}
-                  className="p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400"
-                  title="Déverrouiller vers l'emplacement d'origine"
-                >
-                  <Unlock className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleDeleteToTrash(previewFile);
-                    setPreviewFile(null);
-                  }}
-                  className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400"
-                  title="Mettre dans la corbeille"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPreviewFile(null)}
-                  className="p-2 rounded-xl bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white ml-2"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Contenu multimédia selon le type */}
-            <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-black/40 min-h-[300px]">
-              {previewFile.category === 'images' ? (
-                <img
-                  src={previewFile.url || previewFile.previewUrl}
-                  alt={previewFile.name}
-                  className="max-h-[70vh] max-w-full object-contain rounded-xl shadow-lg"
-                />
-              ) : previewFile.category === 'videos' ? (
-                <video
-                  src={previewFile.url || previewFile.previewUrl}
-                  controls
-                  autoPlay
-                  className="max-h-[70vh] max-w-full rounded-xl shadow-lg"
-                />
-              ) : previewFile.category === 'audio' || getFileType(previewFile) === 'audio' ? (
-                <div className="w-full max-w-md p-6 rounded-3xl bg-[#0F1424] border border-white/15 text-center space-y-4 shadow-2xl">
-                  <div className="w-40 h-40 sm:w-48 sm:h-48 rounded-2xl overflow-hidden mx-auto shadow-2xl border border-white/20 relative group bg-black">
-                    <AudioCardPreview track={previewFile} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                  </div>
-                  <div>
-                    <h4 className="text-base font-bold text-white truncate px-2">{previewFile.name}</h4>
-                    <p className="text-xs text-amber-300 font-semibold mt-0.5">{previewFile.artist || previewFile.source || 'Fichier Audio'}</p>
-                    <p className="text-[11px] text-slate-400 mt-1">{previewFile.size} • {previewFile.date}</p>
-                  </div>
-                  <audio
-                    src={previewFile.url || previewFile.previewUrl}
-                    controls
-                    autoPlay
-                    className="w-full"
-                  />
-                </div>
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-center p-8 space-y-4">
-                  <div className="w-20 h-20 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center">
-                    <FileText className="w-10 h-10" />
-                  </div>
-                  <div>
-                    <h4 className="text-base font-bold text-white">{previewFile.name}</h4>
-                    <p className="text-xs text-slate-400 mt-1">Format {previewFile.extension || 'DOCUMENT'} • {previewFile.size}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {onOpenStudySpace && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onOpenStudySpace(previewFile, 'Dossier sécurisé');
-                          setPreviewFile(null);
-                        }}
-                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5"
-                      >
-                        <BookOpen className="w-4 h-4" />
-                        <span>Ouvrir dans l'Espace d'étude</span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleDownload(previewFile)}
-                      className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center gap-1.5"
-                    >
-                      <Download className="w-4 h-4" />
-                      <span>Télécharger</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
       )}
 
