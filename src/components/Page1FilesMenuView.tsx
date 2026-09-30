@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import { 
@@ -301,6 +301,56 @@ const RecentImageCardPreview: React.FC<{ file: FileItem }> = ({ file }) => {
 export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, onOpenStudySpace, onOpenCreateShareLink }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [subSearchQuery, setSubSearchQuery] = useState('');
+  const [searchCategoryFilter, setSearchCategoryFilter] = useState<'all' | 'documents' | 'images' | 'videos' | 'audio' | 'classeur' | 'downloads'>('all');
+
+  // Historique des recherches récentes (5 max, persistance localStorage)
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('studycloud_recent_searches');
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) return arr.filter(s => typeof s === 'string' && s.trim()).slice(0, 5);
+      }
+    } catch {}
+    return [];
+  });
+  const [showRecentSearchesMenu, setShowRecentSearchesMenu] = useState(false);
+  const recentSearchesMenuRef = useRef<HTMLDivElement>(null);
+
+  const saveRecentSearch = useCallback((term: string) => {
+    const trimmed = term.trim();
+    if (!trimmed) return;
+    setRecentSearches(prev => {
+      const next = [trimmed, ...prev.filter(item => item.toLowerCase() !== trimmed.toLowerCase())].slice(0, 5);
+      try {
+        localStorage.setItem('studycloud_recent_searches', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (recentSearchesMenuRef.current && !recentSearchesMenuRef.current.contains(e.target as Node)) {
+        setShowRecentSearchesMenu(false);
+      }
+    };
+    if (showRecentSearchesMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showRecentSearchesMenu]);
+
+  // Sauvegarder automatiquement après un court délai de frappe si la requête est consistante
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q || q.length < 3) return;
+    const t = setTimeout(() => {
+      saveRecentSearch(q);
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [searchQuery, saveRecentSearch]);
+
   const [docMenuOpenId, setDocMenuOpenId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -4135,6 +4185,102 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       return subSearchQuery.trim() === '' || item.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
   }, [downloadedItems, subSearchQuery]);
+
+  // Agrégation de tous les fichiers de tous les menus pour la recherche globale d'accueil
+  const allGlobalSearchableFiles = useMemo(() => {
+    const list: (FileItem & { menuOrigin?: string })[] = [];
+    const seen = new Set<string>();
+
+    const pushUnique = (item: any, origin: string, defaultCat?: string) => {
+      if (!item || !item.id || seen.has(item.id)) return;
+      seen.add(item.id);
+      list.push({
+        ...item,
+        category: item.category || defaultCat || 'documents',
+        menuOrigin: origin
+      });
+    };
+
+    (documentsList || []).forEach(f => pushUnique(f, 'Documents', 'documents'));
+    (imagesList || []).forEach(f => pushUnique(f, 'Images', 'images'));
+    (videosList || []).forEach(f => pushUnique(f, 'Vidéos', 'videos'));
+    (audioList || []).forEach(f => pushUnique(f, 'Audio', 'audio'));
+    (downloadedItems || []).forEach(f => pushUnique(f, 'Téléchargements', 'downloads'));
+
+    if (folderFilesMap) {
+      Object.entries(folderFilesMap).forEach(([folderId, fList]) => {
+        const folder = classeur3DFolders.find(fd => fd.id === folderId);
+        const folderName = folder ? folder.name : 'Dossier Classeur';
+        ((fList as FileItem[]) || []).forEach(f => pushUnique(f, `Classeur (${folderName})`, 'classeur'));
+      });
+    }
+
+    classeur3DFolders.forEach(folder => {
+      pushUnique({
+        id: folder.id,
+        name: folder.name,
+        category: 'classeur' as any,
+        size: 'Dossier 3D',
+        date: folder.dateText,
+        isFolder: true,
+        folderId: folder.id,
+        metadata: {
+          modelId: folder.modelId,
+          primaryColor: folder.primaryColor,
+          accentColor: folder.accentColor,
+          iconName: folder.iconName,
+        }
+      }, 'Classeur 3D', 'classeur');
+    });
+
+    try {
+      const storeState = CloudDataStore.getState();
+      (storeState.favorites || []).forEach(f => pushUnique(f, 'Favoris', f.category));
+    } catch {}
+
+    return list;
+  }, [documentsList, imagesList, videosList, audioList, downloadedItems, folderFilesMap, classeur3DFolders]);
+
+  // Filtrage multi-critères selon le texte recherché
+  const globalSearchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    return allGlobalSearchableFiles.filter(f => {
+      const normCat = (f.category || detectFileCategory(f)).toLowerCase();
+      if (searchCategoryFilter !== 'all' && normCat !== searchCategoryFilter) {
+        return false;
+      }
+      const nameMatch = (f.name || '').toLowerCase().includes(q);
+      const sourceMatch = (f.source || '').toLowerCase().includes(q);
+      const originMatch = (f.menuOrigin || '').toLowerCase().includes(q);
+      const catMatch = normCat.includes(q);
+      const extMatch = (f.extension || '').toLowerCase().includes(q);
+      const artistMatch = ((f as any).artist || '').toLowerCase().includes(q);
+      return nameMatch || sourceMatch || originMatch || catMatch || extMatch || artistMatch;
+    });
+  }, [allGlobalSearchableFiles, searchQuery, searchCategoryFilter]);
+
+  const handleSearchResultClick = (file: FileItem) => {
+    saveRecentSearch(searchQuery);
+    if (file.isFolder || file.category === 'classeur' || file.source === 'classeur_folder') {
+      const folder = classeur3DFolders.find(f => f.id === (file.folderId || file.id));
+      if (folder) {
+        setSelectedClasseurFolder(folder);
+        setCurrentSubView({
+          id: `studycloud-classeur-folder-${folder.id}`,
+          type: 'folder',
+          name: folder.name,
+          icon: FolderArchive,
+          color: 'text-orange-400'
+        });
+        if (!file.isFolder) {
+          handleSelectFile(file);
+        }
+        return;
+      }
+    }
+    handleRecentFileClick(file);
+  };
 
   // Calcul dynamique et formatage lisible de l'espace occupé par chaque catégorie
   const formatCategoryDisplaySize = (bytes: number, count: number, singularUnit: string) => {
@@ -12473,13 +12619,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           <div className="sticky top-0 z-30 w-full bg-[#F4F6F8]/95 dark:bg-[#0C111D]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 pt-2.5 pb-2.5 border-b border-stone-300/70 dark:border-slate-800/60 shadow-xs">
             <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
               
-              {/* GAUCHE : Bouton Retour rapide vers l'accueil */}
+              {/* GAUCHE : Bouton Retour rapide vers l'accueil (ferme aussi la recherche en cours) */}
               <div className="flex items-center shrink-0">
                 <button
                   type="button"
-                  onClick={onBack}
+                  onClick={() => {
+                    if (searchQuery.trim()) {
+                      setSearchQuery('');
+                      setShowRecentSearchesMenu(false);
+                    } else {
+                      onBack();
+                    }
+                  }}
                   className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
-                  title="Retour au Tableau de bord"
+                  title={searchQuery.trim() ? "Mettre fin à la recherche et revenir à l'accueil" : "Retour au Tableau de bord"}
                   aria-label="Retour"
                 >
                   <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
@@ -12490,15 +12643,91 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg mx-auto relative flex items-center px-1 sm:px-2">
                 <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-blue-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 sm:py-2 transition-all shadow-inner gap-2">
                   
-                  {/* Icône Menu hamburger intégrée à gauche */}
-                  <div className="text-white shrink-0">
-                    <Menu className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.2]" />
+                  {/* Bouton trois traits collé avec menu des recherches récentes (5 max) */}
+                  <div className="relative shrink-0" ref={recentSearchesMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setShowRecentSearchesMenu(prev => !prev)}
+                      className={`p-1 rounded-full text-white hover:text-blue-400 hover:bg-white/10 transition-all cursor-pointer flex items-center justify-center ${showRecentSearchesMenu ? 'text-blue-400 bg-white/15' : ''}`}
+                      title="Recherches récentes (5 max)"
+                      aria-label="Recherches récentes"
+                    >
+                      <Menu className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.2]" />
+                    </button>
+
+                    {/* Petit menu déroulant à côté qui liste les 5 anciennes recherches */}
+                    {showRecentSearchesMenu && (
+                      <div 
+                        className="absolute left-0 top-full mt-2.5 w-64 sm:w-72 bg-[#0A0F1D]/95 backdrop-blur-xl border border-white/15 rounded-2xl shadow-[0_15px_40px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.08)] py-2 z-50 animate-in fade-in zoom-in-95 duration-150"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between px-3.5 py-1.5 border-b border-white/10 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                          <span className="flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-blue-400" />
+                            Recherches récentes
+                          </span>
+                          {recentSearches.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRecentSearches([]);
+                                try { localStorage.removeItem('studycloud_recent_searches'); } catch {}
+                              }}
+                              className="text-[10px] text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
+                              title="Effacer l'historique"
+                            >
+                              Effacer
+                            </button>
+                          )}
+                        </div>
+
+                        {recentSearches.length === 0 ? (
+                          <div className="px-4 py-3 text-xs text-slate-400 text-center italic">
+                            Aucune recherche récente enregistrée
+                          </div>
+                        ) : (
+                          <div className="py-1">
+                            {recentSearches.map((term, index) => (
+                              <button
+                                key={index}
+                                type="button"
+                                onClick={() => {
+                                  setSearchQuery(term);
+                                  setShowRecentSearchesMenu(false);
+                                  saveRecentSearch(term);
+                                }}
+                                className="w-full px-3.5 py-2 text-left hover:bg-white/10 flex items-center justify-between gap-2 text-xs font-semibold text-white transition-colors cursor-pointer group"
+                              >
+                                <div className="flex items-center gap-2.5 truncate">
+                                  <Search className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-400 shrink-0" />
+                                  <span className="truncate group-hover:text-blue-300">{term}</span>
+                                </div>
+                                <span className="text-[10px] text-slate-500 shrink-0">
+                                  {index + 1}/5
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && searchQuery.trim()) {
+                        saveRecentSearch(searchQuery);
+                        setShowRecentSearchesMenu(false);
+                      }
+                    }}
+                    onBlur={() => {
+                      if (searchQuery.trim().length >= 2) {
+                        saveRecentSearch(searchQuery);
+                      }
+                    }}
                     placeholder='Recherchez photos, cours, documents...'
                     className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
                   />
@@ -12550,10 +12779,188 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             </div>
           </div>
 
-          {/* CORPS PRINCIPAL DIRECT : SANS LES DEUX BOUTONS, DIRECTEMENT LE MENU STUDYCLOUD */}
+          {/* CORPS PRINCIPAL DIRECT : RECHERCHE GLOBALE OU MENUS STUDYCLOUD */}
           <div className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-3 sm:py-4 pb-48 sm:pb-64 space-y-4 sm:space-y-5">
+            {searchQuery.trim() !== '' ? (
+              /* ========================================================================= */
+              /* VUE RÉSULTATS DE RECHERCHE GLOBALE : REMPLACE LES MENUS                   */
+              /* ========================================================================= */
+              <section className="space-y-4 animate-in fade-in duration-200">
+                {/* En-tête des résultats */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-3xl bg-[#04060A] border border-white/10 shadow-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400 shrink-0">
+                      <Search className="w-5 h-5 stroke-[2.2]" />
+                    </div>
+                    <div>
+                      <h2 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                        <span>Résultats pour &ldquo;{searchQuery}&rdquo;</span>
+                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-extrabold border border-blue-500/30">
+                          {globalSearchResults.length} {globalSearchResults.length > 1 ? 'éléments' : 'élément'}
+                        </span>
+                      </h2>
+                      <p className="text-[11px] text-slate-400">
+                        Recherche transversale dans tous vos menus et dossiers
+                      </p>
+                    </div>
+                  </div>
 
-            {/* SECTION 1 : RÉCENTS (STRICTEMENT 6 ÉLÉMENTS SUR 1 LIGNE) */}
+                  {/* Bouton pour clore la recherche et réafficher les boutons de menu */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setShowRecentSearchesMenu(false);
+                    }}
+                    className="self-start sm:self-center flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 text-white text-xs font-bold transition-all border border-white/10 hover:border-white/20 active:scale-95 cursor-pointer shrink-0"
+                    title="Mettre fin à la recherche et réafficher les boutons de chaque menu"
+                  >
+                    <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
+                    <span>Réafficher tous les menus</span>
+                  </button>
+                </div>
+
+                {/* Filtres par catégorie */}
+                <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 no-scrollbar">
+                  {[
+                    { id: 'all', label: `Tous (${allGlobalSearchableFiles.filter(f => {
+                      const q = searchQuery.trim().toLowerCase();
+                      return (f.name || '').toLowerCase().includes(q) || (f.source || '').toLowerCase().includes(q) || (f.menuOrigin || '').toLowerCase().includes(q);
+                    }).length})` },
+                    { id: 'documents', label: 'Documents' },
+                    { id: 'images', label: 'Images' },
+                    { id: 'videos', label: 'Vidéos' },
+                    { id: 'audio', label: 'Audio' },
+                    { id: 'classeur', label: 'Classeur' },
+                    { id: 'downloads', label: 'Téléchargements' },
+                  ].map(tab => {
+                    const isActive = searchCategoryFilter === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setSearchCategoryFilter(tab.id as any)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                          isActive 
+                            ? 'bg-blue-600 text-white shadow-md shadow-blue-900/40 border border-blue-400/40' 
+                            : 'bg-[#04060A] text-slate-300 hover:text-white hover:bg-[#0A0E18] border border-white/10'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Grille des résultats ou message vide */}
+                {globalSearchResults.length === 0 ? (
+                  <div className="w-full py-16 flex flex-col items-center justify-center text-center p-6 bg-[#04060A] border border-white/10 rounded-3xl">
+                    <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 mb-3">
+                      <Search className="w-6 h-6 stroke-[2]" />
+                    </div>
+                    <h3 className="text-base font-black text-white mb-1">
+                      Aucun résultat pour &ldquo;{searchQuery}&rdquo;
+                    </h3>
+                    <p className="text-xs text-slate-400 max-w-sm mb-4 leading-relaxed">
+                      Aucun élément ne correspond à votre saisie dans l'ensemble des menus. Vous pouvez essayer un autre mot ou réafficher vos menus.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="px-5 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-all shadow-md active:scale-95 cursor-pointer"
+                    >
+                      Effacer la recherche et revenir aux menus
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 sm:gap-3.5">
+                    {globalSearchResults.map((file) => {
+                      const normCat = (file.category || detectFileCategory(file)).toLowerCase();
+                      const catBadge =
+                        normCat === 'images' ? { label: 'Image', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' } :
+                        normCat === 'videos' ? { label: 'Vidéo', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' } :
+                        normCat === 'audio' ? { label: 'Audio', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30' } :
+                        normCat === 'downloads' ? { label: 'Téléchargement', color: 'bg-sky-500/20 text-sky-400 border-sky-500/30' } :
+                        normCat === 'classeur' ? { label: 'Classeur', color: 'bg-orange-500/20 text-orange-400 border-orange-500/30' } :
+                        { label: 'Document', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' };
+
+                      const isImg = normCat === 'images' || file.isImage;
+                      const isVid = normCat === 'videos' || file.isVideo;
+                      const isAud = normCat === 'audio' || file.isAudio;
+                      const isFolder = file.isFolder || normCat === 'classeur_folder';
+                      const isClasseurDoc = normCat === 'classeur' && !isFolder;
+
+                      return (
+                        <div
+                          key={file.id}
+                          onClick={() => handleSearchResultClick(file)}
+                          className="group relative flex flex-col rounded-2xl bg-[#04060A] hover:bg-[#0A0E18] border border-white/10 hover:border-blue-400/50 shadow-md transition-all duration-200 cursor-pointer overflow-hidden active:scale-95"
+                          title={`Ouvrir "${file.name}"`}
+                        >
+                          {/* Zone d'aperçu / vignette */}
+                          <div className="relative w-full h-32 sm:h-36 bg-[#080D1A] flex items-center justify-center overflow-hidden">
+                            {isImg && (file.previewUrl || file.thumbnailUrl || file.url) ? (
+                              <img
+                                src={file.previewUrl || file.thumbnailUrl || file.url}
+                                alt={file.name}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
+                                loading="lazy"
+                              />
+                            ) : isVid ? (
+                              <div className="flex flex-col items-center gap-1.5 text-purple-400">
+                                <Film className="w-8 h-8 stroke-[1.8] group-hover:scale-110 transition-transform" />
+                                <span className="text-[10px] font-bold text-slate-400">Vidéo</span>
+                              </div>
+                            ) : isAud ? (
+                              <div className="w-full h-full">
+                                <AudioCardPreview track={file} />
+                              </div>
+                            ) : isFolder ? (
+                              <div className="flex flex-col items-center gap-1.5 text-orange-400">
+                                <FolderArchive className="w-9 h-9 stroke-[1.8] group-hover:scale-110 transition-transform" />
+                                <span className="text-[10px] font-bold text-orange-300">Dossier</span>
+                              </div>
+                            ) : isClasseurDoc ? (
+                              <div className="flex flex-col items-center gap-1.5 text-orange-400">
+                                <FileText className="w-8 h-8 stroke-[1.8] group-hover:scale-110 transition-transform" />
+                                <span className="text-[10px] font-bold text-slate-400">{file.extension || 'DOC'}</span>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center gap-1.5 text-blue-400">
+                                <FileText className="w-8 h-8 stroke-[1.8] group-hover:scale-110 transition-transform" />
+                                <span className="text-[10px] font-bold text-slate-400">{file.extension || 'DOC'}</span>
+                              </div>
+                            )}
+
+                            {/* Badge de catégorie en haut à gauche */}
+                            <div className="absolute top-2 left-2 z-10">
+                              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-md border backdrop-blur-md shadow-xs ${catBadge.color}`}>
+                                {catBadge.label}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Bas de carte avec Nom, Emplacement et Taille */}
+                          <div className="p-2 sm:p-2.5 flex flex-col justify-between bg-[#151C2C] flex-1">
+                            <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-blue-400 transition-colors" title={file.name}>
+                              {file.name}
+                            </p>
+                            <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1.5">
+                              <span className="truncate max-w-[85px]" title={file.menuOrigin || file.source}>
+                                {file.menuOrigin || file.source || catBadge.label}
+                              </span>
+                              <span className="shrink-0 font-medium">{file.size}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            ) : (
+              <>
+                {/* SECTION 1 : RÉCENTS (STRICTEMENT 6 ÉLÉMENTS SUR 1 LIGNE) */}
             {loadingCategories.overview ? (
               <section className="space-y-2 animate-in fade-in duration-200">
                 <div className="flex items-center justify-between">
@@ -12832,10 +13239,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 })}
               </div>
             </section>
+          </>
+        )}
 
-          </div>
-        </>
-      )}
+      </div>
+    </>
+  )}
 
       {/* Modal de changement de code PIN (Image 2) */}
       {renderChangePinModal()}
