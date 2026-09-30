@@ -594,13 +594,20 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
 
   const processFiles = async (fileList: FileList | File[]) => {
     try {
+      const MAX_IMPORT_FILES = 10;
+      let files = Array.from(fileList) as File[];
+      if (files.length > MAX_IMPORT_FILES) {
+        alert(`⚠️ Limite de ${MAX_IMPORT_FILES} fichiers maximum à la fois : seuls les ${MAX_IMPORT_FILES} premiers fichiers seront importés.`);
+        files = files.slice(0, MAX_IMPORT_FILES);
+      }
+
       const newItems: ImportedItem[] = [];
       const itemsWithFiles: { file: File | Blob; item: any; originalSizeBytes?: number; originalSizeFormatted?: string }[] = [];
       const imageFilesToCompress: { id: string; file: File }[] = [];
 
       const now = Date.now();
-      for (let i = 0; i < fileList.length; i++) {
-        const f = fileList[i];
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
 
         // Contrôle de taille 50 Mo (paramétrable)
         if (f.size > MAX_FILE_SIZE_BYTES) {

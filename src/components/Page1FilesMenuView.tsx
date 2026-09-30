@@ -587,7 +587,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Importer des fichiers dans le dossier ouvert
   const handleFolderFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, folderId: string, skipDuplicateCheck?: boolean) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    const files = Array.from(e.target.files) as File[];
+    const MAX_IMPORT_FILES = 10;
+    let files = Array.from(e.target.files) as File[];
+    if (files.length > MAX_IMPORT_FILES) {
+      showProfileToast(`⚠️ Limite de ${MAX_IMPORT_FILES} fichiers maximum à la fois : seuls les ${MAX_IMPORT_FILES} premiers fichiers seront importés.`, 'warning');
+      files = files.slice(0, MAX_IMPORT_FILES);
+    }
     const targetFolder = classeur3DFolders.find(f => f.id === folderId);
     const folderName = targetFolder ? targetFolder.name : 'Dossier';
 
@@ -2250,9 +2255,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     skipDuplicateCheck?: boolean
   ) => {
     if (!files || files.length === 0) return;
+    const MAX_IMPORT_FILES = 10;
+    let filesToProcess = files;
+    if (filesToProcess.length > MAX_IMPORT_FILES) {
+      showProfileToast(`⚠️ Limite de ${MAX_IMPORT_FILES} fichiers maximum à la fois : seuls les ${MAX_IMPORT_FILES} premiers fichiers seront importés.`, 'warning');
+      filesToProcess = filesToProcess.slice(0, MAX_IMPORT_FILES);
+    }
 
     // Validation Option A stricte par Magic Numbers (signature binaire infaillible)
-    const { validFiles, rejectedFiles } = await validateFilesForMenuAsync(files, targetCategory);
+    const { validFiles, rejectedFiles } = await validateFilesForMenuAsync(filesToProcess, targetCategory);
 
     if (rejectedFiles.length > 0) {
       const first = rejectedFiles[0];
@@ -2438,7 +2449,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const handleVideoMenuFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const list = e.target.files;
     if (list && list.length > 0) {
-      executeDedicatedMenuImport(Array.from(list), 'videos', 'btn-menu-videos');
+      let files = Array.from(list) as File[];
+      if (files.length > 10) {
+        showProfileToast(`⚠️ Limite de 10 vidéos maximum à la fois : seules les 10 premières vidéos seront importées.`, 'warning');
+        files = files.slice(0, 10);
+      }
+      executeDedicatedMenuImport(files, 'videos', 'btn-menu-videos');
     }
     if (videoFileInputRef.current) videoFileInputRef.current.value = '';
   };
@@ -2447,7 +2463,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const handleAudioMenuFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const list = e.target.files;
     if (list && list.length > 0) {
-      executeDedicatedMenuImport(Array.from(list), 'audio', 'btn-menu-audio');
+      let files = Array.from(list) as File[];
+      if (files.length > 10) {
+        showProfileToast(`⚠️ Limite de 10 fichiers audio maximum à la fois : seuls les 10 premiers fichiers seront importés.`, 'warning');
+        files = files.slice(0, 10);
+      }
+      executeDedicatedMenuImport(files, 'audio', 'btn-menu-audio');
     }
     if (audioFileInputRef.current) audioFileInputRef.current.value = '';
   };
@@ -2456,7 +2477,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const handleImageMenuFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const list = e.target.files;
     if (list && list.length > 0) {
-      executeDedicatedMenuImport(Array.from(list), 'images', 'btn-menu-images');
+      let files = Array.from(list) as File[];
+      if (files.length > 10) {
+        showProfileToast(`⚠️ Limite de 10 images maximum à la fois : seules les 10 premières images seront importées.`, 'warning');
+        files = files.slice(0, 10);
+      }
+      executeDedicatedMenuImport(files, 'images', 'btn-menu-images');
     }
     if (imageFileInputRef.current) imageFileInputRef.current.value = '';
   };
@@ -2465,7 +2491,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const handleDocumentMenuFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const list = e.target.files;
     if (list && list.length > 0) {
-      executeDedicatedMenuImport(Array.from(list), 'documents', 'btn-menu-documents');
+      let files = Array.from(list) as File[];
+      if (files.length > 10) {
+        showProfileToast(`⚠️ Limite de 10 documents maximum à la fois : seuls les 10 premiers documents seront importés.`, 'warning');
+        files = files.slice(0, 10);
+      }
+      executeDedicatedMenuImport(files, 'documents', 'btn-menu-documents');
     }
     if (documentFileInputRef.current) documentFileInputRef.current.value = '';
   };
@@ -2474,7 +2505,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const handleClasseurFolderFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const list = e.target.files;
     if (list && list.length > 0 && opened3DFolder) {
-      executeDedicatedMenuImport(Array.from(list), 'classeur', 'btn-classeur-folder', opened3DFolder.id, opened3DFolder.name);
+      let files = Array.from(list) as File[];
+      if (files.length > 10) {
+        showProfileToast(`⚠️ Limite de 10 fichiers maximum à la fois : seuls les 10 premiers fichiers seront importés.`, 'warning');
+        files = files.slice(0, 10);
+      }
+      executeDedicatedMenuImport(files, 'classeur', 'btn-classeur-folder', opened3DFolder.id, opened3DFolder.name);
     }
     if (classeurFolderFileInputRef.current) classeurFolderFileInputRef.current.value = '';
   };
@@ -2483,6 +2519,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Détecte la nature exacte de chaque fichier et le classe automatiquement dans son menu
   const processHomeFiles = async (files: File[], skipDuplicateCheck?: boolean) => {
     if (!files || files.length === 0) return;
+    const MAX_IMPORT_FILES = 10;
+    let filesToProcess = files;
+    if (filesToProcess.length > MAX_IMPORT_FILES) {
+      showProfileToast(`⚠️ Limite de ${MAX_IMPORT_FILES} fichiers maximum à la fois : seuls les ${MAX_IMPORT_FILES} premiers fichiers seront importés.`, 'warning');
+      filesToProcess = filesToProcess.slice(0, MAX_IMPORT_FILES);
+    }
 
     // DÉTECTION DES DOUBLONS DANS LE COMPTE DE L'UTILISATEUR (ISOLATION STRICTE)
     if (!skipDuplicateCheck) {
@@ -2492,7 +2534,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const docNames = new Set(documentsList.map(f => (f.name || '').trim().toLowerCase()).filter(Boolean));
 
       const dupes: string[] = [];
-      for (const file of files) {
+      for (const file of filesToProcess) {
         const cat = await detectFileCategoryWithMagic(file);
         const nameLower = (file.name || '').trim().toLowerCase();
         if (cat === 'videos' && videoNames.has(nameLower)) dupes.push(file.name);
@@ -2504,11 +2546,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       if (dupes.length > 0) {
         setDuplicateImportModal({
           duplicateFileNames: dupes,
-          allFilesCount: files.length,
+          allFilesCount: filesToProcess.length,
           menuLabel: "vos répertoires",
           onConfirm: () => {
             setDuplicateImportModal(null);
-            processHomeFiles(files, true);
+            processHomeFiles(filesToProcess, true);
           },
           onCancel: () => {
             setDuplicateImportModal(null);
@@ -2518,7 +2560,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
     }
 
-    const newItemsWithFiles = await Promise.all(files.map(async (file, idx) => {
+    const newItemsWithFiles = await Promise.all(filesToProcess.map(async (file, idx) => {
       // Détection infaillible par Magic Numbers (signature binaire réelle des octets)
       const autoCat = await detectFileCategoryWithMagic(file);
       // Compression client universelle tout en préservant les vraies valeurs d'origine
@@ -2557,16 +2599,46 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     const newItems = newItemsWithFiles.map(x => x.item);
     const fileIds = newItems.map(x => x.id);
+    const currentUserId = localStorage.getItem('unifolder_user_id') || 'default-user';
 
-    // Distribution immédiate dans les menus respectifs
+    // Distribution immédiate dans les menus respectifs et synchronisation D1
     newItems.forEach(item => {
       unmarkRecentLocallyDeleted(item.id);
       unmarkFileLocallyDeleted(item.id);
       CloudDataStore.addOptimisticFile(item as any);
-      if (item.category === 'images') setImagesList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
-      else if (item.category === 'videos') setVideosList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
-      else if (item.category === 'audio') setAudioList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
-      else setDocumentsList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
+
+      if (item.category === 'images') {
+        setImagesList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
+        CloudStorageAPI.saveImage(item as any).catch(() => {});
+      } else if (item.category === 'videos') {
+        setVideosList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
+        CloudStorageAPI.saveVideo(item as any).catch(() => {});
+      } else if (item.category === 'audio') {
+        setAudioList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
+        CloudStorageAPI.saveAudio(item as any).catch(() => {});
+      } else {
+        setDocumentsList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
+        CloudStorageAPI.saveDocument(item as any).catch(() => {});
+      }
+
+      StudyCloudAPI.registerFileMetadata({
+        id: item.id,
+        userId: currentUserId,
+        matiereId: `menu-${item.category}`,
+        name: item.name,
+        size: item.sizeBytes || 0,
+        type: item.category === 'images' ? 'image/jpeg' : (
+          item.category === 'videos' ? 'video/mp4' : (
+            item.category === 'audio' ? 'audio/mpeg' : 'application/pdf'
+          )
+        ),
+        extension: item.extension || 'FICHIER',
+        r2Key: null,
+        fileUrl: item.url || '',
+        isFavorite: false,
+        isImported: true,
+        lastImported: Date.now()
+      }).catch(() => {});
     });
     const eligibleRecent = newItems.filter(isRecentEligible);
     if (eligibleRecent.length > 0) {
@@ -2589,7 +2661,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (counts.documents > 0) parts.push(`${counts.documents} document(s) dans Documents`);
 
     showProfileToast(
-      `${files.length} fichier(s) classé(s) automatiquement : ${parts.join(', ')} !`,
+      `${filesToProcess.length} fichier(s) classé(s) automatiquement : ${parts.join(', ')} !`,
       'success'
     );
   };
@@ -2598,7 +2670,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const handleHomeFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
-    const files = Array.from(fileList) as File[];
+    const MAX_IMPORT_FILES = 10;
+    let files = Array.from(fileList) as File[];
+    if (files.length > MAX_IMPORT_FILES) {
+      showProfileToast(`⚠️ Limite de ${MAX_IMPORT_FILES} fichiers maximum à la fois : seuls les ${MAX_IMPORT_FILES} premiers fichiers seront importés.`, 'warning');
+      files = files.slice(0, MAX_IMPORT_FILES);
+    }
 
     if (fileInputRef.current) fileInputRef.current.value = '';
 
@@ -2635,7 +2712,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     e.stopPropagation();
     const fileList = e.dataTransfer?.files;
     if (!fileList || fileList.length === 0) return;
-    const files = Array.from(fileList) as File[];
+    const MAX_IMPORT_FILES = 10;
+    let files = Array.from(fileList) as File[];
+    if (files.length > MAX_IMPORT_FILES) {
+      showProfileToast(`⚠️ Limite de ${MAX_IMPORT_FILES} fichiers maximum à la fois : seuls les ${MAX_IMPORT_FILES} premiers fichiers seront importés.`, 'warning');
+      files = files.slice(0, MAX_IMPORT_FILES);
+    }
 
     const viewId = currentSubView?.id || '';
     const currentTab = isCloudView ? cloudActiveTab : null;

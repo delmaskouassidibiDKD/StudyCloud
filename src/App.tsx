@@ -914,7 +914,12 @@ export default function App() {
   const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>, typeLabel: string) => {
     try {
       if (e.target.files && e.target.files.length > 0) {
-        const fileList = e.target.files;
+        const MAX_IMPORT_FILES = 10;
+        let fileList = Array.from(e.target.files) as File[];
+        if (fileList.length > MAX_IMPORT_FILES) {
+          setToastMessage(`⚠️ Limite de ${MAX_IMPORT_FILES} fichiers maximum à la fois : seuls les ${MAX_IMPORT_FILES} premiers sont importés.`);
+          fileList = fileList.slice(0, MAX_IMPORT_FILES);
+        }
         const newItems: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[] = [];
         const imageFilesToCompress: { id: string; file: File }[] = [];
 

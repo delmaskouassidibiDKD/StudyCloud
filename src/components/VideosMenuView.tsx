@@ -377,7 +377,12 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   // Import de vidéos : affichage immédiat (0ms) avec ligne de chargement animée comme Mes Fichiers
   const handleImportVideos = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    const files = Array.from(e.target.files) as File[];
+    const MAX_IMPORT_FILES = 10;
+    let files = Array.from(e.target.files) as File[];
+    if (files.length > MAX_IMPORT_FILES) {
+      showToast(`⚠️ Limite de ${MAX_IMPORT_FILES} vidéos max à la fois : seules les ${MAX_IMPORT_FILES} premières sont importées.`);
+      files = files.slice(0, MAX_IMPORT_FILES);
+    }
 
     const newItems: FileItem[] = [];
     const newFiles: { file: File; id: string }[] = [];

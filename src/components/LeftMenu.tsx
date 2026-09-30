@@ -217,11 +217,17 @@ export function LeftMenu({
 
   const processFiles = async (files: FileList | File[]) => {
     if (!files || files.length === 0) return;
+    const MAX_IMPORT_FILES = 10;
+    let fileArray = Array.from(files) as File[];
+    if (fileArray.length > MAX_IMPORT_FILES) {
+      alert(`⚠️ Limite de ${MAX_IMPORT_FILES} fichiers maximum à la fois : seuls les ${MAX_IMPORT_FILES} premiers fichiers seront importés.`);
+      fileArray = fileArray.slice(0, MAX_IMPORT_FILES);
+    }
 
     const itemsWithFiles: { file: File | Blob; item: any; originalSizeBytes?: number; originalSizeFormatted?: string }[] = [];
     
-    for (let idx = 0; idx < files.length; idx++) {
-      const file = files[idx];
+    for (let idx = 0; idx < fileArray.length; idx++) {
+      const file = fileArray[idx];
       if (file.size > MAX_FILE_SIZE_BYTES) {
         alert(`Le fichier "${file.name}" dépasse la limite de 50 Mo (${formatFileSize(file.size)}).`);
         continue;

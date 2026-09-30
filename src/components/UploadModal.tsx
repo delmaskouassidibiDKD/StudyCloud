@@ -23,7 +23,12 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onClose, onAddFolder }
   // Handle mock file addition (from simulated phone/computer selection)
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const fileList = e.target.files;
+      const MAX_IMPORT_FILES = 10;
+      let fileList = Array.from(e.target.files) as File[];
+      if (fileList.length > MAX_IMPORT_FILES) {
+        alert(`⚠️ Limite de ${MAX_IMPORT_FILES} fichiers maximum à la fois : seuls les ${MAX_IMPORT_FILES} premiers sont importés.`);
+        fileList = fileList.slice(0, MAX_IMPORT_FILES);
+      }
       const newFiles: SharedFile[] = [];
       for (let i = 0; i < fileList.length; i++) {
         const f = fileList[i];

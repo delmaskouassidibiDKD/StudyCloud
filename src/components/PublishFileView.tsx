@@ -536,10 +536,16 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   const processFiles = async (filesArray: File[]) => {
+    const MAX_IMPORT_FILES = 10;
+    let files = filesArray;
+    if (files.length > MAX_IMPORT_FILES) {
+      alert(`⚠️ Limite de ${MAX_IMPORT_FILES} fichiers maximum à la fois : seuls les ${MAX_IMPORT_FILES} premiers fichiers seront importés.`);
+      files = files.slice(0, MAX_IMPORT_FILES);
+    }
     const allowedFiles: File[] = [];
     const forbiddenFilesDetected: { name: string; reason: string }[] = [];
 
-    filesArray.forEach((file: any) => {
+    files.forEach((file: any) => {
       const check = checkPublicationFileType(file);
       if (!check.allowed) {
         forbiddenFilesDetected.push({
