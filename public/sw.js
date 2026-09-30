@@ -3,7 +3,7 @@
 // Conçu par DKD Technologies pour StudyCloud
 // ============================================================================
 
-const CACHE_NAME = 'studycloud-pwa-v42';
+const CACHE_NAME = 'studycloud-pwa-v43';
 
 // Ressources fondamentales du "Shell" de l'application pré-mises en cache à l'installation
 const PRECACHE_ASSETS = [
@@ -60,7 +60,7 @@ self.addEventListener('activate', (event) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. STRATÉGIE DE REQUÊTES (FONCTIONNEMENT HORS-LIGNE GARANTI)
+// 3. STRATÉGIE DE REQUÊTES (FONCTIONNEMENT HORS-LIGNE & PROTECTION MÉMOIRE)
 // ─────────────────────────────────────────────────────────────────────────────
 self.addEventListener('fetch', (event) => {
   const { request } = event;
@@ -73,6 +73,19 @@ self.addEventListener('fetch', (event) => {
 
   // Ne pas cacher les extensions de navigateur (chrome-extension://, etc.)
   if (!url.protocol.startsWith('http')) {
+    return;
+  }
+
+  // Ignorer absolument les requêtes avec Range (streaming vidéo/audio HTML5)
+  // Essayer de cloner ou mettre en cache un flux Range 206 provoque une fuite mémoire critique / OOM dans Chrome/Edge
+  if (request.headers && request.headers.has('range')) {
+    return;
+  }
+
+  // Ne JAMAIS intercepter ni cloner les flux médias volumineux (vidéos, audio, archives)
+  const pathnameLower = url.pathname.toLowerCase();
+  const mediaExtensions = ['.mp4', '.webm', '.ogv', '.mp3', '.wav', '.ogg', '.m4a', '.flac', '.zip', '.tar', '.gz', '.7z'];
+  if (mediaExtensions.some(ext => pathnameLower.endsWith(ext))) {
     return;
   }
 
@@ -126,7 +139,12 @@ self.addEventListener('fetch', (event) => {
   }
 
   // B. REQUÊTES D'API OU VERS DES WORKERS (Network First avec timeout)
-  if (url.pathname.startsWith('/api') || url.hostname.includes('workers.dev') || url.hostname.includes('googleapis.com')) {
+  if (
+    url.pathname.startsWith('/api') ||
+    url.hostname.includes('workers.dev') ||
+    url.hostname.includes('googleapis.com') ||
+    url.hostname.includes('api-worker.dkd-technologies.com')
+  ) {
     event.respondWith(
       fetch(request).catch(() => {
         return new Response(
@@ -142,17 +160,37 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // C. ASSETS STATIQUES (Scripts JS, styles CSS, Polices KaTeX, Images du site)
-  // Stratégie : Stale-While-Revalidate (Réponse instantanée depuis le cache + mise à jour en arrière-plan)
+  // C. ASSETS STATIQUES DU SITE (Scripts JS, styles CSS, Polices KaTeX, Icônes)
+  // Ne cacher que les ressources statiques légères du même domaine ou des CDN de polices
+  const isStaticAsset =
+    url.origin === self.location.origin ||
+    url.hostname.includes('fonts.googleapis.com') ||
+    url.hostname.includes('fonts.gstatic.com') ||
+    url.hostname.includes('cdn.jsdelivr.net');
+
+  if (!isStaticAsset) {
+    return; // Passer directement par le réseau sans saturer la RAM ni CacheStorage
+  }
+
+  // Stratégie : Stale-While-Revalidate avec garde-fous stricts de taille mémoire
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
       const fetchPromise = fetch(request)
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
-            const responseToCache = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(request, responseToCache);
-            });
+            const contentType = networkResponse.headers.get('content-type') || '';
+            const contentLength = Number(networkResponse.headers.get('content-length') || 0);
+
+            // Ne jamais mettre en cache de la vidéo, de l'audio ou des fichiers > 5 Mo en RAM
+            const isMedia = contentType.startsWith('video/') || contentType.startsWith('audio/');
+            const isTooLarge = contentLength > 5 * 1024 * 1024;
+
+            if (!isMedia && !isTooLarge) {
+              const responseToCache = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(request, responseToCache).catch(() => {});
+              });
+            }
           }
           return networkResponse;
         })

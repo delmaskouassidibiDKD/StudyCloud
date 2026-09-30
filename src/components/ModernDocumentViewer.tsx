@@ -29,13 +29,33 @@ interface PdfPageCanvasProps {
   scale: number;
 }
 
-// Composant pour rendre une page PDF en mode défilement vertical continu
+// Composant pour rendre une page PDF en mode défilement vertical continu avec virtualisation mémoire
 const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({ pdfDoc, pageNumber, scale }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
   const [rendered, setRendered] = useState(false);
 
+  // N'initialiser le rendu Canvas que lorsque la page s'approche de la zone visible
   useEffect(() => {
-    if (!pdfDoc || !canvasRef.current) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setIsVisible(true);
+          }
+        });
+      },
+      { rootMargin: '350px 0px 350px 0px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!isVisible || !pdfDoc || !canvasRef.current) return;
     let renderTask: any = null;
 
     pdfDoc.getPage(pageNumber).then((page: any) => {
@@ -59,16 +79,16 @@ const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({ pdfDoc, pageNumber, scale
         try { renderTask.cancel(); } catch {}
       }
     };
-  }, [pdfDoc, pageNumber, scale]);
+  }, [isVisible, pdfDoc, pageNumber, scale]);
 
   return (
-    <div className="relative flex justify-center bg-white min-h-[250px]">
+    <div ref={containerRef} className="relative flex justify-center bg-white min-h-[300px] w-full">
       {!rendered && (
         <div className="flex items-center justify-center p-8 bg-stone-100 dark:bg-zinc-800 animate-pulse min-h-[300px] w-full">
           <span className="text-xs text-zinc-400 font-semibold">Page {pageNumber}...</span>
         </div>
       )}
-      <canvas ref={canvasRef} className="max-w-full block" />
+      {isVisible && <canvas ref={canvasRef} className="max-w-full block" />}
     </div>
   );
 };
@@ -109,6 +129,20 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
   const [resolvedUrl, setResolvedUrl] = useState<string>(url || '');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const objectUrlRef = useRef<string | null>(null);
+
+  // Nettoyage rigoureux de la mémoire vive à la fermeture du viewer
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+      if (pdfDoc) {
+        try { pdfDoc.destroy(); } catch {}
+      }
+    };
+  }, [pdfDoc]);
 
   // Mode d'affichage PDF : 'native' (Lecteur iframe navigateur comme dans la photo) ou 'continuous' (Défilement vertical continu PDF.js)
   const [pdfViewMode, setPdfViewMode] = useState<'native' | 'continuous'>('native');
@@ -164,8 +198,12 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
     }
 
     if (foundBlob) {
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+      }
       setBlob(foundBlob);
       const bUrl = URL.createObjectURL(foundBlob);
+      objectUrlRef.current = bUrl;
       setResolvedUrl(bUrl);
       return foundBlob;
     }
@@ -206,13 +244,17 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
       // Traitement selon le format :
       try {
         if (isPdf) {
-          // Précharger également avec PDF.js pour le mode défilement continu
-          const arrayBuffer = await loadedBlob.arrayBuffer();
-          const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
-          const doc = await loadingTask.promise;
-          if (!isCancelled) {
-            setPdfDoc(doc);
-            setPdfTotalPages(doc.numPages);
+          // Mode natif par défaut : ne pas charger pdfjsLib ni dupliquer le PDF dans la mémoire vive JS
+          if (pdfViewMode === 'continuous' || !nativePdfUrl) {
+            const arrayBuffer = await loadedBlob.arrayBuffer();
+            const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+            const doc = await loadingTask.promise;
+            if (!isCancelled) {
+              setPdfDoc(doc);
+              setPdfTotalPages(doc.numPages);
+              setIsLoading(false);
+            }
+          } else {
             setIsLoading(false);
           }
         } else if (isWord) {
@@ -264,14 +306,34 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
     };
   }, [fetchBinaryData, isPdf, isWord, isExcel, url, resolvedUrl]);
 
-  // Nettoyage URL objet
+  // Charger PDF.js à la demande uniquement si l'utilisateur bascule en mode continu
   useEffect(() => {
+    let isCancelled = false;
+    if (isPdf && pdfViewMode === 'continuous' && !pdfDoc) {
+      setIsLoading(true);
+      fetchBinaryData().then(async (blob) => {
+        if (isCancelled || !blob) {
+          setIsLoading(false);
+          return;
+        }
+        try {
+          const arrayBuffer = await blob.arrayBuffer();
+          const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+          const doc = await loadingTask.promise;
+          if (!isCancelled) {
+            setPdfDoc(doc);
+            setPdfTotalPages(doc.numPages);
+            setIsLoading(false);
+          }
+        } catch {
+          if (!isCancelled) setIsLoading(false);
+        }
+      });
+    }
     return () => {
-      if (resolvedUrl && resolvedUrl.startsWith('blob:')) {
-        try { URL.revokeObjectURL(resolvedUrl); } catch {}
-      }
+      isCancelled = true;
     };
-  }, [resolvedUrl]);
+  }, [isPdf, pdfViewMode, pdfDoc, fetchBinaryData]);
 
   // Gestion du changement de feuille Excel
   const selectExcelSheet = (name: string) => {

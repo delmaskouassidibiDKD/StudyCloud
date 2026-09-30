@@ -267,6 +267,11 @@ export async function getAsyncMediaThumbnail(key: string): Promise<string | null
  */
 export function setCachedMediaThumbnail(key: string, thumbUrl: string): void {
   if (!key || !thumbUrl) return;
+  // Limite stricte pour éviter l'épuisement de mémoire vive (max 60 vignettes)
+  if (previewMemoryCache.size > 60) {
+    const firstKey = previewMemoryCache.keys().next().value;
+    if (firstKey) previewMemoryCache.delete(firstKey);
+  }
   previewMemoryCache.set(key, thumbUrl);
   if (thumbUrl.startsWith('data:image') || thumbUrl.includes('/api/cloud/thumbnail')) {
     storeThumbnailData(key, thumbUrl).catch(() => {});
