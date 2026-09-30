@@ -4186,13 +4186,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     });
   }, [downloadedItems, subSearchQuery]);
 
-  // Agrégation de tous les fichiers de tous les menus pour la recherche globale d'accueil
+  // Agrégation de tous les fichiers de tous les menus pour la recherche globale d'accueil (SANS les dossiers)
   const allGlobalSearchableFiles = useMemo(() => {
     const list: (FileItem & { menuOrigin?: string })[] = [];
     const seen = new Set<string>();
 
     const pushUnique = (item: any, origin: string, defaultCat?: string) => {
       if (!item || !item.id || seen.has(item.id)) return;
+      // EXCLURE TOUT DOSSIER : seuls les fichiers réels s'affichent
+      if (item.isFolder || item.category === 'classeur_folder' || item.category === 'folder' || item.type === 'folder' || item.size === 'Dossier 3D') return;
       seen.add(item.id);
       list.push({
         ...item,
@@ -4211,74 +4213,92 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       Object.entries(folderFilesMap).forEach(([folderId, fList]) => {
         const folder = classeur3DFolders.find(fd => fd.id === folderId);
         const folderName = folder ? folder.name : 'Dossier Classeur';
-        ((fList as FileItem[]) || []).forEach(f => pushUnique(f, `Classeur (${folderName})`, 'classeur'));
+        ((fList as FileItem[]) || []).forEach(f => {
+          if (!(f as any).isFolder && f.category !== 'classeur_folder' && f.category !== 'folder') {
+            pushUnique({ ...f, folderId, originalFolderId: folderId }, `Classeur (${folderName})`, f.category || 'documents');
+          }
+        });
       });
     }
 
-    classeur3DFolders.forEach(folder => {
-      pushUnique({
-        id: folder.id,
-        name: folder.name,
-        category: 'classeur' as any,
-        size: 'Dossier 3D',
-        date: folder.dateText,
-        isFolder: true,
-        folderId: folder.id,
-        metadata: {
-          modelId: folder.modelId,
-          primaryColor: folder.primaryColor,
-          accentColor: folder.accentColor,
-          iconName: folder.iconName,
-        }
-      }, 'Classeur 3D', 'classeur');
-    });
-
     try {
       const storeState = CloudDataStore.getState();
-      (storeState.favorites || []).forEach(f => pushUnique(f, 'Favoris', f.category));
+      (storeState.favorites || []).forEach(f => {
+        if (!(f as any).isFolder && f.category !== 'classeur_folder' && f.category !== 'folder') {
+          pushUnique(f, 'Favoris', f.category);
+        }
+      });
     } catch {}
 
     return list;
   }, [documentsList, imagesList, videosList, audioList, downloadedItems, folderFilesMap, classeur3DFolders]);
 
-  // Filtrage multi-critères selon le texte recherché
+  // Filtrage multi-critères selon le texte recherché (exclut rigoureusement tout dossier)
   const globalSearchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
     return allGlobalSearchableFiles.filter(f => {
-      const normCat = (f.category || detectFileCategory(f)).toLowerCase();
-      if (searchCategoryFilter !== 'all' && normCat !== searchCategoryFilter) {
+      if ((f as any).isFolder || f.category === 'classeur_folder' || f.category === 'folder' || (f as any).type === 'folder' || f.size === 'Dossier 3D') {
         return false;
       }
-      const nameMatch = (f.name || '').toLowerCase().includes(q);
+
+      const normCat = (f.category || detectFileCategory(f)).toLowerCase();
+      const normName = (f.name || '').toLowerCase();
+      const ext = normName.includes('.') ? normName.split('.').pop() || '' : '';
+      const isImg = normCat === 'images' || f.isImage || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'avif'].includes(ext);
+      const isVid = normCat === 'videos' || f.isVideo || Boolean(f.videoUrl) || ['mp4', 'webm', 'mkv', 'mov', 'avi', 'flv', 'wmv', 'm4v', '3gp'].includes(ext);
+      const isAud = normCat === 'audio' || f.isAudio || Boolean(f.audioUrl) || isWhatsAppAudio(f.name, f.type) || EXTENSION_MAP.audio.includes(ext) || ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'wma', 'opus', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'].includes(ext);
+      const isClasseur = normCat === 'classeur' || Boolean(f.folderId) || Boolean(f.originalFolderId) || (f.menuOrigin || '').toLowerCase().includes('classeur');
+      const isDl = normCat === 'downloads' || (f.menuOrigin || '').toLowerCase().includes('téléchargement');
+
+      if (searchCategoryFilter !== 'all') {
+        if (searchCategoryFilter === 'images' && !isImg) return false;
+        if (searchCategoryFilter === 'videos' && !isVid) return false;
+        if (searchCategoryFilter === 'audio' && !isAud) return false;
+        if (searchCategoryFilter === 'classeur' && !isClasseur) return false;
+        if (searchCategoryFilter === 'downloads' && !isDl) return false;
+        if (searchCategoryFilter === 'documents' && (isImg || isVid || isAud)) return false;
+      }
+
+      const nameMatch = normName.includes(q);
       const sourceMatch = (f.source || '').toLowerCase().includes(q);
       const originMatch = (f.menuOrigin || '').toLowerCase().includes(q);
       const catMatch = normCat.includes(q);
-      const extMatch = (f.extension || '').toLowerCase().includes(q);
+      const extMatch = ext.includes(q);
       const artistMatch = ((f as any).artist || '').toLowerCase().includes(q);
       return nameMatch || sourceMatch || originMatch || catMatch || extMatch || artistMatch;
     });
   }, [allGlobalSearchableFiles, searchQuery, searchCategoryFilter]);
 
   const handleSearchResultClick = (file: FileItem) => {
-    saveRecentSearch(searchQuery);
-    if (file.isFolder || file.category === 'classeur' || file.source === 'classeur_folder') {
-      const folder = classeur3DFolders.find(f => f.id === (file.folderId || file.id));
+    if (searchQuery.trim()) {
+      saveRecentSearch(searchQuery);
+    }
+    setSearchQuery('');
+    setShowRecentSearchesMenu(false);
+    setActiveDedicatedMenu(null);
+
+    // Si le fichier appartient à un dossier du Classeur 3D
+    const classeurFolderId = file.folderId || file.originalFolderId;
+    if (classeurFolderId || file.category === 'classeur' || file.source === 'classeur_folder') {
+      const folder = classeur3DFolders.find(f => f.id === (classeurFolderId || file.id));
       if (folder) {
+        setOpened3DFolder(folder);
         setSelectedClasseurFolder(folder);
         setCurrentSubView({
-          id: `studycloud-classeur-folder-${folder.id}`,
-          type: 'folder',
-          name: folder.name,
+          id: 'studycloud-classeur-classeur',
+          type: 'classeur',
+          name: 'Classeur',
           icon: FolderArchive,
           color: 'text-orange-400'
         });
-        if (!file.isFolder) {
-          handleSelectFile(file);
-        }
+        setSelectedClasseurFile(file);
+        handleSelectFile(file);
         return;
       }
     }
+
+    // Sinon, redirection automatique dans le menu correspondant (Documents, Images, Vidéos, Audio, Téléchargements)
     handleRecentFileClick(file);
   };
 
@@ -12072,7 +12092,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           )}
 
           {/* 6. CLASSEUR : DOSSIERS 3D ET FICHIERS DU DOSSIER OUVERT */}
-          {(currentSubView?.id === 'studycloud-classeur-classeur' || (isCloudView && cloudActiveTab === 'classeur')) && (
+          {(currentSubView?.id === 'studycloud-classeur-classeur' || currentSubView?.id?.startsWith('studycloud-classeur-') || (isCloudView && cloudActiveTab === 'classeur')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : ARBORESCENCE & FICHIERS */}
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
@@ -12873,85 +12893,44 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </button>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 sm:gap-3.5">
-                    {globalSearchResults.map((file) => {
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-3.5">
+                    {globalSearchResults.map((file, idx) => {
                       const normCat = (file.category || detectFileCategory(file)).toLowerCase();
-                      const catBadge =
-                        normCat === 'images' ? { label: 'Image', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' } :
-                        normCat === 'videos' ? { label: 'Vidéo', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' } :
-                        normCat === 'audio' ? { label: 'Audio', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30' } :
-                        normCat === 'downloads' ? { label: 'Téléchargement', color: 'bg-sky-500/20 text-sky-400 border-sky-500/30' } :
-                        normCat === 'classeur' ? { label: 'Classeur', color: 'bg-orange-500/20 text-orange-400 border-orange-500/30' } :
-                        { label: 'Document', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' };
+                      const normName = (file.name || '').toLowerCase();
+                      const ext = normName.includes('.') ? normName.split('.').pop() || '' : '';
 
-                      const isImg = normCat === 'images' || file.isImage;
-                      const isVid = normCat === 'videos' || file.isVideo;
-                      const isAud = normCat === 'audio' || file.isAudio;
-                      const isFolder = file.isFolder || normCat === 'classeur_folder';
-                      const isClasseurDoc = normCat === 'classeur' && !isFolder;
+                      const isImg = normCat === 'images' || file.isImage || (file.type && file.type.startsWith('image/')) || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'avif'].includes(ext);
+                      const isVid = normCat === 'videos' || file.isVideo || Boolean(file.videoUrl) || (file.type && file.type.startsWith('video/')) || ['mp4', 'webm', 'mkv', 'mov', 'avi', 'flv', 'wmv', 'm4v', '3gp'].includes(ext);
+                      const isAud = normCat === 'audio' || file.isAudio || Boolean(file.audioUrl) || (file.type && file.type.startsWith('audio/')) || isWhatsAppAudio(file.name, file.type) || EXTENSION_MAP.audio.includes(ext) || ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'wma', 'opus', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'].includes(ext);
 
                       return (
                         <div
                           key={file.id}
-                          onClick={() => handleSearchResultClick(file)}
-                          className="group relative flex flex-col rounded-2xl bg-[#04060A] hover:bg-[#0A0E18] border border-white/10 hover:border-blue-400/50 shadow-md transition-all duration-200 cursor-pointer overflow-hidden active:scale-95"
-                          title={`Ouvrir "${file.name}"`}
+                          className="relative"
+                          onClickCapture={(e) => {
+                            const target = e.target as HTMLElement | null;
+                            const isMenuOrAction = target?.closest('.studycloud-menu-trigger') || 
+                                                   target?.closest('.studycloud-file-menu-panel') ||
+                                                   target?.closest('button[title*="traits"]') || 
+                                                   target?.closest('button[title*="Options"]') || 
+                                                   target?.closest('button[title*="Cocher"]') || 
+                                                   target?.closest('button[title*="Décocher"]');
+                            if (isMenuOrAction) {
+                              return;
+                            }
+                            e.stopPropagation();
+                            handleSearchResultClick(file);
+                          }}
                         >
-                          {/* Zone d'aperçu / vignette */}
-                          <div className="relative w-full h-32 sm:h-36 bg-[#080D1A] flex items-center justify-center overflow-hidden">
-                            {isImg && (file.previewUrl || file.thumbnailUrl || file.url) ? (
-                              <img
-                                src={file.previewUrl || file.thumbnailUrl || file.url}
-                                alt={file.name}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
-                                loading="lazy"
-                              />
-                            ) : isVid ? (
-                              <div className="flex flex-col items-center gap-1.5 text-purple-400">
-                                <Film className="w-8 h-8 stroke-[1.8] group-hover:scale-110 transition-transform" />
-                                <span className="text-[10px] font-bold text-slate-400">Vidéo</span>
-                              </div>
-                            ) : isAud ? (
-                              <div className="w-full h-full">
-                                <AudioCardPreview track={file} />
-                              </div>
-                            ) : isFolder ? (
-                              <div className="flex flex-col items-center gap-1.5 text-orange-400">
-                                <FolderArchive className="w-9 h-9 stroke-[1.8] group-hover:scale-110 transition-transform" />
-                                <span className="text-[10px] font-bold text-orange-300">Dossier</span>
-                              </div>
-                            ) : isClasseurDoc ? (
-                              <div className="flex flex-col items-center gap-1.5 text-orange-400">
-                                <FileText className="w-8 h-8 stroke-[1.8] group-hover:scale-110 transition-transform" />
-                                <span className="text-[10px] font-bold text-slate-400">{file.extension || 'DOC'}</span>
-                              </div>
-                            ) : (
-                              <div className="flex flex-col items-center gap-1.5 text-blue-400">
-                                <FileText className="w-8 h-8 stroke-[1.8] group-hover:scale-110 transition-transform" />
-                                <span className="text-[10px] font-bold text-slate-400">{file.extension || 'DOC'}</span>
-                              </div>
-                            )}
-
-                            {/* Badge de catégorie en haut à gauche */}
-                            <div className="absolute top-2 left-2 z-10">
-                              <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-md border backdrop-blur-md shadow-xs ${catBadge.color}`}>
-                                {catBadge.label}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Bas de carte avec Nom, Emplacement et Taille */}
-                          <div className="p-2 sm:p-2.5 flex flex-col justify-between bg-[#151C2C] flex-1">
-                            <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-blue-400 transition-colors" title={file.name}>
-                              {file.name}
-                            </p>
-                            <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1.5">
-                              <span className="truncate max-w-[85px]" title={file.menuOrigin || file.source}>
-                                {file.menuOrigin || file.source || catBadge.label}
-                              </span>
-                              <span className="shrink-0 font-medium">{file.size}</span>
-                            </div>
-                          </div>
+                          {isImg ? (
+                            renderImageCard(file, idx)
+                          ) : isVid ? (
+                            renderVideoCard(file, idx)
+                          ) : isAud ? (
+                            renderAudioSquareCard(file, idx, globalSearchResults)
+                          ) : (
+                            renderDocumentCard(file, idx, globalSearchResults)
+                          )}
                         </div>
                       );
                     })}
