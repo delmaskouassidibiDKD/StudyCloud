@@ -19,8 +19,8 @@ import * as XLSX from 'xlsx';
 import { getFileBlob } from '../services/localFileStorage';
 
 // Configuration du worker PDF.js
-if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
+if (typeof window !== 'undefined' && !(pdfjsLib as any).GlobalWorkerOptions?.workerSrc) {
+  (pdfjsLib as any).GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 }
 
 interface PdfPageCanvasProps {
@@ -130,19 +130,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const objectUrlRef = useRef<string | null>(null);
-
-  // Nettoyage rigoureux de la mémoire vive à la fermeture du viewer
-  useEffect(() => {
-    return () => {
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-        objectUrlRef.current = null;
-      }
-      if (pdfDoc) {
-        try { pdfDoc.destroy(); } catch {}
-      }
-    };
-  }, [pdfDoc]);
+  const pdfDocRef = useRef<any>(null);
 
   // Mode d'affichage PDF : 'native' (Lecteur iframe navigateur comme dans la photo) ou 'continuous' (Défilement vertical continu PDF.js)
   const [pdfViewMode, setPdfViewMode] = useState<'native' | 'continuous'>('native');
@@ -151,6 +139,20 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [pdfTotalPages, setPdfTotalPages] = useState<number>(1);
   const [pdfScale, setPdfScale] = useState<number>(1.25);
+
+  // Nettoyage rigoureux de la mémoire vive à la fermeture du viewer
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+      if (pdfDocRef.current) {
+        try { pdfDocRef.current.destroy(); } catch {}
+        pdfDocRef.current = null;
+      }
+    };
+  }, []);
 
   // États Word
   const [wordHtml, setWordHtml] = useState<string>('');
@@ -250,6 +252,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
             const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
             const doc = await loadingTask.promise;
             if (!isCancelled) {
+              pdfDocRef.current = doc;
               setPdfDoc(doc);
               setPdfTotalPages(doc.numPages);
               setIsLoading(false);
@@ -321,6 +324,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
           const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
           const doc = await loadingTask.promise;
           if (!isCancelled) {
+            pdfDocRef.current = doc;
             setPdfDoc(doc);
             setPdfTotalPages(doc.numPages);
             setIsLoading(false);
