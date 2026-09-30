@@ -406,20 +406,25 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       (selectedDoc.url && selectedDoc.url.toLowerCase().includes('.pdf')) ||
       Boolean(selectedDoc.type?.includes('pdf'));
 
-    if (isPdf && selectedDoc.id) {
-      getFileBlobUrl(selectedDoc.id)
-        .then((blobUrl) => {
-          if (isMounted && blobUrl) {
-            setSplitResolvedPdfUrl(blobUrl);
-          }
-        })
-        .catch(() => {});
+    if (isPdf) {
+      if (selectedDoc.url && !selectedDoc.url.startsWith('data:image')) {
+        setSplitResolvedPdfUrl(selectedDoc.url);
+      }
+      if (selectedDoc.id) {
+        getFileBlobUrl(selectedDoc.id)
+          .then((blobUrl) => {
+            if (isMounted && blobUrl) {
+              setSplitResolvedPdfUrl(blobUrl);
+            }
+          })
+          .catch(() => {});
+      }
     }
 
     return () => {
       isMounted = false;
     };
-  }, [selectedDoc?.id]);
+  }, [selectedDoc?.id, selectedDoc?.url]);
 
   // Navigation entre documents
   const handleNavigateDoc = (direction: 'prev' | 'next') => {
@@ -1691,12 +1696,17 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setDocLayoutMode(m => m === 'vertical' ? 'horizontal' : 'vertical')}
-                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
-                    docLayoutMode === 'horizontal' ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-slate-800 text-white border-white/10'
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                    docLayoutMode === 'vertical'
+                      ? 'bg-blue-600/30 text-blue-300 border-blue-400/50 hover:bg-blue-600/40'
+                      : 'bg-amber-500/20 text-amber-300 border-amber-400/50 hover:bg-amber-500/30'
                   }`}
-                  title={docLayoutMode === 'horizontal' ? 'Mode défilement vertical' : 'Mode pages horizontales'}
+                  title={docLayoutMode === 'vertical' ? "Défilement vertical actif (Cliquer pour passer en horizontal)" : "Mode horizontal actif (Cliquer pour passer en défilement vertical)"}
                 >
-                  <BookOpen className="w-3.5 h-3.5" />
+                  <SlidersHorizontal className={`w-3.5 h-3.5 ${docLayoutMode === 'vertical' ? 'rotate-90 text-blue-400' : 'text-amber-400'}`} />
+                  <span className="text-[11px] font-bold hidden sm:inline">
+                    {docLayoutMode === 'vertical' ? 'Vertical' : 'Horizontal'}
+                  </span>
                 </button>
 
                 <button
