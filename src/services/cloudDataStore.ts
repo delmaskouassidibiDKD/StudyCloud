@@ -1321,7 +1321,28 @@ export const CloudDataStore = {
     for (const k of Object.keys(updatedMap)) {
       updatedMap[k] = filterFn(updatedMap[k]);
     }
-    const lockedItems = arr.map(f => ({ ...f, isSecure: true }));
+    const lockedItems = arr.map(f => {
+      const origCat = (f as any).originalCategory || f.category;
+      const isAud = origCat === 'audio';
+      const resolvedCover = (f as any).coverUrl
+        || (f as any).thumbnailUrl
+        || (f as any).metadata?.coverUrl
+        || (isAud && f.previewUrl && !f.previewUrl.startsWith('blob:') && !f.previewUrl.includes('.mp3') ? f.previewUrl : '')
+        || '';
+      return {
+        ...f,
+        isSecure: true,
+        coverUrl: isAud ? (resolvedCover || (f as any).coverUrl || undefined) : (f as any).coverUrl,
+        thumbnailUrl: isAud ? (resolvedCover || (f as any).thumbnailUrl || undefined) : (f as any).thumbnailUrl,
+        previewUrl: isAud ? (resolvedCover || f.previewUrl) : f.previewUrl,
+        artist: (f as any).artist,
+        title: (f as any).title || f.name,
+        album: (f as any).album,
+        durationSec: (f as any).durationSec || 0,
+        lyricsSnippet: (f as any).lyricsSnippet || '',
+        fullLyrics: (f as any).fullLyrics || []
+      };
+    });
     const existingSecure = currentState.secure.filter(s => !idSet.has(s.id));
     currentState = {
       ...currentState,
@@ -1355,7 +1376,42 @@ export const CloudDataStore = {
 
     arr.forEach(file => {
       const origCat = (file as any).originalCategory || file.category;
-      const restored = { ...file, isSecure: false, category: origCat };
+      const meta = (file as any).metadata || {};
+      const isAud = origCat === 'audio';
+      const resolvedCover = (file as any).coverUrl
+        || (file as any).thumbnailUrl
+        || meta.coverUrl
+        || meta.thumbnailUrl
+        || (isAud && (file as any).previewUrl && !(file as any).previewUrl.startsWith('blob:') && !(file as any).previewUrl.includes('.mp3') ? (file as any).previewUrl : '')
+        || '';
+
+      const restored: any = {
+        ...file,
+        isSecure: false,
+        category: origCat,
+        coverUrl: isAud ? (resolvedCover || (file as any).coverUrl || undefined) : (file as any).coverUrl,
+        thumbnailUrl: isAud ? (resolvedCover || (file as any).thumbnailUrl || undefined) : (file as any).thumbnailUrl,
+        previewUrl: isAud ? (resolvedCover || (file as any).previewUrl || (file as any).url) : (file as any).previewUrl,
+        artist: (file as any).artist || meta.artist || undefined,
+        title: (file as any).title || meta.title || file.name,
+        album: (file as any).album || meta.album || undefined,
+        durationSec: (file as any).durationSec || meta.durationSec || 0,
+        lyricsSnippet: (file as any).lyricsSnippet || meta.lyricsSnippet || '',
+        fullLyrics: (file as any).fullLyrics || meta.fullLyrics || []
+      };
+
+      // Débloquer le fichier de studycloud_deleted_file_ids pour qu'il ne soit pas masqué
+      try {
+        const raw = localStorage.getItem('studycloud_deleted_file_ids');
+        if (raw) {
+          const arrIds: string[] = JSON.parse(raw);
+          if (Array.isArray(arrIds) && arrIds.includes(file.id)) {
+            const next = arrIds.filter(id => id !== file.id);
+            localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(next));
+          }
+        }
+      } catch {}
+
       if (origCat === 'classeur' && (file as any).originalFolderId && updatedMap[(file as any).originalFolderId]) {
         const fId = (file as any).originalFolderId;
         updatedMap[fId] = [restored, ...updatedMap[fId].filter(f => f.id !== file.id)];

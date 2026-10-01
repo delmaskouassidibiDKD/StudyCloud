@@ -44,7 +44,7 @@ import { useAudioList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
 import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
 import { compressFile } from '../utils/fileCompressor';
-import { extractAudioCover, generateAudioCreatorCover, extractAudioMetadataWithTags, setCachedMediaThumbnail, isRealEmbeddedArtwork } from '../services/mediaPreviewService';
+import { extractAudioCover, generateAudioCreatorCover, extractAudioMetadataWithTags, getCachedMediaThumbnail, setCachedMediaThumbnail, isRealEmbeddedArtwork } from '../services/mediaPreviewService';
 
 import { FileItem } from './Page1FilesMenuView';
 import { UploadQueue } from '../services/uploadQueue';
@@ -945,12 +945,22 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       }
 
       case 'lock_file': {
+        const cachedCover = getCachedMediaThumbnail(track.id || track.audioUrl || track.url || '');
+        const validCover = (track.coverUrl && isRealEmbeddedArtwork(track.coverUrl, track) ? track.coverUrl : null)
+          || (track.thumbnailUrl && isRealEmbeddedArtwork(track.thumbnailUrl, track) ? track.thumbnailUrl : null)
+          || (cachedCover && isRealEmbeddedArtwork(cachedCover, track) ? cachedCover : null)
+          || (track.previewUrl && isRealEmbeddedArtwork(track.previewUrl, track) ? track.previewUrl : null)
+          || undefined;
+
         const securedFile: FileItem = {
           ...track,
           isSecure: true,
           originalCategory: 'audio',
           originalSource: track.source || 'Audio',
-          source: 'Dossier Sécurisé'
+          source: 'Dossier Sécurisé',
+          coverUrl: validCover,
+          thumbnailUrl: validCover,
+          previewUrl: validCover || track.previewUrl
         };
         pendingAudioItemsRef.current.delete(track.id);
         setAudioList(prev => prev.filter(t => t.id !== track.id));
@@ -959,17 +969,9 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           setIsAudioPlaying(false);
         }
         setSelectedItemIds(prev => prev.filter(id => id !== track.id));
-        // Persister l'ID dans localStorage pour bloquer la resync
-        try {
-          const raw = localStorage.getItem('studycloud_deleted_file_ids');
-          const existing: string[] = raw ? JSON.parse(raw) : [];
-          if (!existing.includes(track.id)) {
-            existing.push(track.id);
-            localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(existing));
-          }
-        } catch {}
+
         CloudDataStore.moveToSecure(securedFile as any);
-        CloudStorageAPI.moveToSecureFolder(track, 'audio').catch(console.error);
+        CloudStorageAPI.moveToSecureFolder(securedFile, 'audio').catch(console.error);
         invalidateCloudQueries.audio();
         invalidateCloudQueries.secure();
         showToast(`"${track.name}" verrouillé dans le dossier sécurisé !`);

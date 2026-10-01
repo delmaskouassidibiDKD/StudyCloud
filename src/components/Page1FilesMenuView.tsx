@@ -103,7 +103,7 @@ import { CloudStorageAPI, type CloudOverviewData } from '../services/cloudStorag
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
 import { AudioCardPreview } from './AudioCardPreview';
-import { generatePdfThumbnail, generateVideoThumbnail, extractAudioCover, generateAudioCreatorCover, getCachedMediaThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
+import { generatePdfThumbnail, generateVideoThumbnail, extractAudioCover, generateAudioCreatorCover, getCachedMediaThumbnail, setCachedMediaThumbnail, isRealEmbeddedArtwork } from '../services/mediaPreviewService';
 import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob } from '../services/localFileStorage';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { ModernImageViewer } from './ModernImageViewer';
@@ -2967,16 +2967,29 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           (Object.values(folderFilesMap).flat() as FileItem[]).find(f => f.id === id);
 
         if (item) {
+          const origCat = (item as any).originalCategory || item.category || 'documents';
+          const isAud = origCat === 'audio';
+          const cachedCover = isAud ? getCachedMediaThumbnail(item.id || (item as any).audioUrl || item.url || '') : null;
+          const validCover = isAud ? (
+            (item.coverUrl && isRealEmbeddedArtwork(item.coverUrl, item) ? item.coverUrl : null) ||
+            (item.thumbnailUrl && isRealEmbeddedArtwork(item.thumbnailUrl, item) ? item.thumbnailUrl : null) ||
+            (cachedCover && isRealEmbeddedArtwork(cachedCover, item) ? cachedCover : null) ||
+            (item.previewUrl && isRealEmbeddedArtwork(item.previewUrl, item) ? item.previewUrl : null) ||
+            undefined
+          ) : undefined;
+
           const locked: FileItem = {
             ...item,
             isSecure: true,
-            originalCategory: (item as any).originalCategory || item.category,
+            originalCategory: origCat,
             originalSource: (item as any).originalSource || item.source,
-            source: 'Dossier Sécurisé'
+            source: 'Dossier Sécurisé',
+            coverUrl: validCover || item.coverUrl,
+            thumbnailUrl: validCover || item.thumbnailUrl,
+            previewUrl: isAud ? (validCover || item.previewUrl) : item.previewUrl
           };
           lockedItems.push(locked);
-          const origCat = (item as any).originalCategory || item.category || 'documents';
-          CloudStorageAPI.moveToSecureFolder(item, origCat, (item as any).folderId || opened3DFolder?.id).catch(console.error);
+          CloudStorageAPI.moveToSecureFolder(locked, origCat, (item as any).folderId || opened3DFolder?.id).catch(console.error);
         }
       }
     });
@@ -3040,11 +3053,31 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         };
         setClasseur3DFolders(prev => prev.some(f => f.id === file.id) ? prev : [restoredFolder, ...prev]);
       } else {
+        const meta = (file as any).metadata || {};
+        const isAud = origCat === 'audio';
+        const resolvedCover = isAud ? (
+          (file.coverUrl && isRealEmbeddedArtwork(file.coverUrl, file) ? file.coverUrl : null) ||
+          (file.thumbnailUrl && isRealEmbeddedArtwork(file.thumbnailUrl, file) ? file.thumbnailUrl : null) ||
+          (meta.coverUrl && isRealEmbeddedArtwork(meta.coverUrl, file) ? meta.coverUrl : null) ||
+          (meta.thumbnailUrl && isRealEmbeddedArtwork(meta.thumbnailUrl, file) ? meta.thumbnailUrl : null) ||
+          (file.previewUrl && isRealEmbeddedArtwork(file.previewUrl, file) ? file.previewUrl : null) ||
+          undefined
+        ) : undefined;
+
         const restored: FileItem = {
           ...file,
           isSecure: false,
           category: origCat,
-          source: origSource
+          source: origSource,
+          coverUrl: resolvedCover || file.coverUrl,
+          thumbnailUrl: resolvedCover || file.thumbnailUrl,
+          previewUrl: isAud ? (resolvedCover || file.previewUrl) : file.previewUrl,
+          artist: file.artist || meta.artist || undefined,
+          name: (file as any).title || meta.title || file.name,
+          album: file.album || meta.album || undefined,
+          durationSec: file.durationSec || meta.durationSec || 0,
+          lyricsSnippet: file.lyricsSnippet || meta.lyricsSnippet || '',
+          fullLyrics: file.fullLyrics || meta.fullLyrics || []
         };
 
         if (origCat === 'documents') setDocumentsList(prev => [restored, ...prev]);
@@ -3363,11 +3396,31 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       case 'restore_from_secure': {
         const origCat = (file as any).originalCategory || file.category;
         const origSource = (file as any).originalSource || 'StudyCloud';
+        const meta = (file as any).metadata || {};
+        const isAud = origCat === 'audio';
+        const resolvedCover = isAud ? (
+          (file.coverUrl && isRealEmbeddedArtwork(file.coverUrl, file) ? file.coverUrl : null) ||
+          (file.thumbnailUrl && isRealEmbeddedArtwork(file.thumbnailUrl, file) ? file.thumbnailUrl : null) ||
+          (meta.coverUrl && isRealEmbeddedArtwork(meta.coverUrl, file) ? meta.coverUrl : null) ||
+          (meta.thumbnailUrl && isRealEmbeddedArtwork(meta.thumbnailUrl, file) ? meta.thumbnailUrl : null) ||
+          (file.previewUrl && isRealEmbeddedArtwork(file.previewUrl, file) ? file.previewUrl : null) ||
+          undefined
+        ) : undefined;
+
         const restoredFile: FileItem = {
           ...file,
           isSecure: false,
           category: origCat,
-          source: origSource
+          source: origSource,
+          coverUrl: resolvedCover || file.coverUrl,
+          thumbnailUrl: resolvedCover || file.thumbnailUrl,
+          previewUrl: isAud ? (resolvedCover || file.previewUrl) : file.previewUrl,
+          artist: file.artist || meta.artist || undefined,
+          name: (file as any).title || meta.title || file.name,
+          album: file.album || meta.album || undefined,
+          durationSec: file.durationSec || meta.durationSec || 0,
+          lyricsSnippet: file.lyricsSnippet || meta.lyricsSnippet || '',
+          fullLyrics: file.fullLyrics || meta.fullLyrics || []
         };
         setSecureFolderFiles(prev => prev.filter(f => f.id !== file.id));
         CloudDataStore.restoreFromSecure(restoredFile as any);
@@ -13804,15 +13857,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                               >
                                 <Download className="w-3.5 h-3.5 text-amber-400" /> Télécharger
                               </button>
-                              <button
-                                onClick={() => {
-                                  handleGenericFileAction('lock_file', file, cloudRecentFiles);
-                                  setMenuOpenId(null);
-                                }}
-                                className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-amber-300 transition-colors"
-                              >
-                                <Lock className="w-3.5 h-3.5 text-amber-400" /> Verrouiller
-                              </button>
+
                             </div>
                           )}
                         </div>

@@ -459,6 +459,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
   // 10. Actions Groupées (Sélection multiple)
   const toggleSelect = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    setActiveMenuFileId(null);
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -468,6 +469,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
   };
 
   const selectAll = () => {
+    setActiveMenuFileId(null);
     if (selectedIds.size === displayedFiles.length && displayedFiles.length > 0) {
       setSelectedIds(new Set());
     } else {
@@ -1106,18 +1108,24 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
           <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
+              disabled={selectedIds.size > 0}
               onClick={(e) => {
                 e.stopPropagation();
+                if (selectedIds.size > 0) return;
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
               }}
-              className={`p-1 sm:p-1.2 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm ${
+              className={`p-1 sm:p-1.2 rounded-lg bg-black/75 text-white border transition-all flex items-center justify-center shadow-lg backdrop-blur-sm ${
+                selectedIds.size > 0
+                  ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                  : 'hover:bg-black cursor-pointer active:scale-90'
+              } ${
                 isMenuOpen ? 'border-amber-400 ring-2 ring-amber-400/50 bg-black' : 'border-white/30'
               }`}
-              title="Options (3 traits)"
+              title={selectedIds.size > 0 ? "Menu désactivé en mode sélection" : "Options (3 traits)"}
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
-            {isMenuOpen && renderOptionsMenu(file, index)}
+            {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, index)}
           </div>
 
           <button
@@ -1193,18 +1201,24 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
             <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
               <button
                 type="button"
+                disabled={selectedIds.size > 0}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (selectedIds.size > 0) return;
                   setActiveMenuFileId(prev => prev === file.id ? null : file.id);
                 }}
-                className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+                className={`p-1.5 rounded-lg bg-black/80 text-white border transition-all shadow-md ${
+                  selectedIds.size > 0
+                    ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                    : 'hover:bg-black cursor-pointer active:scale-90'
+                } ${
                   isMenuOpen ? 'border-blue-400 ring-2 ring-blue-400/50 bg-black' : 'border-white/20'
                 }`}
-                title="Options"
+                title={selectedIds.size > 0 ? "Menu désactivé en mode sélection" : "Options"}
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
-              {isMenuOpen && renderOptionsMenu(file, index)}
+              {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, index)}
             </div>
 
             <button
@@ -1293,18 +1307,24 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
             <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
               <button
                 type="button"
+                disabled={selectedIds.size > 0}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (selectedIds.size > 0) return;
                   setActiveMenuFileId(prev => prev === file.id ? null : file.id);
                 }}
-                className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+                className={`p-1.5 rounded-lg bg-black/80 text-white border transition-all shadow-md ${
+                  selectedIds.size > 0
+                    ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                    : 'hover:bg-black cursor-pointer active:scale-90'
+                } ${
                   isMenuOpen ? 'border-blue-400 ring-2 ring-blue-400/50 bg-black' : 'border-white/20'
                 }`}
-                title="Options"
+                title={selectedIds.size > 0 ? "Menu désactivé en mode sélection" : "Options"}
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
-              {isMenuOpen && renderOptionsMenu(file, index)}
+              {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, index)}
             </div>
 
             <button
@@ -1376,18 +1396,24 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
             <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
               <button
                 type="button"
+                disabled={selectedIds.size > 0}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (selectedIds.size > 0) return;
                   setActiveMenuFileId(prev => prev === file.id ? null : file.id);
                 }}
-                className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
+                className={`p-1.5 rounded-lg bg-black/80 text-white border transition-all shadow-md ${
+                  selectedIds.size > 0
+                    ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                    : 'hover:bg-black cursor-pointer active:scale-90'
+                } ${
                   isMenuOpen ? 'border-blue-400 ring-2 ring-blue-400/50 bg-black' : 'border-white/20'
                 }`}
-                title="Options"
+                title={selectedIds.size > 0 ? "Menu désactivé en mode sélection" : "Options"}
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
-              {isMenuOpen && renderOptionsMenu(file, index)}
+              {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, index)}
             </div>
 
             <button
@@ -1495,16 +1521,24 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
             <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
               <button
                 type="button"
+                disabled={selectedIds.size > 0}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (selectedIds.size > 0) return;
                   setActiveMenuFileId(prev => prev === file.id ? null : file.id);
                 }}
-                className="p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border border-white/20 transition-all cursor-pointer active:scale-90 shadow-md"
-                title="Options"
+                className={`p-1.5 rounded-lg bg-black/80 text-white border transition-all shadow-md ${
+                  selectedIds.size > 0
+                    ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                    : 'hover:bg-black cursor-pointer active:scale-90'
+                } ${
+                  isMenuOpen ? 'border-orange-400 ring-2 ring-orange-400/50 bg-black' : 'border-white/20'
+                }`}
+                title={selectedIds.size > 0 ? "Menu désactivé en mode sélection" : "Options"}
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
-              {isMenuOpen && renderOptionsMenu(file, index)}
+              {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, index)}
             </div>
 
             <button
