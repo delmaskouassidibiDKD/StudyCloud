@@ -6123,7 +6123,7 @@ export default {
           const formatted = (results || []).map((row: any) => {
             let finalUrl = row.file_url || '';
             if ((!finalUrl || finalUrl.startsWith('blob:')) && row.r2_key) {
-              finalUrl = `${url.origin}/api/storage/file/${encodeURIComponent(row.r2_key)}`;
+              finalUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(row.id)}`;
             }
             return {
               ...row,
@@ -6246,7 +6246,20 @@ export default {
 
       if (path.startsWith('/api/storage/file/') && method === 'GET') {
         const key = decodeURIComponent(path.replace('/api/storage/file/', ''));
-        const object = await env.BUCKET.get(key);
+        let found = await getObjectFromAnyBucket(rawEnv, 'documents', key);
+        if (!found || !found.object) {
+          found = await getObjectFromAnyBucket(rawEnv, 'images', key);
+        }
+        if (!found || !found.object) {
+          found = await getObjectFromAnyBucket(rawEnv, 'videos', key);
+        }
+        if (!found || !found.object) {
+          found = await getObjectFromAnyBucket(rawEnv, 'audio', key);
+        }
+        if (!found || !found.object) {
+          found = await getObjectFromAnyBucket(rawEnv, 'classeur', key);
+        }
+        const object = found?.object || (env.BUCKET ? await env.BUCKET.get(key) : null);
         if (!object) return errorResponse('Fichier introuvable dans R2', 404, origin);
 
         const headers = new Headers();
@@ -6960,6 +6973,7 @@ export default {
         const requestedCategory = (url.searchParams.get('category') || 'auto').toLowerCase().trim();
         const fileName = url.searchParams.get('name') || 'fichier_' + Date.now();
         const folderId = url.searchParams.get('folderId') || '';
+        const uploadSource = (url.searchParams.get('source') || request.headers.get('x-upload-source') || '').toLowerCase().trim();
         const contentType = request.headers.get('Content-Type') || 'application/octet-stream';
         const fileBuffer = await request.arrayBuffer();
         const rawSizeBytes = fileBuffer.byteLength;
@@ -7321,6 +7335,11 @@ export default {
             }
 
             // Synchronisation universelle dans la table files (pour compatibilité totale cross-device comme Mes fichiers)
+            const isMesFichiers = uploadSource === 'mes-fichiers' || requestedCategory === 'mes-fichiers';
+            const targetMatiereId = isMesFichiers
+              ? null
+              : (finalCategory === 'classeur' ? (folderId || 'Classeur') : `menu-${finalCategory}`);
+
             await env.DB.prepare(`
               INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -7328,21 +7347,31 @@ export default {
                 name = excluded.name,
                 size = excluded.size,
                 type = excluded.type,
+                matiere_id = CASE
+                  WHEN ? = 1 THEN NULL
+                  WHEN files.matiere_id IS NULL OR files.matiere_id = '' OR files.matiere_id = 'Mes fichiers' THEN files.matiere_id
+                  ELSE COALESCE(files.matiere_id, excluded.matiere_id)
+                END,
                 r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
-                file_url = excluded.file_url,
+                file_url = CASE
+                  WHEN excluded.file_url IS NOT NULL AND excluded.file_url != '' AND excluded.file_url NOT LIKE 'blob:%'
+                  THEN excluded.file_url
+                  ELSE files.file_url
+                END,
                 last_imported = excluded.last_imported,
                 updated_at = CURRENT_TIMESTAMP
             `).bind(
               fileId,
               reqUserId,
-              finalCategory === 'classeur' ? (folderId || 'Classeur') : `menu-${finalCategory}`,
+              targetMatiereId,
               fileName,
               sizeBytes,
               contentType || 'application/octet-stream',
               extUpper,
               storageKey,
               fileUrl,
-              Date.now()
+              Date.now(),
+              isMesFichiers ? 1 : 0
             ).run();
           } catch (d1Err) {
             console.warn('[CloudWorker] Erreur insertion D1 upload:', d1Err);

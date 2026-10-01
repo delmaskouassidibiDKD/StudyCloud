@@ -5,6 +5,8 @@ import { storeFileBlob, getFileBlobUrl, deleteFileBlob, getFileBlob, MAX_FILE_SI
 import { persistRawFile } from './PublishFileView';
 import { UploadQueue } from '../services/uploadQueue';
 import { CloudDataStore } from '../services/cloudDataStore';
+import { ImageCardPreview } from './ImageCardPreview';
+import { getCurrentUserId } from '../services/userSync';
 
 interface FilesMenuViewProps {
   onBack: () => void;
@@ -21,6 +23,7 @@ interface ImportedItem {
   type: string;
   extension?: string;
   url?: string;
+  r2Key?: string;
   isImage?: boolean;
   matiere?: string;
   isLeftMenuImport?: boolean;
@@ -244,7 +247,35 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     window.addEventListener('storage', handleSync);
     window.addEventListener('unifolder_files_updated', handleSync);
 
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    const handleUploadedEvent = (e: any) => {
+      const detail = e.detail;
+      if (!detail || !detail.fileId) return;
+      setImportedFiles(prev => prev.map(f => {
+        if (f.id === detail.fileId) {
+          return {
+            ...f,
+            r2Key: detail.r2Key || f.r2Key,
+            url: detail.uploadUrl || f.url
+          };
+        }
+        return f;
+      }));
+      try {
+        const directSaved = localStorage.getItem('unifolder_files_menu_items');
+        if (directSaved) {
+          const parsed: ImportedItem[] = JSON.parse(directSaved);
+          const updated = parsed.map(item => item.id === detail.fileId ? {
+            ...item,
+            r2Key: detail.r2Key || (item as any).r2Key,
+            url: detail.uploadUrl || item.url
+          } : item);
+          localStorage.setItem('unifolder_files_menu_items', JSON.stringify(updated));
+        }
+      } catch (err) {}
+    };
+    window.addEventListener('studycloud_file_uploaded', handleUploadedEvent);
+
+    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
     StudyCloudAPI.getFiles(userId, 'root', false)
       .then(async (res) => {
         if (res && res.success && Array.isArray(res.data)) {
@@ -269,8 +300,25 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
               };
             })
           );
-          setImportedFiles(filesWithUrls);
-          localStorage.setItem('unifolder_files_menu_items', JSON.stringify(filesWithUrls));
+          setImportedFiles(prev => {
+            const map = new Map<string, ImportedItem>();
+            filesWithUrls.forEach(f => map.set(f.id, f));
+            // Préserver les éléments locaux non encore présents sur le serveur
+            prev.forEach(f => {
+              if (!map.has(f.id)) {
+                map.set(f.id, f);
+              } else {
+                const remote = map.get(f.id)!;
+                map.set(f.id, {
+                  ...remote,
+                  url: (f.url && f.url.startsWith('blob:')) ? f.url : (remote.url || f.url)
+                });
+              }
+            });
+            const merged = Array.from(map.values());
+            localStorage.setItem('unifolder_files_menu_items', JSON.stringify(merged));
+            return merged;
+          });
         }
       })
       .catch(() => {});
@@ -278,6 +326,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     return () => {
       window.removeEventListener('storage', handleSync);
       window.removeEventListener('unifolder_files_updated', handleSync);
+      window.removeEventListener('studycloud_file_uploaded', handleUploadedEvent);
     };
   }, []);
 
@@ -1354,6 +1403,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                           return;
                         }
                         if (isSelectionMode) {
+                          setOpenMenuId(null);
                           setSelectedFileIds(prev => 
                             isSelected ? prev.filter(i => i !== f.id) : [...prev, f.id]
                           );
@@ -1372,18 +1422,24 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                         </div>
                       ) : !isSaving && (
                         <button
+                          disabled={isSelectionMode || selectedFileIds.length > 0}
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (isSelectionMode || selectedFileIds.length > 0) return;
                             setOpenMenuId(openMenuId === f.id ? null : f.id);
                           }}
-                          className="absolute top-1 left-1 z-30 w-7 h-7 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center transition-all shadow-md cursor-pointer"
-                          title="Options"
+                          className={`absolute top-1 left-1 z-30 w-7 h-7 rounded-full text-white flex items-center justify-center transition-all shadow-md ${
+                            isSelectionMode || selectedFileIds.length > 0
+                              ? 'bg-black/20 opacity-20 pointer-events-none cursor-not-allowed'
+                              : 'bg-black/60 hover:bg-black cursor-pointer active:scale-90'
+                          }`}
+                          title={isSelectionMode || selectedFileIds.length > 0 ? "Menu désactivé en mode sélection" : "Options"}
                         >
                           <MoreVertical className="w-4 h-4" />
                         </button>
                       )}
 
-                      {openMenuId === f.id && !isSelectionMode && !isSaving && (
+                      {openMenuId === f.id && !isSelectionMode && selectedFileIds.length === 0 && !isSaving && (
                         <div 
                           className="absolute top-9 left-0 z-50 bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn"
                           onClick={(e) => e.stopPropagation()}
@@ -1555,9 +1611,9 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                           </div>
                         )}
 
-                        {isImg && f.url ? (
+                        {isImg && (f.url || (f as any).r2Key || f.id) ? (
                           <div className="absolute inset-0 w-full h-full bg-white overflow-hidden flex items-center justify-center z-0">
-                            <img src={f.url} alt={f.name} className="w-full h-full object-cover" />
+                            <ImageCardPreview img={f as any} className="w-full h-full object-cover" alt={f.name} />
                           </div>
                         ) : (
                           <>

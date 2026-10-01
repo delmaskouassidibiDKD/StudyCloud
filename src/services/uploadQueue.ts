@@ -12,6 +12,8 @@ import { CloudDataStore, FileItem } from './cloudDataStore';
 import { CloudStorageAPI } from './cloudStorageService';
 import { storeFileBlob } from './localFileStorage';
 import { invalidateCloudQueries } from './queryClient';
+import { StudyCloudAPI } from './api';
+import { getCurrentUserId } from './userSync';
 import {
   generatePdfThumbnail,
   generateVideoThumbnail,
@@ -429,6 +431,25 @@ class UploadQueueManager {
         CloudStorageAPI.saveAudio(audioToSave as any).catch(() => {});
       }
 
+      // Synchronisation directe dans la table files de D1 (pour Mes Fichiers et multi-appareils)
+      if (uploadUrl && r2Key) {
+        const currentUserId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
+        const extVal = (task.fileItem as any)?.extension || (fileName.includes('.') ? fileName.split('.').pop()?.toUpperCase() : 'FICHIER');
+        StudyCloudAPI.registerFileMetadata({
+          id: serverFileId || id,
+          userId: currentUserId,
+          matiereId: task.uploadSource === 'mes-fichiers' ? null : (task.folderId || null),
+          name: fileName,
+          size: task.fileItem?.sizeBytes || file.size,
+          type: file.type || 'application/octet-stream',
+          extension: extVal,
+          r2Key: r2Key,
+          fileUrl: uploadUrl,
+          isFavorite: !!task.fileItem?.isFavorite,
+          isImported: true,
+          lastImported: Date.now()
+        }).catch(err => console.warn('[UploadQueue] Erreur update registerFileMetadata:', err));
+      }
 
       // Invalider immédiatement le cache TanStack Query
       try {
@@ -444,7 +465,7 @@ class UploadQueueManager {
       // Déclencher un événement global pour tout listener de mise à jour
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('studycloud_file_uploaded', {
-          detail: { fileId: id, folderId, category, name: fileName }
+          detail: { fileId: id, folderId, category, name: fileName, uploadUrl, r2Key }
         }));
       }
     } catch (err: any) {
