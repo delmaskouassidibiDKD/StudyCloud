@@ -1,10 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Loader2, Share2, FileText, Image as ImageIcon, Music, File as FileIcon, Copy, Check, Globe, QrCode } from 'lucide-react';
 import { SharedFolder } from '../types';
 
 interface CreateShareLinkModalProps {
-  uploadedItems: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[];
+  uploadedItems: {
+    id: string;
+    name: string;
+    /** Peut être un nombre (octets) ou une chaîne formatée ("108 Ko") */
+    size?: number | string;
+    /** Peut être absent sur les FileItem du cloud */
+    type?: string;
+    url?: string;
+    isImage?: boolean;
+    /** category présent sur les FileItem cloud */
+    category?: string;
+    extension?: string;
+  }[];
   onClose: () => void;
+  /** Nom initial pré-rempli dans le champ (facultatif) */
+  initialLinkName?: string;
   onStartBackgroundCreation: (
     linkName: string,
     comment: string,
@@ -14,12 +28,35 @@ interface CreateShareLinkModalProps {
   ) => void;
 }
 
+// Détermine si un item est de type image, audio, PDF ou autre
+function detectItemType(item: CreateShareLinkModalProps['uploadedItems'][number]): 'pdf' | 'image' | 'audio' | 'other' {
+  const lower = (item.name || '').toLowerCase();
+  const type = (item.type || '').toLowerCase();
+  const cat = (item.category || '').toLowerCase();
+  const ext = (item.extension || lower.split('.').pop() || '').toLowerCase();
+
+  if (lower.endsWith('.pdf') || type.includes('pdf') || ext === 'pdf') return 'pdf';
+  if (
+    item.isImage ||
+    cat === 'images' ||
+    type.startsWith('image/') ||
+    /\.(jpg|jpeg|png|webp|gif|svg|bmp|avif)$/i.test(lower)
+  ) return 'image';
+  if (
+    cat === 'audio' ||
+    type.startsWith('audio/') ||
+    /\.(mp3|wav|ogg|m4a|aac|flac|opus|weba|amr)$/i.test(lower)
+  ) return 'audio';
+  return 'other';
+}
+
 export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
   uploadedItems,
   onClose,
+  initialLinkName = '',
   onStartBackgroundCreation,
 }) => {
-  const [linkName, setLinkName] = useState('');
+  const [linkName, setLinkName] = useState(initialLinkName);
   const [comment, setComment] = useState('');
   const [isPublic, setIsPublic] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
@@ -27,32 +64,28 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
   const [createdFolder, setCreatedFolder] = useState<SharedFolder | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Mettre à jour le nom si la prop change (ex : ouverture successive)
+  useEffect(() => {
+    setLinkName(initialLinkName);
+  }, [initialLinkName]);
+
   const country = localStorage.getItem('unifolder_user_country') || "Côte d'Ivoire";
 
-  // Calculate stats by type and extension
-  const typeCounts: { [key: string]: { count: number; icon: React.ReactNode; label: string } } = {
-    PDF: { count: 0, icon: <FileText className="w-3.5 h-3.5 text-red-600" />, label: 'PDF' },
-    Image: { count: 0, icon: <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />, label: 'Image' },
-    Audio: { count: 0, icon: <Music className="w-3.5 h-3.5 text-purple-600" />, label: 'Audio' },
-  };
-
+  // Comptage par type (robuste, sans crash si `type` est absent)
+  const counts = { pdf: 0, image: 0, audio: 0, other: 0 };
   const extensionCounts: { [ext: string]: number } = {};
 
-  uploadedItems.forEach((item) => {
-    const lower = item.name.toLowerCase();
-    if (lower.endsWith('.pdf') || item.type.includes('pdf')) {
-      typeCounts.PDF.count++;
-    } else if (item.isImage || item.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(lower)) {
-      typeCounts.Image.count++;
-    } else if (item.type.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(lower)) {
-      typeCounts.Audio.count++;
-    } else {
-      const ext = (lower.split('.').pop() || 'FILE').toUpperCase();
+  (uploadedItems || []).forEach((item) => {
+    const kind = detectItemType(item);
+    if (kind === 'other') {
+      const ext = (item.extension || (item.name || '').split('.').pop() || 'FILE').toUpperCase();
       extensionCounts[ext] = (extensionCounts[ext] || 0) + 1;
+    } else {
+      counts[kind]++;
     }
   });
 
-  const totalItems = uploadedItems.length;
+  const totalItems = (uploadedItems || []).length;
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,7 +149,6 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               </div>
             </div>
 
-            {/* Badges: Unique code + Country + Public */}
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-mono font-black bg-stone-900 text-amber-400 px-2.5 py-1 rounded-xl border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917]">
                 Code : {createdFolder.shareCode || 'DKD-SHARE'}
@@ -125,19 +157,14 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
                 <span>📍</span> {createdFolder.country || country}
               </span>
               <span className={`text-xs font-bold px-2.5 py-1 rounded-xl border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] ${
-                createdFolder.isPublic !== false
-                  ? 'bg-emerald-100 text-emerald-900'
-                  : 'bg-amber-100 text-amber-900'
+                createdFolder.isPublic !== false ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-900'
               }`}>
                 {createdFolder.isPublic !== false ? '🌐 Public à tous' : '🔒 Privé'}
               </span>
             </div>
 
-            {/* Non-editable link name */}
             <div className="space-y-1">
-              <label className="block text-xs font-bold uppercase tracking-wider text-stone-800">
-                Nom du lien
-              </label>
+              <label className="block text-xs font-bold uppercase tracking-wider text-stone-800">Nom du lien</label>
               <input
                 type="text"
                 value={createdFolder.title}
@@ -146,11 +173,8 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               />
             </div>
 
-            {/* Link URL with copy */}
             <div className="space-y-1">
-              <label className="block text-xs font-bold uppercase tracking-wider text-stone-800">
-                Lien de partage unique
-              </label>
+              <label className="block text-xs font-bold uppercase tracking-wider text-stone-800">Lien de partage unique</label>
               <div className="flex items-center gap-2">
                 <input
                   type="text"
@@ -168,7 +192,6 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               </div>
             </div>
 
-            {/* Footer Information */}
             <div className="bg-[#F5F1E9] border-2 border-stone-800 rounded-2xl p-3 text-xs text-stone-700 shadow-[2px_2px_0px_0px_#1c1917] flex items-center gap-2">
               <QrCode className="w-5 h-5 text-orange-600 shrink-0" />
               <span>Retrouvez ce lien et son <strong>Code QR</strong> dans le menu <strong>Partagés (stock de liens)</strong>.</span>
@@ -193,7 +216,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               </div>
             </div>
 
-            {/* Link Name Input */}
+            {/* Nom du lien */}
             <div className="space-y-1">
               <label className="block text-xs font-bold uppercase tracking-wider text-stone-800">
                 Nom du lien <span className="text-red-600">*</span>
@@ -211,7 +234,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               {errorMsg && <p className="text-xs text-red-600 font-bold">{errorMsg}</p>}
             </div>
 
-            {/* Comment Input (max 30 characters) */}
+            {/* Commentaire */}
             <div className="space-y-1">
               <div className="flex justify-between items-center">
                 <label className="block text-xs font-bold uppercase tracking-wider text-stone-800">
@@ -231,7 +254,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               />
             </div>
 
-            {/* Public Toggle Checkbox */}
+            {/* Visibilité publique */}
             <label className="flex items-center justify-between p-3 bg-white hover:bg-stone-50 border-2 border-stone-800 rounded-xl shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer transition-colors">
               <div className="flex items-center gap-2.5">
                 <Globe className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -248,7 +271,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               />
             </label>
 
-            {/* Bottom Summary */}
+            {/* Récapitulatif */}
             <div className="bg-stone-100 border-2 border-stone-800 rounded-2xl p-3 space-y-1 shadow-[2px_2px_0px_0px_#1c1917]">
               <p className="text-xs font-bold text-stone-800 uppercase tracking-wider">Récapitulatif détaillé</p>
               <p className="text-xs text-stone-700">
@@ -256,21 +279,21 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               </p>
             </div>
 
-            {/* Top Summary */}
+            {/* Résumé des types */}
             <div className="bg-[#F5F1E9] border-2 border-stone-800 rounded-2xl p-3 shadow-[2px_2px_0px_0px_#1c1917] space-y-1.5">
               <p className="text-xs font-bold text-stone-800 uppercase tracking-wider">Résumé des types</p>
               <div className="grid grid-cols-2 gap-2 text-xs text-stone-700 font-medium">
                 <div className="flex items-center gap-1.5">
-                  {typeCounts.PDF.icon}
-                  <span>{typeCounts.PDF.count} PDF{typeCounts.PDF.count > 1 ? 's' : ''}</span>
+                  <FileText className="w-3.5 h-3.5 text-red-600" />
+                  <span>{counts.pdf} PDF{counts.pdf > 1 ? 's' : ''}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  {typeCounts.Image.icon}
-                  <span>{typeCounts.Image.count} Image{typeCounts.Image.count > 1 ? 's' : ''}</span>
+                  <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{counts.image} Image{counts.image > 1 ? 's' : ''}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  {typeCounts.Audio.icon}
-                  <span>{typeCounts.Audio.count} Audio{typeCounts.Audio.count > 1 ? 's' : ''}</span>
+                  <Music className="w-3.5 h-3.5 text-purple-600" />
+                  <span>{counts.audio} Audio{counts.audio > 1 ? 's' : ''}</span>
                 </div>
                 {Object.entries(extensionCounts).map(([ext, count]) => (
                   <div key={ext} className="flex items-center gap-1.5">
@@ -281,7 +304,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               </div>
             </div>
 
-            {/* Action Buttons */}
+            {/* Boutons d'action */}
             <div className="flex items-center gap-3 pt-1">
               <button
                 type="button"
