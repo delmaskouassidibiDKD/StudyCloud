@@ -6632,7 +6632,7 @@ var index_default = {
               f.category,
               f.extension,
               folderId,
-              JSON.stringify({ isNotepad: f.is_notepad, notepadTitle: f.notepad_title }),
+              JSON.stringify({ isNotepad: f.is_notepad, notepadTitle: f.notepad_title, content: f.notepad_content || "" }),
               f.date_formatted,
               f.r2_key,
               f.file_url
@@ -7002,7 +7002,7 @@ var index_default = {
               file.category,
               file.extension,
               file.folder_id,
-              JSON.stringify({ isNotepad: file.is_notepad, notepadTitle: file.notepad_title }),
+              JSON.stringify({ isNotepad: file.is_notepad, notepadTitle: file.notepad_title, content: file.notepad_content || "" }),
               file.date_formatted,
               resolvedR2Key,
               file.file_url
