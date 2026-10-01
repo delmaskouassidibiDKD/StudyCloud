@@ -38,7 +38,8 @@ import {
   FolderArchive
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
-import { CloudDataStore } from '../services/cloudDataStore';
+import { CloudDataStore, isItemDeleted, markItemDeleted, unmarkItemDeleted } from '../services/cloudDataStore';
+import { LocalSyncReplication } from '../services/localSyncReplication';
 import { useAudioList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
 import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
@@ -98,7 +99,18 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   const [audioList, setAudioList] = useState<FileItem[]>(() => {
     return CloudDataStore.getState().audio || [];
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !(CloudDataStore.getState().audio?.length > 0));
+
+  // ─── SOURCE PRINCIPALE : CloudDataStore (RAM, 0ms) ─────────────────────────
+  useEffect(() => {
+    const unsub = CloudDataStore.subscribe((state) => {
+      if (state.audio) {
+        setAudioList(prev => mergeAudioWithPending(state.audio, prev));
+        if (state.isLoaded || state.audio.length > 0) setLoading(false);
+      }
+    });
+    return unsub;
+  }, []);
 
   // Pagination / Chargement par lots (30 sons à la fois pour un DOM ultra-léger et zéro OOM)
   const BATCH_SIZE = 30;
@@ -138,6 +150,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   const [savingErrors, setSavingErrors] = useState<Record<string, string>>({});
   const savingIntervalsRef = useRef<Record<string, any>>({});
   const pendingAudioItemsRef = useRef<Map<string, FileItem>>(new Map());
+  const duplicatingIdsRef = useRef<Set<string>>(new Set());
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -150,15 +163,28 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   // Helper pour fusionner les données serveur avec les sons en cours d'enregistrement (identique à Vidéos et Images)
   const mergeAudioWithPending = (serverList: any[], currentList: FileItem[]): FileItem[] => {
     if (!serverList || !Array.isArray(serverList)) return currentList || [];
-    const serverIds = new Set(serverList.map(t => t.id));
+    const cleanServer = serverList.filter(t => !isItemDeleted(t.id));
+    const serverIds = new Set(cleanServer.map(t => t.id));
     const pending = (currentList || []).filter(item => 
-      !serverIds.has(item.id) && (
+      !serverIds.has(item.id) &&
+      !isItemDeleted(item.id) && (
         item.isUploading ||
         (savingProgress[item.id] !== undefined && savingProgress[item.id] < 100) ||
         pendingAudioItemsRef.current.has(item.id)
       )
     );
-    return [...pending, ...(serverList as FileItem[])];
+    const merged = [...pending, ...(cleanServer as FileItem[])];
+    const seenIds = new Set<string>();
+    const seenSigs = new Set<string>();
+    return merged.filter(item => {
+      if (!item || !item.id || isItemDeleted(item.id)) return false;
+      if (seenIds.has(item.id)) return false;
+      const sig = `${(item.name || '').trim().toLowerCase()}_${item.sizeBytes || item.size || 0}`;
+      if (seenSigs.has(sig)) return false;
+      seenIds.add(item.id);
+      seenSigs.add(sig);
+      return true;
+    });
   };
 
   // Fermer le menu 3 traits si on clique en dehors
@@ -648,6 +674,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   const handleDeleteAudio = async (track: FileItem) => {
     if (!window.confirm(`Supprimer définitivement "${track.name}" ?`)) return;
 
+    markItemDeleted(track.id);
     const fileWithSource: FileItem = {
       ...track,
       isTrash: true,
@@ -672,6 +699,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       }
     } catch {}
 
+    CloudDataStore.removeFile(track.id, undefined, 'audio');
+    LocalSyncReplication.recordLocalDeletion(track.id, 'audio');
     CloudDataStore.moveToTrash(fileWithSource as any);
     deleteFileBlob(track.id).catch(() => {});
     await CloudStorageAPI.deleteAudio(track.id, track.name).catch(() => {});
@@ -726,7 +755,18 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
   // Filtrage et tri (selon l'option sélectionnée)
   const filteredAudio = useMemo(() => {
-    let list = audioList;
+    let list = audioList.filter(t => !isItemDeleted(t.id));
+    const seenIds = new Set<string>();
+    const seenSigs = new Set<string>();
+    list = list.filter(item => {
+      if (!item || !item.id || isItemDeleted(item.id)) return false;
+      if (seenIds.has(item.id)) return false;
+      const sig = `${(item.name || '').trim().toLowerCase()}_${item.sizeBytes || item.size || 0}`;
+      if (seenSigs.has(sig)) return false;
+      seenIds.add(item.id);
+      seenSigs.add(sig);
+      return true;
+    });
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter(
@@ -849,6 +889,14 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       }
 
       case 'duplicate': {
+        if (duplicatingIdsRef.current.has(track.id)) {
+          return;
+        }
+        duplicatingIdsRef.current.add(track.id);
+        setTimeout(() => {
+          duplicatingIdsRef.current.delete(track.id);
+        }, 1200);
+
         const existingNames = audioList.map(t => t.name);
         const newName = computeDuplicateName(track.name, existingNames);
         const newTrackId = `aud-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -859,13 +907,30 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
           isPinned: false
         };
-        setAudioList(prev => [newTrack, ...prev]);
+        unmarkItemDeleted(newTrackId);
+        setAudioList(prev => [newTrack, ...prev.filter(t => t.id !== newTrackId)]);
         CloudDataStore.addOptimisticFile(newTrack);
+        LocalSyncReplication.recordLocalUpsert(newTrack.id, 'audio', newTrack);
+
         // Cloner le blob IndexedDB de manière indépendante pour éviter toute suppression partagée
         getFileBlob(track.id).then(blob => {
           if (blob) storeFileBlob(newTrackId, blob).catch(() => {});
         }).catch(() => {});
-        CloudStorageAPI.duplicateItem(track.id, 'audio', undefined, newName, newTrackId).then(() => {
+
+        CloudStorageAPI.duplicateItem(track.id, 'audio', undefined, newName, newTrackId).then((serverData) => {
+          if (serverData && serverData.id && serverData.id !== newTrackId) {
+            const realId = serverData.id;
+            unmarkItemDeleted(realId);
+            CloudDataStore.reconcileFileId(newTrackId, realId);
+            setAudioList(prev => prev.map(t => t.id === newTrackId ? { ...t, id: realId } : t));
+            getFileBlob(newTrackId).then(b => {
+              if (b) {
+                storeFileBlob(realId, b).catch(() => {});
+                deleteFileBlob(newTrackId).catch(() => {});
+              }
+            }).catch(() => {});
+            LocalSyncReplication.recordLocalUpsert(realId, 'audio', { ...newTrack, id: realId });
+          }
           invalidateCloudQueries.audio().catch(() => {});
           invalidateCloudQueries.overview().catch(() => {});
         }).catch(console.error);
@@ -2339,6 +2404,9 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                 const raw = localStorage.getItem('studycloud_deleted_file_ids');
                 const existing: string[] = raw ? JSON.parse(raw) : [];
                 ids.forEach(id => {
+                  markItemDeleted(id);
+                  CloudDataStore.removeFile(id, undefined, 'audio');
+                  LocalSyncReplication.recordLocalDeletion(id, 'audio');
                   pendingAudioItemsRef.current.delete(id);
                   if (!existing.includes(id)) existing.push(id);
                 });

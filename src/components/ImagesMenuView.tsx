@@ -33,7 +33,8 @@ import {
   UserCheck
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
-import { CloudDataStore } from '../services/cloudDataStore';
+import { CloudDataStore, isItemDeleted, markItemDeleted, unmarkItemDeleted } from '../services/cloudDataStore';
+import { LocalSyncReplication } from '../services/localSyncReplication';
 import { useImagesList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
 import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
@@ -107,6 +108,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
 
   // État du menu 3 traits dédié et indépendant pour chaque image (Image 2)
   const [activeMenuImageId, setActiveMenuImageId] = useState<string | null>(null);
+  const duplicatingIdsRef = useRef<Set<string>>(new Set());
 
   // Mode sélection & éléments cochés
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -348,9 +350,21 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
   useEffect(() => {
     if (serverImages && Array.isArray(serverImages)) {
       setImagesList(prev => {
-        const serverIds = new Set(serverImages.map(i => i.id));
-        const pending = prev.filter(i => !serverIds.has(i.id));
-        return [...pending, ...serverImages];
+        const cleanServer = serverImages.filter(i => !isItemDeleted(i.id));
+        const serverIds = new Set(cleanServer.map(i => i.id));
+        const pending = prev.filter(i => !serverIds.has(i.id) && Boolean(i.isUploading) && !isItemDeleted(i.id));
+        const merged = [...pending, ...cleanServer];
+        const seenIds = new Set<string>();
+        const seenSigs = new Set<string>();
+        return merged.filter(i => {
+          if (!i || !i.id || isItemDeleted(i.id)) return false;
+          if (seenIds.has(i.id)) return false;
+          const sig = `${(i.name || '').trim().toLowerCase()}_${i.sizeBytes || i.size || 0}`;
+          if (seenSigs.has(sig)) return false;
+          seenIds.add(i.id);
+          seenSigs.add(sig);
+          return true;
+        });
       });
       setLoading(false);
     }
@@ -490,14 +504,17 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
   };
 
   // Suppression
-  const handleDeleteImage = async (img: FileItem) => {
-    if (!window.confirm(`Supprimer définitivement "${img.name}" ?`)) return;
+  const handleDeleteImage = async (img: FileItem, skipConfirm: boolean = false) => {
+    if (!skipConfirm && !window.confirm(`Supprimer définitivement "${img.name}" ?`)) return;
 
+    markItemDeleted(img.id);
     setImagesList(prev => prev.filter(i => i.id !== img.id));
     if (selectedImage?.id === img.id) {
       setSelectedImage(null);
     }
-    CloudDataStore.removeFile(img.id);
+    setSelectedItemIds(prev => prev.filter(id => id !== img.id));
+    CloudDataStore.removeFile(img.id, undefined, 'images');
+    LocalSyncReplication.recordLocalDeletion(img.id, 'images');
     deleteFileBlob(img.id).catch(() => {});
     await CloudStorageAPI.deleteImage(img.id, img.name).catch(() => {});
     invalidateCloudQueries.images().catch(() => {});
@@ -550,7 +567,18 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
 
   // Filtrage et tri (selon l'option sélectionnée)
   const filteredImages = useMemo(() => {
-    let list = imagesList;
+    let list = imagesList.filter(i => !isItemDeleted(i.id));
+    const seenIds = new Set<string>();
+    const seenSigs = new Set<string>();
+    list = list.filter(item => {
+      if (!item || !item.id || isItemDeleted(item.id)) return false;
+      if (seenIds.has(item.id)) return false;
+      const sig = `${(item.name || '').trim().toLowerCase()}_${item.sizeBytes || item.size || 0}`;
+      if (seenSigs.has(sig)) return false;
+      seenIds.add(item.id);
+      seenSigs.add(sig);
+      return true;
+    });
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter(i => i.name.toLowerCase().includes(q));
@@ -681,6 +709,14 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       }
 
       case 'duplicate': {
+        if (duplicatingIdsRef.current.has(img.id)) {
+          return;
+        }
+        duplicatingIdsRef.current.add(img.id);
+        setTimeout(() => {
+          duplicatingIdsRef.current.delete(img.id);
+        }, 1200);
+
         const existingNames = imagesList.map(i => i.name);
         const newName = computeDuplicateName(img.name, existingNames);
         const newImgId = `img-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -691,13 +727,30 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
           date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
           isPinned: false
         };
-        setImagesList(prev => [newImg, ...prev]);
+        unmarkItemDeleted(newImgId);
+        setImagesList(prev => [newImg, ...prev.filter(i => i.id !== newImgId)]);
         CloudDataStore.addOptimisticFile(newImg);
+        LocalSyncReplication.recordLocalUpsert(newImg.id, 'images', newImg);
+
         // Cloner le blob IndexedDB de manière indépendante pour éviter toute suppression partagée
         getFileBlob(img.id).then(blob => {
           if (blob) storeFileBlob(newImgId, blob).catch(() => {});
         }).catch(() => {});
-        CloudStorageAPI.duplicateItem(img.id, 'images', undefined, newName, newImgId).then(() => {
+
+        CloudStorageAPI.duplicateItem(img.id, 'images', undefined, newName, newImgId).then((serverData) => {
+          if (serverData && serverData.id && serverData.id !== newImgId) {
+            const realId = serverData.id;
+            unmarkItemDeleted(realId);
+            CloudDataStore.reconcileFileId(newImgId, realId);
+            setImagesList(prev => prev.map(i => i.id === newImgId ? { ...i, id: realId } : i));
+            getFileBlob(newImgId).then(b => {
+              if (b) {
+                storeFileBlob(realId, b).catch(() => {});
+                deleteFileBlob(newImgId).catch(() => {});
+              }
+            }).catch(() => {});
+            LocalSyncReplication.recordLocalUpsert(realId, 'images', { ...newImg, id: realId });
+          }
           invalidateCloudQueries.images().catch(() => {});
           invalidateCloudQueries.overview().catch(() => {});
         }).catch(console.error);
@@ -1997,7 +2050,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
               if (!window.confirm(`Supprimer les ${selectedItemIds.length} image(s) sélectionnée(s) ?`)) return;
               const toDelete = filteredImages.filter(i => selectedItemIds.includes(i.id));
               toDelete.forEach(i => {
-                handleMenuAction('delete', i);
+                handleDeleteImage(i, true);
               });
               setSelectedItemIds([]);
               setIsSelectionMode(false);

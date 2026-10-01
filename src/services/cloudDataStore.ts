@@ -298,6 +298,18 @@ export function notifyFavoriteChange(itemId: string, isFav: boolean, category?: 
   }
 }
 
+export function markItemDeleted(id: string) {
+  if (!id) return;
+  try {
+    const raw = localStorage.getItem('studycloud_deleted_file_ids');
+    const arr = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(arr) && !arr.includes(id)) {
+      arr.push(id);
+      localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(arr.slice(-500)));
+    }
+  } catch {}
+}
+
 export function unmarkItemDeleted(id: string) {
   if (!id) return;
   try {
@@ -327,15 +339,6 @@ export function unmarkItemDeleted(id: string) {
 
 export function isItemDeleted(id: string): boolean {
   if (!id) return false;
-  // Si l'élément est actuellement actif dans le store local (hors corbeille), il n'est JAMAIS supprimé
-  if (currentState.documents.some(d => d.id === id)) return false;
-  if (currentState.images.some(i => i.id === id)) return false;
-  if (currentState.videos.some(v => v.id === id)) return false;
-  if (currentState.audio.some(a => a.id === id)) return false;
-  if (currentState.classeurFolders.some(f => f.id === id)) return false;
-  if ((currentState.downloads || []).some((d: any) => d.id === id)) return false;
-  if (Object.values(currentState.folderFilesMap).some(list => list.some(f => f.id === id))) return false;
-
   if (tombstoneChecker && tombstoneChecker(id)) return true;
   return getLocallyDeletedFileIds().has(id);
 }
@@ -648,7 +651,9 @@ export const CloudDataStore = {
         tasks.push(
           CloudStorageAPI.getTrashFiles().then(trash => {
             if (trash !== null) {
-              currentState.trash = flag(trash);
+              // Filtrer les éléments déjà supprimés définitivement (tombstones)
+              // comme on le fait pour tous les autres types de fichiers
+              currentState.trash = flag(trash).filter((f: any) => !isItemDeleted(f.id));
               notify();
             }
           }).catch(() => null)
@@ -722,7 +727,7 @@ export const CloudDataStore = {
     notify();
   },
   setFolderFilesMap(map: Record<string, FileItem[]>)   { currentState = { ...currentState, folderFilesMap: map };      persistToIndexedDB().catch(() => {}); notify(); },
-  setTrashFiles(trash: FileItem[])          { currentState = { ...currentState, trash };                    persistToIndexedDB().catch(() => {}); notify(); },
+  setTrashFiles(trash: FileItem[])          { currentState = { ...currentState, trash: (trash || []).filter(f => !isItemDeleted(f.id)) }; persistToIndexedDB().catch(() => {}); notify(); },
   setSecureFiles(secure: FileItem[])        { currentState = { ...currentState, secure };                   persistToIndexedDB().catch(() => {}); notify(); },
   setRecentFiles(recent: FileItem[])        { currentState = { ...currentState, recentFiles: recent };      persistToIndexedDB().catch(() => {}); notify(); },
 
@@ -886,9 +891,18 @@ export const CloudDataStore = {
     notify();
   },
 
-  removeFile(fileId: string, folderId?: string) {
-    notifyFavoriteChange(fileId, false);
-    deletionListeners.forEach(fn => { try { fn(fileId); } catch {} });
+  removeFile(fileId: string, folderId?: string, category?: string) {
+    if (!fileId) return;
+    markItemDeleted(fileId);
+    notifyFavoriteChange(fileId, false, category);
+    const cat = category ||
+      (currentState.documents.some(d => d.id === fileId) ? 'documents' :
+       currentState.images.some(i => i.id === fileId) ? 'images' :
+       currentState.videos.some(v => v.id === fileId) ? 'videos' :
+       currentState.audio.some(a => a.id === fileId) ? 'audio' :
+       (currentState.downloads || []).some((d: any) => d.id === fileId) ? 'downloads' :
+       folderId ? 'classeur' : 'documents');
+    deletionListeners.forEach(fn => { try { fn(fileId, cat); } catch {} });
     const filterFn = (list: FileItem[]) => list.filter(f => f.id !== fileId);
     const updatedMap = { ...currentState.folderFilesMap };
     if (folderId && updatedMap[folderId]) {
@@ -915,11 +929,19 @@ export const CloudDataStore = {
     notify();
   },
 
-  removeFiles(fileIds: string[]) {
+  removeFiles(fileIds: string[], category?: string) {
     if (!fileIds || fileIds.length === 0) return;
     fileIds.forEach(id => {
-      notifyFavoriteChange(id, false);
-      deletionListeners.forEach(fn => { try { fn(id); } catch {} });
+      markItemDeleted(id);
+      notifyFavoriteChange(id, false, category);
+      const cat = category ||
+        (currentState.documents.some(d => d.id === id) ? 'documents' :
+         currentState.images.some(i => i.id === id) ? 'images' :
+         currentState.videos.some(v => v.id === id) ? 'videos' :
+         currentState.audio.some(a => a.id === id) ? 'audio' :
+         (currentState.downloads || []).some((d: any) => d.id === id) ? 'downloads' :
+         'documents');
+      deletionListeners.forEach(fn => { try { fn(id, cat); } catch {} });
     });
     const idSet = new Set(fileIds);
     const filterFn = (list: FileItem[]) => list.filter(f => !idSet.has(f.id));
@@ -939,6 +961,32 @@ export const CloudDataStore = {
       recentFiles: filterFn(currentState.recentFiles),
       trash: filterFn(currentState.trash),
       favorites: filterFn(currentState.favorites),
+    };
+    persistToIndexedDB().catch(() => {});
+    notify();
+  },
+
+  reconcileFileId(tempId: string, realId: string, folderId?: string) {
+    if (!tempId || !realId || tempId === realId) return;
+    unmarkItemDeleted(realId);
+    const replaceId = (list: FileItem[]) => list.map(f => f.id === tempId ? { ...f, id: realId } : f);
+    const updatedMap = { ...currentState.folderFilesMap };
+    if (folderId && updatedMap[folderId]) {
+      updatedMap[folderId] = replaceId(updatedMap[folderId]);
+    } else {
+      for (const k of Object.keys(updatedMap)) {
+        updatedMap[k] = replaceId(updatedMap[k]);
+      }
+    }
+    currentState = {
+      ...currentState,
+      folderFilesMap: updatedMap,
+      documents: replaceId(currentState.documents),
+      images: replaceId(currentState.images),
+      videos: replaceId(currentState.videos),
+      audio: replaceId(currentState.audio),
+      downloads: (currentState.downloads || []).map((d: any) => d.id === tempId ? { ...d, id: realId } : d) as any,
+      recentFiles: replaceId(currentState.recentFiles),
     };
     persistToIndexedDB().catch(() => {});
     notify();
@@ -965,6 +1013,7 @@ export const CloudDataStore = {
       downloads: (!category || category === 'downloads') ? (currentState.downloads || []).filter(d => d.id !== fileId) as any : currentState.downloads,
       secure: (!category || category === 'secure') ? filterFn(currentState.secure) : currentState.secure,
       recentFiles: filterFn(currentState.recentFiles),
+      trash: (!category || category === 'trash') ? filterFn(currentState.trash) : currentState.trash,
       favorites: filterFn(currentState.favorites),
     };
     persistToIndexedDB().catch(() => {});
@@ -972,6 +1021,20 @@ export const CloudDataStore = {
   },
 
   permanentlyRemoveTrashFile(fileId: string) {
+    // Écrire un tombstone dans localStorage pour éviter la résurrection lors du prochain sync
+    try {
+      const raw = localStorage.getItem('studycloud_deleted_file_ids');
+      const arr: string[] = raw ? JSON.parse(raw) : [];
+      if (!arr.includes(fileId)) {
+        arr.push(fileId);
+        localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(arr.slice(-500)));
+      }
+    } catch {}
+    // Notifier le tombstoneChecker (localSyncReplication) si disponible
+    if (tombstoneChecker) {
+      // Le tombstoneChecker lit inMemoryTombstones, on passe par deletionListeners
+      deletionListeners.forEach(fn => { try { fn(fileId, 'trash'); } catch {} });
+    }
     currentState = {
       ...currentState,
       trash: currentState.trash.filter(f => f.id !== fileId),
@@ -1171,6 +1234,16 @@ export const CloudDataStore = {
   },
 
   emptyTrash() {
+    // Écrire les tombstones pour tous les éléments de la corbeille
+    // afin d'éviter leur résurrection lors du prochain sync
+    try {
+      const raw = localStorage.getItem('studycloud_deleted_file_ids');
+      const existing: string[] = raw ? JSON.parse(raw) : [];
+      const existingSet = new Set(existing);
+      currentState.trash.forEach(t => existingSet.add(t.id));
+      localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(Array.from(existingSet).slice(-500)));
+    } catch {}
+    // Notifier deletionListeners (dont localSyncReplication) pour chaque élément
     currentState.trash.forEach(t => deletionListeners.forEach(fn => { try { fn(t.id, 'trash'); } catch {} }));
     currentState = {
       ...currentState,

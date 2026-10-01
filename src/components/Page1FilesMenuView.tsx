@@ -110,7 +110,7 @@ import { ModernImageViewer } from './ModernImageViewer';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { PdfHorizontalViewer } from './PdfHorizontalViewer';
-import { CloudDataStore, isRecentEligible } from '../services/cloudDataStore';
+import { CloudDataStore, isRecentEligible, isItemDeleted, unmarkItemDeleted } from '../services/cloudDataStore';
 import { LocalSyncReplication } from '../services/localSyncReplication';
 import { UploadQueue } from '../services/uploadQueue';
 import { UploadQueueWidget } from './UploadQueueWidget';
@@ -1551,6 +1551,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const classeurFolderFileInputRef = useRef<HTMLInputElement>(null); // Dossier ouvert du Classeur
   // Référence pour préserver la sélection lors de la transition vers un menu
   const preserveSelectionFileIdRef = useRef<string | null>(null);
+  // Verrou anti-double-clic pour la duplication
+  const duplicatingIdsRef = useRef<Set<string>>(new Set());
 
   // Sous-page ouverte
   const [currentSubView, setCurrentSubView] = useState<SubMenuView | null>(null);
@@ -1678,7 +1680,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       setAudioList(cleanList(cached.audio as any[]) as any);
       setCloudRecentFiles(cleanRecent(cached.recentFiles as any[]) as any);
       setSecureFolderFiles(cached.secure);
-      setTrashFiles(cached.trash);
+      setTrashFiles((cached.trash || []).filter(f => !delIds.has(f.id) && !isItemDeleted(f.id)));
       setCloudOverview(cached.overview);
       setLoadingCategories({
         overview: false, classeur: false, documents: false, images: false,
@@ -1728,7 +1730,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       });
       setCloudRecentFiles((state.recentFiles as any[]).filter(_isNotDeletedRecent).slice(0, 6));
       setSecureFolderFiles(state.secure);
-      setTrashFiles(state.trash);
+      setTrashFiles((state.trash || []).filter(f => _isNotDeleted(f) && !isItemDeleted(f.id)));
       setCloudOverview(state.overview);
       setLoadingCategories({
         overview: false, classeur: false, documents: false, images: false,
@@ -1934,7 +1936,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     removeDownloadedFile(id);
     markFileLocallyDeleted(id);
     markRecentLocallyDeleted(id);
-    CloudDataStore.removeFile(id);
+    CloudDataStore.permanentlyRemoveTrashFile(id);
     setCloudRecentFiles(prev => prev.filter(f => f.id !== id));
     CloudStorageAPI.deleteTrashPermanently([id]).catch(() => {});
     showToast('Fichier définitivement supprimé.');
@@ -1953,8 +1955,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       removeDownloadedFile(id);
       markFileLocallyDeleted(id);
       markRecentLocallyDeleted(id);
+      CloudDataStore.permanentlyRemoveTrashFile(id);
     });
-    CloudDataStore.removeFiles(ids);
     setCloudRecentFiles(prev => prev.filter(f => !ids.includes(f.id)));
     CloudStorageAPI.deleteTrashPermanently(ids).catch(() => {});
     setSelectedItemIds([]);
@@ -3194,6 +3196,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         markRecentLocallyDeleted(file.id);
         markFileLocallyDeleted(file.id);
         CloudDataStore.moveToTrash(fileWithSource as any);
+        const delCategory = (opened3DFolder || file.originalFolderId || (file as any).folderId) ? 'classeur' : (file.category || 'documents');
+        LocalSyncReplication.recordLocalDeletion(file.id, delCategory);
         deleteFileBlob(file.id).catch(() => {});
         removeDownloadedFile(file.id);
         if (opened3DFolder) {
@@ -3341,6 +3345,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
 
       case 'duplicate': {
+        if (duplicatingIdsRef.current.has(file.id)) {
+          return;
+        }
+        duplicatingIdsRef.current.add(file.id);
+        setTimeout(() => {
+          duplicatingIdsRef.current.delete(file.id);
+        }, 1200);
+
         const currentNames = currentCategoryList.map(f => f.name);
         const newName = computeDuplicateName(file.name, currentNames);
         const newFileId = `${file.category || 'item'}-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -3351,30 +3363,61 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           date: "Aujourd'hui, " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           isPinned: false
         };
+        unmarkFileLocallyDeleted(newFileId);
+        unmarkItemDeleted(newFileId);
+
         if (file.category === 'documents') {
-          setDocumentsList(prev => [newFile, ...prev]);
+          setDocumentsList(prev => [newFile, ...prev.filter(f => f.id !== newFileId)]);
         } else if (file.category === 'images') {
-          setImagesList(prev => [newFile, ...prev]);
+          setImagesList(prev => [newFile, ...prev.filter(f => f.id !== newFileId)]);
         } else if (file.category === 'videos') {
-          setVideosList(prev => [newFile, ...prev]);
+          setVideosList(prev => [newFile, ...prev.filter(f => f.id !== newFileId)]);
         } else if (file.category === 'audio') {
-          setAudioList(prev => [newFile, ...prev]);
+          setAudioList(prev => [newFile, ...prev.filter(f => f.id !== newFileId)]);
         } else if (file.category === 'downloads') {
-          setDownloadedItems(prev => [newFile as any, ...prev]);
+          setDownloadedItems(prev => [newFile as any, ...prev.filter(f => f.id !== newFileId)]);
         }
         if (opened3DFolder) {
           setFolderFilesMap(prev => ({
             ...prev,
-            [opened3DFolder.id]: [newFile, ...(prev[opened3DFolder.id] || [])]
+            [opened3DFolder.id]: [newFile, ...(prev[opened3DFolder.id] || []).filter(f => f.id !== newFileId)]
           }));
         }
         CloudDataStore.addOptimisticFile(newFile, opened3DFolder?.id);
+        const targetCategory = (opened3DFolder || file.originalFolderId || (file as any).folderId) ? 'classeur' : (file.category || 'documents');
+        LocalSyncReplication.recordLocalUpsert(newFile.id, targetCategory, newFile);
+
         // Cloner le blob IndexedDB de manière indépendante pour éviter toute suppression partagée
         getFileBlob(file.id).then(blob => {
           if (blob) storeFileBlob(newFileId, blob).catch(() => {});
         }).catch(() => {});
+
         // Écriture du doublon dans la table D1 correspondante avec le même ID
-        CloudStorageAPI.duplicateItem(file.id, file.category, opened3DFolder?.id, newName, newFileId).then(() => {
+        CloudStorageAPI.duplicateItem(file.id, file.category, opened3DFolder?.id, newName, newFileId).then((serverData) => {
+          if (serverData && serverData.id && serverData.id !== newFileId) {
+            const realId = serverData.id;
+            unmarkFileLocallyDeleted(realId);
+            unmarkItemDeleted(realId);
+            CloudDataStore.reconcileFileId(newFileId, realId, opened3DFolder?.id);
+            setDocumentsList(prev => prev.map(f => f.id === newFileId ? { ...f, id: realId } : f));
+            setImagesList(prev => prev.map(f => f.id === newFileId ? { ...f, id: realId } : f));
+            setVideosList(prev => prev.map(f => f.id === newFileId ? { ...f, id: realId } : f));
+            setAudioList(prev => prev.map(f => f.id === newFileId ? { ...f, id: realId } : f));
+            setDownloadedItems(prev => prev.map(f => f.id === newFileId ? { ...f, id: realId } : f));
+            if (opened3DFolder) {
+              setFolderFilesMap(prev => ({
+                ...prev,
+                [opened3DFolder.id]: (prev[opened3DFolder.id] || []).map(f => f.id === newFileId ? { ...f, id: realId } : f)
+              }));
+            }
+            getFileBlob(newFileId).then(blob => {
+              if (blob) {
+                storeFileBlob(realId, blob).catch(() => {});
+                deleteFileBlob(newFileId).catch(() => {});
+              }
+            }).catch(() => {});
+            LocalSyncReplication.recordLocalUpsert(realId, targetCategory, { ...newFile, id: realId });
+          }
           if (opened3DFolder?.id) invalidateCloudQueries.classeurFiles(opened3DFolder.id).catch(() => {});
           invalidateCloudQueries.overview().catch(() => {});
         }).catch(console.error);
@@ -4078,57 +4121,65 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (id === 'videos') {
       CloudStorageAPI.getVideosList().then(vids => {
         if (vids && Array.isArray(vids)) {
-          setVideosList(vids);
-          CloudDataStore.setVideos(vids as any);
+          const filtered = vids.filter(f => !isItemDeleted(f.id));
+          setVideosList(filtered);
+          CloudDataStore.setVideos(filtered as any);
         }
       }).catch(() => {});
     } else if (id === 'audio') {
       CloudStorageAPI.getAudioList().then(auds => {
         if (auds && Array.isArray(auds)) {
-          setAudioList(auds);
-          CloudDataStore.setAudio(auds as any);
+          const filtered = auds.filter(f => !isItemDeleted(f.id));
+          setAudioList(filtered);
+          CloudDataStore.setAudio(filtered as any);
         }
       }).catch(() => {});
     } else if (id === 'images') {
       CloudStorageAPI.getImagesList().then(imgs => {
         if (imgs && Array.isArray(imgs)) {
-          setImagesList(imgs);
-          CloudDataStore.setImages(imgs as any);
+          const filtered = imgs.filter(f => !isItemDeleted(f.id));
+          setImagesList(filtered);
+          CloudDataStore.setImages(filtered as any);
         }
       }).catch(() => {});
     } else if (id === 'documents') {
       CloudStorageAPI.getDocumentsList().then(docs => {
         if (docs && Array.isArray(docs)) {
-          setDocumentsList(docs);
-          CloudDataStore.setDocuments(docs as any);
+          const filtered = docs.filter(f => !isItemDeleted(f.id));
+          setDocumentsList(filtered);
+          CloudDataStore.setDocuments(filtered as any);
         }
       }).catch(() => {});
     } else if (id === 'classeur' || id === 'cloud-storage') {
       CloudStorageAPI.getClasseurFolders().then(folders => {
         if (folders && Array.isArray(folders)) {
-          setClasseur3DFolders(folders);
-          CloudDataStore.setClasseurFolders(folders);
+          const filtered = folders.filter(f => !isItemDeleted(f.id));
+          setClasseur3DFolders(filtered);
+          CloudDataStore.setClasseurFolders(filtered);
         }
       }).catch(() => {});
     } else if (id === 'downloads') {
       CloudStorageAPI.getDownloadsList().then(dls => {
         if (dls && Array.isArray(dls)) {
-          setDownloadedItems(dls as any);
-          CloudDataStore.setDownloads(dls as any);
+          const filtered = dls.filter(f => !isItemDeleted(f.id));
+          setDownloadedItems(filtered as any);
+          CloudDataStore.setDownloads(filtered as any);
         }
       }).catch(() => {});
     } else if (id === 'trash') {
       CloudStorageAPI.getTrashFiles().then(trash => {
         if (trash && Array.isArray(trash)) {
-          setTrashFiles(trash);
-          CloudDataStore.setTrashFiles(trash as any);
+          const filtered = trash.filter(f => !isItemDeleted(f.id));
+          setTrashFiles(filtered);
+          CloudDataStore.setTrashFiles(filtered as any);
         }
       }).catch(() => {});
     } else if (id === 'secure-folder') {
       CloudStorageAPI.getSecureFiles().then(sec => {
         if (sec && Array.isArray(sec)) {
-          setSecureFolderFiles(sec);
-          CloudDataStore.setSecureFiles(sec as any);
+          const filtered = sec.filter(f => !isItemDeleted(f.id));
+          setSecureFolderFiles(filtered);
+          CloudDataStore.setSecureFiles(filtered as any);
         }
       }).catch(() => {});
     }
@@ -4165,12 +4216,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Liste des documents pour le sous-menu Documents (Image 1) - Filtrage strict par nature
   const filteredDocuments = useMemo(() => {
     const delLocal = getLocallyDeletedFileIds();
-    const isClean = (f: FileItem) => !delLocal.has(f.id);
+    const isClean = (f: FileItem) => !delLocal.has(f.id) && !isItemDeleted(f.id);
     const isDoc = (f: FileItem) => (f.category === 'documents' || detectFileCategory({ name: f.name, type: f.type || '' }) === 'documents') && f.category !== 'videos' && f.category !== 'audio' && f.category !== 'images';
 
     const mergedDocs = [...documentsList, ...cloudRecentFiles.filter(f => isDoc(f) && !documentsList.some(s => s.id === f.id))];
     const seenDocIds = new Set<string>();
-    const list = mergedDocs.filter(f => { if (seenDocIds.has(f.id)) return false; seenDocIds.add(f.id); return true; }).filter(isClean).filter(isDoc);
+    const seenDocSigs = new Set<string>();
+    const list = mergedDocs.filter(f => {
+      if (!isClean(f) || !isDoc(f)) return false;
+      if (seenDocIds.has(f.id)) return false;
+      const sig = `${(f.name || '').trim().toLowerCase()}_${f.sizeBytes || f.size || 0}`;
+      if (seenDocSigs.has(sig)) return false;
+      seenDocIds.add(f.id);
+      seenDocSigs.add(sig);
+      return true;
+    });
     const filtered = list.filter(doc => {
       return subSearchQuery.trim() === '' || doc.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
@@ -4180,12 +4240,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Liste des images pour le sous-menu Images (Image 2) - Filtrage strict par nature
   const filteredImages = useMemo(() => {
     const delLocal = getLocallyDeletedFileIds();
-    const isClean = (f: FileItem) => !delLocal.has(f.id);
+    const isClean = (f: FileItem) => !delLocal.has(f.id) && !isItemDeleted(f.id);
     const isImg = (f: FileItem) => (f.category === 'images' || Boolean(f.previewUrl && !f.videoUrl && !f.audioUrl) || f.isImage || detectFileCategory({ name: f.name, type: f.type || '' }) === 'images') && f.category !== 'videos' && f.category !== 'audio' && f.category !== 'documents';
 
     const mergedImgs = [...imagesList, ...cloudRecentFiles.filter(f => isImg(f) && !imagesList.some(s => s.id === f.id))];
     const seenImgIds = new Set<string>();
-    const list = mergedImgs.filter(f => { if (seenImgIds.has(f.id)) return false; seenImgIds.add(f.id); return true; }).filter(isClean).filter(isImg);
+    const seenImgSigs = new Set<string>();
+    const list = mergedImgs.filter(f => {
+      if (!isClean(f) || !isImg(f)) return false;
+      if (seenImgIds.has(f.id)) return false;
+      const sig = `${(f.name || '').trim().toLowerCase()}_${f.sizeBytes || f.size || 0}`;
+      if (seenImgSigs.has(sig)) return false;
+      seenImgIds.add(f.id);
+      seenImgSigs.add(sig);
+      return true;
+    });
     const filtered = list.filter(img => {
       return subSearchQuery.trim() === '' || img.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
@@ -4195,7 +4264,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Liste des vidéos pour le sous-menu Vidéos (Image 3) - FILTRAGE STRICT : AUCUN AUDIO NE PEUT APPARAÎTRE
   const filteredVideos = useMemo(() => {
     const delLocal = getLocallyDeletedFileIds();
-    const isClean = (f: FileItem) => !delLocal.has(f.id);
+    const isClean = (f: FileItem) => !delLocal.has(f.id) && !isItemDeleted(f.id);
     const isVid = (f: FileItem) => {
       // Reconnaissance explicite des vidéos WhatsApp (ex: WhatsApp Video 2026-..., VID-...)
       if (isWhatsAppVideo(f.name, f.type)) {
@@ -4210,7 +4279,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     const mergedVids = [...videosList, ...cloudRecentFiles.filter(f => isVid(f) && !videosList.some(s => s.id === f.id))];
     const seenVidIds = new Set<string>();
-    const list = mergedVids.filter(f => { if (seenVidIds.has(f.id)) return false; seenVidIds.add(f.id); return true; }).filter(isClean).filter(isVid);
+    const seenVidSigs = new Set<string>();
+    const list = mergedVids.filter(f => {
+      if (!isClean(f) || !isVid(f)) return false;
+      if (seenVidIds.has(f.id)) return false;
+      const sig = `${(f.name || '').trim().toLowerCase()}_${f.sizeBytes || f.size || 0}`;
+      if (seenVidSigs.has(sig)) return false;
+      seenVidIds.add(f.id);
+      seenVidSigs.add(sig);
+      return true;
+    });
     const filtered = list.filter(vid => {
       return subSearchQuery.trim() === '' || vid.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
@@ -4220,7 +4298,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Liste audio pour le sous-menu Audio (Image 4) - ACCEPTE TOUS LES AUDIOS ET NOTES VOCALES WHATSAPP
   const filteredAudio = useMemo(() => {
     const delLocal = getLocallyDeletedFileIds();
-    const isClean = (f: FileItem) => !delLocal.has(f.id);
+    const isClean = (f: FileItem) => !delLocal.has(f.id) && !isItemDeleted(f.id);
     const isAud = (f: FileItem) => {
       // Une vidéo WhatsApp ou mobile ne doit JAMAIS apparaître dans le menu Audio
       if (isWhatsAppVideo(f.name, f.type)) {
@@ -4235,7 +4313,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     const mergedAuds = [...audioList, ...cloudRecentFiles.filter(f => isAud(f) && !audioList.some(s => s.id === f.id))];
     const seenAudIds = new Set<string>();
-    const list = mergedAuds.filter(f => { if (seenAudIds.has(f.id)) return false; seenAudIds.add(f.id); return true; }).filter(isClean).filter(isAud);
+    const seenAudSigs = new Set<string>();
+    const list = mergedAuds.filter(f => {
+      if (!isClean(f) || !isAud(f)) return false;
+      if (seenAudIds.has(f.id)) return false;
+      const sig = `${(f.name || '').trim().toLowerCase()}_${f.sizeBytes || f.size || 0}`;
+      if (seenAudSigs.has(sig)) return false;
+      seenAudIds.add(f.id);
+      seenAudSigs.add(sig);
+      return true;
+    });
     const filtered = list.filter(aud => {
       return subSearchQuery.trim() === '' || aud.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
@@ -6032,6 +6119,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
 
       case 'duplicate': {
+        if (duplicatingIdsRef.current.has(folder.id)) {
+          return;
+        }
+        duplicatingIdsRef.current.add(folder.id);
+        setTimeout(() => {
+          duplicatingIdsRef.current.delete(folder.id);
+        }, 1200);
+
         const existingNames = classeur3DFolders.map(f => f.name);
         const newName = computeDuplicateName(folder.name, existingNames);
         const newFolderId = `c3d-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -6042,15 +6137,27 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           createdAt: Date.now(),
           isPinned: false
         };
-        setClasseur3DFolders(prev => [duplicatedFolder, ...prev]);
-        // Le dossier dupliqué est créé complètement vide (aucun contenu copié selon la demande)
+        unmarkFileLocallyDeleted(newFolderId);
+        unmarkItemDeleted(newFolderId);
+
+        setClasseur3DFolders(prev => [duplicatedFolder, ...prev.filter(f => f.id !== newFolderId)]);
         setFolderFilesMap(prev => ({
           ...prev,
           [duplicatedFolder.id]: []
         }));
         CloudDataStore.addClasseurFolder(duplicatedFolder);
+        LocalSyncReplication.recordLocalUpsert(duplicatedFolder.id, 'classeur_folder', duplicatedFolder);
+
         // Sauvegarde de la copie du dossier dans Cloudflare D1 avec le même ID
-        CloudStorageAPI.duplicateItem(folder.id, 'classeur_folder', undefined, newName, newFolderId).then(() => {
+        CloudStorageAPI.duplicateItem(folder.id, 'classeur_folder', undefined, newName, newFolderId).then((serverData) => {
+          if (serverData && serverData.id && serverData.id !== newFolderId) {
+            const realFolderId = serverData.id;
+            unmarkFileLocallyDeleted(realFolderId);
+            unmarkItemDeleted(realFolderId);
+            setClasseur3DFolders(prev => prev.map(f => f.id === newFolderId ? { ...f, id: realFolderId } : f));
+            CloudDataStore.setClasseurFolders(classeur3DFolders.map(f => f.id === newFolderId ? { ...f, id: realFolderId } : f));
+            LocalSyncReplication.recordLocalUpsert(realFolderId, 'classeur_folder', { ...duplicatedFolder, id: realFolderId });
+          }
           invalidateCloudQueries.classeurFolders().catch(() => {});
         }).catch(console.error);
         showToast(`Dossier dupliqué : "${duplicatedFolder.name}" !`);

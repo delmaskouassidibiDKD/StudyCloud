@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore, unmarkItemDeleted } from '../services/cloudDataStore';
+import { LocalSyncReplication } from '../services/localSyncReplication';
 import { useTrashFiles } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
 import { deleteFileBlob } from '../services/localFileStorage';
@@ -98,7 +99,11 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
   const [trashList, setTrashList] = useState<FileItem[]>(() => {
     return CloudDataStore.getState().trash || [];
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => {
+    // Ne pas afficher le spinner si le cache RAM est déjà disponible
+    const state = CloudDataStore.getState();
+    return !(state.isLoaded || (state.trash && state.trash.length > 0));
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<SortOption>('recent');
   const [activeFilter, setActiveFilter] = useState<'all' | 'audio' | 'documents' | 'images' | 'videos' | 'classeur'>('all');
@@ -156,12 +161,33 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isViewerMaximized, selectedFile]);
 
-  // Synchronisation continue ultra-légère avec TanStack Query
+  // ─── SOURCE PRINCIPALE : CloudDataStore (RAM, 0ms) ─────────────────────────
+  // Abonnement direct pour des mises à jour optimistes instantanées
   useEffect(() => {
-    if (serverTrash && Array.isArray(serverTrash)) {
-      setTrashList(serverTrash);
+    const initial = CloudDataStore.getState();
+    if (initial.trash && initial.trash.length > 0) {
+      setTrashList(initial.trash);
       setLoading(false);
     }
+    const unsub = CloudDataStore.subscribe((state) => {
+      setTrashList(state.trash || []);
+      if (state.isLoaded) setLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  // ─── FUSION SÉCURISÉE AVEC LE SERVEUR (TanStack Query) ───────────────────────
+  // N'ajoute QUE les éléments NOUVEAUX (absents localement) pour éviter de
+  // ressusciter les fichiers déjà supprimés de façon optimiste par l'utilisateur.
+  useEffect(() => {
+    if (!serverTrash || !Array.isArray(serverTrash) || serverTrash.length === 0) return;
+    setTrashList(prev => {
+      const localIds = new Set(prev.map(f => f.id));
+      const genuinelyNew = serverTrash.filter(f => !localIds.has(f.id));
+      if (genuinelyNew.length === 0) return prev; // Pas de changement → pas de re-render
+      return [...prev, ...genuinelyNew];
+    });
+    setLoading(false);
   }, [serverTrash]);
 
   // Restaurer un fichier individuel
@@ -197,7 +223,9 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       setIsViewerMaximized(false);
     }
     setTrashList(prev => prev.filter(f => f.id !== file.id));
-    CloudDataStore.removeFile(file.id);
+    // Écrire le tombstone AVANT removeFile pour éviter toute résurrection lors du prochain sync
+    LocalSyncReplication.recordLocalDeletion(file.id, 'trash');
+    CloudDataStore.permanentlyRemoveTrashFile(file.id);
     deleteFileBlob(file.id).catch(() => {});
     await CloudStorageAPI.deleteTrashPermanently([file.id]).catch(() => {});
     invalidateCloudQueries.trash().catch(() => {});
@@ -213,6 +241,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       setIsViewerMaximized(false);
       const allIds = trashList.map(f => f.id);
       setTrashList([]);
+      // Écrire tous les tombstones AVANT d'appeler emptyTrash()
+      if (allIds.length > 0) {
+        LocalSyncReplication.recordLocalDeletions(allIds, 'trash');
+      }
       CloudDataStore.emptyTrash();
       allIds.forEach(id => deleteFileBlob(id).catch(() => {}));
       await CloudStorageAPI.deleteTrashPermanently(allIds).catch(() => {});

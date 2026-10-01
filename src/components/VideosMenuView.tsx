@@ -33,7 +33,8 @@ import {
   Sparkles
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
-import { CloudDataStore } from '../services/cloudDataStore';
+import { CloudDataStore, isItemDeleted, markItemDeleted, unmarkItemDeleted } from '../services/cloudDataStore';
+import { LocalSyncReplication } from '../services/localSyncReplication';
 import { useVideosList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
 import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
@@ -105,6 +106,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   const [savingProgress, setSavingProgress] = useState<Record<string, number>>({});
   const [savingErrors, setSavingErrors] = useState<Record<string, string>>({});
   const savingIntervalsRef = useRef<Record<string, any>>({});
+  const duplicatingIdsRef = useRef<Set<string>>(new Set());
 
   // Animation et suivi en continu de la ligne de progression qui se remplit
   const startSavingAnimation = (fileIds: string[]) => {
@@ -329,9 +331,21 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   useEffect(() => {
     if (serverVideos && Array.isArray(serverVideos)) {
       setVideosList(prev => {
-        const serverIds = new Set(serverVideos.map(v => v.id));
-        const pending = prev.filter(v => !serverIds.has(v.id) && Boolean(v.isUploading));
-        return [...pending, ...serverVideos];
+        const cleanServer = serverVideos.filter(v => !isItemDeleted(v.id));
+        const serverIds = new Set(cleanServer.map(v => v.id));
+        const pending = prev.filter(v => !serverIds.has(v.id) && Boolean(v.isUploading) && !isItemDeleted(v.id));
+        const merged = [...pending, ...cleanServer];
+        const seenIds = new Set<string>();
+        const seenSigs = new Set<string>();
+        return merged.filter(v => {
+          if (!v || !v.id || isItemDeleted(v.id)) return false;
+          if (seenIds.has(v.id)) return false;
+          const sig = `${(v.name || '').trim().toLowerCase()}_${v.sizeBytes || v.size || 0}`;
+          if (seenSigs.has(sig)) return false;
+          seenIds.add(v.id);
+          seenSigs.add(sig);
+          return true;
+        });
       });
       setLoading(false);
     }
@@ -495,9 +509,10 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   };
 
   // Suppression
-  const handleDeleteVideo = async (vid: FileItem) => {
-    if (!window.confirm(`Supprimer définitivement "${vid.name}" ?`)) return;
+  const handleDeleteVideo = async (vid: FileItem, skipConfirm: boolean = false) => {
+    if (!skipConfirm && !window.confirm(`Supprimer définitivement "${vid.name}" ?`)) return;
 
+    markItemDeleted(vid.id);
     const fileWithSource: FileItem = {
       ...vid,
       isTrash: true,
@@ -510,6 +525,8 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       setIsViewerMaximized(false);
     }
     setSelectedItemIds(prev => prev.filter(id => id !== vid.id));
+    CloudDataStore.removeFile(vid.id, undefined, 'videos');
+    LocalSyncReplication.recordLocalDeletion(vid.id, 'videos');
     CloudDataStore.moveToTrash(fileWithSource as any);
     deleteFileBlob(vid.id).catch(() => {});
     await CloudStorageAPI.deleteVideo(vid.id, vid.name).catch(() => {});
@@ -563,7 +580,18 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
 
   // Filtrage et tri (selon l'option sélectionnée)
   const filteredVideos = useMemo(() => {
-    let list = videosList;
+    let list = videosList.filter(v => !isItemDeleted(v.id));
+    const seenIds = new Set<string>();
+    const seenSigs = new Set<string>();
+    list = list.filter(item => {
+      if (!item || !item.id || isItemDeleted(item.id)) return false;
+      if (seenIds.has(item.id)) return false;
+      const sig = `${(item.name || '').trim().toLowerCase()}_${item.sizeBytes || item.size || 0}`;
+      if (seenSigs.has(sig)) return false;
+      seenIds.add(item.id);
+      seenSigs.add(sig);
+      return true;
+    });
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter(v => v.name.toLowerCase().includes(q));
@@ -706,6 +734,14 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       }
 
       case 'duplicate': {
+        if (duplicatingIdsRef.current.has(vid.id)) {
+          return;
+        }
+        duplicatingIdsRef.current.add(vid.id);
+        setTimeout(() => {
+          duplicatingIdsRef.current.delete(vid.id);
+        }, 1200);
+
         const existingNames = videosList.map(v => v.name);
         const newName = computeDuplicateName(vid.name, existingNames);
         const newVidId = `vid-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -716,13 +752,30 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
           date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
           isPinned: false
         };
-        setVideosList(prev => [newVid, ...prev]);
+        unmarkItemDeleted(newVidId);
+        setVideosList(prev => [newVid, ...prev.filter(v => v.id !== newVidId)]);
         CloudDataStore.addOptimisticFile(newVid);
+        LocalSyncReplication.recordLocalUpsert(newVid.id, 'videos', newVid);
+
         // Cloner le blob IndexedDB de manière indépendante pour éviter toute suppression partagée
         getFileBlob(vid.id).then(blob => {
           if (blob) storeFileBlob(newVidId, blob).catch(() => {});
         }).catch(() => {});
-        CloudStorageAPI.duplicateItem(vid.id, 'videos', undefined, newName, newVidId).then(() => {
+
+        CloudStorageAPI.duplicateItem(vid.id, 'videos', undefined, newName, newVidId).then((serverData) => {
+          if (serverData && serverData.id && serverData.id !== newVidId) {
+            const realId = serverData.id;
+            unmarkItemDeleted(realId);
+            CloudDataStore.reconcileFileId(newVidId, realId);
+            setVideosList(prev => prev.map(v => v.id === newVidId ? { ...v, id: realId } : v));
+            getFileBlob(newVidId).then(b => {
+              if (b) {
+                storeFileBlob(realId, b).catch(() => {});
+                deleteFileBlob(newVidId).catch(() => {});
+              }
+            }).catch(() => {});
+            LocalSyncReplication.recordLocalUpsert(realId, 'videos', { ...newVid, id: realId });
+          }
           invalidateCloudQueries.videos().catch(() => {});
           invalidateCloudQueries.overview().catch(() => {});
         }).catch(console.error);
@@ -2006,7 +2059,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
               if (!window.confirm(`Supprimer les ${selectedItemIds.length} vidéo(s) sélectionnée(s) ?`)) return;
               const toDelete = filteredVideos.filter(v => selectedItemIds.includes(v.id));
               toDelete.forEach(v => {
-                handleMenuAction('delete', v);
+                handleDeleteVideo(v, true);
               });
               setSelectedItemIds([]);
               setIsSelectionMode(false);

@@ -686,7 +686,6 @@ setFavoriteSyncNotifier((favId: string, itemId: string, isFav: boolean, category
 
 // Écouter toutes les suppressions locales de CloudDataStore pour réplication immédiate
 CloudDataStore.onDelete((id: string, category?: string) => {
-  if (isReplicating) return;
-  LocalSyncReplication.recordLocalDeletion(id, category);
+  LocalSyncReplication.recordLocalDeletion(id, category || 'documents');
 });
 

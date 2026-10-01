@@ -37,7 +37,8 @@ import {
   FolderArchive
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
-import { CloudDataStore } from '../services/cloudDataStore';
+import { CloudDataStore, isItemDeleted, markItemDeleted, unmarkItemDeleted } from '../services/cloudDataStore';
+import { LocalSyncReplication } from '../services/localSyncReplication';
 import { useDocumentsList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob, getFileBlob } from '../services/localFileStorage';
@@ -187,6 +188,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
   const [classeur3DFolders, setClasseur3DFolders] = useState<ClasseurCreatedFolder[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const duplicatingIdsRef = useRef<Set<string>>(new Set());
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -372,9 +374,20 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
   useEffect(() => {
     if (serverDocuments && Array.isArray(serverDocuments)) {
       setDocumentsList(prev => {
-        const serverIds = new Set(serverDocuments.map(d => d.id));
-        const pending = prev.filter(d => !serverIds.has(d.id) && Boolean(d.isUploading));
-        return [...pending, ...serverDocuments];
+        const cleanServer = serverDocuments.filter(d => !isItemDeleted(d.id));
+        const serverIds = new Set(cleanServer.map(d => d.id));
+        const pending = prev.filter(d => !serverIds.has(d.id) && Boolean(d.isUploading) && !isItemDeleted(d.id));
+        const merged = [...pending, ...cleanServer];
+        const seenIds = new Set<string>();
+        const seenSigs = new Set<string>();
+        return merged.filter(d => {
+          if (seenIds.has(d.id)) return false;
+          const sig = `${(d.name || '').trim().toLowerCase()}_${d.sizeBytes || d.size || 0}`;
+          if (seenSigs.has(sig)) return false;
+          seenIds.add(d.id);
+          seenSigs.add(sig);
+          return true;
+        });
       });
       setLoading(false);
     }
@@ -604,13 +617,15 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
   const handleDeleteDocument = async (doc: FileItem) => {
     if (!window.confirm(`Supprimer définitivement "${doc.name}" ?`)) return;
 
+    markItemDeleted(doc.id);
     setDocumentsList(prev => prev.filter(d => d.id !== doc.id));
     if (selectedDoc?.id === doc.id) {
       setSelectedDoc(null);
       setIsViewerMaximized(false);
     }
     setSelectedItemIds(prev => prev.filter(id => id !== doc.id));
-    CloudDataStore.removeFile(doc.id);
+    CloudDataStore.removeFile(doc.id, undefined, 'documents');
+    LocalSyncReplication.recordLocalDeletion(doc.id, 'documents');
     deleteFileBlob(doc.id).catch(() => {});
     await CloudStorageAPI.deleteDocument(doc.id, doc.name).catch(() => {});
     invalidateCloudQueries.documents().catch(() => {});
@@ -744,6 +759,14 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       }
 
       case 'duplicate': {
+        if (duplicatingIdsRef.current.has(doc.id)) {
+          return;
+        }
+        duplicatingIdsRef.current.add(doc.id);
+        setTimeout(() => {
+          duplicatingIdsRef.current.delete(doc.id);
+        }, 1200);
+
         const existingNames = documentsList.map(d => d.name);
         const newName = computeDuplicateName(doc.name, existingNames);
         const newDocId = `doc-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -754,13 +777,30 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
           date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
           isPinned: false
         };
-        setDocumentsList(prev => [newDoc, ...prev]);
+        unmarkItemDeleted(newDocId);
+        setDocumentsList(prev => [newDoc, ...prev.filter(d => d.id !== newDocId)]);
         CloudDataStore.addOptimisticFile(newDoc);
+        LocalSyncReplication.recordLocalUpsert(newDoc.id, 'documents', newDoc);
+
         // Cloner le blob IndexedDB de manière indépendante pour éviter toute suppression partagée
         getFileBlob(doc.id).then(blob => {
           if (blob) storeFileBlob(newDocId, blob).catch(() => {});
         }).catch(() => {});
-        CloudStorageAPI.duplicateItem(doc.id, 'documents', undefined, newName, newDocId).then(() => {
+
+        CloudStorageAPI.duplicateItem(doc.id, 'documents', undefined, newName, newDocId).then((serverData) => {
+          if (serverData && serverData.id && serverData.id !== newDocId) {
+            const realId = serverData.id;
+            unmarkItemDeleted(realId);
+            CloudDataStore.reconcileFileId(newDocId, realId);
+            setDocumentsList(prev => prev.map(d => d.id === newDocId ? { ...d, id: realId } : d));
+            getFileBlob(newDocId).then(b => {
+              if (b) {
+                storeFileBlob(realId, b).catch(() => {});
+                deleteFileBlob(newDocId).catch(() => {});
+              }
+            }).catch(() => {});
+            LocalSyncReplication.recordLocalUpsert(realId, 'documents', { ...newDoc, id: realId });
+          }
           invalidateCloudQueries.documents().catch(() => {});
           invalidateCloudQueries.overview().catch(() => {});
         }).catch(console.error);
@@ -1257,7 +1297,18 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
 
   // Filtrage et tri des documents
   const filteredDocuments = useMemo(() => {
-    let list = [...documentsList];
+    let list = (documentsList || []).filter(d => !isItemDeleted(d.id));
+    const seenIds = new Set<string>();
+    const seenSigs = new Set<string>();
+    list = list.filter(d => {
+      if (seenIds.has(d.id)) return false;
+      const sig = `${(d.name || '').trim().toLowerCase()}_${d.sizeBytes || d.size || 0}`;
+      if (seenSigs.has(sig)) return false;
+      seenIds.add(d.id);
+      seenSigs.add(sig);
+      return true;
+    });
+
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter(d => d.name.toLowerCase().includes(q));

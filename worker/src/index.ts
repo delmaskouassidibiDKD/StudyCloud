@@ -9595,7 +9595,6 @@ export default {
             orig.zoom_level || 10, orig.date_text, orig.parent_id || null
           ).run();
 
-          // ATTENTION : Aucun fichier copié pour le nouveau dossier dupliqué. Le contenu est VIDE par conception.
           const duplicatedFolder = {
             id: newId,
             name: finalName,
@@ -9614,79 +9613,186 @@ export default {
             createdAt: Date.now()
           };
 
+          await recordSyncItem(env.DB, reqUserId, newId, 'classeur_folder', duplicatedFolder, 0);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {});
           return jsonResponse({ success: true, data: duplicatedFolder }, 200, origin);
         }
 
         if (category === 'classeur_file' || folderId) {
-          const orig: any = await env.DB.prepare('SELECT * FROM classeur_files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+          let orig: any = await env.DB.prepare('SELECT * FROM classeur_files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+          if (!orig) {
+            orig = await env.DB.prepare('SELECT * FROM files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+          }
           if (!orig) return errorResponse('Fichier introuvable', 404, origin);
 
           const finalName = requestedName || `${orig.name} (Copie)`;
+          const fId = folderId || orig.folder_id || 'default-folder';
+          const sizeVal = orig.size || formatBytes(orig.size_bytes || 0);
+          const sizeBytesVal = Number(orig.size_bytes || orig.size || 0);
+
           await env.DB.prepare(`
             INSERT INTO classeur_files (id, user_id, folder_id, name, size, size_bytes, extension, is_notepad, content_text, r2_key, file_url, position_x, position_y, display_order, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
           `).bind(
-            newId, reqUserId, orig.folder_id, finalName, orig.size, orig.size_bytes,
-            orig.extension, orig.is_notepad, orig.content_text, orig.r2_key, orig.file_url,
+            newId, reqUserId, fId, finalName, sizeVal, sizeBytesVal,
+            orig.extension || 'PDF', orig.is_notepad || 0, orig.content_text || null, orig.r2_key, orig.file_url,
             (orig.position_x || 0) + 20, (orig.position_y || 0) + 20, (orig.display_order || 0) + 1
           ).run();
 
-          return jsonResponse({ success: true, data: { ...orig, id: newId, name: finalName } }, 200, origin);
+          const duplicatedItem = { ...orig, id: newId, folder_id: fId, name: finalName, size: sizeVal, sizeBytes: sizeBytesVal };
+          await recordSyncItem(env.DB, reqUserId, newId, 'classeur', duplicatedItem, 0);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {});
+          return jsonResponse({ success: true, data: duplicatedItem }, 200, origin);
         }
 
         if (category === 'images') {
-          const orig: any = await env.DB.prepare('SELECT * FROM image_files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+          let orig: any = await env.DB.prepare('SELECT * FROM image_files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+          if (!orig) {
+            orig = await env.DB.prepare('SELECT * FROM files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+          }
           if (!orig) return errorResponse('Image introuvable', 404, origin);
           const finalName = requestedName || `${orig.name} (Copie)`;
+          const sizeVal = orig.size || formatBytes(orig.size_bytes || 0);
+          const sizeBytesVal = Number(orig.size_bytes || orig.size || 0);
+          const imgUrl = orig.image_url || orig.file_url;
+          const dateStr = orig.date_formatted || new Date().toLocaleDateString('fr-FR');
+
           await env.DB.prepare(`
             INSERT INTO image_files (id, user_id, name, size, size_bytes, r2_key, image_url, date_formatted, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-          `).bind(newId, reqUserId, finalName, orig.size, orig.size_bytes, orig.r2_key, orig.image_url, orig.date_formatted).run();
-          return jsonResponse({ success: true, data: { ...orig, id: newId, name: finalName } }, 200, origin);
+          `).bind(newId, reqUserId, finalName, sizeVal, sizeBytesVal, orig.r2_key, imgUrl, dateStr).run();
+
+          try {
+            await env.DB.prepare(`
+              INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
+              VALUES (?, ?, 'menu-images', ?, ?, 'image/jpeg', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET name = excluded.name, updated_at = CURRENT_TIMESTAMP
+            `).bind(newId, reqUserId, finalName, sizeBytesVal, orig.extension || 'JPG', orig.r2_key, imgUrl, Date.now()).run();
+          } catch (e) {}
+
+          const duplicatedItem = { ...orig, id: newId, name: finalName, size: sizeVal, sizeBytes: sizeBytesVal, url: imgUrl, imageUrl: imgUrl };
+          await recordSyncItem(env.DB, reqUserId, newId, 'images', duplicatedItem, 0);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {});
+          return jsonResponse({ success: true, data: duplicatedItem }, 200, origin);
         }
 
         if (category === 'videos') {
-          const orig: any = await env.DB.prepare('SELECT * FROM video_files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+          let orig: any = await env.DB.prepare('SELECT * FROM video_files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+          if (!orig) {
+            orig = await env.DB.prepare('SELECT * FROM files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+          }
           if (!orig) return errorResponse('Vidéo introuvable', 404, origin);
           const finalName = requestedName || `${orig.name} (Copie)`;
+          const sizeVal = orig.size || formatBytes(orig.size_bytes || 0);
+          const sizeBytesVal = Number(orig.size_bytes || orig.size || 0);
+          const vidUrl = orig.video_url || orig.file_url;
+          const dateStr = orig.date_formatted || new Date().toLocaleDateString('fr-FR');
+
           await env.DB.prepare(`
             INSERT INTO video_files (id, user_id, name, size, size_bytes, r2_key, video_url, date_formatted, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-          `).bind(newId, reqUserId, finalName, orig.size, orig.size_bytes, orig.r2_key, orig.video_url, orig.date_formatted).run();
-          return jsonResponse({ success: true, data: { ...orig, id: newId, name: finalName } }, 200, origin);
+          `).bind(newId, reqUserId, finalName, sizeVal, sizeBytesVal, orig.r2_key, vidUrl, dateStr).run();
+
+          try {
+            await env.DB.prepare(`
+              INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
+              VALUES (?, ?, 'menu-videos', ?, ?, 'video/mp4', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET name = excluded.name, updated_at = CURRENT_TIMESTAMP
+            `).bind(newId, reqUserId, finalName, sizeBytesVal, orig.extension || 'MP4', orig.r2_key, vidUrl, Date.now()).run();
+          } catch (e) {}
+
+          const duplicatedItem = { ...orig, id: newId, name: finalName, size: sizeVal, sizeBytes: sizeBytesVal, url: vidUrl, videoUrl: vidUrl };
+          await recordSyncItem(env.DB, reqUserId, newId, 'videos', duplicatedItem, 0);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {});
+          return jsonResponse({ success: true, data: duplicatedItem }, 200, origin);
         }
 
         if (category === 'audio') {
-          const orig: any = await env.DB.prepare('SELECT * FROM audio_files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+          let orig: any = await env.DB.prepare('SELECT * FROM audio_files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+          if (!orig) {
+            orig = await env.DB.prepare('SELECT * FROM files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+          }
           if (!orig) return errorResponse('Audio introuvable', 404, origin);
           const finalName = requestedName || `${orig.name} (Copie)`;
+          const sizeVal = orig.size || formatBytes(orig.size_bytes || 0);
+          const sizeBytesVal = Number(orig.size_bytes || orig.size || 0);
+          const audUrl = orig.audio_url || orig.file_url;
+          const dateStr = orig.date_formatted || new Date().toLocaleDateString('fr-FR');
+
           await env.DB.prepare(`
             INSERT INTO audio_files (id, user_id, name, artist, duration_sec, size, size_bytes, r2_key, audio_url, date_formatted, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-          `).bind(newId, reqUserId, finalName, orig.artist, orig.duration_sec, orig.size, orig.size_bytes, orig.r2_key, orig.audio_url, orig.date_formatted).run();
-          return jsonResponse({ success: true, data: { ...orig, id: newId, name: finalName } }, 200, origin);
+          `).bind(newId, reqUserId, finalName, orig.artist || 'Artiste inconnu', orig.duration_sec || 0, sizeVal, sizeBytesVal, orig.r2_key, audUrl, dateStr).run();
+
+          try {
+            await env.DB.prepare(`
+              INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
+              VALUES (?, ?, 'menu-audio', ?, ?, 'audio/mpeg', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET name = excluded.name, updated_at = CURRENT_TIMESTAMP
+            `).bind(newId, reqUserId, finalName, sizeBytesVal, orig.extension || 'MP3', orig.r2_key, audUrl, Date.now()).run();
+          } catch (e) {}
+
+          const duplicatedItem = { ...orig, id: newId, name: finalName, size: sizeVal, sizeBytes: sizeBytesVal, url: audUrl, audioUrl: audUrl };
+          await recordSyncItem(env.DB, reqUserId, newId, 'audio', duplicatedItem, 0);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {});
+          return jsonResponse({ success: true, data: duplicatedItem }, 200, origin);
         }
 
         if (category === 'downloads') {
-          const orig: any = await env.DB.prepare('SELECT * FROM download_files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+          let orig: any = await env.DB.prepare('SELECT * FROM download_files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+          if (!orig) {
+            orig = await env.DB.prepare('SELECT * FROM files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+          }
           if (!orig) return errorResponse('Téléchargement introuvable', 404, origin);
           const finalName = requestedName || `${orig.name} (Copie)`;
+          const sizeVal = orig.size || formatBytes(orig.size_bytes || 0);
+          const sizeBytesVal = Number(orig.size_bytes || orig.size || 0);
+          const dlUrl = orig.file_url || orig.url;
+          const dateStr = orig.date_formatted || new Date().toLocaleDateString('fr-FR');
+
           await env.DB.prepare(`
             INSERT INTO download_files (id, user_id, name, size, size_bytes, category, extension, r2_key, file_url, date_formatted, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-          `).bind(newId, reqUserId, finalName, orig.size, orig.size_bytes, orig.category, orig.extension, orig.r2_key, orig.file_url, orig.date_formatted).run();
-          return jsonResponse({ success: true, data: { ...orig, id: newId, name: finalName } }, 200, origin);
+          `).bind(newId, reqUserId, finalName, sizeVal, sizeBytesVal, orig.category || 'downloads', orig.extension || 'FILE', orig.r2_key, dlUrl, dateStr).run();
+
+          const duplicatedItem = { ...orig, id: newId, name: finalName, size: sizeVal, sizeBytes: sizeBytesVal, url: dlUrl };
+          await recordSyncItem(env.DB, reqUserId, newId, 'downloads', duplicatedItem, 0);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {});
+          return jsonResponse({ success: true, data: duplicatedItem }, 200, origin);
         }
 
-        // Documents
-        const orig: any = await env.DB.prepare('SELECT * FROM document_files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+        // Documents (défaut)
+        let orig: any = await env.DB.prepare('SELECT * FROM document_files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+        if (!orig) {
+          orig = await env.DB.prepare('SELECT * FROM files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+        }
+        if (!orig) {
+          orig = await env.DB.prepare('SELECT * FROM classeur_files WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
+        }
         if (!orig) return errorResponse('Document introuvable', 404, origin);
         const finalName = requestedName || `${orig.name} (Copie)`;
+        const sizeVal = orig.size || formatBytes(orig.size_bytes || 0);
+        const sizeBytesVal = Number(orig.size_bytes || orig.size || 0);
+        const docUrl = orig.file_url || orig.url;
+        const dateStr = orig.date_formatted || new Date().toLocaleDateString('fr-FR');
+
         await env.DB.prepare(`
           INSERT INTO document_files (id, user_id, name, size, size_bytes, r2_key, file_url, date_formatted, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        `).bind(newId, reqUserId, finalName, orig.size, orig.size_bytes, orig.r2_key, orig.file_url, orig.date_formatted).run();
-        return jsonResponse({ success: true, data: { ...orig, id: newId, name: finalName } }, 200, origin);
+        `).bind(newId, reqUserId, finalName, sizeVal, sizeBytesVal, orig.r2_key, docUrl, dateStr).run();
+
+        try {
+          await env.DB.prepare(`
+            INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
+            VALUES (?, ?, 'menu-documents', ?, ?, 'application/pdf', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET name = excluded.name, updated_at = CURRENT_TIMESTAMP
+          `).bind(newId, reqUserId, finalName, sizeBytesVal, orig.extension || 'PDF', orig.r2_key, docUrl, Date.now()).run();
+        } catch (e) {}
+
+        const duplicatedDoc = { ...orig, id: newId, name: finalName, size: sizeVal, sizeBytes: sizeBytesVal, url: docUrl, fileUrl: docUrl };
+        await recordSyncItem(env.DB, reqUserId, newId, 'documents', duplicatedDoc, 0);
+        recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {});
+        return jsonResponse({ success: true, data: duplicatedDoc }, 200, origin);
       }
 
       // ----------------------------------------------------------------------
