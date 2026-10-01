@@ -1741,13 +1741,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       setClasseur3DFolders(state.classeurFolders);
       setFolderFilesMap(state.folderFilesMap);
       setDownloadedItems(state.downloads as any);
+      const trashIdSet = new Set((state.trash || []).map(t => t.id));
       const _delIds = getLocallyDeletedFileIds();
       const _delRecent = getDeletedRecentIds();
-      const _isNotDeleted = (f: { id: string }) => !_delIds.has(f.id);
+      const _isNotDeleted = (f: { id: string; isTrash?: boolean }) => 
+        !_delIds.has(f.id) && !isItemDeleted(f.id) && !f.isTrash && !trashIdSet.has(f.id);
       const _isNotDeletedRecent = (f: any) => _isNotDeleted(f) && !_delRecent.has(f.id) && isRecentEligible(f);
       setDocumentsList(prev => {
         const stateIds = new Set(state.documents.map(d => d.id));
-        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || p.isUploading) && _isNotDeleted(p));
+        const pending = prev.filter(p => !stateIds.has(p.id) && Boolean(p.isUploading) && _isNotDeleted(p));
         // Final dedup by ID to ensure no duplicates in the merged result
         const merged = [...pending, ...(state.documents as any[]).filter(_isNotDeleted)];
         const seen = new Set<string>();
@@ -1755,34 +1757,34 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       });
       setImagesList(prev => {
         const stateIds = new Set(state.images.map(img => img.id));
-        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || p.isUploading) && _isNotDeleted(p));
+        const pending = prev.filter(p => !stateIds.has(p.id) && Boolean(p.isUploading) && _isNotDeleted(p));
         const merged = [...pending, ...(state.images as any[]).filter(_isNotDeleted)];
         const seen = new Set<string>();
         return merged.filter(f => { if (seen.has(f.id)) return false; seen.add(f.id); return true; });
       });
       setVideosList(prev => {
         const stateIds = new Set(state.videos.map(v => v.id));
-        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || p.isUploading) && _isNotDeleted(p));
+        const pending = prev.filter(p => !stateIds.has(p.id) && Boolean(p.isUploading) && _isNotDeleted(p));
         const merged = [...pending, ...(state.videos as any[]).filter(_isNotDeleted)];
         const seen = new Set<string>();
         return merged.filter(f => { if (seen.has(f.id)) return false; seen.add(f.id); return true; });
       });
       setAudioList(prev => {
         const stateIds = new Set(state.audio.map(a => a.id));
-        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || p.isUploading) && _isNotDeleted(p));
+        const pending = prev.filter(p => !stateIds.has(p.id) && Boolean(p.isUploading) && _isNotDeleted(p));
         const merged = [...pending, ...(state.audio as any[]).filter(_isNotDeleted)];
         const seen = new Set<string>();
         return merged.filter(f => { if (seen.has(f.id)) return false; seen.add(f.id); return true; });
       });
       setCloudRecentFiles(prev => {
         const stateIds = new Set(state.recentFiles.map((r: any) => r.id));
-        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || (p as any).isUploading) && _isNotDeletedRecent(p));
+        const pending = prev.filter(p => !stateIds.has(p.id) && Boolean((p as any).isUploading) && _isNotDeletedRecent(p));
         const merged = [...pending, ...(state.recentFiles as any[]).filter(_isNotDeletedRecent)];
         const seen = new Set<string>();
         return merged.filter(f => { if (seen.has(f.id)) return false; seen.add(f.id); return true; }).slice(0, 6);
       });
       setSecureFolderFiles(state.secure);
-      setTrashFiles((state.trash || []).filter(f => _isNotDeleted(f) && !isItemDeleted(f.id)));
+      setTrashFiles((state.trash || []).filter(f => !_delIds.has(f.id) && !isItemDeleted(f.id)));
       setCloudOverview(state.overview);
       setLoadingCategories({
         overview: false, classeur: false, documents: false, images: false,
@@ -3273,12 +3275,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         LocalSyncReplication.recordLocalDeletion(file.id, delCategory);
         deleteFileBlob(file.id).catch(() => {});
         removeDownloadedFile(file.id);
-        if (opened3DFolder) {
-          setFolderFilesMap(prev => ({
-            ...prev,
-            [opened3DFolder.id]: (prev[opened3DFolder.id] || []).filter(f => f.id !== file.id)
-          }));
-        }
+        setFolderFilesMap(prev => {
+          const next = { ...prev };
+          for (const k of Object.keys(next)) {
+            next[k] = (next[k] || []).filter(f => f.id !== file.id);
+          }
+          return next;
+        });
         if (splitSelectedFile?.id === file.id) {
           setSplitSelectedFile(null);
         }
@@ -4676,7 +4679,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Calcul dynamique et formatage lisible de l'espace occupé par chaque catégorie
   const formatCategoryDisplaySize = (bytes: number, count: number, singularUnit: string) => {
     if (bytes > 0) {
-      if (bytes < 1024) return `${bytes} o`;
+      if (bytes < 1024) return `${bytes} octets`;
       if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
       if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
       return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} Go`;
@@ -4685,29 +4688,36 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   const calculateListBytes = (files: (FileItem | DownloadedItem)[]) => {
+    const delIds = getLocallyDeletedFileIds();
+    const trashIdSet = new Set(trashFiles.map(t => t.id));
     return (files || []).reduce((acc, f) => {
+      if (!f || !f.id) return acc;
+      if (f.isTrash || trashIdSet.has(f.id) || delIds.has(f.id) || isItemDeleted(f.id)) return acc;
       return acc + parseSizeToBytes(f?.size, (f as any)?.sizeBytes);
     }, 0);
   };
 
-  const imagesTotalBytes = useMemo(() => calculateListBytes(imagesList), [imagesList]);
-  const videosTotalBytes = useMemo(() => calculateListBytes(videosList), [videosList]);
-  const audioTotalBytes = useMemo(() => calculateListBytes(audioList), [audioList]);
-  const docsTotalBytes = useMemo(() => calculateListBytes(documentsList), [documentsList]);
-  const downloadsTotalBytes = useMemo(() => calculateListBytes(downloadedItems), [downloadedItems]);
+  const imagesTotalBytes = useMemo(() => calculateListBytes(imagesList), [imagesList, trashFiles]);
+  const videosTotalBytes = useMemo(() => calculateListBytes(videosList), [videosList, trashFiles]);
+  const audioTotalBytes = useMemo(() => calculateListBytes(audioList), [audioList, trashFiles]);
+  const docsTotalBytes = useMemo(() => calculateListBytes(documentsList), [documentsList, trashFiles]);
+  const downloadsTotalBytes = useMemo(() => calculateListBytes(downloadedItems), [downloadedItems, trashFiles]);
   const classeurFiles = useMemo(() => Object.values(folderFilesMap || {}).flat(), [folderFilesMap]);
-  const classeurTotalBytes = useMemo(() => calculateListBytes(classeurFiles), [classeurFiles]);
-  const favoritesTotalBytes = useMemo(() => calculateListBytes(favoriteFiles), [favoriteFiles]);
-  const secureTotalBytes = useMemo(() => calculateListBytes(secureFolderFiles), [secureFolderFiles]);
-  const trashTotalBytes = useMemo(() => calculateListBytes(trashFiles), [trashFiles]);
+  const classeurTotalBytes = useMemo(() => calculateListBytes(classeurFiles), [classeurFiles, trashFiles]);
+  const favoritesTotalBytes = useMemo(() => calculateListBytes(favoriteFiles), [favoriteFiles, trashFiles]);
+  const secureTotalBytes = useMemo(() => calculateListBytes(secureFolderFiles), [secureFolderFiles, trashFiles]);
+  const trashTotalBytes = useMemo(() => {
+    const delIds = getLocallyDeletedFileIds();
+    return (trashFiles || []).reduce((acc, f) => {
+      if (!f || !f.id) return acc;
+      if (delIds.has(f.id) || isItemDeleted(f.id)) return acc;
+      return acc + parseSizeToBytes(f?.size, (f as any)?.sizeBytes);
+    }, 0);
+  }, [trashFiles]);
 
   const totalCloudStorageBytes = useMemo(() => {
-    const sumLocal = imagesTotalBytes + videosTotalBytes + audioTotalBytes + docsTotalBytes + downloadsTotalBytes + classeurTotalBytes + secureTotalBytes;
-    if (cloudOverview?.totalBytes && cloudOverview.totalBytes > sumLocal) {
-      return cloudOverview.totalBytes;
-    }
-    return sumLocal;
-  }, [imagesTotalBytes, videosTotalBytes, audioTotalBytes, docsTotalBytes, downloadsTotalBytes, classeurTotalBytes, secureTotalBytes, cloudOverview?.totalBytes]);
+    return imagesTotalBytes + videosTotalBytes + audioTotalBytes + docsTotalBytes + downloadsTotalBytes + classeurTotalBytes + secureTotalBytes;
+  }, [imagesTotalBytes, videosTotalBytes, audioTotalBytes, docsTotalBytes, downloadsTotalBytes, classeurTotalBytes, secureTotalBytes]);
 
   // Catégories StudyCloud calculées dynamiquement depuis la base de données en direct
   const categories = useMemo(() => [

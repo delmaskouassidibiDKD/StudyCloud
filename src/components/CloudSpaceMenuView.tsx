@@ -42,7 +42,7 @@ import {
   EyeOff,
   AlertCircle
 } from 'lucide-react';
-import { CloudDataStore, FileItem } from '../services/cloudDataStore';
+import { CloudDataStore, FileItem, isItemDeleted, markItemDeleted } from '../services/cloudDataStore';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { getFileBlobUrl, deleteFileBlob } from '../services/localFileStorage';
 import { parseSizeToBytes } from './HeaderMenuControls';
@@ -402,6 +402,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   };
 
   const handleDeleteFile = (file: FileItem) => {
+    markItemDeleted(file.id);
     CloudDataStore.moveToTrash(file);
     CloudStorageAPI.moveToTrash(file.id, file.category || 'documents', file.folderId).catch(() => {});
     showToast(`"${file.name}" déplacé vers la corbeille`);
@@ -655,7 +656,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   // Formatage lisible de l'espace occupé par chaque onglet
   const formatTabDisplaySize = (bytes: number) => {
     if (bytes > 0) {
-      if (bytes < 1024) return `${bytes} o`;
+      if (bytes < 1024) return `${bytes} octets`;
       if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
       if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
       return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} Go`;
@@ -664,7 +665,16 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   };
 
   const calculateTabListBytes = (files: any[]) => {
+    const delIds = new Set<string>();
+    try {
+      const raw = localStorage.getItem('studycloud_deleted_file_ids');
+      if (raw) JSON.parse(raw).forEach((id: string) => delIds.add(id));
+    } catch {}
+    const trashIds = new Set((storeData.trash || []).map((t: any) => t.id));
+
     return (files || []).reduce((acc, f) => {
+      if (!f || !f.id) return acc;
+      if (f.isTrash || trashIds.has(f.id) || delIds.has(f.id) || isItemDeleted(f.id)) return acc;
       return acc + parseSizeToBytes(f?.size, f?.sizeBytes);
     }, 0);
   };
@@ -673,15 +683,26 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     return Object.values(storeData.folderFilesMap || {}).flat();
   }, [storeData.folderFilesMap]);
 
-  const classeurTabBytes = useMemo(() => calculateTabListBytes(classeurAllFiles), [classeurAllFiles]);
-  const downloadsTabBytes = useMemo(() => calculateTabListBytes(storeData.downloads), [storeData.downloads]);
-  const imagesTabBytes = useMemo(() => calculateTabListBytes(storeData.images), [storeData.images]);
-  const videosTabBytes = useMemo(() => calculateTabListBytes(storeData.videos), [storeData.videos]);
-  const audioTabBytes = useMemo(() => calculateTabListBytes(storeData.audio), [storeData.audio]);
-  const docsTabBytes = useMemo(() => calculateTabListBytes(storeData.documents), [storeData.documents]);
-  const favoritesTabBytes = useMemo(() => calculateTabListBytes(filteredFavorites), [filteredFavorites]);
-  const secureTabBytes = useMemo(() => calculateTabListBytes(storeData.secure), [storeData.secure]);
-  const trashTabBytes = useMemo(() => calculateTabListBytes(storeData.trash), [storeData.trash]);
+  const classeurTabBytes = useMemo(() => calculateTabListBytes(classeurAllFiles), [classeurAllFiles, storeData.trash]);
+  const downloadsTabBytes = useMemo(() => calculateTabListBytes(storeData.downloads), [storeData.downloads, storeData.trash]);
+  const imagesTabBytes = useMemo(() => calculateTabListBytes(storeData.images), [storeData.images, storeData.trash]);
+  const videosTabBytes = useMemo(() => calculateTabListBytes(storeData.videos), [storeData.videos, storeData.trash]);
+  const audioTabBytes = useMemo(() => calculateTabListBytes(storeData.audio), [storeData.audio, storeData.trash]);
+  const docsTabBytes = useMemo(() => calculateTabListBytes(storeData.documents), [storeData.documents, storeData.trash]);
+  const favoritesTabBytes = useMemo(() => calculateTabListBytes(filteredFavorites), [filteredFavorites, storeData.trash]);
+  const secureTabBytes = useMemo(() => calculateTabListBytes(storeData.secure), [storeData.secure, storeData.trash]);
+  const trashTabBytes = useMemo(() => {
+    const delIds = new Set<string>();
+    try {
+      const raw = localStorage.getItem('studycloud_deleted_file_ids');
+      if (raw) JSON.parse(raw).forEach((id: string) => delIds.add(id));
+    } catch {}
+    return (storeData.trash || []).reduce((acc, f) => {
+      if (!f || !f.id) return acc;
+      if (delIds.has(f.id) || isItemDeleted(f.id)) return acc;
+      return acc + parseSizeToBytes(f?.size, f?.sizeBytes);
+    }, 0);
+  }, [storeData.trash]);
 
   // Éléments de la barre de carrousel horizontale de navigation (valeurs réelles de la base de données)
   const navTabs = [
