@@ -100,13 +100,14 @@ export function useDownloadsList() {
   });
 }
 
-export function useSecureList() {
+export function useSecureList(options?: { enabled?: boolean }) {
   return useQuery<FileItem[]>({
     queryKey: QUERY_KEYS.secure,
     queryFn: async () => {
       const list = await CloudStorageAPI.getSecureFiles();
       return Array.isArray(list) ? list : [];
     },
+    enabled: options?.enabled ?? true,
   });
 }
 

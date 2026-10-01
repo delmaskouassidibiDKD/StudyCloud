@@ -725,6 +725,8 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
         }
         CloudDataStore.moveToSecure(securedFile as any);
         CloudStorageAPI.moveToSecureFolder(doc, 'documents').catch(console.error);
+        invalidateCloudQueries.documents();
+        invalidateCloudQueries.secure();
         showToast(`"${doc.name}" verrouillé dans le dossier sécurisé !`);
         break;
       }

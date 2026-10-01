@@ -11,6 +11,7 @@ import { ClasseurCreatedFolder } from '../components/Folder3DModels';
 import { DownloadedItem } from './downloadsManager';
 import { getCurrentUserId } from './userSync';
 import { detectFileCategory } from './fileTypeValidator';
+import { invalidateCloudQueries } from './queryClient';
 
 export interface FileItem {
   id: string;
@@ -1196,6 +1197,8 @@ export const CloudDataStore = {
     };
     persistToIndexedDB().catch(() => {});
     notify();
+    invalidateCloudQueries.secure().catch(() => {});
+    invalidateCloudQueries.all().catch(() => {});
   },
 
   restoreFromSecure(items: FileItem | FileItem[]) {
@@ -1241,6 +1244,8 @@ export const CloudDataStore = {
     };
     persistToIndexedDB().catch(() => {});
     notify();
+    invalidateCloudQueries.secure().catch(() => {});
+    invalidateCloudQueries.all().catch(() => {});
   },
 
   deleteSecureToTrash(items: FileItem | FileItem[]) {
@@ -1265,6 +1270,9 @@ export const CloudDataStore = {
     };
     persistToIndexedDB().catch(() => {});
     notify();
+    invalidateCloudQueries.secure().catch(() => {});
+    invalidateCloudQueries.trash().catch(() => {});
+    invalidateCloudQueries.overview().catch(() => {});
   },
 
   removeFolder(folderId: string) {

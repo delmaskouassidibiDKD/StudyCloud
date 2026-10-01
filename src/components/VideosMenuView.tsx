@@ -687,6 +687,8 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
         }
         CloudDataStore.moveToSecure(securedFile as any);
         CloudStorageAPI.moveToSecureFolder(vid, 'videos').catch(console.error);
+        invalidateCloudQueries.videos();
+        invalidateCloudQueries.secure();
         showToast(`"${vid.name}" verrouillé dans le dossier sécurisé !`);
         break;
       }

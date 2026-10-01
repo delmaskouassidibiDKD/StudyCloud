@@ -827,6 +827,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
         } catch {}
         CloudDataStore.moveToSecure(securedFile as any);
         CloudStorageAPI.moveToSecureFolder(track, 'audio').catch(console.error);
+        invalidateCloudQueries.audio();
+        invalidateCloudQueries.secure();
         showToast(`"${track.name}" verrouillé dans le dossier sécurisé !`);
         break;
       }

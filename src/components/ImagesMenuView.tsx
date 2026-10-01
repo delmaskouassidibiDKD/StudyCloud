@@ -662,6 +662,8 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
         }
         CloudDataStore.moveToSecure(securedFile as any);
         CloudStorageAPI.moveToSecureFolder(img, 'images').catch(console.error);
+        invalidateCloudQueries.images();
+        invalidateCloudQueries.secure();
         showToast(`"${img.name}" verrouillée dans le dossier sécurisé !`);
         break;
       }

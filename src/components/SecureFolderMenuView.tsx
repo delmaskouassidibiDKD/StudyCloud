@@ -35,6 +35,8 @@ import {
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
+import { useSecureList } from '../hooks/useCloudQueries';
+import { invalidateCloudQueries } from '../services/queryClient';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob } from '../services/localFileStorage';
 import { compressFile } from '../utils/fileCompressor';
 import { FileItem } from './Page1FilesMenuView';
@@ -114,10 +116,15 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
   const [pinError, setPinError] = useState<string | null>(null);
   const [isSubmittingPin, setIsSubmittingPin] = useState(false);
 
-  // Fichiers sécurisés
+  // Fichiers sécurisés avec TanStack Query
+  const { data: serverSecureFiles = [], isLoading: isSecureQueryLoading } = useSecureList({ enabled: isUnlocked });
   const [secureFiles, setSecureFiles] = useState<FileItem[]>(() => {
     return CloudDataStore.getState().secure || [];
   });
+
+  // Pagination / Chargement par lots (24 fichiers par lot pour garder le DOM ultra-léger)
+  const BATCH_SIZE = 24;
+  const [visibleCount, setVisibleCount] = useState<number>(BATCH_SIZE);
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -287,28 +294,12 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     };
   }, [isUnlocked, showToast]);
 
-  // 4. Chargement et synchronisation réactive des fichiers protégés
+  // 4. Synchronisation continue ultra-légère avec TanStack Query
   useEffect(() => {
-    if (!isUnlocked) return;
-    CloudStorageAPI.getSecureFiles()
-      .then((data) => {
-        if (data && Array.isArray(data)) {
-          setSecureFiles(data);
-          CloudDataStore.setSecureFiles(data as any);
-        }
-      })
-      .catch(() => {});
-
-    const unsubscribe = CloudDataStore.subscribe((state) => {
-      if (state.secure) {
-        setSecureFiles(state.secure);
-      }
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, [isUnlocked]);
+    if (isUnlocked && serverSecureFiles && Array.isArray(serverSecureFiles)) {
+      setSecureFiles(serverSecureFiles);
+    }
+  }, [isUnlocked, serverSecureFiles]);
 
   // 5. Modification du Code PIN
   const handleChangePin = async (e: React.FormEvent) => {
@@ -394,6 +385,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     CloudDataStore.setSecureFiles([...newItems, ...secureFiles]);
 
     UploadQueue.enqueueExisting(newItemsWithFiles, { category: 'secure' });
+    invalidateCloudQueries.secure().catch(() => {});
     showToast(`${newItems.length} fichier(s) protégé(s) avec succès !`);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -412,6 +404,8 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
 
     CloudDataStore.restoreFromSecure([file]);
     await CloudStorageAPI.restoreFromSecureFolder(file.id).catch(() => {});
+    invalidateCloudQueries.secure().catch(() => {});
+    invalidateCloudQueries.all().catch(() => {});
     showToast(`"${file.name}" déverrouillé et restauré dans son menu d'origine 🔓`);
   };
 
@@ -430,6 +424,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     deleteFileBlob(file.id).catch(() => {});
     CloudDataStore.deleteSecureToTrash([file]);
     await CloudStorageAPI.deleteSecureFilesToTrash(file.id).catch(() => {});
+    invalidateCloudQueries.secure().catch(() => {});
+    invalidateCloudQueries.trash().catch(() => {});
+    invalidateCloudQueries.overview().catch(() => {});
     showToast(`"${file.name}" déplacé dans la corbeille 🗑️`);
   };
 
@@ -491,6 +488,8 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
 
     CloudDataStore.restoreFromSecure(filesToRestore);
     await CloudStorageAPI.restoreFromSecureFolder(ids).catch(() => {});
+    invalidateCloudQueries.secure().catch(() => {});
+    invalidateCloudQueries.all().catch(() => {});
     showToast(`${filesToRestore.length} fichier(s) déverrouillé(s) avec succès 🔓`);
   };
 
@@ -508,6 +507,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     filesToTrash.forEach(f => deleteFileBlob(f.id).catch(() => {}));
     CloudDataStore.deleteSecureToTrash(filesToTrash);
     await CloudStorageAPI.deleteSecureFilesToTrash(ids).catch(() => {});
+    invalidateCloudQueries.secure().catch(() => {});
+    invalidateCloudQueries.trash().catch(() => {});
+    invalidateCloudQueries.overview().catch(() => {});
     showToast(`${filesToTrash.length} fichier(s) déplacé(s) dans la corbeille 🗑️`);
   };
 
@@ -589,6 +591,11 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
       return true;
     });
   }, [filteredFiles, categoryFilter]);
+
+  // Réinitialiser la pagination lors d'un changement de filtre ou de recherche
+  useEffect(() => {
+    setVisibleCount(BATCH_SIZE);
+  }, [categoryFilter, searchQuery]);
 
   // Navigation vers l'élément précédent dans le lecteur
   const handlePrevFile = () => {
@@ -1983,7 +1990,12 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
               </div>
             )}
 
-            {displayedFiles.length === 0 ? (
+            {isSecureQueryLoading && secureFiles.length === 0 ? (
+              <div className="py-24 flex flex-col items-center justify-center text-center max-w-md mx-auto">
+                <div className="w-10 h-10 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
+                <p className="text-sm font-semibold text-stone-600">Chargement sécurisé de vos fichiers...</p>
+              </div>
+            ) : displayedFiles.length === 0 ? (
               <div className="py-24 flex flex-col items-center justify-center text-center max-w-md mx-auto">
                 <div className="w-20 h-20 rounded-3xl bg-white border border-stone-200 flex items-center justify-center mb-4 shadow-sm">
                   <ShieldCheck className="w-10 h-10 text-blue-500 opacity-60 stroke-[1.5]" />
@@ -2008,22 +2020,36 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                 )}
               </div>
             ) : (
-              <div
-                className={`grid gap-3 sm:gap-4 ${
-                  selectedFile
-                    ? 'grid-cols-2 lg:grid-cols-3'
-                    : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                }`}
-              >
-                {displayedFiles.map((file, idx) => {
-                  const fType = getFileType(file);
-                  if (fType === 'audio') return renderAudioCard(file, idx);
-                  if (fType === 'image') return renderImageCard(file, idx);
-                  if (fType === 'video') return renderVideoCard(file, idx);
-                  if (fType === 'folder') return renderClasseurCard(file, idx);
-                  return renderDocumentCard(file, idx);
-                })}
-              </div>
+              <>
+                <div
+                  className={`grid gap-3 sm:gap-4 ${
+                    selectedFile
+                      ? 'grid-cols-2 lg:grid-cols-3'
+                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                  }`}
+                >
+                  {displayedFiles.slice(0, visibleCount).map((file, idx) => {
+                    const fType = getFileType(file);
+                    if (fType === 'audio') return renderAudioCard(file, idx);
+                    if (fType === 'image') return renderImageCard(file, idx);
+                    if (fType === 'video') return renderVideoCard(file, idx);
+                    if (fType === 'folder') return renderClasseurCard(file, idx);
+                    return renderDocumentCard(file, idx);
+                  })}
+                </div>
+
+                {visibleCount < displayedFiles.length && (
+                  <div className="flex justify-center pt-6 pb-4">
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount(prev => prev + BATCH_SIZE)}
+                      className="px-6 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-stone-200 text-sm font-semibold border border-stone-800 transition-all hover:scale-105 active:scale-95 shadow-md flex items-center gap-2 cursor-pointer"
+                    >
+                      <span>Charger plus de fichiers ({displayedFiles.length - visibleCount} restants)</span>
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </main>
 
