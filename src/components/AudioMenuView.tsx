@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
@@ -157,6 +157,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isChangingTrackRef = useRef<boolean>(false);
+  const desiredPlaybackStateRef = useRef<boolean>(false);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -458,17 +460,29 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   }, [audioList.length]);
 
 
-  // Résolution du Blob URL lors du changement de piste
+  // Résolution propre de la source audio lors du changement de piste
   useEffect(() => {
     if (!selectedTrack) {
       setSplitResolvedAudioUrl('');
+      desiredPlaybackStateRef.current = false;
       setIsAudioPlaying(false);
       return;
     }
 
     let isMounted = true;
-    if (selectedTrack.id) {
-      getFileBlobUrl(selectedTrack.id)
+    const trackId = selectedTrack.id;
+    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+    const fallbackUrl = trackId ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(trackId)}` : '';
+    const rawDirect = selectedTrack.audioUrl || (selectedTrack as any).url || '';
+    const isDirectUsable = rawDirect && typeof rawDirect === 'string' && !rawDirect.startsWith('blob:');
+    const initialSrc = (isDirectUsable ? rawDirect : '') || fallbackUrl;
+
+    // Réinitialise immédiatement l'URL avec la source de base de CE son précis pour éviter d'utiliser l'ancien blob
+    setSplitResolvedAudioUrl(initialSrc);
+    setCurrentTime(0);
+
+    if (trackId) {
+      getFileBlobUrl(trackId)
         .then((blobUrl) => {
           if (isMounted && blobUrl) {
             setSplitResolvedAudioUrl(blobUrl);
@@ -482,18 +496,69 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     };
   }, [selectedTrack?.id]);
 
+  const playAudio = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    desiredPlaybackStateRef.current = true;
+    setIsAudioPlaying(true);
+    isChangingTrackRef.current = false;
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        if (err.name !== 'AbortError') {
+          console.warn('[AudioPlayer] play() notice:', err);
+        }
+      });
+    }
+  }, []);
+
+  const pauseAudio = useCallback(() => {
+    const audio = audioRef.current;
+    desiredPlaybackStateRef.current = false;
+    isChangingTrackRef.current = false;
+    setIsAudioPlaying(false);
+    if (audio) {
+      audio.pause();
+    }
+  }, []);
+
+  // Déclenchement automatique garanti de la lecture dès que le son ou sa source change
+  useEffect(() => {
+    if (!selectedTrack || !audioRef.current) return;
+    if (desiredPlaybackStateRef.current) {
+      const audio = audioRef.current;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            isChangingTrackRef.current = false;
+            setIsAudioPlaying(true);
+          })
+          .catch((err) => {
+            if (err.name !== 'AbortError') {
+              console.warn('[AudioPlayer] play notice on effect:', err);
+            }
+          });
+      }
+    }
+  }, [selectedTrack?.id, splitResolvedAudioUrl]);
+
   // Contrôles de lecture
   const togglePlayPause = () => {
     if (!audioRef.current) return;
     if (isAudioPlaying) {
-      audioRef.current.pause();
+      pauseAudio();
     } else {
-      audioRef.current.play().catch(() => {});
+      playAudio();
     }
   };
 
   const handleAudioNext = () => {
     if (filteredAudio.length === 0) return;
+    isChangingTrackRef.current = true;
+    desiredPlaybackStateRef.current = true;
+    setIsAudioPlaying(true);
+    setCurrentTime(0);
     if (isAudioShuffle) {
       const randIdx = Math.floor(Math.random() * filteredAudio.length);
       setSelectedTrack(filteredAudio[randIdx]);
@@ -506,6 +571,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
   const handleAudioPrev = () => {
     if (filteredAudio.length === 0) return;
+    isChangingTrackRef.current = true;
+    desiredPlaybackStateRef.current = true;
+    setIsAudioPlaying(true);
+    setCurrentTime(0);
     if (isAudioShuffle) {
       const randIdx = Math.floor(Math.random() * filteredAudio.length);
       setSelectedTrack(filteredAudio[randIdx]);
@@ -1621,32 +1690,50 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           autoPlay={isAudioPlaying}
           loop={isAudioRepeat === 'one'}
           onCanPlay={() => {
-            if (isAudioPlaying && audioRef.current && audioRef.current.paused) {
-              audioRef.current.play().catch(() => {});
+            if (desiredPlaybackStateRef.current && audioRef.current && audioRef.current.paused) {
+              playAudio();
             }
           }}
-          onPlay={() => setIsAudioPlaying(true)}
-          onPause={() => setIsAudioPlaying(false)}
+          onLoadedData={() => {
+            if (desiredPlaybackStateRef.current && audioRef.current && audioRef.current.paused) {
+              playAudio();
+            }
+          }}
+          onPlay={() => {
+            isChangingTrackRef.current = false;
+            setIsAudioPlaying(true);
+          }}
+          onPause={() => {
+            if (!isChangingTrackRef.current) {
+              setIsAudioPlaying(false);
+            }
+          }}
           onError={async () => {
             console.warn('[AudioPlayer] Erreur chargement audio pour', track.name);
             if (track.id) {
               try {
                 const freshBlob = await getFileBlobUrl(track.id);
-                if (freshBlob && freshBlob !== audioSrc) {
+                if (freshBlob && freshBlob !== audioRef.current?.src) {
                   setSplitResolvedAudioUrl(freshBlob);
                   if (audioRef.current) {
                     audioRef.current.src = freshBlob;
-                    audioRef.current.play().catch(() => {});
+                    audioRef.current.load();
+                    if (desiredPlaybackStateRef.current) {
+                      audioRef.current.play().catch(() => {});
+                    }
                   }
                   return;
                 }
               } catch (e) {}
 
-              if (fallbackStreamUrl && audioSrc !== fallbackStreamUrl) {
+              if (fallbackStreamUrl && audioRef.current?.src !== fallbackStreamUrl) {
                 setSplitResolvedAudioUrl(fallbackStreamUrl);
                 if (audioRef.current) {
                   audioRef.current.src = fallbackStreamUrl;
-                  audioRef.current.play().catch(() => {});
+                  audioRef.current.load();
+                  if (desiredPlaybackStateRef.current) {
+                    audioRef.current.play().catch(() => {});
+                  }
                 }
               }
             }
@@ -1655,7 +1742,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
             if (isAudioRepeat === 'one') {
               if (audioRef.current) {
                 audioRef.current.currentTime = 0;
-                audioRef.current.play().catch(() => {});
+                playAudio();
               }
               setCurrentTime(0);
             } else {
@@ -2141,6 +2228,9 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                         if (isSelected) {
                           togglePlayPause();
                         } else {
+                          isChangingTrackRef.current = true;
+                          desiredPlaybackStateRef.current = true;
+                          setCurrentTime(0);
                           setSelectedTrack(track);
                           setIsAudioPlaying(true);
                           setIsMobilePlayerOpen(true);
@@ -2285,6 +2375,9 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                             if (isSelected) {
                               togglePlayPause();
                             } else {
+                              isChangingTrackRef.current = true;
+                              desiredPlaybackStateRef.current = true;
+                              setCurrentTime(0);
                               setSelectedTrack(track);
                               setIsAudioPlaying(true);
                               setIsMobilePlayerOpen(true);

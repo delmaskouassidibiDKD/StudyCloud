@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Play,
   Pause,
@@ -69,6 +69,8 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
   };
 
   const [isAudioPlaying, setIsAudioPlaying] = useState<boolean>(Boolean(autoPlay));
+  const isChangingTrackRef = useRef<boolean>(false);
+  const desiredPlaybackStateRef = useRef<boolean>(Boolean(autoPlay));
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
   const [volume, setVolume] = useState<number>(1);
@@ -85,11 +87,36 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
   const rawDirect = src || trackItem.audioUrl || (trackItem as any).url || '';
   const isDirectUsable = rawDirect && !rawDirect.startsWith('blob:') && !rawDirect.includes('localhost') && !rawDirect.includes('127.0.0.1');
 
+  const playAudio = useCallback(() => {
+    if (audioRef.current) {
+      const playPromise = audioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsAudioPlaying(true);
+            setHasError(false);
+            isChangingTrackRef.current = false;
+          })
+          .catch((err) => {
+            if (err?.name !== 'AbortError') {
+              console.warn('[ModernAudioPlayer] play() interrompu ou bloqué:', err);
+            }
+          });
+      }
+    }
+  }, []);
+
   // Résolution prioritaire : IndexedDB locale (0ms) -> direct URL -> fallback streaming Cloudflare
   useEffect(() => {
     let isMounted = true;
+    isChangingTrackRef.current = true;
     setHasError(false);
     setErrorMessage('');
+    setCurrentTime(0);
+
+    // Initialisation immédiate sans conserver le Blob URL du morceau précédent
+    const initialDirect = (isDirectUsable ? rawDirect : '') || fallbackStreamUrl;
+    setSplitResolvedAudioUrl(initialDirect);
 
     if (activeId) {
       getFileBlobUrl(activeId)
@@ -108,11 +135,21 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
 
   const audioSrc = splitResolvedAudioUrl || (isDirectUsable ? rawDirect : '') || fallbackStreamUrl;
 
+  // Lancer automatiquement la lecture quand la nouvelle source audio est prête
+  useEffect(() => {
+    if (desiredPlaybackStateRef.current && audioSrc) {
+      playAudio();
+    }
+  }, [audioSrc, playAudio]);
+
   const togglePlayPause = () => {
     if (!audioRef.current) return;
     if (audioRef.current.paused) {
-      audioRef.current.play().then(() => setIsAudioPlaying(true)).catch(() => {});
+      desiredPlaybackStateRef.current = true;
+      playAudio();
     } else {
+      desiredPlaybackStateRef.current = false;
+      isChangingTrackRef.current = false;
       audioRef.current.pause();
       setIsAudioPlaying(false);
     }
@@ -186,15 +223,28 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
         loop={isAudioRepeat === 'one'}
         onCanPlay={() => {
           setHasError(false);
-          if (isAudioPlaying && audioRef.current && audioRef.current.paused) {
-            audioRef.current.play().catch(() => {});
+          if (desiredPlaybackStateRef.current) {
+            playAudio();
+          }
+        }}
+        onLoadedData={() => {
+          setHasError(false);
+          if (desiredPlaybackStateRef.current) {
+            playAudio();
           }
         }}
         onPlay={() => {
           setIsAudioPlaying(true);
           setHasError(false);
+          isChangingTrackRef.current = false;
         }}
-        onPause={() => setIsAudioPlaying(false)}
+        onPause={() => {
+          if (isChangingTrackRef.current) {
+            // Ignorer la pause technique due au basculement de la balise src
+            return;
+          }
+          setIsAudioPlaying(false);
+        }}
         onError={async () => {
           console.warn('[ModernAudioPlayer] Erreur chargement audio pour', trackItem.name);
           if (activeId) {
@@ -226,12 +276,16 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
           if (isAudioRepeat === 'one') {
             if (audioRef.current) {
               audioRef.current.currentTime = 0;
-              audioRef.current.play().catch(() => {});
+              playAudio();
             }
             setCurrentTime(0);
           } else if (onNext) {
+            isChangingTrackRef.current = true;
+            desiredPlaybackStateRef.current = true;
+            setIsAudioPlaying(true);
             onNext();
           } else {
+            desiredPlaybackStateRef.current = false;
             setIsAudioPlaying(false);
             setCurrentTime(duration);
           }
@@ -353,7 +407,16 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
 
         <button
           type="button"
-          onClick={onPrev || (() => handleSeekDelta(-10))}
+          onClick={() => {
+            if (onPrev) {
+              isChangingTrackRef.current = true;
+              desiredPlaybackStateRef.current = true;
+              setIsAudioPlaying(true);
+              onPrev();
+            } else {
+              handleSeekDelta(-10);
+            }
+          }}
           className="p-2 text-white hover:text-amber-400 transition-all active:scale-90 cursor-pointer"
           title="Piste précédente"
         >
@@ -375,7 +438,16 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
 
         <button
           type="button"
-          onClick={onNext || (() => handleSeekDelta(10))}
+          onClick={() => {
+            if (onNext) {
+              isChangingTrackRef.current = true;
+              desiredPlaybackStateRef.current = true;
+              setIsAudioPlaying(true);
+              onNext();
+            } else {
+              handleSeekDelta(10);
+            }
+          }}
           className="p-2 text-white hover:text-amber-400 transition-all active:scale-90 cursor-pointer"
           title="Piste suivante"
         >

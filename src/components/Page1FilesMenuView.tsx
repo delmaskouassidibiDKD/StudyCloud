@@ -420,6 +420,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const selectedAudioIds = selectedItemIds;
   const setSelectedAudioIds = setSelectedItemIds;
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const isAudioChangingTrackRef = useRef<boolean>(false);
+  const desiredAudioPlaybackStateRef = useRef<boolean>(false);
   const noteSaveTimeoutRef = useRef<any>(null);
 
   // État de verrouillage du Dossier Sécurisé & code PIN (> 4 caractères)
@@ -3963,11 +3965,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     // Si audio, démarrer l'écouteur et ouvrir le lecteur mobile si sur téléphone
     if (isAud) {
+      isAudioChangingTrackRef.current = true;
+      desiredAudioPlaybackStateRef.current = true;
       setIsAudioPlaying(true);
       setAudioCurrentTime(0);
       setAudioDuration(file.durationSec || 219);
       setIsMobilePlayerOpen(true);
     } else {
+      desiredAudioPlaybackStateRef.current = false;
       setIsAudioPlaying(false);
     }
 
@@ -4731,7 +4736,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     {
       id: 'apps',
       name: 'Applications',
-      size: '12 installées',
+      size: '',
       icon: LayoutGrid,
       color: 'text-pink-400'
     }
@@ -4846,7 +4851,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     {
       id: 'apps' as const,
       name: 'Applications',
-      subtitle: '12 installées',
+      subtitle: '',
       icon: LayoutGrid,
       color: 'text-pink-400'
     },
@@ -5372,6 +5377,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return () => { isCurrent = false; };
   }, [selectedAudioTrack?.id, splitSelectedFile?.id]);
 
+  // Déclencher la lecture automatiquement dès que la source audio est résolue
+  useEffect(() => {
+    if (desiredAudioPlaybackStateRef.current && splitResolvedAudioUrl && audioRef.current) {
+      const playPromise = audioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            isAudioChangingTrackRef.current = false;
+            setIsAudioPlaying(true);
+          })
+          .catch((err) => {
+            if (err?.name !== 'AbortError') {
+              console.warn('[Page1FilesMenuView] play notice:', err);
+            }
+          });
+      }
+    }
+  }, [splitResolvedAudioUrl]);
+
   // NAVIGATION PRÉCÉDENT / SUIVANT DANS LA VUE DIVISÉE (STRICTEMENT DANS LE MENU ACTUEL)
   const handleNavigateSplit = (direction: 'prev' | 'next') => {
     if (!splitSelectedFile || currentSplitList.length === 0) return;
@@ -5406,10 +5430,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
 
     if (isAudio) {
+      isAudioChangingTrackRef.current = true;
+      desiredAudioPlaybackStateRef.current = true;
       setIsAudioPlaying(true);
       setAudioCurrentTime(0);
       setAudioDuration(nextFile.durationSec || 219);
     } else {
+      desiredAudioPlaybackStateRef.current = false;
       setIsAudioPlaying(false);
     }
 
@@ -10764,12 +10791,24 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           autoPlay={isAudioPlaying}
           loop={isAudioRepeat === 'one'}
           onCanPlay={() => {
-            if (isAudioPlaying && audioRef.current && audioRef.current.paused) {
+            if (desiredAudioPlaybackStateRef.current && audioRef.current && audioRef.current.paused) {
               audioRef.current.play().catch(() => {});
             }
           }}
-          onPlay={() => setIsAudioPlaying(true)}
-          onPause={() => setIsAudioPlaying(false)}
+          onLoadedData={() => {
+            if (desiredAudioPlaybackStateRef.current && audioRef.current && audioRef.current.paused) {
+              audioRef.current.play().catch(() => {});
+            }
+          }}
+          onPlay={() => {
+            isAudioChangingTrackRef.current = false;
+            setIsAudioPlaying(true);
+          }}
+          onPause={() => {
+            if (!isAudioChangingTrackRef.current) {
+              setIsAudioPlaying(false);
+            }
+          }}
           onError={async () => {
             console.warn('[AudioPlayer] Erreur chargement audio pour', track.name);
             if (track.id) {

@@ -732,7 +732,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     {
       id: 'apps' as const,
       name: 'Applications',
-      countBadge: '12 installées',
+      countBadge: '',
       icon: LayoutGrid,
       color: 'text-pink-400',
     },
