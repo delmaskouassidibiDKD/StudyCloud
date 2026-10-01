@@ -1020,6 +1020,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   } | null>(null);
   const folderLongPressTimerRef = useRef<any>(null);
   const folderLastSwapTimeRef = useRef<number>(0);
+  const folderClickTimerRef = useRef<any>(null);
+  const lastFolderClickRef = useRef<{ folderId: string; time: number } | null>(null);
 
   // Gestion des événements Pointer globaux pour réordonner fluidement les dossiers
   useEffect(() => {
@@ -1030,42 +1032,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       p.currentX = e.clientX;
       p.currentY = e.clientY;
 
-      const deltaX = Math.abs(e.clientX - p.x);
-      const deltaY = Math.abs(e.clientY - p.y);
-
-      // Si le glissement n'est pas encore actif
-      if (!p.isDragging) {
-        // Sur ordinateur avec souris : déclenchement immédiat et fluide dès 5px de déplacement (comme avant)
-        if (p.pointerType === 'mouse' && (deltaX > 5 || deltaY > 5)) {
-          if (folderLongPressTimerRef.current) {
-            clearTimeout(folderLongPressTimerRef.current);
-            folderLongPressTimerRef.current = null;
-          }
-          p.isDragging = true;
-          p.isHoldActive = true;
-          setHoldingFolderId(p.folder.id);
-          document.body.style.cursor = 'grabbing';
-          setFolderDragState({
-            folder: p.folder,
-            x: p.currentX,
-            y: p.currentY,
-            width: p.cardRect.width,
-            height: p.cardRect.height,
-            offsetX: p.x - p.cardRect.left,
-            offsetY: p.y - p.cardRect.top,
-          });
-        } else if (p.pointerType === 'touch') {
-          // Sur tactile : si mouvement significatif avant le maintien continu, annuler pour autoriser le défilement
-          if (!p.isHoldActive && (deltaX > 10 || deltaY > 10)) {
-            if (folderLongPressTimerRef.current) {
-              clearTimeout(folderLongPressTimerRef.current);
-              folderLongPressTimerRef.current = null;
-            }
-          }
-        }
-      }
-
-      // Le glissement est actif : mise à jour de la position et échange dynamique de position
+      // Le glissement est STRICTEMENT réservé au mode activé par 2 clics continus (ou maintien tactile)
+      // Aucun mouvement sur simple clic ne peut enclencher le déplacement ni afficher la paume
       if (p.isDragging && p.isHoldActive) {
         setFolderDragState(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
 
@@ -1098,23 +1066,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         folderLongPressTimerRef.current = null;
       }
 
-      document.body.style.cursor = '';
-      setHoldingFolderId(null);
-
       const p = folderPointerDownRef.current;
-      if (p && !p.isDragging) {
-        const deltaX = Math.abs(e.clientX - p.x);
-        const deltaY = Math.abs(e.clientY - p.y);
-        // Clic simple rapide sans déplacement : ouvre le dossier avec le curseur flèche normal
-        if (deltaX < 6 && deltaY < 6) {
-          setOpened3DFolder(p.folder);
-        }
-      } else if (p && p.isDragging) {
+
+      // Si le dossier était en cours de déplacement (activé par double-clic ou maintien)
+      if (p && p.isDragging) {
+        document.body.style.cursor = '';
+        setHoldingFolderId(null);
+
         // Empêcher le clic parasite qui réouvrirait le dossier à la fin du glissement
         justDraggedFolderRef.current = true;
         setTimeout(() => {
           justDraggedFolderRef.current = false;
-        }, 120);
+        }, 150);
 
         // Sauvegarde de l'ordre et des positions X/Y dans Cloudflare D1
         setClasseur3DFolders(currentFolders => {
@@ -1128,9 +1091,34 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           CloudStorageAPI.reorderClasseurFolders(reorderPayload).catch(() => {});
           return currentFolders;
         });
+
+        folderPointerDownRef.current = null;
+        setFolderDragState(null);
+        return;
       }
+
+      // Si ce n'était PAS un déplacement : c'est un simple clic
+      if (p && !p.isDragging && !isSelectionMode) {
+        const deltaX = Math.abs(e.clientX - p.x);
+        const deltaY = Math.abs(e.clientY - p.y);
+
+        // Clic simple sans mouvement : programmer l'ouverture du dossier après un délai de 280ms
+        // pour laisser le temps à l'utilisateur de cliquer une 2ème fois de manière continue s'il veut déplacer
+        if (deltaX < 6 && deltaY < 6) {
+          const targetFolder = p.folder;
+          if (folderClickTimerRef.current) {
+            clearTimeout(folderClickTimerRef.current);
+          }
+          folderClickTimerRef.current = setTimeout(() => {
+            if (!justDraggedFolderRef.current && !folderDragState) {
+              setOpened3DFolder(targetFolder);
+            }
+            lastFolderClickRef.current = null;
+          }, 280);
+        }
+      }
+
       folderPointerDownRef.current = null;
-      setFolderDragState(null);
     };
 
     window.addEventListener('pointermove', handleGlobalPointerMove);
@@ -1163,12 +1151,63 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     // Sur ordinateur avec souris : uniquement clic gauche
     if (e.pointerType === 'mouse' && e.button !== 0) return;
 
+    if (isSelectionMode) return;
+
     // Règle d'organisation : on ne peut pas déplacer un élément s'il est seul dans le dossier
     const rootFolders = classeur3DFolders.filter(f => !f.parentId);
-    if (rootFolders.length <= 1) return;
+    const canReorder = rootFolders.length > 1;
 
     const cardElement = (e.currentTarget as HTMLElement);
     const rect = cardElement.getBoundingClientRect();
+    const now = Date.now();
+
+    // Détection de 2 clics consécutifs ("cliquer deux fois de manière continue")
+    const isDoubleContinuousClick = canReorder && 
+      lastFolderClickRef.current && 
+      lastFolderClickRef.current.folderId === folder.id && 
+      (now - lastFolderClickRef.current.time < 380);
+
+    if (isDoubleContinuousClick) {
+      // 2 clics continus : ANNULER l'ouverture simple et ACTIVER le soulèvement / déplacement avec la paume !
+      if (folderClickTimerRef.current) {
+        clearTimeout(folderClickTimerRef.current);
+        folderClickTimerRef.current = null;
+      }
+      lastFolderClickRef.current = null;
+
+      folderPointerDownRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        currentX: e.clientX,
+        currentY: e.clientY,
+        pointerType: e.pointerType,
+        folder,
+        cardRect: rect,
+        isDragging: true,
+        isHoldActive: true,
+      };
+
+      setHoldingFolderId(folder.id);
+      document.body.style.cursor = 'grabbing';
+
+      setFolderDragState({
+        folder,
+        x: e.clientX,
+        y: e.clientY,
+        width: rect.width,
+        height: rect.height,
+        offsetX: e.clientX - rect.left,
+        offsetY: e.clientY - rect.top,
+      });
+
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(35); } catch {}
+      }
+      return;
+    }
+
+    // Premier clic ou clic simple : on enregistre pour détecter un potentiel 2ème clic continu
+    lastFolderClickRef.current = { folderId: folder.id, time: now };
 
     folderPointerDownRef.current = {
       x: e.clientX,
@@ -1187,10 +1226,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       folderLongPressTimerRef.current = null;
     }
 
-    // Sur mobile (tactile) uniquement : maintien bref (200ms) pour activer le glisser-déplacer
-    if (e.pointerType === 'touch') {
+    // Sur mobile (tactile) uniquement : maintien bref (300ms) pour activer le glisser-déplacer
+    if (e.pointerType === 'touch' && canReorder) {
       folderLongPressTimerRef.current = setTimeout(() => {
         if (folderPointerDownRef.current) {
+          if (folderClickTimerRef.current) {
+            clearTimeout(folderClickTimerRef.current);
+            folderClickTimerRef.current = null;
+          }
           folderPointerDownRef.current.isHoldActive = true;
           folderPointerDownRef.current.isDragging = true;
           setHoldingFolderId(folder.id);
@@ -1211,7 +1254,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             offsetY: folderPointerDownRef.current.y - rect.top,
           });
         }
-      }, 200);
+      }, 300);
     }
   };
 
@@ -6733,7 +6776,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       handleSelectFile(file);
                     }}
                     className={`group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col justify-between select-none max-w-[215px] w-full ${
-                      isSaving ? 'cursor-wait' : sortedFiles.length > 1 ? 'cursor-pointer active:cursor-grab' : 'cursor-pointer'
+                      isSaving ? 'cursor-wait' : 'cursor-pointer'
                     } ${
                       isBeingDragged
                         ? 'opacity-30 scale-95 border-dashed border-cyan-400 bg-cyan-500/10 cursor-grabbing'
@@ -6891,7 +6934,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     handleSelectFile(file);
                   }}
                   className={`group relative bg-[#0E1526]/85 hover:bg-[#141E34] border rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col max-w-[215px] w-full ${
-                    isSaving ? 'cursor-wait' : sortedFiles.length > 1 ? 'cursor-pointer active:cursor-grab' : 'cursor-pointer'
+                    isSaving ? 'cursor-wait' : 'cursor-pointer'
                   } ${
                     isBeingDragged
                       ? 'opacity-30 scale-95 border-dashed border-orange-400 bg-orange-500/10 cursor-grabbing'
@@ -12660,7 +12703,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         {/* Zone droite : Indication & Contrôle de taille (Zoom - / + de 0 à 10, défaut 10) */}
                         <div className="flex items-center gap-2.5 sm:gap-3">
                           <div className="text-[11px] text-stone-400 font-medium hidden md:flex items-center gap-1.5">
-                            <span>Maintenez et glissez pour déplacer</span>
+                            <span>Cliquez 2 fois de manière continue pour soulever et déplacer</span>
                           </div>
 
                           {/* Widget Bouton - et + avec nombre 1 à 10 au milieu (1 est le minimum) */}
@@ -12747,9 +12790,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                     toggleItemSelection(folder.id);
                                     return;
                                   }
-                                  if (!folderDragState) {
-                                    setOpened3DFolder(folder);
-                                  }
                                 }}
                                 className={`group relative ${getFolderCardPadding(folderZoomLevel)} transition-all select-none touch-none border ${
                                   isBeingDragged
@@ -12757,8 +12797,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                     : isBeingHeld
                                       ? 'scale-105 shadow-2xl border-orange-400 bg-[#141E34] cursor-grabbing'
                                       : isFolderSelected
-                                        ? 'border-amber-400 ring-2 ring-amber-400/50 bg-[#14233C] shadow-2xl scale-[1.01]'
-                                        : `bg-[#0E1526]/85 hover:bg-[#141E34] border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1 ${classeur3DFolders.filter(f => !f.parentId).length > 1 ? 'cursor-pointer active:cursor-grab' : 'cursor-pointer'}`
+                                        ? 'border-amber-400 ring-2 ring-amber-400/50 bg-[#14233C] shadow-2xl scale-[1.01] cursor-pointer'
+                                        : 'bg-[#0E1526]/85 hover:bg-[#141E34] border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1 cursor-pointer'
                                 }`}
                               >
                                 {/* Case à cocher carrée quand le mode sélection est actif */}
