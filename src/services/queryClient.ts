@@ -32,6 +32,7 @@ export const QUERY_KEYS = {
   secure: ['cloud', 'secure'] as const,
   overview: ['cloud', 'overview'] as const,
   wallpaper: ['cloud', 'wallpaper'] as const,
+  pinned: ['cloud', 'pinned'] as const,
 };
 
 export const invalidateCloudQueries = {
@@ -47,5 +48,6 @@ export const invalidateCloudQueries = {
   secure: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.secure }),
   overview: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.overview }),
   wallpaper: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.wallpaper }),
+  pinned: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.pinned }),
   all: () => queryClient.invalidateQueries({ queryKey: ['cloud'] }),
 };

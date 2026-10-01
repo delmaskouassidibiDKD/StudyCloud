@@ -296,16 +296,16 @@ export function applyFileSorting<T extends { name: string; size?: string; sizeBy
   let result = [...list];
 
   if (sortOption === 'pinned') {
-    const withIndex = result.map((item, idx) => ({
+    // FILTRE ÉPINGLÉS : Affiche EXCLUSIVEMENT les fichiers épinglés
+    const pinnedOnly = result.filter(item => isItemPinned(item));
+
+    const withIndex = pinnedOnly.map((item, idx) => ({
       item,
       idx,
-      pinned: isItemPinned(item),
       t: getFileTimestamp(item)
     }));
 
     withIndex.sort((a, b) => {
-      if (a.pinned && !b.pinned) return -1;
-      if (!a.pinned && b.pinned) return 1;
       if (a.t > 0 && b.t > 0 && a.t !== b.t) return b.t - a.t;
       return a.idx - b.idx;
     });
@@ -315,8 +315,13 @@ export function applyFileSorting<T extends { name: string; size?: string; sizeBy
     const pool = comparisonPool && comparisonPool.length > 0 ? comparisonPool : getAllDatabaseFiles();
     const dupes = list.filter(item => isDuplicateFile(item, pool));
 
-    // Regrouper les doublons côte à côte
+    // Regrouper les doublons côte à côte en plaçant les épinglés en tête
     dupes.sort((a, b) => {
+      const pinA = isItemPinned(a);
+      const pinB = isItemPinned(b);
+      if (pinA && !pinB) return -1;
+      if (!pinA && pinB) return 1;
+
       const nA = a.name.trim().toLowerCase().replace(/\s*-\s*copie.*$/i, '').replace(/\s*\(\d+\).*$/i, '');
       const nB = b.name.trim().toLowerCase().replace(/\s*-\s*copie.*$/i, '').replace(/\s*\(\d+\).*$/i, '');
       if (nA === nB) return a.name.localeCompare(b.name);
@@ -325,15 +330,34 @@ export function applyFileSorting<T extends { name: string; size?: string; sizeBy
 
     return dupes;
   } else if (sortOption === 'size-desc') {
-    result.sort((a, b) => parseSizeToBytes(b.size, b.sizeBytes) - parseSizeToBytes(a.size, a.sizeBytes));
+    const withIndex = result.map((item, idx) => ({
+      item,
+      idx,
+      pinned: isItemPinned(item),
+      bytes: parseSizeToBytes(item.size, item.sizeBytes)
+    }));
+
+    withIndex.sort((a, b) => {
+      // Les fichiers épinglés TOUJOURS à la tête
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      if (b.bytes !== a.bytes) return b.bytes - a.bytes;
+      return a.idx - b.idx;
+    });
+
+    return withIndex.map(x => x.item);
   } else if (sortOption === 'oldest') {
     const withIndex = result.map((item, idx) => ({
       item,
       idx,
+      pinned: isItemPinned(item),
       t: getFileTimestamp(item)
     }));
 
     withIndex.sort((a, b) => {
+      // Les fichiers épinglés TOUJOURS à la tête
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
       if (a.t > 0 && b.t > 0 && a.t !== b.t) {
         return a.t - b.t; // plus ancien d'abord
       }
@@ -345,14 +369,18 @@ export function applyFileSorting<T extends { name: string; size?: string; sizeBy
 
     return withIndex.map(x => x.item);
   } else {
-    // 'recent'
+    // 'recent' (par défaut)
     const withIndex = result.map((item, idx) => ({
       item,
       idx,
+      pinned: isItemPinned(item),
       t: getFileTimestamp(item)
     }));
 
     withIndex.sort((a, b) => {
+      // Les fichiers épinglés TOUJOURS à la tête (premiers de la liste)
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
       if (a.t > 0 && b.t > 0 && a.t !== b.t) {
         return b.t - a.t; // plus récent d'abord
       }
@@ -363,8 +391,6 @@ export function applyFileSorting<T extends { name: string; size?: string; sizeBy
 
     return withIndex.map(x => x.item);
   }
-
-  return result;
 }
 
 export function restoreDefaultWallpaperAndAvatar(): void {
@@ -536,7 +562,7 @@ export const HeaderMenuControls: React.FC<HeaderMenuControlsProps> = ({
                 >
                   <div className="flex items-center gap-2.5">
                     <Pin className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-                    <span>Épinglés en premier</span>
+                    <span>Fichiers épinglés</span>
                   </div>
                   {sortOption === 'pinned' && <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
                 </button>

@@ -51,10 +51,11 @@ import { UploadQueue } from '../services/uploadQueue';
 import { AudioCardPreview } from './AudioCardPreview';
 import { getWorkerApiUrl } from '../services/api';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
-import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
+import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes, isItemPinned } from './HeaderMenuControls';
 import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../services/fileTypeValidator';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
 import { handleNativeShare } from '../utils/nativeShare';
+import { ensureFileExtension } from '../utils/fileExtensionHelper';
 
 interface AudioMenuViewProps {
   onBack: () => void;
@@ -753,8 +754,9 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     const newName = window.prompt('Nouveau nom du son :', track.name);
     if (!newName || !newName.trim() || newName.trim() === track.name) return;
 
-    const trimmed = newName.trim();
-    const finalName = trimmed.includes('.') ? trimmed : `${trimmed}.${(track.extension || 'mp3').toLowerCase()}`;
+    // Préservation systématique de l'extension technique (.mp3, etc.)
+    const finalName = ensureFileExtension(newName.trim(), track);
+    if (finalName === track.name) return;
 
     setAudioList(prev =>
       prev.map(t => (t.id === track.id ? { ...t, name: finalName } : t))
@@ -763,8 +765,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       setSelectedTrack(prev => (prev ? { ...prev, name: finalName } : null));
     }
     CloudDataStore.updateFile(track.id, { name: finalName });
-    CloudStorageAPI.renameItem(track.id, finalName, 'audio').catch(console.error);
-    showToast(`Son renommé en "${finalName}"`);
+    await CloudStorageAPI.renameItem(track.id, finalName, 'audio').catch(console.error);
+    invalidateCloudQueries.audio().catch(() => {});
+    invalidateCloudQueries.overview().catch(() => {});
+    showToast(`Son renommé en "${finalName}" !`);
     setActiveMenuTrackId(null);
   };
 
@@ -1040,19 +1044,36 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       }
 
       case 'pin': {
-        const nextPinned = !track.isPinned;
+        const currentlyPinned = isItemPinned(track);
+        const nextPinned = !currentlyPinned;
+
+        // 1. Sauvegarde synchrone dans localStorage
+        try {
+          const rawLocal = localStorage.getItem('studycloud_pinned_ids');
+          let pinnedIds: string[] = [];
+          if (rawLocal) pinnedIds = JSON.parse(rawLocal);
+          if (!Array.isArray(pinnedIds)) pinnedIds = [];
+          if (nextPinned) {
+            if (!pinnedIds.includes(track.id)) pinnedIds.push(track.id);
+          } else {
+            pinnedIds = pinnedIds.filter(id => id !== track.id);
+          }
+          localStorage.setItem('studycloud_pinned_ids', JSON.stringify(pinnedIds));
+        } catch {}
+
+        // 2. Mise à jour de l'état local
         setAudioList(prev => {
           const updated = prev.map(t => (t.id === track.id ? { ...t, isPinned: nextPinned } : t));
-          if (nextPinned) {
-            const item = updated.find(t => t.id === track.id);
-            return item ? [item, ...updated.filter(t => t.id !== track.id)] : updated;
-          }
           return updated;
         });
+
+        // 3. Mise à jour du store et de l'API
+        CloudDataStore.togglePin(track.id, nextPinned);
         CloudDataStore.updateFile(track.id, { isPinned: nextPinned });
+
         if (nextPinned) {
           CloudStorageAPI.addPinned(track.id, 'audio').catch(console.error);
-          showToast(`"${track.name}" épinglé !`);
+          showToast(`"${track.name}" épinglé en tête !`);
         } else {
           CloudStorageAPI.removePinned(track.id).catch(console.error);
           showToast(`"${track.name}" désépinglé`);
@@ -1061,19 +1082,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       }
 
       case 'rename': {
-        const newName = window.prompt('Modifier le nom du son :', track.name);
-        if (newName && newName.trim() && newName.trim() !== track.name) {
-          const trimmed = newName.trim();
-          setAudioList(prev =>
-            prev.map(t => (t.id === track.id ? { ...t, name: trimmed } : t))
-          );
-          if (selectedTrack?.id === track.id) {
-            setSelectedTrack(prev => (prev ? { ...prev, name: trimmed } : null));
-          }
-          CloudDataStore.updateFile(track.id, { name: trimmed });
-          CloudStorageAPI.renameItem(track.id, trimmed, 'audio').catch(console.error);
-          showToast(`Son renommé en "${trimmed}" !`);
-        }
+        await handleRenameAudio(track);
         break;
       }
 
@@ -1656,7 +1665,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
             >
               <Pin className="w-3.5 h-3.5 shrink-0 text-purple-400" />
-              <span>{track.isPinned ? 'Désépingler' : 'Épinglez'}</span>
+              <span>{isItemPinned(track) ? 'Désépingler' : 'Épinglez'}</span>
             </button>
             <button
               type="button"
@@ -2176,26 +2185,34 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               </div>
             ) : filteredAudio.length === 0 ? (
               <div className="py-20 text-center text-stone-500 dark:text-slate-400">
-                {sortOption === 'duplicates' ? (
+                {sortOption === 'pinned' ? (
+                  <Pin className="w-12 h-12 mx-auto mb-3 opacity-40 stroke-[1.5] text-amber-400" />
+                ) : sortOption === 'duplicates' ? (
                   <Copy className="w-12 h-12 mx-auto mb-3 opacity-40 stroke-[1.5] text-rose-400" />
                 ) : (
                   <Music className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
                 )}
-                <p className={`text-sm font-semibold ${sortOption === 'duplicates' ? 'text-rose-400' : ''}`}>
-                  {sortOption === 'duplicates'
+                <p className={`text-sm font-semibold ${sortOption === 'pinned' ? 'text-amber-400' : sortOption === 'duplicates' ? 'text-rose-400' : ''}`}>
+                  {sortOption === 'pinned'
+                    ? 'Aucun fichier audio épinglé'
+                    : sortOption === 'duplicates'
                     ? 'Aucun résultat pour les doublons'
                     : 'Aucun son disponible'}
                 </p>
                 <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                  {sortOption === 'duplicates'
+                  {sortOption === 'pinned'
+                    ? 'Vous n\'avez pas encore de pistes audio épinglées. Utilisez l\'option "Épinglez" dans le menu à 3 traits pour en épingler.'
+                    : sortOption === 'duplicates'
                     ? 'Tous vos fichiers audio sont uniques dans la base de données. Aucun doublon détecté.'
                     : 'Ce dossier ne contient aucun fichier audio pour le moment.'}
                 </p>
-                {sortOption === 'duplicates' && (
+                {(sortOption === 'duplicates' || sortOption === 'pinned') && (
                   <button
                     type="button"
                     onClick={() => setSortOption('recent')}
-                    className="mt-3 px-4 py-1.5 rounded-full bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                    className={`mt-3 px-4 py-1.5 rounded-full text-white text-xs font-bold transition-all shadow-sm cursor-pointer ${
+                      sortOption === 'pinned' ? 'bg-amber-600 hover:bg-amber-500' : 'bg-amber-600 hover:bg-amber-500'
+                    }`}
                   >
                     Afficher tous les sons
                   </button>
@@ -2308,7 +2325,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                             {track.isFavorite && (
                               <Star className="w-3.5 h-3.5 shrink-0 fill-amber-400 text-amber-400 drop-shadow-sm" title="Favori" />
                             )}
-                            {track.isPinned && (
+                            {(track.isPinned || isItemPinned(track)) && (
                               <Pin className="w-3 h-3 shrink-0 rotate-45 text-purple-400" title="Épinglé" />
                             )}
                           </div>

@@ -143,9 +143,11 @@ import {
   applyFileSorting, 
   restoreDefaultWallpaperAndAvatar,
   HeaderMenuControls,
-  parseSizeToBytes
+  parseSizeToBytes,
+  isItemPinned
 } from './HeaderMenuControls';
 import { handleNativeShare } from '../utils/nativeShare';
+import { ensureFileExtension } from '../utils/fileExtensionHelper';
 
 // Nettoyage immédiat de tout fichier figé en localStorage pour éviter le plantage QuotaExceededError
 if (typeof window !== 'undefined') {
@@ -3515,17 +3517,26 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
 
       case 'pin': {
-        const newPin = !file.isPinned;
-        const togglePin = (list: FileItem[]) => {
-          const updated = list.map(f => f.id === file.id ? { ...f, isPinned: newPin } : f);
+        const currentlyPinned = isItemPinned(file);
+        const newPin = !currentlyPinned;
+
+        // 1. Sauvegarde synchrone dans localStorage
+        try {
+          const rawLocal = localStorage.getItem('studycloud_pinned_ids');
+          let pinnedIds: string[] = [];
+          if (rawLocal) pinnedIds = JSON.parse(rawLocal);
+          if (!Array.isArray(pinnedIds)) pinnedIds = [];
           if (newPin) {
-            const item = updated.find(f => f.id === file.id);
-            if (item) {
-              return [item, ...updated.filter(f => f.id !== file.id)];
-            }
+            if (!pinnedIds.includes(file.id)) pinnedIds.push(file.id);
+          } else {
+            pinnedIds = pinnedIds.filter(id => id !== file.id);
           }
-          return updated;
-        };
+          localStorage.setItem('studycloud_pinned_ids', JSON.stringify(pinnedIds));
+        } catch {}
+
+        const togglePin = (list: FileItem[]) =>
+          list.map(f => f.id === file.id ? { ...f, isPinned: newPin } : f);
+
         if (file.category === 'documents') setDocumentsList(togglePin);
         else if (file.category === 'images') setImagesList(togglePin);
         else if (file.category === 'videos') setVideosList(togglePin);
@@ -3535,18 +3546,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           setFolderFilesMap(prev => {
             const list = prev[opened3DFolder.id] || [];
             const updated = list.map(f => f.id === file.id ? { ...f, isPinned: newPin } : f);
-            if (newPin) {
-              const item = updated.find(f => f.id === file.id);
-              if (item) {
-                return { ...prev, [opened3DFolder.id]: [item, ...updated.filter(f => f.id !== file.id)] };
-              }
-            }
             return { ...prev, [opened3DFolder.id]: updated };
           });
         }
+
+        CloudDataStore.togglePin(file.id, newPin);
+        CloudDataStore.updateFile(file.id, { isPinned: newPin }, opened3DFolder?.id);
+
         // Persistance dans la table pinned_items D1
         if (newPin) {
-          CloudStorageAPI.addPinned(file.id, file.category).catch(console.error);
+          CloudStorageAPI.addPinned(file.id, file.category || 'documents').catch(console.error);
           showToast(`"${file.name}" épinglé au début !`);
         } else {
           CloudStorageAPI.removePinned(file.id).catch(console.error);
@@ -3558,8 +3567,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       case 'rename': {
         const newName = window.prompt('Modifier le nom du fichier :', file.name);
         if (newName && newName.trim() && newName.trim() !== file.name) {
-          const trimmed = newName.trim();
-          const finalName = (file.isNotepad && !trimmed.toLowerCase().endsWith('.txt')) ? `${trimmed}.txt` : trimmed;
+          // Préservation systématique de l'extension technique
+          const finalName = ensureFileExtension(newName.trim(), file);
+          if (finalName === file.name) break;
+
           const renameIn = (list: FileItem[]) =>
             list.map(f => f.id === file.id ? { ...f, name: finalName } : f);
           if (file.category === 'documents') setDocumentsList(renameIn);
@@ -3578,8 +3589,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             setSplitSelectedFile(prev => prev ? { ...prev, name: finalName } : null);
           }
           CloudDataStore.updateFile(file.id, { name: finalName }, opened3DFolder?.id);
-          // Mise à jour directe dans la table D1
+          // Mise à jour directe dans la base de données universelle
           CloudStorageAPI.renameItem(file.id, finalName, file.category, opened3DFolder?.id).catch(console.error);
+          invalidateCloudQueries.all().catch(() => {});
+          invalidateCloudQueries.overview().catch(() => {});
           showToast(`Fichier renommé en "${finalName}" !`);
         }
         break;

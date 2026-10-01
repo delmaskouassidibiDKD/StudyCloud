@@ -45,10 +45,11 @@ import { UploadQueue } from '../services/uploadQueue';
 import { ImageCardPreview } from './ImageCardPreview';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
-import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
+import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes, isItemPinned } from './HeaderMenuControls';
 import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../services/fileTypeValidator';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
 import { handleNativeShare } from '../utils/nativeShare';
+import { ensureFileExtension } from '../utils/fileExtensionHelper';
 
 interface ImagesMenuViewProps {
   onBack: () => void;
@@ -803,19 +804,36 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       }
 
       case 'pin': {
-        const nextPinned = !img.isPinned;
+        const currentlyPinned = isItemPinned(img);
+        const nextPinned = !currentlyPinned;
+
+        // 1. Sauvegarde synchrone dans localStorage
+        try {
+          const rawLocal = localStorage.getItem('studycloud_pinned_ids');
+          let pinnedIds: string[] = [];
+          if (rawLocal) pinnedIds = JSON.parse(rawLocal);
+          if (!Array.isArray(pinnedIds)) pinnedIds = [];
+          if (nextPinned) {
+            if (!pinnedIds.includes(img.id)) pinnedIds.push(img.id);
+          } else {
+            pinnedIds = pinnedIds.filter(id => id !== img.id);
+          }
+          localStorage.setItem('studycloud_pinned_ids', JSON.stringify(pinnedIds));
+        } catch {}
+
+        // 2. Mise à jour de l'état local
         setImagesList(prev => {
           const updated = prev.map(i => (i.id === img.id ? { ...i, isPinned: nextPinned } : i));
-          if (nextPinned) {
-            const item = updated.find(i => i.id === img.id);
-            return item ? [item, ...updated.filter(i => i.id !== img.id)] : updated;
-          }
           return updated;
         });
+
+        // 3. Mise à jour du store et de l'API
+        CloudDataStore.togglePin(img.id, nextPinned);
         CloudDataStore.updateFile(img.id, { isPinned: nextPinned });
+
         if (nextPinned) {
           CloudStorageAPI.addPinned(img.id, 'images').catch(console.error);
-          showToast(`"${img.name}" épinglée !`);
+          showToast(`"${img.name}" épinglée en tête !`);
         } else {
           CloudStorageAPI.removePinned(img.id).catch(console.error);
           showToast(`"${img.name}" désépinglée`);
@@ -826,16 +844,21 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       case 'rename': {
         const newName = window.prompt("Modifier le nom de l'image :", img.name);
         if (newName && newName.trim() && newName.trim() !== img.name) {
-          const trimmed = newName.trim();
+          // Préservation systématique de l'extension technique (.jpg, .png, etc.)
+          const finalName = ensureFileExtension(newName.trim(), img);
+          if (finalName === img.name) break;
+
           setImagesList(prev =>
-            prev.map(i => (i.id === img.id ? { ...i, name: trimmed } : i))
+            prev.map(i => (i.id === img.id ? { ...i, name: finalName } : i))
           );
           if (selectedImage?.id === img.id) {
-            setSelectedImage(prev => (prev ? { ...prev, name: trimmed } : null));
+            setSelectedImage(prev => (prev ? { ...prev, name: finalName } : null));
           }
-          CloudDataStore.updateFile(img.id, { name: trimmed });
-          CloudStorageAPI.renameItem(img.id, trimmed, 'images').catch(console.error);
-          showToast(`Image renommée en "${trimmed}" !`);
+          CloudDataStore.updateFile(img.id, { name: finalName });
+          CloudStorageAPI.renameItem(img.id, finalName, 'images').catch(console.error);
+          invalidateCloudQueries.images().catch(() => {});
+          invalidateCloudQueries.overview().catch(() => {});
+          showToast(`Image renommée en "${finalName}" !`);
         }
         break;
       }
@@ -1457,7 +1480,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
               className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
             >
               <Pin className="w-3.5 h-3.5 shrink-0 text-purple-400" />
-              <span>{img.isPinned ? 'Désépingler' : 'Épinglez'}</span>
+              <span>{isItemPinned(img) ? 'Désépingler' : 'Épinglez'}</span>
             </button>
             <button
               type="button"
@@ -1679,7 +1702,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
           )}
 
           {/* Badges Épinglé et Favori */}
-          {img.isPinned && (
+          {(img.isPinned || isItemPinned(img)) && (
             <span className="p-1 rounded-md bg-black/75 text-purple-400 border border-purple-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglée">
               <Pin className="w-3 h-3 rotate-45" />
             </span>
@@ -1979,26 +2002,34 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
               </div>
             ) : filteredImages.length === 0 ? (
               <div className="py-20 text-center text-stone-500 dark:text-slate-400">
-                {sortOption === 'duplicates' ? (
+                {sortOption === 'pinned' ? (
+                  <Pin className="w-12 h-12 mx-auto mb-3 opacity-40 stroke-[1.5] text-amber-400" />
+                ) : sortOption === 'duplicates' ? (
                   <Copy className="w-12 h-12 mx-auto mb-3 opacity-40 stroke-[1.5] text-rose-400" />
                 ) : (
                   <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-emerald-400" />
                 )}
-                <p className={`text-sm font-semibold ${sortOption === 'duplicates' ? 'text-rose-400' : ''}`}>
-                  {sortOption === 'duplicates'
+                <p className={`text-sm font-semibold ${sortOption === 'pinned' ? 'text-amber-400' : sortOption === 'duplicates' ? 'text-rose-400' : ''}`}>
+                  {sortOption === 'pinned'
+                    ? 'Aucune image épinglée'
+                    : sortOption === 'duplicates'
                     ? 'Aucun résultat pour les doublons'
                     : 'Aucune image disponible'}
                 </p>
                 <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                  {sortOption === 'duplicates'
+                  {sortOption === 'pinned'
+                    ? 'Vous n\'avez pas encore d\'images épinglées. Utilisez l\'option "Épinglez" dans le menu à 3 traits pour en épingler.'
+                    : sortOption === 'duplicates'
                     ? 'Toutes vos images sont uniques dans la base de données. Aucun doublon détecté.'
                     : 'Ce dossier ne contient aucune image pour le moment.'}
                 </p>
-                {sortOption === 'duplicates' && (
+                {(sortOption === 'duplicates' || sortOption === 'pinned') && (
                   <button
                     type="button"
                     onClick={() => setSortOption('recent')}
-                    className="mt-3 px-4 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                    className={`mt-3 px-4 py-1.5 rounded-full text-white text-xs font-bold transition-all shadow-sm cursor-pointer ${
+                      sortOption === 'pinned' ? 'bg-amber-600 hover:bg-amber-500' : 'bg-emerald-600 hover:bg-emerald-500'
+                    }`}
                   >
                     Afficher toutes les images
                   </button>

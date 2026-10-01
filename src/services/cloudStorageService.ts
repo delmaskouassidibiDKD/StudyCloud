@@ -9,6 +9,7 @@ import { getWorkerApiUrl } from './api';
 import { getCurrentUserId } from './userSync';
 import { FileItem } from '../components/Page1FilesMenuView';
 import { ClasseurCreatedFolder } from '../components/Folder3DModels';
+import { invalidateCloudQueries } from './queryClient';
 
 // En-têtes d'authentification pour garantir l'isolation des données
 function getAuthHeaders(): Record<string, string> {
@@ -1143,6 +1144,10 @@ export const CloudStorageAPI = {
         headers: getAuthHeaders(),
         body: JSON.stringify({ itemId, category }),
       });
+      if (res.ok) {
+        invalidateCloudQueries.pinned().catch(() => {});
+        invalidateCloudQueries.all().catch(() => {});
+      }
       return res.ok;
     } catch (e) {
       console.error('[CloudStorageAPI] addPinned error:', e);
@@ -1157,6 +1162,10 @@ export const CloudStorageAPI = {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
+      if (res.ok) {
+        invalidateCloudQueries.pinned().catch(() => {});
+        invalidateCloudQueries.all().catch(() => {});
+      }
       return res.ok;
     } catch (e) {
       console.error('[CloudStorageAPI] removePinned error:', e);
@@ -1175,6 +1184,10 @@ export const CloudStorageAPI = {
         headers: getAuthHeaders(),
         body: JSON.stringify({ id, name, category, folderId }),
       });
+      if (res.ok) {
+        invalidateCloudQueries.all().catch(() => {});
+        invalidateCloudQueries.overview().catch(() => {});
+      }
       return res.ok;
     } catch (e) {
       console.error('[CloudStorageAPI] renameItem error:', e);

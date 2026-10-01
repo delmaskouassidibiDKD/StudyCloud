@@ -196,6 +196,18 @@ async function hydrateFromIndexedDB(): Promise<boolean> {
         isLoaded:        true,
         lastSyncTime:    Number(parsed.lastSyncTime) || 0,
       };
+
+      try {
+        const rawLocal = localStorage.getItem('studycloud_pinned_ids');
+        if (rawLocal) {
+          const arr = JSON.parse(rawLocal);
+          if (Array.isArray(arr)) {
+            arr.forEach((id: string) => currentState.pinIdSet.add(id));
+          }
+        }
+        localStorage.setItem('studycloud_pinned_ids', JSON.stringify(Array.from(currentState.pinIdSet)));
+      } catch {}
+
       try { localStorage.setItem(LS_FLAG_KEY, '1'); } catch {}
       hydrationResolve?.();
       return true;
@@ -883,6 +895,9 @@ export const CloudDataStore = {
       } else {
         currentState.pinIdSet.delete(targetId);
       }
+      try {
+        localStorage.setItem('studycloud_pinned_ids', JSON.stringify(Array.from(currentState.pinIdSet)));
+      } catch {}
     }
 
     const updateFn = (list: FileItem[]) => list.map(f => (f.id === targetId || (patch.id && f.id === patch.id)) ? { ...f, ...patch } : f);
@@ -1487,6 +1502,10 @@ export const CloudDataStore = {
     const pinSet = new Set(currentState.pinIdSet);
     if (isPinned) pinSet.add(itemId);
     else pinSet.delete(itemId);
+
+    try {
+      localStorage.setItem('studycloud_pinned_ids', JSON.stringify(Array.from(pinSet)));
+    } catch {}
 
     const updatePin = (list: FileItem[]) => list.map(f => f.id === itemId ? { ...f, isPinned } : f);
     const updatedMap = { ...currentState.folderFilesMap };

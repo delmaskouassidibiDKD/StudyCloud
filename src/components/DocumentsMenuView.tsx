@@ -50,10 +50,11 @@ import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { PdfHorizontalViewer } from './PdfHorizontalViewer';
 import { generatePdfThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
-import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
+import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes, isItemPinned } from './HeaderMenuControls';
 import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../services/fileTypeValidator';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
 import { handleNativeShare } from '../utils/nativeShare';
+import { ensureFileExtension } from '../utils/fileExtensionHelper';
 
 interface DocumentsMenuViewProps {
   onBack: () => void;
@@ -627,8 +628,9 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     const newName = window.prompt('Nouveau nom du document :', doc.name);
     if (!newName || !newName.trim() || newName.trim() === doc.name) return;
 
-    const trimmed = newName.trim();
-    const finalName = trimmed.includes('.') ? trimmed : `${trimmed}.${(doc.extension || 'pdf').toLowerCase()}`;
+    // Préservation systématique de l'extension technique (.pdf, etc.)
+    const finalName = ensureFileExtension(newName.trim(), doc);
+    if (finalName === doc.name) return;
 
     setDocumentsList(prev =>
       prev.map(d => (d.id === doc.id ? { ...d, name: finalName } : d))
@@ -638,7 +640,9 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     }
     CloudDataStore.updateFile(doc.id, { name: finalName });
     await CloudStorageAPI.renameItem(doc.id, finalName, 'documents').catch(() => {});
-    showToast(`Document renommé en "${finalName}"`);
+    invalidateCloudQueries.documents().catch(() => {});
+    invalidateCloudQueries.overview().catch(() => {});
+    showToast(`Document renommé en "${finalName}" !`);
     setActiveMenuDocId(null);
   };
 
@@ -841,19 +845,36 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       }
 
       case 'pin': {
-        const nextPinned = !doc.isPinned;
+        const currentlyPinned = isItemPinned(doc);
+        const nextPinned = !currentlyPinned;
+
+        // 1. Sauvegarde synchrone dans localStorage
+        try {
+          const rawLocal = localStorage.getItem('studycloud_pinned_ids');
+          let pinnedIds: string[] = [];
+          if (rawLocal) pinnedIds = JSON.parse(rawLocal);
+          if (!Array.isArray(pinnedIds)) pinnedIds = [];
+          if (nextPinned) {
+            if (!pinnedIds.includes(doc.id)) pinnedIds.push(doc.id);
+          } else {
+            pinnedIds = pinnedIds.filter(id => id !== doc.id);
+          }
+          localStorage.setItem('studycloud_pinned_ids', JSON.stringify(pinnedIds));
+        } catch {}
+
+        // 2. Mise à jour de l'état local
         setDocumentsList(prev => {
           const updated = prev.map(d => (d.id === doc.id ? { ...d, isPinned: nextPinned } : d));
-          if (nextPinned) {
-            const item = updated.find(d => d.id === doc.id);
-            return item ? [item, ...updated.filter(d => d.id !== doc.id)] : updated;
-          }
           return updated;
         });
+
+        // 3. Mise à jour du store et de l'API
+        CloudDataStore.togglePin(doc.id, nextPinned);
         CloudDataStore.updateFile(doc.id, { isPinned: nextPinned });
+
         if (nextPinned) {
           CloudStorageAPI.addPinned(doc.id, 'documents').catch(console.error);
-          showToast(`"${doc.name}" épinglé !`);
+          showToast(`"${doc.name}" épinglé en tête !`);
         } else {
           CloudStorageAPI.removePinned(doc.id).catch(console.error);
           showToast(`"${doc.name}" désépinglé`);
@@ -1495,7 +1516,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
               className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
             >
               <Pin className="w-3.5 h-3.5 shrink-0 text-purple-400" />
-              <span>{doc.isPinned ? 'Désépingler' : 'Épinglez'}</span>
+              <span>{isItemPinned(doc) ? 'Désépingler' : 'Épinglez'}</span>
             </button>
             <button
               type="button"
@@ -1690,7 +1711,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             )}
 
             {/* Badges Épinglé et Favori */}
-            {doc.isPinned && (
+            {(doc.isPinned || isItemPinned(doc)) && (
               <span className="p-0.5 rounded bg-black/60 text-purple-300 border border-purple-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
                 <Pin className="w-3 h-3 rotate-45" />
               </span>
@@ -2097,26 +2118,34 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
               </div>
             ) : filteredDocuments.length === 0 ? (
               <div className="py-20 text-center text-stone-500 dark:text-slate-400">
-                {sortOption === 'duplicates' ? (
+                {sortOption === 'pinned' ? (
+                  <Pin className="w-12 h-12 mx-auto mb-3 opacity-40 stroke-[1.5] text-amber-400" />
+                ) : sortOption === 'duplicates' ? (
                   <Copy className="w-12 h-12 mx-auto mb-3 opacity-40 stroke-[1.5] text-rose-400" />
                 ) : (
                   <FileText className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-blue-400" />
                 )}
-                <p className={`text-sm font-semibold ${sortOption === 'duplicates' ? 'text-rose-400' : ''}`}>
-                  {sortOption === 'duplicates'
+                <p className={`text-sm font-semibold ${sortOption === 'pinned' ? 'text-amber-400' : sortOption === 'duplicates' ? 'text-rose-400' : ''}`}>
+                  {sortOption === 'pinned'
+                    ? 'Aucun document épinglé'
+                    : sortOption === 'duplicates'
                     ? 'Aucun résultat pour les doublons'
                     : 'Aucun document disponible'}
                 </p>
                 <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                  {sortOption === 'duplicates'
+                  {sortOption === 'pinned'
+                    ? 'Vous n\'avez pas encore de documents épinglés. Utilisez l\'option "Épinglez" dans le menu à 3 traits pour en épingler.'
+                    : sortOption === 'duplicates'
                     ? 'Tous vos documents sont uniques dans la base de données. Aucun doublon détecté.'
                     : 'Ce dossier ne contient aucun document pour le moment.'}
                 </p>
-                {sortOption === 'duplicates' && (
+                {(sortOption === 'duplicates' || sortOption === 'pinned') && (
                   <button
                     type="button"
                     onClick={() => setSortOption('recent')}
-                    className="mt-3 px-4 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                    className={`mt-3 px-4 py-1.5 rounded-full text-white text-xs font-bold transition-all shadow-sm cursor-pointer ${
+                      sortOption === 'pinned' ? 'bg-amber-600 hover:bg-amber-500' : 'bg-blue-600 hover:bg-blue-500'
+                    }`}
                   >
                     Afficher tous les documents
                   </button>

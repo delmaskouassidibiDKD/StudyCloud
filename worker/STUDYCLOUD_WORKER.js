@@ -7054,6 +7054,12 @@ var index_default = {
             favAudSet = new Set((fList || []).map((f) => String(f.item_id)));
           } catch (e) {
           }
+          let pinnedAudSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: pList } = await env.DB.prepare(`SELECT item_id FROM pinned_items WHERE user_id = ?`).bind(reqUserId).all();
+            pinnedAudSet = new Set((pList || []).map((p) => String(p.item_id)));
+          } catch (e) {
+          }
           const seen = /* @__PURE__ */ new Set();
           const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
@@ -7111,7 +7117,7 @@ var index_default = {
               url: finalUrl,
               category: "audio",
               isFavorite: Boolean(a.is_favorite || favAudSet.has(a.id)),
-              isPinned: Boolean(a.is_pinned)
+              isPinned: Boolean(a.is_pinned || pinnedAudSet.has(a.id))
             });
           };
           (auds || []).forEach((a) => addAud(a));
@@ -7320,6 +7326,12 @@ var index_default = {
             favImgSet = new Set((fList || []).map((f) => String(f.item_id)));
           } catch (e) {
           }
+          let pinnedImgSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: pList } = await env.DB.prepare(`SELECT item_id FROM pinned_items WHERE user_id = ?`).bind(reqUserId).all();
+            pinnedImgSet = new Set((pList || []).map((p) => String(p.item_id)));
+          } catch (e) {
+          }
           const seen = /* @__PURE__ */ new Set();
           const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
@@ -7358,7 +7370,7 @@ var index_default = {
               category: "images",
               isImage: true,
               isFavorite: Boolean(img.is_favorite || favImgSet.has(img.id)),
-              isPinned: Boolean(img.is_pinned)
+              isPinned: Boolean(img.is_pinned || pinnedImgSet.has(img.id))
             });
           };
           (imgs || []).forEach((img) => addImg(img));
@@ -7557,6 +7569,12 @@ var index_default = {
             favVidSet = new Set((fList || []).map((f) => String(f.item_id)));
           } catch (e) {
           }
+          let pinnedVidSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: pList } = await env.DB.prepare(`SELECT item_id FROM pinned_items WHERE user_id = ?`).bind(reqUserId).all();
+            pinnedVidSet = new Set((pList || []).map((p) => String(p.item_id)));
+          } catch (e) {
+          }
           const seen = /* @__PURE__ */ new Set();
           const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
@@ -7589,7 +7607,7 @@ var index_default = {
               category: "videos",
               isVideo: true,
               isFavorite: Boolean(v.is_favorite || favVidSet.has(v.id)),
-              isPinned: Boolean(v.is_pinned)
+              isPinned: Boolean(v.is_pinned || pinnedVidSet.has(v.id))
             });
           };
           (vids || []).forEach((v) => addVid(v));
@@ -7791,6 +7809,12 @@ var index_default = {
             favDocSet = new Set((fList || []).map((f) => String(f.item_id)));
           } catch (e) {
           }
+          let pinnedDocSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: pList } = await env.DB.prepare(`SELECT item_id FROM pinned_items WHERE user_id = ?`).bind(reqUserId).all();
+            pinnedDocSet = new Set((pList || []).map((p) => String(p.item_id)));
+          } catch (e) {
+          }
           const seen = /* @__PURE__ */ new Set();
           const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
@@ -7825,7 +7849,7 @@ var index_default = {
               noteTitle: d.notepad_title || "",
               content: d.notepad_content || "",
               isFavorite: Boolean(d.is_favorite || favDocSet.has(d.id)),
-              isPinned: Boolean(d.is_pinned)
+              isPinned: Boolean(d.is_pinned || pinnedDocSet.has(d.id))
             });
           };
           (docs || []).forEach((d) => addDoc(d));
@@ -8998,6 +9022,22 @@ var index_default = {
             VALUES (?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET category = excluded.category
           `).bind(pinId, reqUserId, itemId, category).run();
+          await env.DB.prepare("UPDATE files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare("UPDATE image_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare("UPDATE video_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare("UPDATE document_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare("UPDATE audio_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare("UPDATE download_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare("UPDATE classeur_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare("UPDATE classeur_folders SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+          });
           await recordSyncItem(env.DB, reqUserId, pinId, "pinned", { itemId, category }, 0);
           return jsonResponse({ success: true, message: "\xC9l\xE9ment \xE9pingl\xE9" }, 200, origin);
         }
@@ -9009,6 +9049,22 @@ var index_default = {
             DELETE FROM pinned_items
             WHERE user_id = ? AND (item_id = ? OR id = ?)
           `).bind(reqUserId, itemId, itemId).run();
+          await env.DB.prepare("UPDATE files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare("UPDATE image_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare("UPDATE video_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare("UPDATE document_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare("UPDATE audio_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare("UPDATE download_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare("UPDATE classeur_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare("UPDATE classeur_folders SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+          });
           const pinId = `pin_${reqUserId}_${itemId}`;
           await recordSyncItem(env.DB, reqUserId, pinId, "pinned", { itemId, category: "pinned" }, 1);
           return jsonResponse({ success: true, message: "\xC9l\xE9ment d\xE9s\xE9pingl\xE9" }, 200, origin);
@@ -9025,20 +9081,23 @@ var index_default = {
         if (!targetId || !newName) {
           return errorResponse("ID et nouveau nom requis", 400, origin);
         }
+        await env.DB.prepare("UPDATE files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
+        });
+        await env.DB.prepare("UPDATE image_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
+        });
+        await env.DB.prepare("UPDATE video_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
+        });
+        await env.DB.prepare("UPDATE document_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
+        });
+        await env.DB.prepare("UPDATE audio_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
+        });
+        await env.DB.prepare("UPDATE download_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
+        });
+        await env.DB.prepare("UPDATE classeur_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
+        });
         if (category === "classeur_folder" || category === "folder") {
-          await env.DB.prepare("UPDATE classeur_folders SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run();
-        } else if (category === "classeur_file" || folderId) {
-          await env.DB.prepare("UPDATE classeur_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run();
-        } else if (category === "images") {
-          await env.DB.prepare("UPDATE image_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run();
-        } else if (category === "videos") {
-          await env.DB.prepare("UPDATE video_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run();
-        } else if (category === "audio") {
-          await env.DB.prepare("UPDATE audio_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run();
-        } else if (category === "downloads") {
-          await env.DB.prepare("UPDATE download_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run();
-        } else {
-          await env.DB.prepare("UPDATE document_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run();
+          await env.DB.prepare("UPDATE classeur_folders SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
+          });
         }
         await env.DB.prepare("UPDATE secure_files SET name = ? WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
         });

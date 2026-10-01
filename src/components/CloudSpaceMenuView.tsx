@@ -45,6 +45,8 @@ import {
 import { CloudDataStore, FileItem, isItemDeleted, markItemDeleted } from '../services/cloudDataStore';
 import { handleNativeShare } from '../utils/nativeShare';
 import { CloudStorageAPI } from '../services/cloudStorageService';
+import { ensureFileExtension } from '../utils/fileExtensionHelper';
+import { invalidateCloudQueries } from '../services/queryClient';
 import { getFileBlobUrl, deleteFileBlob } from '../services/localFileStorage';
 import { parseSizeToBytes } from './HeaderMenuControls';
 import { ClasseurCreatedFolder, Classeur3DFolderCard, TxtDocumentSVG } from './Folder3DModels';
@@ -510,9 +512,11 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       return;
     }
     const trimmed = renameInputValue.trim();
-    CloudDataStore.updateFile(renamingFile.id, { name: trimmed }, renamingFile.folderId);
-    CloudStorageAPI.renameItem(renamingFile.id, trimmed, renamingFile.category || 'documents', renamingFile.folderId).catch(() => {});
-    showToast(`Fichier renommé en "${trimmed}"`);
+    const finalName = ensureFileExtension(trimmed, renamingFile);
+    CloudDataStore.updateFile(renamingFile.id, { name: finalName }, renamingFile.folderId);
+    CloudStorageAPI.renameItem(renamingFile.id, finalName, renamingFile.category || 'documents', renamingFile.folderId).catch(() => {});
+    invalidateCloudQueries.all().catch(() => {});
+    showToast(`Fichier renommé en "${finalName}"`);
     setRenamingFile(null);
   };
 
