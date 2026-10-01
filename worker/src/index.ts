@@ -6423,22 +6423,106 @@ export default {
         const fileName = url.searchParams.get('name') || 'fichier_' + Date.now();
         const folderId = url.searchParams.get('folderId') || '';
         const contentType = request.headers.get('Content-Type') || 'application/octet-stream';
+        const fileBuffer = await request.arrayBuffer();
+        const rawSizeBytes = fileBuffer.byteLength;
+        const headerOrigSizeBytes = Number(request.headers.get('x-original-size-bytes') || url.searchParams.get('originalSizeBytes') || 0);
+        const headerOrigSizeFormatted = request.headers.get('x-original-size') || '';
+        const sizeBytes = headerOrigSizeBytes > 0 ? headerOrigSizeBytes : rawSizeBytes;
+        const sizeFormatted = headerOrigSizeFormatted || formatBytes(sizeBytes);
 
-        // 1. Détection automatique de la nature du fichier
+        // 1. Détection automatique de la nature du fichier par Magic Numbers (signature binaire) et heuristique
         const normMime = (contentType || '').toLowerCase().trim();
         const ext = fileName.includes('.') ? (fileName.split('.').pop() || '').toLowerCase().trim() : '';
+        const lowerFileName = fileName.toLowerCase().trim();
 
         const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'heic', 'heif', 'avif', 'raw'];
         const videoExts = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', '3gp', 'm4v', 'ts', 'ogv', 'mpg', 'mpeg'];
-        const audioExts = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma', 'opus', 'aiff', 'alac', 'mid', 'midi'];
+        const audioExts = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma', 'opus', 'aiff', 'alac', 'mid', 'midi', 'amr', '3ga', 'weba'];
+
+        const isWaAudio = (
+          lowerFileName.startsWith('aud-') ||
+          lowerFileName.startsWith('ptt-') ||
+          lowerFileName.includes('whatsapp audio') ||
+          lowerFileName.includes('voice_') ||
+          lowerFileName.includes('audio_') ||
+          lowerFileName.includes('vocal') ||
+          lowerFileName.includes('enregistrement') ||
+          normMime.includes('audio') ||
+          ['opus', 'oga', '3ga', 'amr', 'm4a', 'aac', 'mp3', 'wav', 'flac', 'weba'].includes(ext)
+        ) && !lowerFileName.includes('whatsapp video') && !lowerFileName.startsWith('vid-') && !lowerFileName.includes('whatsapp image') && !lowerFileName.startsWith('img-');
+
+        const isWaVideo = (
+          lowerFileName.startsWith('vid-') ||
+          lowerFileName.includes('whatsapp video') ||
+          lowerFileName.includes('video_')
+        ) && !isWaAudio;
+
+        const isWaImage = (
+          lowerFileName.startsWith('img-') ||
+          lowerFileName.includes('whatsapp image') ||
+          lowerFileName.includes('image_') ||
+          lowerFileName.includes('photo_')
+        );
 
         let detectedNature: 'images' | 'videos' | 'audio' | 'documents' = 'documents';
-        if (normMime.startsWith('image/') || imageExts.includes(ext)) {
-          detectedNature = 'images';
-        } else if (normMime.startsWith('video/') || videoExts.includes(ext)) {
-          detectedNature = 'videos';
-        } else if (normMime.startsWith('audio/') || audioExts.includes(ext)) {
+
+        // Inspection binaire des Magic Numbers
+        let magicDetected: 'images' | 'videos' | 'audio' | 'documents' | null = null;
+        try {
+          const bytes = new Uint8Array(fileBuffer.slice(0, 64));
+          const len = bytes.length;
+          const ascii = (start: number, end: number) => {
+            let s = '';
+            for (let i = start; i < end && i < len; i++) s += String.fromCharCode(bytes[i]);
+            return s;
+          };
+
+          if (len >= 3 && bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) magicDetected = 'images';
+          else if (len >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) magicDetected = 'images';
+          else if (len >= 6 && ascii(0, 4) === 'GIF8') magicDetected = 'images';
+          else if (len >= 2 && bytes[0] === 0x42 && bytes[1] === 0x4D) magicDetected = 'images';
+          else if (len >= 12 && ascii(0, 4) === 'RIFF') {
+            const sub = ascii(8, 12);
+            if (sub === 'WEBP') magicDetected = 'images';
+            else if (sub === 'WAVE') magicDetected = 'audio';
+            else if (sub === 'AVI ') magicDetected = 'videos';
+          } else if (len >= 3 && ascii(0, 3) === 'ID3') magicDetected = 'audio';
+          else if (len >= 2 && bytes[0] === 0xFF && (bytes[1] & 0xE0) === 0xE0 && (bytes[1] & 0x18) !== 0x08) magicDetected = 'audio';
+          else if (len >= 4 && ascii(0, 4) === 'OggS') magicDetected = 'audio';
+          else if (len >= 4 && ascii(0, 4) === 'fLaC') magicDetected = 'audio';
+          else if (len >= 5 && ascii(0, 5) === '#!AMR') magicDetected = 'audio';
+          else if (len >= 4 && bytes[0] === 0x1A && bytes[1] === 0x45 && bytes[2] === 0xDF && bytes[3] === 0xA3) {
+            magicDetected = (normMime.includes('audio') || ext === 'weba') ? 'audio' : 'videos';
+          } else if (len >= 12 && (ascii(4, 8) === 'ftyp' || ascii(4, 8) === 'moov' || ascii(4, 8) === 'mdat')) {
+            const brand = ascii(8, 12);
+            if (brand === 'M4A ' || brand === 'M4B ' || brand === 'M4P ') {
+              magicDetected = 'audio';
+            } else if (brand.startsWith('3g')) {
+              magicDetected = (isWaAudio || normMime.includes('audio') || audioExts.includes(ext)) ? 'audio' : 'videos';
+            } else if (isWaAudio || audioExts.includes(ext) || normMime.startsWith('audio/')) {
+              magicDetected = 'audio';
+            } else {
+              magicDetected = 'videos';
+            }
+          } else if (len >= 4 && ascii(0, 4) === '%PDF') magicDetected = 'documents';
+        } catch (e) {}
+
+        if (magicDetected) {
+          detectedNature = magicDetected;
+        } else if (isWaAudio) {
           detectedNature = 'audio';
+        } else if (isWaVideo) {
+          detectedNature = 'videos';
+        } else if (isWaImage) {
+          detectedNature = 'images';
+        } else if (audioExts.includes(ext) || normMime.startsWith('audio/')) {
+          detectedNature = 'audio';
+        } else if (videoExts.includes(ext) || normMime.startsWith('video/')) {
+          detectedNature = 'videos';
+        } else if (imageExts.includes(ext) || normMime.startsWith('image/')) {
+          detectedNature = 'images';
+        } else {
+          detectedNature = 'documents';
         }
 
         // 2. Routage et validation stricte
@@ -6483,13 +6567,6 @@ export default {
         const sanitizedName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
         const fileId = url.searchParams.get('id') || request.headers.get('x-file-id') || 'f_' + crypto.randomUUID().substring(0, 12);
         const storageKey = `${reqUserId}/${finalCategory}/${fileId}_${sanitizedName}`;
-
-        const fileBuffer = await request.arrayBuffer();
-        const rawSizeBytes = fileBuffer.byteLength;
-        const headerOrigSizeBytes = Number(request.headers.get('x-original-size-bytes') || url.searchParams.get('originalSizeBytes') || 0);
-        const headerOrigSizeFormatted = request.headers.get('x-original-size') || '';
-        const sizeBytes = headerOrigSizeBytes > 0 ? headerOrigSizeBytes : rawSizeBytes;
-        const sizeFormatted = headerOrigSizeFormatted || formatBytes(sizeBytes);
         const headerThumbnail = request.headers.get('x-thumbnail-data') || url.searchParams.get('thumbnailUrl') || '';
         const thumbnailToSave = headerThumbnail && headerThumbnail.trim() ? headerThumbnail.trim() : '';
 
@@ -6580,8 +6657,8 @@ export default {
           try {
             if (finalCategory === 'images') {
               await env.DB.prepare(`
-                INSERT INTO image_files (id, user_id, name, size, size_bytes, extension, date_formatted, r2_key, image_url, thumbnail_url, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO image_files (id, user_id, name, size, size_bytes, extension, date_formatted, r2_key, image_url, thumbnail_url, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT(id) DO UPDATE SET
                   name = excluded.name,
                   size = excluded.size,
@@ -6593,8 +6670,8 @@ export default {
               `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
               try {
                 await env.DB.prepare(`
-                  INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
-                  VALUES (?, ?, 'menu-images', ?, ?, 'image/jpeg', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
+                  INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+                  VALUES (?, ?, 'menu-images', ?, ?, 'image/jpeg', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                   ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     size = excluded.size,
@@ -6606,8 +6683,8 @@ export default {
               } catch (e) {}
             } else if (finalCategory === 'videos') {
               await env.DB.prepare(`
-                INSERT INTO video_files (id, user_id, name, size, size_bytes, extension, date_formatted, r2_key, video_url, thumbnail_url, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO video_files (id, user_id, name, size, size_bytes, extension, date_formatted, r2_key, video_url, thumbnail_url, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT(id) DO UPDATE SET
                   name = excluded.name,
                   size = excluded.size,
@@ -6623,8 +6700,8 @@ export default {
               `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
               try {
                 await env.DB.prepare(`
-                  INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
-                  VALUES (?, ?, 'menu-videos', ?, ?, 'video/mp4', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
+                  INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+                  VALUES (?, ?, 'menu-videos', ?, ?, 'video/mp4', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                   ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     size = excluded.size,
@@ -6636,8 +6713,8 @@ export default {
               } catch (e) {}
             } else if (finalCategory === 'audio') {
               await env.DB.prepare(`
-                INSERT INTO audio_files (id, user_id, name, title, artist, size, size_bytes, date_formatted, r2_key, audio_url, cover_url, updated_at)
-                VALUES (?, ?, ?, ?, 'Artiste inconnu', ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO audio_files (id, user_id, name, title, artist, size, size_bytes, date_formatted, r2_key, audio_url, cover_url, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 'Artiste inconnu', ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT(id) DO UPDATE SET
                   name = excluded.name,
                   title = excluded.title,
@@ -6660,8 +6737,8 @@ export default {
 
               try {
                 await env.DB.prepare(`
-                  INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, thumbnail_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
-                  VALUES (?, ?, 'menu-audio', ?, ?, 'audio/mpeg', ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
+                  INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, thumbnail_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+                  VALUES (?, ?, 'menu-audio', ?, ?, 'audio/mpeg', ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                   ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     size = excluded.size,
@@ -6679,8 +6756,8 @@ export default {
 
             } else if (finalCategory === 'documents') {
               await env.DB.prepare(`
-                INSERT INTO document_files (id, user_id, name, size, size_bytes, extension, document_category, date_formatted, r2_key, file_url, preview_url, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, 'COURS', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO document_files (id, user_id, name, size, size_bytes, extension, document_category, date_formatted, r2_key, file_url, preview_url, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'COURS', ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT(id) DO UPDATE SET
                   name = excluded.name,
                   size = excluded.size,
@@ -6692,8 +6769,8 @@ export default {
               `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
             } else if (finalCategory === 'classeur') {
               await env.DB.prepare(`
-                INSERT INTO classeur_files (id, user_id, folder_id, name, size, size_bytes, category, extension, source, date_formatted, r2_key, file_url, preview_url, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Classeur', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO classeur_files (id, user_id, folder_id, name, size, size_bytes, category, extension, source, date_formatted, r2_key, file_url, preview_url, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Classeur', ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT(id) DO UPDATE SET
                   name = excluded.name,
                   size = excluded.size,
@@ -6707,8 +6784,8 @@ export default {
 
             // Synchronisation universelle dans la table files (pour compatibilité totale cross-device comme Mes fichiers)
             await env.DB.prepare(`
-              INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
+              INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
               ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 size = excluded.size,
@@ -6947,19 +7024,26 @@ export default {
           Number(secureStat?.totalBytes || 0);
 
         // Récupérer les fichiers récents pour l'espace cloud (toutes catégories confondues, sans les notes .txt)
-        const [recentDocs, recentImages, recentAudio, recentVideos, recentClasseur] = await Promise.all([
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, created_at FROM document_files WHERE user_id = ? AND (name NOT LIKE "%.txt") ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all<any>(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, thumbnail_url as thumbnailUrl, "images" as category, created_at FROM image_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all<any>(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, cover_url as coverUrl, cover_url as previewUrl, artist, "audio" as category, created_at FROM audio_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all<any>(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, thumbnail_url as thumbnailUrl, thumbnail_url as previewUrl, "videos" as category, created_at FROM video_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all<any>(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, COALESCE(category, "documents") as category, created_at FROM classeur_files WHERE user_id = ? AND (is_notepad IS NULL OR is_notepad = 0) AND (name NOT LIKE "%.txt") ORDER BY created_at DESC LIMIT 6').bind(reqUserId).all<any>(),
+        const [recentDocs, recentImages, recentAudio, recentVideos, recentClasseur, recentDownloads] = await Promise.all([
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM document_files WHERE user_id = ? AND (name NOT LIKE "%.txt") ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, thumbnail_url as thumbnailUrl, "images" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM image_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, cover_url as coverUrl, cover_url as previewUrl, artist, "audio" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM audio_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, thumbnail_url as thumbnailUrl, thumbnail_url as previewUrl, "videos" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM video_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, COALESCE(category, "documents") as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM classeur_files WHERE user_id = ? AND (is_notepad IS NULL OR is_notepad = 0) AND (name NOT LIKE "%.txt") ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, "" as date, file_url as previewUrl, "downloads" as category, COALESCE(downloaded_at, created_at, datetime("now")) as created_at FROM download_files WHERE user_id = ? ORDER BY COALESCE(downloaded_at, created_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all<any>(),
         ]);
 
         const parseDateMs = (d: any): number => {
           if (!d) return 0;
-          const s = String(d).replace(' ', 'T');
-          const t = new Date(s).getTime();
-          return isNaN(t) ? 0 : t;
+          if (typeof d === 'number') return d;
+          const num = Number(d);
+          if (!isNaN(num) && num > 1000000000000) return num;
+          if (!isNaN(num) && num > 1000000000) return num * 1000;
+          const s = String(d).trim().replace(' ', 'T');
+          const t = new Date(s.endsWith('Z') || s.includes('+') ? s : s + 'Z').getTime();
+          if (!isNaN(t)) return t;
+          const t2 = new Date(s).getTime();
+          return isNaN(t2) ? 0 : t2;
         };
 
         const isEligibleRecent = (f: any): boolean => {
@@ -6970,13 +7054,34 @@ export default {
           return true;
         };
 
+        const fixRecentCategory = (f: any) => {
+          if (!f || !f.name) return f;
+          const lowerName = f.name.toLowerCase();
+          if (
+            lowerName.startsWith('aud-') ||
+            lowerName.startsWith('ptt-') ||
+            lowerName.includes('whatsapp audio') ||
+            lowerName.includes('voice_') ||
+            lowerName.includes('audio_')
+          ) {
+            f.category = 'audio';
+            if (!f.audioUrl) f.audioUrl = f.videoUrl || f.fileUrl || f.previewUrl || '';
+          }
+          return f;
+        };
+
         const recentFiles = [
           ...(recentDocs?.results || []),
           ...(recentImages?.results || []),
           ...(recentAudio?.results || []),
           ...(recentVideos?.results || []),
           ...(recentClasseur?.results || []),
-        ].filter(isEligibleRecent).sort((a, b) => parseDateMs(b.created_at) - parseDateMs(a.created_at)).slice(0, 6);
+          ...(recentDownloads?.results || []),
+        ]
+          .map(fixRecentCategory)
+          .filter(isEligibleRecent)
+          .sort((a, b) => parseDateMs(b.created_at) - parseDateMs(a.created_at))
+          .slice(0, 6);
 
         return jsonResponse({
           success: true,
@@ -7655,8 +7760,8 @@ export default {
             INSERT INTO audio_files (
               id, user_id, name, title, artist, album, duration_sec, size, size_bytes,
               date_formatted, lyrics_snippet, full_lyrics_json, cover_url, r2_key,
-              audio_url, is_favorite, is_pinned, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+              audio_url, is_favorite, is_pinned, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               title = excluded.title,
@@ -7687,8 +7792,8 @@ export default {
           // Dual-write to files table
           try {
             await env.DB.prepare(`
-              INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
-              VALUES (?, ?, 'menu-audio', ?, ?, 'audio/mpeg', 'MP3', ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
+              INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+              VALUES (?, ?, 'menu-audio', ?, ?, 'audio/mpeg', 'MP3', ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
               ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 size = excluded.size,
@@ -7910,8 +8015,8 @@ export default {
           await env.DB.prepare(`
             INSERT INTO image_files (
               id, user_id, name, size, size_bytes, width, height, extension,
-              date_formatted, r2_key, image_url, thumbnail_url, is_favorite, is_pinned, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+              date_formatted, r2_key, image_url, thumbnail_url, is_favorite, is_pinned, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               size = excluded.size,
@@ -7933,8 +8038,8 @@ export default {
           // Dual-write to files table
           try {
             await env.DB.prepare(`
-              INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
-              VALUES (?, ?, 'menu-images', ?, ?, 'image/jpeg', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
+              INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+              VALUES (?, ?, 'menu-images', ?, ?, 'image/jpeg', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
               ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 size = excluded.size,
@@ -8137,8 +8242,8 @@ export default {
           await env.DB.prepare(`
             INSERT INTO video_files (
               id, user_id, name, size, size_bytes, duration_sec, resolution, extension,
-              date_formatted, r2_key, video_url, thumbnail_url, is_favorite, is_pinned, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+              date_formatted, r2_key, video_url, thumbnail_url, is_favorite, is_pinned, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               size = excluded.size,
@@ -8160,8 +8265,8 @@ export default {
           // Dual-write to files table
           try {
             await env.DB.prepare(`
-              INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
-              VALUES (?, ?, 'menu-videos', ?, ?, 'video/mp4', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
+              INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+              VALUES (?, ?, 'menu-videos', ?, ?, 'video/mp4', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
               ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 size = excluded.size,
@@ -8371,8 +8476,8 @@ export default {
             INSERT INTO document_files (
               id, user_id, name, size, size_bytes, extension, document_category,
               page_count, date_formatted, source, r2_key, file_url, preview_url,
-              is_favorite, is_pinned, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+              is_favorite, is_pinned, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               size = excluded.size,
@@ -8395,8 +8500,8 @@ export default {
           // Dual-write to files table
           try {
             await env.DB.prepare(`
-              INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
-              VALUES (?, ?, 'menu-documents', ?, ?, 'application/pdf', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
+              INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+              VALUES (?, ?, 'menu-documents', ?, ?, 'application/pdf', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
               ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 size = excluded.size,

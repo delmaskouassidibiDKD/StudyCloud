@@ -48,6 +48,11 @@ export function isWhatsAppVideo(name?: string, mime?: string): boolean {
   const normName = ((name || '')).toLowerCase().trim();
   const normMime = ((mime || '')).toLowerCase().trim();
 
+  // Si c'est un audio WhatsApp ou nommé comme un audio, ce n'est JAMAIS une vidéo !
+  if (isWhatsAppAudio(normName, normMime)) {
+    return false;
+  }
+
   if (normName.startsWith('vid-') || normName.includes('whatsapp video') || normName.includes('video_')) {
     return true;
   }
@@ -84,29 +89,43 @@ export function isWhatsAppAudio(name?: string, mime?: string): boolean {
   if (normName.includes('whatsapp video') || normName.startsWith('vid-') || normName.includes('whatsapp image') || normName.startsWith('img-')) {
     return false;
   }
-  if (normMime.startsWith('video/') || normMime.startsWith('image/')) {
+  if (normMime.startsWith('image/')) {
     return false;
   }
 
   // Préfixes WhatsApp Audio spécifiques (Android, iOS, Web)
+  // Même si le MIME est video/mp4 (cas classique où Android/WhatsApp enregistre avec extension .mp4)
   if (
     normName.startsWith('aud-') ||
     normName.startsWith('ptt-') ||
     normName.includes('whatsapp audio') ||
     normName.includes('voice_') ||
-    normName.includes('audio_')
+    normName.includes('audio_') ||
+    normName.includes('vocal') ||
+    normName.includes('enregistrement')
   ) {
     return true;
   }
 
   // Formats typiques des notes vocales et sons téléchargés
-  if (normName.endsWith('.opus') || normName.endsWith('.oga') || normName.endsWith('.3ga') || normName.endsWith('.amr')) {
+  if (
+    normName.endsWith('.opus') ||
+    normName.endsWith('.oga') ||
+    normName.endsWith('.3ga') ||
+    normName.endsWith('.amr') ||
+    normName.endsWith('.m4a') ||
+    normName.endsWith('.aac') ||
+    normName.endsWith('.mp3') ||
+    normName.endsWith('.wav') ||
+    normName.endsWith('.flac') ||
+    normName.endsWith('.weba')
+  ) {
     return true;
   }
   if (normName.endsWith('.3gp') && (normMime.includes('audio') || normMime.includes('amr') || normName.startsWith('aud-') || normName.startsWith('ptt-'))) {
     return true;
   }
-  if (normMime.includes('opus') || normMime.includes('audio/ogg') || normMime.includes('audio/amr') || normMime.includes('audio/3gpp')) {
+  if (normMime.includes('opus') || normMime.includes('audio/ogg') || normMime.includes('audio/amr') || normMime.includes('audio/3gpp') || normMime.startsWith('audio/')) {
     return true;
   }
   return false;
@@ -124,6 +143,20 @@ export async function detectFileCategoryWithMagic(
   const name = (file instanceof File ? file.name : (fallbackName || '')).trim();
   const mime = (file.type || fallbackMime || '').toLowerCase().trim();
   const lowerName = name.toLowerCase();
+  const ext = lowerName.includes('.') ? (lowerName.split('.').pop() || '') : '';
+
+  // 0. Si le nom ou MIME indique explicitement un audio WhatsApp ou note vocale : PRIORITÉ ABSOLUE AUDIO
+  if (isWhatsAppAudio(lowerName, mime)) {
+    return 'audio';
+  }
+  // Si le nom indique explicitement une vidéo WhatsApp :
+  if (lowerName.includes('whatsapp video') || lowerName.startsWith('vid-')) {
+    return 'videos';
+  }
+  // Si le nom indique explicitement une image WhatsApp :
+  if (lowerName.includes('whatsapp image') || lowerName.startsWith('img-')) {
+    return 'images';
+  }
 
   try {
     const slice = file.slice(0, 64);
@@ -188,7 +221,11 @@ export async function detectFileCategoryWithMagic(
         if (lowerName.includes('audio') || lowerName.startsWith('aud-') || lowerName.startsWith('ptt-') || mime.includes('audio')) return 'audio';
         return 'videos';
       }
-      // Toutes les autres marques MP4/MOV (mp41, mp42, isom, iso2, qt  , avc1, dash) sont des conteneurs vidéo
+      // Vérifier si le nom ou l'extension ou le MIME indique de l'audio avant de supposer vidéo
+      if (isWhatsAppAudio(lowerName, mime) || EXTENSION_MAP.audio.includes(ext) || mime.startsWith('audio/')) {
+        return 'audio';
+      }
+      // Toutes les autres marques MP4/MOV sans indice audio sont des conteneurs vidéo
       return 'videos';
     }
 
@@ -230,23 +267,23 @@ export function detectFileCategory(file: { name?: string; type?: string }): 'ima
   const mime = ((file && file.type) || '').toLowerCase().trim();
   const ext = normName.includes('.') ? (normName.split('.').pop() || '').toLowerCase().trim() : '';
 
-  // 1. DÉTECTION EXPLICITE WHATSAPP & FICHIERS MOBILES
+  // 1. DÉTECTION EXPLICITE WHATSAPP & FICHIERS MOBILES (AUDIO PRIORITAIRE)
+  if (isWhatsAppAudio(normName, mime)) {
+    return 'audio';
+  }
   if (isWhatsAppVideo(normName, mime)) {
     return 'videos';
   }
   if (isWhatsAppImage(normName, mime)) {
     return 'images';
   }
-  if (isWhatsAppAudio(normName, mime)) {
-    return 'audio';
-  }
 
-  // 2. EXTENSIONS STRICTES
-  if (EXTENSION_MAP.videos.includes(ext)) {
-    return 'videos';
-  }
+  // 2. EXTENSIONS STRICTES (AUDIO EN PREMIER POUR ÉVITER CONFUSION MP4 AUDIO)
   if (EXTENSION_MAP.audio.includes(ext)) {
     return 'audio';
+  }
+  if (EXTENSION_MAP.videos.includes(ext)) {
+    return 'videos';
   }
   if (EXTENSION_MAP.images.includes(ext)) {
     return 'images';
@@ -255,12 +292,12 @@ export function detectFileCategory(file: { name?: string; type?: string }): 'ima
     return 'documents';
   }
 
-  // 3. TYPES MIME
-  if (mime.startsWith('video/')) {
-    return 'videos';
-  }
+  // 3. TYPES MIME (AUDIO EN PREMIER)
   if (mime.startsWith('audio/') || mime.includes('opus') || mime.includes('ogg')) {
     return 'audio';
+  }
+  if (mime.startsWith('video/')) {
+    return 'videos';
   }
   if (mime.startsWith('image/')) {
     return 'images';

@@ -3823,8 +3823,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       EXTENSION_MAP.audio.includes(ext) ||
       /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name)
     );
-    const isVid = Boolean(file.category === 'videos' || (file as any).isVideo || Boolean((file as any).videoUrl) || (file.type && file.type.startsWith('video/')) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(file.name));
-    const isImg = Boolean(file.category === 'images' || (file as any).isImage || (file.type && file.type.startsWith('image/')) || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name));
+    const isVid = !isAud && Boolean(
+      file.category === 'videos' ||
+      (file as any).isVideo ||
+      Boolean((file as any).videoUrl) ||
+      (file.type && file.type.startsWith('video/')) ||
+      /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(file.name)
+    );
+    const isImg = !isAud && !isVid && Boolean(
+      file.category === 'images' ||
+      (file as any).isImage ||
+      (file.type && file.type.startsWith('image/')) ||
+      /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name)
+    );
     const isDoc = file.category === 'documents' || (!isAud && !isVid && !isImg);
 
     if (isDoc) setSelectedDocFile(file);
@@ -3926,9 +3937,28 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const normName = (file.name || '').toLowerCase();
     const ext = normName.includes('.') ? normName.split('.').pop() || '' : '';
 
-    const isImg = file.category === 'images' || file.isImage || (file.type && file.type.startsWith('image/')) || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'avif'].includes(ext);
-    const isVid = file.category === 'videos' || file.isVideo || Boolean(file.videoUrl) || (file.type && file.type.startsWith('video/')) || ['mp4', 'webm', 'mkv', 'mov', 'avi', 'flv', 'wmv', 'm4v', '3gp'].includes(ext);
-    const isAud = file.category === 'audio' || file.isAudio || Boolean(file.audioUrl) || (file.type && file.type.startsWith('audio/')) || isWhatsAppAudio(file.name, file.type) || EXTENSION_MAP.audio.includes(ext) || ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'wma', 'opus', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'].includes(ext);
+    const isAud = Boolean(
+      file.category === 'audio' ||
+      file.isAudio ||
+      Boolean(file.audioUrl) ||
+      (file.type && file.type.startsWith('audio/')) ||
+      isWhatsAppAudio(file.name, file.type) ||
+      EXTENSION_MAP.audio.includes(ext) ||
+      ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'wma', 'opus', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'].includes(ext)
+    );
+    const isVid = !isAud && Boolean(
+      file.category === 'videos' ||
+      file.isVideo ||
+      Boolean(file.videoUrl) ||
+      (file.type && file.type.startsWith('video/')) ||
+      ['mp4', 'webm', 'mkv', 'mov', 'avi', 'flv', 'wmv', 'm4v', '3gp'].includes(ext)
+    );
+    const isImg = !isAud && !isVid && Boolean(
+      file.category === 'images' ||
+      file.isImage ||
+      (file.type && file.type.startsWith('image/')) ||
+      ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'avif'].includes(ext)
+    );
     const isDl = file.category === 'downloads';
     const isApp = file.category === 'apps';
 
@@ -3937,16 +3967,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     let targetIcon: any = FileText;
     let targetColor = 'text-blue-400';
 
-    if (isImg) {
-      targetCatId = 'images';
-      targetName = 'Images';
-      targetIcon = ImageIcon;
-      targetColor = 'text-emerald-400';
-      setImagesList(prev => {
-        if (prev.some(i => i.id === file.id || (file.name && i.name === file.name))) return prev;
+    if (isAud) {
+      targetCatId = 'audio';
+      targetName = 'Audio';
+      targetIcon = Music;
+      targetColor = 'text-amber-400';
+      setAudioList(prev => {
+        if (prev.some(a => a.id === file.id || (file.name && a.name === file.name))) return prev;
         return [file, ...prev];
       });
-      if (isCloudView) setCloudActiveTab('images');
+      if (isCloudView) setCloudActiveTab('audio');
     } else if (isVid) {
       targetCatId = 'videos';
       targetName = 'Vidéos';
@@ -3957,16 +3987,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         return [file, ...prev];
       });
       if (isCloudView) setCloudActiveTab('videos');
-    } else if (isAud) {
-      targetCatId = 'audio';
-      targetName = 'Audio';
-      targetIcon = Music;
-      targetColor = 'text-amber-400';
-      setAudioList(prev => {
-        if (prev.some(a => a.id === file.id || (file.name && a.name === file.name))) return prev;
+    } else if (isImg) {
+      targetCatId = 'images';
+      targetName = 'Images';
+      targetIcon = ImageIcon;
+      targetColor = 'text-emerald-400';
+      setImagesList(prev => {
+        if (prev.some(i => i.id === file.id || (file.name && i.name === file.name))) return prev;
         return [file, ...prev];
       });
-      if (isCloudView) setCloudActiveTab('audio');
+      if (isCloudView) setCloudActiveTab('images');
     } else if (isDl) {
       targetCatId = 'downloads';
       targetName = 'Téléchargements';
@@ -13486,14 +13516,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         {/* Vignette compacte */}
                         <div className={`w-full h-24 sm:h-28 md:h-28 bg-slate-900 relative rounded-t-2xl flex items-center justify-center ${menuOpenId === file.id ? 'overflow-visible z-50' : 'overflow-hidden'}`}>
                           <div className="absolute inset-0 rounded-t-2xl overflow-hidden pointer-events-none">
-                            {(file.category === 'images' || file.isImage || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name)) ? (
+                            {(file.category === 'images' || file.isImage || (!isWhatsAppAudio(file.name, file.type) && /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name))) ? (
                               <RecentImageCardPreview file={file} />
+                            ) : (file.category === 'audio' || (file as any).isAudio || Boolean((file as any).audioUrl) || isWhatsAppAudio(file.name, file.type) || /\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name)) ? (
+                              <AudioCardPreview track={file} />
                             ) : (file.category === 'videos' || Boolean(file.videoUrl) || /\.(mp4|mov|avi|webm|mkv)$/i.test(file.name)) ? (
                               <VideoCardPreview vid={file} />
                             ) : (file.category === 'documents' || /\.(pdf|docx?|xlsx?|pptx?|txt|csv)$/i.test(file.name)) ? (
                               <DocumentCardPreview doc={file} />
-                            ) : (file.category === 'audio' || Boolean(file.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name)) ? (
-                              <AudioCardPreview track={file} />
                             ) : file.previewUrl ? (
                               <img 
                                 src={file.previewUrl} 
@@ -13503,12 +13533,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                               />
                             ) : (
                               <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-3">
-                                {file.category === 'documents' && <FileText className="w-8 h-8 sm:w-10 sm:h-10 text-blue-400/85 stroke-[1.8]" />}
-                                {file.category === 'audio' && <Music className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400/85 stroke-[1.8]" />}
-                                {file.category === 'videos' && <Film className="w-8 h-8 sm:w-10 sm:h-10 text-purple-400/85 stroke-[1.8]" />}
-                                {file.category === 'downloads' && <Download className="w-8 h-8 sm:w-10 sm:h-10 text-sky-400/85 stroke-[1.8]" />}
-                                {file.category === 'images' && <ImageIcon className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-400/85 stroke-[1.8]" />}
-                                {file.category === 'apps' && <LayoutGrid className="w-8 h-8 sm:w-10 sm:h-10 text-pink-400/85 stroke-[1.8]" />}
+                                {(file.category === 'audio' || isWhatsAppAudio(file.name, file.type)) ? (
+                                  <Music className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400/85 stroke-[1.8]" />
+                                ) : file.category === 'videos' ? (
+                                  <Film className="w-8 h-8 sm:w-10 sm:h-10 text-purple-400/85 stroke-[1.8]" />
+                                ) : file.category === 'images' ? (
+                                  <ImageIcon className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-400/85 stroke-[1.8]" />
+                                ) : file.category === 'downloads' ? (
+                                  <Download className="w-8 h-8 sm:w-10 sm:h-10 text-sky-400/85 stroke-[1.8]" />
+                                ) : file.category === 'apps' ? (
+                                  <LayoutGrid className="w-8 h-8 sm:w-10 sm:h-10 text-pink-400/85 stroke-[1.8]" />
+                                ) : (
+                                  <FileText className="w-8 h-8 sm:w-10 sm:h-10 text-blue-400/85 stroke-[1.8]" />
+                                )}
                               </div>
                             )}
                           </div>

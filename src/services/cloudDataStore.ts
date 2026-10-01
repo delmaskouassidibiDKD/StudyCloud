@@ -442,11 +442,57 @@ export const CloudDataStore = {
             } as any as FileItem)),
             ...Object.values(currentState.folderFilesMap).flat()
           ];
-          if (currentState.overview?.recentFiles && currentState.overview.recentFiles.length > 0) {
-            currentState.recentFiles = currentState.overview.recentFiles.filter(isRecentEligible).slice(0, 6);
-          } else if (currentState.recentFiles && currentState.recentFiles.length > 0) {
-            currentState.recentFiles = currentState.recentFiles.filter(isRecentEligible).slice(0, 6);
+          // Agrégation intelligente et universelle des fichiers récents (cross-device, toutes catégories)
+          const parseTimeMs = (f: any): number => {
+            if (!f) return 0;
+            if (f.id && typeof f.id === 'string' && f.id.startsWith('cf-')) {
+              const parts = f.id.split('-');
+              for (const p of parts) {
+                const num = Number(p);
+                if (!isNaN(num) && num > 1000000000000) return num;
+              }
+            }
+            if (f.createdAt) {
+              const t = new Date(String(f.createdAt).replace(' ', 'T')).getTime();
+              if (!isNaN(t)) return t;
+            }
+            if (f.created_at) {
+              const t = new Date(String(f.created_at).replace(' ', 'T')).getTime();
+              if (!isNaN(t)) return t;
+            }
+            if (f.updatedAt) {
+              const t = new Date(String(f.updatedAt).replace(' ', 'T')).getTime();
+              if (!isNaN(t)) return t;
+            }
+            if (f.updated_at) {
+              const t = new Date(String(f.updated_at).replace(' ', 'T')).getTime();
+              if (!isNaN(t)) return t;
+            }
+            if (f.lastImported && typeof f.lastImported === 'number') return f.lastImported;
+            if (f.last_imported && typeof f.last_imported === 'number') return f.last_imported;
+            return 0;
+          };
+
+          const candidates = [
+            ...(currentState.overview?.recentFiles || []),
+            ...(currentState.recentFiles || []),
+            ...allCurrent
+          ];
+
+          const seenRecents = new Set<string>();
+          const dedupedRecents: FileItem[] = [];
+          for (const file of candidates) {
+            if (!file || !file.id) continue;
+            if (seenRecents.has(file.id)) continue;
+            if (!isRecentEligible(file)) continue;
+            if (isItemDeleted(file.id)) continue;
+            seenRecents.add(file.id);
+            dedupedRecents.push(file);
           }
+
+          currentState.recentFiles = dedupedRecents
+            .sort((a, b) => parseTimeMs(b) - parseTimeMs(a))
+            .slice(0, 6);
           const seen = new Set<string>();
           currentState.favorites = allCurrent
             .filter(f => currentState.favIdSet.has(f.id) || Boolean(f.isFavorite))
@@ -629,9 +675,7 @@ export const CloudDataStore = {
           CloudStorageAPI.getOverview().then(cloudOverview => {
             if (cloudOverview !== null) {
               currentState.overview = cloudOverview;
-              if (cloudOverview.recentFiles && Array.isArray(cloudOverview.recentFiles) && cloudOverview.recentFiles.length > 0) {
-                currentState.recentFiles = cloudOverview.recentFiles.filter(isNotLocallyDeleted).filter(isRecentEligible).slice(0, 6) as any;
-              }
+              refreshDerived();
               notify();
               persistToIndexedDB().catch(() => {});
             }
