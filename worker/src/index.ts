@@ -6535,11 +6535,11 @@ export default {
         } else if (thumbnailToSave) {
           finalThumbnailUrl = thumbnailToSave;
         } else {
-          finalThumbnailUrl = `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(fileId)}?userId=${encodeURIComponent(reqUserId)}`;
+          finalThumbnailUrl = '';
         }
 
         // Enregistrement dans media_thumbnails UNIQUEMENT pour les vidéos, documents et audio (pas les images)
-        if (env.DB && finalCategory !== 'images') {
+        if (env.DB && finalCategory !== 'images' && (thumbnailToSave || thumbR2Key)) {
           try {
             const thumbId = `${reqUserId}_${fileId}`;
             await env.DB.prepare(`
@@ -6560,7 +6560,7 @@ export default {
               finalCategory,
               thumbR2Key,
               finalThumbnailUrl,
-              thumbnailToSave.length > 5000 ? '' : thumbnailToSave,
+              thumbnailToSave.length > 500000 ? '' : thumbnailToSave,
               sizeBytes
             ).run();
           } catch (e) {}
@@ -6636,7 +6636,16 @@ export default {
                   size_bytes = excluded.size_bytes,
                   r2_key = excluded.r2_key,
                   audio_url = excluded.audio_url,
-                  cover_url = COALESCE(excluded.cover_url, audio_files.cover_url),
+                  artist = CASE
+                    WHEN audio_files.artist IS NOT NULL AND audio_files.artist != '' AND audio_files.artist != 'Artiste inconnu'
+                    THEN audio_files.artist
+                    ELSE excluded.artist
+                  END,
+                  cover_url = CASE
+                    WHEN excluded.cover_url IS NOT NULL AND excluded.cover_url != '' AND excluded.cover_url NOT LIKE 'blob:%'
+                    THEN excluded.cover_url
+                    ELSE audio_files.cover_url
+                  END,
                   updated_at = CURRENT_TIMESTAMP
               `).bind(fileId, reqUserId, fileName, fileName, sizeFormatted, sizeBytes, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
 
@@ -6649,11 +6658,16 @@ export default {
                     size = excluded.size,
                     r2_key = COALESCE(excluded.r2_key, files.r2_key),
                     file_url = excluded.file_url,
-                    thumbnail_url = COALESCE(excluded.thumbnail_url, files.thumbnail_url),
+                    thumbnail_url = CASE
+                      WHEN excluded.thumbnail_url IS NOT NULL AND excluded.thumbnail_url != '' AND excluded.thumbnail_url NOT LIKE 'blob:%'
+                      THEN excluded.thumbnail_url
+                      ELSE files.thumbnail_url
+                    END,
                     last_imported = excluded.last_imported,
                     updated_at = CURRENT_TIMESTAMP
                 `).bind(fileId, reqUserId, fileName, sizeBytes, extUpper, storageKey, fileUrl, finalThumbnailUrl, Date.now()).run();
               } catch (e) {}
+
             } else if (finalCategory === 'documents') {
               await env.DB.prepare(`
                 INSERT INTO document_files (id, user_id, name, size, size_bytes, extension, document_category, date_formatted, r2_key, file_url, preview_url, updated_at)

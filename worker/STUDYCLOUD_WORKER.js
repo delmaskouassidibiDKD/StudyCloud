@@ -5502,9 +5502,9 @@ var index_default = {
         } else if (thumbnailToSave) {
           finalThumbnailUrl = thumbnailToSave;
         } else {
-          finalThumbnailUrl = `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(fileId)}?userId=${encodeURIComponent(reqUserId)}`;
+          finalThumbnailUrl = "";
         }
-        if (env.DB && finalCategory !== "images") {
+        if (env.DB && finalCategory !== "images" && (thumbnailToSave || thumbR2Key)) {
           try {
             const thumbId = `${reqUserId}_${fileId}`;
             await env.DB.prepare(`
@@ -5525,7 +5525,7 @@ var index_default = {
               finalCategory,
               thumbR2Key,
               finalThumbnailUrl,
-              thumbnailToSave.length > 5e3 ? "" : thumbnailToSave,
+              thumbnailToSave.length > 5e5 ? "" : thumbnailToSave,
               sizeBytes
             ).run();
           } catch (e) {
@@ -5602,7 +5602,16 @@ var index_default = {
                   size_bytes = excluded.size_bytes,
                   r2_key = excluded.r2_key,
                   audio_url = excluded.audio_url,
-                  cover_url = COALESCE(excluded.cover_url, audio_files.cover_url),
+                  artist = CASE
+                    WHEN audio_files.artist IS NOT NULL AND audio_files.artist != '' AND audio_files.artist != 'Artiste inconnu'
+                    THEN audio_files.artist
+                    ELSE excluded.artist
+                  END,
+                  cover_url = CASE
+                    WHEN excluded.cover_url IS NOT NULL AND excluded.cover_url != '' AND excluded.cover_url NOT LIKE 'blob:%'
+                    THEN excluded.cover_url
+                    ELSE audio_files.cover_url
+                  END,
                   updated_at = CURRENT_TIMESTAMP
               `).bind(fileId, reqUserId, fileName, fileName, sizeFormatted, sizeBytes, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
               try {
@@ -5614,7 +5623,11 @@ var index_default = {
                     size = excluded.size,
                     r2_key = COALESCE(excluded.r2_key, files.r2_key),
                     file_url = excluded.file_url,
-                    thumbnail_url = COALESCE(excluded.thumbnail_url, files.thumbnail_url),
+                    thumbnail_url = CASE
+                      WHEN excluded.thumbnail_url IS NOT NULL AND excluded.thumbnail_url != '' AND excluded.thumbnail_url NOT LIKE 'blob:%'
+                      THEN excluded.thumbnail_url
+                      ELSE files.thumbnail_url
+                    END,
                     last_imported = excluded.last_imported,
                     updated_at = CURRENT_TIMESTAMP
                 `).bind(fileId, reqUserId, fileName, sizeBytes, extUpper, storageKey, fileUrl, finalThumbnailUrl, Date.now()).run();
