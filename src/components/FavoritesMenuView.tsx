@@ -26,8 +26,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
-  Pin
+  Pin,
+  Link
 } from 'lucide-react';
+import { handleNativeShare } from '../utils/nativeShare';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore, FileItem, isItemDeleted } from '../services/cloudDataStore';
 import { useFavoritesList } from '../hooks/useCloudQueries';
@@ -365,17 +367,37 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           <span>Ouvrir dans l'espace</span>
         </button>
 
+        <button
+          type="button"
+          onClick={() => {
+            handleNativeShare(file, showToast);
+            setActiveMenuFileId(null);
+          }}
+          className="w-full text-left px-3.5 py-2 hover:bg-white/10 flex items-center gap-2.5 text-slate-200 transition-colors cursor-pointer"
+        >
+          <Share2 className="w-3.5 h-3.5 text-blue-400" />
+          <span>Partager</span>
+        </button>
+
         {onOpenCreateShareLink && (
           <button
             type="button"
             onClick={() => {
-              onOpenCreateShareLink([file]);
+              onOpenCreateShareLink([{
+                id: file.id,
+                name: file.name,
+                size: file.sizeBytes || 0,
+                type: file.extension || file.category || 'file',
+                url: file.previewUrl || file.url,
+                category: file.category,
+                extension: file.extension
+              }]);
               setActiveMenuFileId(null);
             }}
             className="w-full text-left px-3.5 py-2 hover:bg-white/10 flex items-center gap-2.5 text-slate-200 transition-colors cursor-pointer"
           >
-            <Share2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Partager le fichier</span>
+            <Link className="w-3.5 h-3.5 text-sky-400" />
+            <span>Créer un lien</span>
           </button>
         )}
 

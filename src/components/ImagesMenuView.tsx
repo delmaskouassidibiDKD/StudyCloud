@@ -48,6 +48,7 @@ import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
 import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
 import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../services/fileTypeValidator';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
+import { handleNativeShare } from '../utils/nativeShare';
 
 interface ImagesMenuViewProps {
   onBack: () => void;
@@ -569,22 +570,9 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     showToast(`Téléchargement de "${img.name}"`);
   };
 
-  // Partager
+  // Partager (Partage normal WhatsApp, Web Share ou réseaux)
   const handleShare = (img: FileItem) => {
-    if (onOpenCreateShareLink) {
-      onOpenCreateShareLink([{
-        id: img.id,
-        name: img.name,
-        size: img.sizeBytes || 0,
-        type: img.extension || 'image',
-        url: img.previewUrl || img.url,
-        isImage: true,
-        category: 'images',
-        extension: img.extension
-      }]);
-    } else {
-      showToast('Partage StudyCloud');
-    }
+    handleNativeShare(img, showToast);
   };
 
   // Calcul dynamique de l'espace occupé par les images

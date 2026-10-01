@@ -49,6 +49,7 @@ import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
 import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
 import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../services/fileTypeValidator';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
+import { handleNativeShare } from '../utils/nativeShare';
 
 interface VideosMenuViewProps {
   onBack: () => void;
@@ -582,21 +583,9 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     showToast(`Téléchargement de "${vid.name}"`);
   };
 
-  // Partager
+  // Partager (Partage normal WhatsApp, Web Share ou réseaux)
   const handleShare = (vid: FileItem) => {
-    if (onOpenCreateShareLink) {
-      onOpenCreateShareLink([{
-        id: vid.id,
-        name: vid.name,
-        size: vid.sizeBytes || 0,
-        type: vid.extension || 'MP4',
-        url: vid.videoUrl || vid.url,
-        category: 'videos',
-        extension: vid.extension
-      }]);
-    } else {
-      showToast('Partage StudyCloud');
-    }
+    handleNativeShare(vid, showToast);
   };
 
   // Calcul dynamique de l'espace occupé par les vidéos

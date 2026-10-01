@@ -54,6 +54,7 @@ import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
 import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
 import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../services/fileTypeValidator';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
+import { handleNativeShare } from '../utils/nativeShare';
 
 interface AudioMenuViewProps {
   onBack: () => void;
@@ -826,21 +827,9 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     showToast(`Téléchargement de "${track.name}"`);
   };
 
-  // Partager
+  // Partager (Partage normal WhatsApp, Web Share ou réseaux)
   const handleShare = (track: FileItem) => {
-    if (onOpenCreateShareLink) {
-      onOpenCreateShareLink([{
-        id: track.id,
-        name: track.name,
-        size: track.sizeBytes || 0,
-        type: track.extension || 'MP3',
-        url: track.audioUrl || track.url,
-        category: 'audio',
-        extension: track.extension
-      }]);
-    } else {
-      showToast('Partage StudyCloud');
-    }
+    handleNativeShare(track, showToast);
   };
 
   // Calcul dynamique de l'espace occupé par les fichiers audio

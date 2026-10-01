@@ -43,6 +43,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { CloudDataStore, FileItem, isItemDeleted, markItemDeleted } from '../services/cloudDataStore';
+import { handleNativeShare } from '../utils/nativeShare';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { getFileBlobUrl, deleteFileBlob } from '../services/localFileStorage';
 import { parseSizeToBytes } from './HeaderMenuControls';
@@ -500,17 +501,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   };
 
   const handleShareFile = (file: FileItem) => {
-    if (onOpenCreateShareLink) {
-      onOpenCreateShareLink([file]);
-      return;
-    }
-    const link = `${window.location.origin}${window.location.pathname}#file-${encodeURIComponent(file.id)}`;
-    try {
-      navigator.clipboard?.writeText(link);
-      showToast('Lien de partage copié dans le presse-papiers !');
-    } catch {
-      showToast(`Lien créé pour "${file.name}"`);
-    }
+    handleNativeShare(file, showToast);
   };
 
   const handleConfirmRename = () => {
@@ -1731,20 +1722,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   };
 
   const handleShare = (file: FileItem) => {
-    if (onOpenCreateShareLink) {
-      onOpenCreateShareLink([file]);
-      return;
-    }
-    if (navigator.share) {
-      navigator.share({
-        title: file.name,
-        text: `Consulter le document : ${file.name}`,
-        url: window.location.href
-      }).catch(() => {});
-    } else {
-      navigator.clipboard?.writeText(window.location.href);
-      showToast('Lien copié dans le presse-papiers');
-    }
+    handleNativeShare(file, showToast);
   };
 
   // Liste des fichiers ordonnée pour la navigation Précédent / Suivant

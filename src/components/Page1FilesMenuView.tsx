@@ -145,6 +145,7 @@ import {
   HeaderMenuControls,
   parseSizeToBytes
 } from './HeaderMenuControls';
+import { handleNativeShare } from '../utils/nativeShare';
 
 // Nettoyage immédiat de tout fichier figé en localStorage pour éviter le plantage QuotaExceededError
 if (typeof window !== 'undefined') {
@@ -3187,24 +3188,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     showToast(`Téléchargement de "${file.name}" en cours...`);
   };
 
-  // Partage de fichier
+  // Partage de fichier (Partage normal WhatsApp, Web Share ou réseaux)
   const handleShareFile = async (file: FileItem) => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: file.name,
-          text: `Fichier StudyCloud : ${file.name}`
-        });
-        showToast('Partage réussi !');
-        return;
-      } catch (e) {}
-    }
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      showToast('Lien copié dans le presse-papier !');
-    } catch (e) {
-      showToast(`Partage de ${file.name}`);
-    }
+    await handleNativeShare(file, showToast);
   };
 
   // Calcul du nouveau nom de duplication avec incrémentation numérique (ex: noté 2., 3.. ou nom 2, nom 3)

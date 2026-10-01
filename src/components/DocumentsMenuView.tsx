@@ -53,6 +53,7 @@ import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
 import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
 import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../services/fileTypeValidator';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
+import { handleNativeShare } from '../utils/nativeShare';
 
 interface DocumentsMenuViewProps {
   onBack: () => void;
@@ -681,21 +682,9 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     showToast(`Téléchargement de "${doc.name}"`);
   };
 
-  // Partager
+  // Partager (Partage normal WhatsApp, Web Share ou réseaux)
   const handleShare = (doc: FileItem) => {
-    if (onOpenCreateShareLink) {
-      onOpenCreateShareLink([{
-        id: doc.id,
-        name: doc.name,
-        size: doc.sizeBytes || 0,
-        type: doc.extension || 'PDF',
-        url: doc.previewUrl || doc.url,
-        category: 'documents',
-        extension: doc.extension
-      }]);
-    } else {
-      showToast('Partage StudyCloud');
-    }
+    handleNativeShare(doc, showToast);
   };
 
   // Traitement universel des 12 actions du menu contextuel dédié (Image 2)
