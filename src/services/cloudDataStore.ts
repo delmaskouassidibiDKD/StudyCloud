@@ -797,6 +797,14 @@ export const CloudDataStore = {
     }
     persistToIndexedDB().catch(() => {});
     notify();
+    try {
+      if (cat === 'audio') invalidateCloudQueries.audio();
+      else if (cat === 'videos') invalidateCloudQueries.videos();
+      else if (cat === 'images') invalidateCloudQueries.images();
+      else if (cat === 'documents') invalidateCloudQueries.documents();
+      if (folderId) invalidateCloudQueries.classeurFiles(folderId);
+      invalidateCloudQueries.overview();
+    } catch {}
   },
 
   updateFile(fileIdOrItem: string | (Partial<FileItem> & { id: string }), maybeUpdates?: Partial<FileItem>, maybeFolderId?: string) {

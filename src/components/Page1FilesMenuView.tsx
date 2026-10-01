@@ -114,6 +114,7 @@ import { CloudDataStore, isRecentEligible } from '../services/cloudDataStore';
 import { LocalSyncReplication } from '../services/localSyncReplication';
 import { UploadQueue } from '../services/uploadQueue';
 import { UploadQueueWidget } from './UploadQueueWidget';
+import { invalidateCloudQueries } from '../services/queryClient';
 import { compressFile } from '../utils/fileCompressor';
 import {
   detectFileCategory,
@@ -2439,6 +2440,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       folderName,
       uploadSource
     });
+    try {
+      invalidateCloudQueries.all();
+    } catch {}
 
     if (rejectedFiles.length === 0) {
       showProfileToast(`${validFiles.length} fichier(s) importé(s) dans ${CATEGORY_LABELS[targetCategory]} !`, 'success');
@@ -2647,6 +2651,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     startSavingAnimation(fileIds);
     UploadQueue.enqueueExisting(newItemsWithFiles);
+    try {
+      invalidateCloudQueries.all();
+    } catch {}
 
     const counts = { images: 0, videos: 0, audio: 0, documents: 0 };
     newItems.forEach(item => {

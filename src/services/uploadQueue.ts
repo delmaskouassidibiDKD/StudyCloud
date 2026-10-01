@@ -92,12 +92,12 @@ class UploadQueueManager {
       }
     });
 
-    // Auto-masquer les fichiers terminés après 10 secondes si tous les uploads sont finis
+    // Auto-masquer les fichiers terminés après 30 secondes pour laisser le temps de consulter les liens
     if (!state.isProcessing && state.completedCount > 0) {
       if (this.autoClearTimeout) clearTimeout(this.autoClearTimeout);
       this.autoClearTimeout = setTimeout(() => {
         this.clearCompleted();
-      }, 10000);
+      }, 30000);
     }
   }
 
@@ -394,6 +394,7 @@ class UploadQueueManager {
         else if (category === 'documents') invalidateCloudQueries.documents();
         else if (category === 'classeur') invalidateCloudQueries.classeurFiles(folderId);
         invalidateCloudQueries.overview();
+        invalidateCloudQueries.all();
       } catch {}
 
       // Déclencher un événement global pour tout listener de mise à jour
