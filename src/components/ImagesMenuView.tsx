@@ -36,7 +36,7 @@ import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
 import { useImagesList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
-import { storeFileBlob, getFileBlobUrl, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
+import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
 import { compressFile, formatBytes } from '../utils/fileCompressor';
 import { setCachedMediaThumbnail, getCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { FileItem } from './Page1FilesMenuView';
@@ -499,7 +499,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     }
     CloudDataStore.removeFile(img.id);
     deleteFileBlob(img.id).catch(() => {});
-    await CloudStorageAPI.deleteImage(img.id).catch(() => {});
+    await CloudStorageAPI.deleteImage(img.id, img.name).catch(() => {});
     invalidateCloudQueries.images().catch(() => {});
     invalidateCloudQueries.overview().catch(() => {});
     showToast(`"${img.name}" supprimée`);
@@ -683,16 +683,24 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       case 'duplicate': {
         const existingNames = imagesList.map(i => i.name);
         const newName = computeDuplicateName(img.name, existingNames);
+        const newImgId = `img-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
         const newImg: FileItem = {
           ...img,
-          id: `img-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          id: newImgId,
           name: newName,
           date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
           isPinned: false
         };
         setImagesList(prev => [newImg, ...prev]);
-        CloudDataStore.setImages([newImg, ...imagesList] as any);
-        CloudStorageAPI.duplicateItem(img.id, 'images', undefined, newName).catch(console.error);
+        CloudDataStore.addOptimisticFile(newImg);
+        // Cloner le blob IndexedDB de manière indépendante pour éviter toute suppression partagée
+        getFileBlob(img.id).then(blob => {
+          if (blob) storeFileBlob(newImgId, blob).catch(() => {});
+        }).catch(() => {});
+        CloudStorageAPI.duplicateItem(img.id, 'images', undefined, newName, newImgId).then(() => {
+          invalidateCloudQueries.images().catch(() => {});
+          invalidateCloudQueries.overview().catch(() => {});
+        }).catch(console.error);
         showToast(`Image dupliquée : "${newName}" !`);
         break;
       }

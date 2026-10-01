@@ -41,7 +41,7 @@ import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
 import { useAudioList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
-import { storeFileBlob, getFileBlobUrl, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
+import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
 import { compressFile } from '../utils/fileCompressor';
 import { extractAudioCover, generateAudioCreatorCover, extractAudioMetadataWithTags, setCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { FileItem } from './Page1FilesMenuView';
@@ -671,7 +671,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
     CloudDataStore.moveToTrash(fileWithSource as any);
     deleteFileBlob(track.id).catch(() => {});
-    await CloudStorageAPI.deleteAudio(track.id).catch(() => {});
+    await CloudStorageAPI.deleteAudio(track.id, track.name).catch(() => {});
     invalidateCloudQueries.audio().catch(() => {});
     invalidateCloudQueries.overview().catch(() => {});
     showToast(`"${track.name}" supprimé`);
@@ -848,16 +848,24 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       case 'duplicate': {
         const existingNames = audioList.map(t => t.name);
         const newName = computeDuplicateName(track.name, existingNames);
+        const newTrackId = `aud-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
         const newTrack: FileItem = {
           ...track,
-          id: `aud-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          id: newTrackId,
           name: newName,
           date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
           isPinned: false
         };
         setAudioList(prev => [newTrack, ...prev]);
-        CloudDataStore.setAudio([newTrack, ...audioList] as any);
-        CloudStorageAPI.duplicateItem(track.id, 'audio', undefined, newName).catch(console.error);
+        CloudDataStore.addOptimisticFile(newTrack);
+        // Cloner le blob IndexedDB de manière indépendante pour éviter toute suppression partagée
+        getFileBlob(track.id).then(blob => {
+          if (blob) storeFileBlob(newTrackId, blob).catch(() => {});
+        }).catch(() => {});
+        CloudStorageAPI.duplicateItem(track.id, 'audio', undefined, newName, newTrackId).then(() => {
+          invalidateCloudQueries.audio().catch(() => {});
+          invalidateCloudQueries.overview().catch(() => {});
+        }).catch(console.error);
         showToast(`Son dupliqué : "${newName}" !`);
         break;
       }
@@ -2341,8 +2349,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               // 4. Supprimer du stockage local et du Cloud
               for (const t of toDelete) {
                 deleteFileBlob(t.id).catch(() => {});
-                CloudStorageAPI.deleteAudio(t.id).catch(() => {});
+                CloudStorageAPI.deleteAudio(t.id, t.name).catch(() => {});
               }
+              invalidateCloudQueries.audio().catch(() => {});
+              invalidateCloudQueries.overview().catch(() => {});
               showToast(`${toDelete.length} son(s) supprimé(s)`);
             }}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 font-semibold cursor-pointer"

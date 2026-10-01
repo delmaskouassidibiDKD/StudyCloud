@@ -612,7 +612,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     setSelectedItemIds(prev => prev.filter(id => id !== doc.id));
     CloudDataStore.removeFile(doc.id);
     deleteFileBlob(doc.id).catch(() => {});
-    await CloudStorageAPI.deleteDocument(doc.id).catch(() => {});
+    await CloudStorageAPI.deleteDocument(doc.id, doc.name).catch(() => {});
     invalidateCloudQueries.documents().catch(() => {});
     invalidateCloudQueries.overview().catch(() => {});
     showToast(`"${doc.name}" supprimé`);
@@ -746,16 +746,24 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       case 'duplicate': {
         const existingNames = documentsList.map(d => d.name);
         const newName = computeDuplicateName(doc.name, existingNames);
+        const newDocId = `doc-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
         const newDoc: FileItem = {
           ...doc,
-          id: `doc-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          id: newDocId,
           name: newName,
           date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
           isPinned: false
         };
         setDocumentsList(prev => [newDoc, ...prev]);
-        CloudDataStore.setDocuments([newDoc, ...documentsList] as any);
-        CloudStorageAPI.duplicateItem(doc.id, 'documents', undefined, newName).catch(console.error);
+        CloudDataStore.addOptimisticFile(newDoc);
+        // Cloner le blob IndexedDB de manière indépendante pour éviter toute suppression partagée
+        getFileBlob(doc.id).then(blob => {
+          if (blob) storeFileBlob(newDocId, blob).catch(() => {});
+        }).catch(() => {});
+        CloudStorageAPI.duplicateItem(doc.id, 'documents', undefined, newName, newDocId).then(() => {
+          invalidateCloudQueries.documents().catch(() => {});
+          invalidateCloudQueries.overview().catch(() => {});
+        }).catch(console.error);
         showToast(`Document dupliqué : "${newName}" !`);
         break;
       }

@@ -305,10 +305,12 @@ export const CloudStorageAPI = {
     }
   },
 
-  async deleteClasseurFile(fileId: string): Promise<boolean> {
+  async deleteClasseurFile(fileId: string, name?: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/classeur/files?id=${encodeURIComponent(fileId)}&userId=${getUserIdParam()}`, {
+      let url = `${baseUrl}/api/cloud/classeur/files?id=${encodeURIComponent(fileId)}&userId=${getUserIdParam()}`;
+      if (name) url += `&name=${encodeURIComponent(name)}`;
+      const res = await fetchWithTimeout(url, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -366,10 +368,12 @@ export const CloudStorageAPI = {
     }
   },
 
-  async deleteAudio(id: string): Promise<boolean> {
+  async deleteAudio(id: string, name?: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/audio?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`, {
+      let url = `${baseUrl}/api/cloud/audio?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`;
+      if (name) url += `&name=${encodeURIComponent(name)}`;
+      const res = await fetchWithTimeout(url, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -414,10 +418,12 @@ export const CloudStorageAPI = {
     }
   },
 
-  async deleteImage(id: string): Promise<boolean> {
+  async deleteImage(id: string, name?: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/images?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`, {
+      let url = `${baseUrl}/api/cloud/images?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`;
+      if (name) url += `&name=${encodeURIComponent(name)}`;
+      const res = await fetchWithTimeout(url, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -473,10 +479,12 @@ export const CloudStorageAPI = {
     }
   },
 
-  async deleteVideo(id: string): Promise<boolean> {
+  async deleteVideo(id: string, name?: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/videos?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`, {
+      let url = `${baseUrl}/api/cloud/videos?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`;
+      if (name) url += `&name=${encodeURIComponent(name)}`;
+      const res = await fetchWithTimeout(url, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -521,10 +529,12 @@ export const CloudStorageAPI = {
     }
   },
 
-  async deleteDocument(id: string): Promise<boolean> {
+  async deleteDocument(id: string, name?: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/documents?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`, {
+      let url = `${baseUrl}/api/cloud/documents?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`;
+      if (name) url += `&name=${encodeURIComponent(name)}`;
+      const res = await fetchWithTimeout(url, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -569,10 +579,12 @@ export const CloudStorageAPI = {
     }
   },
 
-  async deleteDownload(id: string): Promise<boolean> {
+  async deleteDownload(id: string, name?: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/downloads?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`, {
+      let url = `${baseUrl}/api/cloud/downloads?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`;
+      if (name) url += `&name=${encodeURIComponent(name)}`;
+      const res = await fetchWithTimeout(url, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -1143,13 +1155,13 @@ export const CloudStorageAPI = {
   // --------------------------------------------------------------------------
   // 13. DUPLIQUER (/api/cloud/duplicate)
   // --------------------------------------------------------------------------
-  async duplicateItem(id: string, category: string, folderId?: string, name?: string): Promise<any> {
+  async duplicateItem(id: string, category: string, folderId?: string, name?: string, newId?: string): Promise<any> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const res = await fetchWithTimeout(`${baseUrl}/api/cloud/duplicate?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ id, category, folderId, name }),
+        body: JSON.stringify({ id, category, folderId, name, newId }),
       });
       if (!res.ok) return null;
       const json = await res.json();
@@ -1197,20 +1209,20 @@ export const CloudStorageAPI = {
     }
   },
 
-  async moveToTrash(itemId: string, category: string = 'documents', folderId?: string): Promise<boolean> {
+  async moveToTrash(itemId: string, category: string = 'documents', folderId?: string, name?: string): Promise<boolean> {
     try {
       if (category === 'classeur' || folderId) {
-        return await this.deleteClasseurFile(itemId, folderId);
+        return await this.deleteClasseurFile(itemId, name);
       } else if (category === 'images') {
-        return await this.deleteImage(itemId);
+        return await this.deleteImage(itemId, name);
       } else if (category === 'videos') {
-        return await this.deleteVideo(itemId);
+        return await this.deleteVideo(itemId, name);
       } else if (category === 'audio') {
-        return await this.deleteAudio(itemId);
+        return await this.deleteAudio(itemId, name);
       } else if (category === 'downloads') {
-        return await this.deleteDownload(itemId);
+        return await this.deleteDownload(itemId, name);
       } else {
-        return await this.deleteDocument(itemId);
+        return await this.deleteDocument(itemId, name);
       }
     } catch (e) {
       console.error('[CloudStorageAPI] moveToTrash error:', e);

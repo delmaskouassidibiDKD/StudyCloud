@@ -36,7 +36,7 @@ import { CloudStorageAPI } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
 import { useVideosList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
-import { storeFileBlob, getFileBlobUrl, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
+import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
 import { compressFile, formatBytes } from '../utils/fileCompressor';
 import { generateVideoThumbnail, setCachedMediaThumbnail, getCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { FileItem } from './Page1FilesMenuView';
@@ -512,7 +512,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     setSelectedItemIds(prev => prev.filter(id => id !== vid.id));
     CloudDataStore.moveToTrash(fileWithSource as any);
     deleteFileBlob(vid.id).catch(() => {});
-    await CloudStorageAPI.deleteVideo(vid.id).catch(() => {});
+    await CloudStorageAPI.deleteVideo(vid.id, vid.name).catch(() => {});
     invalidateCloudQueries.videos().catch(() => {});
     invalidateCloudQueries.overview().catch(() => {});
     showToast(`"${vid.name}" supprimé`);
@@ -708,16 +708,24 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       case 'duplicate': {
         const existingNames = videosList.map(v => v.name);
         const newName = computeDuplicateName(vid.name, existingNames);
+        const newVidId = `vid-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
         const newVid: FileItem = {
           ...vid,
-          id: `vid-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          id: newVidId,
           name: newName,
           date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
           isPinned: false
         };
         setVideosList(prev => [newVid, ...prev]);
-        CloudDataStore.setVideos([newVid, ...videosList] as any);
-        CloudStorageAPI.duplicateItem(vid.id, 'videos', undefined, newName).catch(console.error);
+        CloudDataStore.addOptimisticFile(newVid);
+        // Cloner le blob IndexedDB de manière indépendante pour éviter toute suppression partagée
+        getFileBlob(vid.id).then(blob => {
+          if (blob) storeFileBlob(newVidId, blob).catch(() => {});
+        }).catch(() => {});
+        CloudStorageAPI.duplicateItem(vid.id, 'videos', undefined, newName, newVidId).then(() => {
+          invalidateCloudQueries.videos().catch(() => {});
+          invalidateCloudQueries.overview().catch(() => {});
+        }).catch(console.error);
         showToast(`Vidéo dupliquée : "${newName}" !`);
         break;
       }

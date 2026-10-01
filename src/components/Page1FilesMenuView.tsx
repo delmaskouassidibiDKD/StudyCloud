@@ -3208,17 +3208,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
         // Appel API Cloudflare D1 pour persister dans trash_files et supprimer de la table active
         if (opened3DFolder || file.originalFolderId || (file as any).folderId) {
-          CloudStorageAPI.deleteClasseurFile(file.id).catch(console.error);
+          CloudStorageAPI.deleteClasseurFile(file.id, file.name).catch(console.error);
         } else if (file.category === 'images' || file.isImage) {
-          CloudStorageAPI.deleteImage(file.id).catch(console.error);
+          CloudStorageAPI.deleteImage(file.id, file.name).catch(console.error);
         } else if (file.category === 'videos' || file.videoUrl) {
-          CloudStorageAPI.deleteVideo(file.id).catch(console.error);
+          CloudStorageAPI.deleteVideo(file.id, file.name).catch(console.error);
         } else if (file.category === 'audio' || file.audioUrl) {
-          CloudStorageAPI.deleteAudio(file.id).catch(console.error);
+          CloudStorageAPI.deleteAudio(file.id, file.name).catch(console.error);
         } else if (file.category === 'downloads') {
-          CloudStorageAPI.deleteDownload(file.id).catch(console.error);
+          CloudStorageAPI.deleteDownload(file.id, file.name).catch(console.error);
         } else {
-          CloudStorageAPI.deleteDocument(file.id).catch(console.error);
+          CloudStorageAPI.deleteDocument(file.id, file.name).catch(console.error);
         }
 
         showToast(`"${file.name}" déplacé dans la corbeille !`);
@@ -3343,9 +3343,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       case 'duplicate': {
         const currentNames = currentCategoryList.map(f => f.name);
         const newName = computeDuplicateName(file.name, currentNames);
+        const newFileId = `${file.category || 'item'}-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
         const newFile: FileItem = {
           ...file,
-          id: `${file.category || 'item'}-dup-${Date.now()}`,
+          id: newFileId,
           name: newName,
           date: "Aujourd'hui, " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           isPinned: false
@@ -3367,8 +3368,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             [opened3DFolder.id]: [newFile, ...(prev[opened3DFolder.id] || [])]
           }));
         }
-        // Écriture du doublon dans la table D1 correspondante
-        CloudStorageAPI.duplicateItem(file.id, file.category, opened3DFolder?.id, newName).catch(console.error);
+        CloudDataStore.addOptimisticFile(newFile, opened3DFolder?.id);
+        // Cloner le blob IndexedDB de manière indépendante pour éviter toute suppression partagée
+        getFileBlob(file.id).then(blob => {
+          if (blob) storeFileBlob(newFileId, blob).catch(() => {});
+        }).catch(() => {});
+        // Écriture du doublon dans la table D1 correspondante avec le même ID
+        CloudStorageAPI.duplicateItem(file.id, file.category, opened3DFolder?.id, newName, newFileId).then(() => {
+          if (opened3DFolder?.id) invalidateCloudQueries.classeurFiles(opened3DFolder.id).catch(() => {});
+          invalidateCloudQueries.overview().catch(() => {});
+        }).catch(console.error);
         showToast(`Fichier dupliqué : "${newFile.name}" !`);
         break;
       }
@@ -6025,9 +6034,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       case 'duplicate': {
         const existingNames = classeur3DFolders.map(f => f.name);
         const newName = computeDuplicateName(folder.name, existingNames);
+        const newFolderId = `c3d-dup-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
         const duplicatedFolder: ClasseurCreatedFolder = {
           ...folder,
-          id: `c3d-dup-${Date.now()}`,
+          id: newFolderId,
           name: newName,
           createdAt: Date.now(),
           isPinned: false
@@ -6038,8 +6048,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           ...prev,
           [duplicatedFolder.id]: []
         }));
-        // Sauvegarde de la copie du dossier dans Cloudflare D1
-        CloudStorageAPI.duplicateItem(folder.id, 'classeur_folder', undefined, newName).catch(console.error);
+        CloudDataStore.addClasseurFolder(duplicatedFolder);
+        // Sauvegarde de la copie du dossier dans Cloudflare D1 avec le même ID
+        CloudStorageAPI.duplicateItem(folder.id, 'classeur_folder', undefined, newName, newFolderId).then(() => {
+          invalidateCloudQueries.classeurFolders().catch(() => {});
+        }).catch(console.error);
         showToast(`Dossier dupliqué : "${duplicatedFolder.name}" !`);
         break;
       }
