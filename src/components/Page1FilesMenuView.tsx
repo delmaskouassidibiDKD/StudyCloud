@@ -11531,13 +11531,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         <div className="flex-1 flex flex-col w-full animate-in fade-in duration-200 min-h-screen">
           
           {/* EN-TÊTE DU SOUS-MENU */}
-          <div className={`sticky top-0 z-30 w-full bg-[#04060A] backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-white/30 shadow-xs ${
+          <div className={`sticky top-0 z-30 w-full bg-white backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-stone-200 shadow-xs ${
             isViewerMaximized ? 'hidden' : ''
           }`}>
             {(opened3DFolder && !isCloudView) ? (
-              /* EN-TÊTE DU DOSSIER 3D OUVERT (Conforme à l'écran 1 : Retour + Importer à gauche, Nom au milieu collé à l'en-tête sur la ligne horizontale) */
+              /* EN-TÊTE DU DOSSIER 3D OUVERT (Conforme à la demande : bande blanche, boutons noirs et champ en noir) */
               <div className="w-full flex items-center justify-between gap-2 sm:gap-4 animate-in fade-in duration-150">
-                {/* GAUCHE : Bouton Retour et Bouton Importer (style exact de Mes dossiers / Mes fichiers de l'écran 1) */}
+                {/* GAUCHE : Bouton Retour rond noir et Bouton Importer pilule noir */}
                 <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                   <button
                     type="button"
@@ -11553,25 +11553,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       setSplitSelectedFile(null);
                       setSubSearchQuery('');
                     }}
-                    className="flex items-center gap-1 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[11px] sm:text-xs rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+                    className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
                     title={opened3DFolder.parentId ? "Retour au dossier parent" : "Retour aux dossiers du classeur"}
+                    aria-label="Retour"
                   >
-                    <ArrowLeft className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-white" />
-                    <span>Retour</span>
+                    <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
                   </button>
 
                   <button
                     type="button"
                     onClick={() => folderFileInputRef.current?.click()}
-                    className="flex items-center gap-1 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[11px] sm:text-xs rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+                    className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-orange-400/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black"
                     title="Importer des fichiers dans ce dossier"
                   >
-                    <Upload className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-white" />
-                    <span>Importer</span>
+                    <Plus className="w-4 h-4 text-orange-400 stroke-[2.5]" />
+                    <span className="hidden xs:inline">Importer</span>
                   </button>
                 </div>
 
-                {/* MILIEU : Nom du dossier avec la couleur du dossier ouvert, et fil d'Ariane parent transparent si dossier dans un dossier */}
+                {/* MILIEU : Nom du dossier avec la couleur du dossier ouvert, et fil d'Ariane parent */}
                 <div className="flex-1 flex justify-center items-center px-1 min-w-0">
                   {opened3DFolder.parentId ? (() => {
                     const parentFolder = classeur3DFolders.find(f => f.id === opened3DFolder.parentId);
@@ -11587,18 +11587,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                               setSplitSelectedFile(null);
                               setSubSearchQuery('');
                             }}
-                            className="font-sans text-xs sm:text-sm font-bold text-stone-800 dark:text-stone-200 bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 px-2.5 sm:px-3 py-1 rounded-lg border-2 border-dashed border-stone-600/60 dark:border-stone-400/60 shadow-xs truncate max-w-[120px] sm:max-w-[160px] text-center cursor-pointer transition-all active:scale-95 flex items-center gap-1"
+                            className="font-sans text-xs sm:text-sm font-bold text-stone-800 bg-stone-100 hover:bg-stone-200 px-2.5 sm:px-3 py-1 rounded-xl border border-stone-300 shadow-xs truncate max-w-[120px] sm:max-w-[160px] text-center cursor-pointer transition-all active:scale-95 flex items-center gap-1"
                             title={`Retourner au dossier parent « ${parentFolder.name} »`}
                           >
                             <span className="truncate">{parentFolder.name}</span>
                           </button>
                         )}
-                        <span className="text-stone-400 dark:text-slate-500 font-bold select-none text-xs sm:text-sm">/</span>
+                        <span className="text-stone-400 font-bold select-none text-xs sm:text-sm">/</span>
                         <h1 
-                          className="font-sans text-xs sm:text-sm font-bold px-3.5 py-1 rounded-lg border-2 border-dashed border-stone-600/60 dark:border-stone-400/60 shadow-xs truncate max-w-[140px] sm:max-w-[200px] md:max-w-xs text-center"
+                          className="font-sans text-xs sm:text-sm font-bold px-3.5 py-1 rounded-xl border shadow-xs truncate max-w-[140px] sm:max-w-[200px] md:max-w-xs text-center"
                           style={{
                             backgroundColor: opened3DFolder.primaryColor || '#FFC400',
-                            color: opened3DFolder.textDark ? '#1c1917' : '#FFFFFF'
+                            color: opened3DFolder.textDark ? '#1c1917' : '#FFFFFF',
+                            borderColor: `${opened3DFolder.primaryColor || '#FFC400'}80`
                           }}
                           title={opened3DFolder.name}
                         >
@@ -11608,10 +11609,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     );
                   })() : (
                     <h1 
-                      className="font-sans text-xs sm:text-sm font-bold px-3.5 py-1 rounded-lg border-2 border-dashed border-stone-600/60 dark:border-stone-400/60 shadow-xs truncate max-w-[180px] sm:max-w-xs md:max-w-md text-center"
+                      className="font-sans text-xs sm:text-sm font-bold px-3.5 py-1 rounded-xl border shadow-xs truncate max-w-[180px] sm:max-w-xs md:max-w-md text-center"
                       style={{
                         backgroundColor: opened3DFolder.primaryColor || '#FFC400',
-                        color: opened3DFolder.textDark ? '#1c1917' : '#FFFFFF'
+                        color: opened3DFolder.textDark ? '#1c1917' : '#FFFFFF',
+                        borderColor: `${opened3DFolder.primaryColor || '#FFC400'}80`
                       }}
                       title={opened3DFolder.name}
                     >
@@ -11620,9 +11622,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   )}
                 </div>
 
-                {/* DROITE : Les 2 boutons séparés (Créer un dossier + Bloc-notes) devant le champ de recherche et plein écran */}
+                {/* DROITE : Créer un dossier, Bloc-notes, Recherche, Plein écran, 3 traits (Tous en noir) */}
                 <div className="shrink-0 flex items-center gap-1.5 sm:gap-2">
-                  {/* Bouton 1 : Créer un sous-dossier (uniquement si pas déjà dans un sous-dossier: c'est le dernier niveau) */}
+                  {/* Bouton 1 : Créer un sous-dossier (si pas déjà dans un sous-dossier) */}
                   {!opened3DFolder.parentId && (
                     <button
                       type="button"
@@ -11633,25 +11635,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         setNewFolderNameInput('');
                         setIsCreateFolderModalOpen(true);
                       }}
-                      className="flex items-center gap-1 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[11px] sm:text-xs rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+                      className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-orange-400/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs font-black"
                       title="Créer un sous-dossier dans ce dossier"
                     >
-                      <FolderPlus className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-orange-400" />
+                      <FolderPlus className="w-3.5 h-3.5 text-orange-400" />
                       <span className="hidden sm:inline">Créer un dossier</span>
                     </button>
                   )}
 
-                  {/* Bouton 2 : Bloc-notes (ouvre un petit menu pour nommer le fichier TXT et écrire dedans) */}
+                  {/* Bouton 2 : Bloc-notes */}
                   <button
                     type="button"
                     onClick={() => {
                       setNewNoteNameInput('');
                       setIsNewNoteModalOpen(true);
                     }}
-                    className="flex items-center gap-1 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[11px] sm:text-xs rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+                    className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-cyan-400/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs font-black"
                     title="Nouveau document Bloc-notes (.txt)"
                   >
-                    <FileEdit className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-cyan-400" />
+                    <FileEdit className="w-3.5 h-3.5 text-cyan-400" />
                     <span className="hidden sm:inline">Bloc-notes</span>
                   </button>
 
@@ -11674,7 +11676,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   <button
                     type="button"
                     onClick={() => setIsFullscreen(!isFullscreen)}
-                    className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                    className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
                     title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet"}
                   >
                     {isFullscreen ? (
@@ -11684,7 +11686,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     )}
                   </button>
 
-                  {/* Bouton 3 traits d'en-tête derrière le bouton zoom */}
+                  {/* Bouton 3 traits d'en-tête */}
                   <div className="relative studycloud-menu-trigger">
                     <button
                       type="button"
@@ -11692,7 +11694,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         e.stopPropagation();
                         setIsHeaderMenuOpen(!isHeaderMenuOpen);
                       }}
-                      className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full ${
+                      className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full ${
                         isHeaderMenuOpen ? 'bg-amber-500/20 text-amber-400 border-amber-400/40' : 'bg-[#04060A] hover:bg-[#0A0E18] text-white border-white/10'
                       } border transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm`}
                       title="Options d'affichage et de tri (3 traits)"
@@ -11705,9 +11707,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 </div>
               </div>
             ) : (
+              /* EN-TÊTE RACINE DU CLASSEUR (Bande blanche, champ en noir, boutons noirs) */
               <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
                 
-                {/* GAUCHE : Bouton Retour et Titre */}
+                {/* GAUCHE : Bouton Retour rond noir et Titre Classeur */}
                 <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
                   <button
                     type="button"
@@ -11722,33 +11725,33 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       setSecurePinInput('');
                       setSecurePinError(null);
                     }}
-                    className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
-                    title="Retour au gestionnaire de fichiers"
+                    className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                    title="Retour au Tableau de bord"
+                    aria-label="Retour"
                   >
-                    <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
-                    <span className="hidden xs:inline">Retour</span>
+                    <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
                   </button>
 
                   <div className="flex items-center gap-2">
-                    <div className={`p-1.5 rounded-xl bg-black border border-white/10 ${currentSubView.color}`}>
+                    <div className={`p-1.5 sm:p-2 rounded-xl bg-black border border-white/10 ${currentSubView.color}`}>
                       <currentSubView.icon className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
                     </div>
                     <div>
-                      <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 dark:text-white leading-tight">
+                      <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 leading-tight">
                         {currentSubView.name}
                       </h1>
-                      <p className="text-[10px] sm:text-[11px] font-semibold text-stone-500 dark:text-slate-400 leading-tight">
+                      <p className="text-[10px] sm:text-[11px] font-semibold text-stone-500 leading-tight">
                         StudyCloud
                       </p>
                     </div>
                   </div>
                 </div>
 
-                {/* MILIEU : Champ de recherche */}
-                <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-1 sm:px-2">
-                  <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-blue-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 transition-all shadow-inner gap-2">
+                {/* MILIEU : Champ de recherche pilule en noir */}
+                <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg mx-auto relative flex items-center px-1 sm:px-2">
+                  <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-orange-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 sm:py-2 transition-all shadow-inner gap-2">
                     <div className="text-white shrink-0">
-                      <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+                      <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2] text-orange-400" />
                     </div>
                     <input
                       type="text"
@@ -11770,9 +11773,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   </div>
                 </div>
 
-                {/* DROITE : Bouton Espace d'étude, Plein écran général & Bouton 3 traits d'en-tête */}
+                {/* DROITE : Boutons d'action en noir */}
                 <div className="shrink-0 flex items-center gap-2">
-                  {/* BOUTON ESPACE D'ÉTUDE DEVANT LE BOUTON ZOOM (uniquement si un élément est sélectionné comme demandé) */}
+                  {/* BOUTON ESPACE D'ÉTUDE DEVANT LE BOUTON ZOOM (uniquement si un élément est sélectionné) */}
                   {Boolean(splitSelectedFile || selectedItemIds.length > 0) && (
                     <button
                       type="button"
@@ -11785,7 +11788,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </button>
                   )}
 
-                  {/* BOUTON CRÉER UN DOSSIER EN ORANGE DEVANT LE BOUTON ZOOM (Dans le menu Classeur, Image 2) */}
+                  {/* BOUTON CRÉER UN DOSSIER EN NOIR */}
                   {(currentSubView?.id === 'studycloud-classeur-classeur' || (isCloudView && cloudActiveTab === 'classeur') || currentSubView?.type === 'classeur') && (
                     <button
                       type="button"
@@ -11793,15 +11796,35 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         setSubFolderParentId(opened3DFolder ? opened3DFolder.id : null);
                         setIsCreateFolderModalOpen(true);
                       }}
-                      className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-r from-[#C25416] via-[#B8480C] to-[#A03D07] hover:from-[#D15C1B] hover:via-[#C55010] hover:to-[#AC430A] text-white border border-orange-500/50 shadow-[0_2px_12px_rgba(194,84,22,0.45)] hover:shadow-[0_4px_18px_rgba(194,84,22,0.6)] transition-all cursor-pointer shrink-0 active:scale-95 text-xs sm:text-sm font-bold group select-none animate-in fade-in duration-150"
+                      className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-orange-400/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black group select-none animate-in fade-in duration-150"
                       title="Créer un nouveau dossier"
                     >
-                      <FolderPlus className="w-4 h-4 stroke-[2.4] group-hover:scale-110 transition-transform text-white shrink-0" />
+                      <FolderPlus className="w-4 h-4 stroke-[2.4] group-hover:scale-110 transition-transform text-orange-400 shrink-0" />
                       <span className="whitespace-nowrap">Créer un dossier</span>
                     </button>
                   )}
 
-                  {/* 1. BOUTON DÉDIÉ : MENU VIDÉOS */}
+                  {/* BOUTON IMPORTER UN FICHIER DANS CLASSEUR */}
+                  {(currentSubView?.type === 'classeur' || currentSubView?.id === 'studycloud-classeur-classeur' || (isCloudView && cloudActiveTab === 'classeur')) && (
+                    <button
+                      type="button"
+                      id="btn-import-menu-classeur"
+                      onClick={() => {
+                        if (opened3DFolder) {
+                          classeurFolderFileInputRef.current?.click();
+                        } else {
+                          handleTriggerImport();
+                        }
+                      }}
+                      className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-orange-400/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black animate-in fade-in duration-150"
+                      title="Importer un fichier dans le classeur"
+                    >
+                      <Plus className="w-4 h-4 text-orange-400 stroke-[2.5]" />
+                      <span className="hidden xs:inline">Importer</span>
+                    </button>
+                  )}
+
+                  {/* 1. BOUTON DÉDIÉ : MENU VIDÉOS (si fallback) */}
                   {(currentSubView?.id === 'studycloud-category-videos' || (isCloudView && cloudActiveTab === 'videos')) && (
                     <button
                       type="button"
@@ -11816,14 +11839,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </button>
                   )}
 
-                  {/* 2. BOUTON DÉDIÉ : MENU AUDIO / MUSIQUE */}
+                  {/* 2. BOUTON DÉDIÉ : MENU AUDIO / MUSIQUE (si fallback) */}
                   {(currentSubView?.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio')) && (
                     <button
                       type="button"
                       id="btn-import-menu-audio"
                       onClick={() => audioFileInputRef.current?.click()}
                       className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-amber-500/40 hover:border-amber-400 text-amber-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black animate-in fade-in duration-150"
-                      title="Importer un fichier audio ou musique (WhatsApp inclus)"
+                      title="Importer un fichier audio ou musique"
                     >
                       <Plus className="w-4 h-4 text-amber-400 stroke-[2.5]" />
                       <span className="hidden xs:inline">Importer un audio</span>
@@ -11831,7 +11854,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </button>
                   )}
 
-                  {/* 3. BOUTON DÉDIÉ : MENU IMAGES */}
+                  {/* 3. BOUTON DÉDIÉ : MENU IMAGES (si fallback) */}
                   {(currentSubView?.id === 'studycloud-category-images' || (isCloudView && cloudActiveTab === 'images')) && (
                     <button
                       type="button"
@@ -11846,7 +11869,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </button>
                   )}
 
-                  {/* 4. BOUTON DÉDIÉ : MENU DOCUMENTS */}
+                  {/* 4. BOUTON DÉDIÉ : MENU DOCUMENTS (si fallback) */}
                   {(currentSubView?.id === 'studycloud-category-documents' || (isCloudView && cloudActiveTab === 'documents')) && (
                     <button
                       type="button"
@@ -11861,25 +11884,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </button>
                   )}
 
-                  {/* 5. BOUTON DÉDIÉ : DOSSIER DU CLASSEUR */}
-                  {opened3DFolder && (currentSubView?.type === 'classeur' || currentSubView?.id === 'studycloud-classeur-classeur' || (isCloudView && cloudActiveTab === 'classeur')) && (
-                    <button
-                      type="button"
-                      id="btn-import-menu-classeur"
-                      onClick={() => classeurFolderFileInputRef.current?.click()}
-                      className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-orange-500/40 hover:border-orange-400 text-orange-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black animate-in fade-in duration-150"
-                      title={`Importer un fichier dans ${opened3DFolder?.name || 'le dossier'}`}
-                    >
-                      <Plus className="w-4 h-4 text-orange-400 stroke-[2.5]" />
-                      <span className="hidden xs:inline">Importer un fichier</span>
-                      <span className="xs:hidden">Importer</span>
-                    </button>
-                  )}
-
+                  {/* Bouton Plein écran rond noir */}
                   <button
                     type="button"
                     onClick={() => setIsFullscreen(!isFullscreen)}
-                    className="flex items-center justify-center w-9 h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                    className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
                     title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet"}
                   >
                     {isFullscreen ? (
@@ -11889,7 +11898,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     )}
                   </button>
 
-                  {/* Bouton 3 traits d'en-tête derrière le bouton zoom (Image 1) */}
+                  {/* Bouton 3 traits d'en-tête rond noir */}
                   <div className="relative studycloud-menu-trigger">
                     <button
                       type="button"
@@ -11897,7 +11906,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         e.stopPropagation();
                         setIsHeaderMenuOpen(!isHeaderMenuOpen);
                       }}
-                      className={`flex items-center justify-center w-9 h-9 rounded-full ${
+                      className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full ${
                         isHeaderMenuOpen ? 'bg-amber-500/20 text-amber-400 border-amber-400/40' : 'bg-[#04060A] hover:bg-[#0A0E18] text-white border-white/10'
                       } border transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm`}
                       title="Options d'affichage et de tri (3 traits)"
