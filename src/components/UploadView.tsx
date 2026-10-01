@@ -1,5 +1,5 @@
 import React from 'react';
-import { Upload, FolderPlus, Share2, Plus, X, MoreVertical, ArrowLeft } from 'lucide-react';
+import { Upload, FolderPlus, Share2, Plus, X, MoreVertical, ArrowLeft, Link } from 'lucide-react';
 import { NavigationTab } from '../types';
 import { FileIconBadge } from './FileIconBadge';
 
@@ -11,7 +11,7 @@ interface UploadViewProps {
   onOpenUploadModal: () => void;
   onOpenAddMenu: () => void;
   onOpenClearConfirm: () => void;
-  onOpenCreateShareLink: () => void;
+  onOpenCreateShareLink: (items?: any[]) => void;
   uploadedItems: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[];
   setUploadedItems: React.Dispatch<React.SetStateAction<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[]>>;
   selectedItemIds: string[];
@@ -364,6 +364,20 @@ export const UploadView: React.FC<UploadViewProps> = ({
                 className="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold rounded-xl transition-colors cursor-pointer"
               >
                 Décocher
+              </button>
+              <button
+                onClick={() => {
+                  const items = uploadedItems.filter((i) => selectedItemIds.includes(i.id));
+                  if (items.length > 0) {
+                    onOpenCreateShareLink(items);
+                    setSelectedItemIds([]);
+                  }
+                }}
+                className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+                title="Créer un lien"
+              >
+                <Link className="w-3.5 h-3.5" />
+                <span>Créer un lien</span>
               </button>
               <button
                 onClick={() => {

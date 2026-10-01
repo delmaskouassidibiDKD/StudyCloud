@@ -829,7 +829,15 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   // Partager
   const handleShare = (track: FileItem) => {
     if (onOpenCreateShareLink) {
-      onOpenCreateShareLink([track]);
+      onOpenCreateShareLink([{
+        id: track.id,
+        name: track.name,
+        size: track.sizeBytes || 0,
+        type: track.extension || 'MP3',
+        url: track.audioUrl || track.url,
+        category: 'audio',
+        extension: track.extension
+      }]);
     } else {
       showToast('Partage StudyCloud');
     }
@@ -926,7 +934,9 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
             name: track.name,
             size: track.sizeBytes || 0,
             type: track.extension || 'MP3',
-            url: track.audioUrl || track.url
+            url: track.audioUrl || track.url,
+            category: 'audio',
+            extension: track.extension
           }]);
           showToast(`Création du lien pour "${track.name}"...`);
         } else {
@@ -2492,6 +2502,31 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           >
             <Download className="w-3.5 h-3.5" /> Télécharger
           </button>
+          {onOpenCreateShareLink && (
+            <button
+              type="button"
+              onClick={() => {
+                const selected = filteredAudio.filter(t => selectedItemIds.includes(t.id));
+                if (selected.length > 0) {
+                  onOpenCreateShareLink(selected.map(track => ({
+                    id: track.id,
+                    name: track.name,
+                    size: track.sizeBytes || 0,
+                    type: track.extension || 'MP3',
+                    url: track.audioUrl || track.url,
+                    category: 'audio',
+                    extension: track.extension
+                  })));
+                  setSelectedItemIds([]);
+                  setIsSelectionMode(false);
+                }
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/20 text-sky-300 hover:bg-sky-500/30 font-semibold cursor-pointer"
+              title="Créer un lien de partage pour la sélection"
+            >
+              <Link className="w-3.5 h-3.5" /> Créer un lien
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {

@@ -3847,7 +3847,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             name: f.name,
             size: f.sizeBytes || 0,
             type: f.extension || f.category || 'file',
-            url: f.url || f.previewUrl
+            url: f.url || f.previewUrl,
+            category: f.category,
+            extension: f.extension,
+            isImage: f.category === 'images' || Boolean((f as any).isImage)
           });
         });
       } else {
@@ -3865,7 +3868,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             name: item.name,
             size: item.sizeBytes || 0,
             type: item.extension || item.category || 'file',
-            url: item.url || item.previewUrl
+            url: item.url || item.previewUrl,
+            category: item.category,
+            extension: item.extension,
+            isImage: item.category === 'images' || Boolean((item as any).isImage)
           });
         }
       }
@@ -5123,10 +5129,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       showToast("Aucun son sélectionné");
       return;
     }
-    const count = selectedAudioIds.length;
-    const url = `${window.location.origin}/share/audio?ids=${selectedAudioIds.join(',')}`;
-    navigator.clipboard?.writeText(url);
-    showToast(`${count} son(s) : lien copié dans le presse-papiers !`);
+    const selectedTracks = audioList.filter(t => selectedAudioIds.includes(t.id));
+    const filesToShare = selectedTracks.map(t => ({
+      id: t.id,
+      name: t.name,
+      size: t.sizeBytes || 0,
+      type: t.extension || 'MP3',
+      url: t.audioUrl || t.url,
+      category: 'audio',
+      extension: t.extension
+    }));
+    if (onOpenCreateShareLink && filesToShare.length > 0) {
+      onOpenCreateShareLink(filesToShare);
+      showToast(`${filesToShare.length} son(s) prêt(s) pour la création du lien !`);
+    } else {
+      const count = selectedAudioIds.length;
+      const url = `${window.location.origin}/share/audio?ids=${selectedAudioIds.join(',')}`;
+      navigator.clipboard?.writeText(url);
+      showToast(`${count} son(s) : lien copié dans le presse-papiers !`);
+    }
     setIsAudioSelectionMode(false);
     setSelectedAudioIds([]);
   };

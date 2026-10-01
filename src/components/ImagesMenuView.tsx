@@ -572,7 +572,16 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
   // Partager
   const handleShare = (img: FileItem) => {
     if (onOpenCreateShareLink) {
-      onOpenCreateShareLink([img]);
+      onOpenCreateShareLink([{
+        id: img.id,
+        name: img.name,
+        size: img.sizeBytes || 0,
+        type: img.extension || 'image',
+        url: img.previewUrl || img.url,
+        isImage: true,
+        category: 'images',
+        extension: img.extension
+      }]);
     } else {
       showToast('Partage StudyCloud');
     }
@@ -695,12 +704,26 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       }
 
       case 'create_link': {
-        try {
-          const shareUrl = `${window.location.origin}/?fileId=${encodeURIComponent(img.id)}&category=images`;
-          await navigator.clipboard.writeText(shareUrl);
-          showToast('Lien public copié dans le presse-papiers ! 🔗');
-        } catch {
-          showToast('Lien généré pour cette image');
+        if (onOpenCreateShareLink) {
+          onOpenCreateShareLink([{
+            id: img.id,
+            name: img.name,
+            size: img.sizeBytes || 0,
+            type: img.extension || 'image',
+            url: img.previewUrl || img.url,
+            isImage: true,
+            category: 'images',
+            extension: img.extension
+          }]);
+          showToast(`Création du lien pour "${img.name}"...`);
+        } else {
+          try {
+            const shareUrl = `${window.location.origin}/?fileId=${encodeURIComponent(img.id)}&category=images`;
+            await navigator.clipboard.writeText(shareUrl);
+            showToast('Lien public copié dans le presse-papiers ! 🔗');
+          } catch {
+            showToast('Lien généré pour cette image');
+          }
         }
         break;
       }
@@ -2062,6 +2085,33 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
             <Download className="w-4 h-4 text-blue-400" />
             <span className="hidden sm:inline">Télécharger</span>
           </button>
+          {onOpenCreateShareLink && (
+            <button
+              type="button"
+              onClick={() => {
+                const items = filteredImages.filter(i => selectedItemIds.includes(i.id));
+                if (items.length > 0) {
+                  onOpenCreateShareLink(items.map(img => ({
+                    id: img.id,
+                    name: img.name,
+                    size: img.sizeBytes || 0,
+                    type: img.extension || 'image',
+                    url: img.previewUrl || img.url,
+                    isImage: true,
+                    category: 'images',
+                    extension: img.extension
+                  })));
+                  setSelectedItemIds([]);
+                  setIsSelectionMode(false);
+                }
+              }}
+              className="flex items-center gap-1.5 hover:text-sky-400 font-semibold cursor-pointer transition-colors"
+              title="Créer un lien de partage pour la sélection"
+            >
+              <Link className="w-4 h-4 text-sky-400" />
+              <span className="hidden sm:inline">Créer un lien</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {

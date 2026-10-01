@@ -585,7 +585,15 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   // Partager
   const handleShare = (vid: FileItem) => {
     if (onOpenCreateShareLink) {
-      onOpenCreateShareLink([vid]);
+      onOpenCreateShareLink([{
+        id: vid.id,
+        name: vid.name,
+        size: vid.sizeBytes || 0,
+        type: vid.extension || 'MP4',
+        url: vid.videoUrl || vid.url,
+        category: 'videos',
+        extension: vid.extension
+      }]);
     } else {
       showToast('Partage StudyCloud');
     }
@@ -713,7 +721,9 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
             name: vid.name,
             size: vid.sizeBytes || 0,
             type: vid.extension || 'MP4',
-            url: vid.videoUrl || vid.url
+            url: vid.videoUrl || vid.url,
+            category: 'videos',
+            extension: vid.extension
           }]);
           showToast(`Création du lien pour "${vid.name}"...`);
         } else {
@@ -2065,6 +2075,32 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
             <Download className="w-4 h-4 text-blue-400" />
             <span className="hidden sm:inline">Télécharger</span>
           </button>
+          {onOpenCreateShareLink && (
+            <button
+              type="button"
+              onClick={() => {
+                const items = filteredVideos.filter(v => selectedItemIds.includes(v.id));
+                if (items.length > 0) {
+                  onOpenCreateShareLink(items.map(vid => ({
+                    id: vid.id,
+                    name: vid.name,
+                    size: vid.sizeBytes || 0,
+                    type: vid.extension || 'MP4',
+                    url: vid.videoUrl || vid.url,
+                    category: 'videos',
+                    extension: vid.extension
+                  })));
+                  setSelectedItemIds([]);
+                  setIsSelectionMode(false);
+                }
+              }}
+              className="flex items-center gap-1.5 hover:text-sky-400 font-semibold cursor-pointer transition-colors"
+              title="Créer un lien de partage pour la sélection"
+            >
+              <Link className="w-4 h-4 text-sky-400" />
+              <span className="hidden sm:inline">Créer un lien</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {

@@ -1464,9 +1464,16 @@ export default function App() {
                   setShowClearConfirmModal(true);
                 }
               }}
-              onOpenCreateShareLink={() => {
-                setShareModalTargetItems(null);
-                setShareModalInitialName('');
+              onOpenCreateShareLink={(items) => {
+                if (items && items.length > 0) {
+                  setShareModalTargetItems(items);
+                  setShareModalInitialName(
+                    items.length === 1 ? items[0].name.replace(/\.[^/.]+$/, '') : `Partage (${items.length} fichiers)`
+                  );
+                } else {
+                  setShareModalTargetItems(null);
+                  setShareModalInitialName('');
+                }
                 setShowCreateShareLinkModal(true);
               }}
               uploadedItems={uploadedItems}
@@ -1974,13 +1981,16 @@ export default function App() {
           initialLinkName={shareModalInitialName}
           onClose={() => {
             setShowCreateShareLinkModal(false);
+            const hadSpecificTargets = Boolean(shareModalTargetItems);
             setShareModalTargetItems(null);
             setShareModalInitialName('');
-            setUploadedItems([]);
-            setSelectedItemIds([]);
-            try {
-              localStorage.removeItem('unifolder_uploaded_items');
-            } catch (e) {}
+            if (!hadSpecificTargets) {
+              setUploadedItems([]);
+              setSelectedItemIds([]);
+              try {
+                localStorage.removeItem('unifolder_uploaded_items');
+              } catch (e) {}
+            }
           }}
           onStartBackgroundCreation={handleStartBackgroundCreation}
         />

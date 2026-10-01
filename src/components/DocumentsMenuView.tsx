@@ -684,7 +684,15 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
   // Partager
   const handleShare = (doc: FileItem) => {
     if (onOpenCreateShareLink) {
-      onOpenCreateShareLink([doc]);
+      onOpenCreateShareLink([{
+        id: doc.id,
+        name: doc.name,
+        size: doc.sizeBytes || 0,
+        type: doc.extension || 'PDF',
+        url: doc.previewUrl || doc.url,
+        category: 'documents',
+        extension: doc.extension
+      }]);
     } else {
       showToast('Partage StudyCloud');
     }
@@ -738,7 +746,9 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             name: doc.name,
             size: doc.sizeBytes || 0,
             type: doc.extension || 'PDF',
-            url: doc.previewUrl || doc.url
+            url: doc.previewUrl || doc.url,
+            category: 'documents',
+            extension: doc.extension
           }]);
           showToast(`Création du lien pour "${doc.name}"...`);
         } else {
@@ -2181,6 +2191,32 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             <Download className="w-4 h-4 text-blue-400" />
             <span className="hidden sm:inline">Télécharger</span>
           </button>
+          {onOpenCreateShareLink && (
+            <button
+              type="button"
+              onClick={() => {
+                const items = filteredDocuments.filter(d => selectedItemIds.includes(d.id));
+                if (items.length > 0) {
+                  onOpenCreateShareLink(items.map(doc => ({
+                    id: doc.id,
+                    name: doc.name,
+                    size: doc.sizeBytes || 0,
+                    type: doc.extension || 'PDF',
+                    url: doc.previewUrl || doc.url,
+                    category: 'documents',
+                    extension: doc.extension
+                  })));
+                  setSelectedItemIds([]);
+                  setIsSelectionMode(false);
+                }
+              }}
+              className="flex items-center gap-1.5 hover:text-sky-400 font-semibold cursor-pointer transition-colors"
+              title="Créer un lien de partage pour la sélection"
+            >
+              <Link className="w-4 h-4 text-sky-400" />
+              <span className="hidden sm:inline">Créer un lien</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
