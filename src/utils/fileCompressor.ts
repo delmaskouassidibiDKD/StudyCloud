@@ -312,111 +312,14 @@ function compressImageWithImgTag(file: File, maxDim: number, quality: number): P
 }
 
 /**
- * COMPRESSION AUDIO (Transcodage & Allègement du bitrate)
- * Cible particulièrement les fichiers WAV non compressés, notes vocales lourdes,
- * ou fichiers audio volumineux (> 3 Mo).
+ * COMPRESSION AUDIO
+ * Les formats audio (MP3, AAC, M4A, Opus, OGG, WAV, etc.) sont traités instantanément (0ms)
+ * afin de préserver 100% de la fidélité sonore, les pochettes et les tags ID3,
+ * sans bloquer le navigateur par un transcodage en temps réel.
  */
 export async function compressAudio(file: File): Promise<CompressedResult> {
   const originalSize = file.size;
   const originalFormatted = formatBytes(originalSize);
-  const ext = file.name.split('.').pop()?.toLowerCase() || '';
-
-  // Si c'est déjà un MP3/M4A/AAC léger (< 3 Mo), le gain serait minime
-  if (originalSize < 3 * 1024 * 1024 && ['mp3', 'm4a', 'aac', 'ogg', 'opus'].includes(ext)) {
-    return {
-      file,
-      originalFile: file,
-      fileName: file.name,
-      originalSizeBytes: originalSize,
-      originalSizeFormatted: originalFormatted,
-      compressedSizeBytes: originalSize,
-      compressedSizeFormatted: originalFormatted,
-      savedBytes: 0,
-      compressionRatio: 0,
-      isCompressed: false,
-      mimeType: file.type || 'audio/mpeg',
-    };
-  }
-
-  // Pour les fichiers audio non compressés (WAV, PCM, AIFF) ou très volumineux
-  try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) throw new Error('AudioContext non supporté');
-
-    const audioCtx = new AudioContextClass();
-    const arrayBuffer = await file.arrayBuffer();
-    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-    // Si MediaRecorder est disponible, on ré-encode en flux audio compressé (WebM Opus / AAC / Ogg)
-    if (typeof MediaRecorder !== 'undefined') {
-      const dest = audioCtx.createMediaStreamDestination();
-      const source = audioCtx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(dest);
-
-      let targetMime = 'audio/webm;codecs=opus';
-      if (!MediaRecorder.isTypeSupported(targetMime)) {
-        targetMime = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : (MediaRecorder.isTypeSupported('audio/ogg') ? 'audio/ogg' : '');
-      }
-
-      if (targetMime) {
-        const recorder = new MediaRecorder(dest.stream, {
-          mimeType: targetMime,
-          audioBitsPerSecond: 96000, // 96 kbps : excellente clarté vocale et musicale pour un poids plume
-        });
-
-        const chunks: Blob[] = [];
-        const compressedBlob = await new Promise<Blob>((resolve, reject) => {
-          recorder.ondataavailable = (e) => {
-            if (e.data && e.data.size > 0) chunks.push(e.data);
-          };
-          recorder.onstop = () => {
-            resolve(new Blob(chunks, { type: targetMime }));
-          };
-          recorder.onerror = reject;
-
-          recorder.start();
-          source.start(0);
-
-          // Arrêt quand l'audio se termine ou après timeout de sécurité
-          source.onended = () => {
-            if (recorder.state !== 'inactive') recorder.stop();
-            audioCtx.close().catch(() => {});
-          };
-        });
-
-        if (compressedBlob && compressedBlob.size < originalSize) {
-          const compressedSize = compressedBlob.size;
-          const saved = originalSize - compressedSize;
-          const ratio = Math.round((saved / originalSize) * 1000) / 10;
-          const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
-          const extOut = targetMime.includes('webm') ? 'weba' : (targetMime.includes('mp4') ? 'm4a' : 'ogg');
-          const compressedFile = new File([compressedBlob], `${baseName}.${extOut}`, {
-            type: targetMime,
-            lastModified: file.lastModified,
-          });
-
-          return {
-            file: compressedFile,
-            originalFile: file,
-            fileName: file.name,
-            originalSizeBytes: originalSize,
-            originalSizeFormatted: originalFormatted,
-            compressedSizeBytes: compressedSize,
-            compressedSizeFormatted: formatBytes(compressedSize),
-            savedBytes: saved,
-            compressionRatio: ratio,
-            isCompressed: true,
-            mimeType: targetMime,
-          };
-        }
-      }
-    }
-
-    audioCtx.close().catch(() => {});
-  } catch (err) {
-    console.warn('[FileCompressor] Audio non transcodable côté client, conservation de l original:', err);
-  }
 
   return {
     file,

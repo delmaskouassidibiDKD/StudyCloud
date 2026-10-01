@@ -1774,7 +1774,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         const seen = new Set<string>();
         return merged.filter(f => { if (seen.has(f.id)) return false; seen.add(f.id); return true; });
       });
-      setCloudRecentFiles((state.recentFiles as any[]).filter(_isNotDeletedRecent).slice(0, 6));
+      setCloudRecentFiles(prev => {
+        const stateIds = new Set(state.recentFiles.map((r: any) => r.id));
+        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || (p as any).isUploading) && _isNotDeletedRecent(p));
+        const merged = [...pending, ...(state.recentFiles as any[]).filter(_isNotDeletedRecent)];
+        const seen = new Set<string>();
+        return merged.filter(f => { if (seen.has(f.id)) return false; seen.add(f.id); return true; }).slice(0, 6);
+      });
       setSecureFolderFiles(state.secure);
       setTrashFiles((state.trash || []).filter(f => _isNotDeleted(f) && !isItemDeleted(f.id)));
       setCloudOverview(state.overview);
@@ -2315,6 +2321,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       filesToProcess = filesToProcess.slice(0, MAX_IMPORT_FILES);
     }
 
+    showToast(filesToProcess.length === 1 
+      ? `Importation de « ${filesToProcess[0].name} »...` 
+      : `Importation de ${filesToProcess.length} fichiers en cours...`
+    );
+
     // Validation Option A stricte par Magic Numbers (signature binaire infaillible)
     const { validFiles, rejectedFiles } = await validateFilesForMenuAsync(filesToProcess, targetCategory);
 
@@ -2407,7 +2418,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         previewUrl: isAud ? undefined : localBlobUrl,
         videoUrl: isVid ? localBlobUrl : undefined,
         audioUrl: isAud ? localBlobUrl : undefined,
-        originalFolderId: folderId
+        originalFolderId: folderId,
+        isUploading: true,
       };
       return {
         file: fileToUpload,
@@ -2582,6 +2594,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       filesToProcess = filesToProcess.slice(0, MAX_IMPORT_FILES);
     }
 
+    showToast(filesToProcess.length === 1 
+      ? `Importation de « ${filesToProcess[0].name} »...` 
+      : `Importation de ${filesToProcess.length} fichiers en cours...`
+    );
+
     // DÉTECTION DES DOUBLONS DANS LE COMPTE DE L'UTILISATEUR (ISOLATION STRICTE)
     if (!skipDuplicateCheck) {
       const videoNames = new Set(videosList.map(f => (f.name || '').trim().toLowerCase()).filter(Boolean));
@@ -2644,6 +2661,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         previewUrl: autoCat === 'audio' ? undefined : localBlobUrl,
         videoUrl: autoCat === 'videos' ? localBlobUrl : undefined,
         audioUrl: autoCat === 'audio' ? localBlobUrl : undefined,
+        isUploading: true,
       };
       return { 
         file: fileToUpload, 
@@ -2735,6 +2753,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       showProfileToast(`⚠️ Limite de ${MAX_IMPORT_FILES} fichiers maximum à la fois : seuls les ${MAX_IMPORT_FILES} premiers fichiers seront importés.`, 'warning');
       files = files.slice(0, MAX_IMPORT_FILES);
     }
+
+    showToast(files.length === 1 
+      ? `Importation de « ${files[0].name} »...` 
+      : `Importation de ${files.length} fichiers en cours...`
+    );
 
     if (fileInputRef.current) fileInputRef.current.value = '';
 
