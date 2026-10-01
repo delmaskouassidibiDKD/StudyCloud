@@ -2648,6 +2648,270 @@ async function getObjectFromAnyBucket(rawEnv: any, category: string, key: string
   return null;
 }
 
+function getAllBuckets(rawEnv: any): any[] {
+  if (!rawEnv) return [];
+  const candidates = [
+    rawEnv.BUCKET, rawEnv.MON_R2_STUDYCLOUD, rawEnv['MON_R2-STUDYCLOUD'],
+    rawEnv.BUCKET_AUDIO, rawEnv.MON_R2_AUDIO, rawEnv['MON_R2-AUDIO'],
+    rawEnv.BUCKET_IMAGES, rawEnv.MON_R2_IMAGES, rawEnv['MON_R2-IMAGES'],
+    rawEnv.BUCKET_VIDEOS, rawEnv.MON_R2_VIDEOS, rawEnv['MON_R2-VIDEOS'],
+    rawEnv.BUCKET_DOCUMENTS, rawEnv.MON_R2_DOCUMENTS, rawEnv['MON_R2-DOCUMENTS'],
+    rawEnv.BUCKET_CLASSEUR, rawEnv.MON_R2_CLASSEUR, rawEnv['MON_R2-CLASSEUR'],
+    rawEnv.BUCKET_DOWNLOADS, rawEnv.MON_R2_DOWNLOADS, rawEnv['MON_R2-DOWNLOADS'],
+    rawEnv.BUCKET_SECURE, rawEnv.MON_R2_SECURE, rawEnv['MON_R2-SECURE'],
+    rawEnv.BUCKET_WALLPAPERS, rawEnv.MON_R2_WALLPAPERS, rawEnv['MON_R2-WALLPAPERS']
+  ];
+  const unique = new Set<any>();
+  for (const b of candidates) {
+    if (b && typeof b.delete === 'function') {
+      unique.add(b);
+    }
+  }
+  return Array.from(unique);
+}
+
+function extractR2Keys(primaryKey?: string, urlStr?: string): string[] {
+  const keys = new Set<string>();
+  const add = (k?: string) => {
+    if (!k || typeof k !== 'string') return;
+    const clean = k.trim();
+    if (!clean || clean.startsWith('data:') || clean.startsWith('blob:')) return;
+    keys.add(clean);
+    try {
+      const dec = decodeURIComponent(clean);
+      if (dec && dec !== clean) keys.add(dec);
+    } catch {}
+  };
+
+  add(primaryKey);
+
+  if (urlStr && typeof urlStr === 'string') {
+    const cleanUrl = urlStr.trim();
+    if (cleanUrl.includes('/api/cloud/file/')) {
+      const after = cleanUrl.split('/api/cloud/file/')[1] || '';
+      const parts = after.split('/');
+      const keyPart = parts.slice(1).join('/');
+      if (keyPart) add(keyPart);
+      if (after) add(after);
+    } else if (cleanUrl.includes('/api/storage/file/')) {
+      const after = cleanUrl.split('/api/storage/file/')[1] || '';
+      if (after) add(after);
+    }
+  }
+
+  return Array.from(keys);
+}
+
+async function deleteKeyFromAllBuckets(rawEnv: any, key?: string): Promise<void> {
+  if (!rawEnv || !key) return;
+  const buckets = getAllBuckets(rawEnv);
+  const keys = extractR2Keys(key);
+  await Promise.allSettled(
+    buckets.flatMap(bucket => keys.map(k => bucket.delete(k).catch(() => {})))
+  );
+}
+
+async function deleteR2ObjectAndThumbnails(
+  rawEnv: any,
+  reqUserId: string,
+  itemId: string,
+  itemR2Key?: string,
+  fileUrl?: string,
+  category?: string
+): Promise<void> {
+  const allBuckets = getAllBuckets(rawEnv);
+  if (allBuckets.length === 0) return;
+
+  const candidateKeys = new Set<string>();
+
+  // 1. Clés directes et résolues depuis l'URL
+  for (const k of extractR2Keys(itemR2Key, fileUrl)) {
+    candidateKeys.add(k);
+    if (k.includes('/')) {
+      const fileNameOnly = k.split('/').pop();
+      if (fileNameOnly) candidateKeys.add(fileNameOnly);
+    }
+  }
+
+  // 2. Déclinaisons de miniatures connues pour cet élément
+  if (reqUserId && itemId) {
+    candidateKeys.add(`${reqUserId}/thumbnails/${itemId}_thumb.jpg`);
+    candidateKeys.add(`${reqUserId}/thumbnails/${itemId}_thumb.png`);
+    candidateKeys.add(`${reqUserId}/thumbnails/${itemId}_thumb.jpeg`);
+    candidateKeys.add(`${reqUserId}/thumbnails/${itemId}_thumb.webp`);
+    candidateKeys.add(`thumbnails/${itemId}_thumb.jpg`);
+    candidateKeys.add(`thumbnails/${itemId}_thumb.png`);
+  }
+
+  // 3. Suppression directe de toutes les clés candidates sur TOUS les buckets R2
+  for (const bucket of allBuckets) {
+    for (const k of candidateKeys) {
+      await bucket.delete(k).catch(() => {});
+    }
+  }
+
+  // 4. Recherche et purge par préfixe pour éradiquer tout fichier restant contenant l'ID (ex: aud_xxx)
+  if (reqUserId && itemId) {
+    const normCategory = (category || '').toLowerCase().trim();
+    const categoriesToScan = new Set<string>([
+      normCategory,
+      'audio',
+      'images',
+      'videos',
+      'documents',
+      'classeur',
+      'downloads',
+      'secure',
+      'trash'
+    ]);
+    if (normCategory === 'musique') categoriesToScan.add('audio');
+    if (normCategory === 'photos') categoriesToScan.add('images');
+
+    const prefixes = new Set<string>();
+    prefixes.add(`${reqUserId}/thumbnails/${itemId}`);
+    prefixes.add(`thumbnails/${itemId}`);
+    prefixes.add(`${reqUserId}/${itemId}`);
+
+    for (const cat of categoriesToScan) {
+      if (!cat) continue;
+      prefixes.add(`${reqUserId}/${cat}/${itemId}`);
+      prefixes.add(`${cat}/${itemId}`);
+    }
+
+    for (const bucket of allBuckets) {
+      if (typeof bucket.list === 'function') {
+        for (const prefix of prefixes) {
+          try {
+            const listed = await bucket.list({ prefix, limit: 50 });
+            if (listed?.objects && listed.objects.length > 0) {
+              for (const obj of listed.objects) {
+                await bucket.delete(obj.key).catch(() => {});
+              }
+            }
+          } catch (e) {}
+        }
+      }
+    }
+  }
+}
+
+async function deleteAllUserFilesFromAllBuckets(rawEnv: any, userId: string): Promise<void> {
+  if (!rawEnv || !userId || userId === 'default-user') return;
+  const allBuckets = getAllBuckets(rawEnv);
+  for (const bucket of allBuckets) {
+    if (typeof bucket.list !== 'function') continue;
+    try {
+      let truncated = true;
+      let cursor: string | undefined = undefined;
+      while (truncated) {
+        const options: any = { prefix: `${userId}/`, limit: 200 };
+        if (cursor) options.cursor = cursor;
+        const listed = await bucket.list(options);
+        if (!listed || !listed.objects) break;
+        for (const obj of listed.objects) {
+          await bucket.delete(obj.key).catch(() => {});
+        }
+        truncated = Boolean(listed.truncated);
+        cursor = listed.cursor;
+      }
+    } catch (e) {}
+  }
+}
+
+async function purgeUserOrphanedR2Files(env: any, rawEnv: any, reqUserId: string): Promise<number> {
+  if (!env.DB || !reqUserId || reqUserId === 'default-user') return 0;
+  const allBuckets = getAllBuckets(rawEnv);
+  if (allBuckets.length === 0) return 0;
+
+  const activeKeys = new Set<string>();
+  const activeFileIds = new Set<string>();
+
+  const addKeys = (rows: any[]) => {
+    for (const r of rows || []) {
+      if (r?.id && typeof r.id === 'string' && r.id.trim()) {
+        activeFileIds.add(r.id.trim());
+      }
+      for (const field of ['r2_key', 'file_url', 'audio_url', 'image_url', 'video_url', 'preview_url', 'thumbnail_url', 'cover_url']) {
+        const val = r?.[field];
+        if (val && typeof val === 'string') {
+          for (const k of extractR2Keys(val)) {
+            activeKeys.add(k);
+          }
+        }
+      }
+    }
+  };
+
+  try {
+    const [f, a, img, v, doc, cl, dl, tr, th, sec] = await Promise.all([
+      env.DB.prepare('SELECT id, r2_key, file_url FROM files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, audio_url, cover_url FROM audio_files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, image_url, thumbnail_url FROM image_files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, video_url, thumbnail_url FROM video_files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, file_url, preview_url FROM document_files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, file_url, preview_url FROM classeur_files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, file_url FROM download_files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, file_url FROM trash_files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT file_id as id, r2_key, thumbnail_url FROM media_thumbnails WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, file_url FROM secure_files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
+    ]);
+
+    addKeys(f?.results);
+    addKeys(a?.results);
+    addKeys(img?.results);
+    addKeys(v?.results);
+    addKeys(doc?.results);
+    addKeys(cl?.results);
+    addKeys(dl?.results);
+    addKeys(tr?.results);
+    addKeys(th?.results);
+    addKeys(sec?.results);
+  } catch (e) {
+    console.warn('[purgeUserOrphanedR2Files] Error collecting active keys:', e);
+    return 0;
+  }
+
+  let deletedCount = 0;
+  for (const bucket of allBuckets) {
+    if (typeof bucket.list !== 'function') continue;
+    try {
+      let truncated = true;
+      let cursor: string | undefined = undefined;
+      while (truncated) {
+        const options: any = { prefix: `${reqUserId}/`, limit: 200 };
+        if (cursor) options.cursor = cursor;
+        const list = await bucket.list(options);
+        if (!list || !list.objects) break;
+
+        for (const obj of list.objects) {
+          const key = obj.key;
+          const decodedKey = decodeURIComponent(key);
+          let isReferenced = activeKeys.has(key) || activeKeys.has(decodedKey);
+
+          if (!isReferenced) {
+            for (const fileId of activeFileIds) {
+              if (key.includes(fileId) || decodedKey.includes(fileId)) {
+                isReferenced = true;
+                break;
+              }
+            }
+          }
+
+          if (!isReferenced) {
+            await bucket.delete(key).catch(() => {});
+            deletedCount++;
+          }
+        }
+        truncated = Boolean(list.truncated);
+        cursor = list.cursor;
+      }
+    } catch (e) {
+      console.warn('[purgeUserOrphanedR2Files] list error:', e);
+    }
+  }
+  return deletedCount;
+}
+
 async function ensureCloudMediaTables(db: any) {
   if (isCloudMediaTablesInitialized || !db) return;
   try {
@@ -5926,10 +6190,26 @@ export default {
       if (path.startsWith('/api/files/') && method === 'DELETE') {
         if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
         const id = path.split('/')[3];
-        const file = await env.DB.prepare('SELECT r2_key, user_id FROM files WHERE id = ?').bind(id).first<any>();
-        if (file && file.r2_key && env.BUCKET) {
-          try { await env.BUCKET.delete(file.r2_key); } catch (e) {}
-        }
+        const reqUserId = await extractRequestUserId();
+
+        // 1. Chercher les informations du fichier dans toutes les tables pour identifier son propriétaire et ses clés R2
+        const [fileRow, audRow, imgRow, vidRow, docRow, classRow, dlRow] = await Promise.all([
+          env.DB.prepare('SELECT r2_key, file_url, user_id FROM files WHERE id = ?').bind(id).first<any>().catch(() => null),
+          env.DB.prepare('SELECT r2_key, audio_url, user_id FROM audio_files WHERE id = ?').bind(id).first<any>().catch(() => null),
+          env.DB.prepare('SELECT r2_key, image_url, user_id FROM image_files WHERE id = ?').bind(id).first<any>().catch(() => null),
+          env.DB.prepare('SELECT r2_key, video_url, user_id FROM video_files WHERE id = ?').bind(id).first<any>().catch(() => null),
+          env.DB.prepare('SELECT r2_key, file_url, user_id FROM document_files WHERE id = ?').bind(id).first<any>().catch(() => null),
+          env.DB.prepare('SELECT r2_key, file_url, user_id, category FROM classeur_files WHERE id = ?').bind(id).first<any>().catch(() => null),
+          env.DB.prepare('SELECT r2_key, file_url, user_id FROM download_files WHERE id = ?').bind(id).first<any>().catch(() => null),
+        ]);
+
+        const targetUser = fileRow?.user_id || audRow?.user_id || imgRow?.user_id || vidRow?.user_id || docRow?.user_id || classRow?.user_id || dlRow?.user_id || reqUserId;
+        const targetR2Key = fileRow?.r2_key || audRow?.r2_key || imgRow?.r2_key || vidRow?.r2_key || docRow?.r2_key || classRow?.r2_key || dlRow?.r2_key;
+        const targetUrl = fileRow?.file_url || audRow?.audio_url || imgRow?.image_url || vidRow?.video_url || docRow?.file_url || classRow?.file_url || dlRow?.file_url;
+        const targetCategory = classRow?.category || (audRow ? 'audio' : (imgRow ? 'images' : (vidRow ? 'videos' : (docRow ? 'documents' : 'documents'))));
+
+        await deleteR2ObjectAndThumbnails(rawEnv, targetUser, id, targetR2Key, targetUrl, targetCategory);
+
         await env.DB.prepare('DELETE FROM files WHERE id = ?').bind(id).run();
         await env.DB.prepare('DELETE FROM document_files WHERE id = ?').bind(id).run().catch(() => {});
         await env.DB.prepare('DELETE FROM audio_files WHERE id = ?').bind(id).run().catch(() => {});
@@ -5938,10 +6218,13 @@ export default {
         await env.DB.prepare('DELETE FROM classeur_files WHERE id = ?').bind(id).run().catch(() => {});
         await env.DB.prepare('DELETE FROM download_files WHERE id = ?').bind(id).run().catch(() => {});
         await env.DB.prepare('DELETE FROM media_thumbnails WHERE file_id = ?').bind(id).run().catch(() => {});
-        if (file?.user_id) {
-          await recordSyncItem(env.DB, file.user_id, id, 'files', { id }, 1);
+
+        if (targetUser && targetUser !== 'default-user') {
+          await cleanUserFavoriteOnDelete(env.DB, targetUser, id);
+          await recordSyncItem(env.DB, targetUser, id, 'files', { id }, 1);
+          recalculateAndSaveUserStorage(env.DB, targetUser).catch(() => {});
         }
-        return jsonResponse({ success: true, message: 'Fichier supprimé' }, 200, origin);
+        return jsonResponse({ success: true, message: 'Fichier supprimé définitivement' }, 200, origin);
       }
 
       // ----------------------------------------------------------------------
@@ -7034,7 +7317,7 @@ export default {
                 name = excluded.name,
                 size = excluded.size,
                 type = excluded.type,
-                r2_key = COALESCE(excluded.r2_key, files.r2_key),
+                r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
                 file_url = excluded.file_url,
                 last_imported = excluded.last_imported,
                 updated_at = CURRENT_TIMESTAMP
@@ -7086,7 +7369,10 @@ export default {
           sizeBytes: sizeBytes,
           extension: extUpper,
           category: finalCategory === 'classeur' ? detectedNature : finalCategory,
+          r2Key: storageKey,
+          key: storageKey,
           url: fileUrl,
+          fileUrl: fileUrl,
           previewUrl: (finalCategory === 'images' || detectedNature === 'images') ? fileUrl : (finalCategory === 'videos' ? (thumbnailToSave || fileUrl) : undefined),
           videoUrl: (finalCategory === 'videos' || detectedNature === 'videos') ? fileUrl : undefined,
           audioUrl: (finalCategory === 'audio' || detectedNature === 'audio') ? fileUrl : undefined,
@@ -7621,8 +7907,8 @@ export default {
           const notepadTitle = body.notepadTitle || body.noteTitle || '';
           const notepadContent = body.notepadContent || body.content || '';
           const previewUrl = body.previewUrl || '';
-          const r2Key = body.r2Key || '';
-          const fileUrl = body.fileUrl || body.url || '';
+          let fileUrl = body.fileUrl || body.url || '';
+          const r2Key = body.r2Key || (fileUrl ? (extractR2Keys('', fileUrl)[0] || '') : '');
 
           await env.DB.prepare(`
             INSERT INTO classeur_files (
@@ -7641,7 +7927,7 @@ export default {
               notepad_title = excluded.notepad_title,
               notepad_content = excluded.notepad_content,
               preview_url = excluded.preview_url,
-              r2_key = COALESCE(excluded.r2_key, classeur_files.r2_key),
+              r2_key = COALESCE(NULLIF(excluded.r2_key, ''), classeur_files.r2_key),
               file_url = CASE
                 WHEN (excluded.file_url IS NULL OR excluded.file_url = '' OR excluded.file_url LIKE 'blob:%')
                      AND classeur_files.file_url IS NOT NULL AND classeur_files.file_url != '' AND classeur_files.file_url NOT LIKE 'blob:%'
@@ -7663,7 +7949,7 @@ export default {
               ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 size = excluded.size,
-                r2_key = COALESCE(excluded.r2_key, files.r2_key),
+                r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
                 file_url = CASE
                   WHEN (excluded.file_url IS NULL OR excluded.file_url = '' OR excluded.file_url LIKE 'blob:%')
                        AND files.file_url IS NOT NULL AND files.file_url != '' AND files.file_url NOT LIKE 'blob:%'
@@ -7849,6 +8135,9 @@ export default {
           }
 
           if (file) {
+            const resolvedR2Key = (file.r2_key && String(file.r2_key).trim() !== '')
+              ? String(file.r2_key).trim()
+              : (extractR2Keys('', file.file_url || '')[0] || '');
             await env.DB.prepare(`
               INSERT INTO trash_files (
                 id, user_id, name, size, size_bytes, category, extension,
@@ -7858,7 +8147,7 @@ export default {
             `).bind(
               file.id, reqUserId, file.name, file.size, file.size_bytes, file.category,
               file.extension, file.folder_id, JSON.stringify({ isNotepad: file.is_notepad, notepadTitle: file.notepad_title }),
-              file.date_formatted, file.r2_key, file.file_url
+              file.date_formatted, resolvedR2Key, file.file_url
             ).run();
 
             await env.DB.prepare(`
@@ -7996,9 +8285,8 @@ export default {
           const dateFormatted = body.date || body.dateFormatted || '';
           const lyricsSnippet = body.lyricsSnippet || '';
           const fullLyricsJson = JSON.stringify(body.fullLyrics || []);
-          const coverUrl = body.coverUrl || '';
-          const r2Key = body.r2Key || '';
           const audioUrl = body.audioUrl || body.url || '';
+          const r2Key = body.r2Key || (extractR2Keys('', audioUrl)[0] || '');
 
           await env.DB.prepare(`
             INSERT INTO audio_files (
@@ -8014,7 +8302,7 @@ export default {
               duration_sec = excluded.duration_sec,
               size = excluded.size,
               size_bytes = excluded.size_bytes,
-              r2_key = COALESCE(excluded.r2_key, audio_files.r2_key),
+              r2_key = COALESCE(NULLIF(excluded.r2_key, ''), audio_files.r2_key),
               audio_url = CASE
                 WHEN (excluded.audio_url IS NULL OR excluded.audio_url = '' OR excluded.audio_url LIKE 'blob:%')
                      AND audio_files.audio_url IS NOT NULL AND audio_files.audio_url != '' AND audio_files.audio_url NOT LIKE 'blob:%'
@@ -8041,7 +8329,7 @@ export default {
               ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 size = excluded.size,
-                r2_key = COALESCE(excluded.r2_key, files.r2_key),
+                r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
                 file_url = CASE
                   WHEN (excluded.file_url IS NULL OR excluded.file_url = '' OR excluded.file_url LIKE 'blob:%')
                        AND files.file_url IS NOT NULL AND files.file_url != '' AND files.file_url NOT LIKE 'blob:%'
@@ -8120,6 +8408,7 @@ export default {
           }
 
           if (file) {
+            const resolvedR2Key = file.r2_key || (extractR2Keys('', file.audio_url || file.file_url)[0] || '');
             await env.DB.prepare(`
               INSERT INTO trash_files (
                 id, user_id, name, size, size_bytes, category, extension,
@@ -8129,7 +8418,7 @@ export default {
             `).bind(
               file.id, reqUserId, file.name, file.size, file.size_bytes,
               JSON.stringify({ artist: file.artist || 'Artiste inconnu', durationSec: file.duration_sec || 0, coverUrl: file.cover_url || '' }),
-              file.date_formatted, file.r2_key, file.audio_url
+              file.date_formatted, resolvedR2Key, file.audio_url
             ).run();
 
             await env.DB.prepare(`DELETE FROM audio_files WHERE id = ? AND user_id = ?`).bind(file.id, reqUserId).run();
@@ -8245,8 +8534,8 @@ export default {
           const height = Number(body.height || 0);
           const extension = body.extension || 'jpg';
           const dateFormatted = body.date || body.dateFormatted || '';
-          const r2Key = body.r2Key || '';
           let imageUrl = body.imageUrl || body.url || body.previewUrl || '';
+          const r2Key = body.r2Key || (extractR2Keys('', imageUrl)[0] || '');
           if (imageUrl.startsWith('blob:') || imageUrl.includes('localhost') || !imageUrl) {
             if (r2Key) {
               imageUrl = `${url.origin}/api/cloud/file/images/${encodeURIComponent(r2Key)}`;
@@ -8265,7 +8554,7 @@ export default {
               name = excluded.name,
               size = excluded.size,
               size_bytes = excluded.size_bytes,
-              r2_key = COALESCE(excluded.r2_key, image_files.r2_key),
+              r2_key = COALESCE(NULLIF(excluded.r2_key, ''), image_files.r2_key),
               image_url = CASE
                 WHEN (excluded.image_url IS NULL OR excluded.image_url = '' OR excluded.image_url LIKE 'blob:%' OR excluded.image_url LIKE '%localhost%')
                      AND image_files.image_url IS NOT NULL AND image_files.image_url != '' AND image_files.image_url NOT LIKE 'blob:%' AND image_files.image_url NOT LIKE '%localhost%'
@@ -8287,7 +8576,7 @@ export default {
               ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 size = excluded.size,
-                r2_key = COALESCE(excluded.r2_key, files.r2_key),
+                r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
                 file_url = CASE
                   WHEN (excluded.file_url IS NULL OR excluded.file_url = '' OR excluded.file_url LIKE 'blob:%')
                        AND files.file_url IS NOT NULL AND files.file_url != '' AND files.file_url NOT LIKE 'blob:%'
@@ -8362,6 +8651,7 @@ export default {
           }
 
           if (file) {
+            const resolvedR2Key = file.r2_key || (extractR2Keys('', file.image_url || file.file_url)[0] || '');
             await env.DB.prepare(`
               INSERT INTO trash_files (
                 id, user_id, name, size, size_bytes, category, extension,
@@ -8371,7 +8661,7 @@ export default {
             `).bind(
               file.id, reqUserId, file.name, file.size, file.size_bytes, file.extension,
               JSON.stringify({ width: file.width || 0, height: file.height || 0 }),
-              file.date_formatted, file.r2_key, file.image_url
+              file.date_formatted, resolvedR2Key, file.image_url
             ).run();
 
             await env.DB.prepare(`DELETE FROM image_files WHERE id = ? AND user_id = ?`).bind(file.id, reqUserId).run();
@@ -8479,9 +8769,16 @@ export default {
           const resolution = body.resolution || '1080p';
           const extension = body.extension || 'mp4';
           const dateFormatted = body.date || body.dateFormatted || '';
-          const r2Key = body.r2Key || '';
-          const videoUrl = body.videoUrl || body.url || '';
-          const thumbnailUrl = body.thumbnailUrl || '';
+          let videoUrl = body.videoUrl || body.url || '';
+          const r2Key = body.r2Key || (extractR2Keys('', videoUrl)[0] || '');
+          if (videoUrl.startsWith('blob:') || videoUrl.includes('localhost') || !videoUrl) {
+            if (r2Key) {
+              videoUrl = `${url.origin}/api/cloud/file/videos/${encodeURIComponent(r2Key)}`;
+            } else if (id) {
+              videoUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(id)}`;
+            }
+          }
+          const thumbnailUrl = body.thumbnailUrl || videoUrl;
 
           await env.DB.prepare(`
             INSERT INTO video_files (
@@ -8492,10 +8789,10 @@ export default {
               name = excluded.name,
               size = excluded.size,
               size_bytes = excluded.size_bytes,
-              r2_key = COALESCE(excluded.r2_key, video_files.r2_key),
+              r2_key = COALESCE(NULLIF(excluded.r2_key, ''), video_files.r2_key),
               video_url = CASE
-                WHEN (excluded.video_url IS NULL OR excluded.video_url = '' OR excluded.video_url LIKE 'blob:%')
-                     AND video_files.video_url IS NOT NULL AND video_files.video_url != '' AND video_files.video_url NOT LIKE 'blob:%'
+                WHEN (excluded.video_url IS NULL OR excluded.video_url = '' OR excluded.video_url LIKE 'blob:%' OR excluded.video_url LIKE '%localhost%')
+                     AND video_files.video_url IS NOT NULL AND video_files.video_url != '' AND video_files.video_url NOT LIKE 'blob:%' AND video_files.video_url NOT LIKE '%localhost%'
                 THEN video_files.video_url
                 ELSE excluded.video_url
               END,
@@ -8514,7 +8811,7 @@ export default {
               ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 size = excluded.size,
-                r2_key = COALESCE(excluded.r2_key, files.r2_key),
+                r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
                 file_url = CASE
                   WHEN (excluded.file_url IS NULL OR excluded.file_url = '' OR excluded.file_url LIKE 'blob:%')
                        AND files.file_url IS NOT NULL AND files.file_url != '' AND files.file_url NOT LIKE 'blob:%'
@@ -8589,6 +8886,9 @@ export default {
           }
 
           if (file) {
+            const resolvedR2Key = (file.r2_key && String(file.r2_key).trim() !== '')
+              ? String(file.r2_key).trim()
+              : (extractR2Keys('', file.video_url || file.file_url || '')[0] || '');
             await env.DB.prepare(`
               INSERT INTO trash_files (
                 id, user_id, name, size, size_bytes, category, extension,
@@ -8598,7 +8898,7 @@ export default {
             `).bind(
               file.id, reqUserId, file.name, file.size, file.size_bytes, file.extension,
               JSON.stringify({ durationSec: file.duration_sec || 0, resolution: file.resolution || '1080p' }),
-              file.date_formatted, file.r2_key, file.video_url
+              file.date_formatted, resolvedR2Key, file.video_url || file.file_url || ''
             ).run();
 
             await env.DB.prepare(`DELETE FROM video_files WHERE id = ? AND user_id = ?`).bind(file.id, reqUserId).run();
@@ -8712,9 +9012,16 @@ export default {
           const pageCount = Number(body.pageCount || 1);
           const dateFormatted = body.date || body.dateFormatted || '';
           const source = body.source || 'StudyCloud';
-          const r2Key = body.r2Key || '';
-          const fileUrl = body.fileUrl || body.url || '';
-          const previewUrl = body.previewUrl || '';
+          let fileUrl = body.fileUrl || body.url || '';
+          const r2Key = body.r2Key || (extractR2Keys('', fileUrl)[0] || '');
+          if (fileUrl.startsWith('blob:') || fileUrl.includes('localhost') || !fileUrl) {
+            if (r2Key) {
+              fileUrl = `${url.origin}/api/cloud/file/documents/${encodeURIComponent(r2Key)}`;
+            } else if (id) {
+              fileUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(id)}`;
+            }
+          }
+          const previewUrl = body.previewUrl || fileUrl;
 
           await env.DB.prepare(`
             INSERT INTO document_files (
@@ -8727,10 +9034,10 @@ export default {
               size = excluded.size,
               size_bytes = excluded.size_bytes,
               document_category = excluded.document_category,
-              r2_key = COALESCE(excluded.r2_key, document_files.r2_key),
+              r2_key = COALESCE(NULLIF(excluded.r2_key, ''), document_files.r2_key),
               file_url = CASE
-                WHEN (excluded.file_url IS NULL OR excluded.file_url = '' OR excluded.file_url LIKE 'blob:%')
-                     AND document_files.file_url IS NOT NULL AND document_files.file_url != '' AND document_files.file_url NOT LIKE 'blob:%'
+                WHEN (excluded.file_url IS NULL OR excluded.file_url = '' OR excluded.file_url LIKE 'blob:%' OR excluded.file_url LIKE '%localhost%')
+                     AND document_files.file_url IS NOT NULL AND document_files.file_url != '' AND document_files.file_url NOT LIKE 'blob:%' AND document_files.file_url NOT LIKE '%localhost%'
                 THEN document_files.file_url
                 ELSE excluded.file_url
               END,
@@ -8749,7 +9056,7 @@ export default {
               ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 size = excluded.size,
-                r2_key = COALESCE(excluded.r2_key, files.r2_key),
+                r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
                 file_url = CASE
                   WHEN (excluded.file_url IS NULL OR excluded.file_url = '' OR excluded.file_url LIKE 'blob:%')
                        AND files.file_url IS NOT NULL AND files.file_url != '' AND files.file_url NOT LIKE 'blob:%'
@@ -8826,6 +9133,9 @@ export default {
           }
 
           if (file) {
+            const resolvedR2Key = (file.r2_key && String(file.r2_key).trim() !== '')
+              ? String(file.r2_key).trim()
+              : (extractR2Keys('', file.file_url || file.preview_url || '')[0] || '');
             await env.DB.prepare(`
               INSERT INTO trash_files (
                 id, user_id, name, size, size_bytes, category, extension,
@@ -8835,7 +9145,7 @@ export default {
             `).bind(
               file.id, reqUserId, file.name, file.size, file.size_bytes, file.extension,
               JSON.stringify({ documentCategory: file.document_category || 'COURS', pageCount: file.page_count || 1 }),
-              file.date_formatted, file.r2_key, file.file_url
+              file.date_formatted, resolvedR2Key, file.file_url
             ).run();
 
             await env.DB.prepare(`DELETE FROM document_files WHERE id = ? AND user_id = ?`).bind(file.id, reqUserId).run();
@@ -8914,8 +9224,8 @@ export default {
           const extension = body.extension || '';
           const sourceUrl = body.sourceUrl || '';
           const source = body.source || 'Web';
-          const r2Key = body.r2Key || '';
-          const fileUrl = body.fileUrl || body.url || '';
+          let fileUrl = body.fileUrl || body.url || '';
+          const r2Key = body.r2Key || (fileUrl ? (extractR2Keys('', fileUrl)[0] || '') : '');
 
           await env.DB.prepare(`
             INSERT INTO download_files (
@@ -8925,7 +9235,14 @@ export default {
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               size = excluded.size,
-              size_bytes = excluded.size_bytes
+              size_bytes = excluded.size_bytes,
+              r2_key = COALESCE(NULLIF(excluded.r2_key, ''), download_files.r2_key),
+              file_url = CASE
+                WHEN (excluded.file_url IS NULL OR excluded.file_url = '' OR excluded.file_url LIKE 'blob:%' OR excluded.file_url LIKE '%localhost%')
+                     AND download_files.file_url IS NOT NULL AND download_files.file_url != '' AND download_files.file_url NOT LIKE 'blob:%' AND download_files.file_url NOT LIKE '%localhost%'
+                THEN download_files.file_url
+                ELSE excluded.file_url
+              END
           `).bind(
             id, reqUserId, name, size, sizeBytes, type, extension,
             sourceUrl, source, r2Key, fileUrl
@@ -8963,6 +9280,9 @@ export default {
           `).bind(fileId, reqUserId).first();
 
           if (dlFile) {
+            const resolvedR2Key = (dlFile.r2_key && String(dlFile.r2_key).trim() !== '')
+              ? String(dlFile.r2_key).trim()
+              : (extractR2Keys('', dlFile.file_url || '')[0] || '');
             await env.DB.prepare(`
               INSERT INTO trash_files (
                 id, user_id, name, size, size_bytes, category, extension,
@@ -8974,7 +9294,7 @@ export default {
               dlFile.id, reqUserId, dlFile.name, dlFile.size, dlFile.size_bytes, dlFile.extension || '',
               JSON.stringify({ sourceUrl: dlFile.source_url, source: dlFile.source }),
               dlFile.downloaded_at || new Date().toLocaleDateString('fr-FR'),
-              dlFile.r2_key, dlFile.file_url
+              resolvedR2Key, dlFile.file_url
             ).run();
           }
 
@@ -9117,8 +9437,8 @@ export default {
           const originalCategory = fromCategory || file.category || 'documents';
           const originalFolderId = fromFolderId || file.originalFolderId || '';
           const dateFormatted = file.date || '';
-          const r2Key = file.r2Key || '';
-          const fileUrl = file.url || file.previewUrl || '';
+          let fileUrl = file.url || file.previewUrl || '';
+          const r2Key = file.r2Key || (fileUrl ? (extractR2Keys('', fileUrl)[0] || '') : '');
           const metaJson = JSON.stringify(file);
 
           await env.DB.prepare(`
@@ -9127,7 +9447,14 @@ export default {
               original_category, original_folder_id, date_formatted, metadata_json,
               r2_key, file_url, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(id) DO NOTHING
+            ON CONFLICT(id) DO UPDATE SET
+              r2_key = COALESCE(NULLIF(excluded.r2_key, ''), secure_files.r2_key),
+              file_url = CASE
+                WHEN (excluded.file_url IS NULL OR excluded.file_url = '' OR excluded.file_url LIKE 'blob:%' OR excluded.file_url LIKE '%localhost%')
+                     AND secure_files.file_url IS NOT NULL AND secure_files.file_url != '' AND secure_files.file_url NOT LIKE 'blob:%' AND secure_files.file_url NOT LIKE '%localhost%'
+                THEN secure_files.file_url
+                ELSE excluded.file_url
+              END
           `).bind(
             id, reqUserId, name, size, sizeBytes, category, extension,
             originalCategory, originalFolderId, dateFormatted, metaJson, r2Key, fileUrl
@@ -9183,6 +9510,9 @@ export default {
 
             if (action === 'trash') {
               // Mettre le fichier protégé dans la corbeille
+              const resolvedR2Key = (secFile.r2_key && String(secFile.r2_key).trim() !== '')
+                ? String(secFile.r2_key).trim()
+                : (extractR2Keys('', secFile.file_url || '')[0] || '');
               await env.DB.prepare(`
                 INSERT INTO trash_files (
                   id, user_id, name, size, size_bytes, category, extension,
@@ -9193,7 +9523,7 @@ export default {
               `).bind(
                 secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.category || 'documents',
                 secFile.extension || '', origFolder, secFile.metadata_json || '{}', secFile.date_formatted || '',
-                secFile.r2_key || '', secFile.file_url || ''
+                resolvedR2Key, secFile.file_url || ''
               ).run();
 
               await env.DB.prepare(`DELETE FROM secure_files WHERE id = ? AND user_id = ?`).bind(id, reqUserId).run();
@@ -9638,12 +9968,12 @@ export default {
 
           let itemsToDelete: any[] = [];
           if (isEmptyAll) {
-            const { results } = await env.DB.prepare(`SELECT id, r2_key, category FROM trash_files WHERE user_id = ?`).bind(reqUserId).all<any>();
+            const { results } = await env.DB.prepare(`SELECT id, name, r2_key, file_url, category, source_category FROM trash_files WHERE user_id = ?`).bind(reqUserId).all<any>();
             itemsToDelete = results || [];
             await env.DB.prepare('DELETE FROM trash_files WHERE user_id = ?').bind(reqUserId).run();
           } else if (targetIds.length > 0) {
             for (const tid of targetIds) {
-              const item: any = await env.DB.prepare(`SELECT id, r2_key, category FROM trash_files WHERE id = ? AND user_id = ?`).bind(tid, reqUserId).first();
+              const item: any = await env.DB.prepare(`SELECT id, name, r2_key, file_url, category, source_category FROM trash_files WHERE id = ? AND user_id = ?`).bind(tid, reqUserId).first();
               if (item) {
                 itemsToDelete.push(item);
                 await env.DB.prepare('DELETE FROM trash_files WHERE id = ? AND user_id = ?').bind(tid, reqUserId).run();
@@ -9651,32 +9981,41 @@ export default {
             }
           }
 
-          // Nettoyage physique dans les buckets R2 et cascade tables
+          // Nettoyage physique complet dans TOUS les buckets R2 et cascade des tables locales
           for (const item of itemsToDelete) {
             await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(item.id, reqUserId).run().catch(() => {});
             await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(item.id, reqUserId).run().catch(() => {});
             await cleanUserFavoriteOnDelete(env.DB, reqUserId, item.id);
             await recordSyncItem(env.DB, reqUserId, item.id, item.category || 'trash', { id: item.id }, 1);
-            if (item.r2_key) {
-              const [inDocs, inImgs, inVids, inAud, inClass] = await Promise.all([
-                env.DB.prepare('SELECT COUNT(*) as c FROM document_files WHERE r2_key = ? AND user_id = ?').bind(item.r2_key, reqUserId).first<any>().catch(() => ({ c: 0 })),
-                env.DB.prepare('SELECT COUNT(*) as c FROM image_files WHERE r2_key = ? AND user_id = ?').bind(item.r2_key, reqUserId).first<any>().catch(() => ({ c: 0 })),
-                env.DB.prepare('SELECT COUNT(*) as c FROM video_files WHERE r2_key = ? AND user_id = ?').bind(item.r2_key, reqUserId).first<any>().catch(() => ({ c: 0 })),
-                env.DB.prepare('SELECT COUNT(*) as c FROM audio_files WHERE r2_key = ? AND user_id = ?').bind(item.r2_key, reqUserId).first<any>().catch(() => ({ c: 0 })),
-                env.DB.prepare('SELECT COUNT(*) as c FROM classeur_files WHERE r2_key = ? AND user_id = ?').bind(item.r2_key, reqUserId).first<any>().catch(() => ({ c: 0 })),
-              ]);
-              const stillReferenced = ((inDocs?.c || 0) + (inImgs?.c || 0) + (inVids?.c || 0) + (inAud?.c || 0) + (inClass?.c || 0)) > 0;
-              if (!stillReferenced) {
-                const catBucket = getBucketForCategory(rawEnv, item.category);
-                if (catBucket) await catBucket.delete(item.r2_key).catch(() => {});
-              }
-            }
+            
+            // Suppression physique dans tous les buckets R2 et de toutes les vignettes associées
+            await deleteR2ObjectAndThumbnails(env, rawEnv, item.r2_key, item.file_url, item.id, item.name, reqUserId);
+          }
+
+          // Balayer et purger tous les fichiers orphelins résiduels de cet utilisateur dans R2
+          try {
+            await purgeUserOrphanedR2Files(env, rawEnv, reqUserId);
+          } catch (e: any) {
+            console.warn('[Trash purge] Orphan sweep warning:', e?.message || e);
           }
 
           recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {});
 
-          return jsonResponse({ success: true, message: 'Éléments définitivement supprimés' }, 200, origin);
+          return jsonResponse({ success: true, message: 'Éléments définitivement supprimés et purgés de R2' }, 200, origin);
         }
+      }
+
+      // Endpoint dédié pour forcer la purge de tous les fichiers orphelins dans R2
+      if (path === '/api/cloud/trash/purge-orphans' && method === 'POST') {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+        const purgeRes = await purgeUserOrphanedR2Files(env, rawEnv, reqUserId);
+        recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {});
+        return jsonResponse({
+          success: true,
+          message: 'Purge des fichiers orphelins R2 effectuée avec succès',
+          ...purgeRes
+        }, 200, origin);
       }
 
       // ----------------------------------------------------------------------

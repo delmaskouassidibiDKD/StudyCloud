@@ -4692,7 +4692,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const trashIdSet = new Set(trashFiles.map(t => t.id));
     return (files || []).reduce((acc, f) => {
       if (!f || !f.id) return acc;
-      if (f.isTrash || trashIdSet.has(f.id) || delIds.has(f.id) || isItemDeleted(f.id)) return acc;
+      if ((f as any).isTrash || trashIdSet.has(f.id) || delIds.has(f.id) || isItemDeleted(f.id)) return acc;
       return acc + parseSizeToBytes(f?.size, (f as any)?.sizeBytes);
     }, 0);
   };

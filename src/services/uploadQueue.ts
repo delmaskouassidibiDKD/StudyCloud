@@ -363,12 +363,23 @@ class UploadQueueManager {
 
         if (res?.success && res.file) {
           uploadUrl = res.file.url || '';
-          r2Key = (res.file as any).r2Key || '';
+          r2Key = (res.file as any).r2Key || (res.file as any).key || (res as any).r2Key || (res as any).key || '';
           serverFileId = res.file.id;
         } else if ((res as any)?.url) {
           uploadUrl = (res as any).url;
-          r2Key = (res as any).key || '';
+          r2Key = (res as any).r2Key || (res as any).key || '';
           serverFileId = (res as any).id;
+        }
+
+        if (!r2Key && uploadUrl && !uploadUrl.startsWith('blob:') && !uploadUrl.startsWith('data:')) {
+          const match = uploadUrl.match(/\/api\/cloud\/file\/[^/]+\/([^?#]+)/);
+          if (match && match[1]) {
+            try {
+              r2Key = decodeURIComponent(match[1]);
+            } catch {
+              r2Key = match[1];
+            }
+          }
         }
       }
 

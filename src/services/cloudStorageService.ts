@@ -809,6 +809,24 @@ export const CloudStorageAPI = {
     }
   },
 
+  async purgeOrphanedFiles(): Promise<{ success: boolean; deletedCount?: number }> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/trash/purge-orphans?userId=${getUserIdParam()}`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const json = await res.json().catch(() => ({}));
+        return { success: true, deletedCount: json.deletedCount || 0 };
+      }
+      return { success: false };
+    } catch (e) {
+      console.error('[CloudStorageAPI] purgeOrphanedFiles error:', e);
+      return { success: false };
+    }
+  },
+
   // --------------------------------------------------------------------------
   // 10. UPLOAD DIRECT R2 ET D1 PAR CATÉGORIE (Validation & Routage Intelligent)
   // --------------------------------------------------------------------------
