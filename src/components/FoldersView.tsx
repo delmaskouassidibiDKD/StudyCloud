@@ -22,6 +22,7 @@ import { NavigationTab } from '../types';
 import { triggerDebouncedCloudBackup } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
 import { useDashboardWallpaper } from '../hooks/useCloudQueries';
+import { getActiveWallpaperReliable } from '../utils/wallpaperHelper';
 
 interface FoldersViewProps {
   onOpenUpload: () => void;
@@ -160,13 +161,25 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   // Fond d'écran personnalisé du tableau de bord (Page 1 et Page 2)
   // Rendu instantané 0ms dès l'initialisation du composant sans délai ni clignotement
   const [dashboardWallpaper, setDashboardWallpaper] = useState<string | null>(() => {
-    return localStorage.getItem('studycloud_dashboard_wallpaper');
+    const cached = localStorage.getItem('studycloud_dashboard_wallpaper');
+    // Ignorer les anciens blob: expirés pour éviter l'écran grisé
+    if (cached && !cached.startsWith('blob:')) return cached;
+    return null;
   });
+
+  // Récupération fiable au montage depuis IndexedDB si localStorage était vide ou révoqué
+  useEffect(() => {
+    getActiveWallpaperReliable().then((reliable) => {
+      if (reliable && reliable !== dashboardWallpaper) {
+        setDashboardWallpaper(reliable);
+      }
+    });
+  }, []);
 
   // Synchronisation transparente en arrière-plan : préchargement en mémoire (0ms perçu)
   useEffect(() => {
     if (cloudWallpaperData?.url) {
-      if (cloudWallpaperData.url !== dashboardWallpaper) {
+      if (cloudWallpaperData.url !== dashboardWallpaper && !cloudWallpaperData.url.startsWith('blob:')) {
         // Précharger l'image dans le cache du navigateur avant de l'afficher
         const img = new Image();
         img.src = cloudWallpaperData.url;
@@ -192,7 +205,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       const wp = e?.detail?.wallpaper !== undefined 
         ? e.detail.wallpaper 
         : localStorage.getItem('studycloud_dashboard_wallpaper');
-      setDashboardWallpaper(wp);
+      if (wp && !wp.startsWith('blob:')) {
+        setDashboardWallpaper(wp);
+      } else if (!wp) {
+        setDashboardWallpaper(null);
+      }
     };
     window.addEventListener('studycloud_wallpaper_updated', handleWallpaperChange);
     return () => window.removeEventListener('studycloud_wallpaper_updated', handleWallpaperChange);
@@ -836,11 +853,40 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     }`}>
       {/* Fond d'écran personnalisé du tableau de bord (Visible sur la Page 1 et la Page 2) */}
       {dashboardWallpaper && viewMode === 'home' && (
-        <div className="fixed inset-0 md:left-64 z-[1] pointer-events-none overflow-hidden transition-opacity duration-300">
+        <div 
+          className="fixed inset-0 w-screen h-screen z-0 pointer-events-none overflow-hidden select-none"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            transform: 'translate3d(0, 0, 0)',
+            willChange: 'transform'
+          }}
+        >
           <img 
             src={dashboardWallpaper} 
             alt="Fond d'écran Tableau de Bord" 
-            className="w-full h-full object-cover select-none filter brightness-[0.75] contrast-[1.05]" 
+            className="w-full h-full object-cover select-none filter brightness-[0.78] contrast-[1.05]" 
+            style={{
+              objectFit: 'cover',
+              objectPosition: 'center',
+              width: '100%',
+              height: '100%',
+              minWidth: '100vw',
+              minHeight: '100vh'
+            }}
+            onError={async (e) => {
+              // Récupération automatique et instantanée sans laisser l'écran grisé
+              try {
+                const reliable = await getActiveWallpaperReliable();
+                if (reliable && reliable !== dashboardWallpaper) {
+                  setDashboardWallpaper(reliable);
+                  (e.target as HTMLImageElement).src = reliable;
+                }
+              } catch {}
+            }}
           />
           {/* Voile sombre pour lisibilité optimale des icônes d'applications */}
           <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-black/25 to-black/65 backdrop-blur-[0.5px]" />

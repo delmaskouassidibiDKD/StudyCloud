@@ -23,6 +23,7 @@ import { CloudDataStore } from '../services/cloudDataStore';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { useDownloadsList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
+import { getWorkerApiUrl } from '../services/api';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
@@ -174,7 +175,10 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
     const name = item.name || 'Fichier';
     const isVid = ['mp4', 'webm', 'mkv', 'mov', 'avi'].includes(ext);
     const isImg = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext);
-    const url = resolvedBlobUrl || item.url || '';
+    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+    const cleanUrl = (item.url && !item.url.startsWith('blob:')) ? item.url : '';
+    const fallbackStream = item.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(item.id)}` : '';
+    const url = resolvedBlobUrl || cleanUrl || fallbackStream;
 
     return (
       <div className="w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none">

@@ -5713,13 +5713,22 @@ var index_default = {
             "SELECT * FROM user_wallpapers WHERE user_id = ? AND is_active = 1 ORDER BY updated_at DESC LIMIT 1"
           ).bind(reqUserId).first().catch(() => null);
           if (row) {
+            let wpUrl = row.url || "";
+            if (wpUrl.startsWith("blob:") && row.r2_key) {
+              wpUrl = `${url.origin}/api/cloud/wallpaper/file/${encodeURIComponent(row.id)}?userId=${encodeURIComponent(reqUserId)}`;
+            } else if (wpUrl.startsWith("blob:") && !row.r2_key) {
+              wpUrl = "";
+            }
+            if (!wpUrl) {
+              return jsonResponse({ success: true, wallpaper: null }, 200, origin);
+            }
             return jsonResponse({
               success: true,
               wallpaper: {
                 id: row.id,
                 userId: row.user_id,
                 name: row.name || "Fond d'\xE9cran",
-                url: row.url,
+                url: wpUrl,
                 r2Key: row.r2_key,
                 size: row.size || 0,
                 isActive: Boolean(row.is_active),

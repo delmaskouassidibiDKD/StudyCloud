@@ -50,6 +50,7 @@ import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
 import { handleNativeShare } from '../utils/nativeShare';
 import { ensureFileExtension } from '../utils/fileExtensionHelper';
+import { applyDashboardWallpaper } from '../utils/wallpaperHelper';
 
 interface ImagesMenuViewProps {
   onBack: () => void;
@@ -864,25 +865,16 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       }
 
       case 'set_as_profile_and_wallpaper': {
-        let imageUrl = img.previewUrl || img.url || '';
-        if (!imageUrl || (!imageUrl.startsWith('http') && !imageUrl.startsWith('blob:') && !imageUrl.startsWith('data:'))) {
-          imageUrl = (await getFileBlobUrl(img.id)) || CloudStorageAPI.getFileUrl(img.id);
-        }
-        if (!imageUrl) {
-          showToast("Aperçu de l'image indisponible.");
-          break;
-        }
-        // 1. Rendu optimiste instantané 0ms
-        localStorage.setItem('studycloud_dashboard_wallpaper', imageUrl);
-        localStorage.setItem('unifolder_user_avatar', imageUrl);
-        window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: imageUrl } }));
-        window.dispatchEvent(new CustomEvent('studycloud_avatar_updated', { detail: { avatar: imageUrl } }));
-        showToast("Cette image a été définie comme fond d'écran et photo de profil !");
-
-        // 2. Persistance universelle Cloudflare D1 & R2 via TanStack Query
-        CloudStorageAPI.saveWallpaper(imageUrl, img.name)
-          .then(() => invalidateCloudQueries.wallpaper())
-          .catch((err) => console.error('[ImagesMenuView] saveWallpaper error:', err));
+        const imageSource = img.previewUrl || img.url || '';
+        showToast("Application du fond d'écran et photo de profil...");
+        applyDashboardWallpaper(imageSource, img.name, img.id)
+          .then(() => {
+            showToast("Fond d'écran et photo de profil mis à jour !");
+          })
+          .catch((err) => {
+            console.error('[ImagesMenuView] applyDashboardWallpaper error:', err);
+            showToast("Erreur lors de la définition du fond d'écran.");
+          });
         break;
       }
 

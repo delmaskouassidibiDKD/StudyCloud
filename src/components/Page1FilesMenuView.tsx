@@ -138,6 +138,7 @@ import { AppsMenuView } from './AppsMenuView';
 import { CloudSpaceMenuView } from './CloudSpaceMenuView';
 import { DownloadsMenuView } from './DownloadsMenuView';
 import { SecureFolderMenuView } from './SecureFolderMenuView';
+import { ImageCardPreview } from './ImageCardPreview';
 import { 
   type SortOption, 
   applyFileSorting, 
@@ -148,6 +149,7 @@ import {
 } from './HeaderMenuControls';
 import { handleNativeShare } from '../utils/nativeShare';
 import { ensureFileExtension } from '../utils/fileExtensionHelper';
+import { applyDashboardWallpaper } from '../utils/wallpaperHelper';
 
 // Nettoyage immédiat de tout fichier figé en localStorage pour éviter le plantage QuotaExceededError
 if (typeof window !== 'undefined') {
@@ -291,22 +293,7 @@ function unmarkRecentLocallyDeleted(id: string, _name?: string): void {
 }
 
 const RecentImageCardPreview: React.FC<{ file: FileItem }> = ({ file }) => {
-  const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-  const directUrl = file.previewUrl || file.url;
-  const src = (directUrl && (directUrl.startsWith('blob:') || directUrl.startsWith('data:')))
-    ? directUrl
-    : (directUrl && directUrl.startsWith('http') && !directUrl.includes('localhost')
-      ? directUrl
-      : `${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}`);
-
-  return (
-    <img
-      src={src}
-      alt={file.name}
-      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
-      loading="lazy"
-    />
-  );
+  return <ImageCardPreview img={file} />;
 };
 
 
@@ -3599,22 +3586,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
 
       case 'set_as_profile_and_wallpaper': {
-        const imageUrl = file.previewUrl || file.url || '';
-        if (!imageUrl) {
-          showProfileToast("Aperçu de l'image indisponible.");
-          break;
-        }
-        // 1. Rendu optimiste instantané 0ms
-        localStorage.setItem('studycloud_dashboard_wallpaper', imageUrl);
-        localStorage.setItem('unifolder_user_avatar', imageUrl);
-        window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: imageUrl } }));
-        window.dispatchEvent(new CustomEvent('studycloud_avatar_updated', { detail: { avatar: imageUrl } }));
-        showProfileToast("Cette image a été définie comme fond d'écran et photo de profil !");
-
-        // 2. Persistance universelle Cloudflare D1 & R2 via TanStack Query
-        CloudStorageAPI.saveWallpaper(imageUrl, file.name)
-          .then(() => invalidateCloudQueries.wallpaper())
-          .catch((err) => console.error('[Page1FilesMenuView] saveWallpaper error:', err));
+        const imageSource = file.previewUrl || file.url || '';
+        showProfileToast("Application du fond d'écran et photo de profil...");
+        applyDashboardWallpaper(imageSource, file.name, file.id)
+          .then(() => {
+            showProfileToast("Cette image a été définie comme fond d'écran et photo de profil !");
+          })
+          .catch((err) => {
+            console.error('[Page1FilesMenuView] applyDashboardWallpaper error:', err);
+            showProfileToast("Erreur lors de la définition du fond d'écran.", 'error');
+          });
         break;
       }
 
@@ -13677,12 +13658,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             ) : (file.category === 'documents' || /\.(pdf|docx?|xlsx?|pptx?|txt|csv)$/i.test(file.name)) ? (
                               <DocumentCardPreview doc={file} />
                             ) : file.previewUrl ? (
-                              <img 
-                                src={file.previewUrl} 
-                                alt={file.name}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
-                                loading="lazy"
-                              />
+                              <ImageCardPreview img={file} />
                             ) : (
                               <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-3">
                                 {(file.category === 'audio' || isWhatsAppAudio(file.name, file.type)) ? (
