@@ -707,9 +707,7 @@ export const CloudDataStore = {
         tasks.push(
           CloudStorageAPI.getTrashFiles().then(trash => {
             if (trash !== null) {
-              // Filtrer les éléments déjà supprimés définitivement (tombstones)
-              // comme on le fait pour tous les autres types de fichiers
-              currentState.trash = flag(trash).filter((f: any) => !isItemDeleted(f.id));
+              currentState.trash = flag(trash);
               notify();
             }
           }).catch(() => null)
@@ -783,7 +781,7 @@ export const CloudDataStore = {
     notify();
   },
   setFolderFilesMap(map: Record<string, FileItem[]>)   { currentState = { ...currentState, folderFilesMap: map };      persistToIndexedDB().catch(() => {}); notify(); },
-  setTrashFiles(trash: FileItem[])          { currentState = { ...currentState, trash: (trash || []).filter(f => !isItemDeleted(f.id)) }; persistToIndexedDB().catch(() => {}); notify(); },
+  setTrashFiles(trash: FileItem[])          { currentState = { ...currentState, trash: trash || [] };                      persistToIndexedDB().catch(() => {}); notify(); },
   setSecureFiles(secure: FileItem[])        { currentState = { ...currentState, secure };                   persistToIndexedDB().catch(() => {}); notify(); },
   setRecentFiles(recent: FileItem[])        { currentState = { ...currentState, recentFiles: recent };      persistToIndexedDB().catch(() => {}); notify(); },
 

@@ -687,14 +687,8 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   const favoritesTabBytes = useMemo(() => calculateTabListBytes(filteredFavorites), [filteredFavorites, storeData.trash]);
   const secureTabBytes = useMemo(() => calculateTabListBytes(storeData.secure), [storeData.secure, storeData.trash]);
   const trashTabBytes = useMemo(() => {
-    const delIds = new Set<string>();
-    try {
-      const raw = localStorage.getItem('studycloud_deleted_file_ids');
-      if (raw) JSON.parse(raw).forEach((id: string) => delIds.add(id));
-    } catch {}
     return (storeData.trash || []).reduce((acc, f) => {
       if (!f || !f.id) return acc;
-      if (delIds.has(f.id) || isItemDeleted(f.id)) return acc;
       return acc + parseSizeToBytes(f?.size, f?.sizeBytes);
     }, 0);
   }, [storeData.trash]);

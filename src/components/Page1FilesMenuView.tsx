@@ -1716,7 +1716,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       setAudioList(cleanList(cached.audio as any[]) as any);
       setCloudRecentFiles(cleanRecent(cached.recentFiles as any[]) as any);
       setSecureFolderFiles(cached.secure);
-      setTrashFiles((cached.trash || []).filter(f => !delIds.has(f.id) && !isItemDeleted(f.id)));
+      setTrashFiles(cached.trash || []);
       setCloudOverview(cached.overview);
       setLoadingCategories({
         overview: false, classeur: false, documents: false, images: false,
@@ -1774,7 +1774,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         return merged.filter(f => { if (seen.has(f.id)) return false; seen.add(f.id); return true; }).slice(0, 6);
       });
       setSecureFolderFiles(state.secure);
-      setTrashFiles((state.trash || []).filter(f => !_delIds.has(f.id) && !isItemDeleted(f.id)));
+      setTrashFiles(state.trash || []);
       setCloudOverview(state.overview);
       setLoadingCategories({
         overview: false, classeur: false, documents: false, images: false,
@@ -4332,9 +4332,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     } else if (id === 'trash') {
       CloudStorageAPI.getTrashFiles().then(trash => {
         if (trash && Array.isArray(trash)) {
-          const filtered = trash.filter(f => !isItemDeleted(f.id));
-          setTrashFiles(filtered);
-          CloudDataStore.setTrashFiles(filtered as any);
+          setTrashFiles(trash);
+          CloudDataStore.setTrashFiles(trash as any);
         }
       }).catch(() => {});
     } else if (id === 'secure-folder') {
@@ -4732,6 +4731,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
       return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} Go`;
     }
+    if (count > 0) {
+      return `${count} ${singularUnit || 'fichier'}${count > 1 ? 's' : ''}`;
+    }
     return '0 Mo';
   };
 
@@ -4755,10 +4757,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const favoritesTotalBytes = useMemo(() => calculateListBytes(favoriteFiles), [favoriteFiles, trashFiles]);
   const secureTotalBytes = useMemo(() => calculateListBytes(secureFolderFiles), [secureFolderFiles, trashFiles]);
   const trashTotalBytes = useMemo(() => {
-    const delIds = getLocallyDeletedFileIds();
     return (trashFiles || []).reduce((acc, f) => {
       if (!f || !f.id) return acc;
-      if (delIds.has(f.id) || isItemDeleted(f.id)) return acc;
       return acc + parseSizeToBytes(f?.size, (f as any)?.sizeBytes);
     }, 0);
   }, [trashFiles]);
@@ -5055,6 +5055,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
       handleSelectFile(list[randIdx]);
       setIsAudioPlaying(true);
+      return;
+    }
+    // Si une seule piste ou dernière piste en mode sans répétition : arrêt propre
+    if ((list.length <= 1 || currentIdx >= list.length - 1) && isAudioRepeat === 'off') {
+      setIsAudioPlaying(false);
+      desiredAudioPlaybackStateRef.current = false;
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      setAudioCurrentTime(0);
       return;
     }
     const nextIdx = (currentIdx + 1) % list.length;
@@ -8468,10 +8479,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               className="flex items-end gap-1 h-5 px-1 py-0.5 shrink-0" 
               title={isAudioPlaying ? "Lecture en cours" : "En pause"}
             >
-              <span className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-1' : ''}`} style={{ height: isAudioPlaying ? undefined : '5px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }} />
-              <span className={`w-1 rounded-full bg-amber-300 ${isAudioPlaying ? 'music-bar-2' : ''}`} style={{ height: isAudioPlaying ? undefined : '14px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }} />
-              <span className={`w-1 rounded-full bg-yellow-400 ${isAudioPlaying ? 'music-bar-3' : ''}`} style={{ height: isAudioPlaying ? undefined : '9px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }} />
-              <span className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-4' : ''}`} style={{ height: isAudioPlaying ? undefined : '4px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }} />
+              <span className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-1' : ''}`} style={{ height: isAudioPlaying ? undefined : '4px', animation: isAudioPlaying ? undefined : 'none', animationPlayState: isAudioPlaying ? 'running' : 'paused' }} />
+              <span className={`w-1 rounded-full bg-amber-300 ${isAudioPlaying ? 'music-bar-2' : ''}`} style={{ height: isAudioPlaying ? undefined : '10px', animation: isAudioPlaying ? undefined : 'none', animationPlayState: isAudioPlaying ? 'running' : 'paused' }} />
+              <span className={`w-1 rounded-full bg-yellow-400 ${isAudioPlaying ? 'music-bar-3' : ''}`} style={{ height: isAudioPlaying ? undefined : '7px', animation: isAudioPlaying ? undefined : 'none', animationPlayState: isAudioPlaying ? 'running' : 'paused' }} />
+              <span className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-4' : ''}`} style={{ height: isAudioPlaying ? undefined : '3px', animation: isAudioPlaying ? undefined : 'none', animationPlayState: isAudioPlaying ? 'running' : 'paused' }} />
             </div>
           )}
 
@@ -10989,15 +11000,36 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 audioRef.current.play().catch(() => {});
               }
               setAudioCurrentTime(0);
-            } else {
+            } else if (isAudioRepeat === 'all') {
               handleAudioNext();
+            } else {
+              // Répétition désactivée ('off') : passer au suivant s'il y en a un, sinon arrêter net
+              const list = filteredAudio;
+              const currentIdx = list.findIndex(a => a.id === splitSelectedFile?.id);
+              if (currentIdx >= 0 && currentIdx < list.length - 1) {
+                handleAudioNext();
+              } else {
+                setIsAudioPlaying(false);
+                desiredAudioPlaybackStateRef.current = false;
+                setAudioCurrentTime(0);
+                if (audioRef.current) {
+                  audioRef.current.pause();
+                  audioRef.current.currentTime = 0;
+                }
+              }
             }
           }}
           onTimeUpdate={() => {
             if (audioRef.current) {
-              setAudioCurrentTime(Math.floor(audioRef.current.currentTime));
-              if (audioRef.current.duration && !isNaN(audioRef.current.duration)) {
-                setAudioDuration(Math.floor(audioRef.current.duration));
+              const cur = Math.floor(audioRef.current.currentTime);
+              setAudioCurrentTime(cur);
+              if (audioRef.current.duration && !isNaN(audioRef.current.duration) && audioRef.current.duration > 0) {
+                const dur = Math.floor(audioRef.current.duration);
+                setAudioDuration(dur);
+                if (cur >= dur && isAudioRepeat === 'off' && (filteredAudio.length <= 1 || splitSelectedFile?.id === filteredAudio[filteredAudio.length - 1]?.id)) {
+                  setIsAudioPlaying(false);
+                  desiredAudioPlaybackStateRef.current = false;
+                }
               }
             }
           }}
@@ -12468,28 +12500,32 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                   <span 
                                     className={`w-1 rounded-full bg-amber-500 dark:bg-amber-400 ${isAudioPlaying ? 'music-bar-1' : ''}`}
                                     style={{ 
-                                      height: isAudioPlaying ? undefined : '5px',
+                                      height: isAudioPlaying ? undefined : '4px',
+                                      animation: isAudioPlaying ? undefined : 'none',
                                       animationPlayState: isAudioPlaying ? 'running' : 'paused' 
                                     }} 
                                   />
                                   <span 
                                     className={`w-1 rounded-full bg-amber-400 dark:bg-amber-300 ${isAudioPlaying ? 'music-bar-2' : ''}`}
                                     style={{ 
-                                      height: isAudioPlaying ? undefined : '14px',
+                                      height: isAudioPlaying ? undefined : '10px',
+                                      animation: isAudioPlaying ? undefined : 'none',
                                       animationPlayState: isAudioPlaying ? 'running' : 'paused' 
                                     }} 
                                   />
                                   <span 
                                     className={`w-1 rounded-full bg-yellow-500 dark:bg-yellow-400 ${isAudioPlaying ? 'music-bar-3' : ''}`}
                                     style={{ 
-                                      height: isAudioPlaying ? undefined : '9px',
+                                      height: isAudioPlaying ? undefined : '7px',
+                                      animation: isAudioPlaying ? undefined : 'none',
                                       animationPlayState: isAudioPlaying ? 'running' : 'paused' 
                                     }} 
                                   />
                                   <span 
                                     className={`w-1 rounded-full bg-amber-500 dark:bg-amber-400 ${isAudioPlaying ? 'music-bar-4' : ''}`}
                                     style={{ 
-                                      height: isAudioPlaying ? undefined : '4px',
+                                      height: isAudioPlaying ? undefined : '3px',
+                                      animation: isAudioPlaying ? undefined : 'none',
                                       animationPlayState: isAudioPlaying ? 'running' : 'paused' 
                                     }} 
                                   />

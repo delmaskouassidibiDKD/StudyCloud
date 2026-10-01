@@ -559,4 +559,9 @@ p.brand-tagline,
   animation: musicBar4 0.65s ease-in-out infinite alternate;
 }
 
+.music-bar-paused {
+  animation: none !important;
+  animation-play-state: paused !important;
+}
+
 

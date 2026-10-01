@@ -31,18 +31,19 @@ export interface HeaderMenuControlsProps {
 
 export function parseSizeToBytes(sizeStr?: string | number, sizeBytes?: number): number {
   if (typeof sizeBytes === 'number' && !isNaN(sizeBytes) && sizeBytes > 0) return sizeBytes;
-  if (typeof sizeStr === 'number') return sizeStr;
+  if (typeof sizeStr === 'number') return isNaN(sizeStr) ? 0 : sizeStr;
   if (!sizeStr || typeof sizeStr !== 'string') return 0;
   const cleaned = sizeStr.trim().replace(',', '.');
-  const match = cleaned.match(/^([\d.]+)\s*([a-zA-Z]+)?$/);
+  const match = cleaned.match(/([\d.]+)\s*([a-zA-Z]+)?/);
   if (!match) return 0;
   const val = parseFloat(match[1]);
   if (isNaN(val)) return 0;
   const unit = (match[2] || '').toLowerCase();
-  if (unit.startsWith('g')) return val * 1024 * 1024 * 1024;
-  if (unit.startsWith('m')) return val * 1024 * 1024;
-  if (unit.startsWith('k')) return val * 1024;
-  return val;
+  if (unit.startsWith('g')) return Math.round(val * 1024 * 1024 * 1024);
+  if (unit.startsWith('m')) return Math.round(val * 1024 * 1024);
+  if (unit.startsWith('k')) return Math.round(val * 1024);
+  if (unit.startsWith('o') || unit.startsWith('b')) return Math.round(val);
+  return Math.round(val);
 }
 
 const MONTH_MAP: Record<string, number> = {
