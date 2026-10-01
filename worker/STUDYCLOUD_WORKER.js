@@ -5101,6 +5101,12 @@ var index_default = {
         if (!foundRecord) {
           foundRecord = await env.DB.prepare('SELECT id, r2_key, file_type as extension, title as name, "documents" as category FROM published_documents WHERE id = ? LIMIT 1').bind(fileId).first();
         }
+        if (!foundRecord) {
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, COALESCE(source_category, category, "audio") as category FROM trash_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        }
+        if (!foundRecord) {
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, COALESCE(original_category, category, "audio") as category FROM secure_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        }
         if (!foundRecord || !foundRecord.r2_key) {
           return errorResponse("Fichier introuvable dans la base de donn\xE9es", 404, origin);
         }
@@ -5119,9 +5125,10 @@ var index_default = {
         headers.set("Access-Control-Allow-Origin", origin);
         let mime = headers.get("Content-Type");
         const ext = (foundRecord.extension || foundRecord.name.split(".").pop() || "").toLowerCase();
+        const isAudio = foundRecord.category === "audio" || foundRecord.name && foundRecord.name.toLowerCase().startsWith("whatsapp audio");
         const mimeMap = {
-          mp4: "video/mp4",
-          webm: "video/webm",
+          mp4: isAudio ? "audio/mp4" : "video/mp4",
+          webm: isAudio ? "audio/webm" : "video/webm",
           mov: "video/quicktime",
           mkv: "video/x-matroska",
           avi: "video/x-msvideo",
@@ -5130,6 +5137,7 @@ var index_default = {
           ogg: "audio/ogg",
           m4a: "audio/mp4",
           flac: "audio/flac",
+          aac: "audio/aac",
           pdf: "application/pdf",
           png: "image/png",
           jpg: "image/jpeg",
@@ -5138,7 +5146,7 @@ var index_default = {
           svg: "image/svg+xml",
           gif: "image/gif"
         };
-        if (!mime || mime.includes("octet-stream")) {
+        if (!mime || mime.includes("octet-stream") || isAudio && mime.startsWith("video/")) {
           if (ext && mimeMap[ext]) headers.set("Content-Type", mimeMap[ext]);
         }
         if (rangeHeader && object.range) {
@@ -7951,23 +7959,34 @@ var index_default = {
           const { results } = await env.DB.prepare(`
             SELECT * FROM trash_files WHERE user_id = ? ORDER BY deleted_at DESC
           `).bind(reqUserId).all();
-          const formatted = (results || []).map((t) => ({
-            id: t.id,
-            userId: t.user_id,
-            name: t.name,
-            size: t.size || "0 o",
-            sizeBytes: Number(t.size_bytes || 0),
-            category: t.category || "documents",
-            extension: t.extension || "",
-            sourceCategory: t.source_category || "documents",
-            originalFolderId: t.original_folder_id || "",
-            date: t.date_formatted || "",
-            deletedAt: t.deleted_at,
-            metadata: t.metadata_json ? JSON.parse(t.metadata_json) : {},
-            r2Key: t.r2_key || "",
-            url: t.file_url || "",
-            previewUrl: t.file_url || ""
-          }));
+          const formatted = (results || []).map((t) => {
+            const meta = t.metadata_json ? JSON.parse(t.metadata_json) : {};
+            let finalUrl = t.file_url || "";
+            if (!finalUrl || finalUrl.startsWith("blob:") || finalUrl.includes("localhost") || finalUrl.includes("127.0.0.1")) {
+              finalUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(t.id)}`;
+            }
+            return {
+              id: t.id,
+              userId: t.user_id,
+              name: t.name,
+              size: t.size || "0 o",
+              sizeBytes: Number(t.size_bytes || 0),
+              category: t.category || "documents",
+              extension: t.extension || "",
+              sourceCategory: t.source_category || "documents",
+              originalFolderId: t.original_folder_id || "",
+              date: t.date_formatted || "",
+              deletedAt: t.deleted_at,
+              metadata: meta,
+              r2Key: t.r2_key || "",
+              url: finalUrl,
+              previewUrl: finalUrl,
+              audioUrl: finalUrl,
+              videoUrl: finalUrl,
+              artist: meta.artist || "StudyCloud Audio",
+              coverUrl: meta.coverUrl || ""
+            };
+          });
           return jsonResponse({ success: true, data: formatted }, 200, origin);
         }
         if (method === "POST") {

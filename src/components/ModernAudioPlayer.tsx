@@ -1,23 +1,25 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Play,
   Pause,
   RotateCcw,
   RotateCw,
   Volume2,
-  Volume1,
   VolumeX,
   Repeat,
+  Shuffle,
+  SkipBack,
+  SkipForward,
   Download,
-  Music,
-  Disc,
   AlertCircle,
   RefreshCw
 } from 'lucide-react';
 import { getFileBlobUrl, getFileBlob } from '../services/localFileStorage';
 import { getWorkerApiUrl } from '../services/api';
+import { AudioCardPreview } from './AudioCardPreview';
+import { FileItem } from './Page1FilesMenuView';
 
-interface ModernAudioPlayerProps {
+export interface ModernAudioPlayerProps {
   src?: string;
   fileName?: string;
   fileId?: string;
@@ -25,6 +27,9 @@ interface ModernAudioPlayerProps {
   artist?: string;
   className?: string;
   autoPlay?: boolean;
+  file?: any;
+  onPrev?: () => void;
+  onNext?: () => void;
 }
 
 function formatAudioTime(seconds: number): string {
@@ -41,128 +46,83 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
   fileSize,
   artist = 'StudyCloud Audio',
   className = '',
-  autoPlay = false
+  autoPlay = true,
+  file,
+  onPrev,
+  onNext
 }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const progressRef = useRef<HTMLDivElement>(null);
-  const animFrameRef = useRef<number | null>(null);
-  const [tick, setTick] = useState<number>(0);
 
-  const [resolvedSrc, setResolvedSrc] = useState<string>('');
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  // Normalisation du track pour AudioCardPreview et métadonnées
+  const trackItem: FileItem = (file as FileItem) || {
+    id: fileId || '',
+    name: fileName || 'Piste Audio',
+    size: typeof fileSize === 'number' ? `${fileSize} o` : (fileSize || '0 o'),
+    date: (file as any)?.date || '',
+    artist: artist || 'StudyCloud Audio',
+    url: src || '',
+    audioUrl: src || '',
+    category: 'audio',
+    coverUrl: (file as any)?.coverUrl,
+    thumbnailUrl: (file as any)?.thumbnailUrl,
+    previewUrl: (file as any)?.previewUrl
+  };
+
+  const [isAudioPlaying, setIsAudioPlaying] = useState<boolean>(Boolean(autoPlay));
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
   const [volume, setVolume] = useState<number>(1);
   const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [playbackRate, setPlaybackRate] = useState<number>(1);
-  const [isLooping, setIsLooping] = useState<boolean>(false);
+  const [isAudioShuffle, setIsAudioShuffle] = useState<boolean>(false);
+  const [isAudioRepeat, setIsAudioRepeat] = useState<'off' | 'all' | 'one'>('off');
+  const [splitResolvedAudioUrl, setSplitResolvedAudioUrl] = useState<string>('');
   const [hasError, setHasError] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
-  const [showSpeedMenu, setShowSpeedMenu] = useState<boolean>(false);
 
-  // Boucle d'animation pour l'égaliseur
+  const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+  const activeId = fileId || trackItem.id;
+  const fallbackStreamUrl = activeId ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(activeId)}` : '';
+  const rawDirect = src || trackItem.audioUrl || (trackItem as any).url || '';
+  const isDirectUsable = rawDirect && !rawDirect.startsWith('blob:') && !rawDirect.includes('localhost') && !rawDirect.includes('127.0.0.1');
+
+  // Résolution prioritaire : IndexedDB locale (0ms) -> direct URL -> fallback streaming Cloudflare
   useEffect(() => {
-    if (isPlaying) {
-      const loop = () => {
-        setTick(Date.now());
-        animFrameRef.current = requestAnimationFrame(loop);
-      };
-      animFrameRef.current = requestAnimationFrame(loop);
-    } else {
-      if (animFrameRef.current !== null) {
-        cancelAnimationFrame(animFrameRef.current);
-        animFrameRef.current = null;
-      }
-    }
-    return () => {
-      if (animFrameRef.current !== null) {
-        cancelAnimationFrame(animFrameRef.current);
-        animFrameRef.current = null;
-      }
-    };
-  }, [isPlaying]);
-
-  // Résolution de la source audio avec fallback IndexedDB
-  const resolveAudioSource = useCallback(async () => {
+    let isMounted = true;
     setHasError(false);
     setErrorMessage('');
 
-    // Priorité 1 : Recherche dans le stockage local IndexedDB par fileId (garantit un blob frais)
-    if (fileId) {
-      try {
-        const blobUrl = await getFileBlobUrl(fileId);
-        if (blobUrl) {
-          setResolvedSrc(blobUrl);
-          return;
-        }
-      } catch (err) {
-        console.warn('[ModernAudioPlayer] Erreur chargement IndexedDB:', err);
-      }
+    if (activeId) {
+      getFileBlobUrl(activeId)
+        .then((blobUrl) => {
+          if (isMounted && blobUrl) {
+            setSplitResolvedAudioUrl(blobUrl);
+          }
+        })
+        .catch(() => {});
     }
 
-    // Priorité 2 : Source directe
-    if (src && typeof src === 'string' && src.trim() && !src.startsWith('data:image/')) {
-      setResolvedSrc(src);
-      return;
-    }
-
-    // Priorité 3 : Streaming Cloudflare Worker si fileId
-    if (fileId) {
-      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
-      setResolvedSrc(streamUrl);
-      return;
-    }
-
-    setHasError(true);
-    setErrorMessage("Fichier audio non disponible.");
-  }, [src, fileId]);
-
-  useEffect(() => {
-    resolveAudioSource();
-  }, [resolveAudioSource]);
-
-  useEffect(() => {
     return () => {
-      if (resolvedSrc && resolvedSrc.startsWith('blob:') && resolvedSrc !== src) {
-        try {
-          URL.revokeObjectURL(resolvedSrc);
-        } catch {}
-      }
+      isMounted = false;
     };
-  }, [resolvedSrc, src]);
+  }, [activeId, src]);
 
-  const togglePlay = () => {
+  const audioSrc = splitResolvedAudioUrl || (isDirectUsable ? rawDirect : '') || fallbackStreamUrl;
+
+  const togglePlayPause = () => {
     if (!audioRef.current) return;
     if (audioRef.current.paused) {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+      audioRef.current.play().then(() => setIsAudioPlaying(true)).catch(() => {});
     } else {
       audioRef.current.pause();
-      setIsPlaying(false);
+      setIsAudioPlaying(false);
     }
   };
 
-  const skip = (secs: number) => {
+  const handleSeekDelta = (delta: number) => {
     if (!audioRef.current) return;
-    const nextTime = Math.max(0, Math.min(duration || 9999, audioRef.current.currentTime + secs));
+    const nextTime = Math.max(0, Math.min(duration || 9999, (audioRef.current.currentTime || 0) + delta));
     audioRef.current.currentTime = nextTime;
-    setCurrentTime(nextTime);
-  };
-
-  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!audioRef.current || !progressRef.current || !duration) return;
-    const rect = progressRef.current.getBoundingClientRect();
-    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const newTime = pos * duration;
-    audioRef.current.currentTime = newTime;
-    setCurrentTime(newTime);
-  };
-
-  const toggleMute = () => {
-    if (!audioRef.current) return;
-    const next = !isMuted;
-    audioRef.current.muted = next;
-    setIsMuted(next);
+    setCurrentTime(Math.floor(nextTime));
   };
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -175,244 +135,296 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
     }
   };
 
-  const setSpeed = (rate: number) => {
+  const toggleMute = () => {
     if (!audioRef.current) return;
-    audioRef.current.playbackRate = rate;
-    setPlaybackRate(rate);
-    setShowSpeedMenu(false);
+    const next = !isMuted;
+    audioRef.current.muted = next;
+    setIsMuted(next);
   };
 
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const toggleAudioRepeat = () => {
+    setIsAudioRepeat(prev => {
+      if (prev === 'off') return 'one';
+      if (prev === 'one') return 'all';
+      return 'off';
+    });
+  };
+
+  const handleRetry = async () => {
+    setHasError(false);
+    setErrorMessage('');
+    if (activeId) {
+      try {
+        const b = await getFileBlobUrl(activeId);
+        if (b) {
+          setSplitResolvedAudioUrl(b);
+          if (audioRef.current) {
+            audioRef.current.src = b;
+            audioRef.current.play().catch(() => {});
+          }
+          return;
+        }
+      } catch (e) {}
+    }
+    if (fallbackStreamUrl) {
+      setSplitResolvedAudioUrl(fallbackStreamUrl);
+      if (audioRef.current) {
+        audioRef.current.src = fallbackStreamUrl;
+        audioRef.current.play().catch(() => {});
+      }
+    }
+  };
 
   return (
-    <div className={`w-full max-w-xl mx-auto flex flex-col items-center justify-between p-6 sm:p-8 bg-[#0F1420] text-white rounded-3xl border border-white/10 shadow-2xl relative select-none ${className}`}>
-      {/* Balise audio réelle */}
-      {resolvedSrc && (
-        <audio
-          ref={audioRef}
-          src={resolvedSrc}
-          autoPlay={autoPlay}
-          loop={isLooping}
-          onTimeUpdate={() => {
-            if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
-          }}
-          onLoadedMetadata={() => {
-            if (audioRef.current) setDuration(audioRef.current.duration || 0);
-          }}
-          onPlaying={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
-          onEnded={() => {
-            setIsPlaying(false);
-            if (!isLooping) setCurrentTime(duration);
-          }}
-          onError={async () => {
-            if (fileId) {
-              try {
-                const b = await getFileBlob(fileId);
-                if (b) {
-                  const freshUrl = URL.createObjectURL(b);
-                  if (freshUrl !== resolvedSrc) {
-                    setResolvedSrc(freshUrl);
-                    return;
-                  }
+    <div className={`relative w-full h-full flex flex-col justify-between p-3 sm:p-6 md:p-8 bg-[#090D1A] text-white overflow-hidden select-none ${className}`}>
+      {/* Balise audio réelle avec synchronisation identique au menu Audio */}
+      <audio
+        ref={audioRef}
+        src={audioSrc}
+        preload="auto"
+        autoPlay={isAudioPlaying}
+        loop={isAudioRepeat === 'one'}
+        onCanPlay={() => {
+          setHasError(false);
+          if (isAudioPlaying && audioRef.current && audioRef.current.paused) {
+            audioRef.current.play().catch(() => {});
+          }
+        }}
+        onPlay={() => {
+          setIsAudioPlaying(true);
+          setHasError(false);
+        }}
+        onPause={() => setIsAudioPlaying(false)}
+        onError={async () => {
+          console.warn('[ModernAudioPlayer] Erreur chargement audio pour', trackItem.name);
+          if (activeId) {
+            try {
+              const freshBlob = await getFileBlobUrl(activeId);
+              if (freshBlob && freshBlob !== audioSrc) {
+                setSplitResolvedAudioUrl(freshBlob);
+                if (audioRef.current) {
+                  audioRef.current.src = freshBlob;
+                  audioRef.current.play().catch(() => {});
                 }
-              } catch (e) {}
-
-              const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-              const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
-              if (resolvedSrc !== streamUrl) {
-                setResolvedSrc(streamUrl);
                 return;
               }
+            } catch (e) {}
+
+            if (fallbackStreamUrl && audioSrc !== fallbackStreamUrl) {
+              setSplitResolvedAudioUrl(fallbackStreamUrl);
+              if (audioRef.current) {
+                audioRef.current.src = fallbackStreamUrl;
+                audioRef.current.play().catch(() => {});
+              }
+              return;
             }
-            setHasError(true);
-            setErrorMessage("Erreur de lecture audio. Vérifiez que le format est supporté.");
-          }}
-        />
-      )}
+          }
+          setHasError(true);
+          setErrorMessage("Erreur de lecture audio. Vérifiez que le format est supporté.");
+        }}
+        onEnded={() => {
+          if (isAudioRepeat === 'one') {
+            if (audioRef.current) {
+              audioRef.current.currentTime = 0;
+              audioRef.current.play().catch(() => {});
+            }
+            setCurrentTime(0);
+          } else if (onNext) {
+            onNext();
+          } else {
+            setIsAudioPlaying(false);
+            setCurrentTime(duration);
+          }
+        }}
+        onTimeUpdate={() => {
+          if (audioRef.current) {
+            setCurrentTime(Math.floor(audioRef.current.currentTime));
+            if (audioRef.current.duration && !isNaN(audioRef.current.duration)) {
+              setDuration(Math.floor(audioRef.current.duration));
+            }
+          }
+        }}
+      />
 
-      {/* DISQUE VINYLE ANIMÉ / VISUEL CENTRAL */}
-      <div className="relative my-4 flex items-center justify-center">
-        {/* Halo lumineux */}
-        <div className={`absolute -inset-4 rounded-full bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-cyan-500/20 blur-xl transition-opacity duration-500 ${
-          isPlaying ? 'opacity-100 animate-pulse' : 'opacity-30'
-        }`} />
+      {/* Halo ambré chaleureux identique au menu Audio */}
+      <div
+        className="absolute inset-0 pointer-events-none opacity-35"
+        style={{
+          background: 'radial-gradient(circle at 45% 30%, rgba(245, 158, 11, 0.45) 0%, rgba(217, 119, 6, 0.18) 40%, transparent 75%)'
+        }}
+      />
 
-        {/* Disque Vinyle */}
-        <div className={`w-40 h-40 sm:w-48 sm:h-48 rounded-full bg-gradient-to-br from-zinc-900 via-black to-zinc-950 p-2 border-4 border-zinc-800/80 shadow-2xl flex items-center justify-center transition-transform duration-700 ${
-          isPlaying ? 'animate-spin' : ''
-        }`} style={{ animationDuration: '6s' }}>
-          {/* Sillons du vinyle */}
-          <div className="w-full h-full rounded-full border border-zinc-800 flex items-center justify-center">
-            <div className="w-3/4 h-3/4 rounded-full border border-zinc-800/60 flex items-center justify-center">
-              {/* Centre / Étiquette */}
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center shadow-inner">
-                <Disc className="w-8 h-8 text-white/90" />
-              </div>
-            </div>
+      {/* Centre : Pochette carrée avec AudioCardPreview et Parental Advisory (même design que le menu audio) */}
+      <div className="relative z-10 w-full flex items-center justify-center max-w-sm mx-auto my-auto pt-2 sm:pt-4">
+        <div className="relative w-44 sm:w-56 md:w-64 aspect-square rounded-2xl overflow-hidden shrink-0 shadow-[0_20px_45px_rgba(0,0,0,0.85)] border border-white/20 bg-black group">
+          <AudioCardPreview
+            track={trackItem}
+            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+          <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/85 border border-white/25 rounded text-[7px] font-black uppercase tracking-wider text-white">
+            Parental Advisory
           </div>
         </div>
-
-        {/* ÉGALISEUR ANIMÉ EN BAS DU DISQUE */}
-        <div className="absolute -bottom-2 inset-x-0 flex items-center justify-center gap-1">
-          {[12, 24, 18, 28, 14, 26, 20, 30, 16, 22].map((h, idx) => (
-            <div
-              key={idx}
-              className={`w-1 rounded-full bg-emerald-400 transition-all duration-150 ${
-                isPlaying ? 'opacity-100' : 'opacity-40'
-              }`}
-              style={{
-                height: isPlaying ? `${Math.max(4, Math.sin(tick / 200 + idx * 0.8) * (h / 2) + h / 2)}px` : '4px'
-              }}
-            />
-          ))}
-        </div>
       </div>
 
-      {/* TITRE ET MÉTADONNÉES */}
-      <div className="text-center my-4 w-full px-4">
-        <h3 className="text-base sm:text-lg font-black text-white truncate" title={fileName}>
-          {fileName}
-        </h3>
-        <p className="text-xs text-emerald-400 font-semibold mt-0.5">{artist}</p>
-        {fileSize && <p className="text-[10px] text-zinc-400 font-mono mt-1">{fileSize}</p>}
+      {/* Titre et détails de la piste */}
+      <div className="relative z-10 w-full text-center space-y-1 my-2 sm:my-3">
+        <h2 className="text-lg sm:text-2xl md:text-3xl font-black text-white tracking-tight drop-shadow-md truncate px-2" title={trackItem.name}>
+          {trackItem.name}
+        </h2>
+        <p className="text-xs sm:text-sm font-semibold text-slate-300 truncate px-2">
+          {trackItem.artist || trackItem.size || 'StudyCloud Audio'}
+        </p>
       </div>
 
-      {/* GESTION D'ERREUR */}
+      {/* Message d'erreur avec bouton Réessayer si nécessaire */}
       {hasError && (
-        <div className="w-full bg-rose-500/10 border border-rose-500/30 rounded-2xl p-3 my-2 text-center text-xs text-rose-300 flex items-center justify-between gap-2">
-          <span>{errorMessage}</span>
+        <div className="relative z-10 w-full max-w-md mx-auto mb-2 px-3 py-1.5 bg-rose-500/20 border border-rose-500/40 rounded-xl flex items-center justify-between text-xs text-rose-300">
+          <div className="flex items-center gap-1.5">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+            <span className="truncate">{errorMessage}</span>
+          </div>
           <button
             type="button"
-            onClick={resolveAudioSource}
-            className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-bold flex items-center gap-1 cursor-pointer"
+            onClick={handleRetry}
+            className="px-2 py-0.5 rounded-lg bg-rose-500/30 hover:bg-rose-500/50 text-white font-semibold flex items-center gap-1 text-[11px] cursor-pointer"
           >
-            <RefreshCw className="w-3 h-3" />
-            <span>Réessayer</span>
+            <RefreshCw className="w-3 h-3" /> Réessayer
           </button>
         </div>
       )}
 
-      {/* BARRE DE PROGRESSION */}
-      <div className="w-full my-3">
-        <div
-          ref={progressRef}
-          onClick={handleSeek}
-          className="relative w-full h-2 hover:h-3 bg-white/10 rounded-full cursor-pointer transition-all group/aud flex items-center"
-        >
-          <div
-            className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full pointer-events-none"
-            style={{ width: `${progressPercent}%` }}
-          />
-          <div
-            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-white rounded-full shadow scale-0 group-hover/aud:scale-100 transition-transform pointer-events-none"
-            style={{ left: `${progressPercent}%` }}
-          />
-        </div>
-        <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400 mt-1.5 px-0.5">
-          <span>{formatAudioTime(currentTime)}</span>
-          <span>{formatAudioTime(duration)}</span>
-        </div>
-      </div>
-
-      {/* BOUTONS DE CONTRÔLE */}
-      <div className="w-full flex items-center justify-between gap-2 pt-2">
-        {/* Vitesse */}
-        <div className="relative">
+      {/* Section temporelle (-10s / pill / +10s / slider) */}
+      <div className="relative z-10 w-full max-w-md mx-auto space-y-1.5 py-1">
+        <div className="flex items-center justify-between px-3">
           <button
             type="button"
-            onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-            className="px-2 py-1 bg-white/10 hover:bg-white/20 text-xs font-bold rounded-lg text-zinc-300 cursor-pointer"
-          >
-            {playbackRate}x
-          </button>
-          {showSpeedMenu && (
-            <div className="absolute bottom-full left-0 mb-2 py-1 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl z-20 flex flex-col min-w-[70px]">
-              {[0.75, 1, 1.25, 1.5, 2].map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => setSpeed(r)}
-                  className={`px-3 py-1 text-left text-xs font-semibold ${
-                    playbackRate === r ? 'text-emerald-400 font-bold bg-emerald-500/10' : 'text-zinc-300 hover:text-white'
-                  }`}
-                >
-                  {r}x
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Centre : Reculer 10s, Play/Pause, Avancer 10s */}
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => skip(-10)}
-            className="p-2 text-zinc-300 hover:text-white cursor-pointer transition-colors"
+            onClick={() => handleSeekDelta(-10)}
+            className="relative w-8 h-8 rounded-full flex items-center justify-center text-white/90 hover:text-white hover:bg-white/10 transition-all active:scale-90 cursor-pointer"
             title="Reculer de 10s"
           >
-            <RotateCcw className="w-4 h-4" />
+            <RotateCcw className="w-5 h-5 stroke-[2]" />
+            <span className="absolute text-[8px] font-black text-white">10</span>
           </button>
 
-          <button
-            type="button"
-            onClick={togglePlay}
-            className="w-12 h-12 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center shadow-lg transition-transform active:scale-95 cursor-pointer"
-            title={isPlaying ? "Pause" : "Lecture"}
-          >
-            {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current translate-x-0.5" />}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => skip(10)}
-            className="p-2 text-zinc-300 hover:text-white cursor-pointer transition-colors"
-            title="Avancer de 10s"
-          >
-            <RotateCw className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Droite : Boucle & Volume */}
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsLooping(!isLooping)}
-            className={`p-2 rounded-xl transition-colors cursor-pointer ${
-              isLooping ? 'bg-emerald-500/20 text-emerald-300' : 'text-zinc-400 hover:text-white'
-            }`}
-            title={isLooping ? "Boucle active" : "Activer boucle"}
-          >
-            <Repeat className="w-4 h-4" />
-          </button>
-
-          <div className="flex items-center gap-1">
-            <button type="button" onClick={toggleMute} className="text-zinc-400 hover:text-white cursor-pointer">
-              {isMuted || volume === 0 ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
-            </button>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={isMuted ? 0 : volume}
-              onChange={handleVolumeChange}
-              className="w-14 sm:w-18 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-            />
+          <div className="px-3.5 py-1 rounded-full bg-white text-stone-950 font-black text-xs shadow-md tracking-wider">
+            {formatAudioTime(currentTime)} / {formatAudioTime(duration)}
           </div>
 
-          {resolvedSrc && (
-            <a
-              href={resolvedSrc}
-              download={fileName || 'audio.mp3'}
-              className="p-2 text-zinc-400 hover:text-white cursor-pointer transition-colors"
-              title="Télécharger l'audio"
-            >
-              <Download className="w-4 h-4" />
-            </a>
-          )}
+          <button
+            type="button"
+            onClick={() => handleSeekDelta(10)}
+            className="relative w-8 h-8 rounded-full flex items-center justify-center text-white/90 hover:text-white hover:bg-white/10 transition-all active:scale-90 cursor-pointer"
+            title="Avancer de 10s"
+          >
+            <RotateCw className="w-5 h-5 stroke-[2]" />
+            <span className="absolute text-[8px] font-black text-white">10</span>
+          </button>
         </div>
+
+        <div className="w-full px-2">
+          <input
+            type="range"
+            min="0"
+            max={duration || 1}
+            value={currentTime}
+            onChange={(e) => {
+              const val = Number(e.target.value);
+              setCurrentTime(val);
+              if (audioRef.current) audioRef.current.currentTime = val;
+            }}
+            className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-white hover:accent-amber-400 transition-all"
+          />
+        </div>
+      </div>
+
+      {/* Contrôles principaux (Shuffle, Prev, Play/Pause, Next, Repeat) */}
+      <div className="relative z-10 w-full max-w-sm mx-auto flex items-center justify-between px-2 pt-1 pb-2 sm:pb-3">
+        <button
+          type="button"
+          onClick={() => setIsAudioShuffle(!isAudioShuffle)}
+          className={`p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer ${
+            isAudioShuffle ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
+          }`}
+          title={isAudioShuffle ? 'Désactiver mode aléatoire' : 'Mode aléatoire'}
+        >
+          <Shuffle className="w-5 h-5" />
+        </button>
+
+        <button
+          type="button"
+          onClick={onPrev || (() => handleSeekDelta(-10))}
+          className="p-2 text-white hover:text-amber-400 transition-all active:scale-90 cursor-pointer"
+          title="Piste précédente"
+        >
+          <SkipBack className="w-6 h-6 fill-current" />
+        </button>
+
+        <button
+          type="button"
+          onClick={togglePlayPause}
+          className="w-14 h-14 rounded-full bg-white text-stone-950 flex items-center justify-center hover:scale-105 active:scale-95 shadow-[0_8px_25px_rgba(255,255,255,0.3)] transition-all cursor-pointer"
+          title={isAudioPlaying ? 'Mettre en pause' : 'Lire'}
+        >
+          {isAudioPlaying ? (
+            <Pause className="w-7 h-7 fill-current" />
+          ) : (
+            <Play className="w-7 h-7 fill-current ml-1" />
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={onNext || (() => handleSeekDelta(10))}
+          className="p-2 text-white hover:text-amber-400 transition-all active:scale-90 cursor-pointer"
+          title="Piste suivante"
+        >
+          <SkipForward className="w-6 h-6 fill-current" />
+        </button>
+
+        <button
+          type="button"
+          onClick={toggleAudioRepeat}
+          className={`p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer relative ${
+            isAudioRepeat !== 'off' ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
+          }`}
+          title={isAudioRepeat === 'one' ? 'Boucle 1 titre' : isAudioRepeat === 'all' ? 'Boucle tous les titres' : 'Boucle désactivée'}
+        >
+          <Repeat className="w-5 h-5" />
+          {isAudioRepeat === 'one' && (
+            <span className="absolute -top-0.5 -right-0.5 text-[9px] font-black text-amber-400">1</span>
+          )}
+        </button>
+      </div>
+
+      {/* Barre inférieure discrète : Volume & Téléchargement */}
+      <div className="relative z-10 w-full max-w-sm mx-auto flex items-center justify-between px-3 pt-1 text-xs text-white/50">
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={toggleMute} className="hover:text-white transition-colors cursor-pointer">
+            {isMuted || volume === 0 ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
+          </button>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={isMuted ? 0 : volume}
+            onChange={handleVolumeChange}
+            className="w-16 h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-white"
+          />
+        </div>
+
+        {audioSrc && (
+          <a
+            href={audioSrc}
+            download={trackItem.name || 'audio.mp3'}
+            className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer"
+            title="Télécharger l'audio"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span className="text-[10px]">Télécharger</span>
+          </a>
+        )}
       </div>
     </div>
   );

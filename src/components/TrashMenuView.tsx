@@ -1218,15 +1218,18 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
         {/* Corps du lecteur selon le type */}
         <div className="flex-1 w-full h-full overflow-hidden flex flex-col relative bg-[#04060A]">
           {fileType === 'audio' && (
-            <div className="w-full h-full flex flex-col justify-center bg-[#070B14]">
+            <div className="w-full h-full flex flex-col justify-center bg-[#090D1A]">
               <ModernAudioPlayer
+                file={file}
                 fileId={file.id}
-                src={file.url}
+                src={file.url || file.audioUrl}
                 fileName={file.name}
                 fileSize={file.size}
                 artist={file.artist || 'StudyCloud Corbeille'}
                 autoPlay={true}
                 className="w-full h-full border-0 rounded-none shadow-none"
+                onPrev={handlePrevFile}
+                onNext={handleNextFile}
               />
             </div>
           )}
