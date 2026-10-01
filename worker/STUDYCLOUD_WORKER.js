@@ -5117,7 +5117,7 @@ var index_default = {
           const formatted = (results || []).map((row) => {
             let finalUrl = row.file_url || "";
             if ((!finalUrl || finalUrl.startsWith("blob:")) && row.r2_key) {
-              finalUrl = `${url.origin}/api/storage/file/${encodeURIComponent(row.r2_key)}`;
+              finalUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(row.id)}`;
             }
             return {
               ...row,
@@ -5230,7 +5230,20 @@ var index_default = {
       }
       if (path.startsWith("/api/storage/file/") && method === "GET") {
         const key = decodeURIComponent(path.replace("/api/storage/file/", ""));
-        const object = await env.BUCKET.get(key);
+        let found = await getObjectFromAnyBucket(rawEnv, "documents", key);
+        if (!found || !found.object) {
+          found = await getObjectFromAnyBucket(rawEnv, "images", key);
+        }
+        if (!found || !found.object) {
+          found = await getObjectFromAnyBucket(rawEnv, "videos", key);
+        }
+        if (!found || !found.object) {
+          found = await getObjectFromAnyBucket(rawEnv, "audio", key);
+        }
+        if (!found || !found.object) {
+          found = await getObjectFromAnyBucket(rawEnv, "classeur", key);
+        }
+        const object = found?.object || (env.BUCKET ? await env.BUCKET.get(key) : null);
         if (!object) return errorResponse("Fichier introuvable dans R2", 404, origin);
         const headers = new Headers();
         object.writeHttpMetadata(headers);
@@ -5853,6 +5866,7 @@ var index_default = {
         const requestedCategory = (url.searchParams.get("category") || "auto").toLowerCase().trim();
         const fileName = url.searchParams.get("name") || "fichier_" + Date.now();
         const folderId = url.searchParams.get("folderId") || "";
+        const uploadSource = (url.searchParams.get("source") || request.headers.get("x-upload-source") || "").toLowerCase().trim();
         const contentType = request.headers.get("Content-Type") || "application/octet-stream";
         const fileBuffer = await request.arrayBuffer();
         const rawSizeBytes = fileBuffer.byteLength;
@@ -6167,6 +6181,8 @@ var index_default = {
                   updated_at = CURRENT_TIMESTAMP
               `).bind(fileId, reqUserId, folderId || "default-folder", fileName, sizeFormatted, sizeBytes, detectedNature, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
             }
+            const isMesFichiers = uploadSource === "mes-fichiers" || requestedCategory === "mes-fichiers";
+            const targetMatiereId = isMesFichiers ? null : finalCategory === "classeur" ? folderId || "Classeur" : `menu-${finalCategory}`;
             await env.DB.prepare(`
               INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -6174,21 +6190,31 @@ var index_default = {
                 name = excluded.name,
                 size = excluded.size,
                 type = excluded.type,
+                matiere_id = CASE
+                  WHEN ? = 1 THEN NULL
+                  WHEN files.matiere_id IS NULL OR files.matiere_id = '' OR files.matiere_id = 'Mes fichiers' THEN files.matiere_id
+                  ELSE COALESCE(files.matiere_id, excluded.matiere_id)
+                END,
                 r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
-                file_url = excluded.file_url,
+                file_url = CASE
+                  WHEN excluded.file_url IS NOT NULL AND excluded.file_url != '' AND excluded.file_url NOT LIKE 'blob:%'
+                  THEN excluded.file_url
+                  ELSE files.file_url
+                END,
                 last_imported = excluded.last_imported,
                 updated_at = CURRENT_TIMESTAMP
             `).bind(
               fileId,
               reqUserId,
-              finalCategory === "classeur" ? folderId || "Classeur" : `menu-${finalCategory}`,
+              targetMatiereId,
               fileName,
               sizeBytes,
               contentType || "application/octet-stream",
               extUpper,
               storageKey,
               fileUrl,
-              Date.now()
+              Date.now(),
+              isMesFichiers ? 1 : 0
             ).run();
           } catch (d1Err) {
             console.warn("[CloudWorker] Erreur insertion D1 upload:", d1Err);
@@ -8264,12 +8290,12 @@ var index_default = {
               metadata: meta,
               r2Key: s.r2_key || "",
               url: s.file_url || "",
-              previewUrl: isAud ? (audioCover || s.file_url || "") : (s.file_url || ""),
-              coverUrl: isAud ? (audioCover || undefined) : undefined,
-              thumbnailUrl: isAud ? (audioCover || undefined) : (s.file_url || undefined),
-              artist: meta.artist || undefined,
+              previewUrl: isAud ? audioCover || s.file_url || "" : s.file_url || "",
+              coverUrl: isAud ? audioCover || void 0 : void 0,
+              thumbnailUrl: isAud ? audioCover || void 0 : s.file_url || void 0,
+              artist: meta.artist || void 0,
               title: meta.title || s.name,
-              album: meta.album || undefined,
+              album: meta.album || void 0,
               durationSec: meta.durationSec || 0,
               lyricsSnippet: meta.lyricsSnippet || "",
               fullLyrics: meta.fullLyrics || [],
@@ -8293,33 +8319,26 @@ var index_default = {
           const dateFormatted = file.date || "";
           let fileUrl = file.url || file.previewUrl || "";
           const r2Key = file.r2Key || (fileUrl ? extractR2Keys("", fileUrl)[0] || "" : "");
-
           let existingAudioRow = null;
           if (originalCategory === "audio" || category === "audio") {
             try {
               existingAudioRow = await env.DB.prepare("SELECT * FROM audio_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).first();
-            } catch (e) {}
+            } catch (e) {
+            }
           }
-
-          const resolvedCover = (file.coverUrl && !file.coverUrl.startsWith("blob:") ? file.coverUrl : "")
-            || (file.thumbnailUrl && !file.thumbnailUrl.startsWith("blob:") ? file.thumbnailUrl : "")
-            || (file.previewUrl && !file.previewUrl.startsWith("blob:") && !file.previewUrl.includes(".mp3") ? file.previewUrl : "")
-            || existingAudioRow?.cover_url
-            || "";
-
+          const resolvedCover = (file.coverUrl && !file.coverUrl.startsWith("blob:") ? file.coverUrl : "") || (file.thumbnailUrl && !file.thumbnailUrl.startsWith("blob:") ? file.thumbnailUrl : "") || (file.previewUrl && !file.previewUrl.startsWith("blob:") && !file.previewUrl.includes(".mp3") ? file.previewUrl : "") || existingAudioRow?.cover_url || "";
           const fileToPersist = {
             ...file,
-            coverUrl: resolvedCover || file.coverUrl || undefined,
-            thumbnailUrl: resolvedCover || file.thumbnailUrl || undefined,
-            artist: file.artist || existingAudioRow?.artist || undefined,
+            coverUrl: resolvedCover || file.coverUrl || void 0,
+            thumbnailUrl: resolvedCover || file.thumbnailUrl || void 0,
+            artist: file.artist || existingAudioRow?.artist || void 0,
             title: file.title || existingAudioRow?.title || name,
-            album: file.album || existingAudioRow?.album || undefined,
+            album: file.album || existingAudioRow?.album || void 0,
             durationSec: file.durationSec || existingAudioRow?.duration_sec || 0,
             lyricsSnippet: file.lyricsSnippet || existingAudioRow?.lyrics_snippet || "",
             fullLyrics: file.fullLyrics || (existingAudioRow?.full_lyrics_json ? JSON.parse(existingAudioRow.full_lyrics_json) : [])
           };
           const metaJson = JSON.stringify(fileToPersist);
-
           await env.DB.prepare(`
             INSERT INTO secure_files (
               id, user_id, name, size, size_bytes, category, extension,
@@ -8496,7 +8515,6 @@ var index_default = {
                 const fullLyricsToRestore = JSON.stringify(meta.fullLyrics || []);
                 const audioUrlToRestore = secFile.file_url || meta.audioUrl || meta.url || "";
                 const r2KeyToRestore = secFile.r2_key || meta.r2Key || (extractR2Keys("", audioUrlToRestore)[0] || "");
-
                 await env.DB.prepare(`
                   INSERT INTO audio_files (
                     id, user_id, name, title, artist, album, duration_sec, size, size_bytes,
@@ -8521,13 +8539,22 @@ var index_default = {
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
                 `).bind(
-                  secFile.id, reqUserId, secFile.name, titleToRestore, artistToRestore,
-                  albumToRestore, durationSecToRestore, secFile.size, secFile.size_bytes,
-                  secFile.date_formatted, lyricsSnippetToRestore, fullLyricsToRestore,
-                  coverToRestore, r2KeyToRestore, audioUrlToRestore
+                  secFile.id,
+                  reqUserId,
+                  secFile.name,
+                  titleToRestore,
+                  artistToRestore,
+                  albumToRestore,
+                  durationSecToRestore,
+                  secFile.size,
+                  secFile.size_bytes,
+                  secFile.date_formatted,
+                  lyricsSnippetToRestore,
+                  fullLyricsToRestore,
+                  coverToRestore,
+                  r2KeyToRestore,
+                  audioUrlToRestore
                 ).run();
-
-                // Dual-write dans files
                 try {
                   await env.DB.prepare(`
                     INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
@@ -8539,7 +8566,8 @@ var index_default = {
                       file_url = excluded.file_url,
                       updated_at = CURRENT_TIMESTAMP
                   `).bind(secFile.id, reqUserId, secFile.name, secFile.size_bytes || 0, r2KeyToRestore, audioUrlToRestore, Date.now()).run();
-                } catch (e) {}
+                } catch (e) {
+                }
               } else if (origCat === "images") {
                 await env.DB.prepare(`
                   INSERT INTO image_files (id, user_id, name, size, size_bytes, image_url, date_formatted, updated_at)
@@ -8580,8 +8608,7 @@ var index_default = {
               await env.DB.prepare(`DELETE FROM secure_files WHERE id = ? AND user_id = ?`).bind(id, reqUserId).run();
               const finalCategory = isFolder ? "classeur_folder" : origCat;
               const isAudioFile = origCat === "audio";
-              const audioCoverUrl = isAudioFile ? (meta.coverUrl || meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.startsWith("blob:") && !meta.previewUrl.includes(".mp3") ? meta.previewUrl : "") || "") : "";
-
+              const audioCoverUrl = isAudioFile ? meta.coverUrl || meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.startsWith("blob:") && !meta.previewUrl.includes(".mp3") ? meta.previewUrl : "") || "" : "";
               const restoredPayload = {
                 id: secFile.id,
                 name: secFile.name,
@@ -8591,15 +8618,15 @@ var index_default = {
                 extension: secFile.extension || "",
                 date: secFile.date_formatted || (/* @__PURE__ */ new Date()).toLocaleDateString("fr-FR"),
                 url: secFile.file_url || "",
-                previewUrl: isAudioFile ? (audioCoverUrl || secFile.file_url || "") : (secFile.file_url || ""),
-                thumbnailUrl: isAudioFile ? (audioCoverUrl || "") : (secFile.file_url || ""),
-                coverUrl: isAudioFile ? (audioCoverUrl || undefined) : undefined,
-                artist: isAudioFile ? (meta.artist || undefined) : undefined,
-                title: isAudioFile ? (meta.title || secFile.name) : undefined,
-                album: isAudioFile ? (meta.album || undefined) : undefined,
-                durationSec: isAudioFile ? (meta.durationSec || 0) : undefined,
-                lyricsSnippet: isAudioFile ? (meta.lyricsSnippet || "") : undefined,
-                fullLyrics: isAudioFile ? (meta.fullLyrics || []) : undefined,
+                previewUrl: isAudioFile ? audioCoverUrl || secFile.file_url || "" : secFile.file_url || "",
+                thumbnailUrl: isAudioFile ? audioCoverUrl || "" : secFile.file_url || "",
+                coverUrl: isAudioFile ? audioCoverUrl || void 0 : void 0,
+                artist: isAudioFile ? meta.artist || void 0 : void 0,
+                title: isAudioFile ? meta.title || secFile.name : void 0,
+                album: isAudioFile ? meta.album || void 0 : void 0,
+                durationSec: isAudioFile ? meta.durationSec || 0 : void 0,
+                lyricsSnippet: isAudioFile ? meta.lyricsSnippet || "" : void 0,
+                fullLyrics: isAudioFile ? meta.fullLyrics || [] : void 0,
                 folderId: origFolder || void 0,
                 originalFolderId: origFolder || void 0,
                 metadata: meta,
