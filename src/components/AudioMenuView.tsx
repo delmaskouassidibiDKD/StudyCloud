@@ -52,6 +52,8 @@ import { AudioCardPreview } from './AudioCardPreview';
 import { getWorkerApiUrl } from '../services/api';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
 import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
+import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../services/fileTypeValidator';
+import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
 
 interface AudioMenuViewProps {
   onBack: () => void;
@@ -100,6 +102,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     return CloudDataStore.getState().audio || [];
   });
   const [loading, setLoading] = useState(() => !(CloudDataStore.getState().audio?.length > 0));
+  const [incompatibleAlertInfo, setIncompatibleAlertInfo] = useState<IncompatibleAlertInfo | null>(null);
 
   // ─── SOURCE PRINCIPALE : CloudDataStore (RAM, 0ms) ─────────────────────────
   useEffect(() => {
@@ -526,7 +529,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     else setIsAudioRepeat('off');
   };
 
-  // Import audio avec affichage immédiat, extraction instantanée des tags et de la pochette du chanteur
+  // Import audio avec validation stricte par Magic Numbers (signature binaire infaillible)
   const handleImportAudio = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const MAX_IMPORT_FILES = 10;
@@ -535,6 +538,31 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       showToast(`⚠️ Limite de ${MAX_IMPORT_FILES} fichiers audio max à la fois : seuls les ${MAX_IMPORT_FILES} premiers sont importés.`);
       files = files.slice(0, MAX_IMPORT_FILES);
     }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
+    // Validation stricte par Magic Numbers & signatures binaires réelles
+    const { validFiles, rejectedFiles } = await validateFilesForMenuAsync(files, 'audio');
+
+    if (rejectedFiles.length > 0) {
+      const first = rejectedFiles[0];
+      const isWa = isWhatsAppAudio(first.file.name, first.file.type);
+      const detectedLabel = isWa ? 'Audio (WhatsApp / Vocal)' : (CATEGORY_LABELS[first.detectedCategory] || first.detectedCategory);
+
+      // OUVERTURE IMMÉDIATE DU MODAL D'ALERTE ROUGE AU MILIEU DE L'ÉCRAN
+      setIncompatibleAlertInfo({
+        fileName: first.file.name,
+        detectedCategory: detectedLabel,
+        menuLabel: 'Audio',
+        reason: first.reason,
+      });
+
+      if (validFiles.length === 0) {
+        return; // Blocage total : aucun upload ni apparition
+      }
+    }
+
+    if (validFiles.length === 0) return;
+    files = validFiles;
 
     const now = Date.now();
     const newItems: FileItem[] = [];
@@ -2447,6 +2475,12 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       {/* Modales de transfert classeur */}
       {renderTransferPromptModal()}
       {renderTransferFolderModal()}
+
+      {/* MODAL FORMAT NON COMPATIBLE AU MILIEU DE L'ÉCRAN */}
+      <IncompatibleFormatModal 
+        info={incompatibleAlertInfo} 
+        onClose={() => setIncompatibleAlertInfo(null)} 
+      />
     </div>
   );
 };

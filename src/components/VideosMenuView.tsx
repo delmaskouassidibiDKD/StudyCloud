@@ -47,6 +47,8 @@ import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { getWorkerApiUrl } from '../services/api';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
 import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
+import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../services/fileTypeValidator';
+import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
 
 interface VideosMenuViewProps {
   onBack: () => void;
@@ -95,6 +97,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   const [selectedVideo, setSelectedVideo] = useState<FileItem | null>(null);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [incompatibleAlertInfo, setIncompatibleAlertInfo] = useState<IncompatibleAlertInfo | null>(null);
 
   // Défilement Infini (12 vidéos par lot avec mise en cache instantanée)
   const BATCH_SIZE = 12;
@@ -366,8 +369,8 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     }
   };
 
-  // Import de vidéos : affichage immédiat (0ms) avec ligne de chargement animée comme Mes Fichiers
-  const handleImportVideos = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Import de vidéos : validation stricte par Magic Numbers (signature binaire infaillible)
+  const handleImportVideos = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const MAX_IMPORT_FILES = 10;
     let files = Array.from(e.target.files) as File[];
@@ -375,6 +378,31 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       showToast(`⚠️ Limite de ${MAX_IMPORT_FILES} vidéos max à la fois : seules les ${MAX_IMPORT_FILES} premières sont importées.`);
       files = files.slice(0, MAX_IMPORT_FILES);
     }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
+    // Validation stricte par Magic Numbers & signatures binaires réelles
+    const { validFiles, rejectedFiles } = await validateFilesForMenuAsync(files, 'videos');
+
+    if (rejectedFiles.length > 0) {
+      const first = rejectedFiles[0];
+      const isWa = isWhatsAppAudio(first.file.name, first.file.type);
+      const detectedLabel = isWa ? 'Audio (WhatsApp / Vocal)' : (CATEGORY_LABELS[first.detectedCategory] || first.detectedCategory);
+
+      // OUVERTURE IMMÉDIATE DU MODAL D'ALERTE ROUGE AU MILIEU DE L'ÉCRAN
+      setIncompatibleAlertInfo({
+        fileName: first.file.name,
+        detectedCategory: detectedLabel,
+        menuLabel: 'Vidéos',
+        reason: first.reason,
+      });
+
+      if (validFiles.length === 0) {
+        return; // Blocage total : aucun upload ni apparition
+      }
+    }
+
+    if (validFiles.length === 0) return;
+    files = validFiles;
 
     const newItems: FileItem[] = [];
     const newFiles: { file: File; id: string }[] = [];
@@ -2083,6 +2111,12 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
           </button>
         </div>
       )}
+
+      {/* MODAL FORMAT NON COMPATIBLE AU MILIEU DE L'ÉCRAN */}
+      <IncompatibleFormatModal 
+        info={incompatibleAlertInfo} 
+        onClose={() => setIncompatibleAlertInfo(null)} 
+      />
     </div>
   );
 };
