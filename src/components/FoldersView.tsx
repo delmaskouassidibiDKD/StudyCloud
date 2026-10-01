@@ -21,6 +21,7 @@ import { Page1FilesMenuView } from './Page1FilesMenuView';
 import { NavigationTab } from '../types';
 import { triggerDebouncedCloudBackup } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
+import { useDashboardWallpaper } from '../hooks/useCloudQueries';
 
 interface FoldersViewProps {
   onOpenUpload: () => void;
@@ -153,10 +154,38 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [dragOffset, setDragOffset] = useState<number>(0);
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
+  // TanStack Query : Gestion universelle du fond d'écran dédié avec réactivité temps réel
+  const { data: cloudWallpaperData } = useDashboardWallpaper();
+
   // Fond d'écran personnalisé du tableau de bord (Page 1 et Page 2)
+  // Rendu instantané 0ms dès l'initialisation du composant sans délai ni clignotement
   const [dashboardWallpaper, setDashboardWallpaper] = useState<string | null>(() => {
     return localStorage.getItem('studycloud_dashboard_wallpaper');
   });
+
+  // Synchronisation transparente en arrière-plan : préchargement en mémoire (0ms perçu)
+  useEffect(() => {
+    if (cloudWallpaperData?.url) {
+      if (cloudWallpaperData.url !== dashboardWallpaper) {
+        // Précharger l'image dans le cache du navigateur avant de l'afficher
+        const img = new Image();
+        img.src = cloudWallpaperData.url;
+        img.onload = () => {
+          setDashboardWallpaper(cloudWallpaperData.url);
+          try {
+            localStorage.setItem('studycloud_dashboard_wallpaper', cloudWallpaperData.url);
+          } catch {}
+        };
+      }
+    } else if (cloudWallpaperData === null && dashboardWallpaper !== null) {
+      // Cas où le fond d'écran a été réinitialisé depuis un autre appareil
+      setDashboardWallpaper(null);
+      try {
+        localStorage.removeItem('studycloud_dashboard_wallpaper');
+        localStorage.removeItem('studycloud_dashboard_wallpaper_meta');
+      } catch {}
+    }
+  }, [cloudWallpaperData?.url]);
 
   useEffect(() => {
     const handleWallpaperChange = (e: any) => {

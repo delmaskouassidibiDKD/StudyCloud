@@ -2082,10 +2082,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   const handleRestoreDefaultWallpaperAndAvatar = () => {
     localStorage.removeItem('studycloud_dashboard_wallpaper');
+    localStorage.removeItem('studycloud_dashboard_wallpaper_meta');
     localStorage.removeItem('unifolder_user_avatar');
     window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: null } }));
     window.dispatchEvent(new CustomEvent('studycloud_avatar_updated', { detail: { avatar: null } }));
     showProfileToast("Fond d'écran et photo de profil d'origine restaurés !");
+    CloudStorageAPI.deleteWallpaper()
+      .then(() => invalidateCloudQueries.wallpaper())
+      .catch((err) => console.error('[Page1FilesMenuView] deleteWallpaper error:', err));
   };
 
   // Helper pour filtrer tout résidu de faux fichiers / mock dans le stockage local
@@ -3568,16 +3572,22 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
 
       case 'set_as_profile_and_wallpaper': {
-        const imageUrl = file.previewUrl || '';
+        const imageUrl = file.previewUrl || file.url || '';
         if (!imageUrl) {
           showProfileToast("Aperçu de l'image indisponible.");
           break;
         }
+        // 1. Rendu optimiste instantané 0ms
         localStorage.setItem('studycloud_dashboard_wallpaper', imageUrl);
         localStorage.setItem('unifolder_user_avatar', imageUrl);
         window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: imageUrl } }));
         window.dispatchEvent(new CustomEvent('studycloud_avatar_updated', { detail: { avatar: imageUrl } }));
-        showProfileToast("Cette image a été définie comme photo de profil");
+        showProfileToast("Cette image a été définie comme fond d'écran et photo de profil !");
+
+        // 2. Persistance universelle Cloudflare D1 & R2 via TanStack Query
+        CloudStorageAPI.saveWallpaper(imageUrl, file.name)
+          .then(() => invalidateCloudQueries.wallpaper())
+          .catch((err) => console.error('[Page1FilesMenuView] saveWallpaper error:', err));
         break;
       }
 

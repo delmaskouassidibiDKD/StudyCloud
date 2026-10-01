@@ -838,11 +838,17 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
           showToast("Aperçu de l'image indisponible.");
           break;
         }
+        // 1. Rendu optimiste instantané 0ms
         localStorage.setItem('studycloud_dashboard_wallpaper', imageUrl);
         localStorage.setItem('unifolder_user_avatar', imageUrl);
         window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: imageUrl } }));
         window.dispatchEvent(new CustomEvent('studycloud_avatar_updated', { detail: { avatar: imageUrl } }));
-        showToast("Cette image a été définie comme photo de profil");
+        showToast("Cette image a été définie comme fond d'écran et photo de profil !");
+
+        // 2. Persistance universelle Cloudflare D1 & R2 via TanStack Query
+        CloudStorageAPI.saveWallpaper(imageUrl, img.name)
+          .then(() => invalidateCloudQueries.wallpaper())
+          .catch((err) => console.error('[ImagesMenuView] saveWallpaper error:', err));
         break;
       }
 

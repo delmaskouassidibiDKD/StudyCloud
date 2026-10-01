@@ -14,6 +14,7 @@ import {
 
 import { CloudDataStore, FileItem } from '../services/cloudDataStore';
 import { CloudStorageAPI } from '../services/cloudStorageService';
+import { invalidateCloudQueries } from '../services/queryClient';
 
 export type SortOption = 'recent' | 'oldest' | 'pinned' | 'duplicates' | 'size-desc';
 
@@ -370,10 +371,14 @@ export function restoreDefaultWallpaperAndAvatar(): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.removeItem('studycloud_dashboard_wallpaper');
+    localStorage.removeItem('studycloud_dashboard_wallpaper_meta');
     localStorage.removeItem('unifolder_user_avatar');
   } catch {}
   window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: null } }));
   window.dispatchEvent(new CustomEvent('studycloud_avatar_updated', { detail: { avatar: null } }));
+  CloudStorageAPI.deleteWallpaper()
+    .then(() => invalidateCloudQueries.wallpaper())
+    .catch((err) => console.error('[HeaderMenuControls] deleteWallpaper error:', err));
 }
 
 export const HeaderMenuControls: React.FC<HeaderMenuControlsProps> = ({

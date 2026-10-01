@@ -2049,6 +2049,9 @@ function getBucketForCategory(rawEnv, category) {
   if (cat === "secure" || cat === "secure-folder") {
     return rawEnv.BUCKET_SECURE || rawEnv.MON_R2_SECURE || rawEnv["MON_R2-SECURE"] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
   }
+  if (cat === "wallpapers" || cat === "wallpaper") {
+    return rawEnv.BUCKET_WALLPAPERS || rawEnv.MON_R2_WALLPAPERS || rawEnv["MON_R2-WALLPAPERS"] || rawEnv.BUCKET_IMAGES || rawEnv.MON_R2_IMAGES || rawEnv["MON_R2-IMAGES"] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
+  }
   return rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
 }
 async function getObjectFromAnyBucket(rawEnv, category, key, rangeOptions) {
@@ -2059,6 +2062,9 @@ async function getObjectFromAnyBucket(rawEnv, category, key, rangeOptions) {
   const mainBucket = rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
   if (mainBucket && !bucketsToTry.includes(mainBucket)) bucketsToTry.push(mainBucket);
   const candidates = [
+    rawEnv.BUCKET_WALLPAPERS,
+    rawEnv.MON_R2_WALLPAPERS,
+    rawEnv["MON_R2-WALLPAPERS"],
     rawEnv.BUCKET_IMAGES,
     rawEnv.MON_R2_IMAGES,
     rawEnv["MON_R2-IMAGES"],
@@ -2474,6 +2480,24 @@ async function ensureCloudMediaTables(db) {
     });
     try {
       await db.prepare("CREATE INDEX IF NOT EXISTS idx_sync_items_user_time ON sync_items(user_id, updated_at)").run();
+    } catch (e) {
+    }
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_wallpapers (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT DEFAULT 'Fond d''\xE9cran',
+        url TEXT NOT NULL,
+        r2_key TEXT DEFAULT '',
+        size INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {
+    });
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_wallpapers_user ON user_wallpapers(user_id, is_active)").run();
     } catch (e) {
     }
     isCloudMediaTablesInitialized = true;
@@ -5400,6 +5424,187 @@ var index_default = {
         query += " ORDER BY updated_at DESC";
         const { results } = await env.DB.prepare(query).bind(...params).all();
         return jsonResponse({ success: true, thumbnails: results || [] }, 200, origin);
+      }
+      if (path.startsWith("/api/cloud/wallpaper/file/") && method === "GET") {
+        const rawWpId = path.replace("/api/cloud/wallpaper/file/", "").trim();
+        const wallpaperId = decodeURIComponent(rawWpId);
+        let targetR2Key = "";
+        let fallbackUrl = "";
+        if (env.DB) {
+          try {
+            const wpRow = await env.DB.prepare(
+              "SELECT * FROM user_wallpapers WHERE id = ? LIMIT 1"
+            ).bind(wallpaperId).first().catch(() => null);
+            if (wpRow) {
+              targetR2Key = wpRow.r2_key || "";
+              fallbackUrl = wpRow.url || "";
+            }
+          } catch (e) {
+            console.warn("[streamWallpaper DB Error]", e);
+          }
+        }
+        if (targetR2Key) {
+          const found = await getObjectFromAnyBucket(rawEnv, "wallpapers", targetR2Key);
+          if (found && found.object) {
+            const headers = new Headers();
+            found.object.writeHttpMetadata(headers);
+            headers.set("etag", found.object.httpEtag);
+            headers.set("Cache-Control", "public, max-age=31536000, immutable");
+            headers.set("Access-Control-Allow-Origin", origin);
+            let mime = headers.get("Content-Type");
+            if (!mime || mime.includes("octet-stream")) {
+              const ext = targetR2Key.split(".").pop()?.toLowerCase();
+              if (ext === "png") mime = "image/png";
+              else if (ext === "webp") mime = "image/webp";
+              else if (ext === "gif") mime = "image/gif";
+              else mime = "image/jpeg";
+              headers.set("Content-Type", mime);
+            }
+            return new Response(found.object.body, { status: 200, headers });
+          }
+        }
+        if (fallbackUrl && (fallbackUrl.startsWith("http://") || fallbackUrl.startsWith("https://"))) {
+          return Response.redirect(fallbackUrl, 302);
+        }
+        return errorResponse("Fond d'\xE9cran introuvable", 404, origin);
+      }
+      if (path === "/api/cloud/wallpaper" && method === "GET") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId || reqUserId === "default-user") {
+          return jsonResponse({ success: true, wallpaper: null }, 200, origin);
+        }
+        if (!env.DB) {
+          return jsonResponse({ success: true, wallpaper: null }, 200, origin);
+        }
+        try {
+          const row = await env.DB.prepare(
+            "SELECT * FROM user_wallpapers WHERE user_id = ? AND is_active = 1 ORDER BY updated_at DESC LIMIT 1"
+          ).bind(reqUserId).first().catch(() => null);
+          if (row) {
+            return jsonResponse({
+              success: true,
+              wallpaper: {
+                id: row.id,
+                userId: row.user_id,
+                name: row.name || "Fond d'\xE9cran",
+                url: row.url,
+                r2Key: row.r2_key,
+                size: row.size || 0,
+                isActive: Boolean(row.is_active),
+                createdAt: row.created_at,
+                updatedAt: row.updated_at
+              }
+            }, 200, origin);
+          } else {
+            return jsonResponse({ success: true, wallpaper: null }, 200, origin);
+          }
+        } catch (dbErr) {
+          console.error("[getWallpaper DB Error]", dbErr);
+          return jsonResponse({ success: true, wallpaper: null }, 200, origin);
+        }
+      }
+      if (path === "/api/cloud/wallpaper" && (method === "POST" || method === "PUT")) {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId || reqUserId === "default-user") {
+          return errorResponse("Authentification requise pour enregistrer votre fond d'\xE9cran", 401, origin);
+        }
+        const body = await request.json().catch(() => ({}));
+        const inputUrl = String(body.url || body.dataUrl || "").trim();
+        const inputName = String(body.name || "Fond d'\xE9cran personnalis\xE9").trim();
+        let inputSize = Number(body.size || 0);
+        if (!inputUrl) {
+          return errorResponse("Donn\xE9es du fond d'\xE9cran manquantes", 400, origin);
+        }
+        const wallpaperId = `wp_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        let finalUrl = inputUrl;
+        let r2Key = "";
+        if (inputUrl.startsWith("data:image")) {
+          try {
+            const parts = inputUrl.split(",");
+            const match = parts[0].match(/:(.*?);/);
+            let mimeType = match ? match[1] : "image/jpeg";
+            let ext = "jpg";
+            if (mimeType.includes("png")) ext = "png";
+            else if (mimeType.includes("webp")) ext = "webp";
+            else if (mimeType.includes("gif")) ext = "gif";
+            const binary = atob(parts[1]);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const imageBuffer = bytes.buffer;
+            inputSize = bytes.length;
+            r2Key = `${reqUserId}/wallpapers/${wallpaperId}.${ext}`;
+            const targetBucket = getBucketForCategory(rawEnv, "wallpapers") || rawEnv.BUCKET || env.BUCKET;
+            if (targetBucket && imageBuffer) {
+              await targetBucket.put(r2Key, imageBuffer, {
+                httpMetadata: { contentType: mimeType, cacheControl: "public, max-age=31536000, immutable" },
+                customMetadata: {
+                  userId: reqUserId,
+                  wallpaperId,
+                  originalName: inputName
+                }
+              });
+              finalUrl = `${url.origin}/api/cloud/wallpaper/file/${encodeURIComponent(wallpaperId)}?userId=${encodeURIComponent(reqUserId)}`;
+            }
+          } catch (e) {
+            console.warn("[saveWallpaper R2 Upload Error]", e);
+          }
+        }
+        if (env.DB) {
+          try {
+            await env.DB.prepare(
+              "UPDATE user_wallpapers SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
+            ).bind(reqUserId).run().catch(() => {
+            });
+            await env.DB.prepare(`
+              INSERT INTO user_wallpapers (id, user_id, name, url, r2_key, size, is_active, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            `).bind(wallpaperId, reqUserId, inputName, finalUrl, r2Key, inputSize).run();
+            await recordSyncItem(env.DB, reqUserId, wallpaperId, "wallpapers", {
+              id: wallpaperId,
+              name: inputName,
+              url: finalUrl,
+              isActive: true,
+              updatedAt: Date.now()
+            }, 0);
+          } catch (dbErr) {
+            console.error("[saveWallpaper DB Error]", dbErr);
+          }
+        }
+        return jsonResponse({
+          success: true,
+          wallpaper: {
+            id: wallpaperId,
+            userId: reqUserId,
+            name: inputName,
+            url: finalUrl,
+            r2Key,
+            size: inputSize,
+            isActive: true
+          },
+          message: "Fond d'\xE9cran synchronis\xE9 avec succ\xE8s sur tous vos appareils"
+        }, 200, origin);
+      }
+      if (path === "/api/cloud/wallpaper" && method === "DELETE") {
+        const reqUserId = await extractRequestUserId();
+        if (reqUserId && reqUserId !== "default-user" && env.DB) {
+          try {
+            await env.DB.prepare(
+              "UPDATE user_wallpapers SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
+            ).bind(reqUserId).run().catch(() => {
+            });
+            await recordSyncItem(env.DB, reqUserId, "wallpaper_reset", "wallpapers", {
+              isActive: false,
+              reset: true,
+              updatedAt: Date.now()
+            }, 1);
+          } catch (e) {
+            console.warn("[deleteWallpaper DB Error]", e);
+          }
+        }
+        return jsonResponse({
+          success: true,
+          message: "Fond d'\xE9cran par d\xE9faut restaur\xE9 avec succ\xE8s"
+        }, 200, origin);
       }
       if (path === "/api/cloud/upload" && (method === "PUT" || method === "POST")) {
         const reqUserId = await extractRequestUserId();

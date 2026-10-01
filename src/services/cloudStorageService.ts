@@ -60,6 +60,18 @@ export interface ReorderFileItem {
   positionY?: number;
 }
 
+export interface UserWallpaper {
+  id: string;
+  userId?: string;
+  name: string;
+  url: string;
+  r2Key?: string;
+  size?: number;
+  isActive: boolean | number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // ─── Helper : fetch avec timeout strict (15s par défaut pour réseaux mobiles/stables) ───
 async function fetchWithTimeout(
   url: string,
@@ -1226,6 +1238,62 @@ export const CloudStorageAPI = {
       }
     } catch (e) {
       console.error('[CloudStorageAPI] moveToTrash error:', e);
+      return false;
+    }
+  },
+
+  // --------------------------------------------------------------------------
+  // Fond d'écran universel dédié (Table D1 user_wallpapers & Dossier R2)
+  // --------------------------------------------------------------------------
+  async getWallpaper(): Promise<UserWallpaper | null> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/wallpaper?userId=${getUserIdParam()}`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return (data && data.success && data.wallpaper) ? data.wallpaper : null;
+    } catch (e) {
+      console.warn('[CloudStorageAPI] getWallpaper error:', e);
+      return null;
+    }
+  },
+
+  async saveWallpaper(urlOrDataUrl: string, name?: string): Promise<{ success: boolean; wallpaper?: UserWallpaper }> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/wallpaper?userId=${getUserIdParam()}`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          url: urlOrDataUrl,
+          name: name || 'Fond d\'écran personnalisé',
+        }),
+      });
+      if (!res.ok) return { success: false };
+      const data = await res.json();
+      return {
+        success: Boolean(data?.success),
+        wallpaper: data?.wallpaper,
+      };
+    } catch (e) {
+      console.error('[CloudStorageAPI] saveWallpaper error:', e);
+      return { success: false };
+    }
+  },
+
+  async deleteWallpaper(): Promise<boolean> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/wallpaper?userId=${getUserIdParam()}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('[CloudStorageAPI] deleteWallpaper error:', e);
       return false;
     }
   },

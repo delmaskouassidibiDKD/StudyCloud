@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { CloudStorageAPI, CloudOverviewData } from '../services/cloudStorageService';
-import { QUERY_KEYS, invalidateCloudQueries } from '../services/queryClient';
+import { CloudStorageAPI, CloudOverviewData, UserWallpaper } from '../services/cloudStorageService';
+import { QUERY_KEYS, invalidateCloudQueries, queryClient } from '../services/queryClient';
 import { FileItem } from '../components/Page1FilesMenuView';
 import { ClasseurCreatedFolder } from '../components/Folder3DModels';
 import { DownloadedItem } from '../services/downloadsManager';
@@ -120,6 +120,47 @@ export function useCloudOverview() {
   });
 }
 
+/**
+ * Hook TanStack Query pour le fond d'écran dédié du tableau de bord :
+ * - Hydratation instantanée 0ms depuis le cache local (localStorage)
+ * - Synchronisation en arrière-plan automatique avec Cloudflare D1 & R2
+ * - Affichage universel et immédiat sur n'importe quel appareil connecté
+ */
+export function useDashboardWallpaper() {
+  return useQuery<UserWallpaper | null>({
+    queryKey: QUERY_KEYS.wallpaper,
+    queryFn: async () => {
+      const wp = await CloudStorageAPI.getWallpaper();
+      if (wp && wp.url) {
+        try {
+          localStorage.setItem('studycloud_dashboard_wallpaper', wp.url);
+          localStorage.setItem('studycloud_dashboard_wallpaper_meta', JSON.stringify(wp));
+        } catch {}
+      }
+      return wp;
+    },
+    // Rendu instantané 0ms sans latence ni saut visuel
+    initialData: () => {
+      if (typeof window === 'undefined') return undefined;
+      const cachedUrl = localStorage.getItem('studycloud_dashboard_wallpaper');
+      if (!cachedUrl) return undefined;
+      let meta: any = null;
+      try {
+        const raw = localStorage.getItem('studycloud_dashboard_wallpaper_meta');
+        if (raw) meta = JSON.parse(raw);
+      } catch {}
+      return {
+        id: meta?.id || 'cached_wallpaper',
+        name: meta?.name || 'Fond d\'écran',
+        url: cachedUrl,
+        size: meta?.size || 0,
+        isActive: true,
+      };
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutes de données valides en mémoire vive
+  });
+}
+
 // ─── HOOKS DE MUTATION ──────────────────────────────────────────────────────────
 
 export function useDeleteFileMutation() {
@@ -166,3 +207,61 @@ export function useDeleteFolderMutation() {
     },
   });
 }
+
+/**
+ * Mutation TanStack Query pour définir et synchroniser le fond d'écran du tableau de bord :
+ * - Rendu optimiste immédiat (0ms) via localStorage et event local
+ * - Enregistrement persistant dans la table D1 dédiée user_wallpapers et dossier R2 wallpapers
+ * - Synchronisation inter-appareils instantanée
+ */
+export function useSetDashboardWallpaper() {
+  return useMutation({
+    mutationFn: async ({ url, name }: { url: string; name?: string }) => {
+      // 1. Mise à jour optimiste locale immédiate (0ms)
+      try {
+        localStorage.setItem('studycloud_dashboard_wallpaper', url);
+        window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: url } }));
+      } catch {}
+
+      // 2. Persistance dans le backend Hono/D1/R2
+      const result = await CloudStorageAPI.saveWallpaper(url, name);
+      return result;
+    },
+    onSuccess: (data) => {
+      if (data?.wallpaper) {
+        queryClient.setQueryData(QUERY_KEYS.wallpaper, data.wallpaper);
+        try {
+          localStorage.setItem('studycloud_dashboard_wallpaper', data.wallpaper.url);
+          localStorage.setItem('studycloud_dashboard_wallpaper_meta', JSON.stringify(data.wallpaper));
+        } catch {}
+      }
+      invalidateCloudQueries.wallpaper();
+    },
+  });
+}
+
+/**
+ * Mutation TanStack Query pour réinitialiser le fond d'écran par défaut :
+ * - Suppression optimiste instantanée (0ms)
+ * - Mise à jour de la table D1 user_wallpapers et propagation réseau
+ */
+export function useResetDashboardWallpaper() {
+  return useMutation({
+    mutationFn: async () => {
+      // 1. Réinitialisation optimiste locale immédiate (0ms)
+      try {
+        localStorage.removeItem('studycloud_dashboard_wallpaper');
+        localStorage.removeItem('studycloud_dashboard_wallpaper_meta');
+        window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: null } }));
+      } catch {}
+
+      // 2. Réinitialisation sur Cloudflare D1
+      return await CloudStorageAPI.deleteWallpaper();
+    },
+    onSuccess: () => {
+      queryClient.setQueryData(QUERY_KEYS.wallpaper, null);
+      invalidateCloudQueries.wallpaper();
+    },
+  });
+}
+
