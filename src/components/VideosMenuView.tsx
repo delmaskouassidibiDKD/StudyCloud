@@ -1514,6 +1514,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
             return;
           }
           if (isSelectionMode) {
+            setActiveMenuVideoId(null);
             const next = isChecked
               ? selectedItemIds.filter(id => id !== vid.id)
               : [...selectedItemIds, vid.id];
@@ -1653,17 +1654,23 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
           <div className="relative studycloud-menu-trigger">
             <button
               type="button"
+              disabled={isSelectionMode || selectedItemIds.length > 0}
               onClick={(e) => {
                 e.stopPropagation();
+                if (isSelectionMode || selectedItemIds.length > 0) return;
                 setActiveMenuVideoId(isMenuOpen ? null : vid.id);
               }}
-              className="p-1 sm:p-1.2 rounded-lg bg-black/75 hover:bg-black text-white border border-white/30 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm"
-              title="Options de la vidéo (3 traits)"
+              className={`p-1 sm:p-1.2 rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm ${
+                isSelectionMode || selectedItemIds.length > 0
+                  ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                  : 'hover:bg-black cursor-pointer active:scale-90'
+              }`}
+              title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options de la vidéo (3 traits)"}
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
 
-            {isMenuOpen && renderVideoOptionsMenu(vid, index)}
+            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderVideoOptionsMenu(vid, index)}
           </div>
 
           {isSelectionMode && (
@@ -1671,6 +1678,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
+                setActiveMenuVideoId(null);
                 const next = isChecked
                   ? selectedItemIds.filter(id => id !== vid.id)
                   : [...selectedItemIds, vid.id];

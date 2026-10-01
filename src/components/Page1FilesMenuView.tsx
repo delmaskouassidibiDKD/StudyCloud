@@ -3209,6 +3209,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setActiveMenuFileId(null);
     setDocMenuOpenId(null);
     setAudioMenuSongId(null);
+    setMenuOpenId(null);
+    setActiveFolderMenuId(null);
+    setIsPlayerMenuOpen(false);
 
     switch (action) {
       case 'check':
@@ -3610,6 +3613,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // Gestion de la sélection d'éléments
   const toggleItemSelection = (id: string) => {
+    setActiveMenuFileId(null);
+    setDocMenuOpenId(null);
+    setAudioMenuSongId(null);
+    setMenuOpenId(null);
+    setActiveFolderMenuId(null);
+    setIsPlayerMenuOpen(false);
     setSelectedItemIds(prev => 
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
     );
@@ -5823,7 +5832,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // =========================================================================
   const renderFileOptionsMenu = (file: FileItem, currentCategoryList: FileItem[], align: 'left' | 'right' = 'left') => {
     const isMenuOpen = activeMenuFileId === file.id || docMenuOpenId === file.id || audioMenuSongId === file.id;
-    if (!isMenuOpen) return null;
+    if (!isMenuOpen || isSelectionMode || selectedItemIds.length > 0) return null;
 
     const isTrash = currentSubView?.id === 'studycloud-collection-trash' || 
                     (isCloudView && cloudActiveTab === 'trash') || 
@@ -6733,20 +6742,24 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   >
                     <button
                       type="button"
+                      disabled={isSelectionMode || selectedItemIds.length > 0}
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (isSelectionMode || selectedItemIds.length > 0) return;
                         setActiveFolderMenuId(activeFolderMenuId === subF.id ? null : subF.id);
                       }}
-                      className={`p-1 sm:p-1.5 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm ${
-                        activeFolderMenuId === subF.id 
-                          ? 'border-orange-400 ring-2 ring-orange-400/50 opacity-100 bg-black' 
-                          : 'border-white/30 opacity-90 group-hover:opacity-100'
+                      className={`p-1 sm:p-1.5 rounded-lg bg-black/75 text-white border transition-all flex items-center justify-center shadow-lg backdrop-blur-sm ${
+                        isSelectionMode || selectedItemIds.length > 0
+                          ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                          : activeFolderMenuId === subF.id 
+                          ? 'border-orange-400 ring-2 ring-orange-400/50 opacity-100 bg-black cursor-pointer active:scale-90' 
+                          : 'border-white/30 opacity-90 group-hover:opacity-100 hover:bg-black cursor-pointer active:scale-90'
                       }`}
-                      title="Options du sous-dossier (3 traits)"
+                      title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options du sous-dossier (3 traits)"}
                     >
                       <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
                     </button>
-                    {renderFolder3DOptionsMenu(subF)}
+                    {!isSelectionMode && selectedItemIds.length === 0 && renderFolder3DOptionsMenu(subF)}
                   </div>
 
                   <div className="pt-7 sm:pt-7.5 pb-1 w-full">
@@ -6924,22 +6937,26 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       >
                         <button
                           type="button"
+                          disabled={isSelectionMode || selectedItemIds.length > 0}
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (isSelectionMode || selectedItemIds.length > 0) return;
                             setActiveMenuFileId(isMenuOpen ? null : file.id);
                           }}
-                          className={`p-1 sm:p-1.5 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm ${
-                            isMenuOpen
-                              ? 'border-cyan-400 ring-2 ring-cyan-400/50 opacity-100 bg-black'
-                              : 'border-white/30 opacity-90 group-hover:opacity-100'
+                          className={`p-1 sm:p-1.5 rounded-lg bg-black/75 text-white border transition-all flex items-center justify-center shadow-lg backdrop-blur-sm ${
+                            isSelectionMode || selectedItemIds.length > 0
+                              ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                              : isMenuOpen
+                              ? 'border-cyan-400 ring-2 ring-cyan-400/50 opacity-100 bg-black cursor-pointer active:scale-90'
+                              : 'border-white/30 opacity-90 group-hover:opacity-100 hover:bg-black cursor-pointer active:scale-90'
                           }`}
-                          title="Options de la note (3 traits)"
+                          title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options de la note (3 traits)"}
                         >
                           <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
                         </button>
 
                         {/* Menu de propositions identique pour les fichiers */}
-                        {renderFileOptionsMenu(file, allOpenedFolderItems, 'right')}
+                        {!isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(file, allOpenedFolderItems, 'right')}
                       </div>
                     </div>
 
@@ -7112,22 +7129,26 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     >
                       <button
                         type="button"
+                        disabled={isSelectionMode || selectedItemIds.length > 0}
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (isSelectionMode || selectedItemIds.length > 0) return;
                           setActiveMenuFileId(isMenuOpen ? null : file.id);
                         }}
-                        className={`absolute top-1.5 right-1.5 p-1 sm:p-1.5 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm z-20 ${
-                          isMenuOpen
-                            ? 'border-orange-400 ring-2 ring-orange-400/50 opacity-100 bg-black'
-                            : 'border-white/30 opacity-90 group-hover:opacity-100'
+                        className={`absolute top-1.5 right-1.5 p-1 sm:p-1.5 rounded-lg bg-black/75 text-white border transition-all flex items-center justify-center shadow-lg backdrop-blur-sm z-20 ${
+                          isSelectionMode || selectedItemIds.length > 0
+                            ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                            : isMenuOpen
+                            ? 'border-orange-400 ring-2 ring-orange-400/50 opacity-100 bg-black cursor-pointer active:scale-90'
+                            : 'border-white/30 opacity-90 group-hover:opacity-100 hover:bg-black cursor-pointer active:scale-90'
                         }`}
-                        title="Options du fichier (3 traits)"
+                        title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options du fichier (3 traits)"}
                       >
                         <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
                       </button>
 
                       {/* Menu de propositions identique pour les fichiers */}
-                      {renderFileOptionsMenu(file, allOpenedFolderItems, 'right')}
+                      {!isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(file, allOpenedFolderItems, 'right')}
                     </div>
                   </div>
 
@@ -7639,18 +7660,24 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <div className="relative studycloud-menu-trigger">
               <button
                 type="button"
+                disabled={isSelectionMode || selectedItemIds.length > 0}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (isSelectionMode || selectedItemIds.length > 0) return;
                   setActiveMenuFileId(isMenuOpen ? null : doc.id);
                   setDocMenuOpenId(isMenuOpen ? null : doc.id);
                 }}
-                className="p-1 sm:p-1.2 rounded-lg bg-black/40 hover:bg-black/70 text-white border border-white/20 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-sm"
-                title="Options du fichier (3 traits)"
+                className={`p-1 sm:p-1.2 rounded-lg bg-black/40 text-white border border-white/20 transition-all flex items-center justify-center shadow-sm ${
+                  isSelectionMode || selectedItemIds.length > 0
+                    ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                    : 'hover:bg-black/70 cursor-pointer active:scale-90'
+                }`}
+                title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options du fichier (3 traits)"}
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
 
-              {renderFileOptionsMenu(doc, customList || filteredDocuments, menuAlign)}
+              {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(doc, customList || filteredDocuments, menuAlign)}
             </div>
 
             {/* Case à cocher visible en mode sélection */}
@@ -7750,21 +7777,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <div className="relative studycloud-menu-trigger">
               <button
                 type="button"
+                disabled={isSelectionMode || selectedItemIds.length > 0}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (isSelectionMode || selectedItemIds.length > 0) return;
                   setActiveMenuFileId(isMenuOpen ? null : file.id);
                 }}
-                className={`p-1 sm:p-1.5 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm ${
-                  isMenuOpen
-                    ? 'border-rose-400 ring-2 ring-rose-400/50 opacity-100 bg-black'
-                    : 'border-white/30 opacity-90 group-hover:opacity-100'
+                className={`p-1 sm:p-1.5 rounded-lg bg-black/75 text-white border transition-all flex items-center justify-center shadow-lg backdrop-blur-sm ${
+                  isSelectionMode || selectedItemIds.length > 0
+                    ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                    : isMenuOpen
+                    ? 'border-rose-400 ring-2 ring-rose-400/50 opacity-100 bg-black cursor-pointer active:scale-90'
+                    : 'border-white/30 opacity-90 group-hover:opacity-100 hover:bg-black cursor-pointer active:scale-90'
                 }`}
-                title="Options corbeille (3 traits)"
+                title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options corbeille (3 traits)"}
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
 
-              {renderTrashOptionsMenu(file, menuAlign)}
+              {!isSelectionMode && selectedItemIds.length === 0 && renderTrashOptionsMenu(file, menuAlign)}
             </div>
 
             {isSelectionMode && (
@@ -7937,17 +7968,23 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           <div className="relative studycloud-menu-trigger">
             <button
               type="button"
+              disabled={isSelectionMode || selectedItemIds.length > 0}
               onClick={(e) => {
                 e.stopPropagation();
+                if (isSelectionMode || selectedItemIds.length > 0) return;
                 setActiveMenuFileId(isMenuOpen ? null : img.id);
               }}
-              className="p-1 sm:p-1.2 rounded-lg bg-black/75 hover:bg-black text-white border border-white/30 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm"
-              title="Options de l'image (3 traits)"
+              className={`p-1 sm:p-1.2 rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm ${
+                isSelectionMode || selectedItemIds.length > 0
+                  ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                  : 'hover:bg-black cursor-pointer active:scale-90'
+              }`}
+              title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options de l'image (3 traits)"}
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
 
-            {renderFileOptionsMenu(img, filteredImages, menuAlign)}
+            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(img, filteredImages, menuAlign)}
           </div>
 
           {isSelectionMode && (
@@ -8073,17 +8110,23 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           <div className="relative studycloud-menu-trigger">
             <button
               type="button"
+              disabled={isSelectionMode || selectedItemIds.length > 0}
               onClick={(e) => {
                 e.stopPropagation();
+                if (isSelectionMode || selectedItemIds.length > 0) return;
                 setActiveMenuFileId(isMenuOpen ? null : vid.id);
               }}
-              className="p-1 sm:p-1.2 rounded-lg bg-black/75 hover:bg-black text-white border border-white/30 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm"
-              title="Options de la vidéo (3 traits)"
+              className={`p-1 sm:p-1.2 rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm ${
+                isSelectionMode || selectedItemIds.length > 0
+                  ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                  : 'hover:bg-black cursor-pointer active:scale-90'
+              }`}
+              title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options de la vidéo (3 traits)"}
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
 
-            {renderFileOptionsMenu(vid, filteredVideos, menuAlign)}
+            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(vid, filteredVideos, menuAlign)}
           </div>
 
           {isSelectionMode && (
@@ -8227,18 +8270,24 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           <div className="relative studycloud-menu-trigger">
             <button
               type="button"
+              disabled={isSelectionMode || selectedItemIds.length > 0}
               onClick={(e) => {
                 e.stopPropagation();
+                if (isSelectionMode || selectedItemIds.length > 0) return;
                 setActiveMenuFileId(isMenuOpen ? null : aud.id);
                 setAudioMenuSongId(isMenuOpen ? null : aud.id);
               }}
-              className="p-1 sm:p-1.2 rounded-lg bg-black/75 hover:bg-black text-white border border-white/30 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm"
-              title="Options de l'audio (3 traits)"
+              className={`p-1 sm:p-1.2 rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm ${
+                isSelectionMode || selectedItemIds.length > 0
+                  ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                  : 'hover:bg-black cursor-pointer active:scale-90'
+              }`}
+              title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options de l'audio (3 traits)"}
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
 
-            {renderFileOptionsMenu(aud, customList || downloadAudio, menuAlign)}
+            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(aud, customList || downloadAudio, menuAlign)}
           </div>
 
           {isSelectionMode && (
@@ -8389,17 +8438,23 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           <div className="relative shrink-0 studycloud-menu-trigger">
             <button
               type="button"
+              disabled={isSelectionMode || selectedItemIds.length > 0}
               onClick={(e) => {
                 e.stopPropagation();
+                if (isSelectionMode || selectedItemIds.length > 0) return;
                 setActiveMenuFileId(isMenuOpen ? null : track.id);
                 setAudioMenuSongId(isMenuOpen ? null : track.id);
               }}
-              className="w-8 h-8 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition-colors cursor-pointer"
-              title="Options de la musique (3 traits)"
+              className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                isSelectionMode || selectedItemIds.length > 0
+                  ? 'opacity-20 cursor-not-allowed pointer-events-none text-slate-500'
+                  : 'hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer'
+              }`}
+              title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options de la musique (3 traits)"}
             >
               <Menu className="w-4 h-4 stroke-[2.2]" />
             </button>
-            {renderFileOptionsMenu(track, filteredAudio, 'right')}
+            {!isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(track, filteredAudio, 'right')}
           </div>
 
           <button
@@ -8487,16 +8542,22 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           <div className="relative studycloud-menu-trigger">
             <button
               type="button"
+              disabled={isSelectionMode || selectedItemIds.length > 0}
               onClick={(e) => {
                 e.stopPropagation();
+                if (isSelectionMode || selectedItemIds.length > 0) return;
                 setActiveMenuFileId(isMenuOpen ? null : item.id);
               }}
-              className="w-8 h-8 rounded-xl bg-black hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors border border-white/10"
-              title="Options (3 traits)"
+              className={`w-8 h-8 rounded-xl bg-black text-slate-300 flex items-center justify-center transition-colors border border-white/10 ${
+                isSelectionMode || selectedItemIds.length > 0
+                  ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                  : 'hover:bg-slate-700 hover:text-white cursor-pointer'
+              }`}
+              title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options (3 traits)"}
             >
               <Menu className="w-3.5 h-3.5" />
             </button>
-            {renderFileOptionsMenu(item, downloadOthers, 'right')}
+            {!isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(item, downloadOthers, 'right')}
           </div>
 
           <button
@@ -12426,18 +12487,24 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             <div className="relative shrink-0 studycloud-menu-trigger">
                               <button
                                 type="button"
+                                disabled={isSelectionMode || selectedItemIds.length > 0}
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  if (isSelectionMode || selectedItemIds.length > 0) return;
                                   setActiveMenuFileId(activeMenuFileId === track.id ? null : track.id);
                                   setAudioMenuSongId(audioMenuSongId === track.id ? null : track.id);
                                 }}
-                                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full text-stone-500 hover:text-stone-900 dark:text-slate-400 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-white/10 flex items-center justify-center transition-colors cursor-pointer"
-                                title="Options de la musique (3 traits)"
+                                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-colors ${
+                                  isSelectionMode || selectedItemIds.length > 0
+                                    ? 'opacity-20 cursor-not-allowed pointer-events-none text-stone-400'
+                                    : 'text-stone-500 hover:text-stone-900 dark:text-slate-400 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-white/10 cursor-pointer'
+                                }`}
+                                title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options de la musique (3 traits)"}
                               >
                                 <Menu className="w-4 h-4 stroke-[2.2]" />
                               </button>
 
-                              {renderFileOptionsMenu(track, filteredAudio, 'right')}
+                              {!isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(track, filteredAudio, 'right')}
                             </div>
                           </div>
                         </div>
@@ -12946,21 +13013,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                 >
                                   <button
                                     type="button"
+                                    disabled={isSelectionMode || selectedItemIds.length > 0}
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      if (isSelectionMode || selectedItemIds.length > 0) return;
                                       setActiveFolderMenuId(activeFolderMenuId === folder.id ? null : folder.id);
                                     }}
-                                    className={`p-1 sm:p-1.5 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm ${
-                                      activeFolderMenuId === folder.id 
-                                        ? 'border-orange-400 ring-2 ring-orange-400/50 opacity-100 bg-black' 
-                                        : 'border-white/30 opacity-90 group-hover:opacity-100'
+                                    className={`p-1 sm:p-1.5 rounded-lg bg-black/75 text-white border transition-all flex items-center justify-center shadow-lg backdrop-blur-sm ${
+                                      isSelectionMode || selectedItemIds.length > 0
+                                        ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                                        : activeFolderMenuId === folder.id 
+                                        ? 'border-orange-400 ring-2 ring-orange-400/50 opacity-100 bg-black cursor-pointer active:scale-90' 
+                                        : 'border-white/30 opacity-90 group-hover:opacity-100 hover:bg-black cursor-pointer active:scale-90'
                                     }`}
-                                    title="Options du dossier (3 traits)"
+                                    title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options du dossier (3 traits)"}
                                   >
                                     <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
                                   </button>
 
-                                  {renderFolder3DOptionsMenu(folder)}
+                                  {!isSelectionMode && selectedItemIds.length === 0 && renderFolder3DOptionsMenu(folder)}
                                 </div>
 
                                 {/* Le dossier 3D lui-même glissé un peu vers le bas sur l'espace noir sans bouger l'espace noir pour que le bouton 3 traits ne chevauche plus la date */}
@@ -13681,18 +13752,24 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           {/* Bouton 3 petits points verticaux en haut à droite */}
                           <button
                             type="button"
+                            disabled={isSelectionMode || selectedItemIds.length > 0}
                             onClick={(e) => {
                               e.stopPropagation();
+                              if (isSelectionMode || selectedItemIds.length > 0) return;
                               setMenuOpenId(menuOpenId === file.id ? null : file.id);
                             }}
-                            className="studycloud-menu-trigger absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/75 hover:bg-black flex items-center justify-center text-white transition-colors cursor-pointer shadow-md z-20 border border-white/20"
-                            title="Options du fichier"
+                            className={`studycloud-menu-trigger absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/75 flex items-center justify-center text-white transition-colors shadow-md z-20 border border-white/20 ${
+                              isSelectionMode || selectedItemIds.length > 0
+                                ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                                : 'hover:bg-black cursor-pointer'
+                            }`}
+                            title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options du fichier"}
                           >
                             <MoreVertical className="w-3.5 h-3.5" />
                           </button>
 
                           {/* Menu contextuel 3 points */}
-                          {menuOpenId === file.id && (
+                          {menuOpenId === file.id && !isSelectionMode && selectedItemIds.length === 0 && (
                             <div 
                               onClick={(e) => e.stopPropagation()}
                               className="studycloud-file-menu-panel absolute top-9 right-1.5 z-50 w-44 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.15)] py-1.5 text-xs font-semibold text-white animate-in fade-in zoom-in-95 overflow-hidden divide-y divide-white/10"

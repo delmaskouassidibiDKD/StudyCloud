@@ -1561,6 +1561,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             return;
           }
           if (isSelectionMode) {
+            setActiveMenuDocId(null);
             const next = isChecked
               ? selectedItemIds.filter(id => id !== doc.id)
               : [...selectedItemIds, doc.id];
@@ -1678,17 +1679,23 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             <div className="relative studycloud-menu-trigger">
               <button
                 type="button"
+                disabled={isSelectionMode || selectedItemIds.length > 0}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (isSelectionMode || selectedItemIds.length > 0) return;
                   setActiveMenuDocId(isMenuOpen ? null : doc.id);
                 }}
-                className="p-1 sm:p-1.2 rounded-lg bg-black/40 hover:bg-black/70 text-white border border-white/20 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-sm"
-                title="Options du fichier (3 traits)"
+                className={`p-1 sm:p-1.2 rounded-lg bg-black/40 text-white border border-white/20 transition-all flex items-center justify-center shadow-sm ${
+                  isSelectionMode || selectedItemIds.length > 0
+                    ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                    : 'hover:bg-black/70 cursor-pointer active:scale-90'
+                }`}
+                title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options du fichier (3 traits)"}
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
 
-              {isMenuOpen && renderDocumentOptionsMenu(doc, index)}
+              {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderDocumentOptionsMenu(doc, index)}
             </div>
 
             {/* Case à cocher visible en mode sélection */}
@@ -1697,6 +1704,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
+                  setActiveMenuDocId(null);
                   handleMenuAction('check', doc);
                 }}
                 className="p-0.5 text-white hover:scale-110 transition-transform cursor-pointer"

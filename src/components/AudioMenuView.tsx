@@ -1842,13 +1842,21 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
             <div className="relative">
               <button
                 type="button"
-                onClick={() => setIsPlayerMenuOpen(!isPlayerMenuOpen)}
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center bg-black/60 hover:bg-white/20 text-white border border-white/15 transition-all cursor-pointer shadow-sm active:scale-95"
-                title="Options"
+                disabled={isSelectionMode || selectedItemIds.length > 0}
+                onClick={() => {
+                  if (isSelectionMode || selectedItemIds.length > 0) return;
+                  setIsPlayerMenuOpen(!isPlayerMenuOpen);
+                }}
+                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center bg-black/60 text-white border border-white/15 transition-all shadow-sm ${
+                  isSelectionMode || selectedItemIds.length > 0
+                    ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                    : 'hover:bg-white/20 cursor-pointer active:scale-95'
+                }`}
+                title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options"}
               >
                 <Menu className="w-4 h-4 stroke-[2.2]" />
               </button>
-              {isPlayerMenuOpen && (
+              {isPlayerMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && (
                 <div
                   className="absolute right-0 top-9 z-50 w-52 bg-[#0D1527] border border-slate-700/80 rounded-xl shadow-2xl py-1 text-xs text-white divide-y divide-white/10 backdrop-blur-xl"
                   onClick={(e) => e.stopPropagation()}
@@ -2234,6 +2242,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                       key={track.id}
                       onClick={() => {
                         if (isSelectionMode) {
+                          setActiveMenuTrackId(null);
                           handleMenuAction('check', track);
                           return;
                         }
@@ -2445,16 +2454,22 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                         <div className="relative">
                           <button
                             type="button"
+                            disabled={isSelectionMode || selectedItemIds.length > 0}
                             onClick={(e) => {
                               e.stopPropagation();
+                              if (isSelectionMode || selectedItemIds.length > 0) return;
                               setActiveMenuTrackId(isMenuOpen ? null : track.id);
                             }}
-                            className="studycloud-menu-trigger p-1.5 text-stone-400 hover:text-stone-700 dark:hover:text-white rounded-lg hover:bg-stone-200 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                            title="Options"
+                            className={`studycloud-menu-trigger p-1.5 rounded-lg transition-colors ${
+                              isSelectionMode || selectedItemIds.length > 0
+                                ? 'opacity-20 cursor-not-allowed pointer-events-none text-stone-400'
+                                : 'text-stone-400 hover:text-stone-700 dark:hover:text-white hover:bg-stone-200 dark:hover:bg-slate-800 cursor-pointer'
+                            }`}
+                            title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options"}
                           >
                             <Menu className="w-4 h-4 stroke-[2]" />
                           </button>
-                          {isMenuOpen && renderAudioOptionsMenu(track)}
+                          {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderAudioOptionsMenu(track)}
                         </div>
                       </div>
                     </div>
