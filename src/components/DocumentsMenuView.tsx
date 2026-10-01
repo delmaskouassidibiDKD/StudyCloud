@@ -1891,7 +1891,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       />
 
       {/* EN-TÊTE FIXE DU MENU DOCUMENTS */}
-      <header className="sticky top-0 z-30 w-full bg-[#04060A] backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-white/30 shadow-lg">
+      <header className="sticky top-0 z-30 w-full bg-white backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-stone-200 shadow-sm">
         <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
           {/* GAUCHE : Retour et Titre */}
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
@@ -1919,10 +1919,10 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                 <FileText className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
               </div>
               <div>
-                <h1 className="text-xs sm:text-sm md:text-base font-black text-white leading-tight">
+                <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 leading-tight">
                   Documents
                 </h1>
-                <p className="text-[10px] sm:text-[11px] font-semibold text-slate-400 leading-tight">
+                <p className="text-[10px] sm:text-[11px] font-semibold text-stone-500 leading-tight">
                   {documentsList.length} document{documentsList.length > 1 ? 's' : ''} • {formattedDocsSize}
                 </p>
               </div>

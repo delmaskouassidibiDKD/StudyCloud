@@ -12994,7 +12994,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         /* ========================================================================= */
         <>
           {/* EN-TÊTE FIXE / STICKY : Barre de recherche pilule AU MILIEU */}
-          <div className="sticky top-0 z-30 w-full bg-[#04060A] backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 pt-2.5 pb-2.5 border-b border-white/30 shadow-xs">
+          <div className="sticky top-0 z-30 w-full bg-white backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 pt-2.5 pb-2.5 border-b border-stone-200 shadow-xs">
             <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
               
               {/* GAUCHE : Bouton Retour rapide vers l'accueil (ferme aussi la recherche en cours) */}
