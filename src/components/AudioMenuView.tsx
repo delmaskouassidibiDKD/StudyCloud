@@ -43,7 +43,8 @@ import { useAudioList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
 import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
 import { compressFile } from '../utils/fileCompressor';
-import { extractAudioCover, generateAudioCreatorCover, extractAudioMetadataWithTags, setCachedMediaThumbnail } from '../services/mediaPreviewService';
+import { extractAudioCover, generateAudioCreatorCover, extractAudioMetadataWithTags, setCachedMediaThumbnail, isRealEmbeddedArtwork } from '../services/mediaPreviewService';
+
 import { FileItem } from './Page1FilesMenuView';
 import { UploadQueue } from '../services/uploadQueue';
 import { AudioCardPreview } from './AudioCardPreview';
@@ -371,6 +372,63 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     }
   }, [serverAudio]);
 
+  // Auto-guérison intelligente des pistes audio sans pochette réelle (ex: importations précédentes)
+  useEffect(() => {
+    if (!audioList || audioList.length === 0) return;
+
+    let isMounted = true;
+    const tracksToHeal = audioList.filter(t => !isRealEmbeddedArtwork(t.coverUrl, t) && !isRealEmbeddedArtwork(t.thumbnailUrl, t));
+
+    if (tracksToHeal.length === 0) return;
+
+    (async () => {
+      for (const track of tracksToHeal.slice(0, 15)) {
+        if (!isMounted) break;
+        try {
+          const blob = await getFileBlob(track.id);
+          if (blob) {
+            const meta = await extractAudioMetadataWithTags(blob);
+            if (meta.coverUrl && isRealEmbeddedArtwork(meta.coverUrl, track)) {
+              if (!isMounted) break;
+              setCachedMediaThumbnail(track.id, meta.coverUrl);
+              storeThumbnailData(track.id, meta.coverUrl).catch(() => {});
+              CloudStorageAPI.saveMediaThumbnail(track.id, 'audio', meta.coverUrl, meta.title || track.name).catch(() => {});
+
+              setAudioList(prev => prev.map(item => {
+                if (item.id === track.id) {
+                  return {
+                    ...item,
+                    name: meta.title || item.name,
+                    artist: meta.artist || item.artist,
+                    album: meta.album || item.album,
+                    coverUrl: meta.coverUrl,
+                    thumbnailUrl: meta.coverUrl,
+                    previewUrl: meta.coverUrl,
+                  };
+                }
+                return item;
+              }));
+
+              CloudDataStore.updateFile(track.id, {
+                name: meta.title || track.name,
+                artist: meta.artist || track.artist,
+                album: meta.album || track.album,
+                coverUrl: meta.coverUrl,
+                thumbnailUrl: meta.coverUrl,
+                previewUrl: meta.coverUrl,
+              });
+            }
+          }
+        } catch {}
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [audioList.length]);
+
+
   // Résolution du Blob URL lors du changement de piste
   useEffect(() => {
     if (!selectedTrack) {
@@ -442,8 +500,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     else setIsAudioRepeat('off');
   };
 
-  // Import audio avec affichage immédiat (0ms), animation de progression en continu et extraction ID3 en arrière-plan
-  const handleImportAudio = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Import audio avec affichage immédiat, extraction instantanée des tags et de la pochette du chanteur
+  const handleImportAudio = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const MAX_IMPORT_FILES = 10;
     let files = Array.from(e.target.files) as File[];
@@ -456,7 +514,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     const newItems: FileItem[] = [];
     const itemsWithFiles: { file: File | Blob; item: any; originalSizeBytes?: number; originalSizeFormatted?: string }[] = [];
 
-    files.forEach((f, idx) => {
+    for (let idx = 0; idx < files.length; idx++) {
+      const f = files[idx];
       const ext = f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'MP3' : 'MP3';
       const fileId = `aud-${now}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
       const localBlobUrl = URL.createObjectURL(f);
@@ -468,27 +527,46 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
         ? `${(f.size / (1024 * 1024)).toFixed(1)} Mo` 
         : `${Math.round(f.size / 1024)} Ko`;
 
-      // 2. Générer une pochette visuelle immédiate pour que l'apparence s'affiche dès la 1ère milliseconde
-      const initialCover = generateAudioCreatorCover(f.name, "Enregistrement en cours...");
-      setCachedMediaThumbnail(fileId, initialCover);
-      setCachedMediaThumbnail(localBlobUrl, initialCover);
+      // 2. Extraction ultra-rapide des tags réels (titre, artiste, pochette chanteur)
+      let meta: any = {};
+      try {
+        meta = await extractAudioMetadataWithTags(f);
+      } catch {}
+
+      const hasRealCover = meta.coverUrl && isRealEmbeddedArtwork(meta.coverUrl);
+      const songTitle = meta.title || f.name;
+      const songArtist = meta.artist || 'Artiste inconnu';
+      const initialCover = hasRealCover
+        ? meta.coverUrl
+        : generateAudioCreatorCover(songTitle, songArtist);
+
+      if (hasRealCover) {
+        setCachedMediaThumbnail(fileId, meta.coverUrl);
+        setCachedMediaThumbnail(localBlobUrl, meta.coverUrl);
+        storeThumbnailData(fileId, meta.coverUrl).catch(() => {});
+        CloudStorageAPI.saveMediaThumbnail(fileId, 'audio', meta.coverUrl, songTitle).catch(() => {});
+      } else {
+        setCachedMediaThumbnail(fileId, initialCover);
+        setCachedMediaThumbnail(localBlobUrl, initialCover);
+      }
 
       const item: FileItem = {
         id: fileId,
-        name: f.name,
+        name: songTitle,
         category: 'audio',
+
         source: 'Audio',
-        artist: "Enregistrement en cours...",
-        album: undefined,
+        artist: songArtist,
+        album: meta.album,
         size: sizeFormatted,
         sizeBytes: f.size,
         date: "Aujourd'hui",
         extension: ext,
         url: localBlobUrl,
         audioUrl: localBlobUrl,
-        coverUrl: initialCover,
-        thumbnailUrl: initialCover,
-        previewUrl: initialCover,
+        coverUrl: hasRealCover ? meta.coverUrl : initialCover,
+        thumbnailUrl: hasRealCover ? meta.coverUrl : initialCover,
+        previewUrl: hasRealCover ? meta.coverUrl : undefined,
         isAudio: true,
         isUploading: true
       };
@@ -501,11 +579,11 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
         originalSizeBytes: f.size,
         originalSizeFormatted: sizeFormatted
       });
-    });
+    }
 
     if (newItems.length === 0) return;
 
-    // 1. AFFICHAGE IMMÉDIAT (0ms) DANS LA LISTE (exactement comme dans Mes fichiers)
+    // 1. AFFICHAGE IMMÉDIAT DANS LA LISTE AVEC LA POCHETTE DU CHANTEUR
     setAudioList(prev => [...newItems, ...prev]);
 
     // 2. DÉMARRAGE IMMÉDIAT DE LA LIGNE QUI SE REMPLIT EN CONTINU
@@ -522,85 +600,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     if (fileInputRef.current) fileInputRef.current.value = '';
     showToast(`${newItems.length} son(s) en cours d'enregistrement...`);
 
-    // 5. En arrière-plan (non bloquant): extraction ID3 réelle (jsmediatags), pochette d'album & compression
-    (async () => {
-      for (const entry of itemsWithFiles) {
-        const rawFile = entry.file as File;
-        const currentItem = entry.item;
-
-        try {
-          // Extraction des tags ID3 (titre, artiste, album, Artwork pochette)
-          const meta = await extractAudioMetadataWithTags(rawFile).catch(() => ({} as any));
-          let coverUrl = meta.coverUrl;
-          if (!coverUrl) {
-            try {
-              coverUrl = (await extractAudioCover(rawFile, meta.title || rawFile.name, meta.artist)) || undefined;
-            } catch {}
-          }
-
-          if (coverUrl) {
-            setCachedMediaThumbnail(currentItem.id, coverUrl);
-            setCachedMediaThumbnail(currentItem.url || '', coverUrl);
-            storeThumbnailData(currentItem.id, coverUrl).catch(() => {});
-            CloudStorageAPI.saveMediaThumbnail(currentItem.id, 'audio', coverUrl, meta.title || rawFile.name).catch(() => {});
-          }
-
-          const updatedTitle = meta.title || rawFile.name;
-          const updatedArtist = meta.artist || 'Menu Audio';
-          const updatedAlbum = meta.album;
-
-          // Mise à jour douce de l'élément dans la liste sans aucun rechargement ni disparition
-          setAudioList(prev => prev.map(t => {
-            if (t.id === currentItem.id) {
-              const updated = {
-                ...t,
-                name: updatedTitle,
-                artist: updatedArtist,
-                album: updatedAlbum || t.album,
-                coverUrl: coverUrl || t.coverUrl,
-                thumbnailUrl: coverUrl || t.thumbnailUrl,
-                previewUrl: coverUrl || t.previewUrl,
-              };
-              pendingAudioItemsRef.current.set(currentItem.id, updated);
-              return updated;
-            }
-            return t;
-          }));
-
-          setSelectedTrack(curr => {
-            if (curr && curr.id === currentItem.id) {
-              return {
-                ...curr,
-                name: updatedTitle,
-                artist: updatedArtist,
-                album: updatedAlbum || curr.album,
-                coverUrl: coverUrl || curr.coverUrl,
-                thumbnailUrl: coverUrl || curr.thumbnailUrl,
-                previewUrl: coverUrl || curr.previewUrl,
-              };
-            }
-            return curr;
-          });
-
-          // Mettre à jour les données dans l'item pour l'UploadQueue
-          entry.item = {
-            ...currentItem,
-            name: updatedTitle,
-            artist: updatedArtist,
-            album: updatedAlbum,
-            coverUrl: coverUrl || currentItem.coverUrl,
-            thumbnailUrl: coverUrl || currentItem.thumbnailUrl,
-            previewUrl: coverUrl || currentItem.previewUrl,
-          };
-        } catch (err) {
-          console.warn('[AudioMenuView] Background ID3 metadata error:', err);
-        }
-      }
-
-      // Enqueue dans l'UploadQueue vers R2 + D1
-      UploadQueue.enqueueExisting(itemsWithFiles, { category: 'audio' });
-    })();
+    // 5. Enqueue dans l'UploadQueue vers R2 + D1
+    UploadQueue.enqueueExisting(itemsWithFiles, { category: 'audio' });
   };
+
 
   // Favoris
   const handleToggleFavorite = async (track: FileItem) => {

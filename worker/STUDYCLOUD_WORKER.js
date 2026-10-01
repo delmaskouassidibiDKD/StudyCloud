@@ -6555,8 +6555,8 @@ var index_default = {
               } catch (e) {
               }
             }
-            if (!cover && a.id) {
-              cover = `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(a.id)}?userId=${encodeURIComponent(reqUserId)}`;
+            if (cover && cover.startsWith("blob:")) {
+              cover = "";
             }
             allList.push({
               id: a.id,
@@ -6571,9 +6571,9 @@ var index_default = {
               date: a.date_formatted || (a.created_at ? new Date(a.created_at).toLocaleDateString("fr-FR") : ""),
               lyricsSnippet: a.lyrics_snippet || "",
               fullLyrics: a.full_lyrics_json ? typeof a.full_lyrics_json === "string" ? JSON.parse(a.full_lyrics_json) : a.full_lyrics_json : [],
-              coverUrl: cover,
-              thumbnailUrl: cover,
-              previewUrl: cover,
+              coverUrl: cover || void 0,
+              thumbnailUrl: cover || void 0,
+              previewUrl: cover || void 0,
               r2Key: a.r2_key || "",
               audioUrl: finalUrl,
               url: finalUrl,
@@ -6623,7 +6623,11 @@ var index_default = {
                 THEN audio_files.audio_url
                 ELSE excluded.audio_url
               END,
-              cover_url = COALESCE(excluded.cover_url, audio_files.cover_url),
+              cover_url = CASE
+                WHEN excluded.cover_url IS NOT NULL AND excluded.cover_url != '' AND excluded.cover_url NOT LIKE 'blob:%'
+                THEN excluded.cover_url
+                ELSE audio_files.cover_url
+              END,
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             id,

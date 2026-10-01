@@ -4,12 +4,14 @@ import { DelmasRobot } from './DelmasRobot';
 import { AssistantChat } from './AssistantChat';
 import { FileIconBadge } from './FileIconBadge';
 import { StudyCloudAPI } from '../services/api';
-import { storeFileBlob, deleteFileBlob, getFileBlobUrl, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
+import { storeFileBlob, deleteFileBlob, getFileBlobUrl, MAX_FILE_SIZE_BYTES, formatFileSize, storeThumbnailData } from '../services/localFileStorage';
 import { UploadQueue } from '../services/uploadQueue';
 import { CloudDataStore } from '../services/cloudDataStore';
 import { getGalleryFilesForCategory } from '../data/categoryFilesData';
 import { isGalleryOrDemoFile } from './FilesMenuView';
 import { compressFile } from '../utils/fileCompressor';
+import { extractAudioMetadataWithTags, setCachedMediaThumbnail } from '../services/mediaPreviewService';
+
 
 interface LeftMenuProps {
   isCenterFullscreen: boolean;
@@ -247,9 +249,29 @@ export function LeftMenu({
       const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
       const extVal = file.name.split('.').pop()?.toUpperCase() || 'FICHIER';
 
+      const isAudio = file.type.startsWith('audio/') || file.name.match(/\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|weba)$/i);
+      let audioCover: string | undefined = undefined;
+      let audioArtist: string | undefined = undefined;
+      let audioTitle: string | undefined = undefined;
+
+      if (isAudio) {
+        try {
+          const meta = await extractAudioMetadataWithTags(fileToStore);
+          if (meta.coverUrl) {
+            audioCover = meta.coverUrl;
+            setCachedMediaThumbnail(id, meta.coverUrl);
+            setCachedMediaThumbnail(localUrl, meta.coverUrl);
+            storeThumbnailData(id, meta.coverUrl).catch(() => {});
+          }
+          if (meta.artist) audioArtist = meta.artist;
+          if (meta.title) audioTitle = meta.title;
+        } catch {}
+      }
+
       const newFile: any = {
         id,
         name: file.name,
+        title: audioTitle || file.name,
         type: file.type || 'file',
         size: originalSizeBytes,
         sizeBytes: originalSizeBytes,
@@ -267,13 +289,17 @@ export function LeftMenu({
         // Champs CloudDataStore / UploadQueue
         category: file.type.startsWith('image/') ? 'images' : (
           file.type.startsWith('video/') ? 'videos' :
-          file.type.startsWith('audio/') ? 'audio' : 'documents'
+          isAudio ? 'audio' : 'documents'
         ),
         source: currentFolderName || 'Espace détude',
-        previewUrl: localUrl,
+        previewUrl: file.type.startsWith('image/') ? localUrl : (audioCover || undefined),
+        coverUrl: audioCover,
+        thumbnailUrl: audioCover,
+        artist: audioArtist || (isAudio ? 'Artiste inconnu' : undefined),
         videoUrl: file.type.startsWith('video/') ? localUrl : undefined,
-        audioUrl: file.type.startsWith('audio/') ? localUrl : undefined,
+        audioUrl: isAudio ? localUrl : undefined,
       };
+
 
       // 1. Enregistrement D1 immédiat (sans attendre R2)
       StudyCloudAPI.registerFileMetadata({

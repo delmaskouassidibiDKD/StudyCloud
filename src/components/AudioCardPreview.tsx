@@ -1,44 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { generateAudioCreatorCover, getCachedMediaThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
-import { getWorkerApiUrl } from '../services/api';
-import { getFileBlob } from '../services/localFileStorage';
+import {
+  generateAudioCreatorCover,
+  getCachedMediaThumbnail,
+  setCachedMediaThumbnail,
+  isRealEmbeddedArtwork
+} from '../services/mediaPreviewService';
+import { getFileBlob, storeThumbnailData } from '../services/localFileStorage';
 import { FileItem } from './Page1FilesMenuView';
+import { CloudStorageAPI } from '../services/cloudStorageService';
+import { CloudDataStore } from '../services/cloudDataStore';
+
 
 interface AudioCardPreviewProps {
   track: FileItem;
   className?: string;
 }
 
-function isImageCover(url?: string): boolean {
-  if (!url || typeof url !== 'string') return false;
-  const clean = url.toLowerCase().split('?')[0];
-  if (clean.startsWith('data:image')) return true;
-  if (clean.startsWith('blob:')) return true;
-  if (clean.includes('/api/cloud/thumbnail')) return true;
-  if (clean.match(/\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i)) {
-    return false;
-  }
-  if (clean.match(/\.(jpg|jpeg|png|webp|svg|gif|avif|ico|bmp)$/i)) {
-    return true;
-  }
-  if (clean.startsWith('http://') || clean.startsWith('https://')) {
-    if (clean.match(/\.(pdf|doc|docx|xls|xlsx|txt|mp4|webm|avi|mkv|mov|zip|rar)$/i)) return false;
-    return true;
-  }
-  return false;
-}
-
 export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track, className }) => {
   const [coverUrl, setCoverUrl] = useState<string | null>(() => {
-    if (isImageCover(track.coverUrl)) return track.coverUrl!;
-    if (isImageCover(track.thumbnailUrl)) return track.thumbnailUrl!;
-    if (isImageCover(track.previewUrl)) return track.previewUrl!;
+    if (isRealEmbeddedArtwork(track.coverUrl, track)) return track.coverUrl!;
+    if (isRealEmbeddedArtwork(track.thumbnailUrl, track)) return track.thumbnailUrl!;
+    if (isRealEmbeddedArtwork(track.previewUrl, track)) return track.previewUrl!;
     const cached = getCachedMediaThumbnail(track.id || track.audioUrl || track.url || '');
-    if (isImageCover(cached || undefined)) return cached;
-    if (track.id && !track.id.startsWith('blob:')) {
-      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      return `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(track.id)}`;
-    }
+    if (isRealEmbeddedArtwork(cached, track)) return cached;
     return null;
   });
 
@@ -46,41 +30,56 @@ export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track, class
   const attemptedRef = useRef<string | null>(null);
   const imgClass = className || "w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none";
 
-  // Charger la miniature locale ou en cache une seule fois par identifiant de piste
+  // Charger la miniature locale ou en cache avec extraction ID3 directe depuis IndexedDB
   useEffect(() => {
     if (!track.id || attemptedRef.current === track.id) return;
-    attemptedRef.current = track.id;
 
-    // Si on a déjà une image valide directe, rien à charger
-    if (isImageCover(track.coverUrl) || isImageCover(track.thumbnailUrl) || isImageCover(track.previewUrl)) {
+    // Si on a déjà une vraie pochette d'artiste (image JPEG/PNG), rien à recharger
+    if (coverUrl && isRealEmbeddedArtwork(coverUrl, track)) {
       return;
     }
 
     const cached = getCachedMediaThumbnail(track.id);
-    if (cached && isImageCover(cached)) {
+    if (cached && isRealEmbeddedArtwork(cached, track)) {
       setCoverUrl(cached);
+      setHasError(false);
       return;
     }
 
-    // Tenter de lire depuis IndexedDB local uniquement (sans réseau)
+    attemptedRef.current = track.id;
     let isMounted = true;
+
+    // Tenter d'extraire la véritable pochette d'album depuis le binaire stocké dans IndexedDB
     getFileBlob(track.id).then((blob) => {
-      if (isMounted && blob) {
-        import('../services/mediaPreviewService').then(({ extractAudioMetadataWithTags }) => {
-          extractAudioMetadataWithTags(blob).then((meta) => {
-            if (isMounted && meta.coverUrl) {
-              setCoverUrl(meta.coverUrl);
-              setCachedMediaThumbnail(track.id, meta.coverUrl);
-            }
-          }).catch(() => {});
+      if (!isMounted || !blob) return;
+
+      import('../services/mediaPreviewService').then(({ extractAudioMetadataWithTags }) => {
+        extractAudioMetadataWithTags(blob).then((meta) => {
+          if (!isMounted) return;
+          if (meta.coverUrl && isRealEmbeddedArtwork(meta.coverUrl, track)) {
+            setCoverUrl(meta.coverUrl);
+            setHasError(false);
+            setCachedMediaThumbnail(track.id, meta.coverUrl);
+            if (track.audioUrl) setCachedMediaThumbnail(track.audioUrl, meta.coverUrl);
+            if (track.url) setCachedMediaThumbnail(track.url, meta.coverUrl);
+
+            storeThumbnailData(track.id, meta.coverUrl).catch(() => {});
+            CloudStorageAPI.saveMediaThumbnail(track.id, 'audio', meta.coverUrl, meta.title || track.name).catch(() => {});
+            CloudDataStore.updateFile(track.id, {
+              coverUrl: meta.coverUrl,
+              thumbnailUrl: meta.coverUrl,
+              previewUrl: meta.coverUrl,
+              artist: meta.artist || track.artist,
+            });
+          }
         }).catch(() => {});
-      }
+      }).catch(() => {});
     }).catch(() => {});
 
     return () => {
       isMounted = false;
     };
-  }, [track.id, track.coverUrl, track.thumbnailUrl, track.previewUrl]);
+  }, [track.id, track.coverUrl, track.thumbnailUrl, track.previewUrl, coverUrl]);
 
   const fallbackSvg = generateAudioCreatorCover(track.name, track.artist || track.source);
 
@@ -91,7 +90,25 @@ export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track, class
         alt={track.name}
         className={imgClass}
         loading="lazy"
-        onError={() => setHasError(true)}
+        onError={() => {
+          setHasError(true);
+          // Si l'URL a échoué (ex: 404), tenter l'extraction directe depuis IndexedDB
+          if (track.id) {
+            getFileBlob(track.id).then((blob) => {
+              if (blob) {
+                import('../services/mediaPreviewService').then(({ extractAudioMetadataWithTags }) => {
+                  extractAudioMetadataWithTags(blob).then((meta) => {
+                    if (meta.coverUrl && isRealEmbeddedArtwork(meta.coverUrl, track)) {
+                      setCoverUrl(meta.coverUrl);
+                      setHasError(false);
+                      setCachedMediaThumbnail(track.id, meta.coverUrl);
+                    }
+                  }).catch(() => {});
+                }).catch(() => {});
+              }
+            }).catch(() => {});
+          }
+        }}
       />
     );
   }

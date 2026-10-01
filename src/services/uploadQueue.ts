@@ -16,9 +16,12 @@ import {
   generatePdfThumbnail,
   generateVideoThumbnail,
   extractAudioCover,
+  extractAudioMetadataWithTags,
   setCachedMediaThumbnail,
   getCachedMediaThumbnail,
+  isRealEmbeddedArtwork,
 } from './mediaPreviewService';
+
 
 export interface UploadTask {
   id: string; // Identifiant unique du fichier (cf-...)
@@ -269,14 +272,34 @@ class UploadQueueManager {
     try {
       // Étape A : Génération / Réutilisation de la miniature réelle
       let previewDataUrl: string | null = task.fileItem?.thumbnailUrl || task.fileItem?.previewUrl || task.fileItem?.coverUrl || null;
-      if (!previewDataUrl || !previewDataUrl.startsWith('data:image')) {
-        previewDataUrl = null;
-        if (category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/i)) {
-          previewDataUrl = getCachedMediaThumbnail(id) || await generateVideoThumbnail(file, id, fileName).catch(() => null);
-        } else if (category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma)$/i)) {
-          previewDataUrl = getCachedMediaThumbnail(id) || await extractAudioCover(file, fileName, 'Créateur StudyCloud').catch(() => null);
-        } else if (normName.endsWith('.pdf')) {
-          previewDataUrl = getCachedMediaThumbnail(id) || await generatePdfThumbnail(file, id).catch(() => null);
+      const isAudio = category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|m4b)$/i);
+
+      if (isAudio) {
+        // Pour les pistes audio, vérifier si on a déjà une vraie pochette d'artiste (JPEG/PNG)
+        if (!isRealEmbeddedArtwork(previewDataUrl, task.fileItem)) {
+          const cached = getCachedMediaThumbnail(id);
+          if (isRealEmbeddedArtwork(cached, task.fileItem)) {
+            previewDataUrl = cached;
+          } else {
+            const meta = await extractAudioMetadataWithTags(file).catch(() => ({} as any));
+            if (meta.coverUrl && isRealEmbeddedArtwork(meta.coverUrl)) {
+              previewDataUrl = meta.coverUrl;
+              if (meta.artist && (!task.fileItem?.artist || task.fileItem.artist === 'Artiste inconnu' || task.fileItem.artist.includes('Enregistrement'))) {
+                if (task.fileItem) task.fileItem.artist = meta.artist;
+              }
+            } else {
+              previewDataUrl = await extractAudioCover(file, fileName, task.fileItem?.artist).catch(() => null);
+            }
+          }
+        }
+      } else {
+        if (!previewDataUrl || !previewDataUrl.startsWith('data:image')) {
+          previewDataUrl = null;
+          if (category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/i)) {
+            previewDataUrl = getCachedMediaThumbnail(id) || await generateVideoThumbnail(file, id, fileName).catch(() => null);
+          } else if (normName.endsWith('.pdf')) {
+            previewDataUrl = getCachedMediaThumbnail(id) || await generatePdfThumbnail(file, id).catch(() => null);
+          }
         }
       }
 
@@ -284,6 +307,7 @@ class UploadQueueManager {
         setCachedMediaThumbnail(id, previewDataUrl);
         CloudStorageAPI.saveMediaThumbnail(id, category, previewDataUrl, fileName).catch(() => {});
       }
+
 
       task.progress = 50;
       this.notify();
@@ -361,16 +385,23 @@ class UploadQueueManager {
         id: serverFileId || id,
         url: uploadUrl || task.fileItem.url,
         r2Key: r2Key || task.fileItem.r2Key,
-        previewUrl: category === 'images' ? (uploadUrl || task.fileItem.url) : (previewDataUrl || uploadUrl || task.fileItem.previewUrl),
-        thumbnailUrl: category === 'images' ? (uploadUrl || task.fileItem.url) : (previewDataUrl || task.fileItem.thumbnailUrl || undefined),
-        coverUrl: category === 'audio' ? (previewDataUrl || task.fileItem.coverUrl) : undefined,
+        previewUrl: category === 'images'
+          ? (uploadUrl || task.fileItem.url)
+          : (category === 'audio'
+              ? (previewDataUrl || task.fileItem?.coverUrl || undefined)
+              : (previewDataUrl || uploadUrl || task.fileItem.previewUrl)),
+        thumbnailUrl: category === 'images'
+          ? (uploadUrl || task.fileItem.url)
+          : (previewDataUrl || task.fileItem?.thumbnailUrl || undefined),
+        coverUrl: category === 'audio' ? (previewDataUrl || task.fileItem?.coverUrl) : undefined,
+        artist: task.fileItem?.artist || (category === 'audio' ? 'Artiste inconnu' : undefined),
         videoUrl: category === 'videos' ? (uploadUrl || task.fileItem.videoUrl) : undefined,
         audioUrl: category === 'audio' ? (uploadUrl || task.fileItem.audioUrl) : undefined,
         isUploading: false,
         uploadProgress: 100,
       }, folderId);
 
-      // Si audio, sauvegarder également la métadonnée complète (artiste, album, etc.) dans D1
+      // Si audio, sauvegarder également la métadonnée complète (artiste, album, pochette réelle, etc.) dans D1
       if (category === 'audio') {
         const audioToSave = {
           ...task.fileItem,
@@ -378,13 +409,15 @@ class UploadQueueManager {
           url: uploadUrl || task.fileItem?.url,
           audioUrl: uploadUrl || task.fileItem?.audioUrl || uploadUrl,
           r2Key: r2Key || task.fileItem?.r2Key,
-          coverUrl: previewDataUrl || task.fileItem?.coverUrl,
-          thumbnailUrl: previewDataUrl || task.fileItem?.thumbnailUrl,
-          previewUrl: previewDataUrl || task.fileItem?.previewUrl,
+          coverUrl: previewDataUrl || task.fileItem?.coverUrl || undefined,
+          thumbnailUrl: previewDataUrl || task.fileItem?.thumbnailUrl || undefined,
+          previewUrl: previewDataUrl || task.fileItem?.coverUrl || undefined,
+          artist: task.fileItem?.artist || 'Artiste inconnu',
           isUploading: false,
         };
         CloudStorageAPI.saveAudio(audioToSave as any).catch(() => {});
       }
+
 
       // Invalider immédiatement le cache TanStack Query
       try {

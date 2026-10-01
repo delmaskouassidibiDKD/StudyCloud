@@ -45,19 +45,74 @@ function bytesToBase64(bytes: Uint8Array): string {
   return window.btoa(binary);
 }
 
+function findEmbeddedImage(bytes: Uint8Array, start = 0, end = bytes.length): string | null {
+  const max = Math.min(bytes.length, end);
+  const minLen = 128;
+  for (let i = start; i < max - 8; i++) {
+    // 1. JPEG: FF D8 FF
+    if (bytes[i] === 0xFF && bytes[i + 1] === 0xD8 && bytes[i + 2] === 0xFF) {
+      let eof = -1;
+      // Rechercher le marqueur de fin JPEG (FF D9)
+      for (let j = i + 10; j < Math.min(bytes.length - 1, i + 8 * 1024 * 1024); j++) {
+        if (bytes[j] === 0xFF && bytes[j + 1] === 0xD9) {
+          eof = j + 2;
+          break;
+        }
+      }
+      const imgLen = (eof > i) ? (eof - i) : Math.min(max - i, 8 * 1024 * 1024);
+      if (imgLen >= minLen) {
+        const imgBytes = bytes.subarray(i, i + imgLen);
+        return `data:image/jpeg;base64,${bytesToBase64(imgBytes)}`;
+      }
+    }
+    // 2. PNG: 89 50 4E 47 0D 0A 1A 0A
+    if (
+      bytes[i] === 0x89 && bytes[i + 1] === 0x50 && bytes[i + 2] === 0x4E && bytes[i + 3] === 0x47 &&
+      bytes[i + 4] === 0x0D && bytes[i + 5] === 0x0A && bytes[i + 6] === 0x1A && bytes[i + 7] === 0x0A
+    ) {
+      let eof = -1;
+      // Rechercher le chunk IEND (49 45 4E 44) + 4 octets CRC
+      for (let j = i + 8; j < Math.min(bytes.length - 7, i + 8 * 1024 * 1024); j++) {
+        if (bytes[j] === 0x49 && bytes[j + 1] === 0x45 && bytes[j + 2] === 0x4E && bytes[j + 3] === 0x44) {
+          eof = j + 8;
+          break;
+        }
+      }
+      const imgLen = (eof > i) ? (eof - i) : Math.min(max - i, 8 * 1024 * 1024);
+      if (imgLen >= minLen) {
+        const imgBytes = bytes.subarray(i, i + imgLen);
+        return `data:image/png;base64,${bytesToBase64(imgBytes)}`;
+      }
+    }
+    // 3. WebP: RIFF .... WEBP
+    if (
+      bytes[i] === 0x52 && bytes[i + 1] === 0x49 && bytes[i + 2] === 0x46 && bytes[i + 3] === 0x46 &&
+      bytes[i + 8] === 0x57 && bytes[i + 9] === 0x45 && bytes[i + 10] === 0x42 && bytes[i + 11] === 0x50
+    ) {
+      const size = (bytes[i + 4] | (bytes[i + 5] << 8) | (bytes[i + 6] << 16) | (bytes[i + 7] << 24)) + 8;
+      const imgLen = Math.min(size, bytes.length - i);
+      if (imgLen >= minLen) {
+        const imgBytes = bytes.subarray(i, i + imgLen);
+        return `data:image/webp;base64,${bytesToBase64(imgBytes)}`;
+      }
+    }
+  }
+  return null;
+}
+
 /**
- * Extrait les métadonnées audio et la pochette d'album réelle (Artwork) de manière purement native et ultra-rapide (ID3v2 & M4A)
+ * Extrait les métadonnées audio et la pochette d'album réelle (Artwork) de manière purement native et ultra-rapide (ID3v2, M4A, FLAC, OGG)
  */
 export async function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Promise<AudioMetadataResult> {
   const result: AudioMetadataResult = {};
 
   try {
-    const sliceLen = Math.min(fileOrBlob.size, 5 * 1024 * 1024);
+    const sliceLen = Math.min(fileOrBlob.size, 8 * 1024 * 1024);
     const slice = fileOrBlob.slice(0, sliceLen);
     const buffer = await slice.arrayBuffer();
     const bytes = new Uint8Array(buffer);
 
-    // 1. Parsing ID3v2 (MP3, WAV, FLAC)
+    // 1. Parsing ID3v2 (MP3, WAV, AIFF)
     if (bytes.length > 10 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
       const version = bytes[3]; // 2 (ID3v2.2), 3 (ID3v2.3), 4 (ID3v2.4)
       const tagSize = ((bytes[6] & 0x7f) << 21) |
@@ -71,9 +126,16 @@ export async function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Pro
       if (version === 2) {
         // ID3v2.2 (tags 3 caractères: TT2, TP1, TAL, PIC)
         while (offset < maxOffset - 6) {
+          if (bytes[offset] === 0 && bytes[offset + 1] === 0 && bytes[offset + 2] === 0) {
+            offset++;
+            continue;
+          }
           const frameId = String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2]);
           const frameSize = (bytes[offset + 3] << 16) | (bytes[offset + 4] << 8) | bytes[offset + 5];
-          if (frameSize <= 0 || offset + 6 + frameSize > maxOffset) break;
+          if (frameSize <= 0 || offset + 6 + frameSize > bytes.length) {
+            offset++;
+            continue;
+          }
 
           const dataOffset = offset + 6;
           const encoding = bytes[dataOffset];
@@ -86,16 +148,9 @@ export async function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Pro
           } else if (frameId === 'TAL' && !result.album) {
             result.album = decodeTextFrame(frameBytes, encoding);
           } else if (frameId === 'PIC' && !result.coverUrl) {
-            let p = dataOffset + 1;
-            const imgFormat = String.fromCharCode(bytes[p], bytes[p + 1], bytes[p + 2]).toLowerCase();
-            p += 3;
-            p++; // picType
-            while (p < dataOffset + frameSize && bytes[p] !== 0) p++;
-            p++;
-            const imgData = bytes.subarray(p, dataOffset + frameSize);
-            if (imgData.length > 50) {
-              const mime = imgFormat === 'png' ? 'image/png' : 'image/jpeg';
-              result.coverUrl = `data:${mime};base64,${bytesToBase64(imgData)}`;
+            const foundCover = findEmbeddedImage(bytes, dataOffset, dataOffset + frameSize);
+            if (foundCover) {
+              result.coverUrl = foundCover;
             }
           }
           offset += 6 + frameSize;
@@ -103,7 +158,10 @@ export async function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Pro
       } else {
         // ID3v2.3 ou ID3v2.4 (tags 4 caractères: TIT2, TPE1, TALB, APIC)
         while (offset < maxOffset - 10) {
-          if (bytes[offset] === 0) break; // Fin des frames / padding
+          if (bytes[offset] === 0 && bytes[offset + 1] === 0 && bytes[offset + 2] === 0 && bytes[offset + 3] === 0) {
+            offset++;
+            continue;
+          }
 
           const frameId = String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
           let frameSize = 0;
@@ -119,7 +177,10 @@ export async function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Pro
                         bytes[offset + 7];
           }
 
-          if (frameSize <= 0 || offset + 10 + frameSize > bytes.length) break;
+          if (frameSize <= 0 || offset + 10 + frameSize > bytes.length) {
+            offset++;
+            continue;
+          }
 
           const dataOffset = offset + 10;
           const encoding = bytes[dataOffset];
@@ -132,29 +193,10 @@ export async function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Pro
           } else if (frameId === 'TALB' && !result.album) {
             result.album = decodeTextFrame(frameBytes, encoding);
           } else if (frameId === 'APIC' && !result.coverUrl) {
-            let p = dataOffset + 1;
-            let mime = '';
-            while (p < dataOffset + frameSize && bytes[p] !== 0) {
-              mime += String.fromCharCode(bytes[p++]);
-            }
-            p++; // Sauter zéro terminal
-            if (!mime || mime.length < 3) mime = 'image/jpeg';
-            if (!mime.includes('/')) mime = `image/${mime.toLowerCase()}`;
-
-            p++; // Picture type (ex 0x03 Front cover)
-
-            // Sauter la description selon l'encodage
-            if (encoding === 1 || encoding === 2) {
-              while (p < dataOffset + frameSize - 1 && !(bytes[p] === 0 && bytes[p + 1] === 0)) p += 2;
-              p += 2;
-            } else {
-              while (p < dataOffset + frameSize && bytes[p] !== 0) p++;
-              p++;
-            }
-
-            const imgData = bytes.subarray(p, dataOffset + frameSize);
-            if (imgData.length > 50) {
-              result.coverUrl = `data:${mime};base64,${bytesToBase64(imgData)}`;
+            // Extraction directe haute précision de l'image JPEG/PNG dans la frame APIC
+            const foundCover = findEmbeddedImage(bytes, dataOffset, dataOffset + frameSize);
+            if (foundCover) {
+              result.coverUrl = foundCover;
             }
           }
 
@@ -163,32 +205,60 @@ export async function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Pro
       }
     }
 
-    // 2. Parsing M4A / MP4 / AAC (recherche d'atom 'covr' dans le conteneur)
+    // 2. Recherche directe de l'identifiant 'APIC' si l'analyse par offset séquentiel a manqué la frame
     if (!result.coverUrl) {
-      try {
-        let p = 0;
-        const max = Math.min(bytes.length - 8, 512 * 1024);
-        while (p < max) {
-          if (bytes[p] === 0x63 && bytes[p + 1] === 0x6f && bytes[p + 2] === 0x76 && bytes[p + 3] === 0x72) {
-            let dataPos = p + 4;
-            while (dataPos < Math.min(p + 256, bytes.length - 8)) {
-              if (bytes[dataPos + 4] === 0x64 && bytes[dataPos + 5] === 0x61 && bytes[dataPos + 6] === 0x74 && bytes[dataPos + 7] === 0x61) {
-                const dataSize = (bytes[dataPos] << 24) | (bytes[dataPos + 1] << 16) | (bytes[dataPos + 2] << 8) | bytes[dataPos + 3];
-                const imgStart = dataPos + 16;
-                const imgEnd = dataPos + dataSize;
-                if (imgEnd <= bytes.length && imgEnd - imgStart > 50) {
-                  const imgBytes = bytes.subarray(imgStart, imgEnd);
-                  const isPng = imgBytes[0] === 0x89 && imgBytes[1] === 0x50;
-                  const mime = isPng ? 'image/png' : 'image/jpeg';
-                  result.coverUrl = `data:${mime};base64,${bytesToBase64(imgBytes)}`;
-                }
-                break;
-              }
-              dataPos++;
-            }
+      for (let i = 0; i < Math.min(bytes.length - 20, 6 * 1024 * 1024); i++) {
+        if (bytes[i] === 0x41 && bytes[i + 1] === 0x50 && bytes[i + 2] === 0x49 && bytes[i + 3] === 0x43) {
+          const foundCover = findEmbeddedImage(bytes, i + 4, Math.min(bytes.length, i + 4 + 6 * 1024 * 1024));
+          if (foundCover) {
+            result.coverUrl = foundCover;
             break;
           }
-          p++;
+        }
+      }
+    }
+
+    // 3. Parsing M4A / MP4 / AAC (recherche d'atom 'covr' dans tout le conteneur)
+    if (!result.coverUrl) {
+      try {
+        for (let p = 0; p < Math.min(bytes.length - 8, 8 * 1024 * 1024); p++) {
+          if (bytes[p] === 0x63 && bytes[p + 1] === 0x6f && bytes[p + 2] === 0x76 && bytes[p + 3] === 0x72) {
+            const foundCover = findEmbeddedImage(bytes, p + 4, Math.min(bytes.length, p + 4 + 6 * 1024 * 1024));
+            if (foundCover) {
+              result.coverUrl = foundCover;
+              break;
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // 4. Parsing FLAC (bloc METADATA_BLOCK_PICTURE ou fLaC)
+    if (!result.coverUrl && bytes.length > 4 && bytes[0] === 0x66 && bytes[1] === 0x4C && bytes[2] === 0x61 && bytes[3] === 0x43) {
+      const foundCover = findEmbeddedImage(bytes, 4, bytes.length);
+      if (foundCover) {
+        result.coverUrl = foundCover;
+      }
+    }
+
+    // 5. Recherche globale dans les premiers Mo si aucune structure formelle n'a été résolue
+    if (!result.coverUrl) {
+      const foundCover = findEmbeddedImage(bytes, 0, Math.min(bytes.length, 5 * 1024 * 1024));
+      if (foundCover) {
+        result.coverUrl = foundCover;
+      }
+    }
+
+    // 6. Scan de fin de fichier (moov en fin de conteneur M4A / MP4)
+    if (!result.coverUrl && fileOrBlob.size > 5 * 1024 * 1024) {
+      try {
+        const tailLen = Math.min(fileOrBlob.size, 2 * 1024 * 1024);
+        const tailSlice = fileOrBlob.slice(fileOrBlob.size - tailLen);
+        const tailBuf = await tailSlice.arrayBuffer();
+        const tailBytes = new Uint8Array(tailBuf);
+        const foundTail = findEmbeddedImage(tailBytes, 0, tailBytes.length);
+        if (foundTail) {
+          result.coverUrl = foundTail;
         }
       } catch {}
     }
@@ -442,74 +512,13 @@ export async function extractAudioCover(
       return generateAudioCreatorCover(title || '', artist);
     }
 
-    // 1. Tenter d'extraire la pochette via métadonnées ID3/MP4
+    // 1. Tenter d'extraire la pochette via métadonnées ID3/MP4/FLAC
     try {
       const meta = await extractAudioMetadataWithTags(targetBlob);
       if (meta.coverUrl) {
         return meta.coverUrl;
       }
     } catch {}
-
-    // 2. Scanner rapide ID3 APIC sur max 256 Ko (fichiers locaux)
-    const maxScanLen = Math.min(targetBlob.size, 256 * 1024);
-    const headerSlice = targetBlob.slice(0, maxScanLen);
-    const buffer = await headerSlice.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-
-    // Vérifier l'en-tête ID3 (0x49, 0x44, 0x33)
-    if (bytes.length > 10 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
-      const tagSize = ((bytes[6] & 0x7f) << 21) |
-                      ((bytes[7] & 0x7f) << 14) |
-                      ((bytes[8] & 0x7f) << 7) |
-                      (bytes[9] & 0x7f);
-
-      const maxScan = Math.min(bytes.length, tagSize + 10);
-      let offset = 10;
-
-      while (offset < maxScan - 10) {
-        // Rechercher le frame "APIC" (Attached Picture)
-        if (
-          bytes[offset] === 0x41 && // A
-          bytes[offset + 1] === 0x50 && // P
-          bytes[offset + 2] === 0x49 && // I
-          bytes[offset + 3] === 0x43    // C
-        ) {
-          const frameSize = (bytes[offset + 4] << 24) |
-                            (bytes[offset + 5] << 16) |
-                            (bytes[offset + 6] << 8) |
-                            bytes[offset + 7];
-
-          if (frameSize > 0 && offset + 10 + frameSize <= bytes.length) {
-            let p = offset + 10;
-            const encoding = bytes[p++];
-            
-            let mime = '';
-            while (p < maxScan && bytes[p] !== 0) {
-              mime += String.fromCharCode(bytes[p++]);
-            }
-            p++;
-
-            if (!mime || mime.length < 3) mime = 'image/jpeg';
-            p++; // Picture type
-
-            if (encoding === 0 || encoding === 3) {
-              while (p < maxScan && bytes[p] !== 0) p++;
-              p++;
-            } else {
-              while (p < maxScan - 1 && !(bytes[p] === 0 && bytes[p + 1] === 0)) p += 2;
-              p += 2;
-            }
-
-            const imgBytes = bytes.slice(p, offset + 10 + frameSize);
-            if (imgBytes.length > 100) {
-              return `data:${mime};base64,${bytesToBase64(imgBytes)}`;
-            }
-          }
-          break; // Sortir après le frame APIC
-        }
-        offset++;
-      }
-    }
   } catch (err) {
     console.warn('[mediaPreviewService] Impossible d\'extraire la pochette ID3:', err);
   }
@@ -517,6 +526,72 @@ export async function extractAudioCover(
   // Fallback élégant : pochette créateur officielle StudyCloud
   return generateAudioCreatorCover(title || '', artist);
 }
+
+/**
+ * Vérifie si une chaîne représente une véritable pochette d'artiste/album (image réelle)
+ * et NON pas un SVG vinyle par défaut, une URL audio blob ou une URL vide.
+ */
+export function isRealEmbeddedArtwork(url?: string | null, track?: { audioUrl?: string; url?: string; isImage?: boolean }): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+
+  // Rejeter si c'est l'URL audio du fichier lui-même
+  if (track) {
+    if (track.audioUrl && (trimmed === track.audioUrl || trimmed === track.audioUrl.split('?')[0])) return false;
+    if (track.url && !track.isImage && (trimmed === track.url || trimmed === track.url.split('?')[0])) return false;
+  }
+
+  const clean = trimmed.toLowerCase().split('?')[0];
+
+  // Rejeter les fichiers audio
+  if (clean.match(/\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i)) {
+    return false;
+  }
+
+  // Rejeter les documents et vidéos
+  if (clean.match(/\.(pdf|doc|docx|xls|xlsx|txt|mp4|webm|avi|mkv|mov|zip|rar)$/i)) {
+    return false;
+  }
+
+  // Rejeter le SVG de fallback créateur (vinyle par défaut généré par generateAudioCreatorCover)
+  if (clean.startsWith('data:image/svg+xml') && (
+    clean.includes('discbg') || clean.includes('ambergold') || clean.includes('brandneon') ||
+    clean.includes('studycloud%20music%20creator') || clean.includes('cr%c3%a9ateur%20audio') ||
+    clean.includes('enregistrement%20en%20cours') || clean.includes('piste%20audio')
+  )) {
+    return false;
+  }
+
+  // Rejeter les blob URLs car les vraies pochettes extraites sont toujours encodées en data:image/... base64
+  // Une URL blob: dans previewUrl/coverUrl est presque systématiquement le flux audio brut qui casse les <img> tags
+  if (clean.startsWith('blob:')) {
+    return false;
+  }
+
+  // Accepter les data URLs d'images réelles (JPEG, PNG, WebP)
+  if (clean.startsWith('data:image/jpeg') || clean.startsWith('data:image/jpg') || clean.startsWith('data:image/png') || clean.startsWith('data:image/webp')) {
+    return true;
+  }
+
+  // Accepter les miniatures Cloudflare Worker
+  if (clean.includes('/api/cloud/thumbnail/')) {
+    return true;
+  }
+
+  // Accepter les extensions d'images réelles
+  if (clean.match(/\.(jpg|jpeg|png|webp|gif|avif|bmp)$/i)) {
+    return true;
+  }
+
+  // Accepter les URLs HTTP/HTTPS d'images
+  if (clean.startsWith('http://') || clean.startsWith('https://')) {
+    return true;
+  }
+
+  return false;
+}
+
 
 /**
  * Génère la vignette réelle d'une vidéo en extrayant une frame à 0.5s
