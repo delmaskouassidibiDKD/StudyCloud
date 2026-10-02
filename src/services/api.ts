@@ -999,7 +999,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   // Surveillance active : si une mise à jour est en attente et que l'utilisateur l'a reportée ("Plus tard"),
   // on bloque préventivement toute tentative d'écriture ou modification (POST, PUT, DELETE, PATCH)
-  // pour empêcher qu'un code obsolète ne corrompe ou déstructure la base de données.
+  // pour s'assurer que l'application reste synchronisée avec la dernière version.
   const isUpdatePending = typeof localStorage !== 'undefined' && localStorage.getItem('studycloud_update_pending') === 'true';
   const isUpdatePostponed = typeof localStorage !== 'undefined' && localStorage.getItem('studycloud_update_postponed') === 'true';
 
@@ -1010,14 +1010,14 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
         detail: {
           endpoint,
           method,
-          message: 'Cette modification a été bloquée pour protéger vos données. Veuillez actualiser l\'application pour enregistrer vos données en toute sécurité.'
+          message: 'Une mise à jour est nécessaire pour continuer. Veuillez mettre à jour l\'application.'
         }
       }));
     }
     return {
       success: false,
       blockedByUpdate: true,
-      message: 'Action protégée : veuillez mettre à jour l\'application pour modifier vos données en toute sécurité.'
+      message: 'Une mise à jour est nécessaire pour continuer.'
     } as T;
   }
 
@@ -1043,14 +1043,14 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: response.statusText }));
-    // Si une anomalie survient et qu'une mise à jour est en attente, verrouiller immédiatement
+    // Si une anomalie survient et qu'une mise à jour est en attente, exiger l'actualisation
     if (isUpdatePending && (response.status === 400 || response.status === 404 || response.status === 500)) {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('studycloud_critical_update_required', {
           detail: {
             endpoint,
             status: response.status,
-            message: 'Une anomalie a été détectée avec la version actuelle. Veuillez actualiser StudyCloud pour sécuriser vos données.'
+            message: 'Une mise à jour est nécessaire pour continuer. Veuillez actualiser StudyCloud.'
           }
         }));
       }
