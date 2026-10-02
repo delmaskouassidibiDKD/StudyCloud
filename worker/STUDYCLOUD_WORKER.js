@@ -2777,6 +2777,24 @@ async function ensureCloudMediaTables(db) {
       await db.prepare("CREATE INDEX IF NOT EXISTS idx_notes_user_pinned ON notes(user_id, is_pinned, updated_at)").run();
     } catch (e) {
     }
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS grades (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        trimester INTEGER DEFAULT 1,
+        subject_name TEXT DEFAULT '',
+        coefficient REAL DEFAULT 1.0,
+        sub_grades_json TEXT DEFAULT '[]',
+        average REAL DEFAULT 0.0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {
+    });
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_grades_user_trim ON grades(user_id, trimester)").run();
+    } catch (e) {
+    }
     isCloudMediaTablesInitialized = true;
   } catch (err) {
     console.error("[StudyCloud Cloud Media Tables Init Error]", err);
@@ -10030,15 +10048,37 @@ var index_default = {
         }
       }
       if (path === "/api/grades") {
+        try {
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS grades (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              trimester INTEGER DEFAULT 1,
+              subject_name TEXT DEFAULT '',
+              coefficient REAL DEFAULT 1.0,
+              sub_grades_json TEXT DEFAULT '[]',
+              average REAL DEFAULT 0.0,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+        } catch (e) {
+        }
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
           if (!userId) return errorResponse("userId requis", 400, origin);
-          const { results } = await env.DB.prepare("SELECT * FROM grades WHERE user_id = ?").bind(userId).all();
-          return jsonResponse({ success: true, data: results }, 200, origin);
+          try {
+            const { results } = await env.DB.prepare("SELECT * FROM grades WHERE user_id = ?").bind(userId).all();
+            return jsonResponse({ success: true, data: results || [] }, 200, origin);
+          } catch (e) {
+            return jsonResponse({ success: true, data: [] }, 200, origin);
+          }
         }
         if (method === "POST") {
           const body = await request.json();
           const { id, userId, trimester, subjectName, coefficient, subGradesJson, average } = body;
+          if (!userId) return errorResponse("userId requis", 400, origin);
+          const gradeId = id || "grade-" + crypto.randomUUID();
           await env.DB.prepare(`
             INSERT INTO grades (id, user_id, trimester, subject_name, coefficient, sub_grades_json, average, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -10048,8 +10088,16 @@ var index_default = {
               sub_grades_json = excluded.sub_grades_json,
               average = excluded.average,
               updated_at = CURRENT_TIMESTAMP
-          `).bind(id || crypto.randomUUID(), userId, trimester || 1, subjectName, coefficient || 1, subGradesJson || "[]", average || 0).run();
-          return jsonResponse({ success: true }, 200, origin);
+          `).bind(
+            gradeId,
+            userId,
+            Number(trimester) || 1,
+            subjectName || "Mati\xE8re",
+            Number(coefficient) || 1,
+            typeof subGradesJson === "string" ? subGradesJson : JSON.stringify(subGradesJson || []),
+            Number(average) || 0
+          ).run();
+          return jsonResponse({ success: true, id: gradeId }, 200, origin);
         }
         if (method === "DELETE") {
           const id = url.searchParams.get("id");
@@ -10059,7 +10107,7 @@ var index_default = {
       }
       if (path.startsWith("/api/grades/") && method === "DELETE") {
         const id = path.split("/")[3];
-        await env.DB.prepare("DELETE FROM grades WHERE id = ?").bind(id).run();
+        if (id) await env.DB.prepare("DELETE FROM grades WHERE id = ?").bind(id).run();
         return jsonResponse({ success: true, message: "Note supprim\xE9e" }, 200, origin);
       }
       if (path === "/api/notes") {

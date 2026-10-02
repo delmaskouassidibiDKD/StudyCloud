@@ -21,7 +21,10 @@ const getInitialTrimestersData = (): Record<string, GradeItem[]> => {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed && typeof parsed === 'object') {
-        return parsed;
+        const hasAnyItems = Object.values(parsed).some((list: any) => Array.isArray(list) && list.length > 0);
+        if (hasAnyItems) {
+          return parsed;
+        }
       }
     }
   } catch (e) {}
@@ -92,13 +95,49 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
   const [showCalcStepsModal, setShowCalcStepsModal] = useState(false);
   const [showAddLineConfirm, setShowAddLineConfirm] = useState(false);
 
+  // Synchronisation avec les matières créées dans le menu "Matière"
+  useEffect(() => {
+    try {
+      const savedMat = localStorage.getItem('unifolder_saved_matieres');
+      if (savedMat) {
+        const parsedMat = JSON.parse(savedMat);
+        if (Array.isArray(parsedMat) && parsedMat.length > 0) {
+          setTrimestersData(prev => {
+            let hasChanged = false;
+            const updated = { ...prev };
+            (['1', '2', '3'] as const).forEach(trimKey => {
+              const currentList = updated[trimKey] ? [...updated[trimKey]] : [];
+              parsedMat.forEach((m: any) => {
+                const name = (m.name || '').trim();
+                if (!name) return;
+                const exists = currentList.some(item => item.subject.trim().toLowerCase() === name.toLowerCase());
+                if (!exists) {
+                  hasChanged = true;
+                  currentList.push({
+                    id: `${m.id || Date.now()}_t${trimKey}`,
+                    subject: name,
+                    coefficient: parseFloat(m.coefficient) || 1.0,
+                    grade: 0,
+                    subGrades: []
+                  });
+                }
+              });
+              updated[trimKey] = currentList;
+            });
+            return hasChanged ? updated : prev;
+          });
+        }
+      }
+    } catch (e) {}
+  }, []);
+
+  // Synchronisation automatique vers localStorage et Cloudflare D1
   useEffect(() => {
     try {
       localStorage.setItem('user_grades_trimesters_data', JSON.stringify(trimestersData));
       triggerDebouncedCloudBackup();
     } catch (e) {}
 
-    // Synchronisation automatique vers Cloudflare D1
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
     const timer = setTimeout(() => {
       Object.entries(trimestersData).forEach(([trim, items]) => {
@@ -116,7 +155,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
           });
         }
       });
-    }, 1500);
+    }, 800);
     return () => clearTimeout(timer);
   }, [trimestersData]);
 
@@ -125,24 +164,58 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
     StudyCloudAPI.getGrades(userId)
       .then((res: any) => {
-        if (res && res.success && Array.isArray(res.data)) {
+        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
           const mapped: Record<string, GradeItem[]> = { '1': [], '2': [], '3': [] };
           for (const row of res.data) {
             const trimKey = String(row.trimester || '1');
             if (!mapped[trimKey]) mapped[trimKey] = [];
+            let subs: any[] = [];
+            try {
+              if (typeof row.sub_grades_json === 'string') {
+                subs = JSON.parse(row.sub_grades_json);
+              } else if (Array.isArray(row.sub_grades_json)) {
+                subs = row.sub_grades_json;
+              }
+            } catch (e) {
+              subs = [];
+            }
             mapped[trimKey].push({
               id: row.id,
-              subject: row.subject_name,
+              subject: row.subject_name || row.subject || 'Matière',
               coefficient: Number(row.coefficient) || 1.0,
-              grade: Number(row.average) || 0,
-              subGrades: row.sub_grades_json ? JSON.parse(row.sub_grades_json) : [],
+              grade: Number(row.average) || Number(row.grade) || 0,
+              subGrades: subs,
             });
           }
           setTrimestersData(mapped);
           localStorage.setItem('user_grades_trimesters_data', JSON.stringify(mapped));
+        } else if (res && res.success && Array.isArray(res.data) && res.data.length === 0) {
+          // Si la base distante est encore vide, pousser les données locales vers Cloudflare D1
+          const localData = getInitialTrimestersData();
+          const hasLocalItems = Object.values(localData).some(list => Array.isArray(list) && list.length > 0);
+          if (hasLocalItems) {
+            Object.entries(localData).forEach(([trim, items]) => {
+              if (Array.isArray(items)) {
+                items.forEach((item: any) => {
+                  StudyCloudAPI.saveGrade({
+                    id: item.id,
+                    userId,
+                    trimester: Number(trim) || 1,
+                    subjectName: item.subject,
+                    coefficient: item.coefficient,
+                    subGradesJson: JSON.stringify(item.subGrades || []),
+                    average: item.grade
+                  }).catch(() => {});
+                });
+              }
+            });
+            triggerDebouncedCloudBackup();
+          }
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.warn('[Grades] Erreur chargement initial D1:', err);
+      });
   }, []);
 
   useEffect(() => {
@@ -407,12 +480,14 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
 
   const confirmDelete = () => {
     if (!deleteId) return;
-    const updatedList = currentItems.filter(i => i.id !== deleteId);
+    const targetId = deleteId;
+    const updatedList = currentItems.filter(i => i.id !== targetId);
     setTrimestersData(prev => ({
       ...prev,
       [activeTrimestre]: updatedList
     }));
-    StudyCloudAPI.deleteGrade(deleteId).catch(() => {});
+    StudyCloudAPI.deleteGrade(targetId).catch(() => {});
+    triggerDebouncedCloudBackup();
     setDeleteId(null);
     setSuccessMessage('Matière supprimée avec succès !');
     setTimeout(() => setSuccessMessage(null), 3000);
@@ -423,7 +498,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
       {/* Sticky Header Group */}
       <div className="sticky top-0 z-40 flex flex-col w-full shadow-md shrink-0">
         {/* Top Navigation Bar with Back & Add */}
-        <div className="bg-[#1e40af] px-4 py-2.5 flex items-center justify-between text-white shadow-md">
+        <div className="bg-[#1e40af] dark:bg-[#0f172a] px-4 py-2.5 flex items-center justify-between text-white shadow-md">
           <button
             onClick={onBack}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white font-medium text-xs rounded-lg transition-colors cursor-pointer"
@@ -432,7 +507,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
             <span>Retour</span>
           </button>
 
-          <span className="text-xs sm:text-sm font-semibold tracking-wide uppercase text-blue-100">
+          <span className="text-xs sm:text-sm font-semibold tracking-wide uppercase text-blue-100 dark:text-blue-200">
             Mes notes d'évaluation
           </span>
 
@@ -446,7 +521,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
         </div>
 
         {/* General Average Hero Banner (Reduced height/spacing) */}
-        <div className="bg-[#1d4ed8] text-white py-3 px-4 shadow-md flex items-center justify-between px-6">
+        <div className="bg-[#1d4ed8] dark:bg-[#1e3a8a] text-white py-3 px-4 shadow-md flex items-center justify-between px-6">
           <div className="text-2xl sm:text-4xl font-sans font-bold tracking-tight mx-auto flex items-center gap-2">
             <span>{generalAverage !== null ? `${generalAverage.toFixed(2).replace('.', ',')} / ${standardScale}` : 'Pas de note'}</span>
             <span className="text-xs sm:text-sm font-normal uppercase tracking-wider text-blue-200">
@@ -464,7 +539,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
         </div>
 
         {/* Trimester Tabs */}
-        <div className="bg-[#1e40af] text-white flex justify-center border-t border-blue-800 shadow-inner">
+        <div className="bg-[#1e40af] dark:bg-[#0f172a] text-white flex justify-center border-t border-blue-800 dark:border-slate-800 shadow-inner">
           <div className="flex w-full">
             {[
               { id: '1', label: 'TRIMESTRE 1' },
@@ -476,8 +551,8 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                 onClick={() => setActiveTrimestre(tab.id as '1' | '2' | '3')}
                 className={`flex-1 py-3 text-center text-xs sm:text-sm font-bold tracking-wider transition-all cursor-pointer border-b-4 ${
                   activeTrimestre === tab.id
-                    ? 'bg-blue-900/40 border-white text-white'
-                    : 'border-transparent text-blue-200/70 hover:text-white hover:bg-blue-900/20'
+                    ? 'bg-blue-900/40 dark:bg-blue-600/30 border-white text-white'
+                    : 'border-transparent text-blue-200/70 dark:text-slate-400 hover:text-white hover:bg-blue-900/20 dark:hover:bg-slate-800/40'
                 }`}
               >
                 {tab.label}
@@ -487,8 +562,8 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
         </div>
 
         {/* Table Headers Bar */}
-        <div className="bg-[#e2e8f0] border-b border-stone-300">
-          <div className="w-full max-w-6xl xl:max-w-7xl mx-auto text-stone-700 font-bold text-xs sm:text-sm md:text-base uppercase tracking-wider px-4 md:px-8 py-3 md:py-4 grid grid-cols-12 items-center">
+        <div className="bg-[#e2e8f0] dark:bg-[#161f30] border-b border-stone-300 dark:border-slate-800 transition-colors">
+          <div className="w-full max-w-6xl xl:max-w-7xl mx-auto text-stone-700 dark:text-slate-200 font-bold text-xs sm:text-sm md:text-base uppercase tracking-wider px-4 md:px-8 py-3 md:py-4 grid grid-cols-12 items-center">
             <div className="col-span-6">Matière</div>
             <div className="col-span-2 text-center">Coefficient</div>
             <div className="col-span-4 text-right pr-2 md:pr-4">Moyenne</div>
@@ -499,9 +574,9 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
       {/* Rows Container - Stacked white cards on background (Scrollable) */}
       <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-2.5 md:space-y-4 max-w-6xl xl:max-w-7xl w-full mx-auto pb-20">
         {currentItems.length === 0 ? (
-          <div className="bg-white rounded-xl md:rounded-2xl p-12 md:p-16 text-center text-stone-500 shadow-sm border border-stone-200">
-            <p className="font-semibold text-base md:text-lg text-stone-700">Aucune matière enregistrée</p>
-            <p className="text-xs md:text-sm text-stone-400 mt-1">Cliquez sur le bouton "Ajouter" en haut pour commencer.</p>
+          <div className="bg-white dark:bg-[#161f30] rounded-xl md:rounded-2xl p-12 md:p-16 text-center text-stone-500 dark:text-slate-400 shadow-sm border border-stone-200 dark:border-slate-800 transition-colors">
+            <p className="font-semibold text-base md:text-lg text-stone-700 dark:text-slate-200">Aucune matière enregistrée</p>
+            <p className="text-xs md:text-sm text-stone-400 dark:text-slate-400 mt-1">Cliquez sur le bouton "Ajouter" en haut pour commencer.</p>
           </div>
         ) : (
           currentItems.map((item) => {
@@ -512,18 +587,18 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
             return (
               <div
                 key={item.id}
-                className="bg-white rounded-xl md:rounded-2xl shadow-xs md:shadow-md border border-stone-200/80 hover:border-stone-300 transition-all overflow-hidden"
+                className="bg-white dark:bg-[#161f30] rounded-xl md:rounded-2xl shadow-xs md:shadow-md border border-stone-200/80 dark:border-slate-800 hover:border-stone-300 dark:hover:border-slate-700 transition-all overflow-hidden"
               >
                 {/* Main Row */}
                 <div className="px-4 sm:px-5 md:px-8 py-3.5 sm:py-4 md:py-5 lg:py-6 grid grid-cols-12 items-center group">
                   <div className="col-span-6 pr-2 md:pr-4">
                     <div 
-                      className="bg-[#F5F1E9] hover:bg-[#EBE5DA] border-2 border-stone-300 hover:border-stone-400 px-3 py-2 md:px-5 md:py-3.5 rounded-lg md:rounded-xl cursor-pointer max-w-full overflow-hidden transition-all shadow-2xs"
+                      className="bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283548] border-2 border-stone-300 dark:border-slate-700 hover:border-stone-400 dark:hover:border-slate-600 px-3 py-2 md:px-5 md:py-3.5 rounded-lg md:rounded-xl cursor-pointer max-w-full overflow-hidden transition-all shadow-2xs"
                       onClick={() => handleOpenEdit(item)}
                       title="Modifier cette matière"
                     >
                       <div 
-                        className="font-sans font-semibold text-xs sm:text-sm md:text-base lg:text-lg text-stone-900 leading-snug"
+                        className="font-sans font-semibold text-xs sm:text-sm md:text-base lg:text-lg text-stone-900 dark:text-slate-100 leading-snug"
                         style={{
                           display: '-webkit-box',
                           WebkitLineClamp: 3,
@@ -536,8 +611,8 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                       </div>
                     </div>
                   </div>
-                  <div className="col-span-2 text-center font-sans font-bold text-sm sm:text-base md:text-lg lg:text-xl text-stone-700">
-                    <span className="md:inline-block md:bg-stone-100 md:border md:border-stone-200 md:px-4 md:py-1.5 md:rounded-xl">
+                  <div className="col-span-2 text-center font-sans font-bold text-sm sm:text-base md:text-lg lg:text-xl text-stone-700 dark:text-slate-300">
+                    <span className="md:inline-block md:bg-stone-100 md:dark:bg-slate-800 md:border md:border-stone-200 md:dark:border-slate-700 md:px-4 md:py-1.5 md:rounded-xl">
                       {item.coefficient.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}
                     </span>
                   </div>
@@ -546,7 +621,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                       type="button"
                       onClick={() => toggleExpand(item.id)}
                       title="Cliquez pour afficher / masquer les notes de cette matière"
-                      className="font-extrabold text-sm sm:text-base md:text-lg lg:text-xl text-blue-900 bg-blue-100/90 hover:bg-blue-200 px-3.5 py-1.5 md:px-6 md:py-3 rounded-xl md:rounded-2xl transition-all cursor-pointer border border-blue-300 shadow-2xs md:shadow-xs ml-auto active:scale-95 flex items-center gap-2"
+                      className="font-extrabold text-sm sm:text-base md:text-lg lg:text-xl text-blue-900 dark:text-blue-300 bg-blue-100/90 dark:bg-blue-950/60 hover:bg-blue-200 dark:hover:bg-blue-900/60 px-3.5 py-1.5 md:px-6 md:py-3 rounded-xl md:rounded-2xl transition-all cursor-pointer border border-blue-300 dark:border-blue-800 shadow-2xs md:shadow-xs ml-auto active:scale-95 flex items-center gap-2"
                     >
                       <span>{hasGrades ? `${calculateAverageFromSubGrades(subs).toFixed(2).replace('.', ',')} / ${standardScale}` : 'Pas de note'}</span>
                     </button>
@@ -555,16 +630,16 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
 
                 {/* Expanded Sub-Grades Accordion */}
                 {isExpanded && (
-                  <div className="bg-[#F5F1E9] px-4 sm:px-5 md:px-8 py-4 md:py-6 border-t border-stone-200/80 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="bg-[#F5F1E9] dark:bg-[#0f172a] px-4 sm:px-5 md:px-8 py-4 md:py-6 border-t border-stone-200/80 dark:border-slate-800 animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="flex items-center justify-between mb-3 md:mb-4">
                       <div className="flex items-center gap-2.5">
-                        <h4 className="font-sans font-bold text-xs md:text-sm uppercase tracking-wider text-stone-800">
+                        <h4 className="font-sans font-bold text-xs md:text-sm uppercase tracking-wider text-stone-800 dark:text-slate-200">
                           Évaluations ({subs.length})
                         </h4>
                         <button
                           type="button"
                           onClick={() => setActiveAddGradeSubjectId(activeAddGradeSubjectId === item.id ? null : item.id)}
-                          className="p-1 bg-stone-900 hover:bg-stone-800 text-white rounded-lg shadow-2xs transition-all cursor-pointer flex items-center justify-center"
+                          className="p-1 bg-stone-900 dark:bg-blue-600 hover:bg-stone-800 dark:hover:bg-blue-700 text-white rounded-lg shadow-2xs transition-all cursor-pointer flex items-center justify-center"
                           title="Ajouter une note"
                         >
                           <Plus className="w-3.5 h-3.5" />
@@ -573,7 +648,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                       <button
                         type="button"
                         onClick={() => toggleExpand(item.id)}
-                        className="text-xs text-stone-500 hover:text-stone-800 font-medium cursor-pointer"
+                        className="text-xs text-stone-500 dark:text-slate-400 hover:text-stone-800 dark:hover:text-slate-200 font-medium cursor-pointer"
                       >
                         Replier ▲
                       </button>
@@ -581,20 +656,20 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
 
                     {/* Add Grade Menu/Modal */}
                     {activeAddGradeSubjectId === item.id && (
-                      <form onSubmit={(e) => handleAddNewGradeSubmit(item.id, e)} className="bg-white p-3.5 rounded-xl border border-blue-200 shadow-sm mb-3 space-y-3">
+                      <form onSubmit={(e) => handleAddNewGradeSubmit(item.id, e)} className="bg-white dark:bg-[#1e293b] p-3.5 rounded-xl border border-blue-200 dark:border-blue-900 shadow-sm mb-3 space-y-3">
                         <div className="flex items-center justify-between">
-                          <span className="font-bold text-xs text-blue-900 uppercase">Ajouter une nouvelle note</span>
+                          <span className="font-bold text-xs text-blue-900 dark:text-blue-300 uppercase">Ajouter une nouvelle note</span>
                           <button 
                             type="button" 
                             onClick={() => setActiveAddGradeSubjectId(null)}
-                            className="text-stone-400 hover:text-stone-600 text-xs cursor-pointer"
+                            className="text-stone-400 hover:text-stone-600 dark:hover:text-slate-300 text-xs cursor-pointer"
                           >
                             ✕
                           </button>
                         </div>
                         <div className="grid grid-cols-3 gap-2">
                           <div>
-                            <label className="block text-[10px] font-semibold text-stone-500 mb-1">Note</label>
+                            <label className="block text-[10px] font-semibold text-stone-500 dark:text-slate-400 mb-1">Note</label>
                             <input 
                               type="number"
                               step="0.01"
@@ -607,11 +682,11 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                               onChange={(e) => {
                                 if (e.target.value.length <= 5) setNewSubVal(e.target.value);
                               }}
-                              className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 rounded-lg text-xs font-medium text-stone-900 focus:outline-none focus:border-blue-600"
+                              className="w-full px-2.5 py-1.5 bg-stone-50 dark:bg-slate-900 border border-stone-200 dark:border-slate-700 rounded-lg text-xs font-medium text-stone-900 dark:text-slate-100 focus:outline-none focus:border-blue-600"
                             />
                           </div>
                           <div>
-                            <label className="block text-[10px] font-semibold text-stone-500 mb-1">Sur combien</label>
+                            <label className="block text-[10px] font-semibold text-stone-500 dark:text-slate-400 mb-1">Sur combien</label>
                             <input 
                               type="number"
                               step="1"
@@ -623,11 +698,11 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                               onChange={(e) => {
                                 if (e.target.value.length <= 5) setNewSubMax(e.target.value);
                               }}
-                              className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 rounded-lg text-xs font-medium text-stone-900 focus:outline-none focus:border-blue-600"
+                              className="w-full px-2.5 py-1.5 bg-stone-50 dark:bg-slate-900 border border-stone-200 dark:border-slate-700 rounded-lg text-xs font-medium text-stone-900 dark:text-slate-100 focus:outline-none focus:border-blue-600"
                             />
                           </div>
                           <div>
-                            <label className="block text-[10px] font-semibold text-stone-500 mb-1">Coefficient</label>
+                            <label className="block text-[10px] font-semibold text-stone-500 dark:text-slate-400 mb-1">Coefficient</label>
                             <input 
                               type="number"
                               step="0.5"
@@ -639,7 +714,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                               onChange={(e) => {
                                 if (e.target.value.length <= 5) setNewSubCoeff(e.target.value);
                               }}
-                              className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-200 rounded-lg text-xs font-medium text-stone-900 focus:outline-none focus:border-blue-600"
+                              className="w-full px-2.5 py-1.5 bg-stone-50 dark:bg-slate-900 border border-stone-200 dark:border-slate-700 rounded-lg text-xs font-medium text-stone-900 dark:text-slate-100 focus:outline-none focus:border-blue-600"
                             />
                           </div>
                         </div>
@@ -647,7 +722,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                           <button
                             type="button"
                             onClick={() => setActiveAddGradeSubjectId(null)}
-                            className="px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                            className="px-3 py-1.5 bg-stone-100 dark:bg-slate-800 hover:bg-stone-200 dark:hover:bg-slate-700 text-stone-700 dark:text-slate-300 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
                           >
                             Annuler
                           </button>
@@ -664,7 +739,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
 
                     <div className="space-y-2">
                       {subs.length === 0 ? (
-                        <div className="bg-white px-4 py-3 rounded-xl border border-stone-200 text-center text-stone-500 text-xs italic">
+                        <div className="bg-white dark:bg-[#1e293b] px-4 py-3 rounded-xl border border-stone-200 dark:border-slate-800 text-center text-stone-500 dark:text-slate-400 text-xs italic">
                           Pas de note
                         </div>
                       ) : (
@@ -680,24 +755,24 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                                 max: details.max.toString(),
                                 coefficient: details.coefficient.toString()
                               })}
-                              className="bg-white px-3.5 py-2.5 rounded-xl border border-blue-200/70 hover:border-blue-400 flex items-center justify-between shadow-2xs cursor-pointer transition-all group/sub"
+                              className="bg-white dark:bg-[#1e293b] px-3.5 py-2.5 rounded-xl border border-blue-200/70 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500 flex items-center justify-between shadow-2xs cursor-pointer transition-all group/sub"
                               title="Cliquer pour modifier cette note"
                             >
                               <div className="flex items-center gap-2.5">
-                                <span className="bg-blue-100 text-blue-900 font-bold text-xs px-2 py-0.5 rounded-md">
+                                <span className="bg-blue-100 dark:bg-blue-950 text-blue-900 dark:text-blue-300 font-bold text-xs px-2 py-0.5 rounded-md">
                                   Note {sIdx + 1}
                                 </span>
-                                <span className="font-bold text-sm text-stone-900">
-                                  {details.value.toFixed(2).replace('.', ',')} <span className="text-xs font-normal text-stone-500">/ {details.max}</span>
+                                <span className="font-bold text-sm text-stone-900 dark:text-slate-100">
+                                  {details.value.toFixed(2).replace('.', ',')} <span className="text-xs font-normal text-stone-500 dark:text-slate-400">/ {details.max}</span>
                                 </span>
                                 {details.coefficient > 1 && (
-                                  <span className="text-[10px] bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded font-medium">
+                                  <span className="text-[10px] bg-stone-100 dark:bg-slate-800 text-stone-600 dark:text-slate-300 px-1.5 py-0.5 rounded font-medium">
                                     Coeff: {details.coefficient}
                                   </span>
                                 )}
                               </div>
                               <div className="flex items-center gap-1">
-                                <span className="text-[10px] text-blue-600 font-medium opacity-0 group-hover/sub:opacity-150 transition-opacity mr-1">Modifier</span>
+                                <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium opacity-0 group-hover/sub:opacity-150 transition-opacity mr-1">Modifier</span>
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -705,7 +780,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                                     handleDeleteSubGrade(item.id, sIdx);
                                   }}
                                   title="Supprimer cette note"
-                                  className="p-1.5 hover:bg-rose-50 text-rose-600 rounded-lg transition-colors cursor-pointer"
+                                  className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-lg transition-colors cursor-pointer"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
@@ -733,15 +808,15 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
 
       {/* Add / Edit Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-60 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-stone-200 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-stone-100">
-              <h3 className="font-sans font-bold text-base text-blue-900">
+        <div className="fixed inset-0 z-60 bg-stone-900/60 dark:bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#161f30] rounded-2xl max-w-md w-full p-6 shadow-2xl border border-stone-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-stone-100 dark:border-slate-800">
+              <h3 className="font-sans font-bold text-base text-blue-900 dark:text-blue-300">
                 {editingItem ? "Modifier la matière" : "Ajouter une matière"}
               </h3>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-700 transition-colors cursor-pointer"
+                className="w-8 h-8 rounded-full bg-stone-100 dark:bg-slate-800 hover:bg-stone-200 dark:hover:bg-slate-700 flex items-center justify-center text-stone-700 dark:text-slate-300 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -749,7 +824,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
 
             <form onSubmit={handleSaveItem} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-stone-600 mb-1">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-stone-600 dark:text-slate-300 mb-1">
                   Nom de la matière
                 </label>
                 <input
@@ -758,13 +833,13 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                   value={subjectInput}
                   onChange={(e) => setSubjectInput(e.target.value)}
                   placeholder="Ex: Mathématiques..."
-                  className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl font-medium text-stone-900 text-sm focus:outline-none focus:border-blue-600 transition-all"
+                  className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-slate-900 border border-stone-300 dark:border-slate-700 rounded-xl font-medium text-stone-900 dark:text-slate-100 text-sm focus:outline-none focus:border-blue-600 transition-all"
                 />
               </div>
 
               <div className="grid grid-cols-1 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-stone-600 mb-1">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-stone-600 dark:text-slate-300 mb-1">
                     Coefficient
                   </label>
                   <input
@@ -778,12 +853,12 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                     onChange={(e) => {
                       if (e.target.value.length <= 5) setCoeffInput(e.target.value);
                     }}
-                    className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl font-medium text-stone-900 text-sm focus:outline-none focus:border-blue-600 transition-all"
+                    className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-slate-900 border border-stone-300 dark:border-slate-700 rounded-xl font-medium text-stone-900 dark:text-slate-100 text-sm focus:outline-none focus:border-blue-600 transition-all"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-stone-600 mb-1">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-stone-600 dark:text-slate-300 mb-1">
                     Échelle standard de notation (Défaut : 20)
                   </label>
                   <input
@@ -796,19 +871,19 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                     onChange={(e) => {
                       if (e.target.value.length <= 5) setStandardScaleInput(e.target.value);
                     }}
-                    className="w-32 px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl font-medium text-stone-900 text-sm focus:outline-none focus:border-blue-600 transition-all"
+                    className="w-32 px-3.5 py-2.5 bg-stone-50 dark:bg-slate-900 border border-stone-300 dark:border-slate-700 rounded-xl font-medium text-stone-900 dark:text-slate-100 text-sm focus:outline-none focus:border-blue-600 transition-all"
                   />
-                  <p className="text-[11px] text-stone-500 mt-1">
+                  <p className="text-[11px] text-stone-500 dark:text-slate-400 mt-1">
                     Base de référence commune (ex : 20, 10, 100...)
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-100">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold text-xs rounded-xl transition-all cursor-pointer"
+                  className="px-4 py-2 bg-stone-100 dark:bg-slate-800 hover:bg-stone-200 dark:hover:bg-slate-700 text-stone-700 dark:text-slate-300 font-semibold text-xs rounded-xl transition-all cursor-pointer"
                 >
                   Annuler
                 </button>
@@ -821,8 +896,8 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
               </div>
 
               {editingItem && (
-                <div className="pt-4 mt-2 border-t border-stone-200 space-y-2">
-                  <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1">
+                <div className="pt-4 mt-2 border-t border-stone-200 dark:border-slate-800 space-y-2">
+                  <label className="block text-xs font-semibold text-stone-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                     Gestion de la ligne
                   </label>
                   <div className="grid grid-cols-2 gap-2">
@@ -832,7 +907,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                         setShowAddModal(false);
                         setDeleteId(editingItem.id);
                       }}
-                      className="px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-semibold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                      className="px-3 py-2.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 font-semibold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <Trash2 className="w-4 h-4" />
                       <span>Supprimer la ligne</span>
@@ -843,7 +918,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                         setShowAddModal(false);
                         setShowAddLineConfirm(true);
                       }}
-                      className="px-3 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300 font-semibold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                      className="px-3 py-2.5 bg-stone-100 dark:bg-slate-800 hover:bg-stone-200 dark:hover:bg-slate-700 text-stone-800 dark:text-slate-200 border border-stone-300 dark:border-slate-700 font-semibold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <Plus className="w-4 h-4" />
                       <span>+ Ajouter ligne</span>
@@ -858,15 +933,15 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
 
       {/* Sub-Grade Edit Modal */}
       {editingSubGrade && (
-        <div className="fixed inset-0 z-60 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-stone-200 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-stone-100">
-              <h3 className="font-sans font-bold text-base text-blue-900">
+        <div className="fixed inset-0 z-60 bg-stone-900/60 dark:bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#161f30] rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-stone-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-stone-100 dark:border-slate-800">
+              <h3 className="font-sans font-bold text-base text-blue-900 dark:text-blue-300">
                 Modifier la note
               </h3>
               <button
                 onClick={() => setEditingSubGrade(null)}
-                className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-700 transition-colors cursor-pointer"
+                className="w-8 h-8 rounded-full bg-stone-100 dark:bg-slate-800 hover:bg-stone-200 dark:hover:bg-slate-700 flex items-center justify-center text-stone-700 dark:text-slate-300 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -875,7 +950,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
             <form onSubmit={handleEditSubGradeSubmit} className="space-y-4">
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block text-[10px] font-semibold text-stone-500 mb-1">Note</label>
+                  <label className="block text-[10px] font-semibold text-stone-500 dark:text-slate-400 mb-1">Note</label>
                   <input
                     type="number"
                     step="0.01"
@@ -887,11 +962,11 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                     onChange={(e) => {
                       if (e.target.value.length <= 5) setEditingSubGrade({ ...editingSubGrade, value: e.target.value });
                     }}
-                    className="w-full px-2.5 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs font-medium text-stone-900 focus:outline-none focus:border-blue-600"
+                    className="w-full px-2.5 py-2 bg-stone-50 dark:bg-slate-900 border border-stone-300 dark:border-slate-700 rounded-xl text-xs font-medium text-stone-900 dark:text-slate-100 focus:outline-none focus:border-blue-600"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-stone-500 mb-1">Sur combien</label>
+                  <label className="block text-[10px] font-semibold text-stone-500 dark:text-slate-400 mb-1">Sur combien</label>
                   <input
                     type="number"
                     step="1"
@@ -902,11 +977,11 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                     onChange={(e) => {
                       if (e.target.value.length <= 5) setEditingSubGrade({ ...editingSubGrade, max: e.target.value });
                     }}
-                    className="w-full px-2.5 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs font-medium text-stone-900 focus:outline-none focus:border-blue-600"
+                    className="w-full px-2.5 py-2 bg-stone-50 dark:bg-slate-900 border border-stone-300 dark:border-slate-700 rounded-xl text-xs font-medium text-stone-900 dark:text-slate-100 focus:outline-none focus:border-blue-600"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-stone-500 mb-1">Coefficient</label>
+                  <label className="block text-[10px] font-semibold text-stone-500 dark:text-slate-400 mb-1">Coefficient</label>
                   <input
                     type="number"
                     step="0.5"
@@ -917,16 +992,16 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                     onChange={(e) => {
                       if (e.target.value.length <= 5) setEditingSubGrade({ ...editingSubGrade, coefficient: e.target.value });
                     }}
-                    className="w-full px-2.5 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs font-medium text-stone-900 focus:outline-none focus:border-blue-600"
+                    className="w-full px-2.5 py-2 bg-stone-50 dark:bg-slate-900 border border-stone-300 dark:border-slate-700 rounded-xl text-xs font-medium text-stone-900 dark:text-slate-100 focus:outline-none focus:border-blue-600"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-stone-100">
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-stone-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setEditingSubGrade(null)}
-                  className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold text-xs rounded-xl transition-all cursor-pointer"
+                  className="px-4 py-2 bg-stone-100 dark:bg-slate-800 hover:bg-stone-200 dark:hover:bg-slate-700 text-stone-700 dark:text-slate-300 font-semibold text-xs rounded-xl transition-all cursor-pointer"
                 >
                   Annuler
                 </button>
@@ -944,19 +1019,19 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
 
       {/* Delete Confirmation Modal */}
       {deleteId && (
-        <div className="fixed inset-0 z-60 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-stone-200 animate-in fade-in zoom-in-95 duration-200">
-            <h3 className="font-sans font-bold text-base text-stone-900 mb-2">
+        <div className="fixed inset-0 z-60 bg-stone-900/60 dark:bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#161f30] rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-stone-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-200">
+            <h3 className="font-sans font-bold text-base text-stone-900 dark:text-slate-100 mb-2">
               Supprimer cette matière ?
             </h3>
-            <p className="text-xs text-stone-600 mb-6">
+            <p className="text-xs text-stone-600 dark:text-slate-400 mb-6">
               Voulez-vous vraiment supprimer cette ligne de note ?
             </p>
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-stone-100">
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-stone-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setDeleteId(null)}
-                className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold text-xs rounded-xl transition-all cursor-pointer"
+                className="px-4 py-2 bg-stone-100 dark:bg-slate-800 hover:bg-stone-200 dark:hover:bg-slate-700 text-stone-700 dark:text-slate-300 font-semibold text-xs rounded-xl transition-all cursor-pointer"
               >
                 Annuler
               </button>
@@ -974,63 +1049,63 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
 
       {/* Calculation Steps & User Guide Modal */}
       {showCalcStepsModal && (
-        <div className="fixed inset-0 md:left-64 z-60 bg-[#FBF9F5] flex flex-col animate-in fade-in duration-200 overflow-y-auto">
+        <div className="fixed inset-0 md:left-64 z-60 bg-[#FBF9F5] dark:bg-[#0b0f19] flex flex-col animate-in fade-in duration-200 overflow-y-auto">
           {/* Header with Fixed Top-Left Back Arrow */}
-          <div className="sticky top-0 left-0 right-0 bg-[#FBF9F5] shadow-xs px-4 py-3 border-b border-stone-300 flex items-center justify-between z-50">
+          <div className="sticky top-0 left-0 right-0 bg-[#FBF9F5] dark:bg-[#0b0f19] shadow-xs px-4 py-3 border-b border-stone-300 dark:border-slate-800 flex items-center justify-between z-50">
             <button
               onClick={() => setShowCalcStepsModal(false)}
-              className="flex items-center gap-2 px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+              className="flex items-center gap-2 px-4 py-2 bg-stone-900 dark:bg-blue-600 hover:bg-stone-800 dark:hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4 text-white" />
               <span>Retour</span>
             </button>
-            <h2 className="text-sm font-extrabold text-stone-900 truncate">
+            <h2 className="text-sm font-extrabold text-stone-900 dark:text-slate-100 truncate">
               Guide & Logique de calcul
             </h2>
             <div className="w-16" />
           </div>
 
           {/* Content Body */}
-          <div className="max-w-3xl w-full mx-auto px-6 py-8 space-y-10 pb-24 text-stone-800 font-serif">
+          <div className="max-w-3xl w-full mx-auto px-6 py-8 space-y-10 pb-24 text-stone-800 dark:text-slate-200 font-serif">
             
             {/* Section 1: Guide Pratique */}
             <div className="space-y-6">
-              <div className="border-b-2 border-stone-300 pb-2">
-                <span className="text-xs font-sans font-bold uppercase tracking-widest text-blue-800">
+              <div className="border-b-2 border-stone-300 dark:border-slate-800 pb-2">
+                <span className="text-xs font-sans font-bold uppercase tracking-widest text-blue-800 dark:text-blue-400">
                   Chapitre 1
                 </span>
-                <h3 className="text-xl sm:text-2xl font-extrabold text-stone-900 font-serif mt-1">
+                <h3 className="text-xl sm:text-2xl font-extrabold text-stone-900 dark:text-slate-100 font-serif mt-1">
                   Mode d'emploi des fonctionnalités
                 </h3>
               </div>
               
-              <div className="space-y-6 text-sm sm:text-base leading-relaxed text-stone-700">
+              <div className="space-y-6 text-sm sm:text-base leading-relaxed text-stone-700 dark:text-slate-300">
                 <div className="space-y-1.5">
-                  <h4 className="font-extrabold text-stone-900 text-base flex items-center gap-2">
+                  <h4 className="font-extrabold text-stone-900 dark:text-slate-100 text-base flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-blue-600"></span>
                     1. Ajouter et gérer les matières
                   </h4>
-                  <p className="pl-4 text-stone-600">
+                  <p className="pl-4 text-stone-600 dark:text-slate-400">
                     Cliquez sur le bouton <strong>"+ Ajouter ligne"</strong> pour créer une nouvelle matière. Un message de confirmation vous invite à valider pour éviter les clics multiples. Vous pouvez ensuite modifier son nom, son coefficient et son échelle de notation directement dans le tableau.
                   </p>
                 </div>
 
                 <div className="space-y-1.5">
-                  <h4 className="font-extrabold text-stone-900 text-base flex items-center gap-2">
+                  <h4 className="font-extrabold text-stone-900 dark:text-slate-100 text-base flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-blue-600"></span>
                     2. Le rôle des Coefficients
                   </h4>
-                  <p className="pl-4 text-stone-600">
+                  <p className="pl-4 text-stone-600 dark:text-slate-400">
                     Le coefficient détermine le poids de la matière dans votre moyenne générale. Plus le coefficient est élevé (ex: 4 ou 5), plus la note de cette matière aura d'impact sur votre semestre.
                   </p>
                 </div>
 
                 <div className="space-y-1.5">
-                  <h4 className="font-extrabold text-stone-900 text-base flex items-center gap-2">
+                  <h4 className="font-extrabold text-stone-900 dark:text-slate-100 text-base flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-blue-600"></span>
                     3. Gestion des notes et sous-notes
                   </h4>
-                  <p className="pl-4 text-stone-600">
+                  <p className="pl-4 text-stone-600 dark:text-slate-400">
                     Vous pouvez ajouter plusieurs notes (devoirs, examens, colles) pour chaque matière. L'application calcule automatiquement la moyenne pondérée de chaque matière selon les barèmes (ex: /20, /10 ou /100).
                   </p>
                 </div>
@@ -1038,53 +1113,53 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
             </div>
 
             {/* Section 2: Logique de calcul */}
-            <div className="space-y-6 pt-6 border-t-2 border-stone-300">
-              <div className="border-b-2 border-stone-300 pb-2">
-                <span className="text-xs font-sans font-bold uppercase tracking-widest text-blue-800">
+            <div className="space-y-6 pt-6 border-t-2 border-stone-300 dark:border-slate-800">
+              <div className="border-b-2 border-stone-300 dark:border-slate-800 pb-2">
+                <span className="text-xs font-sans font-bold uppercase tracking-widest text-blue-800 dark:text-blue-400">
                   Chapitre 2
                 </span>
-                <h3 className="text-xl sm:text-2xl font-extrabold text-stone-900 font-serif mt-1">
+                <h3 className="text-xl sm:text-2xl font-extrabold text-stone-900 dark:text-slate-100 font-serif mt-1">
                   Logique de calcul mathématique (Pas à pas)
                 </h3>
               </div>
 
-              <div className="space-y-8 text-sm sm:text-base text-stone-700">
+              <div className="space-y-8 text-sm sm:text-base text-stone-700 dark:text-slate-300">
                 <div className="space-y-3">
-                  <h4 className="font-extrabold text-stone-900 text-sm font-sans uppercase tracking-wider bg-stone-200/60 px-3 py-1.5 rounded-lg inline-block">
+                  <h4 className="font-extrabold text-stone-900 dark:text-slate-100 text-sm font-sans uppercase tracking-wider bg-stone-200/60 dark:bg-slate-800 px-3 py-1.5 rounded-lg inline-block">
                     A. Calcul de la moyenne d'une matière (Évaluations)
                   </h4>
                   <div className="space-y-3 pl-2">
                     <div>
-                      <strong className="text-stone-900">1. Harmonisation des échelles :</strong>
-                      <p className="text-stone-600 mt-0.5">Toutes les notes sont ramenées sur la base de 20 : <code className="bg-stone-200/80 px-1.5 py-0.5 rounded font-mono text-xs font-bold text-stone-900">(Note / Max) × 20</code>.</p>
+                      <strong className="text-stone-900 dark:text-slate-100">1. Harmonisation des échelles :</strong>
+                      <p className="text-stone-600 dark:text-slate-400 mt-0.5">Toutes les notes sont ramenées sur la base de 20 : <code className="bg-stone-200/80 dark:bg-slate-800 px-1.5 py-0.5 rounded font-mono text-xs font-bold text-stone-900 dark:text-slate-100">(Note / Max) × 20</code>.</p>
                     </div>
                     <div>
-                      <strong className="text-stone-900">2. Pondération & Addition :</strong>
-                      <p className="text-stone-600 mt-0.5">Somme des notes pondérées par leurs coefficients respectifs, divisée par la somme des coefficients des évaluations.</p>
+                      <strong className="text-stone-900 dark:text-slate-100">2. Pondération & Addition :</strong>
+                      <p className="text-stone-600 dark:text-slate-400 mt-0.5">Somme des notes pondérées par leurs coefficients respectifs, divisée par la somme des coefficients des évaluations.</p>
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-3">
-                  <h4 className="font-extrabold text-stone-900 text-sm font-sans uppercase tracking-wider bg-stone-200/60 px-3 py-1.5 rounded-lg inline-block">
+                  <h4 className="font-extrabold text-stone-900 dark:text-slate-100 text-sm font-sans uppercase tracking-wider bg-stone-200/60 dark:bg-slate-800 px-3 py-1.5 rounded-lg inline-block">
                     B. Calcul de la moyenne générale du semestre
                   </h4>
                   <div className="space-y-3 pl-2">
                     <div>
-                      <strong className="text-stone-900">1. Pondération par matière :</strong>
-                      <p className="text-stone-600 mt-0.5">Pour chaque matière, on multiplie sa moyenne obtenue par le coefficient attribué à la matière.</p>
+                      <strong className="text-stone-900 dark:text-slate-100">1. Pondération par matière :</strong>
+                      <p className="text-stone-600 dark:text-slate-400 mt-0.5">Pour chaque matière, on multiplie sa moyenne obtenue par le coefficient attribué à la matière.</p>
                     </div>
                     <div>
-                      <strong className="text-stone-900">2. Total des points :</strong>
-                      <p className="text-stone-600 mt-0.5">Somme de tous les résultats obtenus pour l'ensemble des matières du semestre.</p>
+                      <strong className="text-stone-900 dark:text-slate-100">2. Total des points :</strong>
+                      <p className="text-stone-600 dark:text-slate-400 mt-0.5">Somme de tous les résultats obtenus pour l'ensemble des matières du semestre.</p>
                     </div>
                     <div>
-                      <strong className="text-stone-900">3. Total des coefficients :</strong>
-                      <p className="text-stone-600 mt-0.5">Addition des coefficients de toutes les matières du semestre pour obtenir le poids total.</p>
+                      <strong className="text-stone-900 dark:text-slate-100">3. Total des coefficients :</strong>
+                      <p className="text-stone-600 dark:text-slate-400 mt-0.5">Addition des coefficients de toutes les matières du semestre pour obtenir le poids total.</p>
                     </div>
                     <div>
-                      <strong className="text-stone-900">4. Moyenne générale finale :</strong>
-                      <p className="text-stone-600 mt-0.5">Division du total des points par le total des coefficients.</p>
+                      <strong className="text-stone-900 dark:text-slate-100">4. Moyenne générale finale :</strong>
+                      <p className="text-stone-600 dark:text-slate-400 mt-0.5">Division du total des points par le total des coefficients.</p>
                     </div>
                   </div>
                 </div>
@@ -1092,10 +1167,10 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
             </div>
 
             {/* Footer Button */}
-            <div className="pt-8 border-t border-stone-300 flex justify-center">
+            <div className="pt-8 border-t border-stone-300 dark:border-slate-800 flex justify-center">
               <button
                 onClick={() => setShowCalcStepsModal(false)}
-                className="px-8 py-3.5 bg-stone-900 hover:bg-stone-800 text-white font-extrabold text-xs font-sans uppercase tracking-wider rounded-2xl shadow-lg transition-all cursor-pointer flex items-center gap-2"
+                className="px-8 py-3.5 bg-stone-900 dark:bg-blue-600 hover:bg-stone-800 dark:hover:bg-blue-700 text-white font-extrabold text-xs font-sans uppercase tracking-wider rounded-2xl shadow-lg transition-all cursor-pointer flex items-center gap-2"
               >
                 <span>Fermer et retourner à l'application</span>
               </button>
@@ -1107,26 +1182,26 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
 
       {/* Confirmation Modal for Adding Line */}
       {showAddLineConfirm && (
-        <div className="fixed inset-0 z-60 bg-stone-900/70 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border-2 border-stone-900 animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-60 bg-stone-900/70 dark:bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#161f30] rounded-2xl max-w-sm w-full p-6 shadow-2xl border-2 border-stone-900 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-950 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
                 <Plus className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-serif font-bold text-base text-stone-900">
+                <h3 className="font-serif font-bold text-base text-stone-900 dark:text-slate-100">
                   Créer une nouvelle ligne ?
                 </h3>
-                <p className="text-xs text-stone-600 mt-0.5">
+                <p className="text-xs text-stone-600 dark:text-slate-400 mt-0.5">
                   Voulez-vous ajouter une nouvelle ligne de matière ?
                 </p>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-stone-200">
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-stone-200 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setShowAddLineConfirm(false)}
-                className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                className="px-4 py-2 bg-stone-100 dark:bg-slate-800 hover:bg-stone-200 dark:hover:bg-slate-700 text-stone-700 dark:text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer"
               >
                 Annuler
               </button>
