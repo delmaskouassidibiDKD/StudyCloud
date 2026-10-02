@@ -131,13 +131,30 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
     } catch (e) {}
   }, []);
 
+  // Sauvegarde sécurisée dans localStorage avec nettoyage si quota dépassé
+  const safeSaveGrades = (data: Record<string, GradeItem[]>) => {
+    const json = JSON.stringify(data);
+    try {
+      localStorage.setItem('user_grades_trimesters_data', json);
+    } catch (e: any) {
+      if (e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014)) {
+        // Nettoyer les entrées non critiques pour libérer de la place
+        const keysToClean = [
+          'unifolder_grades_data',
+          'user_grades_trimesters_data_backup',
+        ];
+        keysToClean.forEach(k => { try { localStorage.removeItem(k); } catch {} });
+        // Réessayer après nettoyage
+        try { localStorage.setItem('user_grades_trimesters_data', json); } catch {}
+      }
+    }
+  };
+
   // Synchronisation automatique vers localStorage et Cloudflare D1
   useEffect(() => {
-    try {
-      localStorage.setItem('user_grades_trimesters_data', JSON.stringify(trimestersData));
-      triggerDebouncedCloudBackup();
-      window.dispatchEvent(new Event('user_grades_changed'));
-    } catch (e) {}
+    safeSaveGrades(trimestersData);
+    triggerDebouncedCloudBackup();
+    window.dispatchEvent(new Event('user_grades_changed'));
 
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
     const timer = setTimeout(() => {
@@ -211,7 +228,9 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                 merged[trimKey].push(gradeObj);
               }
             }
-            localStorage.setItem('user_grades_trimesters_data', JSON.stringify(merged));
+            try {
+              safeSaveGrades(merged);
+            } catch {}
             window.dispatchEvent(new Event('user_grades_changed'));
             return merged;
           });
