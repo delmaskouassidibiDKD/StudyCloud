@@ -4370,8 +4370,13 @@ function renderDashboardHtml(data) {
       if (selectedUserId) {
         renderUserRightDetails(selectedUserId);
       }
-      if (selectedDemandeUserId) {
-        renderDemandeRightDetails(selectedDemandeUserId);
+      const targetDistUserId = selectedDistributionUserId || selectedDemandeUserId;
+      if (targetDistUserId) {
+        if (typeof renderDistributionRightDetails === 'function') {
+          renderDistributionRightDetails(targetDistUserId);
+        } else if (typeof renderDemandeRightDetails === 'function') {
+          renderDemandeRightDetails(targetDistUserId);
+        }
       }
     }
 
@@ -5099,11 +5104,13 @@ function renderDashboardHtml(data) {
 
     function selectDistributionUser(userId) {
       selectedDistributionUserId = userId;
+      selectedDemandeUserId = userId;
       renderDistributionUsersList();
       renderDistributionRightDetails(userId);
     }
     const selectDemandeUser = selectDistributionUser;
     const renderDemandesUsersList = renderDistributionUsersList;
+    const renderDemandeRightDetails = renderDistributionRightDetails;
 
     function renderDistributionRightDetails(userId) {
       const panel = document.getElementById('distribution-right-panel');
@@ -8198,9 +8205,12 @@ function renderDashboardHtml(data) {
     }
 
     async function saveUserQuota(userId) {
-      const wTotal = parseFloat(document.getElementById('user-edit-w-total').value) || 0;
-      const pTotal = parseFloat(document.getElementById('user-edit-p-total').value) || 0;
+      const wTotalInput = document.getElementById('user-edit-w-total');
+      const pTotalInput = document.getElementById('user-edit-p-total');
+      const wTotal = parseFloat(wTotalInput ? wTotalInput.value : 0) || 0;
+      const pTotal = parseFloat(pTotalInput ? pTotalInput.value : 0) || 0;
 
+      let data;
       try {
         const resp = await fetch('/api/storage/update-user-quota', {
           method: 'POST',
@@ -8216,39 +8226,48 @@ function renderDashboardHtml(data) {
             planName: pTotal > 0 ? 'payant' : 'gratuit'
           })
         });
-
-        const data = await resp.json();
-        if (data.success) {
-          const item = allUsers.find(x => x.user.id === userId);
-          if (item) {
-            item.quotaConfig.welcomeTotalMb = wTotal;
-            item.quotaConfig.welcomeR2Mb = Math.round(wTotal / 3);
-            item.quotaConfig.welcomeD1Mb = Math.round((wTotal * 2) / 3);
-            item.quotaConfig.paidTotalMb = pTotal;
-            item.quotaConfig.paidR2Mb = Math.round(pTotal / 2);
-            item.quotaConfig.paidD1Mb = Math.round(pTotal / 2);
-            const totalMb = wTotal + pTotal;
-            item.quotaConfig.totalAllowedMb = totalMb;
-            item.quotaConfig.totalAllowedFormatted = totalMb >= 1024 ? (totalMb / 1024).toFixed(2) + ' Go' : totalMb.toFixed(0) + ' Mo';
-            item.quotaConfig.totalAllowedBytes = totalMb * 1024 * 1024;
-            item.quotaConfig.planName = pTotal > 0 ? 'payant' : 'gratuit';
-            item.storage.usagePercentage = item.quotaConfig.totalAllowedBytes > 0 
-              ? Math.min(100, parseFloat(((item.storage.totalBytes / item.quotaConfig.totalAllowedBytes) * 100).toFixed(2)))
-              : 0;
-            if (item.storage.net) item.storage.net.usagePercentage = item.storage.usagePercentage;
-          }
-          showToast("Stockage mis à jour (" + (wTotal + pTotal) + " Mo total) !");
-          renderDemandesUsersList();
-          renderDemandeRightDetails(userId);
-          if (currentView === 'users') {
-            renderUsersLeftList();
-            renderUserRightDetails(userId);
-          }
-        } else {
-          alert('Erreur: ' + (data.error || 'Échec de sauvegarde'));
-        }
-      } catch (err) {
+        data = await resp.json();
+      } catch (networkErr) {
+        console.error("Erreur réseau update-user-quota:", networkErr);
         alert('Erreur réseau lors de la mise à jour');
+        return;
+      }
+
+      if (data && data.success) {
+        const item = allUsers.find(x => x.user.id === userId);
+        if (item) {
+          item.quotaConfig.welcomeTotalMb = wTotal;
+          item.quotaConfig.welcomeR2Mb = Math.round(wTotal / 3);
+          item.quotaConfig.welcomeD1Mb = Math.round((wTotal * 2) / 3);
+          item.quotaConfig.paidTotalMb = pTotal;
+          item.quotaConfig.paidR2Mb = Math.round(pTotal / 2);
+          item.quotaConfig.paidD1Mb = Math.round(pTotal / 2);
+          const totalMb = wTotal + pTotal;
+          item.quotaConfig.totalAllowedMb = totalMb;
+          item.quotaConfig.totalAllowedFormatted = totalMb >= 1024 ? (totalMb / 1024).toFixed(2) + ' Go' : totalMb.toFixed(0) + ' Mo';
+          item.quotaConfig.totalAllowedBytes = totalMb * 1024 * 1024;
+          item.quotaConfig.planName = pTotal > 0 ? 'payant' : 'gratuit';
+          item.storage.usagePercentage = item.quotaConfig.totalAllowedBytes > 0 
+            ? Math.min(100, parseFloat(((item.storage.totalBytes / item.quotaConfig.totalAllowedBytes) * 100).toFixed(2)))
+            : 0;
+          if (item.storage.net) item.storage.net.usagePercentage = item.storage.usagePercentage;
+        }
+        showToast("Stockage mis à jour (" + (wTotal + pTotal) + " Mo total) !");
+
+        try {
+          if (typeof renderDistributionUsersList === 'function') renderDistributionUsersList();
+          if (typeof renderDistributionRightDetails === 'function') renderDistributionRightDetails(userId);
+          if (typeof renderDemandesUsersList === 'function' && renderDemandesUsersList !== renderDistributionUsersList) renderDemandesUsersList();
+          if (typeof renderDemandeRightDetails === 'function' && renderDemandeRightDetails !== renderDistributionRightDetails) renderDemandeRightDetails(userId);
+          if (currentView === 'users') {
+            if (typeof renderUsersLeftList === 'function') renderUsersLeftList();
+            if (typeof renderUserRightDetails === 'function') renderUserRightDetails(userId);
+          }
+        } catch (uiErr) {
+          console.error("Erreur rafraîchissement UI après mise à jour quota:", uiErr);
+        }
+      } else {
+        alert('Erreur: ' + (data?.error || 'Échec de sauvegarde'));
       }
     }
 
@@ -8374,8 +8393,14 @@ function renderDashboardHtml(data) {
           showToast(setOnline ? '✅ Utilisateur marqué En ligne' : '⚫ Utilisateur marqué Hors ligne');
           renderUsersLeftList(document.getElementById('users-search-left')?.value || '');
           if (selectedUserId === userId) renderUserRightDetails(userId);
-          if (typeof selectedDemandeUserId !== 'undefined' && selectedDemandeUserId === userId) renderDemandeRightDetails(userId);
-          if (typeof renderDemandesUsersList === 'function') renderDemandesUsersList();
+          if (typeof selectedDistributionUserId !== 'undefined' && selectedDistributionUserId === userId) {
+            if (typeof renderDistributionRightDetails === 'function') renderDistributionRightDetails(userId);
+          } else if (typeof selectedDemandeUserId !== 'undefined' && selectedDemandeUserId === userId) {
+            if (typeof renderDistributionRightDetails === 'function') renderDistributionRightDetails(userId);
+            else if (typeof renderDemandeRightDetails === 'function') renderDemandeRightDetails(userId);
+          }
+          if (typeof renderDistributionUsersList === 'function') renderDistributionUsersList();
+          if (typeof renderDemandesUsersList === 'function' && renderDemandesUsersList !== renderDistributionUsersList) renderDemandesUsersList();
           if (typeof renderSimpleMessagesUsersList === 'function') renderSimpleMessagesUsersList();
         } else {
           alert('Erreur: ' + (data.error || 'Échec'));

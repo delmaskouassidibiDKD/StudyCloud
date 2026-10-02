@@ -12485,9 +12485,10 @@ Lien vers le produit : ${productShareUrl}`;
             const storageUsage = await recalculateAndSaveUserStorage(env.DB, userId);
             if (storageUsage) {
               totalFilesCount = Number(storageUsage.totalFiles || 0);
-              totalFilesBytes = Number(storageUsage.totalR2Bytes || 0);
-              totalDataCount = Number(storageUsage.totalD1Rows || 0);
-              totalDataBytes = Number(storageUsage.totalD1Bytes || 0);
+              // FIX: la fonction retourne totalR2Bytes et totalD1Bytes (pas .totalR2Bytes depuis DB)
+              totalFilesBytes = Number(storageUsage.totalR2Bytes || storageUsage.total_r2_compressed_bytes || 0);
+              totalDataCount = Number(storageUsage.totalD1Rows || storageUsage.total_d1_rows || 0);
+              totalDataBytes = Number(storageUsage.totalD1Bytes || storageUsage.total_d1_database_bytes || 0);
               telemetryData = storageUsage;
             } else {
               const filesStat = await env.DB.prepare(
@@ -12529,38 +12530,72 @@ Lien vers le produit : ${productShareUrl}`;
             console.warn("[Storage Route] Erreur lecture DB:", dbErr);
           }
         }
-        const welcomeMb = 30;
+        // ─── LECTURE DU QUOTA PERSONNALISÉ ADMIN (user_storage_quotas) ───────
+        // welcomeMb NE DOIT PAS être hardcodé : l'admin peut le modifier dans le tableau de bord
+        let welcomeMb = 30;
+        let quotaPlanName = purchasedMb > 0 ? "Plan Avancé" : "Plan Étudiant Gratuit";
+        if (env.DB) {
+          try {
+            const quotaRow = await env.DB.prepare(
+              "SELECT welcome_total_mb, paid_total_mb, plan_name FROM user_storage_quotas WHERE user_id = ?"
+            ).bind(userId).first().catch(() => null);
+            if (quotaRow) {
+              welcomeMb = Number(quotaRow.welcome_total_mb || 30);
+              const quotaPaidMb = Number(quotaRow.paid_total_mb || 0);
+              // Prendre le max entre storage_upgrade_requests et user_storage_quotas
+              if (quotaPaidMb > purchasedMb) purchasedMb = quotaPaidMb;
+              if (quotaRow.plan_name) quotaPlanName = quotaRow.plan_name;
+            } else {
+              // Lire la config globale de bienvenue si pas de quota individuel
+              try {
+                const globalCfg = await env.DB.prepare(
+                  "SELECT default_welcome_total_mb FROM storage_global_config WHERE id = 'default' LIMIT 1"
+                ).first().catch(() => null);
+                if (globalCfg && globalCfg.default_welcome_total_mb) {
+                  welcomeMb = Number(globalCfg.default_welcome_total_mb);
+                }
+              } catch (_) {}
+            }
+          } catch (qErr) {
+            console.warn("[Storage Route] Lecture quota personnalisé:", qErr);
+          }
+        }
         const totalAllowedMb = welcomeMb + purchasedMb;
+        // ─── CALCUL CORRECT R2 + D1 ─────────────────────────────────────────
+        // totalFilesBytes = octets fichiers R2  |  totalDataBytes = octets D1
         const usedFilesMb = Number((totalFilesBytes / (1024 * 1024)).toFixed(2));
         const usedDataMb = Number((totalDataBytes / (1024 * 1024)).toFixed(2));
         const totalUsedMb = Number((usedFilesMb + usedDataMb).toFixed(2));
-        const totalPercentage = Math.min(100, Math.round(totalUsedMb / totalAllowedMb * 100));
+        const totalPercentage = totalAllowedMb > 0 ? Math.min(100, Math.round(totalUsedMb / totalAllowedMb * 100)) : 0;
         const formatSize = (bytes) => {
           if (bytes < 1024) return `${bytes} o`;
           if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
           return `${(bytes / (1024 * 1024)).toFixed(2)} Mo`;
         };
+        const totalAllowedFormatted = totalAllowedMb >= 1024
+          ? `${(totalAllowedMb / 1024).toFixed(2)} Go`
+          : `${totalAllowedMb} Mo`;
         const resultData = {
           userId,
-          planName: purchasedMb > 0 ? "Plan Avanc\xE9" : "Plan \xC9tudiant Gratuit",
+          planName: quotaPlanName,
           welcomeStorage: {
             totalMb: welcomeMb,
-            filesMb: 25,
-            dataMb: 5,
-            formatted: `${welcomeMb} Mo`
+            filesMb: welcomeMb,
+            dataMb: welcomeMb,
+            formatted: welcomeMb >= 1024 ? `${(welcomeMb / 1024).toFixed(2)} Go` : `${welcomeMb} Mo`
           },
           paidStorage: {
             totalMb: purchasedMb,
             filesMb: purchasedMb,
-            dataMb: 0,
-            formatted: `${purchasedMb} Mo`
+            dataMb: purchasedMb,
+            formatted: purchasedMb >= 1024 ? `${(purchasedMb / 1024).toFixed(2)} Go` : `${purchasedMb} Mo`
           },
           bonusStorage: {
             totalMb: 0,
             formatted: "0 Mo"
           },
           totalAllowedMb,
-          totalAllowedFormatted: `${totalAllowedMb} Mo`,
+          totalAllowedFormatted,
           totalUsedBytes: totalFilesBytes + totalDataBytes,
           totalUsedMb,
           totalUsedFormatted: formatSize(totalFilesBytes + totalDataBytes),
