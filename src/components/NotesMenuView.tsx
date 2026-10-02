@@ -78,8 +78,9 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
   // Drag and Drop state
   const [dragState, setDragState] = useState<DragState | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
-  const longPressTimerRef = useRef<any>(null);
   const lastSwapTimeRef = useRef<number>(0);
+  const lastClickRef = useRef<{ id: string; time: number }>({ id: '', time: 0 });
+  const singleClickTimerRef = useRef<any>(null);
   const pointerDownRef = useRef<{
     x: number;
     y: number;
@@ -136,107 +137,98 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
     };
   }, []);
 
-  // Gestion du pointer global pour le réarrangement fluide
+  // Curseur paume de saisie globale uniquement pendant le déplacement actif
+  useEffect(() => {
+    if (dragState) {
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+    } else {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+    return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [dragState]);
+
+  // Gestion du pointer global pour le réarrangement fluide lors du drag après double-clic
   useEffect(() => {
     const handleGlobalPointerMove = (e: PointerEvent) => {
       const p = pointerDownRef.current;
-      if (!p) return;
+      if (!p || !p.isDragging) return;
 
       p.currentX = e.clientX;
       p.currentY = e.clientY;
 
-      const deltaX = Math.abs(e.clientX - p.x);
-      const deltaY = Math.abs(e.clientY - p.y);
+      setDragState(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
 
-      if (!p.isDragging && (deltaX > 5 || deltaY > 5)) {
-        if (e.pointerType === 'mouse') {
-          p.isDragging = true;
-          if (longPressTimerRef.current) {
-            clearTimeout(longPressTimerRef.current);
-            longPressTimerRef.current = null;
-          }
-          setDragState({
-            note: p.note,
-            x: p.currentX,
-            y: p.currentY,
-            width: p.cardRect.width,
-            height: p.cardRect.height,
-            offsetX: p.x - p.cardRect.left,
-            offsetY: p.y - p.cardRect.top,
-          });
-        } else {
-          if (longPressTimerRef.current) {
-            clearTimeout(longPressTimerRef.current);
-            longPressTimerRef.current = null;
-          }
+      if (listContainerRef.current) {
+        const container = listContainerRef.current;
+        const viewportHeight = window.innerHeight;
+        const threshold = 110;
+        if (e.clientY > viewportHeight - threshold) {
+          container.scrollTop += 12;
+        } else if (e.clientY < threshold) {
+          container.scrollTop -= 12;
         }
       }
 
-      if (p.isDragging) {
-        setDragState(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
+      const now = Date.now();
+      if (now - lastSwapTimeRef.current > 160) {
+        const element = document.elementFromPoint(e.clientX, e.clientY);
+        const cardElement = element?.closest('[data-note-id]');
+        if (cardElement) {
+          const targetId = cardElement.getAttribute('data-note-id');
+          if (targetId && targetId !== p.note.id) {
+            const rect = cardElement.getBoundingClientRect();
+            const cursorY = e.clientY;
 
-        if (listContainerRef.current) {
-          const container = listContainerRef.current;
-          const viewportHeight = window.innerHeight;
-          const threshold = 110;
-          if (e.clientY > viewportHeight - threshold) {
-            container.scrollTop += 12;
-          } else if (e.clientY < threshold) {
-            container.scrollTop -= 12;
-          }
-        }
+            setNotes(prevNotes => {
+              const fromIndex = prevNotes.findIndex(n => n.id === p.note.id);
+              const toIndex = prevNotes.findIndex(n => n.id === targetId);
+              if (fromIndex < 0 || toIndex < 0) return prevNotes;
 
-        const now = Date.now();
-        if (now - lastSwapTimeRef.current > 160) {
-          const element = document.elementFromPoint(e.clientX, e.clientY);
-          const cardElement = element?.closest('[data-note-id]');
-          if (cardElement) {
-            const targetId = cardElement.getAttribute('data-note-id');
-            if (targetId && targetId !== p.note.id) {
-              const rect = cardElement.getBoundingClientRect();
-              const cursorY = e.clientY;
+              const isMovingDown = fromIndex < toIndex;
+              const isMovingUp = fromIndex > toIndex;
 
-              setNotes(prevNotes => {
-                const fromIndex = prevNotes.findIndex(n => n.id === p.note.id);
-                const toIndex = prevNotes.findIndex(n => n.id === targetId);
-                if (fromIndex < 0 || toIndex < 0) return prevNotes;
+              if (isMovingDown && cursorY < rect.top + rect.height * 0.25) {
+                return prevNotes;
+              }
+              if (isMovingUp && cursorY > rect.bottom - rect.height * 0.25) {
+                return prevNotes;
+              }
 
-                const isMovingDown = fromIndex < toIndex;
-                const isMovingUp = fromIndex > toIndex;
-
-                if (isMovingDown && cursorY < rect.top + rect.height * 0.25) {
-                  return prevNotes;
-                }
-                if (isMovingUp && cursorY > rect.bottom - rect.height * 0.25) {
-                  return prevNotes;
-                }
-
-                lastSwapTimeRef.current = Date.now();
-                const newNotes = [...prevNotes];
-                const [movedItem] = newNotes.splice(fromIndex, 1);
-                newNotes.splice(toIndex, 0, movedItem);
-                safeLocalStorageSet('unifolder_keep_notes', newNotes);
-                return newNotes;
-              });
-            }
+              lastSwapTimeRef.current = Date.now();
+              const newNotes = [...prevNotes];
+              const [movedItem] = newNotes.splice(fromIndex, 1);
+              newNotes.splice(toIndex, 0, movedItem);
+              safeLocalStorageSet('unifolder_keep_notes', newNotes);
+              return newNotes;
+            });
           }
         }
       }
     };
 
     const handleGlobalPointerUp = (e: PointerEvent) => {
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-        longPressTimerRef.current = null;
-      }
-
       const p = pointerDownRef.current;
       if (p) {
-        const deltaX = Math.abs(p.currentX - p.x);
-        const deltaY = Math.abs(p.currentY - p.y);
-
-        if (!p.isDragging && deltaX < 8 && deltaY < 8) {
-          openEditNote(p.note);
+        if (p.isDragging) {
+          p.isDragging = false;
+          setDragState(null);
+        } else {
+          // C'était un clic simple (pas de drag) : programmer l'ouverture de la note
+          // après un bref délai pour laisser le temps au 2ème clic de survenir s'il s'agit d'un double-clic
+          if (singleClickTimerRef.current) {
+            clearTimeout(singleClickTimerRef.current);
+          }
+          const noteToOpen = p.note;
+          singleClickTimerRef.current = setTimeout(() => {
+            openEditNote(noteToOpen);
+            singleClickTimerRef.current = null;
+            lastClickRef.current = { id: '', time: 0 };
+          }, 280);
         }
       }
       pointerDownRef.current = null;
@@ -247,9 +239,6 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
     window.addEventListener('pointerup', handleGlobalPointerUp);
 
     return () => {
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-      }
       window.removeEventListener('pointermove', handleGlobalPointerMove);
       window.removeEventListener('pointerup', handleGlobalPointerUp);
     };
@@ -260,12 +249,50 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
 
     const cardElem = e.currentTarget as HTMLElement;
     const rect = cardElem.getBoundingClientRect();
+    const now = Date.now();
+    const isDoubleClick = (lastClickRef.current.id === note.id) && (now - lastClickRef.current.time < 380);
 
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
+    if (isDoubleClick) {
+      // 2ème clic consécutif ("deux fois de manière continue") !
+      // Annuler l'ouverture par simple clic
+      if (singleClickTimerRef.current) {
+        clearTimeout(singleClickTimerRef.current);
+        singleClickTimerRef.current = null;
+      }
+      lastClickRef.current = { id: '', time: 0 };
+
+      // Activer immédiatement le déplacement avec la paume
+      const initialDragState: DragState = {
+        note,
+        x: e.clientX,
+        y: e.clientY,
+        width: rect.width,
+        height: rect.height,
+        offsetX: e.clientX - rect.left,
+        offsetY: e.clientY - rect.top,
+      };
+
+      pointerDownRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        currentX: e.clientX,
+        currentY: e.clientY,
+        note,
+        cardRect: rect,
+        isDragging: true,
+      };
+
+      setDragState(initialDragState);
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(35); } catch (e) {}
+      }
+      return;
     }
 
-    const initialInfo = {
+    // Premier clic : enregistrer le timestamp pour détecter un 2ème clic consécutif
+    lastClickRef.current = { id: note.id, time: now };
+
+    pointerDownRef.current = {
       x: e.clientX,
       y: e.clientY,
       currentX: e.clientX,
@@ -274,34 +301,6 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
       cardRect: rect,
       isDragging: false,
     };
-
-    pointerDownRef.current = initialInfo;
-
-    longPressTimerRef.current = setTimeout(() => {
-      const p = pointerDownRef.current;
-      if (p && !p.isDragging) {
-        const deltaX = Math.abs(p.currentX - p.x);
-        const deltaY = Math.abs(p.currentY - p.y);
-
-        if (deltaX < 10 && deltaY < 10) {
-          p.isDragging = true;
-          if (typeof navigator !== 'undefined' && navigator.vibrate) {
-            try { navigator.vibrate(35); } catch (e) {}
-          }
-
-          const initialDragState: DragState = {
-            note: p.note,
-            x: p.currentX,
-            y: p.currentY,
-            width: p.cardRect.width,
-            height: p.cardRect.height,
-            offsetX: p.x - p.cardRect.left,
-            offsetY: p.y - p.cardRect.top,
-          };
-          setDragState(initialDragState);
-        }
-      }
-    }, 380);
   };
 
   const openCreateNote = () => {
@@ -828,8 +827,8 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
         data-note-id={note.id}
         onPointerDown={(e) => handlePointerDownCard(e, note)}
         style={{ backgroundColor: cardBg }}
-        className={`group relative rounded-2xl p-4 border-2 border-stone-900 shadow-[3px_3px_0px_0px_#1c1917] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-grab active:cursor-grabbing flex flex-col justify-between overflow-hidden select-none touch-pan-y ${
-          isBeingDragged ? 'opacity-20 scale-95 border-dashed border-stone-600' : ''
+        className={`group relative rounded-2xl p-4 border-2 border-stone-900 shadow-[3px_3px_0px_0px_#1c1917] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex flex-col justify-between overflow-hidden select-none touch-pan-y ${
+          isBeingDragged ? 'opacity-20 scale-95 border-dashed border-stone-600 cursor-grabbing' : ''
         }`}
       >
         {/* Pin Icon indicator */}
