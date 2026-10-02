@@ -920,6 +920,15 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
           </div>
         ) : selectedAnalysis === 'analyse par note' ? (
           <div className="w-full h-full py-2 flex flex-col">
+            {noteData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full min-h-[300px] gap-3">
+                <svg className="w-14 h-14 text-[#2D4A3E]/30 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                <p className="text-sm font-bold text-[#5C6B5A] dark:text-slate-400 italic text-center">
+                  Aucune note pour <span className="text-[#2D4A3E] dark:text-slate-200 not-italic">{currentNoteSubject}</span><br />
+                  <span className="text-xs font-normal">au Trimestre {noteTrimestre}. Ajoutez des notes dans le menu Notes.</span>
+                </p>
+              </div>
+            ) : (
             <div className="w-full flex-1 overflow-auto">
               <div style={{ width: noteData.length <= 2 ? Math.max(180, noteData.length * 80) : Math.max(280, noteData.length * 55), height: '100%', minHeight: '300px' }}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -969,6 +978,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                 </ResponsiveContainer>
               </div>
             </div>
+            )}
           </div>
         ) : (
           <div className="text-center py-24">

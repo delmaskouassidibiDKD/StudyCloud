@@ -166,31 +166,55 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
     StudyCloudAPI.getGrades(userId)
       .then((res: any) => {
         if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-          const mapped: Record<string, GradeItem[]> = { '1': [], '2': [], '3': [] };
-          for (const row of res.data) {
-            const trimKey = String(row.trimester || '1');
-            if (!mapped[trimKey]) mapped[trimKey] = [];
-            let subs: any[] = [];
-            try {
-              if (typeof row.sub_grades_json === 'string') {
-                subs = JSON.parse(row.sub_grades_json);
-              } else if (Array.isArray(row.sub_grades_json)) {
-                subs = row.sub_grades_json;
+          // Fusionner avec les données locales pour préserver les subGrades
+          setTrimestersData(prev => {
+            const merged: Record<string, GradeItem[]> = {
+              '1': prev['1'] ? [...prev['1']] : [],
+              '2': prev['2'] ? [...prev['2']] : [],
+              '3': prev['3'] ? [...prev['3']] : [],
+            };
+            for (const row of res.data) {
+              const trimKey = String(row.trimester || '1');
+              if (!merged[trimKey]) merged[trimKey] = [];
+              let subs: any[] = [];
+              try {
+                if (typeof row.sub_grades_json === 'string') {
+                  subs = JSON.parse(row.sub_grades_json);
+                } else if (Array.isArray(row.sub_grades_json)) {
+                  subs = row.sub_grades_json;
+                }
+              } catch (e) { subs = []; }
+
+              const subjectName = (row.subject_name || row.subject || 'Matière').trim();
+              const existingIdx = merged[trimKey].findIndex(item =>
+                (item.id && row.id && String(item.id) === String(row.id)) ||
+                item.subject.trim().toLowerCase() === subjectName.toLowerCase()
+              );
+
+              // Si D1 renvoie des subGrades vides mais que les données locales en ont, on garde les locales
+              const localItem = existingIdx !== -1 ? merged[trimKey][existingIdx] : null;
+              const finalSubs = (subs.length === 0 && localItem && Array.isArray(localItem.subGrades) && localItem.subGrades.length > 0)
+                ? localItem.subGrades
+                : subs;
+
+              const gradeObj: GradeItem = {
+                id: row.id || (localItem ? localItem.id : `d1-${Math.random()}`),
+                subject: subjectName,
+                coefficient: Number(row.coefficient) || 1.0,
+                grade: finalSubs.length > 0 ? (localItem ? localItem.grade : Number(row.average) || 0) : (Number(row.average) || Number(row.grade) || 0),
+                subGrades: finalSubs,
+              };
+
+              if (existingIdx !== -1) {
+                merged[trimKey][existingIdx] = { ...(localItem as GradeItem), ...gradeObj };
+              } else {
+                merged[trimKey].push(gradeObj);
               }
-            } catch (e) {
-              subs = [];
             }
-            mapped[trimKey].push({
-              id: row.id,
-              subject: row.subject_name || row.subject || 'Matière',
-              coefficient: Number(row.coefficient) || 1.0,
-              grade: Number(row.average) || Number(row.grade) || 0,
-              subGrades: subs,
-            });
-          }
-          setTrimestersData(mapped);
-          localStorage.setItem('user_grades_trimesters_data', JSON.stringify(mapped));
-          window.dispatchEvent(new Event('user_grades_changed'));
+            localStorage.setItem('user_grades_trimesters_data', JSON.stringify(merged));
+            window.dispatchEvent(new Event('user_grades_changed'));
+            return merged;
+          });
         } else if (res && res.success && Array.isArray(res.data) && res.data.length === 0) {
           // Si la base distante est encore vide, pousser les données locales vers Cloudflare D1
           const localData = getInitialTrimestersData();
