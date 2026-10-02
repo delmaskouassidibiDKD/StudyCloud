@@ -2844,16 +2844,16 @@ async function purgeUserOrphanedR2Files(env: any, rawEnv: any, reqUserId: string
 
   try {
     const [f, a, img, v, doc, cl, dl, tr, th, sec] = await Promise.all([
-      env.DB.prepare('SELECT id, r2_key, file_url FROM files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
-      env.DB.prepare('SELECT id, r2_key, audio_url, cover_url FROM audio_files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
-      env.DB.prepare('SELECT id, r2_key, image_url, thumbnail_url FROM image_files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
-      env.DB.prepare('SELECT id, r2_key, video_url, thumbnail_url FROM video_files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
-      env.DB.prepare('SELECT id, r2_key, file_url, preview_url FROM document_files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
-      env.DB.prepare('SELECT id, r2_key, file_url, preview_url FROM classeur_files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
-      env.DB.prepare('SELECT id, r2_key, file_url FROM download_files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
-      env.DB.prepare('SELECT id, r2_key, file_url FROM trash_files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
-      env.DB.prepare('SELECT file_id as id, r2_key, thumbnail_url FROM media_thumbnails WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
-      env.DB.prepare('SELECT id, r2_key, file_url FROM secure_files WHERE user_id = ?').bind(reqUserId).all<any>().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, file_url FROM files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, audio_url, cover_url FROM audio_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, image_url, thumbnail_url FROM image_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, video_url, thumbnail_url FROM video_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, file_url, preview_url FROM document_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, file_url, preview_url FROM classeur_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, file_url FROM download_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, file_url FROM trash_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT file_id as id, r2_key, thumbnail_url FROM media_thumbnails WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, file_url FROM secure_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
     ]);
 
     addKeys(f?.results);
@@ -2915,6 +2915,41 @@ async function purgeUserOrphanedR2Files(env: any, rawEnv: any, reqUserId: string
 async function ensureCloudMediaTables(db: any) {
   if (isCloudMediaTablesInitialized || !db) return;
   try {
+    // 0. Base Tables : Matières et Fichiers Généraux (Mes fichiers)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS matieres (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        coefficient REAL DEFAULT 1.0,
+        color TEXT DEFAULT '#EA580C',
+        category TEXT DEFAULT 'Général',
+        display_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        matiere_id TEXT,
+        name TEXT NOT NULL,
+        size INTEGER NOT NULL DEFAULT 0,
+        type TEXT NOT NULL,
+        extension TEXT,
+        r2_key TEXT,
+        file_url TEXT,
+        thumbnail_url TEXT,
+        is_favorite INTEGER DEFAULT 0,
+        is_imported INTEGER DEFAULT 0,
+        is_study_session INTEGER DEFAULT 0,
+        last_imported INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
     // 1. Classeur - Dossiers 3D (avec positions X/Y et tailles réelles)
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS classeur_folders (
@@ -3239,6 +3274,7 @@ async function ensureCloudMediaTables(db: any) {
       try { await db.prepare(`ALTER TABLE ${tbl} ADD COLUMN compressed_size_bytes INTEGER DEFAULT 0`).run(); } catch (e) {}
       try { await db.prepare(`ALTER TABLE ${tbl} ADD COLUMN compression_ratio REAL DEFAULT 0.0`).run(); } catch (e) {}
     }
+    try { await db.prepare('ALTER TABLE files ADD COLUMN thumbnail_url TEXT').run(); } catch (e) {}
 
     // 14. Table de synchronisation et réplication inter-appareils (Local-First avec RxDB / D1)
     await db.prepare(`
@@ -6043,7 +6079,7 @@ export default {
       // 2. MATIÈRES & DOSSIERS
       // ----------------------------------------------------------------------
       if (path === '/api/matieres') {
-        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
+        if (env.DB) await ensureCloudMediaTables(env.DB);
         if (method === 'GET') {
           const userId = url.searchParams.get('userId');
           if (!userId) return errorResponse('userId requis', 400, origin);
@@ -6079,7 +6115,7 @@ export default {
       }
 
       if (path.startsWith('/api/matieres/') && method === 'DELETE') {
-        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
+        if (env.DB) await ensureCloudMediaTables(env.DB);
         const id = path.split('/')[3];
         await env.DB.prepare('DELETE FROM matieres WHERE id = ?').bind(id).run();
         return jsonResponse({ success: true, message: 'Matière supprimée' }, 200, origin);
@@ -6089,7 +6125,7 @@ export default {
       // 3. FICHIERS (Métadonnées & Fichiers de cours)
       // ----------------------------------------------------------------------
       if (path === '/api/files') {
-        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
+        if (env.DB) await ensureCloudMediaTables(env.DB);
         if (method === 'GET') {
           const userId = url.searchParams.get('userId');
           const matiereId = url.searchParams.get('matiereId');
@@ -6179,7 +6215,7 @@ export default {
       }
 
       if (path.startsWith('/api/files/') && path.endsWith('/favorite') && (method === 'PATCH' || method === 'PUT')) {
-        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
+        if (env.DB) await ensureCloudMediaTables(env.DB);
         const id = path.split('/')[3];
         const body: any = await request.json().catch(() => ({}));
         const isFavoriteVal = body.isFavorite === true || body.isFavorite === 1 ? 1 : 0;
@@ -6188,7 +6224,7 @@ export default {
       }
 
       if (path.startsWith('/api/files/') && method === 'DELETE') {
-        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
+        if (env.DB) await ensureCloudMediaTables(env.DB);
         const id = path.split('/')[3];
         const reqUserId = await extractRequestUserId();
 
@@ -8333,6 +8369,8 @@ export default {
           const fullLyricsJson = JSON.stringify(body.fullLyrics || []);
           const audioUrl = body.audioUrl || body.url || '';
           const r2Key = body.r2Key || (extractR2Keys('', audioUrl)[0] || '');
+          let coverUrl = String(body.coverUrl || body.thumbnailUrl || body.previewUrl || body.cover || '').trim();
+          if (coverUrl.startsWith('blob:')) coverUrl = '';
 
           await env.DB.prepare(`
             INSERT INTO audio_files (
@@ -10145,7 +10183,7 @@ export default {
             await recordSyncItem(env.DB, reqUserId, item.id, item.category || 'trash', { id: item.id }, 1);
             
             // Suppression physique dans tous les buckets R2 et de toutes les vignettes associées
-            await deleteR2ObjectAndThumbnails(env, rawEnv, item.r2_key, item.file_url, item.id, item.name, reqUserId);
+            await deleteR2ObjectAndThumbnails(rawEnv, reqUserId, item.id, item.r2_key, item.file_url, item.category || item.source_category || 'trash');
           }
 
           // Balayer et purger tous les fichiers orphelins résiduels de cet utilisateur dans R2
@@ -10170,7 +10208,7 @@ export default {
         return jsonResponse({
           success: true,
           message: 'Purge des fichiers orphelins R2 effectuée avec succès',
-          ...purgeRes
+          purgedCount: purgeRes
         }, 200, origin);
       }
 
