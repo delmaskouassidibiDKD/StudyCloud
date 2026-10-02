@@ -11,8 +11,8 @@ export const AppUpdatePrompt: React.FC = () => {
   // Vérifier strictement si l'utilisateur est connecté avec un compte
   const isTargetAccountConnected = (): boolean => {
     if (typeof localStorage === 'undefined') return false;
-    const token = localStorage.getItem('sc_auth_token');
-    const uid = localStorage.getItem('unifolder_user_id');
+    const token = localStorage.getItem('sc_auth_token') || localStorage.getItem('unifolder_auth_token') || localStorage.getItem('auth_token');
+    const uid = localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id');
     const user = localStorage.getItem('sc_auth_user');
 
     if (token && token.trim().length > 0) return true;
