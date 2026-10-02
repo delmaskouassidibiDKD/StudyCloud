@@ -158,8 +158,24 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
 
       // 7. Alarmes
       if (Array.isArray(d.alarms)) {
-        localStorage.setItem('unifolder_alarms', JSON.stringify(d.alarms));
-        localStorage.setItem('unifolder_clock_alarms', JSON.stringify(d.alarms));
+        const normalizedAlarms = d.alarms.map((a: any) => {
+          let days = ['Tous les jours'];
+          if (a.days && Array.isArray(a.days)) days = a.days;
+          else if (a.days_json) {
+            try {
+              days = typeof a.days_json === 'string' ? JSON.parse(a.days_json) : a.days_json;
+            } catch (e) {}
+          }
+          return {
+            id: a.id,
+            time: a.time,
+            label: a.label || 'Alarme',
+            active: a.active !== undefined ? Boolean(a.active) : Boolean(a.is_active),
+            days: Array.isArray(days) ? days : ['Tous les jours']
+          };
+        });
+        localStorage.setItem('unifolder_alarms', JSON.stringify(normalizedAlarms));
+        localStorage.setItem('unifolder_clock_alarms', JSON.stringify(normalizedAlarms));
       }
 
       // 8. Contenus Générés IA (Créations & Studio)
@@ -239,7 +255,16 @@ export function triggerDebouncedCloudBackup(delayMs = 2000): void {
         hours: JSON.parse(localStorage.getItem('user_schedule_hours') || '["08:00 - 10:00","10:00 - 12:00","14:00 - 16:00","16:00 - 18:00"]'),
         zoomLevel: Number(localStorage.getItem('user_schedule_zoom') || '100'),
       };
-      const alarms = JSON.parse(localStorage.getItem('unifolder_clock_alarms') || localStorage.getItem('unifolder_alarms') || '[]');
+      const rawAlarms = JSON.parse(localStorage.getItem('unifolder_clock_alarms') || localStorage.getItem('unifolder_alarms') || '[]');
+      const alarms = Array.isArray(rawAlarms) ? rawAlarms.map((a: any) => ({
+        id: a.id,
+        time: a.time,
+        label: a.label || 'Alarme',
+        active: a.active !== undefined ? Boolean(a.active) : Boolean(a.is_active),
+        isActive: (a.isActive !== undefined ? a.isActive : (a.active !== undefined ? (a.active ? 1 : 0) : 1)) ? 1 : 0,
+        days: Array.isArray(a.days) ? a.days : ['Tous les jours'],
+        days_json: JSON.stringify(Array.isArray(a.days) ? a.days : ['Tous les jours'])
+      })) : [];
       const userProfile = {
         name: localStorage.getItem('unifolder_user_name') || '',
         school: localStorage.getItem('unifolder_user_school') || '',

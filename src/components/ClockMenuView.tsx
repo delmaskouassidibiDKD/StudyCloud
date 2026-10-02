@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Clock as ClockIcon, Bell, Timer as TimerIcon, Watch, Plus, Trash2, Play, Pause, RotateCcw, Flag, Volume2, X } from 'lucide-react';
-import { triggerDebouncedCloudBackup } from '../services/userSync';
+import { ArrowLeft, Clock as ClockIcon, Bell, Timer as TimerIcon, Watch, Plus, Trash2, Play, Pause, RotateCcw, Flag, Volume2, X, Edit2 } from 'lucide-react';
+import { triggerDebouncedCloudBackup, getCurrentUserId } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
 
 interface ClockMenuViewProps {
@@ -65,9 +65,27 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
   const defaultAlarms: AlarmItem[] = [];
 
   const [alarms, setAlarms] = useState<AlarmItem[]>(() => {
-    const saved = localStorage.getItem('unifolder_clock_alarms');
+    const saved = localStorage.getItem('unifolder_clock_alarms') || localStorage.getItem('unifolder_alarms');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.map((row: any) => {
+            let parsedDays = ['Tous les jours'];
+            if (row.days && Array.isArray(row.days)) parsedDays = row.days;
+            else if (row.days_json) {
+              try { parsedDays = typeof row.days_json === 'string' ? JSON.parse(row.days_json) : row.days_json; } catch (e) {}
+            }
+            return {
+              id: row.id,
+              time: row.time,
+              label: row.label || 'Alarme',
+              active: row.active !== undefined ? Boolean(row.active) : Boolean(row.is_active),
+              days: Array.isArray(parsedDays) ? parsedDays : ['Tous les jours'],
+            };
+          });
+        }
+      } catch (e) { console.error(e); }
     }
     return [];
   });
@@ -80,30 +98,64 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
 
   // Synchronisation avec Cloudflare D1
   useEffect(() => {
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
     StudyCloudAPI.getAlarms(userId)
       .then((res: any) => {
         if (res && res.success && Array.isArray(res.data)) {
-          const mapped: AlarmItem[] = res.data.map((row: any) => ({
-            id: row.id,
-            time: row.time,
-            label: row.label || 'Alarme',
-            active: Boolean(row.is_active),
-            days: row.days_json ? JSON.parse(row.days_json) : ['Tous les jours'],
-          }));
+          const mapped: AlarmItem[] = res.data.map((row: any) => {
+            let parsedDays = ['Tous les jours'];
+            if (row.days && Array.isArray(row.days)) {
+              parsedDays = row.days;
+            } else if (row.days_json) {
+              try {
+                parsedDays = typeof row.days_json === 'string' ? JSON.parse(row.days_json) : row.days_json;
+                if (!Array.isArray(parsedDays)) parsedDays = ['Tous les jours'];
+              } catch (e) {
+                parsedDays = ['Tous les jours'];
+              }
+            }
+            return {
+              id: row.id,
+              time: row.time,
+              label: row.label || 'Alarme',
+              active: row.active !== undefined ? Boolean(row.active) : Boolean(row.is_active),
+              days: parsedDays,
+            };
+          });
           setAlarms(mapped);
           localStorage.setItem('unifolder_clock_alarms', JSON.stringify(mapped));
           localStorage.setItem('unifolder_alarms', JSON.stringify(mapped));
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.warn('[ClockMenuView] Erreur récupération alarmes D1:', err);
+      });
   }, []);
 
   useEffect(() => {
     const handleRestore = () => {
       const saved = localStorage.getItem('unifolder_clock_alarms') || localStorage.getItem('unifolder_alarms');
       if (saved) {
-        try { setAlarms(JSON.parse(saved)); } catch (e) {}
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            const mapped = parsed.map((row: any) => {
+              let parsedDays = ['Tous les jours'];
+              if (row.days && Array.isArray(row.days)) parsedDays = row.days;
+              else if (row.days_json) {
+                try { parsedDays = typeof row.days_json === 'string' ? JSON.parse(row.days_json) : row.days_json; } catch (e) {}
+              }
+              return {
+                id: row.id,
+                time: row.time,
+                label: row.label || 'Alarme',
+                active: row.active !== undefined ? Boolean(row.active) : Boolean(row.is_active),
+                days: Array.isArray(parsedDays) ? parsedDays : ['Tous les jours'],
+              };
+            });
+            setAlarms(mapped);
+          }
+        } catch (e) {}
       } else {
         setAlarms(defaultAlarms);
       }
@@ -113,9 +165,24 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
   }, []);
 
   const [isAddAlarmOpen, setIsAddAlarmOpen] = useState(false);
+  const [editingAlarmId, setEditingAlarmId] = useState<string | null>(null);
   const [newAlarmTime, setNewAlarmTime] = useState('08:00');
   const [newAlarmLabel, setNewAlarmLabel] = useState('');
   const [ringingAlarm, setRingingAlarm] = useState<AlarmItem | null>(null);
+
+  const handleOpenAddAlarm = () => {
+    setEditingAlarmId(null);
+    setNewAlarmTime('08:00');
+    setNewAlarmLabel('');
+    setIsAddAlarmOpen(true);
+  };
+
+  const handleOpenEditAlarm = (alarm: AlarmItem) => {
+    setEditingAlarmId(alarm.id);
+    setNewAlarmTime(alarm.time);
+    setNewAlarmLabel(alarm.label);
+    setIsAddAlarmOpen(true);
+  };
 
   // Check Alarms every minute
   useEffect(() => {
@@ -134,47 +201,82 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
   const handleAddAlarm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAlarmTime) return;
-    const created: AlarmItem = {
-      id: 'alarm-' + Date.now(),
-      time: newAlarmTime,
-      label: newAlarmLabel.trim() || 'Alarme',
-      active: true,
-      days: ['Tous les jours']
-    };
-    setAlarms(prev => [...prev, created]);
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
-    StudyCloudAPI.createAlarm({
-      id: created.id,
-      userId,
-      time: created.time,
-      label: created.label,
-      isActive: created.active ? 1 : 0,
-      daysJson: JSON.stringify(created.days)
-    }).catch(() => {});
+    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
+
+    if (editingAlarmId) {
+      // Mise à jour d'une alarme existante dans le state et en BDD Cloudflare D1
+      const existing = alarms.find(a => a.id === editingAlarmId);
+      const updatedItem: AlarmItem = {
+        id: editingAlarmId,
+        time: newAlarmTime,
+        label: newAlarmLabel.trim() || 'Alarme',
+        active: existing ? existing.active : true,
+        days: existing?.days || ['Tous les jours'],
+      };
+      setAlarms(prev => prev.map(a => a.id === editingAlarmId ? updatedItem : a));
+      StudyCloudAPI.createAlarm({
+        id: updatedItem.id,
+        userId,
+        time: updatedItem.time,
+        label: updatedItem.label,
+        isActive: updatedItem.active ? 1 : 0,
+        daysJson: JSON.stringify(updatedItem.days)
+      }).catch((err) => {
+        console.warn('[ClockMenuView] Erreur mise à jour alarme D1:', err);
+      });
+    } else {
+      // Création d'une nouvelle alarme dans le state et en BDD Cloudflare D1
+      const created: AlarmItem = {
+        id: 'alarm-' + Date.now(),
+        time: newAlarmTime,
+        label: newAlarmLabel.trim() || 'Alarme',
+        active: true,
+        days: ['Tous les jours']
+      };
+      setAlarms(prev => [...prev, created]);
+      StudyCloudAPI.createAlarm({
+        id: created.id,
+        userId,
+        time: created.time,
+        label: created.label,
+        isActive: 1,
+        daysJson: JSON.stringify(created.days)
+      }).catch((err) => {
+        console.warn('[ClockMenuView] Erreur création alarme D1:', err);
+      });
+    }
+
     setNewAlarmLabel('');
+    setNewAlarmTime('08:00');
+    setEditingAlarmId(null);
     setIsAddAlarmOpen(false);
   };
 
   const toggleAlarmActive = (id: string) => {
     const target = alarms.find(a => a.id === id);
     if (target) {
-      const updated = { ...target, active: !target.active };
+      const newActive = !target.active;
+      const updated = { ...target, active: newActive };
       setAlarms(prev => prev.map(a => a.id === id ? updated : a));
-      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+      const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
       StudyCloudAPI.createAlarm({
         id: updated.id,
         userId,
         time: updated.time,
         label: updated.label,
-        isActive: updated.active ? 1 : 0,
-        daysJson: JSON.stringify(updated.days)
-      }).catch(() => {});
+        isActive: newActive ? 1 : 0,
+        daysJson: JSON.stringify(updated.days || ['Tous les jours'])
+      }).catch((err) => {
+        console.warn('[ClockMenuView] Erreur bascule statut alarme D1:', err);
+      });
     }
   };
 
   const deleteAlarm = (id: string) => {
     setAlarms(prev => prev.filter(a => a.id !== id));
-    StudyCloudAPI.deleteAlarm(id).catch(() => {});
+    StudyCloudAPI.deleteAlarm(id).catch((err) => {
+      console.warn('[ClockMenuView] Erreur suppression alarme D1:', err);
+    });
   };
 
   // ---------------- 3. STOPWATCH STATE ----------------
@@ -271,6 +373,14 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
           setTimerRunning(false);
           setTimerFinishedAlert(true);
           playBeep();
+          const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+          if (timerDuration >= 60) {
+            StudyCloudAPI.recordStudySession({
+              userId,
+              durationSeconds: timerDuration,
+              matiereName: 'Minuteur d\'étude'
+            }).catch(() => {});
+          }
         }
       };
 
@@ -433,9 +543,14 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
         {activeTab === 'alarm' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-serif font-bold text-[#2D4A3E]">Vos Alarmes</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-serif font-bold text-[#2D4A3E] dark:text-white">Vos Alarmes</h3>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 shadow-sm">
+                  Base D1 Cloud
+                </span>
+              </div>
               <button
-                onClick={() => setIsAddAlarmOpen(true)}
+                onClick={handleOpenAddAlarm}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-[#18568A] hover:bg-[#13436D] text-white font-bold text-xs rounded-xl border-2 border-stone-900 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
               >
                 <Plus className="w-4 h-4" />
@@ -475,6 +590,15 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
                             alarm.active ? 'translate-x-6' : 'translate-x-0'
                           }`}
                         />
+                      </button>
+
+                      {/* Edit Alarm */}
+                      <button
+                        onClick={() => handleOpenEditAlarm(alarm)}
+                        className="p-1.5 text-stone-500 hover:text-[#18568A] hover:bg-stone-200 rounded-lg transition-colors cursor-pointer"
+                        title="Modifier l'alarme"
+                      >
+                        <Edit2 className="w-4 h-4" />
                       </button>
 
                       {/* Delete */}
@@ -746,7 +870,7 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
 
             <h3 className="text-lg font-serif font-bold text-[#2D4A3E] mb-4 flex items-center gap-2">
               <Bell className="w-5 h-5 text-[#18568A]" />
-              Nouvelle Alarme
+              {editingAlarmId ? "Modifier l'Alarme" : 'Nouvelle Alarme'}
             </h3>
 
             <form onSubmit={handleAddAlarm} className="space-y-4">
@@ -784,7 +908,7 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
                   type="submit"
                   className="px-4 py-1.5 bg-[#18568A] hover:bg-[#13436D] text-white font-bold text-xs rounded-xl border-2 border-stone-900 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer"
                 >
-                  Enregistrer
+                  {editingAlarmId ? 'Mettre à jour' : 'Enregistrer'}
                 </button>
               </div>
             </form>

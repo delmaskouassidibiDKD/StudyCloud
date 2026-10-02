@@ -2795,6 +2795,55 @@ async function ensureCloudMediaTables(db) {
       await db.prepare("CREATE INDEX IF NOT EXISTS idx_grades_user_trim ON grades(user_id, trimester)").run();
     } catch (e) {
     }
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS alarms (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        time TEXT NOT NULL,
+        label TEXT DEFAULT 'R\xE9veil \xE9tude',
+        is_active INTEGER DEFAULT 1,
+        days_json TEXT DEFAULT '["Tous les jours"]',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {
+    });
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_alarms_user ON alarms(user_id)").run();
+    } catch (e) {
+    }
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS study_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        duration_seconds INTEGER DEFAULT 0,
+        matiere_name TEXT DEFAULT '',
+        completed_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {
+    });
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_study_sessions_user ON study_sessions(user_id)").run();
+    } catch (e) {
+    }
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS calendar_events (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        end_date TEXT,
+        all_day INTEGER DEFAULT 0,
+        color TEXT DEFAULT '#2563EB',
+        description TEXT DEFAULT '',
+        location TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {
+    });
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_calendar_user ON calendar_events(user_id)").run();
+    } catch (e) {
+    }
     isCloudMediaTablesInitialized = true;
   } catch (err) {
     console.error("[StudyCloud Cloud Media Tables Init Error]", err);
@@ -10144,15 +10193,37 @@ var index_default = {
         return jsonResponse({ success: true, message: "Note supprim\xE9e" }, 200, origin);
       }
       if (path === "/api/calendar") {
+        try {
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS calendar_events (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              title TEXT NOT NULL,
+              start_date TEXT NOT NULL,
+              end_date TEXT,
+              all_day INTEGER DEFAULT 0,
+              color TEXT DEFAULT '#2563EB',
+              description TEXT DEFAULT '',
+              location TEXT DEFAULT '',
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+        } catch (e) {
+        }
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
           if (!userId) return errorResponse("userId requis", 400, origin);
-          const { results } = await env.DB.prepare("SELECT * FROM calendar_events WHERE user_id = ? ORDER BY start_date ASC").bind(userId).all();
-          return jsonResponse({ success: true, data: results }, 200, origin);
+          try {
+            const { results } = await env.DB.prepare("SELECT * FROM calendar_events WHERE user_id = ? ORDER BY start_date ASC").bind(userId).all();
+            return jsonResponse({ success: true, data: results || [] }, 200, origin);
+          } catch (e) {
+            return jsonResponse({ success: true, data: [] }, 200, origin);
+          }
         }
         if (method === "POST") {
           const body = await request.json();
           const { id, userId, title, startDate, endDate, allDay, color, description, location } = body;
+          if (!userId) return errorResponse("userId requis", 400, origin);
           const eventId = id || crypto.randomUUID();
           await env.DB.prepare(`
             INSERT INTO calendar_events (id, user_id, title, start_date, end_date, all_day, color, description, location)
@@ -10170,25 +10241,53 @@ var index_default = {
         }
         if (method === "DELETE") {
           const id = url.searchParams.get("id");
-          if (id) await env.DB.prepare("DELETE FROM calendar_events WHERE id = ?").bind(id).run();
+          if (id) {
+            try {
+              await env.DB.prepare("DELETE FROM calendar_events WHERE id = ?").bind(id).run();
+            } catch (e) {
+            }
+          }
           return jsonResponse({ success: true, message: "\xC9v\xE9nement supprim\xE9" }, 200, origin);
         }
       }
       if (path.startsWith("/api/calendar/") && method === "DELETE") {
         const id = path.split("/")[3];
-        await env.DB.prepare("DELETE FROM calendar_events WHERE id = ?").bind(id).run();
+        try {
+          await env.DB.prepare("DELETE FROM calendar_events WHERE id = ?").bind(id).run();
+        } catch (e) {
+        }
         return jsonResponse({ success: true, message: "\xC9v\xE9nement supprim\xE9" }, 200, origin);
       }
       if (path === "/api/alarms") {
+        try {
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS alarms (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              time TEXT NOT NULL,
+              label TEXT DEFAULT 'R\xE9veil \xE9tude',
+              is_active INTEGER DEFAULT 1,
+              days_json TEXT DEFAULT '["Tous les jours"]',
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+        } catch (e) {
+        }
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
           if (!userId) return errorResponse("userId requis", 400, origin);
-          const { results } = await env.DB.prepare("SELECT * FROM alarms WHERE user_id = ? ORDER BY time ASC").bind(userId).all();
-          return jsonResponse({ success: true, data: results }, 200, origin);
+          try {
+            const { results } = await env.DB.prepare("SELECT * FROM alarms WHERE user_id = ? ORDER BY time ASC").bind(userId).all();
+            return jsonResponse({ success: true, data: results || [] }, 200, origin);
+          } catch (e) {
+            return jsonResponse({ success: true, data: [] }, 200, origin);
+          }
         }
         if (method === "POST") {
           const body = await request.json();
           const { id, userId: userId2, time, label, isActive, daysJson } = body;
+          if (!userId2) return errorResponse("userId requis", 400, origin);
+          const alarmId = id || "alarm-" + crypto.randomUUID();
           await env.DB.prepare(`
             INSERT INTO alarms (id, user_id, time, label, is_active, days_json)
             VALUES (?, ?, ?, ?, ?, ?)
@@ -10197,35 +10296,68 @@ var index_default = {
               label = excluded.label,
               is_active = excluded.is_active,
               days_json = excluded.days_json
-          `).bind(id || crypto.randomUUID(), userId2, time, label || "R\xE9veil \xE9tude", isActive ? 1 : 0, daysJson || '["Tous les jours"]').run();
-          return jsonResponse({ success: true }, 201, origin);
+          `).bind(
+            alarmId,
+            userId2,
+            time || "08:00",
+            label || "R\xE9veil \xE9tude",
+            isActive ? 1 : 0,
+            typeof daysJson === "string" ? daysJson : JSON.stringify(daysJson || ["Tous les jours"])
+          ).run();
+          return jsonResponse({ success: true, id: alarmId }, 201, origin);
         }
         if (method === "DELETE") {
           const id = url.searchParams.get("id");
-          if (id) await env.DB.prepare("DELETE FROM alarms WHERE id = ?").bind(id).run();
+          if (id) {
+            try {
+              await env.DB.prepare("DELETE FROM alarms WHERE id = ?").bind(id).run();
+            } catch (e) {
+            }
+          }
           return jsonResponse({ success: true, message: "Alarme supprim\xE9e" }, 200, origin);
         }
       }
       if (path.startsWith("/api/alarms/") && method === "DELETE") {
         const id = path.split("/")[3];
-        await env.DB.prepare("DELETE FROM alarms WHERE id = ?").bind(id).run();
+        try {
+          await env.DB.prepare("DELETE FROM alarms WHERE id = ?").bind(id).run();
+        } catch (e) {
+        }
         return jsonResponse({ success: true, message: "Alarme supprim\xE9e" }, 200, origin);
       }
       if (path === "/api/study-sessions") {
+        try {
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS study_sessions (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              duration_seconds INTEGER DEFAULT 0,
+              matiere_name TEXT DEFAULT '',
+              completed_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+        } catch (e) {
+        }
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
           if (!userId) return errorResponse("userId requis", 400, origin);
-          const { results } = await env.DB.prepare("SELECT * FROM study_sessions WHERE user_id = ? ORDER BY completed_at DESC").bind(userId).all();
-          return jsonResponse({ success: true, data: results }, 200, origin);
+          try {
+            const { results } = await env.DB.prepare("SELECT * FROM study_sessions WHERE user_id = ? ORDER BY completed_at DESC").bind(userId).all();
+            return jsonResponse({ success: true, data: results || [] }, 200, origin);
+          } catch (e) {
+            return jsonResponse({ success: true, data: [] }, 200, origin);
+          }
         }
         if (method === "POST") {
           const body = await request.json();
           const { id, userId: userId2, durationSeconds, matiereName } = body;
+          if (!userId2) return errorResponse("userId requis", 400, origin);
+          const sessionId = id || "session-" + crypto.randomUUID();
           await env.DB.prepare(`
             INSERT INTO study_sessions (id, user_id, duration_seconds, matiere_name)
             VALUES (?, ?, ?, ?)
-          `).bind(id || crypto.randomUUID(), userId2, durationSeconds, matiereName || "").run();
-          return jsonResponse({ success: true }, 201, origin);
+          `).bind(sessionId, userId2, Number(durationSeconds) || 0, matiereName || "").run();
+          return jsonResponse({ success: true, id: sessionId }, 201, origin);
         }
       }
       if (path === "/api/shop/profile") {
@@ -11763,6 +11895,7 @@ Lien vers le produit : ${productShareUrl}`;
         );
       }
       if (path === "/api/sync/backup" && method === "POST") {
+        if (env.DB) await ensureCloudMediaTables(env.DB);
         const body = await request.json();
         const { userId, userProfile, matieres, notes, scheduleSlots, scheduleConfig, alarms, shopProfile } = body;
         if (!userId) return errorResponse("userId requis", 400, origin);
@@ -11881,6 +12014,8 @@ Lien vers le produit : ${productShareUrl}`;
         }
         if (Array.isArray(alarms)) {
           for (const a of alarms) {
+            const activeVal = a.isActive !== void 0 ? a.isActive : a.active !== void 0 ? a.active ? 1 : 0 : 1;
+            const daysStr = typeof a.days_json === "string" ? a.days_json : JSON.stringify(Array.isArray(a.days) ? a.days : ["Tous les jours"]);
             await env.DB.prepare(`
               INSERT INTO alarms (id, user_id, time, label, is_active, days_json)
               VALUES (?, ?, ?, ?, ?, ?)
@@ -11889,7 +12024,7 @@ Lien vers le produit : ${productShareUrl}`;
                 label = excluded.label,
                 is_active = excluded.is_active,
                 days_json = excluded.days_json
-            `).bind(a.id || crypto.randomUUID(), userId, a.time, a.label || "R\xE9veil \xE9tude", a.isActive ? 1 : 0, JSON.stringify(a.days || ["Tous les jours"])).run();
+            `).bind(a.id || crypto.randomUUID(), userId, a.time, a.label || "R\xE9veil \xE9tude", activeVal ? 1 : 0, daysStr).run();
           }
         }
         if (Array.isArray(body.calendarEvents)) {
@@ -11941,6 +12076,7 @@ Lien vers le produit : ${productShareUrl}`;
       if (path === "/api/sync/restore" && method === "GET") {
         const userId = url.searchParams.get("userId");
         if (!userId) return errorResponse("userId requis", 400, origin);
+        if (env.DB) await ensureCloudMediaTables(env.DB);
         const [
           user,
           { results: matieres },
@@ -11953,16 +12089,16 @@ Lien vers le produit : ${productShareUrl}`;
           { results: aiContents },
           { results: calendarEvents }
         ] = await Promise.all([
-          env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first(),
-          env.DB.prepare("SELECT * FROM matieres WHERE user_id = ? ORDER BY display_order ASC").bind(userId).all(),
-          env.DB.prepare("SELECT * FROM files WHERE user_id = ? ORDER BY last_imported DESC, created_at DESC").bind(userId).all(),
-          env.DB.prepare("SELECT * FROM notes WHERE user_id = ? ORDER BY is_pinned DESC, updated_at DESC").bind(userId).all(),
-          env.DB.prepare("SELECT * FROM schedule_config WHERE user_id = ?").bind(userId).first(),
-          env.DB.prepare("SELECT * FROM schedule_slots WHERE user_id = ?").bind(userId).all(),
-          env.DB.prepare("SELECT * FROM grades WHERE user_id = ?").bind(userId).all(),
-          env.DB.prepare("SELECT * FROM alarms WHERE user_id = ?").bind(userId).all(),
-          env.DB.prepare("SELECT * FROM ai_generated_contents WHERE user_id = ? ORDER BY is_pinned DESC, updated_at DESC").bind(userId).all(),
-          env.DB.prepare("SELECT * FROM calendar_events WHERE user_id = ? ORDER BY start_date ASC").bind(userId).all()
+          env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first().catch(() => null),
+          env.DB.prepare("SELECT * FROM matieres WHERE user_id = ? ORDER BY display_order ASC").bind(userId).all().catch(() => ({ results: [] })),
+          env.DB.prepare("SELECT * FROM files WHERE user_id = ? ORDER BY last_imported DESC, created_at DESC").bind(userId).all().catch(() => ({ results: [] })),
+          env.DB.prepare("SELECT * FROM notes WHERE user_id = ? ORDER BY is_pinned DESC, updated_at DESC").bind(userId).all().catch(() => ({ results: [] })),
+          env.DB.prepare("SELECT * FROM schedule_config WHERE user_id = ?").bind(userId).first().catch(() => null),
+          env.DB.prepare("SELECT * FROM schedule_slots WHERE user_id = ?").bind(userId).all().catch(() => ({ results: [] })),
+          env.DB.prepare("SELECT * FROM grades WHERE user_id = ?").bind(userId).all().catch(() => ({ results: [] })),
+          env.DB.prepare("SELECT * FROM alarms WHERE user_id = ?").bind(userId).all().catch(() => ({ results: [] })),
+          env.DB.prepare("SELECT * FROM ai_generated_contents WHERE user_id = ? ORDER BY is_pinned DESC, updated_at DESC").bind(userId).all().catch(() => ({ results: [] })),
+          env.DB.prepare("SELECT * FROM calendar_events WHERE user_id = ? ORDER BY start_date ASC").bind(userId).all().catch(() => ({ results: [] }))
         ]);
         return jsonResponse({
           success: true,
