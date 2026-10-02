@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Plus, Trash2, Edit2, Clock, Calendar, Check, X, ZoomIn, ZoomOut, MapPin, User } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Edit2, Clock, Calendar, Check, X, ZoomIn, ZoomOut, MapPin, User, Download, Loader2 } from 'lucide-react';
 import { triggerDebouncedCloudBackup, getCurrentUserId } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
 import { useScheduleConfig, useScheduleSlots } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
 import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/safeStorage';
+import { exportScheduleToPdf } from '../utils/exportSchedulePdf';
 
 interface ScheduleMenuViewProps {
   onBack: () => void;
@@ -79,6 +80,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
   const [showAddConfirm, setShowAddConfirm] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number>(() => {
     try {
       const saved = localStorage.getItem('user_schedule_zoom');
@@ -306,11 +308,11 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
         color: entry.color,
       });
       invalidateCloudQueries.scheduleSlots();
-      setSuccessMessage('Créneau enregistré dans la base de données !');
+      setSuccessMessage('Créneau enregistré avec succès !');
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (e) {
       console.error(e);
-      setErrorMessage("Erreur lors de l'enregistrement dans la base de données");
+      setErrorMessage("Erreur lors de l'enregistrement du créneau");
       setTimeout(() => setErrorMessage(null), 4000);
     }
   };
@@ -327,7 +329,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
     try {
       await StudyCloudAPI.deleteScheduleSlot({ userId, day: activeSlot.day, hourSlot: activeSlot.hour });
       invalidateCloudQueries.scheduleSlots();
-      setSuccessMessage('Créneau effacé de la base de données !');
+      setSuccessMessage('Créneau effacé avec succès !');
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (e) {
       console.error(e);
@@ -410,7 +412,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
           await StudyCloudAPI.addScheduleSlot(s);
         }
         invalidateCloudQueries.schedule();
-        setSuccessMessage('Jour et créneaux mis à jour dans la base de données !');
+        setSuccessMessage('Jour et créneaux mis à jour avec succès !');
         setTimeout(() => setSuccessMessage(null), 3000);
       } catch (err) {
         console.error(err);
@@ -460,7 +462,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
           await StudyCloudAPI.addScheduleSlot(s);
         }
         invalidateCloudQueries.schedule();
-        setSuccessMessage('Horaire et créneaux mis à jour dans la base de données !');
+        setSuccessMessage('Horaire et créneaux mis à jour avec succès !');
         setTimeout(() => setSuccessMessage(null), 3000);
       } catch (err) {
         console.error(err);
@@ -574,6 +576,27 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
       .catch(() => {});
   };
 
+  const handleDownloadPdf = async () => {
+    if (isGeneratingPdf) return;
+    try {
+      setIsGeneratingPdf(true);
+      await exportScheduleToPdf({
+        days,
+        hours,
+        scheduleData,
+        title: 'Mon emploi du temps',
+      });
+      setSuccessMessage('Emploi du temps téléchargé en PDF avec succès !');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      console.error('Erreur export PDF:', err);
+      setErrorMessage(err?.message || "Impossible de générer le fichier PDF de l'emploi du temps.");
+      setTimeout(() => setErrorMessage(null), 4000);
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
   return (
     <div className="absolute inset-x-0 md:left-64 md:right-0 bottom-16 md:bottom-0 top-[62px] md:top-[66px] z-30 w-full md:w-[calc(100%-16rem)] bg-[#FDFBF7] dark:bg-[#0b0f19] text-stone-900 dark:text-slate-100 flex flex-col overflow-hidden transition-colors duration-300">
       {/* Top Header Bar */}
@@ -585,12 +608,28 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>Retour</span>
         </button>
-        <div className="text-center flex-1 mx-2 flex items-center justify-center gap-2">
+        <div className="text-center flex-1 mx-2 flex items-center justify-center gap-2 sm:gap-3">
           <h1 className="text-base sm:text-lg font-serif font-bold text-[#2D4A3E] dark:text-white truncate">Mon emploi du temps</h1>
-          <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100/80 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800">
-            <Check className="w-3 h-3 stroke-[2.5]" />
-            <span>Synchronisé D1</span>
-          </span>
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={isGeneratingPdf}
+            className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 bg-[#E8DFD0] dark:bg-[#1e293b] hover:bg-[#D4C9B5] dark:hover:bg-[#334155] text-[#2D4A3E] dark:text-emerald-300 font-bold text-xs rounded-lg border-2 border-[#2D4A3E] dark:border-emerald-600/50 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-60 whitespace-nowrap"
+            title="Télécharger l'emploi du temps en PDF"
+          >
+            {isGeneratingPdf ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#2D4A3E] dark:text-emerald-300" />
+                <span className="hidden sm:inline">Génération...</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-emerald-300" />
+                <span className="hidden sm:inline">Télécharger</span>
+                <span className="sm:hidden">PDF</span>
+              </>
+            )}
+          </button>
         </div>
         <button
           onClick={addHourRow}
