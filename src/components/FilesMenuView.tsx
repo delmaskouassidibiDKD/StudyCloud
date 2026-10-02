@@ -11,6 +11,8 @@ import { getCurrentUserId } from '../services/userSync';
 import { useFilesMenuList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
 import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/safeStorage';
+import { validateFilesForMesFichiersAsync } from '../services/fileTypeValidator';
+import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
 
 interface FilesMenuViewProps {
   onBack: () => void;
@@ -319,6 +321,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [incompatibleAlertInfo, setIncompatibleAlertInfo] = useState<IncompatibleAlertInfo | null>(null);
   const { data: serverFiles = [], isLoading: isFilesQueryLoading } = useFilesMenuList();
   const [importedFiles, setImportedFiles] = useState<ImportedItem[]>(() => loadAllUserFiles());
 
@@ -1031,6 +1034,29 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         alert(`⚠️ Limite de ${MAX_IMPORT_FILES} fichiers maximum à la fois : seuls les ${MAX_IMPORT_FILES} premiers fichiers seront importés.`);
         files = files.slice(0, MAX_IMPORT_FILES);
       }
+
+      // Validation stricte par Magic Numbers & signatures binaires réelles (bloque Son, Vidéo, Application)
+      const { validFiles, rejectedFiles } = await validateFilesForMesFichiersAsync(files, 'Mes fichiers');
+
+      if (rejectedFiles.length > 0) {
+        const first = rejectedFiles[0];
+
+        // OUVERTURE IMMÉDIATE DU MODAL D'ALERTE ROUGE AU MILIEU DE L'ÉCRAN
+        setIncompatibleAlertInfo({
+          fileName: first.file.name,
+          detectedCategory: first.detectedLabel,
+          menuLabel: 'Mes fichiers',
+          dedicatedMenu: first.dedicatedMenu,
+          reason: first.reason,
+        });
+
+        if (validFiles.length === 0) {
+          return; // Blocage total : aucun upload ni apparition
+        }
+      }
+
+      if (validFiles.length === 0) return;
+      files = validFiles;
 
       const newItems: ImportedItem[] = [];
       const itemsWithFiles: { file: File | Blob; item: any; originalSizeBytes?: number; originalSizeFormatted?: string }[] = [];
@@ -2305,6 +2331,12 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           </div>
         </div>
       )}
+
+      {/* Modal Format Non Compatible au milieu de l'écran */}
+      <IncompatibleFormatModal 
+        info={incompatibleAlertInfo} 
+        onClose={() => setIncompatibleAlertInfo(null)} 
+      />
     </div>
   );
 };

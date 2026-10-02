@@ -6,6 +6,7 @@ export interface IncompatibleAlertInfo {
   fileName: string;
   detectedCategory: string;
   menuLabel: string;
+  dedicatedMenu?: string;
   reason?: string;
 }
 
@@ -73,14 +74,18 @@ export const IncompatibleFormatModal: React.FC<IncompatibleFormatModalProps> = (
           <div className="flex items-center justify-between gap-2">
             <span className="text-slate-400 shrink-0">Menu dédié :</span>
             <span className="font-bold text-purple-300 bg-purple-500/15 px-2 py-0.5 rounded-md border border-purple-400/30">
-              {info.menuLabel}
+              {info.dedicatedMenu || info.menuLabel}
             </span>
           </div>
         </div>
 
         {/* Explication et astuce */}
         <p className="text-[11px] text-slate-400 leading-relaxed text-center px-1">
-          Le menu <strong className="text-white">{info.menuLabel}</strong> n'accepte que des fichiers {info.menuLabel.toLowerCase()}. Pour classer automatiquement vos fichiers sans restriction, utilisez le bouton <strong className="text-blue-400">+ Importer</strong> sur la page d'accueil.
+          {info.reason || (
+            <>
+              Le menu <strong className="text-white">{info.menuLabel}</strong> n'accepte que des fichiers {info.menuLabel.toLowerCase()}. Pour classer automatiquement vos fichiers sans restriction, utilisez le bouton <strong className="text-blue-400">+ Importer</strong> sur la page d'accueil.
+            </>
+          )}
         </p>
 
         {/* Bouton de confirmation en bas */}

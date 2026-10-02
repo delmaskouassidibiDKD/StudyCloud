@@ -12,7 +12,7 @@
  * 3. Validation asynchrone par signature binaire pour chaque menu dédié.
  */
 
-export type FileCategory = 'images' | 'videos' | 'audio' | 'documents' | 'classeur';
+export type FileCategory = 'images' | 'videos' | 'audio' | 'documents' | 'apps' | 'classeur';
 
 export const EXTENSION_MAP = {
   images: [
@@ -31,6 +31,10 @@ export const EXTENSION_MAP = {
     'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'odt',
     'ods', 'odp', 'rtf', 'tex', 'epub', 'md', 'xml', 'json', 'log'
   ],
+  apps: [
+    'apk', 'xapk', 'aab', 'apks', 'exe', 'msi', 'dmg', 'pkg', 'deb', 'rpm',
+    'appimage', 'bat', 'cmd', 'sh', 'com', 'vbs', 'ps1', 'jar', 'ipa', 'bin', 'run'
+  ],
 };
 
 export const CATEGORY_LABELS: Record<FileCategory, string> = {
@@ -38,8 +42,38 @@ export const CATEGORY_LABELS: Record<FileCategory, string> = {
   videos: 'Vidéos',
   audio: 'Audio / Musique',
   documents: 'Documents',
+  apps: 'Applications',
   classeur: 'Classeur',
 };
+
+/**
+ * Détecte si un fichier est une application, exécutable, installateur ou paquet (APK, EXE, MSI, DMG, etc.)
+ */
+export function isAppFile(name?: string, mime?: string): boolean {
+  const normName = ((name || '')).toLowerCase().trim();
+  const normMime = ((mime || '')).toLowerCase().trim();
+  const ext = normName.includes('.') ? (normName.split('.').pop() || '').toLowerCase().trim() : '';
+
+  if (EXTENSION_MAP.apps.includes(ext)) {
+    return true;
+  }
+
+  if (
+    normMime.includes('android.package-archive') ||
+    normMime.includes('application/x-msdownload') ||
+    normMime.includes('application/x-msdos-program') ||
+    normMime.includes('application/x-executable') ||
+    normMime.includes('application/x-elf') ||
+    normMime.includes('application/x-apple-diskimage') ||
+    normMime.includes('application/x-debian-package') ||
+    normMime.includes('application/x-redhat-package-manager') ||
+    normMime.includes('application/java-archive')
+  ) {
+    return true;
+  }
+
+  return false;
+}
 
 /**
  * Détecte si un fichier est explicitement une vidéo WhatsApp ou mobile
@@ -139,7 +173,7 @@ export async function detectFileCategoryWithMagic(
   file: File | Blob,
   fallbackName?: string,
   fallbackMime?: string
-): Promise<'images' | 'videos' | 'audio' | 'documents'> {
+): Promise<'images' | 'videos' | 'audio' | 'documents' | 'apps'> {
   const name = (file instanceof File ? file.name : (fallbackName || '')).trim();
   const mime = (file.type || fallbackMime || '').toLowerCase().trim();
   const lowerName = name.toLowerCase();
@@ -157,6 +191,10 @@ export async function detectFileCategoryWithMagic(
   if (lowerName.includes('whatsapp image') || lowerName.startsWith('img-')) {
     return 'images';
   }
+  // Si le nom ou MIME indique explicitement une application :
+  if (isAppFile(lowerName, mime)) {
+    return 'apps';
+  }
 
   try {
     const slice = file.slice(0, 64);
@@ -171,6 +209,43 @@ export async function detectFileCategoryWithMagic(
       }
       return s;
     };
+
+    // A. EXÉCUTABLES / APPLICATIONS (Magic Numbers PE / ELF / Mach-O / Android APK)
+    // A.1. Windows PE (.exe, .dll, .sys, .scr) : Signature "MZ" (0x4D 0x5A)
+    if (len >= 2 && bytes[0] === 0x4D && bytes[1] === 0x5A) {
+      return 'apps';
+    }
+
+    // A.2. Linux ELF binary : \x7fELF (0x7F 0x45 0x4C 0x46)
+    if (len >= 4 && bytes[0] === 0x7F && bytes[1] === 0x45 && bytes[2] === 0x4C && bytes[3] === 0x46) {
+      return 'apps';
+    }
+
+    // A.3. macOS Mach-O binaries
+    if (len >= 4 && (
+      (bytes[0] === 0xFE && bytes[1] === 0xED && bytes[2] === 0xFA && (bytes[3] === 0xCE || bytes[3] === 0xCF)) ||
+      ((bytes[0] === 0xCE || bytes[0] === 0xCF) && bytes[1] === 0xFA && bytes[2] === 0xED && bytes[3] === 0xFE) ||
+      (bytes[0] === 0xCA && bytes[1] === 0xFE && bytes[2] === 0xBA && bytes[3] === 0xBE)
+    )) {
+      return 'apps';
+    }
+
+    // A.4. APK / AAB / XAPK / IPA / JAR (Conteneur ZIP avec extension ou type paquet)
+    if (len >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4B && (bytes[2] === 0x03 || bytes[2] === 0x05 || bytes[2] === 0x07)) {
+      if (['apk', 'xapk', 'aab', 'apks', 'ipa', 'jar'].includes(ext) || mime.includes('android') || mime.includes('java-archive')) {
+        return 'apps';
+      }
+    }
+
+    // A.5. Shell script avec Shebang (#!)
+    if (len >= 2 && bytes[0] === 0x23 && bytes[1] === 0x21 && (['sh', 'bash', 'zsh', 'bin', 'run'].includes(ext) || mime.includes('x-sh'))) {
+      return 'apps';
+    }
+
+    // A.6. Windows MSI (Compound File Binary Format)
+    if (len >= 8 && bytes[0] === 0xD0 && bytes[1] === 0xCF && bytes[2] === 0x11 && bytes[3] === 0xE0 && (ext === 'msi' || mime.includes('msi') || mime.includes('x-msdownload'))) {
+      return 'apps';
+    }
 
     // 1. JPEG (FF D8 FF)
     if (len >= 3 && bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
@@ -262,7 +337,7 @@ export async function detectFileCategoryWithMagic(
 /**
  * Détection synchrone de la nature d'un fichier (heuristique basée sur le nom, l'extension et le MIME).
  */
-export function detectFileCategory(file: { name?: string; type?: string }): 'images' | 'videos' | 'audio' | 'documents' {
+export function detectFileCategory(file: { name?: string; type?: string }): 'images' | 'videos' | 'audio' | 'documents' | 'apps' {
   const normName = ((file && file.name) || '').toLowerCase().trim();
   const mime = ((file && file.type) || '').toLowerCase().trim();
   const ext = normName.includes('.') ? (normName.split('.').pop() || '').toLowerCase().trim() : '';
@@ -277,8 +352,14 @@ export function detectFileCategory(file: { name?: string; type?: string }): 'ima
   if (isWhatsAppImage(normName, mime)) {
     return 'images';
   }
+  if (isAppFile(normName, mime)) {
+    return 'apps';
+  }
 
-  // 2. EXTENSIONS STRICTES (AUDIO EN PREMIER POUR ÉVITER CONFUSION MP4 AUDIO)
+  // 2. EXTENSIONS STRICTES
+  if (EXTENSION_MAP.apps.includes(ext)) {
+    return 'apps';
+  }
   if (EXTENSION_MAP.audio.includes(ext)) {
     return 'audio';
   }
@@ -292,7 +373,15 @@ export function detectFileCategory(file: { name?: string; type?: string }): 'ima
     return 'documents';
   }
 
-  // 3. TYPES MIME (AUDIO EN PREMIER)
+  // 3. TYPES MIME
+  if (
+    mime.includes('android.package-archive') ||
+    mime.includes('application/x-msdownload') ||
+    mime.includes('application/x-msdos-program') ||
+    mime.includes('application/x-executable')
+  ) {
+    return 'apps';
+  }
   if (mime.startsWith('audio/') || mime.includes('opus') || mime.includes('ogg')) {
     return 'audio';
   }
@@ -320,7 +409,7 @@ export function detectFileCategory(file: { name?: string; type?: string }): 'ima
 
 export interface RejectedFileInfo {
   file: File;
-  detectedCategory: 'images' | 'videos' | 'audio' | 'documents';
+  detectedCategory: 'images' | 'videos' | 'audio' | 'documents' | 'apps';
   reason: string;
 }
 
@@ -404,6 +493,76 @@ export function validateFilesForMenu(
         detectedCategory: detected,
         reason,
       });
+    }
+  }
+
+  return { validFiles, rejectedFiles };
+}
+
+export interface MesFichiersRejectedItem {
+  file: File;
+  detectedCategory: 'audio' | 'videos' | 'apps';
+  detectedLabel: string;
+  dedicatedMenu: string;
+  reason: string;
+}
+
+export interface MesFichiersValidationResult {
+  validFiles: File[];
+  rejectedFiles: MesFichiersRejectedItem[];
+}
+
+/**
+ * Validation ASYNCHRONE par Magic Numbers pour le menu "Mes fichiers" et les menus Matières.
+ * Bloque STRICTEMENT :
+ *  1. Son / Audio (y compris vocaux WhatsApp, mp3, wav, flac, ogg, etc.)
+ *  2. Vidéo (y compris vidéos WhatsApp, mp4, mov, avi, mkv, webm, etc.)
+ *  3. Application (apk, aab, exe, msi, scripts, binaires, etc.)
+ * Autorise les documents et les images.
+ */
+export async function validateFilesForMesFichiersAsync(
+  files: File[],
+  menuTitle: string = 'Mes fichiers'
+): Promise<MesFichiersValidationResult> {
+  const validFiles: File[] = [];
+  const rejectedFiles: MesFichiersRejectedItem[] = [];
+
+  for (const file of files) {
+    // 1. Détection binaire par Magic Numbers (signature binaire infaillible)
+    const detected = await detectFileCategoryWithMagic(file);
+    const isWaAudio = isWhatsAppAudio(file.name, file.type);
+    const isWaVideo = isWhatsAppVideo(file.name, file.type);
+    const isApp = detected === 'apps' || isAppFile(file.name, file.type);
+
+    if (detected === 'audio' || isWaAudio) {
+      const label = isWaAudio ? 'Audio (WhatsApp / Vocal)' : 'Son / Audio';
+      rejectedFiles.push({
+        file,
+        detectedCategory: 'audio',
+        detectedLabel: label,
+        dedicatedMenu: 'Audio',
+        reason: `Le menu ${menuTitle} n'accepte que des documents ou images. Pour vos fichiers audio, utilisez le menu dédié Audio ou le bouton + Importer sur la page d'accueil.`,
+      });
+    } else if (detected === 'videos' || isWaVideo) {
+      const label = isWaVideo ? 'Vidéo (WhatsApp)' : 'Vidéo';
+      rejectedFiles.push({
+        file,
+        detectedCategory: 'videos',
+        detectedLabel: label,
+        dedicatedMenu: 'Vidéos',
+        reason: `Le menu ${menuTitle} n'accepte que des documents ou images. Pour vos fichiers vidéo, utilisez le menu dédié Vidéos ou le bouton + Importer sur la page d'accueil.`,
+      });
+    } else if (isApp) {
+      rejectedFiles.push({
+        file,
+        detectedCategory: 'apps',
+        detectedLabel: 'Application (APK / Logiciel)',
+        dedicatedMenu: 'Applications',
+        reason: `Le menu ${menuTitle} n'accepte que des documents ou images. Pour vos applications et logiciels, utilisez le menu dédié Applications ou le bouton + Importer sur la page d'accueil.`,
+      });
+    } else {
+      // Documents et Images acceptés
+      validFiles.push(file);
     }
   }
 
