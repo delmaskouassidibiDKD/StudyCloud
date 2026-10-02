@@ -33,6 +33,7 @@ import { AuthPage } from './components/auth/AuthPage';
 import { OnboardingPage } from './components/auth/OnboardingPage';
 import { GoogleSecuritySetupPage } from './components/auth/GoogleSecuritySetupPage';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
+import { AppUpdatePrompt } from './components/AppUpdatePrompt';
 import { UploadQueueWidget } from './components/UploadQueueWidget';
 import { purgeVolatileStorage } from './utils/safeStorage';
 
@@ -2009,6 +2010,9 @@ export default function App() {
 
       {/* Bannière et bouton d'installation PWA sur l'écran d'accueil */}
       <PwaInstallPrompt />
+
+      {/* Notification événementielle de mise à jour Cloudflare (sans boucle) */}
+      <AppUpdatePrompt />
     </div>
   );
 }

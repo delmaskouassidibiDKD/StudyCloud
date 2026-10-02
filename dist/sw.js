@@ -3,7 +3,7 @@
 // Conçu par DKD Technologies pour StudyCloud
 // ============================================================================
 
-const CACHE_NAME = 'studycloud-pwa-v43';
+const CACHE_NAME = 'studycloud-pwa-vmurfap3l';
 
 // Ressources fondamentales du "Shell" de l'application pré-mises en cache à l'installation
 const PRECACHE_ASSETS = [
@@ -23,7 +23,10 @@ const PRECACHE_ASSETS = [
 // 1. INSTALLATION DU SERVICE WORKER (Mise en cache du cœur de l'application)
 // ─────────────────────────────────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
+  // Si première installation sans contrôleur actif, on s'active immédiatement
+  if (!self.registration.active) {
+    self.skipWaiting();
+  }
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       // Pré-mise en cache résiliente (n'échoue pas si un asset optionnel manque)
@@ -36,6 +39,13 @@ self.addEventListener('install', (event) => {
       );
     })
   );
+});
+
+// Écouter le signal envoyé par l'utilisateur lorsqu'il clique sur "Mettre à jour"
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -260,3 +270,5 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+
+// BUILD_DEPLOY_VERSION_murfap3l

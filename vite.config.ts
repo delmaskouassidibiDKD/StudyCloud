@@ -1,11 +1,29 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'fs';
 import { defineConfig } from 'vite';
+
+function swVersionPlugin() {
+  return {
+    name: 'sw-version-plugin',
+    closeBundle() {
+      const swDistPath = path.resolve(__dirname, 'dist', 'sw.js');
+      if (fs.existsSync(swDistPath)) {
+        let content = fs.readFileSync(swDistPath, 'utf-8');
+        const buildId = Date.now().toString(36);
+        content = content.replace(/const CACHE_NAME = 'studycloud-pwa-[^']*';/, `const CACHE_NAME = 'studycloud-pwa-v${buildId}';`);
+        content += `\n// BUILD_DEPLOY_VERSION_${buildId}\n`;
+        fs.writeFileSync(swDistPath, content);
+        console.log(`[PWA] dist/sw.js versionné avec succès : v${buildId}`);
+      }
+    }
+  };
+}
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), swVersionPlugin()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
