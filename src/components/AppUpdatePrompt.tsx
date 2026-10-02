@@ -133,7 +133,7 @@ export const AppUpdatePrompt: React.FC = () => {
               <span>Mise à jour disponible</span>
             </h4>
             <p className="text-xs text-stone-300 mt-1 leading-relaxed">
-              Une nouvelle version de StudyCloud est prête sur Cloudflare.
+              Une nouvelle version de StudyCloud est disponible avec des améliorations.
             </p>
 
             {/* Boutons d'action */}
