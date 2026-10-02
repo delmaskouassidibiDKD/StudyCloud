@@ -148,24 +148,12 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
         localStorage.setItem('unifolder_calendar_data', JSON.stringify(mappedEvents));
       }
 
-      // 6. Carnet de notes & Moyennes
+      // 6. Carnet de notes & Moyennes (les notes sont stockées directement dans la base D1)
       if (Array.isArray(d.grades)) {
-        localStorage.setItem('unifolder_grades_data', JSON.stringify(d.grades));
-        if (d.grades.length > 0) {
-          const mappedGrades: Record<string, any[]> = { '1': [], '2': [], '3': [] };
-          for (const row of d.grades) {
-            const trimKey = String(row.trimester || '1');
-            if (!mappedGrades[trimKey]) mappedGrades[trimKey] = [];
-            mappedGrades[trimKey].push({
-              id: row.id,
-              subject: row.subject_name || row.subject || 'Matière',
-              coefficient: Number(row.coefficient) || 1.0,
-              grade: Number(row.average) || Number(row.grade) || 0,
-              subGrades: row.sub_grades_json ? (typeof row.sub_grades_json === 'string' ? JSON.parse(row.sub_grades_json) : row.sub_grades_json) : (row.subGrades || []),
-            });
-          }
-          localStorage.setItem('user_grades_trimesters_data', JSON.stringify(mappedGrades));
-        }
+        try {
+          localStorage.removeItem('user_grades_trimesters_data');
+          localStorage.removeItem('unifolder_grades_data');
+        } catch (e) {}
       }
 
       // 7. Alarmes

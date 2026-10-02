@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { ArrowLeft, Menu, X, BarChart2, Calendar, FolderTree, Award } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ResponsiveContainer, BarChart as RechartsBarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, PieChart, Pie, AreaChart, Area } from 'recharts';
@@ -84,86 +84,67 @@ const getStandardScale = () => {
   return 20;
 };
 
-const loadAllGradesData = (): Record<string, any[]> => {
+const formatGradesDataFromD1 = (d1Rows: any[] = []): Record<string, any[]> => {
   const result: Record<string, any[]> = { '1': [], '2': [], '3': [] };
 
-  // 1. Charger depuis user_grades_trimesters_data
-  try {
-    const saved = localStorage.getItem('user_grades_trimesters_data');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed && typeof parsed === 'object') {
-        (['1', '2', '3'] as const).forEach(t => {
-          if (Array.isArray(parsed[t])) {
-            result[t] = [...parsed[t]];
-          }
-        });
-      }
-    }
-  } catch (e) {}
-
-  // 2. Si aucune donnée de trimestre n'a été trouvée, regarder unifolder_grades_data (D1 sync format)
-  try {
-    const hasAny = Object.values(result).some(list => Array.isArray(list) && list.length > 0);
-    if (!hasAny) {
-      const rawGrades = localStorage.getItem('unifolder_grades_data');
-      if (rawGrades) {
-        const parsed = JSON.parse(rawGrades);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          for (const row of parsed) {
-            const trimKey = String(row.trimester || '1');
-            if (!result[trimKey]) result[trimKey] = [];
-            let subs: any[] = [];
-            try {
-              if (typeof row.sub_grades_json === 'string') {
-                subs = JSON.parse(row.sub_grades_json);
-              } else if (Array.isArray(row.sub_grades_json)) {
-                subs = row.sub_grades_json;
-              } else if (Array.isArray(row.subGrades)) {
-                subs = row.subGrades;
-              }
-            } catch (e) {}
-
-            result[trimKey].push({
-              id: row.id || `grade-${Math.random()}`,
-              subject: row.subject_name || row.subject || 'Matière',
-              coefficient: Number(row.coefficient) || 1.0,
-              grade: Number(row.average ?? row.grade ?? 0),
-              subGrades: subs,
-            });
-          }
-        }
-      }
-    }
-  } catch (e) {}
-
-  // 3. Compléter avec les matières enregistrées de l'élève (unifolder_saved_matieres)
+  // 1. Initialiser avec les matières enregistrées de l'élève (unifolder_saved_matieres) pour garantir l'affichage des matières
   try {
     const savedMat = localStorage.getItem('unifolder_saved_matieres');
     if (savedMat) {
       const parsedMat = JSON.parse(savedMat);
       if (Array.isArray(parsedMat) && parsedMat.length > 0) {
         (['1', '2', '3'] as const).forEach(trimKey => {
-          const currentList = result[trimKey] || [];
           parsedMat.forEach((m: any) => {
             const name = (m.name || '').trim();
             if (!name) return;
-            const exists = currentList.some((item: any) => (item.subject || '').trim().toLowerCase() === name.toLowerCase());
-            if (!exists) {
-              currentList.push({
-                id: m.id ? `${m.id}_t${trimKey}` : `mat_${Date.now()}_t${trimKey}`,
-                subject: name,
-                coefficient: parseFloat(m.coefficient) || 1.0,
-                grade: 0,
-                subGrades: []
-              });
-            }
+            result[trimKey].push({
+              id: m.id ? `${m.id}_t${trimKey}` : `mat_${name}_t${trimKey}`,
+              subject: name,
+              coefficient: parseFloat(m.coefficient) || 1.0,
+              grade: 0,
+              subGrades: []
+            });
           });
-          result[trimKey] = currentList;
         });
       }
     }
   } catch (e) {}
+
+  // 2. Fusionner les notes réelles récupérées depuis Cloudflare D1
+  if (Array.isArray(d1Rows) && d1Rows.length > 0) {
+    for (const row of d1Rows) {
+      const trimKey = String(row.trimester || '1');
+      if (!result[trimKey]) result[trimKey] = [];
+      let subs: any[] = [];
+      try {
+        if (typeof row.sub_grades_json === 'string') {
+          subs = JSON.parse(row.sub_grades_json);
+        } else if (Array.isArray(row.sub_grades_json)) {
+          subs = row.sub_grades_json;
+        }
+      } catch (e) {}
+
+      const subjectName = (row.subject_name || row.subject || 'Matière').trim();
+      const existingIdx = result[trimKey].findIndex((item: any) =>
+        (item.id && row.id && String(item.id) === String(row.id)) ||
+        (item.subject && item.subject.trim().toLowerCase() === subjectName.toLowerCase())
+      );
+
+      const gradeObj = {
+        id: String(row.id || `d1-${Math.random()}`),
+        subject: subjectName,
+        coefficient: Number(row.coefficient) || 1.0,
+        grade: Number(row.average ?? row.grade ?? 0),
+        subGrades: subs,
+      };
+
+      if (existingIdx !== -1) {
+        result[trimKey][existingIdx] = { ...result[trimKey][existingIdx], ...gradeObj };
+      } else {
+        result[trimKey].push(gradeObj);
+      }
+    }
+  }
 
   return result;
 };
@@ -195,15 +176,23 @@ const getTrimesterAverage = (trimestreKey: string, scale: number, data: Record<s
 };
 
 const getSubjectsList = (trimKey: string, data: Record<string, any[]>) => {
+  const subjectsSet = new Set<string>();
+
   const items = data[trimKey] || [];
-  if (Array.isArray(items) && items.length > 0) {
-    return items.map((i: any) => (i.subject || 'Matière').trim());
+  if (Array.isArray(items)) {
+    items.forEach((i: any) => {
+      const s = (i.subject || '').trim();
+      if (s) subjectsSet.add(s);
+    });
   }
 
   for (const t of ['1', '2', '3'] as const) {
     const otherItems = data[t] || [];
-    if (Array.isArray(otherItems) && otherItems.length > 0) {
-      return otherItems.map((i: any) => (i.subject || 'Matière').trim());
+    if (Array.isArray(otherItems)) {
+      otherItems.forEach((i: any) => {
+        const s = (i.subject || '').trim();
+        if (s) subjectsSet.add(s);
+      });
     }
   }
 
@@ -211,13 +200,17 @@ const getSubjectsList = (trimKey: string, data: Record<string, any[]>) => {
     const savedMat = localStorage.getItem('unifolder_saved_matieres');
     if (savedMat) {
       const parsedMat = JSON.parse(savedMat);
-      if (Array.isArray(parsedMat) && parsedMat.length > 0) {
-        return parsedMat.map((m: any) => (m.name || 'Matière').trim());
+      if (Array.isArray(parsedMat)) {
+        parsedMat.forEach((m: any) => {
+          const s = (m.name || '').trim();
+          if (s) subjectsSet.add(s);
+        });
       }
     }
   } catch (e) {}
 
-  return ['Mathématiques', 'Physique', 'Anglais'];
+  const list = Array.from(subjectsSet);
+  return list.length > 0 ? list : ['Mathématiques', 'Physique', 'Anglais'];
 };
 
 const getNoteDataForSubject = (trimKey: string, subName: string, scale: number, data: Record<string, any[]>) => {
@@ -371,7 +364,7 @@ const getGlobalGradeDistribution = (scale: number, data: Record<string, any[]>) 
 
 export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
   const [standardScale, setStandardScale] = useState<number>(() => getStandardScale());
-  const [gradesData, setGradesData] = useState<Record<string, any[]>>(() => loadAllGradesData());
+  const [gradesData, setGradesData] = useState<Record<string, any[]>>(() => formatGradesDataFromD1([]));
   const [isRightDrawerOpen, setIsRightDrawerOpen] = useState(false);
   const [selectedAnalysis, setSelectedAnalysis] = useState<string>('analyse globale');
   const [subjectTrimestre, setSubjectTrimestre] = useState<'1' | '2' | '3'>('1');
@@ -379,62 +372,15 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
   const [selectedNoteSubject, setSelectedNoteSubject] = useState<string>('');
   const [isNoteSubjectDropdownOpen, setIsNoteSubjectDropdownOpen] = useState(false);
 
-  // Synchronisation descendante directe depuis Cloudflare D1 avec fusion intelligente
-  useEffect(() => {
+  // Chargement direct depuis Cloudflare D1
+  const fetchGradesFromD1 = useCallback(() => {
     const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
     StudyCloudAPI.getGrades(userId)
       .then((res: any) => {
-        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-          setGradesData(prev => {
-            const updated: Record<string, any[]> = {
-              '1': prev['1'] ? [...prev['1']] : [],
-              '2': prev['2'] ? [...prev['2']] : [],
-              '3': prev['3'] ? [...prev['3']] : [],
-            };
-
-            for (const row of res.data) {
-              const trimKey = String(row.trimester || '1');
-              if (!updated[trimKey]) updated[trimKey] = [];
-              let subs: any[] = [];
-              try {
-                if (typeof row.sub_grades_json === 'string') {
-                  subs = JSON.parse(row.sub_grades_json);
-                } else if (Array.isArray(row.sub_grades_json)) {
-                  subs = row.sub_grades_json;
-                }
-              } catch (e) {}
-
-              const subjectName = row.subject_name || row.subject || 'Matière';
-              const existingIdx = updated[trimKey].findIndex((item: any) =>
-                (item.id && row.id && String(item.id) === String(row.id)) ||
-                (item.subject && item.subject.trim().toLowerCase() === subjectName.trim().toLowerCase())
-              );
-
-              const gradeObj = {
-                id: row.id || `d1-${Math.random()}`,
-                subject: subjectName,
-                coefficient: Number(row.coefficient) || 1.0,
-                grade: Number(row.average ?? row.grade ?? 0),
-                subGrades: subs,
-              };
-
-              if (existingIdx !== -1) {
-                const localItem = updated[trimKey][existingIdx];
-                if (subs.length === 0 && Array.isArray(localItem.subGrades) && localItem.subGrades.length > 0) {
-                  gradeObj.subGrades = localItem.subGrades;
-                }
-                updated[trimKey][existingIdx] = { ...localItem, ...gradeObj };
-              } else {
-                updated[trimKey].push(gradeObj);
-              }
-            }
-
-            try {
-              localStorage.setItem('user_grades_trimesters_data', JSON.stringify(updated));
-            } catch (e) {}
-
-            return updated;
-          });
+        if (res && res.success && Array.isArray(res.data)) {
+          setGradesData(formatGradesDataFromD1(res.data));
+        } else {
+          setGradesData(formatGradesDataFromD1([]));
         }
       })
       .catch((err) => {
@@ -442,10 +388,15 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
       });
   }, []);
 
-  // Écoute de tous les événements de mise à jour des notes et matières
+  // Chargement initial au montage
+  useEffect(() => {
+    fetchGradesFromD1();
+  }, [fetchGradesFromD1]);
+
+  // Écoute de tous les événements de mise à jour des notes et matières (rechargement D1 en temps réel)
   useEffect(() => {
     const handleUpdate = () => {
-      setGradesData(loadAllGradesData());
+      fetchGradesFromD1();
       setStandardScale(getStandardScale());
     };
 
@@ -460,7 +411,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
       window.removeEventListener('unifolder_files_updated', handleUpdate);
       window.removeEventListener('storage', handleUpdate);
     };
-  }, []);
+  }, [fetchGradesFromD1]);
 
   const t1Avg = useMemo(() => getTrimesterAverage('1', standardScale, gradesData), [standardScale, gradesData]);
   const t2Avg = useMemo(() => getTrimesterAverage('2', standardScale, gradesData), [standardScale, gradesData]);
@@ -488,7 +439,20 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
   ], [t1Avg, t2Avg, t3Avg, standardScale]);
 
   const noteSubjects = useMemo(() => getSubjectsList(noteTrimestre, gradesData), [noteTrimestre, gradesData]);
-  const currentNoteSubject = noteSubjects.includes(selectedNoteSubject) ? selectedNoteSubject : (noteSubjects[0] || 'Matière');
+  const currentNoteSubject = useMemo(() => {
+    if (selectedNoteSubject && noteSubjects.includes(selectedNoteSubject)) {
+      return selectedNoteSubject;
+    }
+    // Sélectionner automatiquement en priorité la première matière qui contient des notes pour ce trimestre
+    const subjectWithGrade = noteSubjects.find(sub => {
+      const items = gradesData[noteTrimestre] || [];
+      const it = items.find((i: any) => (i.subject || '').trim().toLowerCase() === sub.trim().toLowerCase());
+      if (!it) return false;
+      const { hasGrade } = getItemAverage(it, standardScale);
+      return hasGrade;
+    });
+    return subjectWithGrade || noteSubjects[0] || 'Matière';
+  }, [selectedNoteSubject, noteSubjects, gradesData, noteTrimestre, standardScale]);
 
   const cycleNoteSubject = () => {
     if (noteSubjects.length <= 1) return;

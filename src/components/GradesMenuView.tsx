@@ -15,56 +15,15 @@ interface GradesMenuViewProps {
   onBack: () => void;
 }
 
-const getInitialTrimestersData = (): Record<string, GradeItem[]> => {
-  try {
-    const saved = localStorage.getItem('user_grades_trimesters_data');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed && typeof parsed === 'object') {
-        const hasAnyItems = Object.values(parsed).some((list: any) => Array.isArray(list) && list.length > 0);
-        if (hasAnyItems) {
-          return parsed;
-        }
-      }
-    }
-  } catch (e) {}
-
-  let initialSubjects: { id: string; name: string; coefficient: string }[] = [];
-  try {
-    const savedMat = localStorage.getItem('unifolder_saved_matieres');
-    if (savedMat) {
-      const parsedMat = JSON.parse(savedMat);
-      if (Array.isArray(parsedMat) && parsedMat.length > 0) {
-        initialSubjects = parsedMat;
-      }
-    }
-  } catch (e) {}
-
-  if (initialSubjects.length === 0) {
-    return { '1': [], '2': [], '3': [] };
-  }
-
-  const baseItems: GradeItem[] = initialSubjects.map((m, idx) => ({
-    id: m.id || String(idx + 1),
-    subject: m.name,
-    coefficient: parseFloat(m.coefficient) || 1.0,
-    grade: 0,
-    subGrades: []
-  }));
-
-  return {
-    '1': baseItems,
-    '2': baseItems.map(item => ({ ...item, id: 't2-' + item.id })),
-    '3': baseItems.map(item => ({ ...item, id: 't3-' + item.id }))
-  };
-};
+// Plus de lecture depuis localStorage - D1 est la source de vérité
+const getEmptyTrimestersData = (): Record<string, GradeItem[]> => ({
+  '1': [], '2': [], '3': []
+});
 
 export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
   const [activeTrimestre, setActiveTrimestre] = useState<'1' | '2' | '3'>('1');
-  
-  const [trimestersData, setTrimestersData] = useState<Record<string, GradeItem[]>>(() => {
-    return getInitialTrimestersData();
-  });
+  const [trimestersData, setTrimestersData] = useState<Record<string, GradeItem[]>>(getEmptyTrimestersData);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [standardScale, setStandardScale] = useState<number>(() => {
     try {
@@ -95,173 +54,102 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
   const [showCalcStepsModal, setShowCalcStepsModal] = useState(false);
   const [showAddLineConfirm, setShowAddLineConfirm] = useState(false);
 
-  // Synchronisation avec les matières créées dans le menu "Matière"
+  // Synchronisation des matières depuis le menu "Matière" (seulement pour compléter les sujets manquants)
+  // Ne se déclenche qu'après le chargement D1 pour ne pas créer de doublons
+
+  // Sauvegarde vers D1 quand les données changent (pas de localStorage)
   useEffect(() => {
-    try {
-      const savedMat = localStorage.getItem('unifolder_saved_matieres');
-      if (savedMat) {
-        const parsedMat = JSON.parse(savedMat);
-        if (Array.isArray(parsedMat) && parsedMat.length > 0) {
-          setTrimestersData(prev => {
-            let hasChanged = false;
-            const updated = { ...prev };
-            (['1', '2', '3'] as const).forEach(trimKey => {
-              const currentList = updated[trimKey] ? [...updated[trimKey]] : [];
-              parsedMat.forEach((m: any) => {
-                const name = (m.name || '').trim();
-                if (!name) return;
-                const exists = currentList.some(item => item.subject.trim().toLowerCase() === name.toLowerCase());
-                if (!exists) {
-                  hasChanged = true;
-                  currentList.push({
-                    id: `${m.id || Date.now()}_t${trimKey}`,
-                    subject: name,
-                    coefficient: parseFloat(m.coefficient) || 1.0,
-                    grade: 0,
-                    subGrades: []
-                  });
-                }
-              });
-              updated[trimKey] = currentList;
-            });
-            return hasChanged ? updated : prev;
-          });
-        }
-      }
-    } catch (e) {}
-  }, []);
-
-  // Sauvegarde sécurisée dans localStorage avec nettoyage si quota dépassé
-  const safeSaveGrades = (data: Record<string, GradeItem[]>) => {
-    const json = JSON.stringify(data);
-    try {
-      localStorage.setItem('user_grades_trimesters_data', json);
-    } catch (e: any) {
-      if (e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014)) {
-        // Nettoyer les entrées non critiques pour libérer de la place
-        const keysToClean = [
-          'unifolder_grades_data',
-          'user_grades_trimesters_data_backup',
-        ];
-        keysToClean.forEach(k => { try { localStorage.removeItem(k); } catch {} });
-        // Réessayer après nettoyage
-        try { localStorage.setItem('user_grades_trimesters_data', json); } catch {}
-      }
-    }
-  };
-
-  // Synchronisation automatique vers localStorage et Cloudflare D1
-  useEffect(() => {
-    safeSaveGrades(trimestersData);
-    triggerDebouncedCloudBackup();
-    window.dispatchEvent(new Event('user_grades_changed'));
-
+    if (isLoading) return; // Ne pas sauvegarder l'état vide initial
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
     const timer = setTimeout(() => {
+      const promises: Promise<any>[] = [];
       Object.entries(trimestersData).forEach(([trim, items]) => {
         if (Array.isArray(items)) {
           items.forEach((item: any) => {
-            StudyCloudAPI.saveGrade({
-              id: item.id,
-              userId,
-              trimester: Number(trim) || 1,
-              subjectName: item.subject,
-              coefficient: item.coefficient,
-              subGradesJson: JSON.stringify(item.subGrades || []),
-              average: item.grade
-            }).catch(() => {});
+            promises.push(
+              StudyCloudAPI.saveGrade({
+                id: item.id,
+                userId,
+                trimester: Number(trim) || 1,
+                subjectName: item.subject,
+                coefficient: item.coefficient,
+                subGradesJson: JSON.stringify(item.subGrades || []),
+                average: item.grade
+              }).catch(() => {})
+            );
           });
         }
       });
-    }, 800);
+      Promise.all(promises).then(() => {
+        window.dispatchEvent(new Event('user_grades_changed'));
+      });
+    }, 600);
+    triggerDebouncedCloudBackup();
     return () => clearTimeout(timer);
-  }, [trimestersData]);
+  }, [trimestersData, isLoading]);
 
-  // Récupération des notes depuis Cloudflare D1 au montage
-  useEffect(() => {
+  // Chargement des notes EXCLUSIVEMENT depuis Cloudflare D1
+  const loadGradesFromD1 = React.useCallback(() => {
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    setIsLoading(true);
     StudyCloudAPI.getGrades(userId)
       .then((res: any) => {
         if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-          // Fusionner avec les données locales pour préserver les subGrades
-          setTrimestersData(prev => {
-            const merged: Record<string, GradeItem[]> = {
-              '1': prev['1'] ? [...prev['1']] : [],
-              '2': prev['2'] ? [...prev['2']] : [],
-              '3': prev['3'] ? [...prev['3']] : [],
-            };
-            for (const row of res.data) {
-              const trimKey = String(row.trimester || '1');
-              if (!merged[trimKey]) merged[trimKey] = [];
-              let subs: any[] = [];
-              try {
-                if (typeof row.sub_grades_json === 'string') {
-                  subs = JSON.parse(row.sub_grades_json);
-                } else if (Array.isArray(row.sub_grades_json)) {
-                  subs = row.sub_grades_json;
-                }
-              } catch (e) { subs = []; }
-
-              const subjectName = (row.subject_name || row.subject || 'Matière').trim();
-              const existingIdx = merged[trimKey].findIndex(item =>
-                (item.id && row.id && String(item.id) === String(row.id)) ||
-                item.subject.trim().toLowerCase() === subjectName.toLowerCase()
-              );
-
-              // Si D1 renvoie des subGrades vides mais que les données locales en ont, on garde les locales
-              const localItem = existingIdx !== -1 ? merged[trimKey][existingIdx] : null;
-              const finalSubs = (subs.length === 0 && localItem && Array.isArray(localItem.subGrades) && localItem.subGrades.length > 0)
-                ? localItem.subGrades
-                : subs;
-
-              const gradeObj: GradeItem = {
-                id: row.id || (localItem ? localItem.id : `d1-${Math.random()}`),
-                subject: subjectName,
-                coefficient: Number(row.coefficient) || 1.0,
-                grade: finalSubs.length > 0 ? (localItem ? localItem.grade : Number(row.average) || 0) : (Number(row.average) || Number(row.grade) || 0),
-                subGrades: finalSubs,
-              };
-
-              if (existingIdx !== -1) {
-                merged[trimKey][existingIdx] = { ...(localItem as GradeItem), ...gradeObj };
-              } else {
-                merged[trimKey].push(gradeObj);
-              }
-            }
+          const loaded: Record<string, GradeItem[]> = { '1': [], '2': [], '3': [] };
+          for (const row of res.data) {
+            const trimKey = String(row.trimester || '1');
+            if (!loaded[trimKey]) loaded[trimKey] = [];
+            let subs: any[] = [];
             try {
-              safeSaveGrades(merged);
-            } catch {}
-            window.dispatchEvent(new Event('user_grades_changed'));
-            return merged;
-          });
-        } else if (res && res.success && Array.isArray(res.data) && res.data.length === 0) {
-          // Si la base distante est encore vide, pousser les données locales vers Cloudflare D1
-          const localData = getInitialTrimestersData();
-          const hasLocalItems = Object.values(localData).some(list => Array.isArray(list) && list.length > 0);
-          if (hasLocalItems) {
-            Object.entries(localData).forEach(([trim, items]) => {
-              if (Array.isArray(items)) {
-                items.forEach((item: any) => {
-                  StudyCloudAPI.saveGrade({
-                    id: item.id,
-                    userId,
-                    trimester: Number(trim) || 1,
-                    subjectName: item.subject,
-                    coefficient: item.coefficient,
-                    subGradesJson: JSON.stringify(item.subGrades || []),
-                    average: item.grade
-                  }).catch(() => {});
+              if (typeof row.sub_grades_json === 'string') subs = JSON.parse(row.sub_grades_json);
+              else if (Array.isArray(row.sub_grades_json)) subs = row.sub_grades_json;
+            } catch { subs = []; }
+
+            loaded[trimKey].push({
+              id: String(row.id || `d1-${Math.random()}`),
+              subject: (row.subject_name || row.subject || 'Matière').trim(),
+              coefficient: Number(row.coefficient) || 1.0,
+              grade: Number(row.average ?? row.grade ?? 0),
+              subGrades: subs,
+            });
+          }
+          setTrimestersData(loaded);
+          window.dispatchEvent(new Event('user_grades_changed'));
+          // Nettoyer l'ancienne donnée localStorage devenue inutile
+          try { localStorage.removeItem('user_grades_trimesters_data'); } catch {}
+        } else {
+          // D1 vide : charger les matières enregistrées pour afficher la liste
+          try {
+            const savedMat = localStorage.getItem('unifolder_saved_matieres');
+            if (savedMat) {
+              const parsedMat = JSON.parse(savedMat);
+              if (Array.isArray(parsedMat) && parsedMat.length > 0) {
+                const baseItems: GradeItem[] = parsedMat.map((m: any, idx: number) => ({
+                  id: m.id || String(idx + 1),
+                  subject: (m.name || 'Matière').trim(),
+                  coefficient: parseFloat(m.coefficient) || 1.0,
+                  grade: 0,
+                  subGrades: []
+                }));
+                setTrimestersData({
+                  '1': baseItems,
+                  '2': baseItems.map(i => ({ ...i, id: 't2-' + i.id })),
+                  '3': baseItems.map(i => ({ ...i, id: 't3-' + i.id }))
                 });
               }
-            });
-            triggerDebouncedCloudBackup();
-          }
+            }
+          } catch {}
         }
       })
       .catch((err) => {
         console.warn('[Grades] Erreur chargement initial D1:', err);
-      });
+      })
+      .finally(() => setIsLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadGradesFromD1();
+  }, [loadGradesFromD1]);
 
   useEffect(() => {
     try {
@@ -273,17 +161,11 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
 
   useEffect(() => {
     const handleRestore = () => {
-      try {
-        const saved = localStorage.getItem('user_grades_trimesters_data');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed && typeof parsed === 'object') setTrimestersData(parsed);
-        }
-      } catch (e) {}
+      loadGradesFromD1();
     };
     window.addEventListener('unifolder_data_restored', handleRestore);
     return () => window.removeEventListener('unifolder_data_restored', handleRestore);
-  }, []);
+  }, [loadGradesFromD1]);
 
   const currentItems = trimestersData[activeTrimestre] || [];
 
@@ -619,7 +501,12 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
 
       {/* Rows Container - Stacked white cards on background (Scrollable) */}
       <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-2.5 md:space-y-4 max-w-6xl xl:max-w-7xl w-full mx-auto pb-20">
-        {currentItems.length === 0 ? (
+        {isLoading ? (
+          <div className="bg-white dark:bg-[#161f30] rounded-xl md:rounded-2xl p-12 md:p-16 text-center text-stone-500 dark:text-slate-400 shadow-sm border border-stone-200 dark:border-slate-800 flex flex-col items-center justify-center gap-3 transition-colors">
+            <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <p className="font-semibold text-sm text-stone-700 dark:text-slate-200">Chargement de vos notes depuis la base de données...</p>
+          </div>
+        ) : currentItems.length === 0 ? (
           <div className="bg-white dark:bg-[#161f30] rounded-xl md:rounded-2xl p-12 md:p-16 text-center text-stone-500 dark:text-slate-400 shadow-sm border border-stone-200 dark:border-slate-800 transition-colors">
             <p className="font-semibold text-base md:text-lg text-stone-700 dark:text-slate-200">Aucune matière enregistrée</p>
             <p className="text-xs md:text-sm text-stone-400 dark:text-slate-400 mt-1">Cliquez sur le bouton "Ajouter" en haut pour commencer.</p>
