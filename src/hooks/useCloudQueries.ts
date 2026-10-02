@@ -300,6 +300,22 @@ export function useScheduleSlots(userId?: string) {
   });
 }
 
+/**
+ * Hook TanStack Query pour les notes du Bloc-notes (Keep notes) Cloudflare D1
+ */
+export function useNotesQuery(userId?: string) {
+  const currentUid = userId || getCurrentUserId() || 'default-user';
+  return useQuery<any[]>({
+    queryKey: QUERY_KEYS.notes(currentUid),
+    queryFn: async () => {
+      const res: any = await StudyCloudAPI.getNotes(currentUid);
+      return res && res.success && Array.isArray(res.data) ? res.data : [];
+    },
+    staleTime: 1000 * 60 * 2,
+    gcTime: 1000 * 60 * 5,
+  });
+}
+
 // ─── HOOKS DE MUTATION ──────────────────────────────────────────────────────────
 
 export function useDeleteFileMutation() {

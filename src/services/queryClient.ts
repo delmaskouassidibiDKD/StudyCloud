@@ -38,6 +38,7 @@ export const QUERY_KEYS = {
   matieresList: (userId?: string) => ['cloud', 'matieresList', userId || 'current'] as const,
   scheduleConfig: (userId?: string) => ['cloud', 'scheduleConfig', userId || 'current'] as const,
   scheduleSlots: (userId?: string) => ['cloud', 'scheduleSlots', userId || 'current'] as const,
+  notes: (userId?: string) => ['cloud', 'notes', userId || 'current'] as const,
 };
 
 export const invalidateCloudQueries = {
@@ -66,6 +67,7 @@ export const invalidateCloudQueries = {
     queryClient.invalidateQueries({ queryKey: ['cloud', 'scheduleConfig'] });
     queryClient.invalidateQueries({ queryKey: ['cloud', 'scheduleSlots'] });
   },
+  notes: () => queryClient.invalidateQueries({ queryKey: ['cloud', 'notes'] }),
   all: () => queryClient.invalidateQueries({ queryKey: ['cloud'] }),
 };
 

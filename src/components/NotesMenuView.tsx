@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Plus, X, Trash2, Image as ImageIcon, Pin, Check } from 'lucide-react';
+import { ArrowLeft, Plus, X, Trash2, Image as ImageIcon, Pin, Palette, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { triggerDebouncedCloudBackup } from '../services/userSync';
+import { triggerDebouncedCloudBackup, getCurrentUserId } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
+import { useNotesQuery } from '../hooks/useCloudQueries';
+import { invalidateCloudQueries } from '../services/queryClient';
+import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/safeStorage';
+import { compressNoteImage } from '../services/imageUtils';
 
 interface NotesMenuViewProps {
   onBack: () => void;
@@ -16,9 +20,8 @@ interface NoteItem {
   isPinned?: boolean;
   color?: string;
   imageUrl?: string;
+  date?: string;
 }
-
-const DEFAULT_NOTES: NoteItem[] = [];
 
 const COLOR_OPTIONS = [
   { id: 'dark-gray', bg: '#25272C', label: 'Noir/Gris' },
@@ -40,26 +43,37 @@ interface DragState {
 }
 
 export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
+  const userId = getCurrentUserId() || (typeof window !== 'undefined' ? localStorage.getItem('unifolder_user_id') : null) || 'default-user';
+
+  // Synchronisation TanStack Query avec Cloudflare D1
+  const { data: serverNotes } = useNotesQuery(userId);
+
+  // État local des notes (avec fallback sécurisé sans QuotaExceededError)
   const [notes, setNotes] = useState<NoteItem[]>(() => {
-    const saved = localStorage.getItem('unifolder_keep_notes');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed.map((item: NoteItem) => ({
-            ...item,
-            color: item.color && item.color !== '#FDFBF7' ? item.color : '#25272C'
-          }));
-        }
-      } catch (e) {}
+    const saved = safeLocalStorageGet<NoteItem[]>('unifolder_keep_notes', []);
+    if (Array.isArray(saved) && saved.length > 0) {
+      return saved.map((item: NoteItem) => ({
+        ...item,
+        color: item.color && item.color !== '#FDFBF7' ? item.color : '#25272C'
+      }));
     }
     return [];
   });
 
-  // Mode: 'list' or 'editor'
+  // Mode: 'list' ou 'editor'
   const [viewMode, setViewMode] = useState<'list' | 'editor'>('list');
   const [activeNote, setActiveNote] = useState<NoteItem | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+
+  // Mémorisation de l'état initial lors de l'ouverture pour détecter les changements exacts
+  const originalNoteRef = useRef<{
+    title: string;
+    content: string;
+    color: string;
+    isPinned: boolean;
+    imageUrl?: string;
+  } | null>(null);
 
   // Drag and Drop state
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -76,7 +90,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
     isDragging: boolean;
   } | null>(null);
 
-  // Editor form state
+  // Formulaire d'édition
   const [editorTitle, setEditorTitle] = useState('');
   const [editorContent, setEditorContent] = useState('');
   const [editorColor, setEditorColor] = useState('#25272C');
@@ -84,58 +98,31 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
   const [editorImage, setEditorImage] = useState<string | undefined>(undefined);
 
   const imageInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    localStorage.setItem('unifolder_keep_notes', JSON.stringify(notes));
-    triggerDebouncedCloudBackup();
-  }, [notes]);
-
-  // Synchronisation avec Cloudflare D1
-  useEffect(() => {
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
-    StudyCloudAPI.getNotes(userId)
-      .then((res: any) => {
-        if (res && res.success && Array.isArray(res.data)) {
-          const mapped: NoteItem[] = res.data.map((row: any) => ({
-            id: row.id,
-            title: row.title || '',
-            content: row.content || '',
-            color: row.color && row.color !== '#FDFBF7' ? row.color : '#25272C',
-            isPinned: Boolean(row.is_pinned),
-            imageUrl: row.image_url || undefined,
-            createdAt: row.created_at || new Date().toISOString(),
-          }));
-          setNotes(mapped);
-          localStorage.setItem('unifolder_keep_notes', JSON.stringify(mapped));
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    const handleRestore = () => {
-      const saved = localStorage.getItem('unifolder_keep_notes');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) setNotes(parsed);
-        } catch (e) {}
-      } else {
-        setNotes([]);
-      }
-    };
-    window.addEventListener('unifolder_data_restored', handleRestore);
-    return () => window.removeEventListener('unifolder_data_restored', handleRestore);
-  }, []);
-
   const listContainerRef = useRef<HTMLDivElement>(null);
 
-  // Sync ref
+  // Mise à jour de l'état local dès que TanStack Query charge les données serveur
+  useEffect(() => {
+    if (serverNotes && Array.isArray(serverNotes) && viewMode !== 'editor') {
+      const mapped: NoteItem[] = serverNotes.map((row: any) => ({
+        id: row.id,
+        title: row.title || '',
+        content: row.content || '',
+        color: row.color && row.color !== '#FDFBF7' ? row.color : '#25272C',
+        isPinned: Boolean(row.is_pinned),
+        imageUrl: row.image_url || undefined,
+        createdAt: row.created_at || new Date().toISOString(),
+      }));
+      setNotes(mapped);
+      safeLocalStorageSet('unifolder_keep_notes', mapped);
+    }
+  }, [serverNotes, viewMode]);
+
+  // Synchronisation ref
   useEffect(() => {
     dragStateRef.current = dragState;
   }, [dragState]);
 
-  // Prevent browser default touch action during active drag
+  // Empêcher le scroll intempestif pendant le drag
   useEffect(() => {
     const preventTouchScroll = (e: TouchEvent) => {
       if (pointerDownRef.current?.isDragging) {
@@ -149,7 +136,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
     };
   }, []);
 
-  // Global Pointer Events for smooth drag and reorder with Long-Press
+  // Gestion du pointer global pour le réarrangement fluide
   useEffect(() => {
     const handleGlobalPointerMove = (e: PointerEvent) => {
       const p = pointerDownRef.current;
@@ -161,10 +148,8 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
       const deltaX = Math.abs(e.clientX - p.x);
       const deltaY = Math.abs(e.clientY - p.y);
 
-      // If finger/mouse moves more than 5px before long press fires
       if (!p.isDragging && (deltaX > 5 || deltaY > 5)) {
         if (e.pointerType === 'mouse') {
-          // Immediately start drag for mouse
           p.isDragging = true;
           if (longPressTimerRef.current) {
             clearTimeout(longPressTimerRef.current);
@@ -180,7 +165,6 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
             offsetY: p.y - p.cardRect.top,
           });
         } else {
-          // Touch device: user is scrolling page, cancel long press
           if (longPressTimerRef.current) {
             clearTimeout(longPressTimerRef.current);
             longPressTimerRef.current = null;
@@ -191,7 +175,6 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
       if (p.isDragging) {
         setDragState(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
 
-        // Auto-scroll list container when dragging near top or bottom screen boundaries
         if (listContainerRef.current) {
           const container = listContainerRef.current;
           const viewportHeight = window.innerHeight;
@@ -204,9 +187,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
         }
 
         const now = Date.now();
-        // Cooldown between swaps to prevent flickering
         if (now - lastSwapTimeRef.current > 160) {
-          // Find element under cursor/finger
           const element = document.elementFromPoint(e.clientX, e.clientY);
           const cardElement = element?.closest('[data-note-id]');
           if (cardElement) {
@@ -234,6 +215,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
                 const newNotes = [...prevNotes];
                 const [movedItem] = newNotes.splice(fromIndex, 1);
                 newNotes.splice(toIndex, 0, movedItem);
+                safeLocalStorageSet('unifolder_keep_notes', newNotes);
                 return newNotes;
               });
             }
@@ -253,7 +235,6 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
         const deltaX = Math.abs(p.currentX - p.x);
         const deltaY = Math.abs(p.currentY - p.y);
 
-        // Only open note if it wasn't dragging AND user didn't move finger
         if (!p.isDragging && deltaX < 8 && deltaY < 8) {
           openEditNote(p.note);
         }
@@ -275,7 +256,6 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
   }, []);
 
   const handlePointerDownCard = (e: React.PointerEvent, note: NoteItem) => {
-    // Only primary button or touch
     if (e.button !== 0 && e.pointerType === 'mouse') return;
 
     const cardElem = e.currentTarget as HTMLElement;
@@ -297,18 +277,14 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
 
     pointerDownRef.current = initialInfo;
 
-    // Require holding down (Long-press ~380ms) to trigger drag mode
     longPressTimerRef.current = setTimeout(() => {
       const p = pointerDownRef.current;
       if (p && !p.isDragging) {
         const deltaX = Math.abs(p.currentX - p.x);
         const deltaY = Math.abs(p.currentY - p.y);
 
-        // Make sure user didn't move away (scrolling)
         if (deltaX < 10 && deltaY < 10) {
           p.isDragging = true;
-
-          // Optional haptic vibration on mobile
           if (typeof navigator !== 'undefined' && navigator.vibrate) {
             try { navigator.vibrate(35); } catch (e) {}
           }
@@ -335,6 +311,8 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
     setEditorColor('#25272C');
     setEditorPinned(false);
     setEditorImage(undefined);
+    setShowColorPicker(false);
+    originalNoteRef.current = null;
     setViewMode('editor');
   };
 
@@ -342,26 +320,58 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
     setActiveNote(note);
     setEditorTitle(note.title);
     setEditorContent(note.content);
-    setEditorColor(note.color || '#25272C');
-    setEditorPinned(!!note.isPinned);
+    const initialColor = note.color || '#25272C';
+    setEditorColor(initialColor);
+    const initialPinned = !!note.isPinned;
+    setEditorPinned(initialPinned);
     setEditorImage(note.imageUrl);
+    setShowColorPicker(false);
+
+    // Mémoriser l'état d'ouverture pour comparaison lors de la sortie
+    originalNoteRef.current = {
+      title: note.title,
+      content: note.content,
+      color: initialColor,
+      isPinned: initialPinned,
+      imageUrl: note.imageUrl,
+    };
+
     setViewMode('editor');
   };
 
+  /**
+   * Sortie du bloc-notes : Détecte précisément s'il y a eu des changements.
+   * Si OUI -> Enregistrement / mise à jour dans la base de données D1.
+   * Si NON -> Aucun enregistrement superflu dans la base de données.
+   */
   const handleSaveAndBack = () => {
-    if (editorTitle.trim() || editorContent.trim() || editorImage) {
-      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
-      if (activeNote) {
-        // Update existing note
-        const updatedNote = {
+    setShowColorPicker(false);
+
+    if (activeNote) {
+      // Vérifier s'il y a eu des modifications par rapport à l'ouverture
+      const hasChanged =
+        !originalNoteRef.current ||
+        originalNoteRef.current.title !== editorTitle ||
+        originalNoteRef.current.content !== editorContent ||
+        originalNoteRef.current.color !== editorColor ||
+        originalNoteRef.current.isPinned !== editorPinned ||
+        originalNoteRef.current.imageUrl !== editorImage;
+
+      if (hasChanged) {
+        const updatedNote: NoteItem = {
           ...activeNote,
           title: editorTitle,
           content: editorContent,
           color: editorColor,
           isPinned: editorPinned,
-          imageUrl: editorImage
+          imageUrl: editorImage,
         };
-        setNotes(prev => prev.map(n => n.id === activeNote.id ? updatedNote : n));
+
+        const updatedList = notes.map((n) => (n.id === activeNote.id ? updatedNote : n));
+        setNotes(updatedList);
+        safeLocalStorageSet('unifolder_keep_notes', updatedList);
+
+        // Mise à jour dans la base de données Cloudflare D1
         StudyCloudAPI.saveNote({
           id: updatedNote.id,
           userId,
@@ -369,20 +379,33 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
           content: updatedNote.content,
           color: updatedNote.color,
           isPinned: updatedNote.isPinned,
-          imageUrl: updatedNote.imageUrl
-        }).catch(() => {});
-      } else {
-        // Create new note
+          imageUrl: updatedNote.imageUrl,
+        })
+          .then(() => {
+            invalidateCloudQueries.notes();
+          })
+          .catch((err) => console.error('[Notes] Erreur lors de la mise à jour D1:', err));
+      }
+      // Si aucun changement : pas d'enregistrement, retour direct
+    } else {
+      // Création d'une nouvelle note : enregistrer uniquement si du contenu a été saisi
+      const hasContent = Boolean(editorTitle.trim() || editorContent.trim() || editorImage);
+      if (hasContent) {
         const newNote: NoteItem = {
-          id: 'note-' + Math.random().toString(36).substring(2, 9),
+          id: 'note-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8),
           title: editorTitle,
           content: editorContent,
           color: editorColor,
           isPinned: editorPinned,
           imageUrl: editorImage,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
         };
-        setNotes(prev => [newNote, ...prev]);
+
+        const updatedList = [newNote, ...notes];
+        setNotes(updatedList);
+        safeLocalStorageSet('unifolder_keep_notes', updatedList);
+
+        // Enregistrement dans la base de données Cloudflare D1
         StudyCloudAPI.saveNote({
           id: newNote.id,
           userId,
@@ -390,19 +413,23 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
           content: newNote.content,
           color: newNote.color,
           isPinned: newNote.isPinned,
-          imageUrl: newNote.imageUrl
-        }).catch(() => {});
+          imageUrl: newNote.imageUrl,
+        })
+          .then(() => {
+            invalidateCloudQueries.notes();
+          })
+          .catch((err) => console.error('[Notes] Erreur lors de la création D1:', err));
       }
     }
+
     setViewMode('list');
   };
 
   const deleteNoteAndSendToTrash = (id: string) => {
-    const noteToDelete = notes.find(n => n.id === id);
+    const noteToDelete = notes.find((n) => n.id === id);
     if (noteToDelete) {
       try {
-        const savedTrash = localStorage.getItem('studycloud_trash_files');
-        const trashList = savedTrash ? JSON.parse(savedTrash) : [];
+        const trashList = safeLocalStorageGet<any[]>('studycloud_trash_files', []);
         const trashItem = {
           id: noteToDelete.id,
           name: `${noteToDelete.title || 'Note sans titre'}.txt`,
@@ -412,13 +439,25 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
           category: 'documents',
           extension: 'txt',
           isNotepad: true,
-          content: noteToDelete.content
+          content: noteToDelete.content,
         };
-        localStorage.setItem('studycloud_trash_files', JSON.stringify([trashItem, ...trashList.filter((t: any) => t.id !== id)]));
+        safeLocalStorageSet('studycloud_trash_files', [
+          trashItem,
+          ...trashList.filter((t: any) => t.id !== id),
+        ]);
       } catch {}
     }
-    setNotes(prev => prev.filter(n => n.id !== id));
-    StudyCloudAPI.deleteNote(id).catch(() => {});
+
+    const updated = notes.filter((n) => n.id !== id);
+    setNotes(updated);
+    safeLocalStorageSet('unifolder_keep_notes', updated);
+
+    // Suppression dans la base de données D1
+    StudyCloudAPI.deleteNote(id)
+      .then(() => {
+        invalidateCloudQueries.notes();
+      })
+      .catch((e) => console.error('[Notes] Erreur suppression D1:', e));
   };
 
   const handleDeleteNote = (id: string) => {
@@ -426,19 +465,25 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
     setViewMode('list');
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Téléversement d'image avec compression automatique (résolution adaptée et poids < 50 Ko)
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setEditorImage(event.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressed = await compressNoteImage(file, 800, 800, 0.75);
+        setEditorImage(compressed);
+      } catch (err) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setEditorImage(event.target?.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 
-  const pinnedNotes = notes.filter(n => n.isPinned);
-  const unpinnedNotes = notes.filter(n => !n.isPinned);
+  const pinnedNotes = notes.filter((n) => n.isPinned);
+  const unpinnedNotes = notes.filter((n) => !n.isPinned);
 
   // ---------------- RENDER MAIN NOTES LIST VIEW & FULL NOTE EDITOR PAGE ----------------
   return (
@@ -447,7 +492,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
         style={{ backgroundColor: editorColor }}
         className={`absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 w-full md:w-[calc(100%-16rem)] text-white overflow-y-auto flex-col min-h-[calc(100vh-66px)] select-none transition-all duration-300 ease-in-out flex ${viewMode === 'editor' ? 'opacity-100 z-30 visible' : 'opacity-0 -z-50 invisible pointer-events-none'}`}
       >
-        {/* Floating Fixed Buttons (No background bar) */}
+        {/* Floating Fixed Buttons Toolbar */}
         <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-center justify-between z-50 pointer-events-none">
           <button
             onClick={handleSaveAndBack}
@@ -457,14 +502,85 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
             <span>Retour</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => setShowDeleteConfirm(true)}
-            className="pointer-events-auto p-2 rounded-xl bg-red-500/80 text-white border-2 border-red-700 shadow-[1px_1px_0px_0px_#1c1917] hover:bg-red-600 transition-colors cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
-            title="Supprimer la note"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2 bg-black/40 backdrop-blur-md px-2 py-1 rounded-xl border border-white/10 shadow-lg relative">
+            {/* Bouton Épingler */}
+            <button
+              type="button"
+              onClick={() => setEditorPinned((p) => !p)}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                editorPinned
+                  ? 'bg-amber-500 text-stone-900 font-bold shadow-xs'
+                  : 'text-stone-300 hover:text-white hover:bg-white/10'
+              }`}
+              title={editorPinned ? 'Détacher la note' : 'Épingler en haut'}
+            >
+              <Pin className={`w-4 h-4 ${editorPinned ? 'fill-current' : ''}`} />
+            </button>
+
+            {/* Bouton Palette de couleurs */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowColorPicker((prev) => !prev)}
+                className="p-1.5 rounded-lg text-stone-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                title="Changer la couleur du bloc"
+              >
+                <Palette className="w-4 h-4" />
+              </button>
+
+              {/* Menu déroulant des couleurs */}
+              {showColorPicker && (
+                <div className="absolute right-0 top-10 z-50 bg-[#1c1917] border-2 border-stone-700 rounded-xl p-2 shadow-2xl flex items-center gap-2">
+                  {COLOR_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setEditorColor(opt.bg);
+                        setShowColorPicker(false);
+                      }}
+                      style={{ backgroundColor: opt.bg }}
+                      className={`w-6 h-6 rounded-full border-2 transition-transform cursor-pointer ${
+                        editorColor === opt.bg
+                          ? 'border-white scale-110 shadow-md ring-2 ring-white/50'
+                          : 'border-stone-600 hover:scale-105'
+                      }`}
+                      title={opt.label}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Bouton Image */}
+            <button
+              type="button"
+              onClick={() => imageInputRef.current?.click()}
+              className="p-1.5 rounded-lg text-stone-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              title="Ajouter une image"
+            >
+              <ImageIcon className="w-4 h-4" />
+            </button>
+            <input
+              type="file"
+              ref={imageInputRef}
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageUpload}
+            />
+
+            {/* Bouton Supprimer */}
+            {activeNote && (
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/20 transition-colors cursor-pointer"
+                title="Supprimer la note"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Modal Confirmation de Suppression */}
@@ -484,7 +600,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
               <div className="space-y-1.5">
                 <h3 className="text-base font-extrabold text-white">Supprimer cette note ?</h3>
                 <p className="text-xs text-stone-300 leading-relaxed">
-                  Cette action est irrémédiable. Tout le contenu du bloc sera effacé et vous serez redirigé.
+                  Cette action est irrémédiable. Tout le contenu du bloc sera effacé.
                 </p>
               </div>
 
@@ -525,13 +641,14 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
                 type="button"
                 onClick={() => setEditorImage(undefined)}
                 className="absolute top-2 right-2 p-1.5 bg-black/80 text-white rounded-full transition-colors cursor-pointer hover:bg-black"
+                title="Retirer l'image"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
           )}
 
-          {/* Title Textarea (Auto-resizing, uppercase, max 2 lines, break-all) */}
+          {/* Title Textarea */}
           <div className="relative w-full">
             {!editorTitle && (
               <span 
@@ -589,7 +706,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
         className={`absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 overflow-y-auto flex-col min-h-[calc(100vh-66px)] select-none transition-all duration-300 ease-in-out flex ${viewMode !== 'editor' ? 'opacity-100 z-30 visible' : 'opacity-0 -z-50 invisible pointer-events-none'}`}
       >
       
-      {/* Fixed 3D Header - Solid Dark #070a13 */}
+      {/* Fixed 3D Header */}
       <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-center justify-between z-40 pointer-events-none">
         <button
           onClick={onBack}
@@ -620,7 +737,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
               {/* Pinned Section */}
               {pinnedNotes.length > 0 && (
                 <div>
-                  <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-[#2D4A3E] mb-3 px-1">
+                  <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-[#2D4A3E] dark:text-emerald-400 mb-3 px-1">
                     Épinglées
                   </h3>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -632,7 +749,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
               {/* Others Section */}
               <div>
                 {pinnedNotes.length > 0 && (
-                  <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-[#2D4A3E] mb-3 px-1">
+                  <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-[#2D4A3E] dark:text-emerald-400 mb-3 px-1">
                     Autres notes
                   </h3>
                 )}
@@ -645,7 +762,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
         </div>
       </div>
 
-      {/* Floating Drag Overlay Card (Google Keep blue border style) */}
+      {/* Floating Drag Overlay Card */}
       {dragState && (
         <div
           style={{
@@ -653,10 +770,10 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
             left: dragState.x - dragState.offsetX,
             top: dragState.y - dragState.offsetY,
             width: dragState.width,
-            backgroundColor: dragState.note.color || '#25272C',
-            zIndex: 9999,
+            height: dragState.height,
             pointerEvents: 'none',
-            touchAction: 'none',
+            zIndex: 9999,
+            backgroundColor: dragState.note.color || '#25272C',
           }}
           className="rounded-2xl p-4 border-2 border-blue-500 ring-4 ring-blue-500/80 shadow-[0_20px_50px_rgba(0,0,0,0.6)] scale-105 transition-transform select-none text-white overflow-hidden"
         >

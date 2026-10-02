@@ -72,6 +72,15 @@ export function sanitizeItemForStorage(item: any): any {
     clean.thumbnail_url = '';
   }
 
+  // Protéger contre les images lourdes en base64 dans les notes Keep
+  if (typeof clean.imageUrl === 'string' && (clean.imageUrl.startsWith('data:') || clean.imageUrl.length > 1000)) {
+    clean.imageUrl = '';
+  }
+
+  if (typeof clean.image === 'string' && (clean.image.startsWith('data:') || clean.image.length > 1000)) {
+    clean.image = '';
+  }
+
   // Nettoyer les propriétés inutiles ou trop lourdes
   delete clean.blob;
   delete clean.rawFile;

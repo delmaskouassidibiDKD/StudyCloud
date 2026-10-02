@@ -100,24 +100,24 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
           coefficient: String(m.coefficient || 1),
           color: m.color || '#EA580C',
         }));
-        localStorage.setItem('unifolder_saved_matieres', JSON.stringify(mappedMatieres));
+        safeLocalStorageSet('unifolder_saved_matieres', mappedMatieres);
       }
 
       // 3. Fichiers & Documents
       if (Array.isArray(d.files)) {
-        localStorage.setItem('unifolder_user_files', JSON.stringify(d.files));
+        safeLocalStorageSet('unifolder_user_files', d.files);
       }
 
       // 4. Notes Keep
       if (Array.isArray(d.notes)) {
-        localStorage.setItem('unifolder_keep_notes', JSON.stringify(d.notes));
+        safeLocalStorageSet('unifolder_keep_notes', d.notes);
       }
 
       // 5. Emploi du temps
       if (d.scheduleConfig) {
-        if (d.scheduleConfig.days_json) localStorage.setItem('user_schedule_days', d.scheduleConfig.days_json);
-        if (d.scheduleConfig.hours_json) localStorage.setItem('user_schedule_hours', d.scheduleConfig.hours_json);
-        if (d.scheduleConfig.zoom_level) localStorage.setItem('user_schedule_zoom', String(d.scheduleConfig.zoom_level));
+        if (d.scheduleConfig.days_json) safeLocalStorageSet('user_schedule_days', d.scheduleConfig.days_json);
+        if (d.scheduleConfig.hours_json) safeLocalStorageSet('user_schedule_hours', d.scheduleConfig.hours_json);
+        if (d.scheduleConfig.zoom_level) safeLocalStorageSet('user_schedule_zoom', String(d.scheduleConfig.zoom_level));
       }
       if (Array.isArray(d.scheduleSlots)) {
         const mappedSchedule: Record<string, any> = {};
@@ -130,7 +130,7 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
             color: s.color || 'bg-emerald-100 dark:bg-emerald-950/80',
           };
         }
-        localStorage.setItem('user_schedule_data', JSON.stringify(mappedSchedule));
+        safeLocalStorageSet('user_schedule_data', mappedSchedule);
       }
 
       // Calendrier des événements

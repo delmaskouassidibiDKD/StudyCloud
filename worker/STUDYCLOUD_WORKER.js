@@ -2759,6 +2759,24 @@ async function ensureCloudMediaTables(db) {
       await db.prepare("CREATE INDEX IF NOT EXISTS idx_wallpapers_user ON user_wallpapers(user_id, is_active)").run();
     } catch (e) {
     }
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS notes (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT DEFAULT '',
+        content TEXT DEFAULT '',
+        color TEXT DEFAULT '#25272C',
+        is_pinned INTEGER DEFAULT 0,
+        image_url TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {
+    });
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_notes_user_pinned ON notes(user_id, is_pinned, updated_at)").run();
+    } catch (e) {
+    }
     isCloudMediaTablesInitialized = true;
   } catch (err) {
     console.error("[StudyCloud Cloud Media Tables Init Error]", err);
@@ -10054,6 +10072,8 @@ var index_default = {
         if (method === "POST") {
           const body = await request.json();
           const { id, userId, title, content, color, isPinned, imageUrl } = body;
+          if (!userId) return errorResponse("userId requis", 400, origin);
+          const noteId = id || "note-" + crypto.randomUUID();
           await env.DB.prepare(`
             INSERT INTO notes (id, user_id, title, content, color, is_pinned, image_url, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -10064,13 +10084,15 @@ var index_default = {
               is_pinned = excluded.is_pinned,
               image_url = excluded.image_url,
               updated_at = CURRENT_TIMESTAMP
-          `).bind(id || crypto.randomUUID(), userId, title, content || "", color || "#FFFFFF", isPinned ? 1 : 0, imageUrl || null).run();
-          return jsonResponse({ success: true }, 200, origin);
+          `).bind(noteId, userId, title || "", content || "", color || "#25272C", isPinned ? 1 : 0, imageUrl || null).run();
+          return jsonResponse({ success: true, id: noteId }, 200, origin);
         }
       }
       if (path.startsWith("/api/notes/") && method === "DELETE") {
         const id = path.split("/")[3];
-        await env.DB.prepare("DELETE FROM notes WHERE id = ?").bind(id).run();
+        if (id) {
+          await env.DB.prepare("DELETE FROM notes WHERE id = ?").bind(id).run();
+        }
         return jsonResponse({ success: true, message: "Note supprim\xE9e" }, 200, origin);
       }
       if (path === "/api/calendar") {

@@ -276,7 +276,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
       try {
         await StudyCloudAPI.deleteScheduleSlot({ userId, day: activeSlot.day, hourSlot: activeSlot.hour });
         invalidateCloudQueries.scheduleSlots();
-        setSuccessMessage('Créneau effacé de la base de données !');
+        setSuccessMessage('Créneau effacé avec succès !');
         setTimeout(() => setSuccessMessage(null), 3000);
       } catch (e) {
         console.error(e);
@@ -493,7 +493,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
     StudyCloudAPI.updateScheduleConfig(userId, JSON.stringify(days), JSON.stringify(newHours), zoomLevel)
       .then(() => {
         invalidateCloudQueries.scheduleConfig();
-        setSuccessMessage('Ligne ajoutée et enregistrée dans la base de données !');
+        setSuccessMessage('Ligne ajoutée et enregistrée avec succès !');
         setTimeout(() => setSuccessMessage(null), 3000);
       })
       .catch(() => {});
@@ -529,7 +529,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
       await StudyCloudAPI.updateScheduleConfig(userId, JSON.stringify(days), JSON.stringify(newHours), zoomLevel);
       await StudyCloudAPI.deleteScheduleSlot({ userId, hourSlot: hourToRemove });
       invalidateCloudQueries.schedule();
-      setSuccessMessage('Ligne supprimée de la base de données !');
+      setSuccessMessage('Ligne supprimée avec succès !');
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       console.error(err);
