@@ -338,12 +338,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
               <CalendarIcon className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-serif font-bold text-[#2D4A3E] dark:text-white">Calendrier</h1>
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 shadow-sm">
-                  Base D1 Cloud
-                </span>
-              </div>
+              <h1 className="text-xl sm:text-2xl font-serif font-bold text-[#2D4A3E] dark:text-white">Calendrier</h1>
               <p className="text-xs text-[#5C6B5A] dark:text-slate-400">Consultez et planifiez vos tâches & événements</p>
             </div>
           </div>

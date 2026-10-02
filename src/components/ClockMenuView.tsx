@@ -545,9 +545,6 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <h3 className="text-lg font-serif font-bold text-[#2D4A3E] dark:text-white">Vos Alarmes</h3>
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 shadow-sm">
-                  Base D1 Cloud
-                </span>
               </div>
               <button
                 onClick={handleOpenAddAlarm}
