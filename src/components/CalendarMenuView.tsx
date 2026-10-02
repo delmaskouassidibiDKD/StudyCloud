@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Plus, Calendar as CalendarIcon, Trash2, Clock, MapPin, X } from 'lucide-react';
+import { ArrowLeft, Plus, Calendar as CalendarIcon, Trash2, Clock, MapPin, X, Edit2 } from 'lucide-react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import frLocale from '@fullcalendar/core/locales/fr';
 import { StudyCloudAPI } from '../services/api';
+import { triggerDebouncedCloudBackup, getCurrentUserId } from '../services/userSync';
 
 interface CalendarEventItem {
   id: string;
@@ -46,9 +47,10 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
     return defaultEvents;
   });
 
-  // Save events to localStorage
+  // Save events to localStorage and trigger cloud backup
   useEffect(() => {
     localStorage.setItem('unifolder_calendar_data', JSON.stringify(events));
+    triggerDebouncedCloudBackup();
   }, [events]);
 
   // Synchronisation avec Cloudflare D1
@@ -61,7 +63,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
     };
     window.addEventListener('unifolder_data_restored', handleRestore);
 
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
     StudyCloudAPI.getCalendarEvents(userId)
       .then((res: any) => {
         if (res && res.success && Array.isArray(res.data)) {
@@ -79,13 +81,16 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
           localStorage.setItem('unifolder_calendar_data', JSON.stringify(mapped));
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.warn('[Calendar] Erreur chargement événements D1:', err);
+      });
 
     return () => window.removeEventListener('unifolder_data_restored', handleRestore);
   }, []);
 
-  // Modal State for New Event
+  // Modal State for New / Edit Event
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [newEventTitle, setNewEventTitle] = useState('');
   const [newEventDate, setNewEventDate] = useState('');
   const [newEventStartTime, setNewEventStartTime] = useState('09:00');
@@ -110,10 +115,45 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
     'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
   ];
 
-  const handleDateClick = (arg: { dateStr: string; allDay: boolean }) => {
-    setNewEventDate(arg.dateStr.split('T')[0]);
-    setNewEventAllDay(arg.allDay);
+  const handleOpenAddModal = (dateStr?: string, allDay = false) => {
+    setEditingEventId(null);
+    setNewEventTitle('');
+    setNewEventDate(dateStr || new Date().toISOString().split('T')[0]);
+    setNewEventStartTime('09:00');
+    setNewEventEndTime('10:00');
+    setNewEventAllDay(allDay);
+    setNewEventColor('#2563EB');
+    setNewEventDescription('');
+    setNewEventLocation('');
     setIsAddModalOpen(true);
+  };
+
+  const handleOpenEditModal = (event: CalendarEventItem) => {
+    setEditingEventId(event.id);
+    setNewEventTitle(event.title);
+    setNewEventDate(event.start.split('T')[0]);
+    if (!event.allDay && event.start.includes('T')) {
+      setNewEventStartTime(event.start.split('T')[1].substring(0, 5));
+      if (event.end && event.end.includes('T')) {
+        setNewEventEndTime(event.end.split('T')[1].substring(0, 5));
+      } else {
+        setNewEventEndTime('10:00');
+      }
+      setNewEventAllDay(false);
+    } else {
+      setNewEventStartTime('09:00');
+      setNewEventEndTime('10:00');
+      setNewEventAllDay(true);
+    }
+    setNewEventColor(event.color || '#2563EB');
+    setNewEventDescription(event.description || '');
+    setNewEventLocation(event.location || '');
+    setSelectedEvent(null);
+    setIsAddModalOpen(true);
+  };
+
+  const handleDateClick = (arg: { dateStr: string; allDay: boolean }) => {
+    handleOpenAddModal(arg.dateStr.split('T')[0], arg.allDay);
   };
 
   const handleEventClick = (clickInfo: any) => {
@@ -133,6 +173,45 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
     }
   };
 
+  // Drag & drop ou redimensionnement sur le calendrier synchronisé en BDD D1
+  const handleEventDrop = (info: any) => {
+    const updatedId = info.event.id;
+    const newStart = info.event.startStr;
+    const newEnd = info.event.endStr || undefined;
+    const isAllDay = Boolean(info.event.allDay);
+
+    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
+    setEvents(prev => prev.map(e => {
+      if (e.id === updatedId) {
+        const updated = {
+          ...e,
+          start: newStart,
+          end: newEnd,
+          allDay: isAllDay,
+        };
+        StudyCloudAPI.createCalendarEvent({
+          id: updated.id,
+          userId,
+          title: updated.title,
+          startDate: updated.start,
+          endDate: updated.end || null,
+          allDay: updated.allDay ? 1 : 0,
+          color: updated.color || '#2563EB',
+          description: updated.description || '',
+          location: updated.location || '',
+        }).catch((err) => {
+          console.warn('[Calendar] Erreur déplacement événement D1:', err);
+        });
+        return updated;
+      }
+      return e;
+    }));
+  };
+
+  const handleEventResize = (info: any) => {
+    handleEventDrop(info);
+  };
+
   const handleCreateEvent = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEventTitle.trim() || !newEventDate) return;
@@ -145,41 +224,75 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
       endIso = `${newEventDate}T${newEventEndTime}:00`;
     }
 
-    const created: CalendarEventItem = {
-      id: 'event-' + Date.now(),
-      title: newEventTitle.trim(),
-      start: startIso,
-      end: newEventAllDay ? undefined : endIso,
-      allDay: newEventAllDay,
-      color: newEventColor,
-      description: newEventDescription.trim() || undefined,
-      location: newEventLocation.trim() || undefined,
-    };
+    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
 
-    setEvents(prev => [...prev, created]);
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
-    StudyCloudAPI.createCalendarEvent({
-      id: created.id,
-      userId,
-      title: created.title,
-      startDate: created.start,
-      endDate: created.end || null,
-      allDay: created.allDay ? 1 : 0,
-      color: created.color,
-      description: created.description || '',
-      location: created.location || '',
-    }).catch(() => {});
+    if (editingEventId) {
+      // Modification d'un événement existant
+      const updatedItem: CalendarEventItem = {
+        id: editingEventId,
+        title: newEventTitle.trim(),
+        start: startIso,
+        end: newEventAllDay ? undefined : endIso,
+        allDay: newEventAllDay,
+        color: newEventColor,
+        description: newEventDescription.trim() || undefined,
+        location: newEventLocation.trim() || undefined,
+      };
+      setEvents(prev => prev.map(ev => ev.id === editingEventId ? updatedItem : ev));
+      StudyCloudAPI.createCalendarEvent({
+        id: updatedItem.id,
+        userId,
+        title: updatedItem.title,
+        startDate: updatedItem.start,
+        endDate: updatedItem.end || null,
+        allDay: updatedItem.allDay ? 1 : 0,
+        color: updatedItem.color,
+        description: updatedItem.description || '',
+        location: updatedItem.location || '',
+      }).catch((err) => {
+        console.warn('[Calendar] Erreur mise à jour événement D1:', err);
+      });
+    } else {
+      // Création d'un nouvel événement
+      const created: CalendarEventItem = {
+        id: 'event-' + Date.now(),
+        title: newEventTitle.trim(),
+        start: startIso,
+        end: newEventAllDay ? undefined : endIso,
+        allDay: newEventAllDay,
+        color: newEventColor,
+        description: newEventDescription.trim() || undefined,
+        location: newEventLocation.trim() || undefined,
+      };
+      setEvents(prev => [...prev, created]);
+      StudyCloudAPI.createCalendarEvent({
+        id: created.id,
+        userId,
+        title: created.title,
+        startDate: created.start,
+        endDate: created.end || null,
+        allDay: created.allDay ? 1 : 0,
+        color: created.color,
+        description: created.description || '',
+        location: created.location || '',
+      }).catch((err) => {
+        console.warn('[Calendar] Erreur création événement D1:', err);
+      });
+    }
 
     // Reset Form
     setNewEventTitle('');
     setNewEventDescription('');
     setNewEventLocation('');
+    setEditingEventId(null);
     setIsAddModalOpen(false);
   };
 
   const handleDeleteEvent = (id: string) => {
     setEvents(prev => prev.filter(e => e.id !== id));
-    StudyCloudAPI.deleteCalendarEvent(id).catch(() => {});
+    StudyCloudAPI.deleteCalendarEvent(id).catch((err) => {
+      console.warn('[Calendar] Erreur suppression événement D1:', err);
+    });
     setSelectedEvent(null);
   };
 
@@ -207,10 +320,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
         </button>
 
         <button
-          onClick={() => {
-            setNewEventDate(new Date().toISOString().split('T')[0]);
-            setIsAddModalOpen(true);
-          }}
+          onClick={() => handleOpenAddModal()}
           className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#18568A] hover:bg-[#13436D] text-white font-bold text-xs rounded-xl border-2 border-stone-900 dark:border-blue-500 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
         >
           <Plus className="w-4 h-4" />
@@ -228,7 +338,12 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
               <CalendarIcon className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-serif font-bold text-[#2D4A3E] dark:text-white">Calendrier</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl sm:text-2xl font-serif font-bold text-[#2D4A3E] dark:text-white">Calendrier</h1>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 shadow-sm">
+                  Base D1 Cloud
+                </span>
+              </div>
               <p className="text-xs text-[#5C6B5A] dark:text-slate-400">Consultez et planifiez vos tâches & événements</p>
             </div>
           </div>
@@ -292,6 +407,8 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
             dayMaxEvents={true}
             dateClick={handleDateClick}
             eventClick={handleEventClick}
+            eventDrop={handleEventDrop}
+            eventResize={handleEventResize}
             height="100%"
             buttonText={{
               today: "Aujourd'hui",
@@ -303,7 +420,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
         </div>
       </div>
 
-      {/* MODAL: CREATE EVENT */}
+      {/* MODAL: CREATE / EDIT EVENT */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
           <div className="bg-[#FDFBF7] border-3 border-stone-900 rounded-2xl shadow-[6px_6px_0px_0px_#1c1917] w-full max-w-md p-5 text-stone-900 relative">
@@ -317,7 +434,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
 
             <h3 className="text-lg font-serif font-bold text-[#2D4A3E] mb-4 flex items-center gap-2">
               <CalendarIcon className="w-5 h-5 text-[#18568A]" />
-              Nouvel événement
+              {editingEventId ? "Modifier l'événement" : 'Nouvel événement'}
             </h3>
 
             <form onSubmit={handleCreateEvent} className="space-y-3">
@@ -429,7 +546,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
                   type="submit"
                   className="px-4 py-1.5 bg-[#18568A] hover:bg-[#13436D] text-white font-bold text-xs rounded-xl border-2 border-stone-900 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer"
                 >
-                  Enregistrer
+                  {editingEventId ? 'Mettre à jour' : 'Enregistrer'}
                 </button>
               </div>
             </form>
@@ -489,14 +606,24 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
               )}
             </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-stone-300">
-              <button
-                onClick={() => handleDeleteEvent(selectedEvent.id)}
-                className="flex items-center gap-1 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 font-bold text-xs rounded-xl border-2 border-stone-900 cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Supprimer</span>
-              </button>
+            <div className="flex items-center justify-between pt-2 border-t border-stone-300 gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleDeleteEvent(selectedEvent.id)}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 font-bold text-xs rounded-xl border-2 border-stone-900 cursor-pointer transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Supprimer</span>
+                </button>
+
+                <button
+                  onClick={() => handleOpenEditModal(selectedEvent)}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-[#18568A] hover:bg-[#13436D] text-white font-bold text-xs rounded-xl border-2 border-stone-900 shadow-[1px_1px_0px_0px_#1c1917] cursor-pointer transition-all active:translate-x-0.5 active:translate-y-0.5"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>Modifier</span>
+                </button>
+              </div>
 
               <button
                 onClick={() => setSelectedEvent(null)}
