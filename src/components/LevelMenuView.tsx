@@ -1,11 +1,79 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, Menu, X, BarChart2, Calendar, FolderTree, Award } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ResponsiveContainer, BarChart as RechartsBarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, PieChart, Pie, AreaChart, Area } from 'recharts';
 import { StudyCloudAPI } from '../services/api';
+import { getCurrentUserId } from '../services/userSync';
 
 interface LevelMenuViewProps {
   onBack: () => void;
+}
+
+export interface SubGradeDetail {
+  value: number;
+  max: number;
+  coefficient: number;
+}
+
+export function parseSubGrade(s: any): SubGradeDetail | null {
+  if (s === null || s === undefined) return null;
+  if (typeof s === 'number') {
+    return { value: s, max: 20, coefficient: 1 };
+  }
+  if (typeof s === 'string') {
+    const num = parseFloat(s);
+    if (!isNaN(num)) return { value: num, max: 20, coefficient: 1 };
+    return null;
+  }
+  if (typeof s === 'object') {
+    const val = Number(s.value ?? s.note ?? s.grade ?? s.val ?? s.score ?? 0);
+    const max = Number(s.max ?? s.bareme ?? s.scale ?? s.outOf ?? s.total ?? 20) || 20;
+    const coeff = Number(s.coefficient ?? s.coeff ?? s.coef ?? s.weight ?? 1) || 1;
+    return { value: val, max, coefficient: coeff };
+  }
+  return null;
+}
+
+export function getItemAverage(item: any, standardScale: number = 20): { average: number; hasGrade: boolean; subGradeCount: number } {
+  if (!item) return { average: 0, hasGrade: false, subGradeCount: 0 };
+  
+  const subs = Array.isArray(item.subGrades) ? item.subGrades : [];
+  const validSubs: SubGradeDetail[] = [];
+  for (const s of subs) {
+    const parsed = parseSubGrade(s);
+    if (parsed) validSubs.push(parsed);
+  }
+
+  if (validSubs.length > 0) {
+    let totalW = 0;
+    let totalC = 0;
+    for (const sub of validSubs) {
+      const norm = sub.max > 0 ? (sub.value / sub.max) * standardScale : sub.value;
+      totalW += norm * sub.coefficient;
+      totalC += sub.coefficient;
+    }
+    if (totalC > 0) {
+      const avg = totalW / totalC;
+      return {
+        average: Math.min(Math.max(avg, 0), standardScale),
+        hasGrade: true,
+        subGradeCount: validSubs.length
+      };
+    }
+  }
+
+  // Prise en compte de la note directe si pas de sous-notes
+  const directGrade = Number(item.grade ?? item.average ?? item.note ?? item.score ?? -1);
+  if (directGrade >= 0 && (directGrade > 0 || item.hasGrade === true || (item.grade !== undefined && item.grade !== null))) {
+    const norm = Math.min(Math.max(directGrade, 0), standardScale);
+    return {
+      average: norm,
+      hasGrade: directGrade > 0 || item.hasGrade === true,
+      subGradeCount: 0
+    };
+  }
+
+  return { average: 0, hasGrade: false, subGradeCount: 0 };
 }
 
 const getStandardScale = () => {
@@ -16,58 +84,294 @@ const getStandardScale = () => {
   return 20;
 };
 
-const getTrimesterAverage = (trimestreKey: string, standardScale: number) => {
-  try {
-    const data = localStorage.getItem('user_grades_trimesters_data');
-    if (data) {
-      const parsed = JSON.parse(data);
-      const items = parsed[trimestreKey];
-      if (Array.isArray(items) && items.length > 0) {
-        let totalW = 0;
-        let totalC = 0;
-        let hasAnyGrade = false;
+const loadAllGradesData = (): Record<string, any[]> => {
+  const result: Record<string, any[]> = { '1': [], '2': [], '3': [] };
 
-        items.forEach((item: any) => {
-          const subs = item.subGrades || [];
-          if (subs.length > 0) {
-            hasAnyGrade = true;
-            let subW = 0;
-            let subC = 0;
-            subs.forEach((s: any) => {
-              let val = 0;
-              let max = 20;
-              let coeff = 1;
-              if (typeof s === 'object' && s !== null) {
-                val = Number(s.value) || 0;
-                max = Number(s.max) || 20;
-                coeff = Number(s.coefficient) || 1;
-              } else if (typeof s === 'number') {
-                val = s;
-                max = 20;
-                coeff = 1;
-              }
-              const norm = max > 0 ? (val / max) * standardScale : val;
-              subW += norm * coeff;
-              subC += coeff;
-            });
-            const itemAvg = subC > 0 ? subW / subC : 0;
-            totalW += itemAvg * (Number(item.coefficient) || 1);
-            totalC += Number(item.coefficient) || 1;
+  // 1. Charger depuis user_grades_trimesters_data
+  try {
+    const saved = localStorage.getItem('user_grades_trimesters_data');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === 'object') {
+        (['1', '2', '3'] as const).forEach(t => {
+          if (Array.isArray(parsed[t])) {
+            result[t] = [...parsed[t]];
           }
         });
+      }
+    }
+  } catch (e) {}
 
-        if (hasAnyGrade && totalC > 0) {
-          const avg = totalW / totalC;
-          return Math.min(Math.max(avg, 0), standardScale);
+  // 2. Si aucune donnée de trimestre n'a été trouvée, regarder unifolder_grades_data (D1 sync format)
+  try {
+    const hasAny = Object.values(result).some(list => Array.isArray(list) && list.length > 0);
+    if (!hasAny) {
+      const rawGrades = localStorage.getItem('unifolder_grades_data');
+      if (rawGrades) {
+        const parsed = JSON.parse(rawGrades);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          for (const row of parsed) {
+            const trimKey = String(row.trimester || '1');
+            if (!result[trimKey]) result[trimKey] = [];
+            let subs: any[] = [];
+            try {
+              if (typeof row.sub_grades_json === 'string') {
+                subs = JSON.parse(row.sub_grades_json);
+              } else if (Array.isArray(row.sub_grades_json)) {
+                subs = row.sub_grades_json;
+              } else if (Array.isArray(row.subGrades)) {
+                subs = row.subGrades;
+              }
+            } catch (e) {}
+
+            result[trimKey].push({
+              id: row.id || `grade-${Math.random()}`,
+              subject: row.subject_name || row.subject || 'Matière',
+              coefficient: Number(row.coefficient) || 1.0,
+              grade: Number(row.average ?? row.grade ?? 0),
+              subGrades: subs,
+            });
+          }
         }
       }
     }
   } catch (e) {}
+
+  // 3. Compléter avec les matières enregistrées de l'élève (unifolder_saved_matieres)
+  try {
+    const savedMat = localStorage.getItem('unifolder_saved_matieres');
+    if (savedMat) {
+      const parsedMat = JSON.parse(savedMat);
+      if (Array.isArray(parsedMat) && parsedMat.length > 0) {
+        (['1', '2', '3'] as const).forEach(trimKey => {
+          const currentList = result[trimKey] || [];
+          parsedMat.forEach((m: any) => {
+            const name = (m.name || '').trim();
+            if (!name) return;
+            const exists = currentList.some((item: any) => (item.subject || '').trim().toLowerCase() === name.toLowerCase());
+            if (!exists) {
+              currentList.push({
+                id: m.id ? `${m.id}_t${trimKey}` : `mat_${Date.now()}_t${trimKey}`,
+                subject: name,
+                coefficient: parseFloat(m.coefficient) || 1.0,
+                grade: 0,
+                subGrades: []
+              });
+            }
+          });
+          result[trimKey] = currentList;
+        });
+      }
+    }
+  } catch (e) {}
+
+  return result;
+};
+
+const getTrimesterAverage = (trimestreKey: string, scale: number, data: Record<string, any[]>): number | null => {
+  const items = data[trimestreKey];
+  if (!Array.isArray(items) || items.length === 0) return null;
+
+  let totalW = 0;
+  let totalC = 0;
+  let hasAnyGrade = false;
+
+  items.forEach((item: any) => {
+    const { average, hasGrade } = getItemAverage(item, scale);
+    if (hasGrade) {
+      hasAnyGrade = true;
+      const coeff = Number(item.coefficient) || 1.0;
+      totalW += average * coeff;
+      totalC += coeff;
+    }
+  });
+
+  if (hasAnyGrade && totalC > 0) {
+    const avg = totalW / totalC;
+    return Math.min(Math.max(avg, 0), scale);
+  }
+
   return null;
 };
 
+const getSubjectsList = (trimKey: string, data: Record<string, any[]>) => {
+  const items = data[trimKey] || [];
+  if (Array.isArray(items) && items.length > 0) {
+    return items.map((i: any) => (i.subject || 'Matière').trim());
+  }
+
+  for (const t of ['1', '2', '3'] as const) {
+    const otherItems = data[t] || [];
+    if (Array.isArray(otherItems) && otherItems.length > 0) {
+      return otherItems.map((i: any) => (i.subject || 'Matière').trim());
+    }
+  }
+
+  try {
+    const savedMat = localStorage.getItem('unifolder_saved_matieres');
+    if (savedMat) {
+      const parsedMat = JSON.parse(savedMat);
+      if (Array.isArray(parsedMat) && parsedMat.length > 0) {
+        return parsedMat.map((m: any) => (m.name || 'Matière').trim());
+      }
+    }
+  } catch (e) {}
+
+  return ['Mathématiques', 'Physique', 'Anglais'];
+};
+
+const getNoteDataForSubject = (trimKey: string, subName: string, scale: number, data: Record<string, any[]>) => {
+  const items = data[trimKey] || [];
+  const item = items.find((i: any) => (i.subject || 'Matière').trim().toLowerCase() === subName.trim().toLowerCase());
+  if (!item) return [];
+
+  const subs = Array.isArray(item.subGrades) ? item.subGrades : [];
+  if (subs.length > 0) {
+    return subs.map((s: any, idx: number) => {
+      const parsed = parseSubGrade(s);
+      const val = parsed ? parsed.value : 0;
+      const max = parsed ? parsed.max : 20;
+      const norm = max > 0 ? (val / max) * scale : val;
+      const clamped = Math.min(Math.max(norm, 0), scale);
+      return {
+        index: idx + 1,
+        name: `Note ${idx + 1}`,
+        count: clamped,
+        hasNote: true,
+        displayLabel: `${clamped.toFixed(2).replace('.', ',')} / ${scale}`
+      };
+    });
+  }
+
+  const { average, hasGrade } = getItemAverage(item, scale);
+  if (hasGrade) {
+    return [{
+      index: 1,
+      name: 'Note 1',
+      count: average,
+      hasNote: true,
+      displayLabel: `${average.toFixed(2).replace('.', ',')} / ${scale}`
+    }];
+  }
+
+  return [];
+};
+
+const getSubjectAveragesForTrimester = (trimestreKey: string, scale: number, data: Record<string, any[]>) => {
+  const items = data[trimestreKey] || [];
+  if (!Array.isArray(items) || items.length === 0) {
+    return [];
+  }
+
+  return items.map((item: any) => {
+    const subName = (item.subject || 'Matière').trim();
+    const { average, hasGrade } = getItemAverage(item, scale);
+
+    return {
+      name: subName,
+      count: hasGrade ? average : 0,
+      hasNote: hasGrade,
+      displayLabel: hasGrade ? `${average.toFixed(2).replace('.', ',')} / ${scale}` : 'Pas de note'
+    };
+  });
+};
+
+const getGlobalSubjectAverages = (scale: number, data: Record<string, any[]>) => {
+  const subjectMap: Record<string, { totalW: number; totalC: number; hasGrade: boolean }> = {};
+
+  Object.keys(data).forEach((trimKey) => {
+    const items = data[trimKey] || [];
+    if (Array.isArray(items)) {
+      items.forEach((item: any) => {
+        const subName = (item.subject || 'Matière').trim();
+        if (!subName) return;
+
+        if (!subjectMap[subName]) {
+          subjectMap[subName] = { totalW: 0, totalC: 0, hasGrade: false };
+        }
+
+        const { average, hasGrade } = getItemAverage(item, scale);
+        if (hasGrade) {
+          const coeff = Number(item.coefficient) || 1.0;
+          subjectMap[subName].totalW += average * coeff;
+          subjectMap[subName].totalC += coeff;
+          subjectMap[subName].hasGrade = true;
+        }
+      });
+    }
+  });
+
+  const subjects = Object.keys(subjectMap);
+  if (subjects.length > 0) {
+    return subjects.map(sub => {
+      const entry = subjectMap[sub];
+      const avg = entry.hasGrade && entry.totalC > 0 ? entry.totalW / entry.totalC : 0;
+      const clamped = Math.min(Math.max(avg, 0), scale);
+      return {
+        subject: sub.length > 15 ? sub.substring(0, 12) + '...' : sub,
+        fullSubject: sub,
+        A: clamped,
+        hasGrade: entry.hasGrade,
+        fullMark: scale,
+      };
+    });
+  }
+
+  return [
+    { subject: 'Math', A: 0, fullMark: scale, hasGrade: false, fullSubject: 'Mathématiques' },
+    { subject: 'Phys', A: 0, fullMark: scale, hasGrade: false, fullSubject: 'Physique' },
+    { subject: 'Hist', A: 0, fullMark: scale, hasGrade: false, fullSubject: 'Histoire' },
+    { subject: 'Lang', A: 0, fullMark: scale, hasGrade: false, fullSubject: 'Langues' },
+  ];
+};
+
+const getGlobalGradeDistribution = (scale: number, data: Record<string, any[]>) => {
+  let exc = 0, bien = 0, moyen = 0, faible = 0;
+
+  Object.keys(data).forEach((trimKey) => {
+    const items = data[trimKey] || [];
+    if (Array.isArray(items)) {
+      items.forEach((item: any) => {
+        const subs = Array.isArray(item.subGrades) ? item.subGrades : [];
+        if (subs.length > 0) {
+          subs.forEach((s: any) => {
+            const parsed = parseSubGrade(s);
+            if (parsed) {
+              const norm = parsed.max > 0 ? (parsed.value / parsed.max) * 20 : parsed.value;
+              if (norm >= 16) exc++;
+              else if (norm >= 12) bien++;
+              else if (norm >= 10) moyen++;
+              else faible++;
+            }
+          });
+        } else {
+          const { average, hasGrade } = getItemAverage(item, scale);
+          if (hasGrade) {
+            const norm = scale > 0 ? (average / scale) * 20 : average;
+            if (norm >= 16) exc++;
+            else if (norm >= 12) bien++;
+            else if (norm >= 10) moyen++;
+            else faible++;
+          }
+        }
+      });
+    }
+  });
+
+  const total = exc + bien + moyen + faible;
+  if (total === 0) return [];
+
+  return [
+    { name: 'Excellent (≥16)', value: exc, color: '#16a34a' },
+    { name: 'Bien (12-16)', value: bien, color: '#9333ea' },
+    { name: 'Moyen (10-12)', value: moyen, color: '#ea580c' },
+    { name: 'Faible (<10)', value: faible, color: '#ef4444' },
+  ].filter(d => d.value > 0);
+};
+
 export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
-  const [refreshTick, setRefreshTick] = useState(0);
+  const [standardScale, setStandardScale] = useState<number>(() => getStandardScale());
+  const [gradesData, setGradesData] = useState<Record<string, any[]>>(() => loadAllGradesData());
   const [isRightDrawerOpen, setIsRightDrawerOpen] = useState(false);
   const [selectedAnalysis, setSelectedAnalysis] = useState<string>('analyse globale');
   const [subjectTrimestre, setSubjectTrimestre] = useState<'1' | '2' | '3'>('1');
@@ -75,46 +379,94 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
   const [selectedNoteSubject, setSelectedNoteSubject] = useState<string>('');
   const [isNoteSubjectDropdownOpen, setIsNoteSubjectDropdownOpen] = useState(false);
 
-  // Synchronisation descendante directe depuis Cloudflare D1
+  // Synchronisation descendante directe depuis Cloudflare D1 avec fusion intelligente
   useEffect(() => {
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
     StudyCloudAPI.getGrades(userId)
       .then((res: any) => {
         if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-          const mapped: Record<string, any[]> = { '1': [], '2': [], '3': [] };
-          for (const row of res.data) {
-            const trimKey = String(row.trimester || '1');
-            if (!mapped[trimKey]) mapped[trimKey] = [];
-            mapped[trimKey].push({
-              id: row.id,
-              subject: row.subject_name,
-              coefficient: Number(row.coefficient) || 1.0,
-              grade: Number(row.average) || 0,
-              subGrades: row.sub_grades_json ? (typeof row.sub_grades_json === 'string' ? JSON.parse(row.sub_grades_json) : row.sub_grades_json) : [],
-            });
-          }
-          localStorage.setItem('user_grades_trimesters_data', JSON.stringify(mapped));
-          setRefreshTick(prev => prev + 1);
+          setGradesData(prev => {
+            const updated: Record<string, any[]> = {
+              '1': prev['1'] ? [...prev['1']] : [],
+              '2': prev['2'] ? [...prev['2']] : [],
+              '3': prev['3'] ? [...prev['3']] : [],
+            };
+
+            for (const row of res.data) {
+              const trimKey = String(row.trimester || '1');
+              if (!updated[trimKey]) updated[trimKey] = [];
+              let subs: any[] = [];
+              try {
+                if (typeof row.sub_grades_json === 'string') {
+                  subs = JSON.parse(row.sub_grades_json);
+                } else if (Array.isArray(row.sub_grades_json)) {
+                  subs = row.sub_grades_json;
+                }
+              } catch (e) {}
+
+              const subjectName = row.subject_name || row.subject || 'Matière';
+              const existingIdx = updated[trimKey].findIndex((item: any) =>
+                (item.id && row.id && String(item.id) === String(row.id)) ||
+                (item.subject && item.subject.trim().toLowerCase() === subjectName.trim().toLowerCase())
+              );
+
+              const gradeObj = {
+                id: row.id || `d1-${Math.random()}`,
+                subject: subjectName,
+                coefficient: Number(row.coefficient) || 1.0,
+                grade: Number(row.average ?? row.grade ?? 0),
+                subGrades: subs,
+              };
+
+              if (existingIdx !== -1) {
+                const localItem = updated[trimKey][existingIdx];
+                if (subs.length === 0 && Array.isArray(localItem.subGrades) && localItem.subGrades.length > 0) {
+                  gradeObj.subGrades = localItem.subGrades;
+                }
+                updated[trimKey][existingIdx] = { ...localItem, ...gradeObj };
+              } else {
+                updated[trimKey].push(gradeObj);
+              }
+            }
+
+            try {
+              localStorage.setItem('user_grades_trimesters_data', JSON.stringify(updated));
+            } catch (e) {}
+
+            return updated;
+          });
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.warn('[LevelMenuView] D1 getGrades warning:', err);
+      });
   }, []);
 
-  // Écoute de la restauration globale en arrière-plan
+  // Écoute de tous les événements de mise à jour des notes et matières
   useEffect(() => {
-    const handleRestore = () => {
-      setRefreshTick(prev => prev + 1);
+    const handleUpdate = () => {
+      setGradesData(loadAllGradesData());
+      setStandardScale(getStandardScale());
     };
-    window.addEventListener('unifolder_data_restored', handleRestore);
-    return () => window.removeEventListener('unifolder_data_restored', handleRestore);
+
+    window.addEventListener('user_grades_changed', handleUpdate);
+    window.addEventListener('unifolder_data_restored', handleUpdate);
+    window.addEventListener('unifolder_files_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+
+    return () => {
+      window.removeEventListener('user_grades_changed', handleUpdate);
+      window.removeEventListener('unifolder_data_restored', handleUpdate);
+      window.removeEventListener('unifolder_files_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
   }, []);
 
-  const standardScale = getStandardScale();
-  const t1Avg = getTrimesterAverage('1', standardScale);
-  const t2Avg = getTrimesterAverage('2', standardScale);
-  const t3Avg = getTrimesterAverage('3', standardScale);
+  const t1Avg = useMemo(() => getTrimesterAverage('1', standardScale, gradesData), [standardScale, gradesData]);
+  const t2Avg = useMemo(() => getTrimesterAverage('2', standardScale, gradesData), [standardScale, gradesData]);
+  const t3Avg = useMemo(() => getTrimesterAverage('3', standardScale, gradesData), [standardScale, gradesData]);
 
-  const trimesterData = [
+  const trimesterData = useMemo(() => [
     { 
       name: 'Trimestre 1', 
       count: t1Avg !== null ? t1Avg : 0, 
@@ -133,19 +485,9 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
       hasNote: t3Avg !== null,
       displayLabel: t3Avg !== null ? `${t3Avg.toFixed(2).replace('.', ',')} / ${standardScale}` : 'Pas de note',
     },
-  ];
+  ], [t1Avg, t2Avg, t3Avg, standardScale]);
 
-  const getSubjectsList = (trimKey: string) => {
-    try {
-      const data = localStorage.getItem('user_grades_trimesters_data');
-      const trimData = data ? JSON.parse(data) : {};
-      const items = trimData[trimKey] || [];
-      return items.map((i: any) => i.subject || 'Matière');
-    } catch (e) {}
-    return ['Mathématiques', 'Physique', 'Anglais'];
-  };
-
-  const noteSubjects = getSubjectsList(noteTrimestre);
+  const noteSubjects = useMemo(() => getSubjectsList(noteTrimestre, gradesData), [noteTrimestre, gradesData]);
   const currentNoteSubject = noteSubjects.includes(selectedNoteSubject) ? selectedNoteSubject : (noteSubjects[0] || 'Matière');
 
   const cycleNoteSubject = () => {
@@ -155,215 +497,19 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
     setSelectedNoteSubject(noteSubjects[nextIdx]);
   };
 
-  const getNoteDataForSubject = (trimKey: string, subName: string, scale: number) => {
-    try {
-      const data = localStorage.getItem('user_grades_trimesters_data');
-      const trimData = data ? JSON.parse(data) : {};
-      const items = trimData[trimKey] || [];
-      const item = items.find((i: any) => (i.subject || 'Matière') === subName);
-      if (!item || !item.subGrades || item.subGrades.length === 0) {
-        return [];
-      }
-      return item.subGrades.map((s: any, idx: number) => {
-        let val = 0;
-        let max = 20;
-        let coeff = 1;
-        if (typeof s === 'object' && s !== null) {
-          val = Number(s.value) || 0;
-          max = Number(s.max) || 20;
-          coeff = Number(s.coefficient) || 1;
-        } else if (typeof s === 'number') {
-          val = s;
-          max = 20;
-          coeff = 1;
-        }
-        const norm = max > 0 ? (val / max) * scale : val;
-        const clamped = Math.min(Math.max(norm, 0), scale);
-        return {
-          index: idx + 1,
-          name: `Note ${idx + 1}`,
-          count: clamped,
-          hasNote: true,
-          displayLabel: `${clamped.toFixed(2).replace('.', ',')} / ${scale}`
-        };
-      });
-    } catch (e) {}
-    return [];
-  };
+  const noteData = useMemo(() => getNoteDataForSubject(noteTrimestre, currentNoteSubject, standardScale, gradesData), [noteTrimestre, currentNoteSubject, standardScale, gradesData]);
 
-  const noteData = getNoteDataForSubject(noteTrimestre, currentNoteSubject, standardScale);
+  const subjectData = useMemo(() => getSubjectAveragesForTrimester(subjectTrimestre, standardScale, gradesData), [subjectTrimestre, standardScale, gradesData]);
 
-  const getSubjectAveragesForTrimester = (trimestreKey: string, scale: number) => {
-    try {
-      const data = localStorage.getItem('user_grades_trimesters_data');
-      const trimData = data ? JSON.parse(data) : {};
-      const items = trimData[trimestreKey] || [];
+  const globalSubjectData = useMemo(() => getGlobalSubjectAverages(standardScale, gradesData), [standardScale, gradesData]);
 
-      if (!Array.isArray(items) || items.length === 0) {
-        return [];
-      }
+  const gradeDistributionData = useMemo(() => getGlobalGradeDistribution(standardScale, gradesData), [standardScale, gradesData]);
 
-      return items.map((item: any) => {
-        const subName = item.subject || 'Matière';
-        const subs = item.subGrades || [];
-        
-        if (!subs || subs.length === 0) {
-          return {
-            name: subName,
-            count: 0,
-            hasNote: false,
-            displayLabel: 'Pas de note'
-          };
-        }
-
-        let subW = 0;
-        let subC = 0;
-        let hasAnyGrade = false;
-
-        subs.forEach((s: any) => {
-          hasAnyGrade = true;
-          let val = 0;
-          let max = 20;
-          let coeff = 1;
-          if (typeof s === 'object' && s !== null) {
-            val = Number(s.value) || 0;
-            max = Number(s.max) || 20;
-            coeff = Number(s.coefficient) || 1;
-          } else if (typeof s === 'number') {
-            val = s;
-            max = 20;
-            coeff = 1;
-          }
-          const norm = max > 0 ? (val / max) * scale : val;
-          subW += norm * coeff;
-          subC += coeff;
-        });
-
-        if (hasAnyGrade && subC > 0) {
-          const avg = subW / subC;
-          const clamped = Math.min(Math.max(avg, 0), scale);
-          return {
-            name: subName,
-            count: clamped,
-            hasNote: true,
-            displayLabel: `${clamped.toFixed(2).replace('.', ',')} / ${scale}`
-          };
-        }
-
-        return {
-          name: subName,
-          count: 0,
-          hasNote: false,
-          displayLabel: 'Pas de note'
-        };
-      });
-    } catch (e) {}
-    return [];
-  };
-
-  const subjectData = getSubjectAveragesForTrimester(subjectTrimestre, standardScale);
-
-  const getGlobalSubjectAverages = (scale: number) => {
-    try {
-      const data = localStorage.getItem('user_grades_trimesters_data');
-      const trimData = data ? JSON.parse(data) : {};
-      
-      const subjectMap: Record<string, { totalW: number; totalC: number }> = {};
-      
-      Object.keys(trimData).forEach((trimKey) => {
-        const items = trimData[trimKey] || [];
-        if (Array.isArray(items)) {
-          items.forEach((item: any) => {
-            const subName = item.subject || 'Matière';
-            const subs = item.subGrades || [];
-            if (subs.length > 0) {
-              if (!subjectMap[subName]) subjectMap[subName] = { totalW: 0, totalC: 0 };
-              
-              subs.forEach((s: any) => {
-                let val = 0, max = 20, coeff = 1;
-                if (typeof s === 'object' && s !== null) {
-                  val = Number(s.value) || 0;
-                  max = Number(s.max) || 20;
-                  coeff = Number(s.coefficient) || 1;
-                } else if (typeof s === 'number') {
-                  val = s;
-                }
-                const norm = max > 0 ? (val / max) * scale : val;
-                subjectMap[subName].totalW += norm * coeff;
-                subjectMap[subName].totalC += coeff;
-              });
-            }
-          });
-        }
-      });
-
-      const result = Object.keys(subjectMap).map(sub => {
-        const avg = subjectMap[sub].totalC > 0 ? subjectMap[sub].totalW / subjectMap[sub].totalC : 0;
-        return {
-          subject: sub.length > 15 ? sub.substring(0, 12) + '...' : sub,
-          fullSubject: sub,
-          A: Math.min(Math.max(avg, 0), scale),
-          fullMark: scale,
-        };
-      });
-      return result.length > 0 ? result : [
-        { subject: 'Math', A: 0, fullMark: scale },
-        { subject: 'Phys', A: 0, fullMark: scale },
-        { subject: 'Hist', A: 0, fullMark: scale },
-        { subject: 'Lang', A: 0, fullMark: scale },
-      ];
-    } catch (e) {}
-    return [];
-  };
-
-  const getGlobalGradeDistribution = (scale: number) => {
-    let exc = 0, bien = 0, moyen = 0, faible = 0;
-    try {
-      const data = localStorage.getItem('user_grades_trimesters_data');
-      const trimData = data ? JSON.parse(data) : {};
-      
-      Object.keys(trimData).forEach((trimKey) => {
-        const items = trimData[trimKey] || [];
-        if (Array.isArray(items)) {
-          items.forEach((item: any) => {
-            const subs = item.subGrades || [];
-            subs.forEach((s: any) => {
-              let val = 0, max = 20;
-              if (typeof s === 'object' && s !== null) {
-                val = Number(s.value) || 0;
-                max = Number(s.max) || 20;
-              } else if (typeof s === 'number') {
-                val = s;
-              }
-              const norm = max > 0 ? (val / max) * 20 : val; // Normalize to 20 for bucketing
-              if (norm >= 16) exc++;
-              else if (norm >= 12) bien++;
-              else if (norm >= 10) moyen++;
-              else faible++;
-            });
-          });
-        }
-      });
-    } catch (e) {}
-    
-    const total = exc + bien + moyen + faible;
-    if (total === 0) return [];
-    
-    return [
-      { name: 'Excellent (≥16)', value: exc, color: '#16a34a' },
-      { name: 'Bien (12-16)', value: bien, color: '#9333ea' },
-      { name: 'Moyen (10-12)', value: moyen, color: '#ea580c' },
-      { name: 'Faible (<10)', value: faible, color: '#ef4444' },
-    ].filter(d => d.value > 0);
-  };
-
-  const globalSubjectData = getGlobalSubjectAverages(standardScale);
-  const gradeDistributionData = getGlobalGradeDistribution(standardScale);
-  const globalProgressData = [
+  const globalProgressData = useMemo(() => [
     { name: 'Trimestre 1', avg: t1Avg !== null ? t1Avg : 0, hasNote: t1Avg !== null },
     { name: 'Trimestre 2', avg: t2Avg !== null ? t2Avg : 0, hasNote: t2Avg !== null },
     { name: 'Trimestre 3', avg: t3Avg !== null ? t3Avg : 0, hasNote: t3Avg !== null }
-  ];
+  ], [t1Avg, t2Avg, t3Avg]);
 
   const ticks = [0, 5, 10, 15, standardScale];
 
@@ -461,11 +607,18 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
           {trimesterData.map((item, idx) => {
             const stops = getGradientStops(item.count, standardScale);
             return (
-              <linearGradient key={`tri-grad-${idx}`} id={`triGradient-${idx}`} x1="0" y1="1" x2="0" y2="0">
-                {stops.map((s, sIdx) => (
-                  <stop key={sIdx} offset={s.offset} stopColor={s.color} />
-                ))}
-              </linearGradient>
+              <React.Fragment key={`tri-frag-${idx}`}>
+                <linearGradient id={`trimGradient-${idx}`} x1="0" y1="1" x2="0" y2="0">
+                  {stops.map((s, sIdx) => (
+                    <stop key={sIdx} offset={s.offset} stopColor={s.color} />
+                  ))}
+                </linearGradient>
+                <linearGradient id={`triGradient-${idx}`} x1="0" y1="1" x2="0" y2="0">
+                  {stops.map((s, sIdx) => (
+                    <stop key={sIdx} offset={s.offset} stopColor={s.color} />
+                  ))}
+                </linearGradient>
+              </React.Fragment>
             );
           })}
           {subjectData.map((item, idx) => {
@@ -507,7 +660,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                 <button
                   key={t}
                   onClick={() => setSubjectTrimestre(t)}
-                  className={`px-2.5 py-1 text-xs font-bold rounded-lg border border-[#2D4A3E] transition-all cursor-pointer shadow-xs ${subjectTrimestre === t ? 'bg-[#2D4A3E] text-[#F5F0E8]' : 'bg-[#E8DFD0] text-[#2D4A3E] hover:bg-[#D4C9B5]'}`}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-lg border border-[#2D4A3E] dark:border-slate-700 transition-all cursor-pointer shadow-xs ${subjectTrimestre === t ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'bg-[#E8DFD0] dark:bg-slate-800 text-[#2D4A3E] dark:text-slate-200 hover:bg-[#D4C9B5] dark:hover:bg-slate-700'}`}
                 >
                   Trimestre {t}
                 </button>
@@ -522,7 +675,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                   <button
                     key={t}
                     onClick={() => setNoteTrimestre(t)}
-                    className={`px-2.5 py-1 text-xs font-bold rounded-lg border border-[#2D4A3E] transition-all cursor-pointer shadow-xs ${noteTrimestre === t ? 'bg-[#2D4A3E] text-[#F5F0E8]' : 'bg-[#E8DFD0] text-[#2D4A3E] hover:bg-[#D4C9B5]'}`}
+                    className={`px-2.5 py-1 text-xs font-bold rounded-lg border border-[#2D4A3E] dark:border-slate-700 transition-all cursor-pointer shadow-xs ${noteTrimestre === t ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'bg-[#E8DFD0] dark:bg-slate-800 text-[#2D4A3E] dark:text-slate-200 hover:bg-[#D4C9B5] dark:hover:bg-slate-700'}`}
                   >
                     Trimestre {t}
                   </button>
@@ -531,14 +684,14 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
               <div className="flex relative">
                 <button
                   onClick={() => setIsNoteSubjectDropdownOpen(!isNoteSubjectDropdownOpen)}
-                  className="px-2.5 py-1 text-xs font-bold rounded-lg border border-[#2D4A3E] bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] transition-all cursor-pointer shadow-xs flex items-center gap-1.5 whitespace-nowrap"
+                  className="px-2.5 py-1 text-xs font-bold rounded-lg border border-[#2D4A3E] dark:border-slate-700 bg-[#E8DFD0] dark:bg-slate-800 hover:bg-[#D4C9B5] dark:hover:bg-slate-700 text-[#2D4A3E] dark:text-slate-200 transition-all cursor-pointer shadow-xs flex items-center gap-1.5 whitespace-nowrap"
                   title="Sélectionner la matière"
                 >
                   <span>Matière : {currentNoteSubject}</span>
                   <svg className={`w-3 h-3 transition-transform ${isNoteSubjectDropdownOpen ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
                 {isNoteSubjectDropdownOpen && (
-                  <div className="absolute top-full left-0 mt-1 bg-[#F5F0E8] border-2 border-[#2D4A3E] rounded-lg shadow-lg z-50 min-w-[140px] py-1 max-h-48 overflow-y-auto">
+                  <div className="absolute top-full left-0 mt-1 bg-[#F5F0E8] dark:bg-[#1e293b] border-2 border-[#2D4A3E] dark:border-slate-700 rounded-lg shadow-lg z-50 min-w-[140px] py-1 max-h-48 overflow-y-auto">
                     {noteSubjects.map((sub, idx) => (
                       <button
                         key={idx}
@@ -546,7 +699,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                           setSelectedNoteSubject(sub);
                           setIsNoteSubjectDropdownOpen(false);
                         }}
-                        className={`w-full text-left px-3 py-1.5 text-xs font-bold hover:bg-[#E8DFD0] transition-colors ${currentNoteSubject === sub ? 'bg-[#2D4A3E] text-[#F5F0E8]' : 'text-[#2D4A3E]'}`}
+                        className={`w-full text-left px-3 py-1.5 text-xs font-bold hover:bg-[#E8DFD0] dark:hover:bg-slate-700 transition-colors ${currentNoteSubject === sub ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'text-[#2D4A3E] dark:text-slate-200'}`}
                       >
                         {sub}
                       </button>
@@ -559,7 +712,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
         </div>
 
         <div className="flex justify-center pointer-events-auto justify-self-center pt-0.5">
-          <span className="font-serif font-bold text-xs sm:text-sm text-[#2D4A3E] capitalize px-2.5 py-1 bg-[#E8DFD0]/80 rounded-lg border border-[#2D4A3E]/30 shadow-xs whitespace-nowrap">
+          <span className="font-serif font-bold text-xs sm:text-sm text-[#2D4A3E] dark:text-slate-100 capitalize px-2.5 py-1 bg-[#E8DFD0]/80 dark:bg-slate-800/80 rounded-lg border border-[#2D4A3E]/30 dark:border-slate-700 shadow-xs whitespace-nowrap">
             {selectedAnalysis}
           </span>
         </div>
@@ -567,7 +720,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
         <div className="flex justify-end pointer-events-auto justify-self-end">
           <button
             onClick={() => setIsRightDrawerOpen(true)}
-            className="p-2 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center"
+            className="p-2 bg-[#E8DFD0] dark:bg-slate-800 hover:bg-[#D4C9B5] dark:hover:bg-slate-700 text-[#2D4A3E] dark:text-slate-200 rounded-lg border-2 border-[#2D4A3E] dark:border-slate-700 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center"
             title="Menu"
           >
             {/* Three vertical lines icon representation */}
@@ -584,9 +737,9 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
           <div className="w-full h-full py-4 overflow-y-auto">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 h-auto min-h-full pb-10">
               {/* Radar Chart: Capabilities Profile */}
-              <div className="bg-[#E8DFD0]/40 rounded-xl p-4 border border-[#2D4A3E]/10 flex flex-col items-center justify-center min-h-[350px]">
-                <h3 className="font-serif font-bold text-[#2D4A3E] mb-2 text-center">Profil de Compétences</h3>
-                <p className="text-xs text-[#5C6B5A] mb-4 text-center">Moyenne par matière sur l'année</p>
+              <div className="bg-[#E8DFD0]/40 dark:bg-[#161f30] rounded-xl p-4 border border-[#2D4A3E]/10 dark:border-slate-800 flex flex-col items-center justify-center min-h-[350px]">
+                <h3 className="font-serif font-bold text-[#2D4A3E] dark:text-slate-100 mb-2 text-center">Profil de Compétences</h3>
+                <p className="text-xs text-[#5C6B5A] dark:text-slate-400 mb-4 text-center">Moyenne par matière sur l'année</p>
                 <div className="w-full h-[250px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <RadarChart cx="50%" cy="50%" outerRadius="70%" data={globalSubjectData}>
@@ -604,9 +757,9 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
               </div>
 
               {/* Pie Chart: Consistency */}
-              <div className="bg-[#E8DFD0]/40 rounded-xl p-4 border border-[#2D4A3E]/10 flex flex-col items-center justify-center min-h-[350px]">
-                <h3 className="font-serif font-bold text-[#2D4A3E] mb-2 text-center">Régularité des Notes</h3>
-                <p className="text-xs text-[#5C6B5A] mb-4 text-center">Répartition de toutes les notes</p>
+              <div className="bg-[#E8DFD0]/40 dark:bg-[#161f30] rounded-xl p-4 border border-[#2D4A3E]/10 dark:border-slate-800 flex flex-col items-center justify-center min-h-[350px]">
+                <h3 className="font-serif font-bold text-[#2D4A3E] dark:text-slate-100 mb-2 text-center">Régularité des Notes</h3>
+                <p className="text-xs text-[#5C6B5A] dark:text-slate-400 mb-4 text-center">Répartition de toutes les notes</p>
                 {gradeDistributionData.length > 0 ? (
                   <div className="w-full flex-1 flex flex-col items-center justify-center min-h-[250px]">
                     <div className="w-full h-[200px]">
@@ -642,16 +795,16 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center h-[250px] text-sm text-[#5C6B5A] italic">
+                  <div className="flex items-center justify-center h-[250px] text-sm text-[#5C6B5A] dark:text-slate-400 italic">
                     Pas de notes enregistrées
                   </div>
                 )}
               </div>
 
               {/* Area Chart: Progression */}
-              <div className="bg-[#E8DFD0]/40 rounded-xl p-4 border border-[#2D4A3E]/10 flex flex-col items-center justify-center min-h-[350px] md:col-span-2">
-                <h3 className="font-serif font-bold text-[#2D4A3E] mb-2 text-center">Progression Annuelle</h3>
-                <p className="text-xs text-[#5C6B5A] mb-4 text-center">Évolution de la moyenne globale</p>
+              <div className="bg-[#E8DFD0]/40 dark:bg-[#161f30] rounded-xl p-4 border border-[#2D4A3E]/10 dark:border-slate-800 flex flex-col items-center justify-center min-h-[350px] md:col-span-2">
+                <h3 className="font-serif font-bold text-[#2D4A3E] dark:text-slate-100 mb-2 text-center">Progression Annuelle</h3>
+                <p className="text-xs text-[#5C6B5A] dark:text-slate-400 mb-4 text-center">Évolution de la moyenne globale</p>
                 <div className="w-full h-[250px] max-w-2xl">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={globalProgressData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
@@ -819,8 +972,8 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
           </div>
         ) : (
           <div className="text-center py-24">
-            <h2 className="text-xl font-serif font-bold text-[#2D4A3E] mb-2 capitalize">{selectedAnalysis}</h2>
-            <p className="text-sm font-sans text-[#5C6B5A]">Sélectionnez un autre type d'analyse.</p>
+            <h2 className="text-xl font-serif font-bold text-[#2D4A3E] dark:text-slate-100 mb-2 capitalize">{selectedAnalysis}</h2>
+            <p className="text-sm font-sans text-[#5C6B5A] dark:text-slate-400">Sélectionnez un autre type d'analyse.</p>
           </div>
         )}
       </div>
@@ -844,14 +997,14 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="absolute top-0 right-0 bottom-0 w-64 sm:w-72 md:w-96 bg-[#F5F0E8] border-l-2 border-[#2D4A3E] rounded-l-2xl shadow-2xl p-5 flex flex-col justify-between pointer-events-auto overflow-hidden"
+              className="absolute top-0 right-0 bottom-0 w-64 sm:w-72 md:w-96 bg-[#F5F0E8] dark:bg-[#0f172a] border-l-2 border-[#2D4A3E] dark:border-slate-700 rounded-l-2xl shadow-2xl p-5 flex flex-col justify-between pointer-events-auto overflow-hidden"
             >
               <div>
-                <div className="flex items-center justify-between pb-3 mb-5">
-                  <h2 className="font-serif font-bold text-base text-[#2D4A3E]">Menu</h2>
+                <div className="flex items-center justify-between pb-3 mb-5 border-b border-[#2D4A3E]/20 dark:border-slate-800">
+                  <h2 className="font-serif font-bold text-base text-[#2D4A3E] dark:text-slate-100">Menu</h2>
                   <button
                     onClick={() => setIsRightDrawerOpen(false)}
-                    className="p-1.5 hover:bg-[#E8DFD0] rounded-lg border border-[#2D4A3E] text-[#2D4A3E] transition-all cursor-pointer flex items-center justify-center"
+                    className="p-1.5 hover:bg-[#E8DFD0] dark:hover:bg-slate-800 rounded-lg border border-[#2D4A3E] dark:border-slate-700 text-[#2D4A3E] dark:text-slate-200 transition-all cursor-pointer flex items-center justify-center"
                     title="Fermer"
                   >
                     <X className="w-4 h-4" />
@@ -864,7 +1017,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                       setSelectedAnalysis('analyse globale');
                       setIsRightDrawerOpen(false);
                     }}
-                    className={`w-full text-left p-2.5 rounded-xl border border-[#2D4A3E]/30 font-bold transition-all flex items-center gap-2.5 cursor-pointer ${selectedAnalysis === 'analyse globale' ? 'bg-[#2D4A3E] text-[#F5F0E8]' : 'bg-[#E8DFD0]/60 hover:bg-[#E8DFD0] text-[#2D4A3E]'}`}
+                    className={`w-full text-left p-2.5 rounded-xl border border-[#2D4A3E]/30 dark:border-slate-700 font-bold transition-all flex items-center gap-2.5 cursor-pointer ${selectedAnalysis === 'analyse globale' ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'bg-[#E8DFD0]/60 dark:bg-slate-800/80 hover:bg-[#E8DFD0] dark:hover:bg-slate-700 text-[#2D4A3E] dark:text-slate-200'}`}
                   >
                     <BarChart2 className="w-4 h-4" />
                     <span>Analyse globale</span>
@@ -874,7 +1027,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                       setSelectedAnalysis('analyse par trimestre');
                       setIsRightDrawerOpen(false);
                     }}
-                    className={`w-full text-left p-2.5 rounded-xl border border-[#2D4A3E]/30 font-bold transition-all flex items-center gap-2.5 cursor-pointer ${selectedAnalysis === 'analyse par trimestre' ? 'bg-[#2D4A3E] text-[#F5F0E8]' : 'bg-[#E8DFD0]/60 hover:bg-[#E8DFD0] text-[#2D4A3E]'}`}
+                    className={`w-full text-left p-2.5 rounded-xl border border-[#2D4A3E]/30 dark:border-slate-700 font-bold transition-all flex items-center gap-2.5 cursor-pointer ${selectedAnalysis === 'analyse par trimestre' ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'bg-[#E8DFD0]/60 dark:bg-slate-800/80 hover:bg-[#E8DFD0] dark:hover:bg-slate-700 text-[#2D4A3E] dark:text-slate-200'}`}
                   >
                     <Calendar className="w-4 h-4" />
                     <span>Analyse par trimestre</span>
@@ -884,7 +1037,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                       setSelectedAnalysis('analyse par matière');
                       setIsRightDrawerOpen(false);
                     }}
-                    className={`w-full text-left p-2.5 rounded-xl border border-[#2D4A3E]/30 font-bold transition-all flex items-center gap-2.5 cursor-pointer ${selectedAnalysis === 'analyse par matière' ? 'bg-[#2D4A3E] text-[#F5F0E8]' : 'bg-[#E8DFD0]/60 hover:bg-[#E8DFD0] text-[#2D4A3E]'}`}
+                    className={`w-full text-left p-2.5 rounded-xl border border-[#2D4A3E]/30 dark:border-slate-700 font-bold transition-all flex items-center gap-2.5 cursor-pointer ${selectedAnalysis === 'analyse par matière' ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'bg-[#E8DFD0]/60 dark:bg-slate-800/80 hover:bg-[#E8DFD0] dark:hover:bg-slate-700 text-[#2D4A3E] dark:text-slate-200'}`}
                   >
                     <FolderTree className="w-4 h-4" />
                     <span>Analyse par matière</span>
@@ -894,7 +1047,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                       setSelectedAnalysis('analyse par note');
                       setIsRightDrawerOpen(false);
                     }}
-                    className={`w-full text-left p-2.5 rounded-xl border border-[#2D4A3E]/30 font-bold transition-all flex items-center gap-2.5 cursor-pointer ${selectedAnalysis === 'analyse par note' ? 'bg-[#2D4A3E] text-[#F5F0E8]' : 'bg-[#E8DFD0]/60 hover:bg-[#E8DFD0] text-[#2D4A3E]'}`}
+                    className={`w-full text-left p-2.5 rounded-xl border border-[#2D4A3E]/30 dark:border-slate-700 font-bold transition-all flex items-center gap-2.5 cursor-pointer ${selectedAnalysis === 'analyse par note' ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'bg-[#E8DFD0]/60 dark:bg-slate-800/80 hover:bg-[#E8DFD0] dark:hover:bg-slate-700 text-[#2D4A3E] dark:text-slate-200'}`}
                   >
                     <Award className="w-4 h-4" />
                     <span>Analyse par note</span>
@@ -902,8 +1055,8 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-[#2D4A3E]/20 text-center">
-                <p className="text-[10px] text-[#5C6B5A]">UniFolder Statut v1.0</p>
+              <div className="pt-3 border-t border-[#2D4A3E]/20 dark:border-slate-800 text-center">
+                <p className="text-[10px] text-[#5C6B5A] dark:text-slate-400">UniFolder Statut v1.0</p>
               </div>
             </motion.div>
           </div>

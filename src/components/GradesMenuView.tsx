@@ -136,6 +136,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
     try {
       localStorage.setItem('user_grades_trimesters_data', JSON.stringify(trimestersData));
       triggerDebouncedCloudBackup();
+      window.dispatchEvent(new Event('user_grades_changed'));
     } catch (e) {}
 
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
@@ -189,6 +190,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
           }
           setTrimestersData(mapped);
           localStorage.setItem('user_grades_trimesters_data', JSON.stringify(mapped));
+          window.dispatchEvent(new Event('user_grades_changed'));
         } else if (res && res.success && Array.isArray(res.data) && res.data.length === 0) {
           // Si la base distante est encore vide, pousser les données locales vers Cloudflare D1
           const localData = getInitialTrimestersData();
@@ -222,6 +224,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
     try {
       localStorage.setItem('user_grades_standard_scale', standardScale.toString());
       triggerDebouncedCloudBackup();
+      window.dispatchEvent(new Event('user_grades_changed'));
     } catch (e) {}
   }, [standardScale]);
 
