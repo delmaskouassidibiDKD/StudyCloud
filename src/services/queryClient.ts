@@ -36,6 +36,8 @@ export const QUERY_KEYS = {
   filesMenu: (userId?: string) => ['cloud', 'filesMenu', userId || 'current'] as const,
   matiereFiles: (matiereName: string, userId?: string) => ['cloud', 'matiereFiles', matiereName, userId || 'current'] as const,
   matieresList: (userId?: string) => ['cloud', 'matieresList', userId || 'current'] as const,
+  scheduleConfig: (userId?: string) => ['cloud', 'scheduleConfig', userId || 'current'] as const,
+  scheduleSlots: (userId?: string) => ['cloud', 'scheduleSlots', userId || 'current'] as const,
 };
 
 export const invalidateCloudQueries = {
@@ -58,6 +60,12 @@ export const invalidateCloudQueries = {
       ? queryClient.invalidateQueries({ queryKey: ['cloud', 'matiereFiles', matiereName] })
       : queryClient.invalidateQueries({ queryKey: ['cloud', 'matiereFiles'] }),
   matieresList: () => queryClient.invalidateQueries({ queryKey: ['cloud', 'matieresList'] }),
+  scheduleConfig: () => queryClient.invalidateQueries({ queryKey: ['cloud', 'scheduleConfig'] }),
+  scheduleSlots: () => queryClient.invalidateQueries({ queryKey: ['cloud', 'scheduleSlots'] }),
+  schedule: () => {
+    queryClient.invalidateQueries({ queryKey: ['cloud', 'scheduleConfig'] });
+    queryClient.invalidateQueries({ queryKey: ['cloud', 'scheduleSlots'] });
+  },
   all: () => queryClient.invalidateQueries({ queryKey: ['cloud'] }),
 };
 

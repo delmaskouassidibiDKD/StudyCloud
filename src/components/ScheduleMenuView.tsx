@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Plus, Trash2, Edit2, Clock, Calendar, Check, X, ZoomIn, ZoomOut, MapPin, User } from 'lucide-react';
-import { triggerDebouncedCloudBackup } from '../services/userSync';
+import { triggerDebouncedCloudBackup, getCurrentUserId } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
+import { useScheduleConfig, useScheduleSlots } from '../hooks/useCloudQueries';
+import { invalidateCloudQueries } from '../services/queryClient';
+import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/safeStorage';
 
 interface ScheduleMenuViewProps {
   onBack: () => void;
@@ -30,24 +33,36 @@ const COLORS = [
 ];
 
 export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) => {
+  const userId = getCurrentUserId() || (typeof window !== 'undefined' ? localStorage.getItem('unifolder_user_id') : null) || 'default-user';
+
+  // Hooks TanStack Query pour la synchronisation Hono/D1
+  const { data: serverConfig } = useScheduleConfig(userId);
+  const { data: serverSlots } = useScheduleSlots(userId);
+
   const [scheduleData, setScheduleData] = useState<Record<string, ScheduleEntry>>(() => {
     try {
-      const saved = localStorage.getItem('user_schedule_data');
-      if (saved) return JSON.parse(saved);
+      const saved = safeLocalStorageGet('user_schedule_data', null);
+      if (saved && typeof saved === 'object') return saved;
+      const raw = localStorage.getItem('user_schedule_data');
+      if (raw) return JSON.parse(raw);
     } catch (e) {}
     return {};
   });
   const [days, setDays] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem('user_schedule_days');
-      if (saved) return JSON.parse(saved);
+      const saved = safeLocalStorageGet('user_schedule_days', null);
+      if (Array.isArray(saved) && saved.length > 0) return saved;
+      const raw = localStorage.getItem('user_schedule_days');
+      if (raw) return JSON.parse(raw);
     } catch (e) {}
     return DEFAULT_DAYS;
   });
   const [hours, setHours] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem('user_schedule_hours');
-      if (saved) return JSON.parse(saved);
+      const saved = safeLocalStorageGet('user_schedule_hours', null);
+      if (Array.isArray(saved) && saved.length > 0) return saved;
+      const raw = localStorage.getItem('user_schedule_hours');
+      if (raw) return JSON.parse(raw);
     } catch (e) {}
     return DEFAULT_HOURS;
   });
@@ -72,89 +87,92 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
     return 100;
   });
 
+  const hasConfigLoadedRef = useRef(false);
+
+  // Synchronisation réactive TanStack Query pour la configuration (jours, heures, zoom)
   useEffect(() => {
-    try {
-      localStorage.setItem('user_schedule_data', JSON.stringify(scheduleData));
-      triggerDebouncedCloudBackup();
-    } catch (e) {}
+    if (serverConfig) {
+      if (serverConfig.days_json) {
+        try {
+          const d = JSON.parse(serverConfig.days_json);
+          if (Array.isArray(d) && d.length > 0) {
+            setDays(d);
+            safeLocalStorageSet('user_schedule_days', d);
+          }
+        } catch (e) {}
+      }
+      if (serverConfig.hours_json) {
+        try {
+          const h = JSON.parse(serverConfig.hours_json);
+          if (Array.isArray(h) && h.length > 0) {
+            setHours(h);
+            safeLocalStorageSet('user_schedule_hours', h);
+          }
+        } catch (e) {}
+      }
+      if (serverConfig.zoom_level) {
+        const z = Number(serverConfig.zoom_level);
+        if (!isNaN(z) && z > 0) {
+          setZoomLevel(z);
+          safeLocalStorageSet('user_schedule_zoom', z.toString());
+        }
+      }
+    }
+    hasConfigLoadedRef.current = true;
+  }, [serverConfig]);
+
+  // Synchronisation réactive TanStack Query pour les créneaux réels (D1)
+  useEffect(() => {
+    if (serverSlots && Array.isArray(serverSlots)) {
+      const mapped: Record<string, ScheduleEntry> = {};
+      for (const s of serverSlots) {
+        const k = `${s.day}_${s.hour_slot}`;
+        mapped[k] = {
+          subject: s.subject,
+          room: s.room || '',
+          note: s.note_or_teacher || '',
+          color: s.color || COLORS[0].bg,
+        };
+      }
+      setScheduleData(prev => {
+        const merged = { ...prev, ...mapped };
+        safeLocalStorageSet('user_schedule_data', merged);
+        return merged;
+      });
+    }
+  }, [serverSlots]);
+
+  // Sauvegarde locale sécurisée
+  useEffect(() => {
+    safeLocalStorageSet('user_schedule_data', scheduleData);
+    triggerDebouncedCloudBackup();
   }, [scheduleData]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('user_schedule_days', JSON.stringify(days));
-      triggerDebouncedCloudBackup();
-    } catch (e) {}
+    safeLocalStorageSet('user_schedule_days', days);
+    triggerDebouncedCloudBackup();
   }, [days]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('user_schedule_hours', JSON.stringify(hours));
-      triggerDebouncedCloudBackup();
-    } catch (e) {}
+    safeLocalStorageSet('user_schedule_hours', hours);
+    triggerDebouncedCloudBackup();
   }, [hours]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('user_schedule_zoom', zoomLevel.toString());
-      triggerDebouncedCloudBackup();
-    } catch (e) {}
+    safeLocalStorageSet('user_schedule_zoom', zoomLevel.toString());
+    triggerDebouncedCloudBackup();
   }, [zoomLevel]);
 
-  // Synchronisation avec Cloudflare D1
+  // Synchronisation automatique de la configuration vers Cloudflare D1
   useEffect(() => {
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
-    // 1. Charger la configuration (jours, heures, zoom)
-    StudyCloudAPI.getScheduleConfig(userId)
-      .then((res: any) => {
-        if (res && res.success && res.data) {
-          if (res.data.days_json) {
-            try {
-              const d = JSON.parse(res.data.days_json);
-              if (Array.isArray(d) && d.length > 0) setDays(d);
-            } catch (e) {}
-          }
-          if (res.data.hours_json) {
-            try {
-              const h = JSON.parse(res.data.hours_json);
-              if (Array.isArray(h) && h.length > 0) setHours(h);
-            } catch (e) {}
-          }
-          if (res.data.zoom_level) {
-            setZoomLevel(Number(res.data.zoom_level));
-          }
-        }
-      })
-      .catch(() => {});
-
-    // 2. Charger les créneaux réels
-    StudyCloudAPI.getScheduleSlots(userId)
-      .then((res: any) => {
-        if (res && res.success && Array.isArray(res.data)) {
-          const mapped: Record<string, ScheduleEntry> = {};
-          for (const s of res.data) {
-            const k = `${s.day}_${s.hour_slot}`;
-            mapped[k] = {
-              subject: s.subject,
-              room: s.room || '',
-              note: s.note_or_teacher || '',
-              color: s.color || COLORS[0].bg,
-            };
-          }
-          setScheduleData(mapped);
-          localStorage.setItem('user_schedule_data', JSON.stringify(mapped));
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  // Mettre à jour la configuration vers D1 dès modification
-  useEffect(() => {
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    if (!hasConfigLoadedRef.current) return;
     const timer = setTimeout(() => {
-      StudyCloudAPI.updateScheduleConfig(userId, JSON.stringify(days), JSON.stringify(hours), zoomLevel).catch(() => {});
-    }, 1000);
+      StudyCloudAPI.updateScheduleConfig(userId, JSON.stringify(days), JSON.stringify(hours), zoomLevel)
+        .then(() => invalidateCloudQueries.scheduleConfig())
+        .catch(() => {});
+    }, 800);
     return () => clearTimeout(timer);
-  }, [days, hours, zoomLevel]);
+  }, [days, hours, zoomLevel, userId]);
 
   useEffect(() => {
     const handleRestore = () => {
@@ -243,25 +261,42 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
     }
   };
 
-  const saveEntry = () => {
+  const saveEntry = async () => {
     if (!activeSlot) return;
     const key = `${activeSlot.day}_${activeSlot.hour}`;
     const updated = { ...scheduleData };
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
 
     if (!subjectInput.trim()) {
       delete updated[key];
-      StudyCloudAPI.deleteScheduleSlot({ userId, day: activeSlot.day, hourSlot: activeSlot.hour }).catch(() => {});
-    } else {
-      const entry: ScheduleEntry = {
-        subject: subjectInput.trim(),
-        room: roomInput.trim(),
-        note: noteInput.trim(),
-        color: selectedColor
-      };
-      updated[key] = entry;
-      StudyCloudAPI.addScheduleSlot({
-        id: `${userId}-${activeSlot.day}-${activeSlot.hour}`,
+      setScheduleData(updated);
+      safeLocalStorageSet('user_schedule_data', updated);
+      setActiveSlot(null);
+      try {
+        await StudyCloudAPI.deleteScheduleSlot({ userId, day: activeSlot.day, hourSlot: activeSlot.hour });
+        invalidateCloudQueries.scheduleSlots();
+        setSuccessMessage('Créneau effacé de la base de données !');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } catch (e) {
+        console.error(e);
+      }
+      return;
+    }
+
+    const entry: ScheduleEntry = {
+      subject: subjectInput.trim(),
+      room: roomInput.trim(),
+      note: noteInput.trim(),
+      color: selectedColor
+    };
+    updated[key] = entry;
+    setScheduleData(updated);
+    safeLocalStorageSet('user_schedule_data', updated);
+    setActiveSlot(null);
+
+    try {
+      const slotId = `${userId}-${activeSlot.day}-${activeSlot.hour}`;
+      await StudyCloudAPI.addScheduleSlot({
+        id: slotId,
         userId,
         day: activeSlot.day,
         hourSlot: activeSlot.hour,
@@ -269,15 +304,34 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
         room: entry.room,
         noteOrTeacher: entry.note,
         color: entry.color,
-      }).catch(() => {});
+      });
+      invalidateCloudQueries.scheduleSlots();
+      setSuccessMessage('Créneau enregistré dans la base de données !');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (e) {
+      console.error(e);
+      setErrorMessage("Erreur lors de l'enregistrement dans la base de données");
+      setTimeout(() => setErrorMessage(null), 4000);
     }
+  };
+
+  const deleteSlot = async () => {
+    if (!activeSlot) return;
+    const key = `${activeSlot.day}_${activeSlot.hour}`;
+    const updated = { ...scheduleData };
+    delete updated[key];
     setScheduleData(updated);
+    safeLocalStorageSet('user_schedule_data', updated);
+    setActiveSlot(null);
+
     try {
-      localStorage.setItem('user_schedule_data', JSON.stringify(updated));
+      await StudyCloudAPI.deleteScheduleSlot({ userId, day: activeSlot.day, hourSlot: activeSlot.hour });
+      invalidateCloudQueries.scheduleSlots();
+      setSuccessMessage('Créneau effacé de la base de données !');
+      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (e) {
       console.error(e);
     }
-    setActiveSlot(null);
   };
 
   const openSlot = (day: string, hour: string) => {
@@ -302,7 +356,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
     setEditingHeader({ type, index, value: currentVal });
   };
 
-  const saveHeaderEdit = () => {
+  const saveHeaderEdit = async () => {
     if (!editingHeader) return;
     const { type, index, value } = editingHeader;
     const trimmed = value.trim();
@@ -313,49 +367,103 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
 
     if (type === 'day') {
       const oldDay = days[index];
+      if (oldDay === trimmed) {
+        setEditingHeader(null);
+        return;
+      }
       const newDays = [...days];
       newDays[index] = trimmed;
       setDays(newDays);
 
-      // Migrate scheduleData keys
+      // Migrer les créneaux dans l'état local et localStorage
       const updatedData = { ...scheduleData };
+      const slotsToMigrate: any[] = [];
       hours.forEach((h) => {
         const oldKey = `${oldDay}_${h}`;
         const newKey = `${trimmed}_${h}`;
         if (updatedData[oldKey]) {
-          updatedData[newKey] = updatedData[oldKey];
+          const entry = updatedData[oldKey];
+          updatedData[newKey] = entry;
           delete updatedData[oldKey];
+          slotsToMigrate.push({
+            id: `${userId}-${trimmed}-${h}`,
+            userId,
+            day: trimmed,
+            hourSlot: h,
+            subject: entry.subject,
+            room: entry.room || '',
+            noteOrTeacher: entry.note || '',
+            color: entry.color,
+            oldDay,
+          });
         }
       });
       setScheduleData(updatedData);
+      safeLocalStorageSet('user_schedule_days', newDays);
+      safeLocalStorageSet('user_schedule_data', updatedData);
+
+      // Synchroniser avec Cloudflare D1
       try {
-        localStorage.setItem('user_schedule_days', JSON.stringify(newDays));
-        localStorage.setItem('user_schedule_data', JSON.stringify(updatedData));
-      } catch (e) {
-        console.error(e);
+        await StudyCloudAPI.updateScheduleConfig(userId, JSON.stringify(newDays), JSON.stringify(hours), zoomLevel);
+        for (const s of slotsToMigrate) {
+          await StudyCloudAPI.deleteScheduleSlot({ userId, day: s.oldDay, hourSlot: s.hourSlot });
+          await StudyCloudAPI.addScheduleSlot(s);
+        }
+        invalidateCloudQueries.schedule();
+        setSuccessMessage('Jour et créneaux mis à jour dans la base de données !');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } catch (err) {
+        console.error(err);
       }
     } else {
       const oldHour = hours[index];
+      if (oldHour === trimmed) {
+        setEditingHeader(null);
+        return;
+      }
       const newHours = [...hours];
       newHours[index] = trimmed;
       setHours(newHours);
 
-      // Migrate scheduleData keys
+      // Migrer les créneaux vers la nouvelle heure
       const updatedData = { ...scheduleData };
+      const slotsToMigrate: any[] = [];
       days.forEach((d) => {
         const oldKey = `${d}_${oldHour}`;
         const newKey = `${d}_${trimmed}`;
         if (updatedData[oldKey]) {
-          updatedData[newKey] = updatedData[oldKey];
+          const entry = updatedData[oldKey];
+          updatedData[newKey] = entry;
           delete updatedData[oldKey];
+          slotsToMigrate.push({
+            id: `${userId}-${d}-${trimmed}`,
+            userId,
+            day: d,
+            hourSlot: trimmed,
+            subject: entry.subject,
+            room: entry.room || '',
+            noteOrTeacher: entry.note || '',
+            color: entry.color,
+            oldHour,
+          });
         }
       });
       setScheduleData(updatedData);
+      safeLocalStorageSet('user_schedule_hours', newHours);
+      safeLocalStorageSet('user_schedule_data', updatedData);
+
+      // Synchroniser avec Cloudflare D1
       try {
-        localStorage.setItem('user_schedule_hours', JSON.stringify(newHours));
-        localStorage.setItem('user_schedule_data', JSON.stringify(updatedData));
-      } catch (e) {
-        console.error(e);
+        await StudyCloudAPI.updateScheduleConfig(userId, JSON.stringify(days), JSON.stringify(newHours), zoomLevel);
+        for (const s of slotsToMigrate) {
+          await StudyCloudAPI.deleteScheduleSlot({ userId, day: s.day, hourSlot: s.oldHour });
+          await StudyCloudAPI.addScheduleSlot(s);
+        }
+        invalidateCloudQueries.schedule();
+        setSuccessMessage('Horaire et créneaux mis à jour dans la base de données !');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } catch (err) {
+        console.error(err);
       }
     }
     setEditingHeader(null);
@@ -378,12 +486,18 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
     }
     const newHours = [...hours, nextHourStr];
     setHours(newHours);
-    try {
-      localStorage.setItem('user_schedule_hours', JSON.stringify(newHours));
-    } catch (e) {}
+    safeLocalStorageSet('user_schedule_hours', newHours);
+
+    StudyCloudAPI.updateScheduleConfig(userId, JSON.stringify(days), JSON.stringify(newHours), zoomLevel)
+      .then(() => {
+        invalidateCloudQueries.scheduleConfig();
+        setSuccessMessage('Ligne ajoutée et enregistrée dans la base de données !');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      })
+      .catch(() => {});
   };
 
-  const deleteHourRow = () => {
+  const deleteHourRow = async () => {
     if (!editingHeader || editingHeader.type !== 'hour') return;
     if (hours.length <= 1) {
       setErrorMessage("Impossible de supprimer la ligne, il ne peut pas y avoir zéro ligne !");
@@ -403,14 +517,21 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
       delete updatedData[key];
     });
     setScheduleData(updatedData);
-
-    try {
-      localStorage.setItem('user_schedule_hours', JSON.stringify(newHours));
-      localStorage.setItem('user_schedule_data', JSON.stringify(updatedData));
-    } catch (e) {}
+    safeLocalStorageSet('user_schedule_hours', newHours);
+    safeLocalStorageSet('user_schedule_data', updatedData);
 
     setShowDeleteConfirm(false);
     setEditingHeader(null);
+
+    try {
+      await StudyCloudAPI.updateScheduleConfig(userId, JSON.stringify(days), JSON.stringify(newHours), zoomLevel);
+      await StudyCloudAPI.deleteScheduleSlot({ userId, hourSlot: hourToRemove });
+      invalidateCloudQueries.schedule();
+      setSuccessMessage('Ligne supprimée de la base de données !');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const promptAddHourRow = () => {
@@ -438,18 +559,19 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
     const newHours = [...hours];
     newHours.splice(index + 1, 0, '');
     setHours(newHours);
-    try {
-      localStorage.setItem('user_schedule_hours', JSON.stringify(newHours));
-    } catch (e) {}
+    safeLocalStorageSet('user_schedule_hours', newHours);
 
     const newIndex = index + 1;
     setEditingHeader({ type: 'hour', index: newIndex, value: '' });
     setShowAddConfirm(false);
-    
-    setSuccessMessage('Une ligne a été ajoutée avec succès !');
-    setTimeout(() => {
-      setSuccessMessage(null);
-    }, 3000);
+
+    StudyCloudAPI.updateScheduleConfig(userId, JSON.stringify(days), JSON.stringify(newHours), zoomLevel)
+      .then(() => {
+        invalidateCloudQueries.scheduleConfig();
+        setSuccessMessage('Une ligne a été ajoutée et enregistrée !');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      })
+      .catch(() => {});
   };
 
   return (
@@ -463,8 +585,12 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>Retour</span>
         </button>
-        <div className="text-center flex-1 mx-2">
+        <div className="text-center flex-1 mx-2 flex items-center justify-center gap-2">
           <h1 className="text-base sm:text-lg font-serif font-bold text-[#2D4A3E] dark:text-white truncate">Mon emploi du temps</h1>
+          <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100/80 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800">
+            <Check className="w-3 h-3 stroke-[2.5]" />
+            <span>Synchronisé D1</span>
+          </span>
         </div>
         <button
           onClick={addHourRow}
@@ -781,6 +907,14 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
         </div>
       )}
 
+      {/* Success Toast Notification */}
+      {successMessage && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[70] bg-emerald-600 dark:bg-emerald-700 text-white px-5 py-3 rounded-2xl shadow-xl border-2 border-white/80 flex items-center gap-2.5 animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-none">
+          <Check className="w-5 h-5 text-white shrink-0" />
+          <span className="text-xs sm:text-sm font-bold">{successMessage}</span>
+        </div>
+      )}
+
       {/* Error Toast Notification */}
       {errorMessage && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[70] bg-rose-600 text-white px-5 py-3 rounded-2xl shadow-xl border-2 border-white flex items-center gap-2.5 animate-in fade-in slide-in-from-top-4 duration-300">
@@ -914,11 +1048,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                 {scheduleData[`${activeSlot.day}_${activeSlot.hour}`] && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setSubjectInput('');
-                      setRoomInput('');
-                      setNoteInput('');
-                    }}
+                    onClick={deleteSlot}
                     className="px-4 py-2 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 font-bold text-xs rounded-xl border border-rose-300 dark:border-rose-800 transition-all flex items-center gap-1.5 cursor-pointer mr-auto"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

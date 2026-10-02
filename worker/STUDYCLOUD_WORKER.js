@@ -9945,15 +9945,20 @@ var index_default = {
         }
         if (method === "PUT") {
           const body = await request.json();
+          const uid = body.userId;
+          if (!uid) return errorResponse("userId requis", 400, origin);
+          const daysJson = typeof body.daysJson === "string" ? body.daysJson : JSON.stringify(body.daysJson || body.days || []);
+          const hoursJson = typeof body.hoursJson === "string" ? body.hoursJson : JSON.stringify(body.hoursJson || body.hours || []);
+          const zoomLevel = Number(body.zoomLevel) || 100;
           await env.DB.prepare(`
             INSERT INTO schedule_config (user_id, days_json, hours_json, zoom_level, updated_at)
             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(user_id) DO UPDATE SET
-              days_json = COALESCE(excluded.days_json, schedule_config.days_json),
-              hours_json = COALESCE(excluded.hours_json, schedule_config.hours_json),
-              zoom_level = COALESCE(excluded.zoom_level, schedule_config.zoom_level),
+              days_json = excluded.days_json,
+              hours_json = excluded.hours_json,
+              zoom_level = excluded.zoom_level,
               updated_at = CURRENT_TIMESTAMP
-          `).bind(body.userId, body.daysJson, body.hoursJson, body.zoomLevel ?? 100).run();
+          `).bind(uid, daysJson, hoursJson, zoomLevel).run();
           return jsonResponse({ success: true, message: "Configuration mise \xE0 jour" }, 200, origin);
         }
       }
@@ -9961,33 +9966,47 @@ var index_default = {
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
           if (!userId) return errorResponse("userId requis", 400, origin);
-          const { results } = await env.DB.prepare("SELECT * FROM schedule_slots WHERE user_id = ?").bind(userId).all();
+          const { results } = await env.DB.prepare("SELECT * FROM schedule_slots WHERE user_id = ? ORDER BY day, hour_slot").bind(userId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
         if (method === "POST") {
           const body = await request.json();
-          const { id, userId, day, hourSlot, subject, room, noteOrTeacher, color } = body;
-          const slotId = id || `${userId}-${day}-${hourSlot}`;
-          await env.DB.prepare(`
-            INSERT INTO schedule_slots (id, user_id, day, hour_slot, subject, room, note_or_teacher, color)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-              subject = excluded.subject,
-              room = excluded.room,
-              note_or_teacher = excluded.note_or_teacher,
-              color = excluded.color
-          `).bind(slotId, userId, day, hourSlot, subject, room || "", noteOrTeacher || "", color || "#EA580C").run();
-          return jsonResponse({ success: true, id: slotId }, 201, origin);
+          const slotsToProcess = Array.isArray(body) ? body : Array.isArray(body?.slots) ? body.slots : [body];
+          for (const s of slotsToProcess) {
+            const { id, userId, day, hourSlot, subject, room, noteOrTeacher, color } = s;
+            if (!userId || !day || !hourSlot) continue;
+            const slotId = id || `${userId}-${day}-${hourSlot}`;
+            await env.DB.prepare("DELETE FROM schedule_slots WHERE user_id = ? AND day = ? AND hour_slot = ? AND id != ?").bind(userId, day, hourSlot, slotId).run().catch(() => {
+            });
+            await env.DB.prepare(`
+              INSERT INTO schedule_slots (id, user_id, day, hour_slot, subject, room, note_or_teacher, color)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                day = excluded.day,
+                hour_slot = excluded.hour_slot,
+                subject = excluded.subject,
+                room = excluded.room,
+                note_or_teacher = excluded.note_or_teacher,
+                color = excluded.color
+            `).bind(slotId, userId, day, hourSlot, subject || "", room || "", noteOrTeacher || "", color || "#EA580C").run();
+          }
+          return jsonResponse({ success: true, message: "Cr\xE9neau(x) enregistr\xE9(s) avec succ\xE8s" }, 201, origin);
         }
         if (method === "DELETE") {
           const id = url.searchParams.get("id");
           const userId = url.searchParams.get("userId");
           const day = url.searchParams.get("day");
           const hourSlot = url.searchParams.get("hourSlot");
-          if (id) {
-            await env.DB.prepare("DELETE FROM schedule_slots WHERE id = ?").bind(id).run();
+          if (id && userId && day && hourSlot) {
+            await env.DB.prepare("DELETE FROM schedule_slots WHERE id = ? OR (user_id = ? AND day = ? AND hour_slot = ?)").bind(id, userId, day, hourSlot).run();
           } else if (userId && day && hourSlot) {
             await env.DB.prepare("DELETE FROM schedule_slots WHERE user_id = ? AND day = ? AND hour_slot = ?").bind(userId, day, hourSlot).run();
+          } else if (id) {
+            await env.DB.prepare("DELETE FROM schedule_slots WHERE id = ?").bind(id).run();
+          } else if (userId && hourSlot) {
+            await env.DB.prepare("DELETE FROM schedule_slots WHERE user_id = ? AND hour_slot = ?").bind(userId, hourSlot).run();
+          } else if (userId && day) {
+            await env.DB.prepare("DELETE FROM schedule_slots WHERE user_id = ? AND day = ?").bind(userId, day).run();
           }
           return jsonResponse({ success: true, message: "Cr\xE9neau supprim\xE9" }, 200, origin);
         }

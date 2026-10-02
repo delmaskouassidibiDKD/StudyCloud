@@ -265,6 +265,37 @@ export function useMatieresList(userId?: string) {
       return [];
     },
     staleTime: 1000 * 60 * 2,
+  });
+}
+
+/**
+ * Hook TanStack Query pour la configuration de l'emploi du temps (jours, heures, zoom)
+ */
+export function useScheduleConfig(userId?: string) {
+  const currentUid = userId || getCurrentUserId() || 'default-user';
+  return useQuery<{ days_json?: string; hours_json?: string; zoom_level?: number } | null>({
+    queryKey: QUERY_KEYS.scheduleConfig(currentUid),
+    queryFn: async () => {
+      const res: any = await StudyCloudAPI.getScheduleConfig(currentUid);
+      return res?.data || null;
+    },
+    staleTime: 1000 * 60 * 2,
+    gcTime: 1000 * 60 * 5,
+  });
+}
+
+/**
+ * Hook TanStack Query pour les créneaux réels de l'emploi du temps
+ */
+export function useScheduleSlots(userId?: string) {
+  const currentUid = userId || getCurrentUserId() || 'default-user';
+  return useQuery<Array<{ id: string; user_id: string; day: string; hour_slot: string; subject: string; room?: string; note_or_teacher?: string; color?: string }>>({
+    queryKey: QUERY_KEYS.scheduleSlots(currentUid),
+    queryFn: async () => {
+      const res: any = await StudyCloudAPI.getScheduleSlots(currentUid);
+      return res && res.success && Array.isArray(res.data) ? res.data : [];
+    },
+    staleTime: 1000 * 60 * 2,
     gcTime: 1000 * 60 * 5,
   });
 }
