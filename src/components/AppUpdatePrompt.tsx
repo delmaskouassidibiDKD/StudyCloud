@@ -217,7 +217,7 @@ export const AppUpdatePrompt: React.FC = () => {
       reg.waiting.postMessage({ type: 'SKIP_WAITING' });
     } else {
       // Vider les caches éventuels et actualiser directement
-      if ('caches' in window) {
+      if (typeof caches !== 'undefined') {
         caches.keys().then((names) => {
           return Promise.all(names.map((name) => caches.delete(name)));
         }).finally(() => {
