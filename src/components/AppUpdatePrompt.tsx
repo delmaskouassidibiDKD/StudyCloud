@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { RefreshCw, Sparkles, X, ShieldAlert } from 'lucide-react';
+import { RefreshCw, Download, X, ShieldAlert } from 'lucide-react';
 
 export const AppUpdatePrompt: React.FC = () => {
   const [showUpdate, setShowUpdate] = useState<boolean>(false);
@@ -157,9 +157,9 @@ export const AppUpdatePrompt: React.FC = () => {
           {/* Ligne lumineuse supérieure */}
           <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500" />
 
-          {/* Icône */}
+          {/* Icône de flèche de téléchargement */}
           <div className="mx-auto w-14 h-14 rounded-2xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center text-orange-400 mb-4 shadow-lg shadow-orange-950/50">
-            <RefreshCw className="w-8 h-8 animate-spin text-orange-500" />
+            <Download className="w-8 h-8 text-orange-500 animate-bounce" />
           </div>
 
           <h3 className="text-lg font-black text-white tracking-wide">
@@ -204,14 +204,20 @@ export const AppUpdatePrompt: React.FC = () => {
         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500" />
 
         <div className="flex items-start gap-3.5">
-          {/* Badge icône dynamique */}
-          <div className="relative p-2.5 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 text-white shadow-lg shadow-orange-500/30 shrink-0">
-            <Sparkles className="w-5 h-5 animate-pulse" />
+          {/* Bouton / Badge avec flèche de téléchargement orientée vers le bas */}
+          <button
+            type="button"
+            onClick={handleUpdate}
+            disabled={isUpdating}
+            title="Mettre à jour"
+            className="relative p-2.5 rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white shadow-lg shadow-orange-500/30 shrink-0 flex items-center justify-center active:scale-95 transition-all cursor-pointer disabled:opacity-75"
+          >
+            <Download className={`w-5 h-5 text-white ${isUpdating ? 'animate-pulse' : 'animate-bounce'}`} />
             <span className="absolute -top-1 -right-1 flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
             </span>
-          </div>
+          </button>
 
           {/* Contenu textuel */}
           <div className="flex-1 min-w-0 pr-6">
