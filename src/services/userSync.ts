@@ -24,6 +24,7 @@ export function clearUserDataOnLogout(): void {
     'sc_auth_token',
     'sc_auth_user',
     'sc_last_active_at',
+    'sc_idb_has_data',
     'unifolder_user_id',
     'unifolder_user_name',
     'unifolder_user_school',
@@ -47,6 +48,11 @@ export function clearUserDataOnLogout(): void {
     'unifolder_clock_alarms',
     'unifolder_user_files',
     'unifolder_files',
+    'unifolder_files_menu_items',
+    'unifolder_imported_files',
+    'unifolder_matiere_files',
+    'unifolder_last_imported_id',
+    'unifolder_importing_ids',
     'unifolder_shared_folders',
     'unifolder_shares',
     'unifolder_published_products',
@@ -56,12 +62,39 @@ export function clearUserDataOnLogout(): void {
     'unifolder_history_files',
     'studycloud_last_sync',
     'unifolder_view_mode',
+    'studycloud_recent_files',
+    'studycloud_deleted_recent_ids',
+    'studycloud_deleted_file_ids',
+    'studycloud_classeur_3d_folders',
+    'studycloud_folder_files_map',
+    'studycloud_documents_files',
+    'studycloud_images_files',
+    'studycloud_videos_files',
+    'studycloud_audio_files',
+    'studycloud_trash_files',
+    'studycloud_secure_files',
+    'studycloud_secure_folder_files',
+    'studycloud_downloaded_items',
+    'studycloud_downloaded_files',
+    'studycloud_pinned_ids',
+    'studycloud_favorites_ids',
+    'studycloud_dashboard_wallpaper',
+    'studycloud_dashboard_wallpaper_meta',
+    'studycloud_recent_searches',
   ];
 
-  // Nettoyer également les clés dynamiques comme unifolder_matiere_files_*
+  // Nettoyer également toutes les clés dynamiques commençant par unifolder_ ou studycloud_
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const key = localStorage.key(i);
-    if (key && (key.startsWith('unifolder_matiere_files_') || userKeys.includes(key))) {
+    if (
+      key && (
+        userKeys.includes(key) ||
+        key.startsWith('unifolder_') ||
+        key.startsWith('studycloud_') ||
+        key.startsWith('sc_onb_') ||
+        key.startsWith('sc_resend_')
+      )
+    ) {
       localStorage.removeItem(key);
     }
   }
@@ -76,7 +109,7 @@ export function clearUserDataOnLogout(): void {
  * dès qu'il se connecte ou valide sa session.
  */
 export async function restoreUserDataFromCloud(userId: string): Promise<boolean> {
-  if (!userId) return false;
+  if (!userId || userId === 'default-user') return false;
   try {
     const res = await StudyCloudAPI.restoreCloud(userId);
     if (res && res.success && res.data) {
@@ -93,7 +126,7 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
       }
 
       // 2. Matières
-      if (Array.isArray(d.matieres) && d.matieres.length > 0) {
+      if (Array.isArray(d.matieres)) {
         const mappedMatieres = d.matieres.map((m: any) => ({
           id: m.id,
           name: m.name,
@@ -103,9 +136,10 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
         safeLocalStorageSet('unifolder_saved_matieres', mappedMatieres);
       }
 
-      // 3. Fichiers & Documents
+      // 3. Fichiers & Documents ("Mes fichiers")
       if (Array.isArray(d.files)) {
         safeLocalStorageSet('unifolder_user_files', d.files);
+        safeLocalStorageSet('unifolder_files_menu_items', d.files);
       }
 
       // 4. Notes Keep

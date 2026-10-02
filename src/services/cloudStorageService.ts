@@ -13,12 +13,14 @@ import { invalidateCloudQueries } from './queryClient';
 
 // En-têtes d'authentification pour garantir l'isolation des données
 function getAuthHeaders(): Record<string, string> {
-  const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
-  const token = localStorage.getItem('sc_auth_token') || localStorage.getItem('unifolder_auth_token') || localStorage.getItem('auth_token') || '';
+  const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+  const token = typeof localStorage !== 'undefined' ? (localStorage.getItem('sc_auth_token') || localStorage.getItem('unifolder_auth_token') || localStorage.getItem('auth_token') || '') : '';
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'x-user-id': userId,
   };
+  if (userId && userId !== 'default-user') {
+    headers['x-user-id'] = userId;
+  }
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -26,7 +28,8 @@ function getAuthHeaders(): Record<string, string> {
 }
 
 function getUserIdParam(): string {
-  return encodeURIComponent(getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user');
+  const uid = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+  return encodeURIComponent(uid && uid !== 'default-user' ? uid : '');
 }
 
 export interface CloudOverviewData {
@@ -94,8 +97,10 @@ export const CloudStorageAPI = {
   // --------------------------------------------------------------------------
   async getOverview(): Promise<CloudOverviewData | null> {
     try {
+      const uid = getUserIdParam();
+      if (!uid) return null;
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/overview?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/overview?userId=${uid}`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -105,6 +110,60 @@ export const CloudStorageAPI = {
     } catch (e) {
       console.warn('[CloudStorageAPI] getOverview fallback local:', e);
       return null;
+    }
+  },
+
+  // --------------------------------------------------------------------------
+  // Gestion persistante des aperçus récents rejetés / effacés (D1 user_dismissed_recents)
+  // --------------------------------------------------------------------------
+  async dismissRecent(fileId: string): Promise<boolean> {
+    try {
+      const uid = getUserIdParam();
+      if (!uid) return false;
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/recents/dismiss`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ fileId }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  async getDismissedRecents(): Promise<string[]> {
+    try {
+      const uid = getUserIdParam();
+      if (!uid) return [];
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/recents/dismissed?userId=${uid}`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        return Array.isArray(json?.dismissedIds) ? json.dismissedIds : [];
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  },
+
+  async undismissRecent(fileId: string): Promise<boolean> {
+    try {
+      const uid = getUserIdParam();
+      if (!uid) return false;
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/recents/undismiss`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ fileId }),
+      });
+      return res.ok;
+    } catch {
+      return false;
     }
   },
 

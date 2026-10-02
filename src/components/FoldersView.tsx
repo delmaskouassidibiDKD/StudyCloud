@@ -380,10 +380,14 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
   // Charger les vraies matières depuis Cloudflare D1
   useEffect(() => {
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    const userId = localStorage.getItem('unifolder_user_id');
+    if (!userId || userId === 'default-user') {
+      setSavedMatieres([]);
+      return;
+    }
     StudyCloudAPI.getMatieres(userId)
       .then((res) => {
-        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+        if (res && res.success && Array.isArray(res.data)) {
           const apiMatieres = res.data.map((m: any) => ({
             id: m.id,
             name: m.name,
@@ -397,7 +401,12 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       .catch((err) => console.warn('Erreur chargement matières depuis D1:', err));
   }, []);
 
+  const isInitialMatieresMount = useRef(true);
   useEffect(() => {
+    if (isInitialMatieresMount.current) {
+      isInitialMatieresMount.current = false;
+      return;
+    }
     localStorage.setItem('unifolder_saved_matieres', JSON.stringify(savedMatieres));
     triggerDebouncedCloudBackup();
   }, [savedMatieres]);

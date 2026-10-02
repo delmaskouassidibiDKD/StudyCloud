@@ -172,10 +172,11 @@ export function useDashboardWallpaper() {
  * - Zéro plantage QuotaExceededError car les fichiers volumineux restent en cache mémoire
  */
 export function useFilesMenuList(userId?: string) {
-  const currentUid = userId || getCurrentUserId() || 'default-user';
+  const currentUid = userId || getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
   return useQuery<ImportedItem[]>({
     queryKey: QUERY_KEYS.filesMenu(currentUid),
     queryFn: async () => {
+      if (!currentUid || currentUid === 'default-user') return [];
       const res = await StudyCloudAPI.getFiles(currentUid, 'root', false);
       if (res && res.success && Array.isArray(res.data)) {
         const nonStudyRows = res.data.filter((row: any) => !row.is_study_session && !row.isStudyImport);
@@ -213,11 +214,11 @@ export function useFilesMenuList(userId?: string) {
  * - Cache réactif et synchronisation automatique avec Cloudflare D1
  */
 export function useMatiereFilesList(matiereName: string, userId?: string) {
-  const currentUid = userId || getCurrentUserId() || 'default-user';
+  const currentUid = userId || getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
   return useQuery<ImportedItem[]>({
     queryKey: QUERY_KEYS.matiereFiles(matiereName, currentUid),
     queryFn: async () => {
-      if (!matiereName) return [];
+      if (!matiereName || !currentUid || currentUid === 'default-user') return [];
       const res = await StudyCloudAPI.getFiles(currentUid, matiereName);
       if (res && res.success && Array.isArray(res.data)) {
         const filesWithUrls: ImportedItem[] = await Promise.all(

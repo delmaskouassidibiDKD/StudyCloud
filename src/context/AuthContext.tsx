@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { StudyCloudAPI } from '../services/api';
 import { restoreUserDataFromCloud, clearUserDataOnLogout } from '../services/userSync';
 import { CloudDataStore } from '../services/cloudDataStore';
+import { queryClient } from '../services/queryClient';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -264,6 +265,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   const loginWithToken = useCallback((newToken: string, newUser: AuthUser) => {
+    // Si l'utilisateur connecté change ou si une session précédente existait, nettoyer pour une isolation parfaite
+    const prevUserId = localStorage.getItem('unifolder_user_id');
+    if (prevUserId !== newUser.id) {
+      clearUserDataOnLogout();
+      CloudDataStore.clearCache().catch(() => {});
+      queryClient.clear();
+    }
+
     localStorage.removeItem('sc_onboarding_expired_notice');
     localStorage.removeItem('sc_verification_expired_notice');
     localStorage.removeItem(`sc_onb_start_${newUser.id}`);
@@ -326,6 +335,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Nettoyage strict et complet de la session locale pour isoler les utilisateurs
     clearUserDataOnLogout();
     CloudDataStore.clearCache().catch(() => {});
+    queryClient.clear();
     setToken(null);
     setUser(null);
   }, [token]);

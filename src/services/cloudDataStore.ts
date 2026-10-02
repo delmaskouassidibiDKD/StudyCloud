@@ -90,8 +90,8 @@ const IDB_CACHE_KEY  = 'main_cache';
 const LS_FLAG_KEY = 'sc_idb_has_data';
 
 function getCacheKey(): string {
-  const uid = getCurrentUserId();
-  return uid ? `cloud_data_cache_${uid}` : IDB_CACHE_KEY;
+  const uid = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : null);
+  return uid && uid !== 'default-user' ? `cloud_data_cache_${uid}` : 'guest_cache';
 }
 
 let _idbInstance: IDBDatabase | null = null;
@@ -168,15 +168,37 @@ let inFlightSyncPromise: Promise<void> | null = null;
 let hydrationResolve: (() => void) | null = null;
 const hydrationComplete = new Promise<void>((res) => { hydrationResolve = res; });
 
+const dismissedRecentSet = new Set<string>();
+
+export function getDeletedRecentIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem('studycloud_deleted_recent_ids');
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        arr.forEach(item => {
+          if (typeof item === 'string') {
+            dismissedRecentSet.add(item);
+          }
+        });
+      }
+    }
+  } catch {}
+  return dismissedRecentSet;
+}
+
 // Hydratation async depuis IndexedDB (Tier 2 avec isolation utilisateur)
 async function hydrateFromIndexedDB(): Promise<boolean> {
   try {
     const key = getCacheKey();
-    let parsed = await idbGet(key);
-    if (!parsed && key !== IDB_CACHE_KEY) {
-      parsed = await idbGet(IDB_CACHE_KEY);
-    }
+    getDeletedRecentIds();
+    // Strictement le cache de l'utilisateur actif - JAMAIS de fallback sur un autre compte
+    const parsed = await idbGet(key);
     if (parsed && typeof parsed === 'object') {
+      if (Array.isArray(parsed.dismissedRecentIds)) {
+        parsed.dismissedRecentIds.forEach((id: string) => dismissedRecentSet.add(id));
+      }
+
       currentState = {
         ...currentState,
         overview:        parsed.overview || null,
@@ -192,7 +214,7 @@ async function hydrateFromIndexedDB(): Promise<boolean> {
         favorites:       Array.isArray(parsed.favorites)       ? parsed.favorites       : [],
         favIdSet:        new Set(Array.isArray(parsed.favIds)  ? parsed.favIds          : []),
         pinIdSet:        new Set(Array.isArray(parsed.pinIds)  ? parsed.pinIds          : []),
-        recentFiles:     Array.isArray(parsed.recentFiles)     ? parsed.recentFiles     : [],
+        recentFiles:     (Array.isArray(parsed.recentFiles)     ? parsed.recentFiles     : []).filter((f: any) => f && f.id && !dismissedRecentSet.has(f.id)),
         isLoaded:        true,
         lastSyncTime:    Number(parsed.lastSyncTime) || 0,
       };
@@ -237,6 +259,7 @@ async function persistToIndexedDB(): Promise<void> {
       favorites:       currentState.favorites,
       favIds:          Array.from(currentState.favIdSet),
       pinIds:          Array.from(currentState.pinIdSet),
+      dismissedRecentIds: Array.from(dismissedRecentSet),
       recentFiles:     currentState.recentFiles,
       lastSyncTime:    currentState.lastSyncTime,
     });
@@ -498,6 +521,7 @@ export const CloudDataStore = {
             if (seenRecents.has(file.id)) continue;
             if (!isRecentEligible(file)) continue;
             if (isItemDeleted(file.id)) continue;
+            if (dismissedRecentSet.has(file.id) || getDeletedRecentIds().has(file.id)) continue;
             seenRecents.add(file.id);
             dedupedRecents.push(file);
           }
@@ -1579,16 +1603,43 @@ export const CloudDataStore = {
     notify();
   },
 
+  dismissRecent(fileId: string) {
+    if (!fileId) return;
+    dismissedRecentSet.add(fileId);
+    try {
+      localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(dismissedRecentSet)));
+    } catch {}
+    currentState = {
+      ...currentState,
+      recentFiles: (currentState.recentFiles || []).filter(f => f.id !== fileId)
+    };
+    persistToIndexedDB().catch(() => {});
+    notify();
+    CloudStorageAPI.dismissRecent(fileId).catch(() => {});
+  },
+
   async resetAndSyncForUser(userId: string): Promise<void> {
+    dismissedRecentSet.clear();
     currentState = { ...defaultState };
     notify();
     await hydrateFromIndexedDB();
     notify();
+    CloudStorageAPI.getDismissedRecents().then((ids) => {
+      if (Array.isArray(ids) && ids.length > 0) {
+        ids.forEach(id => dismissedRecentSet.add(id));
+        currentState = {
+          ...currentState,
+          recentFiles: (currentState.recentFiles || []).filter(f => !dismissedRecentSet.has(f.id))
+        };
+        notify();
+      }
+    }).catch(() => {});
     await this.sync(true);
   },
 
   async clearCache(): Promise<void> {
     const key = getCacheKey();
+    dismissedRecentSet.clear();
     currentState = { ...defaultState };
     try { localStorage.removeItem(LS_FLAG_KEY); } catch {}
     const db = await openIDB();
@@ -1597,6 +1648,7 @@ export const CloudDataStore = {
         const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
         tx.objectStore(IDB_STORE_NAME).delete(key);
         tx.objectStore(IDB_STORE_NAME).delete(IDB_CACHE_KEY);
+        tx.objectStore(IDB_STORE_NAME).delete('guest_cache');
         tx.oncomplete = () => resolve();
         tx.onerror    = () => resolve();
       });

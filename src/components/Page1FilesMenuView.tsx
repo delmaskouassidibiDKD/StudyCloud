@@ -1804,11 +1804,28 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     window.addEventListener('dragover', handleWindowDragOver);
     window.addEventListener('drop', handleWindowDrop);
 
+    const handleDataRestored = () => {
+      const state = CloudDataStore.getState();
+      setClasseur3DFolders(state.classeurFolders || []);
+      setFolderFilesMap(state.folderFilesMap || {});
+      setDocumentsList(state.documents || []);
+      setImagesList(state.images || []);
+      setVideosList(state.videos || []);
+      setAudioList(state.audio || []);
+      setDownloadedItems(state.downloads as any || []);
+      setCloudRecentFiles(state.recentFiles || []);
+      setSecureFolderFiles(state.secure || []);
+      setTrashFiles(state.trash || []);
+      setCloudOverview(state.overview || null);
+    };
+    window.addEventListener('unifolder_data_restored', handleDataRestored);
+
     return () => {
       isMounted = false;
       unsubscribe();
       window.removeEventListener('dragover', handleWindowDragOver);
       window.removeEventListener('drop', handleWindowDrop);
+      window.removeEventListener('unifolder_data_restored', handleDataRestored);
     };
   }, []);
 
@@ -2173,21 +2190,22 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const handleRemoveRecentFile = (fileId: string, fileItem?: FileItem) => {
     const file = fileItem || cloudRecentFiles.find(f => f.id === fileId);
 
-    // 1. Inscrire UNIQUEMENT dans la liste noire des RÉCENTS (pour ne plus s'afficher dans ce bandeau d'accueil)
+    // 1. Inscrire dans la liste noire locale des RÉCENTS
     markRecentLocallyDeleted(fileId);
 
-    // 2. Retirer immédiatement du bandeau des récents à l'écran
+    // 2. Retirer immédiatement du bandeau des récents à l'écran et du store mémoire
     setCloudRecentFiles(prev => prev.filter(f => f.id !== fileId));
     try {
-      CloudDataStore.setRecentFiles(
-        CloudDataStore.getState().recentFiles.filter(f => f.id !== fileId)
-      );
+      CloudDataStore.dismissRecent(fileId);
     } catch {}
+
+    // 3. Enregistrer de manière persistante dans la table user_dismissed_recents Cloudflare D1
+    CloudStorageAPI.dismissRecent(fileId).catch(console.error);
 
     // Synchroniser avec les autres appareils via LocalSyncReplication
     LocalSyncReplication.recordLocalUpsert(`deleted_recent_${fileId}`, 'deleted_recent', { fileId, deletedAt: Date.now() });
 
-    // 3. S'assurer que le fichier est bien présent dans sa catégorie respective (sécurité renforcée)
+    // 4. S'assurer que le fichier est bien présent dans sa catégorie respective (sécurité renforcée)
     if (file) {
       const cat = file.category || detectFileCategory(file);
       if (cat === 'images') {
@@ -2201,8 +2219,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
     }
 
-    // 4. Notification claire pour l'utilisateur
-    showProfileToast("Aperçu retiré des récents (le fichier reste conservé dans son menu)", "success");
+    // 5. Notification claire pour l'utilisateur
+    showProfileToast("Aperçu retiré des récents", "success");
   };
 
   // Déclencher le sélecteur de fichier pour l'Accueil

@@ -151,19 +151,26 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     setIsAddingNewMatiere(false);
 
     // Enregistrement immédiat dans Cloudflare D1
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
-    StudyCloudAPI.createMatiere({
-      id: newMat.id,
-      userId,
-      name: newMat.name,
-      coefficient: Number(newMat.coefficient) || 1,
-      color: '#EA580C'
-    }).catch(() => {});
+    const userId = localStorage.getItem('unifolder_user_id');
+    if (userId && userId !== 'default-user') {
+      StudyCloudAPI.createMatiere({
+        id: newMat.id,
+        userId,
+        name: newMat.name,
+        coefficient: Number(newMat.coefficient) || 1,
+        color: '#EA580C'
+      }).catch(() => {});
+    }
 
     invalidateCloudQueries.matieresList();
   };
 
+  const isInitialMatiereMount = useRef(true);
   useEffect(() => {
+    if (isInitialMatiereMount.current) {
+      isInitialMatiereMount.current = false;
+      return;
+    }
     safeLocalStorageSet('unifolder_saved_matieres', savedMatieres);
     triggerDebouncedCloudBackup();
   }, [savedMatieres]);

@@ -2591,6 +2591,14 @@ async function ensureCloudMediaTables(db) {
       )
     `).run();
     await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_dismissed_recents (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        file_id TEXT NOT NULL,
+        dismissed_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    await db.prepare(`
       CREATE TABLE IF NOT EXISTS media_thumbnails (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -2653,6 +2661,14 @@ async function ensureCloudMediaTables(db) {
     }
     try {
       await db.prepare("CREATE INDEX IF NOT EXISTS idx_pinned_user ON pinned_items(user_id)").run();
+    } catch (e) {
+    }
+    try {
+      await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_udismissed_recents ON user_dismissed_recents(user_id, file_id)").run();
+    } catch (e) {
+    }
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_udismissed_user ON user_dismissed_recents(user_id)").run();
     } catch (e) {
     }
     try {
@@ -3955,6 +3971,7 @@ var index_default = {
           "secure_files",
           "trash_files",
           "user_favorites",
+          "user_dismissed_recents",
           "shared_folders",
           "shared_links",
           "schedule_config",
@@ -5377,11 +5394,11 @@ var index_default = {
       }
       async function extractRequestUserId() {
         const queryUserId = url.searchParams.get("userId");
-        if (queryUserId && queryUserId.trim() && queryUserId !== "null" && queryUserId !== "undefined") {
+        if (queryUserId && queryUserId.trim() && queryUserId !== "null" && queryUserId !== "undefined" && queryUserId !== "default-user") {
           return queryUserId.trim();
         }
         const xUserId = request.headers.get("x-user-id");
-        if (xUserId && xUserId.trim() && xUserId !== "null" && xUserId !== "undefined") {
+        if (xUserId && xUserId.trim() && xUserId !== "null" && xUserId !== "undefined" && xUserId !== "default-user") {
           return xUserId.trim();
         }
         const authHeader = request.headers.get("Authorization") || "";
@@ -5389,11 +5406,11 @@ var index_default = {
           const token = authHeader.slice(7).trim();
           try {
             const payload = await verifyJWT(token);
-            if (payload?.userId) return String(payload.userId);
+            if (payload?.userId && payload.userId !== "default-user") return String(payload.userId);
           } catch {
           }
         }
-        return "default-user";
+        return "";
       }
       if (path.startsWith("/api/cloud/file/") && method === "GET") {
         const pathParts = path.replace("/api/cloud/file/", "").split("/");
@@ -6502,7 +6519,25 @@ var index_default = {
       }
       if (path === "/api/cloud/overview" && method === "GET") {
         const reqUserId = await extractRequestUserId();
-        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        if (!reqUserId) {
+          return jsonResponse({
+            success: true,
+            counts: {
+              classeurFolders: 0,
+              classeurFiles: 0,
+              audio: 0,
+              images: 0,
+              videos: 0,
+              documents: 0,
+              downloads: 0,
+              secure: 0,
+              trash: 0
+            },
+            totalBytes: 0,
+            totalFormatted: "0 o",
+            recentFiles: []
+          }, 200, origin);
+        }
         const [
           foldersCount,
           cFilesStat,
@@ -6512,7 +6547,8 @@ var index_default = {
           docStat,
           downloadStat,
           secureStat,
-          trashStat
+          trashStat,
+          dismissedRows
         ] = await Promise.all([
           env.DB.prepare("SELECT COUNT(*) as count FROM classeur_folders WHERE user_id = ?").bind(reqUserId).first(),
           env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM classeur_files WHERE user_id = ?").bind(reqUserId).first(),
@@ -6522,7 +6558,8 @@ var index_default = {
           env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM document_files WHERE user_id = ?").bind(reqUserId).first(),
           env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM download_files WHERE user_id = ?").bind(reqUserId).first(),
           env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM secure_files WHERE user_id = ?").bind(reqUserId).first(),
-          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM trash_files WHERE user_id = ?").bind(reqUserId).first()
+          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM trash_files WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT file_id FROM user_dismissed_recents WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] }))
         ]);
         const counts = {
           classeurFolders: Number(foldersCount?.count || 0),
@@ -6572,6 +6609,7 @@ var index_default = {
           }
           return f;
         };
+        const dismissedFileIdSet = new Set((dismissedRows?.results || []).map((r) => String(r.file_id)));
         const recentFiles = [
           ...recentDocs?.results || [],
           ...recentImages?.results || [],
@@ -6579,7 +6617,7 @@ var index_default = {
           ...recentVideos?.results || [],
           ...recentClasseur?.results || [],
           ...recentDownloads?.results || []
-        ].map(fixRecentCategory).filter(isEligibleRecent).sort((a, b) => parseDateMs(b.created_at) - parseDateMs(a.created_at)).slice(0, 6);
+        ].map(fixRecentCategory).filter(isEligibleRecent).filter((f) => !dismissedFileIdSet.has(String(f.id))).sort((a, b) => parseDateMs(b.created_at) - parseDateMs(a.created_at)).slice(0, 6);
         return jsonResponse({
           success: true,
           counts,
@@ -6587,6 +6625,39 @@ var index_default = {
           totalFormatted: formatBytes(totalBytes),
           recentFiles
         }, 200, origin);
+      }
+      if (path === "/api/cloud/recents/dismiss" && method === "POST") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        const body = await request.json().catch(() => ({}));
+        const fileId = body?.fileId || body?.id;
+        if (!fileId) return errorResponse("fileId requis", 400, origin);
+        const recordId = `delrec-${reqUserId}-${fileId}`;
+        await env.DB.prepare(`
+          INSERT OR REPLACE INTO user_dismissed_recents (id, user_id, file_id, dismissed_at)
+          VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        `).bind(recordId, reqUserId, String(fileId)).run();
+        return jsonResponse({ success: true, fileId }, 200, origin);
+      }
+      if (path === "/api/cloud/recents/dismissed" && method === "GET") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return jsonResponse({ success: true, dismissedIds: [] }, 200, origin);
+        const { results } = await env.DB.prepare(`
+          SELECT file_id FROM user_dismissed_recents WHERE user_id = ?
+        `).bind(reqUserId).all().catch(() => ({ results: [] }));
+        const dismissedIds = (results || []).map((r) => String(r.file_id));
+        return jsonResponse({ success: true, dismissedIds }, 200, origin);
+      }
+      if (path === "/api/cloud/recents/undismiss" && method === "POST") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        const body = await request.json().catch(() => ({}));
+        const fileId = body?.fileId || body?.id;
+        if (!fileId) return errorResponse("fileId requis", 400, origin);
+        await env.DB.prepare(`
+          DELETE FROM user_dismissed_recents WHERE user_id = ? AND file_id = ?
+        `).bind(reqUserId, String(fileId)).run();
+        return jsonResponse({ success: true, fileId }, 200, origin);
       }
       if (path === "/api/cloud/classeur/folders") {
         const reqUserId = await extractRequestUserId();
