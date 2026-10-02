@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Edit3, ArrowLeft, Upload, File, MoreVertical, X, Search, Check, Copy, Plus, Download, Link as LinkIcon, Eye, EyeOff, Menu, Star } from 'lucide-react';
-import { getFileTimestamp, getDocumentTheme } from './FilesMenuView';
+import { ImportedItem, getFileTimestamp, getDocumentTheme } from './FilesMenuView';
 import { triggerDebouncedCloudBackup } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
@@ -9,6 +9,9 @@ import { ImageCardPreview } from './ImageCardPreview';
 import { UploadQueue } from '../services/uploadQueue';
 import { CloudDataStore } from '../services/cloudDataStore';
 import { compressFile } from '../utils/fileCompressor';
+import { useMatiereFilesList } from '../hooks/useCloudQueries';
+import { invalidateCloudQueries } from '../services/queryClient';
+import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/safeStorage';
 
 interface MatiereMenuViewProps {
   matiereName: string;
@@ -17,26 +20,11 @@ interface MatiereMenuViewProps {
   onOpenCreateShareLink?: (items: any[]) => void;
 }
 
-interface ImportedItem {
-  id: string;
-  name: string;
-  size: number;
-  type: string;
-  extension?: string;
-  url?: string;
-  isImage?: boolean;
-  isFavorite?: boolean;
-  isLeftMenuImport?: boolean;
-  matiere?: string;
-  importedAt?: number | string;
-  createdAt?: number | string;
-  timestamp?: number;
-}
-
 export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, onBack, setActivePreviewItem, onOpenCreateShareLink }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const storageKey = `unifolder_matiere_files_${matiereName}`;
   const currentKeyRef = useRef(storageKey);
+  const { data: serverMatiereFiles = [], isLoading: isMatiereQueryLoading } = useMatiereFilesList(matiereName);
   
   const loadFilesForMatiere = (name: string) => {
     const key = `unifolder_matiere_files_${name}`;
@@ -153,7 +141,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     };
     const updated = [...savedMatieres, newMat];
     setSavedMatieres(updated);
-    localStorage.setItem('unifolder_saved_matieres', JSON.stringify(updated));
+    safeLocalStorageSet('unifolder_saved_matieres', updated);
     setSelectedMatiereIds(prev => [...prev, newMat.id]);
     setNewMatiereName('');
     setNewMatiereCoef('1');
@@ -168,10 +156,12 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       coefficient: Number(newMat.coefficient) || 1,
       color: '#EA580C'
     }).catch(() => {});
+
+    invalidateCloudQueries.matieresList();
   };
 
   useEffect(() => {
-    localStorage.setItem('unifolder_saved_matieres', JSON.stringify(savedMatieres));
+    safeLocalStorageSet('unifolder_saved_matieres', savedMatieres);
     triggerDebouncedCloudBackup();
   }, [savedMatieres]);
 
@@ -292,42 +282,27 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     };
   }, [openMenuId]);
 
-  // Recharger les fichiers si la matière change + appel direct Cloudflare D1
+  // Synchronisation réactive continue avec TanStack Query
+  useEffect(() => {
+    if (serverMatiereFiles && Array.isArray(serverMatiereFiles)) {
+      setImportedFiles(prev => {
+        const serverMap = new Map<string, ImportedItem>();
+        serverMatiereFiles.forEach(f => serverMap.set(f.id, f));
+
+        // Conserver les fichiers en attente ou récents non encore sur le serveur
+        const pending = prev.filter(f => !serverMap.has(f.id));
+        const merged = [...pending, ...serverMatiereFiles];
+        safeLocalStorageSet(storageKey, merged);
+        return merged;
+      });
+    }
+  }, [serverMatiereFiles, storageKey]);
+
+  // Recharger les fichiers locaux si la matière change
   useEffect(() => {
     currentKeyRef.current = storageKey;
     const local = loadFilesForMatiere(matiereName);
     setImportedFiles(local);
-
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
-    StudyCloudAPI.getFiles(userId, matiereName)
-      .then(async (res) => {
-        if (res && res.success && Array.isArray(res.data)) {
-          const filesWithUrls = await Promise.all(
-            res.data.map(async (row: any) => {
-              const localBlobUrl = await getFileBlobUrl(row.id);
-              return {
-                id: row.id,
-                name: row.name,
-                size: row.size || 0,
-                type: row.type || 'Fichier',
-                extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
-                url: localBlobUrl || row.file_url || '',
-                r2Key: row.r2_key,
-                isFavorite: !!row.is_favorite,
-                matiere: row.matiere_id || matiereName,
-                importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
-                createdAt: row.created_at,
-                timestamp: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
-                isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
-              };
-            })
-          );
-          setImportedFiles(filesWithUrls);
-          localStorage.setItem(storageKey, JSON.stringify(filesWithUrls));
-          window.dispatchEvent(new Event('unifolder_files_updated'));
-        }
-      })
-      .catch(() => {});
   }, [matiereName, storageKey]);
 
   useEffect(() => {
@@ -341,10 +316,10 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     return () => window.removeEventListener('unifolder_data_restored', handleRestore);
   }, [matiereName]);
 
-  // Sauvegarder uniquement pour la matière active
+  // Sauvegarder uniquement pour la matière active (protégé contre dépassement de quota)
   useEffect(() => {
-    if (currentKeyRef.current === storageKey) {
-      localStorage.setItem(storageKey, JSON.stringify(importedFiles));
+    if (currentKeyRef.current === storageKey && importedFiles.length > 0) {
+      safeLocalStorageSet(storageKey, importedFiles);
       window.dispatchEvent(new Event('unifolder_files_updated'));
     }
   }, [importedFiles, storageKey]);
@@ -362,9 +337,14 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       if (directSaved) {
         const parsed: ImportedItem[] = JSON.parse(directSaved);
         const filtered = parsed.filter(item => item.id !== id);
-        localStorage.setItem('unifolder_files_menu_items', JSON.stringify(filtered));
+        safeLocalStorageSet('unifolder_files_menu_items', filtered);
       }
     } catch (e) {}
+
+    invalidateCloudQueries.matiereFiles(matiereName);
+    invalidateCloudQueries.filesMenu();
+    invalidateCloudQueries.overview();
+
     window.dispatchEvent(new Event('unifolder_files_updated'));
   };
 
@@ -384,9 +364,14 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       if (directSaved) {
         const parsed: ImportedItem[] = JSON.parse(directSaved);
         const filtered = parsed.filter(item => !idsToDelete.includes(item.id));
-        localStorage.setItem('unifolder_files_menu_items', JSON.stringify(filtered));
+        safeLocalStorageSet('unifolder_files_menu_items', filtered);
       }
     } catch (e) {}
+
+    invalidateCloudQueries.matiereFiles(matiereName);
+    invalidateCloudQueries.filesMenu();
+    invalidateCloudQueries.overview();
+
     window.dispatchEvent(new Event('unifolder_files_updated'));
   };
 
@@ -402,7 +387,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       if (directSaved) {
         const parsed: ImportedItem[] = JSON.parse(directSaved);
         const updated = parsed.map(item => item.id === id ? { ...item, isFavorite: newFav } : item);
-        localStorage.setItem('unifolder_files_menu_items', JSON.stringify(updated));
+        safeLocalStorageSet('unifolder_files_menu_items', updated);
       }
     } catch (e) {}
 
@@ -425,6 +410,11 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         }).catch(() => {});
       }
     });
+
+    invalidateCloudQueries.matiereFiles(matiereName);
+    invalidateCloudQueries.filesMenu();
+    invalidateCloudQueries.favorites();
+
     window.dispatchEvent(new Event('unifolder_files_updated'));
   };
 
@@ -462,6 +452,9 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       }).catch(() => {});
     }
 
+    invalidateCloudQueries.matiereFiles(matiereName);
+    invalidateCloudQueries.filesMenu();
+
     setRenamingFileId(null);
     setSuccessMessage("Fichier renommé avec succès !");
     setTimeout(() => setSuccessMessage(null), 3000);
@@ -482,7 +475,9 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       timestamp: now
     };
     setImportedFiles(prev => [duplicated, ...prev]);
-    localStorage.setItem('unifolder_last_imported_id', newId);
+    try {
+      localStorage.setItem('unifolder_last_imported_id', newId);
+    } catch (e) {}
 
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
     StudyCloudAPI.registerFileMetadata({
@@ -500,6 +495,9 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       lastImported: now
     }).catch(() => {});
 
+    invalidateCloudQueries.matiereFiles(matiereName);
+    invalidateCloudQueries.filesMenu();
+
     window.dispatchEvent(new Event('unifolder_files_updated'));
     setOpenMenuId(null);
   };
@@ -516,7 +514,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       return false;
     });
     setSavedMatieres(updated);
-    localStorage.setItem('unifolder_saved_matieres', JSON.stringify(updated));
+    safeLocalStorageSet('unifolder_saved_matieres', updated);
   };
 
   const handleCloseModal = () => {
@@ -544,12 +542,16 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
             matiere: matName
           };
           list.push(copiedFile);
-          localStorage.setItem(targetKey, JSON.stringify(list));
+          safeLocalStorageSet(targetKey, list);
         } catch (e) {
           console.error(e);
         }
       });
     });
+
+    invalidateCloudQueries.matiereFiles(matiereName);
+    matiereNames.forEach(matName => invalidateCloudQueries.matiereFiles(matName));
+    invalidateCloudQueries.filesMenu();
 
     cleanupUnusedMatieres();
     setClassifyFileIds(null);
@@ -727,15 +729,22 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         let directList: ImportedItem[] = directSaved ? JSON.parse(directSaved) : [];
         const newIds = new Set(newItems.map(item => item.id));
         directList = [...newItems, ...directList.filter(item => !newIds.has(item.id))];
-        localStorage.setItem('unifolder_files_menu_items', JSON.stringify(directList));
+        safeLocalStorageSet('unifolder_files_menu_items', directList);
       } catch (e) {
         console.error(e);
       }
 
       if (newItems.length > 0) {
-        localStorage.setItem('unifolder_last_imported_id', newItems[newItems.length - 1].id);
+        try {
+          localStorage.setItem('unifolder_last_imported_id', newItems[newItems.length - 1].id);
+        } catch (e) {}
         window.dispatchEvent(new Event('unifolder_files_updated'));
       }
+
+      // Invalider les requêtes TanStack Query
+      invalidateCloudQueries.matiereFiles(matiereName);
+      invalidateCloudQueries.filesMenu();
+      invalidateCloudQueries.overview();
 
       try {
         const existingShares = JSON.parse(localStorage.getItem('unifolder_shares') || '[]');
@@ -760,7 +769,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
           viewsCount: 0
         };
         const trimmedShares = [newSharedFolder, ...existingShares].slice(0, 30);
-        localStorage.setItem('unifolder_shares', JSON.stringify(trimmedShares));
+        safeLocalStorageSet('unifolder_shares', trimmedShares);
       } catch (err) {
         console.error(err);
       }

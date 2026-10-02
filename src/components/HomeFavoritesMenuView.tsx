@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Search, Heart, Trash2, MoreVertical, X, FileText } from 'lucide-react';
 import { StudyCloudAPI } from '../services/api';
 import { getFileBlobUrl, deleteFileBlob, formatFileSize } from '../services/localFileStorage';
+import { safeLocalStorageSet } from '../utils/safeStorage';
+import { invalidateCloudQueries } from '../services/queryClient';
 
 interface HomeFavoritesMenuViewProps {
   onBack: () => void;
@@ -128,7 +130,7 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
           const updated = parsed.map((item: any) => (item.id === id ? { ...item, isFavorite: false } : item));
-          localStorage.setItem(key, JSON.stringify(updated));
+          safeLocalStorageSet(key, updated);
         }
       } catch (e) {}
     };
@@ -140,6 +142,11 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
         updateLocalKey(k);
       }
     }
+
+    invalidateCloudQueries.favorites();
+    invalidateCloudQueries.filesMenu();
+    invalidateCloudQueries.overview();
+
     window.dispatchEvent(new Event('unifolder_files_updated'));
   };
 
@@ -156,7 +163,7 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
           const filtered = parsed.filter((item: any) => item.id !== id);
-          localStorage.setItem(key, JSON.stringify(filtered));
+          safeLocalStorageSet(key, filtered);
         }
       } catch (e) {}
     };
@@ -168,6 +175,11 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
         deleteFromLocalKey(k);
       }
     }
+
+    invalidateCloudQueries.favorites();
+    invalidateCloudQueries.filesMenu();
+    invalidateCloudQueries.overview();
+
     window.dispatchEvent(new Event('unifolder_files_updated'));
   };
 

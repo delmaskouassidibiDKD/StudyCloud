@@ -11,6 +11,7 @@ import { getGalleryFilesForCategory } from '../data/categoryFilesData';
 import { isGalleryOrDemoFile } from './FilesMenuView';
 import { compressFile } from '../utils/fileCompressor';
 import { extractAudioMetadataWithTags, setCachedMediaThumbnail } from '../services/mediaPreviewService';
+import { safeLocalStorageSet } from '../utils/safeStorage';
 
 
 interface LeftMenuProps {
@@ -200,7 +201,7 @@ export function LeftMenu({
             }
           });
           const merged = Array.from(mergedMap.values());
-          localStorage.setItem('unifolder_files_menu_items', JSON.stringify(merged));
+          safeLocalStorageSet('unifolder_files_menu_items', merged);
           setSyncTick(prev => prev + 1);
         }
       })

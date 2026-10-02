@@ -34,6 +34,12 @@ import { OnboardingPage } from './components/auth/OnboardingPage';
 import { GoogleSecuritySetupPage } from './components/auth/GoogleSecuritySetupPage';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { UploadQueueWidget } from './components/UploadQueueWidget';
+import { purgeVolatileStorage } from './utils/safeStorage';
+
+// Nettoyage immédiat au chargement de l'application pour libérer l'espace des appareils saturés
+if (typeof window !== 'undefined') {
+  purgeVolatileStorage();
+}
 
 // Utilitaire de sécurisation du stockage local pour éviter l'erreur "QuotaExceededError" (5MB max)
 export const sanitizeFoldersForStorage = (foldersList: SharedFolder[]): SharedFolder[] => {

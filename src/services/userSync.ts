@@ -5,6 +5,7 @@
  */
 
 import { StudyCloudAPI } from './api';
+import { safeLocalStorageSet } from '../utils/safeStorage';
 
 export function getCurrentUserId(): string | null {
   return localStorage.getItem('unifolder_user_id') || null;
@@ -446,9 +447,11 @@ export function importFilesToMesFichiers(files: { name: string; size?: number; u
     }));
 
     const updated = [...newItems, ...existingList];
-    localStorage.setItem('unifolder_files_menu_items', JSON.stringify(updated));
-    localStorage.setItem('unifolder_last_imported_id', newItems[0].id);
-    localStorage.setItem('unifolder_importing_ids', JSON.stringify(newItems.map(item => item.id)));
+    safeLocalStorageSet('unifolder_files_menu_items', updated);
+    try {
+      localStorage.setItem('unifolder_last_imported_id', newItems[0].id);
+      localStorage.setItem('unifolder_importing_ids', JSON.stringify(newItems.map(item => item.id)));
+    } catch (e) {}
 
     // Déclencher le rafraîchissement réactif dans toute l'application
     window.dispatchEvent(new Event('unifolder_files_updated'));

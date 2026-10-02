@@ -33,6 +33,9 @@ export const QUERY_KEYS = {
   overview: ['cloud', 'overview'] as const,
   wallpaper: ['cloud', 'wallpaper'] as const,
   pinned: ['cloud', 'pinned'] as const,
+  filesMenu: (userId?: string) => ['cloud', 'filesMenu', userId || 'current'] as const,
+  matiereFiles: (matiereName: string, userId?: string) => ['cloud', 'matiereFiles', matiereName, userId || 'current'] as const,
+  matieresList: (userId?: string) => ['cloud', 'matieresList', userId || 'current'] as const,
 };
 
 export const invalidateCloudQueries = {
@@ -49,5 +52,12 @@ export const invalidateCloudQueries = {
   overview: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.overview }),
   wallpaper: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.wallpaper }),
   pinned: () => queryClient.invalidateQueries({ queryKey: QUERY_KEYS.pinned }),
+  filesMenu: () => queryClient.invalidateQueries({ queryKey: ['cloud', 'filesMenu'] }),
+  matiereFiles: (matiereName?: string) =>
+    matiereName
+      ? queryClient.invalidateQueries({ queryKey: ['cloud', 'matiereFiles', matiereName] })
+      : queryClient.invalidateQueries({ queryKey: ['cloud', 'matiereFiles'] }),
+  matieresList: () => queryClient.invalidateQueries({ queryKey: ['cloud', 'matieresList'] }),
   all: () => queryClient.invalidateQueries({ queryKey: ['cloud'] }),
 };
+

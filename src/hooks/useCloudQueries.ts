@@ -4,6 +4,10 @@ import { QUERY_KEYS, invalidateCloudQueries, queryClient } from '../services/que
 import { FileItem } from '../components/Page1FilesMenuView';
 import { ClasseurCreatedFolder } from '../components/Folder3DModels';
 import { DownloadedItem } from '../services/downloadsManager';
+import { StudyCloudAPI } from '../services/api';
+import { getCurrentUserId } from '../services/userSync';
+import { getFileBlobUrl } from '../services/localFileStorage';
+import { ImportedItem } from '../components/FilesMenuView';
 
 // ─── HOOKS DE LECTURE (QUERIES) ────────────────────────────────────────────────
 
@@ -158,6 +162,110 @@ export function useDashboardWallpaper() {
       };
     },
     staleTime: 1000 * 60 * 5, // 5 minutes de données valides en mémoire vive
+  });
+}
+
+/**
+ * Hook TanStack Query pour la liste des fichiers de "Mes fichiers" :
+ * - Cache réactif et synchronisation instantanée Hono/D1
+ * - Hydratation locale sécurisée
+ * - Zéro plantage QuotaExceededError car les fichiers volumineux restent en cache mémoire
+ */
+export function useFilesMenuList(userId?: string) {
+  const currentUid = userId || getCurrentUserId() || 'default-user';
+  return useQuery<ImportedItem[]>({
+    queryKey: QUERY_KEYS.filesMenu(currentUid),
+    queryFn: async () => {
+      const res = await StudyCloudAPI.getFiles(currentUid, 'root', false);
+      if (res && res.success && Array.isArray(res.data)) {
+        const nonStudyRows = res.data.filter((row: any) => !row.is_study_session && !row.isStudyImport);
+        const filesWithUrls: ImportedItem[] = await Promise.all(
+          nonStudyRows.map(async (row: any) => {
+            const localBlobUrl = await getFileBlobUrl(row.id);
+            return {
+              id: row.id,
+              name: row.name,
+              size: row.size || 0,
+              type: row.type || 'Fichier',
+              extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
+              url: localBlobUrl || row.file_url || '',
+              r2Key: row.r2_key,
+              isFavorite: !!row.is_favorite,
+              matiere: row.matiere_id && row.matiere_id !== 'Mes fichiers' && row.matiere_id !== 'root' ? row.matiere_id : '',
+              importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+              createdAt: row.created_at,
+              timestamp: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+              isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
+            };
+          })
+        );
+        return filesWithUrls;
+      }
+      return [];
+    },
+    staleTime: 1000 * 60 * 2,
+    gcTime: 1000 * 60 * 5,
+  });
+}
+
+/**
+ * Hook TanStack Query pour la liste des fichiers d'une matière spécifique :
+ * - Cache réactif et synchronisation automatique avec Cloudflare D1
+ */
+export function useMatiereFilesList(matiereName: string, userId?: string) {
+  const currentUid = userId || getCurrentUserId() || 'default-user';
+  return useQuery<ImportedItem[]>({
+    queryKey: QUERY_KEYS.matiereFiles(matiereName, currentUid),
+    queryFn: async () => {
+      if (!matiereName) return [];
+      const res = await StudyCloudAPI.getFiles(currentUid, matiereName);
+      if (res && res.success && Array.isArray(res.data)) {
+        const filesWithUrls: ImportedItem[] = await Promise.all(
+          res.data.map(async (row: any) => {
+            const localBlobUrl = await getFileBlobUrl(row.id);
+            return {
+              id: row.id,
+              name: row.name,
+              size: row.size || 0,
+              type: row.type || 'Fichier',
+              extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
+              url: localBlobUrl || row.file_url || '',
+              r2Key: row.r2_key,
+              isFavorite: !!row.is_favorite,
+              matiere: row.matiere_id || matiereName,
+              importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+              createdAt: row.created_at,
+              timestamp: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+              isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
+            };
+          })
+        );
+        return filesWithUrls;
+      }
+      return [];
+    },
+    enabled: Boolean(matiereName),
+    staleTime: 1000 * 60 * 2,
+    gcTime: 1000 * 60 * 5,
+  });
+}
+
+/**
+ * Hook TanStack Query pour la liste des matières créées par l'utilisateur
+ */
+export function useMatieresList(userId?: string) {
+  const currentUid = userId || getCurrentUserId() || 'default-user';
+  return useQuery<Array<{ id: string; name: string; coefficient?: number | string; color?: string; category?: string }>>({
+    queryKey: QUERY_KEYS.matieresList(currentUid),
+    queryFn: async () => {
+      const res = await StudyCloudAPI.getMatieres(currentUid);
+      if (res && res.success && Array.isArray(res.data)) {
+        return res.data;
+      }
+      return [];
+    },
+    staleTime: 1000 * 60 * 2,
+    gcTime: 1000 * 60 * 5,
   });
 }
 
