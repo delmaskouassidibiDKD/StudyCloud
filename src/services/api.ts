@@ -995,6 +995,32 @@ export async function getAiWorkspaceHistory(userId: string, sessionId?: string):
 
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const method = (options.method || 'GET').toUpperCase();
+
+  // Surveillance active : si une mise à jour est en attente et que l'utilisateur l'a reportée ("Plus tard"),
+  // on bloque préventivement toute tentative d'écriture ou modification (POST, PUT, DELETE, PATCH)
+  // pour empêcher qu'un code obsolète ne corrompe ou déstructure la base de données.
+  const isUpdatePending = typeof localStorage !== 'undefined' && localStorage.getItem('studycloud_update_pending') === 'true';
+  const isUpdatePostponed = typeof localStorage !== 'undefined' && localStorage.getItem('studycloud_update_postponed') === 'true';
+
+  if (method !== 'GET' && isUpdatePending && isUpdatePostponed) {
+    console.warn(`[StudyCloud Security Lock] Action sensible bloquée (${method} ${endpoint}) : mise à jour requise.`);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('studycloud_critical_update_required', {
+        detail: {
+          endpoint,
+          method,
+          message: 'Cette modification a été bloquée pour protéger vos données. Veuillez actualiser l\'application pour enregistrer vos données en toute sécurité.'
+        }
+      }));
+    }
+    return {
+      success: false,
+      blockedByUpdate: true,
+      message: 'Action protégée : veuillez mettre à jour l\'application pour modifier vos données en toute sécurité.'
+    } as T;
+  }
+
   const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
   const url = `${baseUrl}${endpoint}`;
 
@@ -1017,6 +1043,18 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: response.statusText }));
+    // Si une anomalie survient et qu'une mise à jour est en attente, verrouiller immédiatement
+    if (isUpdatePending && (response.status === 400 || response.status === 404 || response.status === 500)) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('studycloud_critical_update_required', {
+          detail: {
+            endpoint,
+            status: response.status,
+            message: 'Une anomalie a été détectée avec la version actuelle. Veuillez actualiser StudyCloud pour sécuriser vos données.'
+          }
+        }));
+      }
+    }
     if (response.status === 409 || err?.duplicate) {
       return {
         success: false,

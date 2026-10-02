@@ -1,13 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { RefreshCw, Sparkles, X } from 'lucide-react';
+import { RefreshCw, Sparkles, X, ShieldAlert } from 'lucide-react';
 
 export const AppUpdatePrompt: React.FC = () => {
   const [showUpdate, setShowUpdate] = useState<boolean>(false);
   const [isUpdating, setIsUpdating] = useState<boolean>(false);
+  const [isCriticalBlocked, setIsCriticalBlocked] = useState<boolean>(false);
+  const [blockedReason, setBlockedReason] = useState<string>('');
   const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    // 0. VÉRIFICATION AU RECHARGEMENT DE L'ÉCRAN :
+    // Si une mise à jour était en attente (et non appliquée), réafficher systématiquement
+    // le message à chaque rechargement pour que l'utilisateur soit informé !
+    const wasPending = localStorage.getItem('studycloud_update_pending') === 'true';
+    if (wasPending) {
+      setShowUpdate(true);
+    }
+
+    if (!('serviceWorker' in navigator)) {
       return;
     }
 
@@ -18,6 +32,8 @@ export const AppUpdatePrompt: React.FC = () => {
       if (!refreshing) {
         refreshing = true;
         console.log('[StudyCloud Update] Nouveau Service Worker actif, actualisation...');
+        localStorage.removeItem('studycloud_update_pending');
+        localStorage.removeItem('studycloud_update_postponed');
         window.location.reload();
       }
     };
@@ -30,6 +46,7 @@ export const AppUpdatePrompt: React.FC = () => {
       // Si un Service Worker est déjà en attente d'activation
       if (registration.waiting && navigator.serviceWorker.controller) {
         console.log('[StudyCloud Update] Mise à jour déjà téléchargée en attente.');
+        localStorage.setItem('studycloud_update_pending', 'true');
         setShowUpdate(true);
       }
 
@@ -42,6 +59,7 @@ export const AppUpdatePrompt: React.FC = () => {
           // Si le nouveau worker est installé ET qu'un ancien contrôlait déjà la page
           if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
             console.log('[StudyCloud Update] Nouvelle version détectée et prête à être installée.');
+            localStorage.setItem('studycloud_update_pending', 'true');
             setShowUpdate(true);
           }
         });
@@ -63,19 +81,34 @@ export const AppUpdatePrompt: React.FC = () => {
     const handlePreloadError = (e: Event) => {
       e.preventDefault();
       console.warn('[StudyCloud Update] Erreur de chargement de chunk détectée (nouvelle version déployée).');
+      localStorage.setItem('studycloud_update_pending', 'true');
       setShowUpdate(true);
     };
     window.addEventListener('vite:preloadError', handlePreloadError);
+
+    // 5. SURVEILLANCE ACTIVE : Détecter les tentatives d'actions sensibles bloquées pour protéger la base de données
+    const handleCriticalUpdate = (e: any) => {
+      console.warn('[StudyCloud Security Lock] Tentative sensible bloquée:', e.detail);
+      localStorage.setItem('studycloud_update_pending', 'true');
+      localStorage.removeItem('studycloud_update_postponed'); // Révoquer le report pour exiger l'actualisation
+      setBlockedReason(e.detail?.message || 'Une mise à jour est requise pour effectuer cette action afin de protéger vos données et éviter toute corruption de la base de données.');
+      setIsCriticalBlocked(true);
+      setShowUpdate(true);
+    };
+    window.addEventListener('studycloud_critical_update_required', handleCriticalUpdate);
 
     return () => {
       navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('vite:preloadError', handlePreloadError);
+      window.removeEventListener('studycloud_critical_update_required', handleCriticalUpdate);
     };
   }, []);
 
   const handleUpdate = () => {
     setIsUpdating(true);
+    localStorage.removeItem('studycloud_update_pending');
+    localStorage.removeItem('studycloud_update_postponed');
 
     const reg = registrationRef.current;
     if (reg && reg.waiting) {
@@ -101,13 +134,67 @@ export const AppUpdatePrompt: React.FC = () => {
   };
 
   const handleDismiss = () => {
+    // Si l'utilisateur clique sur "Plus tard", on enregistre qu'il a reporté la mise à jour
+    // Le système entre alors en "Mode surveillance" pour bloquer toute modification pouvant corrompre la BDD
+    localStorage.setItem('studycloud_update_postponed', 'true');
     setShowUpdate(false);
+    setIsCriticalBlocked(false);
   };
 
   if (!showUpdate) {
     return null;
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // CAS 1 : MODAL DE SÉCURITÉ RENFORCÉE (L'utilisateur a tenté une action sensible)
+  // ───────────────────────────────────────────────────────────────────────────
+  if (isCriticalBlocked) {
+    return (
+      <div
+        id="studycloud-critical-update-modal"
+        className="fixed inset-0 z-[999999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200 pointer-events-auto"
+      >
+        <div className="relative overflow-hidden rounded-3xl bg-[#141416] border-2 border-red-500/50 p-6 sm:p-7 max-w-md w-full shadow-[0_25px_70px_rgba(0,0,0,0.9),0_0_35px_rgba(239,68,68,0.3)] text-white text-center">
+          {/* Ligne rouge supérieure */}
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-red-600 via-orange-500 to-amber-500" />
+
+          {/* Icône de bouclier de sécurité */}
+          <div className="mx-auto w-14 h-14 rounded-2xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-400 mb-4 shadow-lg shadow-red-950/50">
+            <ShieldAlert className="w-8 h-8 animate-pulse text-red-500" />
+          </div>
+
+          <h3 className="text-lg font-black text-white tracking-wide">
+            Action suspendue pour votre sécurité
+          </h3>
+
+          <p className="text-xs text-stone-300 mt-2.5 leading-relaxed">
+            {blockedReason || "Une nouvelle version est disponible. Cette modification a été temporairement bloquée afin de protéger vos données et garantir leur conformité avec la base de données."}
+          </p>
+
+          <div className="mt-5 space-y-2.5">
+            <button
+              type="button"
+              id="btn-critical-update-studycloud"
+              disabled={isUpdating}
+              onClick={handleUpdate}
+              className="w-full flex items-center justify-center gap-2.5 py-3 px-5 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-600 hover:from-orange-500 hover:to-amber-500 active:scale-95 text-white font-extrabold text-sm rounded-xl shadow-xl shadow-orange-950/60 transition-all cursor-pointer disabled:opacity-75"
+            >
+              <RefreshCw className={`w-4 h-4 ${isUpdating ? 'animate-spin' : ''}`} />
+              <span>{isUpdating ? 'Mise à jour en cours...' : 'Mettre à jour maintenant'}</span>
+            </button>
+
+            <p className="text-[11px] text-stone-400">
+              Vos cours, fichiers et notes sont protégés. L'actualisation ne prend que 2 secondes.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // CAS 2 : BANNIÈRE ÉVÉNEMENTIELLE CLASSIQUE EN HAUT DE L'ÉCRAN
+  // ───────────────────────────────────────────────────────────────────────────
   return (
     <div
       id="studycloud-update-notification"
