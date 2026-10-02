@@ -1002,8 +1002,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     'Content-Type': 'application/json',
   };
 
-  const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
-  defaultHeaders['x-user-id'] = userId;
+  const userId = (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+  if (userId && userId !== 'default-user') {
+    defaultHeaders['x-user-id'] = userId;
+  }
 
   const response = await fetch(url, {
     ...options,
@@ -1046,8 +1048,10 @@ async function aiRequest<T>(endpoint: string, options: RequestInit = {}): Promis
     'Content-Type': 'application/json',
   };
 
-  const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
-  defaultHeaders['x-user-id'] = userId;
+  const userId = (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+  if (userId && userId !== 'default-user') {
+    defaultHeaders['x-user-id'] = userId;
+  }
 
   const response = await fetch(url, {
     ...options,
@@ -1214,10 +1218,12 @@ export const StudyCloudAPI = {
   // Matières
   // --------------------------------------------------------------------------
   async getMatieres(userId: string) {
+    if (!userId || userId === 'default-user') return { success: true, data: [] };
     return request<{ success: boolean; data: any[] }>(`/api/matieres?userId=${encodeURIComponent(userId)}`);
   },
 
   async createMatiere(matiere: { id: string; userId: string; name: string; coefficient?: number; color?: string; category?: string; displayOrder?: number }) {
+    if (!matiere.userId || matiere.userId === 'default-user') return { success: false, message: 'Non autorisé' };
     return request('/api/matieres', { method: 'POST', body: JSON.stringify(matiere) });
   },
 
@@ -1229,6 +1235,7 @@ export const StudyCloudAPI = {
   // Fichiers & Stockage R2
   // --------------------------------------------------------------------------
   async getFiles(userId: string, matiereId?: string, isStudySession?: boolean, isFavorite?: boolean) {
+    if (!userId || userId === 'default-user') return { success: true, data: [] };
     let endpoint = `/api/files?userId=${encodeURIComponent(userId)}`;
     if (matiereId) endpoint += `&matiereId=${encodeURIComponent(matiereId)}`;
     if (isStudySession !== undefined) endpoint += `&isStudySession=${isStudySession ? '1' : '0'}`;
@@ -1420,10 +1427,12 @@ export const StudyCloudAPI = {
   // Emploi du temps
   // --------------------------------------------------------------------------
   async getScheduleConfig(userId: string) {
+    if (!userId || userId === 'default-user') return { success: true, data: null };
     return request(`/api/schedule/config?userId=${encodeURIComponent(userId)}`);
   },
 
   async updateScheduleConfig(userId: string, daysJson: string, hoursJson: string, zoomLevel: number) {
+    if (!userId || userId === 'default-user') return { success: false, message: 'Non autorisé' };
     return request('/api/schedule/config', {
       method: 'PUT',
       body: JSON.stringify({ userId, daysJson, hoursJson, zoomLevel }),
@@ -1431,10 +1440,12 @@ export const StudyCloudAPI = {
   },
 
   async getScheduleSlots(userId: string) {
+    if (!userId || userId === 'default-user') return { success: true, data: [] };
     return request<{ success: boolean; data: any[] }>(`/api/schedule/slots?userId=${encodeURIComponent(userId)}`);
   },
 
   async addScheduleSlot(slot: any) {
+    if (!slot.userId || slot.userId === 'default-user') return { success: false, message: 'Non autorisé' };
     return request('/api/schedule/slots', { method: 'POST', body: JSON.stringify(slot) });
   },
 
@@ -1452,10 +1463,12 @@ export const StudyCloudAPI = {
   // Notes & Bulletins
   // --------------------------------------------------------------------------
   async getGrades(userId: string) {
+    if (!userId || userId === 'default-user') return { success: true, data: [] };
     return request<{ success: boolean; data: any[] }>(`/api/grades?userId=${encodeURIComponent(userId)}`);
   },
 
   async saveGrade(grade: any) {
+    if (!grade.userId || grade.userId === 'default-user') return { success: false, message: 'Non autorisé' };
     return request('/api/grades', { method: 'POST', body: JSON.stringify(grade) });
   },
 
@@ -1467,10 +1480,12 @@ export const StudyCloudAPI = {
   // Bloc-Notes Keep
   // --------------------------------------------------------------------------
   async getNotes(userId: string) {
+    if (!userId || userId === 'default-user') return { success: true, data: [] };
     return request<{ success: boolean; data: any[] }>(`/api/notes?userId=${encodeURIComponent(userId)}`);
   },
 
   async saveNote(note: any) {
+    if (!note.userId || note.userId === 'default-user') return { success: false, message: 'Non autorisé' };
     return request('/api/notes', { method: 'POST', body: JSON.stringify(note) });
   },
 
@@ -1482,10 +1497,12 @@ export const StudyCloudAPI = {
   // Calendrier
   // --------------------------------------------------------------------------
   async getCalendarEvents(userId: string) {
+    if (!userId || userId === 'default-user') return { success: true, data: [] };
     return request<{ success: boolean; data: any[] }>(`/api/calendar?userId=${encodeURIComponent(userId)}`);
   },
 
   async createCalendarEvent(event: any) {
+    if (!event.userId || event.userId === 'default-user') return { success: false, message: 'Non autorisé' };
     return request('/api/calendar', { method: 'POST', body: JSON.stringify(event) });
   },
 
@@ -1497,10 +1514,12 @@ export const StudyCloudAPI = {
   // Alarmes & Minuteur d'étude
   // --------------------------------------------------------------------------
   async getAlarms(userId: string) {
+    if (!userId || userId === 'default-user') return { success: true, data: [] };
     return request<{ success: boolean; data: any[] }>(`/api/alarms?userId=${encodeURIComponent(userId)}`);
   },
 
   async createAlarm(alarm: any) {
+    if (!alarm.userId || alarm.userId === 'default-user') return { success: false, message: 'Non autorisé' };
     return request('/api/alarms', { method: 'POST', body: JSON.stringify(alarm) });
   },
 

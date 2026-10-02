@@ -60,7 +60,8 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
   // Sauvegarde vers D1 quand les données changent (pas de localStorage)
   useEffect(() => {
     if (isLoading) return; // Ne pas sauvegarder l'état vide initial
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    const userId = localStorage.getItem('unifolder_user_id') || '';
+    if (!userId || userId === 'default-user') return;
     const timer = setTimeout(() => {
       const promises: Promise<any>[] = [];
       Object.entries(trimestersData).forEach(([trim, items]) => {
@@ -90,7 +91,12 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
 
   // Chargement des notes EXCLUSIVEMENT depuis Cloudflare D1
   const loadGradesFromD1 = React.useCallback(() => {
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    const userId = localStorage.getItem('unifolder_user_id') || '';
+    if (!userId || userId === 'default-user') {
+      setTrimestersData(getEmptyTrimestersData());
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     StudyCloudAPI.getGrades(userId)
       .then((res: any) => {
@@ -136,13 +142,16 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                   '2': baseItems.map(i => ({ ...i, id: 't2-' + i.id })),
                   '3': baseItems.map(i => ({ ...i, id: 't3-' + i.id }))
                 });
+                return;
               }
             }
           } catch {}
+          setTrimestersData(getEmptyTrimestersData());
         }
       })
       .catch((err) => {
         console.warn('[Grades] Erreur chargement initial D1:', err);
+        setTrimestersData(getEmptyTrimestersData());
       })
       .finally(() => setIsLoading(false));
   }, []);

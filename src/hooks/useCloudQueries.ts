@@ -255,10 +255,11 @@ export function useMatiereFilesList(matiereName: string, userId?: string) {
  * Hook TanStack Query pour la liste des matières créées par l'utilisateur
  */
 export function useMatieresList(userId?: string) {
-  const currentUid = userId || getCurrentUserId() || 'default-user';
+  const currentUid = userId || getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
   return useQuery<Array<{ id: string; name: string; coefficient?: number | string; color?: string; category?: string }>>({
     queryKey: QUERY_KEYS.matieresList(currentUid),
     queryFn: async () => {
+      if (!currentUid || currentUid === 'default-user') return [];
       const res = await StudyCloudAPI.getMatieres(currentUid);
       if (res && res.success && Array.isArray(res.data)) {
         return res.data;
@@ -266,6 +267,7 @@ export function useMatieresList(userId?: string) {
       return [];
     },
     staleTime: 1000 * 60 * 2,
+    enabled: Boolean(currentUid && currentUid !== 'default-user'),
   });
 }
 
@@ -273,15 +275,17 @@ export function useMatieresList(userId?: string) {
  * Hook TanStack Query pour la configuration de l'emploi du temps (jours, heures, zoom)
  */
 export function useScheduleConfig(userId?: string) {
-  const currentUid = userId || getCurrentUserId() || 'default-user';
+  const currentUid = userId || getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
   return useQuery<{ days_json?: string; hours_json?: string; zoom_level?: number } | null>({
     queryKey: QUERY_KEYS.scheduleConfig(currentUid),
     queryFn: async () => {
+      if (!currentUid || currentUid === 'default-user') return null;
       const res: any = await StudyCloudAPI.getScheduleConfig(currentUid);
       return res?.data || null;
     },
     staleTime: 1000 * 60 * 2,
     gcTime: 1000 * 60 * 5,
+    enabled: Boolean(currentUid && currentUid !== 'default-user'),
   });
 }
 
@@ -289,15 +293,17 @@ export function useScheduleConfig(userId?: string) {
  * Hook TanStack Query pour les créneaux réels de l'emploi du temps
  */
 export function useScheduleSlots(userId?: string) {
-  const currentUid = userId || getCurrentUserId() || 'default-user';
+  const currentUid = userId || getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
   return useQuery<Array<{ id: string; user_id: string; day: string; hour_slot: string; subject: string; room?: string; note_or_teacher?: string; color?: string }>>({
     queryKey: QUERY_KEYS.scheduleSlots(currentUid),
     queryFn: async () => {
+      if (!currentUid || currentUid === 'default-user') return [];
       const res: any = await StudyCloudAPI.getScheduleSlots(currentUid);
       return res && res.success && Array.isArray(res.data) ? res.data : [];
     },
     staleTime: 1000 * 60 * 2,
     gcTime: 1000 * 60 * 5,
+    enabled: Boolean(currentUid && currentUid !== 'default-user'),
   });
 }
 
@@ -305,15 +311,17 @@ export function useScheduleSlots(userId?: string) {
  * Hook TanStack Query pour les notes du Bloc-notes (Keep notes) Cloudflare D1
  */
 export function useNotesQuery(userId?: string) {
-  const currentUid = userId || getCurrentUserId() || 'default-user';
+  const currentUid = userId || getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
   return useQuery<any[]>({
     queryKey: QUERY_KEYS.notes(currentUid),
     queryFn: async () => {
+      if (!currentUid || currentUid === 'default-user') return [];
       const res: any = await StudyCloudAPI.getNotes(currentUid);
       return res && res.success && Array.isArray(res.data) ? res.data : [];
     },
     staleTime: 1000 * 60 * 2,
     gcTime: 1000 * 60 * 5,
+    enabled: Boolean(currentUid && currentUid !== 'default-user'),
   });
 }
 

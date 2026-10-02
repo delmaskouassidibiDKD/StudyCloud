@@ -600,14 +600,16 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     setIsAddingNewMatiere(false);
 
     // Enregistrement immédiat dans Cloudflare D1
-    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
-    StudyCloudAPI.createMatiere({
-      id: newMat.id,
-      userId,
-      name: newMat.name,
-      coefficient: Number(newMat.coefficient) || 1,
-      color: '#EA580C'
-    }).catch(() => {});
+    const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+    if (userId && userId !== 'default-user') {
+      StudyCloudAPI.createMatiere({
+        id: newMat.id,
+        userId,
+        name: newMat.name,
+        coefficient: Number(newMat.coefficient) || 1,
+        color: '#EA580C'
+      }).catch(() => {});
+    }
   };
 
   useEffect(() => {
@@ -664,22 +666,24 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     } catch (e) {}
 
     if (targetFile) {
-      const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
-      const existingExt = targetFile.extension || (targetFile.name.includes('.') ? targetFile.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
-      StudyCloudAPI.registerFileMetadata({
-        id: targetFile.id,
-        userId,
-        matiereId: targetFile.matiere || null,
-        name: newFileName.trim(),
-        size: targetFile.size,
-        type: targetFile.type,
-        extension: existingExt,
-        r2Key: (targetFile as any).r2Key || null,
-        fileUrl: targetFile.url,
-        isFavorite: targetFile.isFavorite,
-        isImported: true,
-        lastImported: typeof targetFile.importedAt === 'number' ? targetFile.importedAt : Date.now()
-      }).catch(() => {});
+      const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+      if (userId && userId !== 'default-user') {
+        const existingExt = targetFile.extension || (targetFile.name.includes('.') ? targetFile.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
+        StudyCloudAPI.registerFileMetadata({
+          id: targetFile.id,
+          userId,
+          matiereId: targetFile.matiere || null,
+          name: newFileName.trim(),
+          size: targetFile.size,
+          type: targetFile.type,
+          extension: existingExt,
+          r2Key: (targetFile as any).r2Key || null,
+          fileUrl: targetFile.url,
+          isFavorite: targetFile.isFavorite,
+          isImported: true,
+          lastImported: typeof targetFile.importedAt === 'number' ? targetFile.importedAt : Date.now()
+        }).catch(() => {});
+      }
     }
 
     invalidateCloudQueries.filesMenu();
@@ -727,21 +731,23 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       } catch (e) {}
     }
 
-    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
-    StudyCloudAPI.registerFileMetadata({
-      id: newId,
-      userId,
-      matiereId: duplicated.matiere || null,
-      name: duplicated.name,
-      size: duplicated.size,
-      type: duplicated.type,
-      extension: duplicated.extension,
-      r2Key: (duplicated as any).r2Key || null,
-      fileUrl: duplicated.url,
-      isFavorite: duplicated.isFavorite,
-      isImported: true,
-      lastImported: now
-    }).catch(() => {});
+    const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+    if (userId && userId !== 'default-user') {
+      StudyCloudAPI.registerFileMetadata({
+        id: newId,
+        userId,
+        matiereId: duplicated.matiere || null,
+        name: duplicated.name,
+        size: duplicated.size,
+        type: duplicated.type,
+        extension: duplicated.extension,
+        r2Key: (duplicated as any).r2Key || null,
+        fileUrl: duplicated.url,
+        isFavorite: duplicated.isFavorite,
+        isImported: true,
+        lastImported: now
+      }).catch(() => {});
+    }
 
     invalidateCloudQueries.filesMenu();
     if (duplicated.matiere) invalidateCloudQueries.matiereFiles(duplicated.matiere);
@@ -768,23 +774,25 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     } catch (e) {}
 
     if (file) {
-      const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
-      StudyCloudAPI.toggleFileFavorite(id, newFav).catch(() => {
-        StudyCloudAPI.registerFileMetadata({
-          id: file.id,
-          userId,
-          matiereId: file.matiere || null,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          extension: file.extension,
-          r2Key: (file as any).r2Key || null,
-          fileUrl: file.url,
-          isFavorite: newFav,
-          isImported: true,
-          lastImported: typeof file.importedAt === 'number' ? file.importedAt : Date.now()
-        }).catch(() => {});
-      });
+      const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+      if (userId && userId !== 'default-user') {
+        StudyCloudAPI.toggleFileFavorite(id, newFav).catch(() => {
+          StudyCloudAPI.registerFileMetadata({
+            id: file.id,
+            userId,
+            matiereId: file.matiere || null,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            extension: file.extension,
+            r2Key: (file as any).r2Key || null,
+            fileUrl: file.url,
+            isFavorite: newFav,
+            isImported: true,
+            lastImported: typeof file.importedAt === 'number' ? file.importedAt : Date.now()
+          }).catch(() => {});
+        });
+      }
     }
 
     invalidateCloudQueries.filesMenu();
@@ -950,23 +958,25 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     });
 
     // Mettre à jour dans D1 et invalider les queries TanStack
-    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
-    filesToClassify.forEach(fileToClassify => {
-      StudyCloudAPI.registerFileMetadata({
-        id: fileToClassify.id,
-        userId,
-        matiereId: matiereNames[0] || null,
-        name: fileToClassify.name,
-        size: fileToClassify.size,
-        type: fileToClassify.type,
-        extension: fileToClassify.extension,
-        r2Key: (fileToClassify as any).r2Key || null,
-        fileUrl: fileToClassify.url,
-        isFavorite: fileToClassify.isFavorite,
-        isImported: true,
-        lastImported: typeof fileToClassify.importedAt === 'number' ? fileToClassify.importedAt : Date.now()
-      }).catch(() => {});
-    });
+    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || '';
+    if (userId && userId !== 'default-user') {
+      filesToClassify.forEach(fileToClassify => {
+        StudyCloudAPI.registerFileMetadata({
+          id: fileToClassify.id,
+          userId,
+          matiereId: matiereNames[0] || null,
+          name: fileToClassify.name,
+          size: fileToClassify.size,
+          type: fileToClassify.type,
+          extension: fileToClassify.extension,
+          r2Key: (fileToClassify as any).r2Key || null,
+          fileUrl: fileToClassify.url,
+          isFavorite: fileToClassify.isFavorite,
+          isImported: true,
+          lastImported: typeof fileToClassify.importedAt === 'number' ? fileToClassify.importedAt : Date.now()
+        }).catch(() => {});
+      });
+    }
 
     invalidateCloudQueries.filesMenu();
     matiereNames.forEach(name => invalidateCloudQueries.matiereFiles(name));
@@ -1101,21 +1111,23 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         newItems.push(item);
 
         // 2. Enregistrement D1 immédiat (sans attendre R2)
-        const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
-        StudyCloudAPI.registerFileMetadata({
-          id,
-          userId,
-          matiereId: null,
-          name: f.name,
-          size: f.size,
-          type: f.type || 'application/octet-stream',
-          extension: extVal,
-          r2Key: null,
-          fileUrl: localUrl,
-          isFavorite: false,
-          isImported: true,
-          lastImported: now + i
-        }).catch(() => {});
+        const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || '';
+        if (userId && userId !== 'default-user') {
+          StudyCloudAPI.registerFileMetadata({
+            id,
+            userId,
+            matiereId: null,
+            name: f.name,
+            size: f.size,
+            type: f.type || 'application/octet-stream',
+            extension: extVal,
+            r2Key: null,
+            fileUrl: localUrl,
+            isFavorite: false,
+            isImported: true,
+            lastImported: now + i
+          }).catch(() => {});
+        }
 
         // 3. Préparer les données pour UploadQueue
         itemsWithFiles.push({

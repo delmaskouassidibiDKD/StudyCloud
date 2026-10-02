@@ -374,7 +374,11 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
 
   // Chargement direct depuis Cloudflare D1
   const fetchGradesFromD1 = useCallback(() => {
-    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
+    const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+    if (!userId || userId === 'default-user') {
+      setGradesData(formatGradesDataFromD1([]));
+      return;
+    }
     StudyCloudAPI.getGrades(userId)
       .then((res: any) => {
         if (res && res.success && Array.isArray(res.data)) {

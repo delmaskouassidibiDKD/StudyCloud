@@ -43,7 +43,7 @@ interface DragState {
 }
 
 export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
-  const userId = getCurrentUserId() || (typeof window !== 'undefined' ? localStorage.getItem('unifolder_user_id') : null) || 'default-user';
+  const userId = getCurrentUserId() || (typeof window !== 'undefined' ? localStorage.getItem('unifolder_user_id') : null) || '';
 
   // Synchronisation TanStack Query avec Cloudflare D1
   const { data: serverNotes } = useNotesQuery(userId);
@@ -59,6 +59,23 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
     }
     return [];
   });
+
+  // Écoute de la réinitialisation de session et restauration cloud
+  useEffect(() => {
+    const handleRestore = () => {
+      const saved = safeLocalStorageGet<NoteItem[]>('unifolder_keep_notes', []);
+      if (Array.isArray(saved)) {
+        setNotes(saved.map((item: NoteItem) => ({
+          ...item,
+          color: item.color && item.color !== '#FDFBF7' ? item.color : '#25272C'
+        })));
+      } else {
+        setNotes([]);
+      }
+    };
+    window.addEventListener('unifolder_data_restored', handleRestore);
+    return () => window.removeEventListener('unifolder_data_restored', handleRestore);
+  }, []);
 
   // Mode: 'list' ou 'editor'
   const [viewMode, setViewMode] = useState<'list' | 'editor'>('list');

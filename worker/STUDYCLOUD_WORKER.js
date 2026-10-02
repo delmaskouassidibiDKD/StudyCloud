@@ -5194,7 +5194,7 @@ var index_default = {
         if (env.DB) await ensureCloudMediaTables(env.DB);
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId || userId === "default-user") return jsonResponse({ success: true, data: [] }, 200, origin);
           const { results } = await env.DB.prepare(`
             SELECT m.*, 
               (SELECT COUNT(*) FROM files f WHERE f.matiere_id = m.id OR f.matiere_id = m.name) AS files_count,
@@ -5208,7 +5208,7 @@ var index_default = {
         if (method === "POST") {
           const body = await request.json();
           const { id, userId, name, coefficient, color, category, displayOrder } = body;
-          if (!id || !userId || !name) return errorResponse("id, userId et name requis", 400, origin);
+          if (!id || !userId || !name || userId === "default-user") return errorResponse("id, userId et name requis", 400, origin);
           await env.DB.prepare(`
             INSERT INTO matieres (id, user_id, name, coefficient, color, category, display_order)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -5235,7 +5235,7 @@ var index_default = {
           const matiereId = url.searchParams.get("matiereId");
           const isStudySession = url.searchParams.get("isStudySession");
           const isFavorite = url.searchParams.get("isFavorite");
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId || userId === "default-user") return jsonResponse({ success: true, data: [] }, 200, origin);
           let query = "SELECT * FROM files WHERE user_id = ?";
           const params = [userId];
           if (matiereId === "root" || matiereId === "none") {
@@ -5269,7 +5269,7 @@ var index_default = {
         if (method === "POST") {
           const body = await request.json();
           const { id, userId, matiereId, name, size, type, extension, r2Key, fileUrl, isFavorite, isImported, isStudySession, lastImported } = body;
-          if (!id || !userId || !name) return errorResponse("id, userId et name requis", 400, origin);
+          if (!id || !userId || !name || userId === "default-user") return errorResponse("id, userId et name requis", 400, origin);
           await env.DB.prepare(`
             INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -10095,14 +10095,14 @@ var index_default = {
       if (path === "/api/schedule/config") {
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId || userId === "default-user") return jsonResponse({ success: true, data: null }, 200, origin);
           const config = await env.DB.prepare("SELECT * FROM schedule_config WHERE user_id = ?").bind(userId).first();
           return jsonResponse({ success: true, data: config }, 200, origin);
         }
         if (method === "PUT") {
           const body = await request.json();
           const uid = body.userId;
-          if (!uid) return errorResponse("userId requis", 400, origin);
+          if (!uid || uid === "default-user") return errorResponse("userId requis", 400, origin);
           const daysJson = typeof body.daysJson === "string" ? body.daysJson : JSON.stringify(body.daysJson || body.days || []);
           const hoursJson = typeof body.hoursJson === "string" ? body.hoursJson : JSON.stringify(body.hoursJson || body.hours || []);
           const zoomLevel = Number(body.zoomLevel) || 100;
@@ -10121,7 +10121,7 @@ var index_default = {
       if (path === "/api/schedule/slots") {
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId || userId === "default-user") return jsonResponse({ success: true, data: [] }, 200, origin);
           const { results } = await env.DB.prepare("SELECT * FROM schedule_slots WHERE user_id = ? ORDER BY day, hour_slot").bind(userId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
@@ -10130,7 +10130,7 @@ var index_default = {
           const slotsToProcess = Array.isArray(body) ? body : Array.isArray(body?.slots) ? body.slots : [body];
           for (const s of slotsToProcess) {
             const { id, userId, day, hourSlot, subject, room, noteOrTeacher, color } = s;
-            if (!userId || !day || !hourSlot) continue;
+            if (!userId || userId === "default-user" || !day || !hourSlot) continue;
             const slotId = id || `${userId}-${day}-${hourSlot}`;
             await env.DB.prepare("DELETE FROM schedule_slots WHERE user_id = ? AND day = ? AND hour_slot = ? AND id != ?").bind(userId, day, hourSlot, slotId).run().catch(() => {
             });
@@ -10186,7 +10186,7 @@ var index_default = {
         }
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId || userId === "default-user") return jsonResponse({ success: true, data: [] }, 200, origin);
           try {
             const { results } = await env.DB.prepare("SELECT * FROM grades WHERE user_id = ?").bind(userId).all();
             return jsonResponse({ success: true, data: results || [] }, 200, origin);
@@ -10197,7 +10197,7 @@ var index_default = {
         if (method === "POST") {
           const body = await request.json();
           const { id, userId, trimester, subjectName, coefficient, subGradesJson, average } = body;
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId || userId === "default-user") return errorResponse("userId requis", 400, origin);
           const gradeId = id || "grade-" + crypto.randomUUID();
           await env.DB.prepare(`
             INSERT INTO grades (id, user_id, trimester, subject_name, coefficient, sub_grades_json, average, updated_at)
@@ -10233,14 +10233,14 @@ var index_default = {
       if (path === "/api/notes") {
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId || userId === "default-user") return jsonResponse({ success: true, data: [] }, 200, origin);
           const { results } = await env.DB.prepare("SELECT * FROM notes WHERE user_id = ? ORDER BY is_pinned DESC, updated_at DESC").bind(userId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
         if (method === "POST") {
           const body = await request.json();
           const { id, userId, title, content, color, isPinned, imageUrl } = body;
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId || userId === "default-user") return errorResponse("userId requis", 400, origin);
           const noteId = id || "note-" + crypto.randomUUID();
           await env.DB.prepare(`
             INSERT INTO notes (id, user_id, title, content, color, is_pinned, image_url, updated_at)
@@ -10283,7 +10283,7 @@ var index_default = {
         }
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId || userId === "default-user") return jsonResponse({ success: true, data: [] }, 200, origin);
           try {
             const { results } = await env.DB.prepare("SELECT * FROM calendar_events WHERE user_id = ? ORDER BY start_date ASC").bind(userId).all();
             return jsonResponse({ success: true, data: results || [] }, 200, origin);
@@ -10294,7 +10294,7 @@ var index_default = {
         if (method === "POST") {
           const body = await request.json();
           const { id, userId, title, startDate, endDate, allDay, color, description, location } = body;
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId || userId === "default-user") return errorResponse("userId requis", 400, origin);
           const eventId = id || crypto.randomUUID();
           await env.DB.prepare(`
             INSERT INTO calendar_events (id, user_id, title, start_date, end_date, all_day, color, description, location)
@@ -10346,7 +10346,7 @@ var index_default = {
         }
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId || userId === "default-user") return jsonResponse({ success: true, data: [] }, 200, origin);
           try {
             const { results } = await env.DB.prepare("SELECT * FROM alarms WHERE user_id = ? ORDER BY time ASC").bind(userId).all();
             return jsonResponse({ success: true, data: results || [] }, 200, origin);
@@ -10357,7 +10357,7 @@ var index_default = {
         if (method === "POST") {
           const body = await request.json();
           const { id, userId: userId2, time, label, isActive, daysJson } = body;
-          if (!userId2) return errorResponse("userId requis", 400, origin);
+          if (!userId2 || userId2 === "default-user") return errorResponse("userId requis", 400, origin);
           const alarmId = id || "alarm-" + crypto.randomUUID();
           await env.DB.prepare(`
             INSERT INTO alarms (id, user_id, time, label, is_active, days_json)
@@ -11969,7 +11969,7 @@ Lien vers le produit : ${productShareUrl}`;
         if (env.DB) await ensureCloudMediaTables(env.DB);
         const body = await request.json();
         const { userId, userProfile, matieres, notes, scheduleSlots, scheduleConfig, alarms, shopProfile } = body;
-        if (!userId) return errorResponse("userId requis", 400, origin);
+        if (!userId || userId === "default-user") return errorResponse("userId requis", 400, origin);
         if (userProfile) {
           const cleanEmail = (userProfile.email || `${userId}@studycloud.app`).toLowerCase().trim();
           const existing = await env.DB.prepare(
@@ -12146,7 +12146,23 @@ Lien vers le produit : ${productShareUrl}`;
       }
       if (path === "/api/sync/restore" && method === "GET") {
         const userId = url.searchParams.get("userId");
-        if (!userId) return errorResponse("userId requis", 400, origin);
+        if (!userId || userId === "default-user") {
+          return jsonResponse({
+            success: true,
+            data: {
+              user: null,
+              matieres: [],
+              files: [],
+              notes: [],
+              scheduleConfig: null,
+              scheduleSlots: [],
+              grades: [],
+              alarms: [],
+              aiContents: [],
+              calendarEvents: []
+            }
+          }, 200, origin);
+        }
         if (env.DB) await ensureCloudMediaTables(env.DB);
         const [
           user,
@@ -12303,7 +12319,22 @@ Lien vers le produit : ${productShareUrl}`;
         }, 200, origin);
       }
       if (path === "/api/user/storage" && method === "GET") {
-        const userId = url.searchParams.get("userId") || request.headers.get("x-user-id") || "default-user";
+        const userId = url.searchParams.get("userId") || request.headers.get("x-user-id") || "";
+        if (!userId || userId === "default-user") {
+          return jsonResponse({
+            success: true,
+            storage: {
+              files: { count: 0, bytes: 0, formatted: "0 o" },
+              data: { count: 0, bytes: 0, formatted: "0 o" },
+              totalUsedBytes: 0,
+              totalUsedMb: 0,
+              maxAllowedMb: 30,
+              usagePercent: 0,
+              purchasedMb: 0,
+              purchasedWords: 0
+            }
+          }, 200, origin);
+        }
         let totalFilesCount = 0;
         let totalFilesBytes = 0;
         let totalDataCount = 0;

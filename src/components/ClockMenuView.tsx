@@ -98,7 +98,11 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
 
   // Synchronisation avec Cloudflare D1
   useEffect(() => {
-    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
+    const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+    if (!userId || userId === 'default-user') {
+      setAlarms([]);
+      return;
+    }
     StudyCloudAPI.getAlarms(userId)
       .then((res: any) => {
         if (res && res.success && Array.isArray(res.data)) {
@@ -125,6 +129,8 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
           setAlarms(mapped);
           localStorage.setItem('unifolder_clock_alarms', JSON.stringify(mapped));
           localStorage.setItem('unifolder_alarms', JSON.stringify(mapped));
+        } else {
+          setAlarms([]);
         }
       })
       .catch((err) => {
@@ -154,10 +160,14 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
               };
             });
             setAlarms(mapped);
+          } else {
+            setAlarms([]);
           }
-        } catch (e) {}
+        } catch (e) {
+          setAlarms([]);
+        }
       } else {
-        setAlarms(defaultAlarms);
+        setAlarms([]);
       }
     };
     window.addEventListener('unifolder_data_restored', handleRestore);
@@ -201,7 +211,8 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
   const handleAddAlarm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAlarmTime) return;
-    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
+    const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+    if (!userId || userId === 'default-user') return;
 
     if (editingAlarmId) {
       // Mise à jour d'une alarme existante dans le state et en BDD Cloudflare D1
@@ -258,7 +269,8 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
       const newActive = !target.active;
       const updated = { ...target, active: newActive };
       setAlarms(prev => prev.map(a => a.id === id ? updated : a));
-      const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
+      const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+      if (!userId || userId === 'default-user') return;
       StudyCloudAPI.createAlarm({
         id: updated.id,
         userId,

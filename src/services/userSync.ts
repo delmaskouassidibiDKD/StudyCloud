@@ -83,7 +83,7 @@ export function clearUserDataOnLogout(): void {
     'studycloud_recent_searches',
   ];
 
-  // Nettoyer également toutes les clés dynamiques commençant par unifolder_ ou studycloud_
+  // Nettoyer également toutes les clés dynamiques commençant par unifolder_, studycloud_, user_, study_ ou sc_
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const key = localStorage.key(i);
     if (
@@ -91,6 +91,8 @@ export function clearUserDataOnLogout(): void {
         userKeys.includes(key) ||
         key.startsWith('unifolder_') ||
         key.startsWith('studycloud_') ||
+        key.startsWith('user_') ||
+        key.startsWith('study_') ||
         key.startsWith('sc_onb_') ||
         key.startsWith('sc_resend_')
       )
@@ -134,17 +136,24 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
           color: m.color || '#EA580C',
         }));
         safeLocalStorageSet('unifolder_saved_matieres', mappedMatieres);
+      } else {
+        safeLocalStorageSet('unifolder_saved_matieres', []);
       }
 
       // 3. Fichiers & Documents ("Mes fichiers")
       if (Array.isArray(d.files)) {
         safeLocalStorageSet('unifolder_user_files', d.files);
         safeLocalStorageSet('unifolder_files_menu_items', d.files);
+      } else {
+        safeLocalStorageSet('unifolder_user_files', []);
+        safeLocalStorageSet('unifolder_files_menu_items', []);
       }
 
       // 4. Notes Keep
       if (Array.isArray(d.notes)) {
         safeLocalStorageSet('unifolder_keep_notes', d.notes);
+      } else {
+        safeLocalStorageSet('unifolder_keep_notes', []);
       }
 
       // 5. Emploi du temps
@@ -152,6 +161,10 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
         if (d.scheduleConfig.days_json) safeLocalStorageSet('user_schedule_days', d.scheduleConfig.days_json);
         if (d.scheduleConfig.hours_json) safeLocalStorageSet('user_schedule_hours', d.scheduleConfig.hours_json);
         if (d.scheduleConfig.zoom_level) safeLocalStorageSet('user_schedule_zoom', String(d.scheduleConfig.zoom_level));
+      } else {
+        localStorage.removeItem('user_schedule_days');
+        localStorage.removeItem('user_schedule_hours');
+        localStorage.removeItem('user_schedule_zoom');
       }
       if (Array.isArray(d.scheduleSlots)) {
         const mappedSchedule: Record<string, any> = {};
@@ -165,6 +178,8 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
           };
         }
         safeLocalStorageSet('user_schedule_data', mappedSchedule);
+      } else {
+        safeLocalStorageSet('user_schedule_data', {});
       }
 
       // Calendrier des événements
@@ -180,15 +195,15 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
           location: row.location || undefined,
         }));
         localStorage.setItem('unifolder_calendar_data', JSON.stringify(mappedEvents));
+      } else {
+        localStorage.setItem('unifolder_calendar_data', '[]');
       }
 
       // 6. Carnet de notes & Moyennes (les notes sont stockées directement dans la base D1)
-      if (Array.isArray(d.grades)) {
-        try {
-          localStorage.removeItem('user_grades_trimesters_data');
-          localStorage.removeItem('unifolder_grades_data');
-        } catch (e) {}
-      }
+      try {
+        localStorage.removeItem('user_grades_trimesters_data');
+        localStorage.removeItem('unifolder_grades_data');
+      } catch (e) {}
 
       // 7. Alarmes
       if (Array.isArray(d.alarms)) {
@@ -210,6 +225,9 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
         });
         localStorage.setItem('unifolder_alarms', JSON.stringify(normalizedAlarms));
         localStorage.setItem('unifolder_clock_alarms', JSON.stringify(normalizedAlarms));
+      } else {
+        localStorage.setItem('unifolder_alarms', '[]');
+        localStorage.setItem('unifolder_clock_alarms', '[]');
       }
 
       // 8. Contenus Générés IA (Créations & Studio)

@@ -71,7 +71,11 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
 
   // Charger depuis Cloudflare D1
   useEffect(() => {
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    const userId = localStorage.getItem('unifolder_user_id') || '';
+    if (!userId || userId === 'default-user') {
+      setFavoriteFiles([]);
+      return;
+    }
     StudyCloudAPI.getFiles(userId, undefined, undefined, true)
       .then(async (res) => {
         if (res && res.success && Array.isArray(res.data)) {
@@ -94,18 +98,16 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
               };
             })
           );
-          if (filesWithUrls.length > 0) {
-            setFavoriteFiles(filesWithUrls);
-          }
+          setFavoriteFiles(filesWithUrls);
+        } else {
+          setFavoriteFiles([]);
         }
       })
       .catch(() => {});
 
     const handleReload = () => {
       const list = loadLocalFavorites();
-      if (list.length > 0) {
-        setFavoriteFiles(list);
-      }
+      setFavoriteFiles(list);
     };
 
     window.addEventListener('unifolder_files_updated', handleReload);

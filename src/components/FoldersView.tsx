@@ -19,7 +19,7 @@ import { MatiereMenuView } from './MatiereMenuView';
 import { StorageMenuView } from './StorageMenuView';
 import { Page1FilesMenuView } from './Page1FilesMenuView';
 import { NavigationTab } from '../types';
-import { triggerDebouncedCloudBackup } from '../services/userSync';
+import { triggerDebouncedCloudBackup, getCurrentUserId } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
 import { useDashboardWallpaper } from '../hooks/useCloudQueries';
 import { getActiveWallpaperReliable } from '../utils/wallpaperHelper';
@@ -1243,7 +1243,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                     setShowEmptyError(true);
                     return;
                   }
-                  const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+                  const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || '';
                   const createdWithIds = matieresList.map((m, idx) => ({
                     id: 'mat-' + Date.now() + '-' + idx,
                     name: m.name.trim(),
@@ -1252,15 +1252,17 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                   }));
 
                   // Synchroniser chaque matière avec Cloudflare D1
-                  createdWithIds.forEach((m) => {
-                    StudyCloudAPI.createMatiere({
-                      id: m.id,
-                      userId,
-                      name: m.name,
-                      coefficient: parseFloat(m.coefficient) || 1.0,
-                      color: m.color,
-                    }).catch((err) => console.warn('Erreur création matière D1:', err));
-                  });
+                  if (userId && userId !== 'default-user') {
+                    createdWithIds.forEach((m) => {
+                      StudyCloudAPI.createMatiere({
+                        id: m.id,
+                        userId,
+                        name: m.name,
+                        coefficient: parseFloat(m.coefficient) || 1.0,
+                        color: m.color,
+                      }).catch((err) => console.warn('Erreur création matière D1:', err));
+                    });
+                  }
 
                   setSavedMatieres(prev => [...prev, ...createdWithIds]);
                   notify("Matières créées avec succès !");
@@ -1324,17 +1326,19 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                 disabled={!editingMatiere.name.trim()}
                 onClick={() => {
                   if (editingMatiere.name.trim()) {
-                    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+                    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || '';
                     const targetMat = savedMatieres[editingMatiere.index];
                     const matId = targetMat?.id || ('mat-' + Date.now());
                     
-                    StudyCloudAPI.createMatiere({
-                      id: matId,
-                      userId,
-                      name: editingMatiere.name.trim(),
-                      coefficient: parseFloat(editingMatiere.coefficient) || 1.0,
-                      color: targetMat?.color || '#EA580C',
-                    }).catch((err) => console.warn('Erreur modification matière D1:', err));
+                    if (userId && userId !== 'default-user') {
+                      StudyCloudAPI.createMatiere({
+                        id: matId,
+                        userId,
+                        name: editingMatiere.name.trim(),
+                        coefficient: parseFloat(editingMatiere.coefficient) || 1.0,
+                        color: targetMat?.color || '#EA580C',
+                      }).catch((err) => console.warn('Erreur modification matière D1:', err));
+                    }
 
                     setSavedMatieres(prev => {
                       const updated = [...prev];

@@ -59,11 +59,18 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
       try {
         const saved = localStorage.getItem('unifolder_calendar_data');
         if (saved) setEvents(JSON.parse(saved));
-      } catch (e) {}
+        else setEvents([]);
+      } catch (e) {
+        setEvents([]);
+      }
     };
     window.addEventListener('unifolder_data_restored', handleRestore);
 
-    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
+    const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+    if (!userId || userId === 'default-user') {
+      setEvents([]);
+      return;
+    }
     StudyCloudAPI.getCalendarEvents(userId)
       .then((res: any) => {
         if (res && res.success && Array.isArray(res.data)) {
@@ -180,7 +187,8 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
     const newEnd = info.event.endStr || undefined;
     const isAllDay = Boolean(info.event.allDay);
 
-    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
+    const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+    if (!userId || userId === 'default-user') return;
     setEvents(prev => prev.map(e => {
       if (e.id === updatedId) {
         const updated = {
@@ -224,7 +232,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
       endIso = `${newEventDate}T${newEventEndTime}:00`;
     }
 
-    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
+    const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
 
     if (editingEventId) {
       // Modification d'un événement existant

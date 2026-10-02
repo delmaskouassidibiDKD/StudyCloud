@@ -34,7 +34,7 @@ const COLORS = [
 ];
 
 export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) => {
-  const userId = getCurrentUserId() || (typeof window !== 'undefined' ? localStorage.getItem('unifolder_user_id') : null) || 'default-user';
+  const userId = getCurrentUserId() || (typeof window !== 'undefined' ? localStorage.getItem('unifolder_user_id') : null) || '';
 
   // Hooks TanStack Query pour la synchronisation Hono/D1
   const { data: serverConfig } = useScheduleConfig(userId);
@@ -136,11 +136,8 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
           color: s.color || COLORS[0].bg,
         };
       }
-      setScheduleData(prev => {
-        const merged = { ...prev, ...mapped };
-        safeLocalStorageSet('user_schedule_data', merged);
-        return merged;
-      });
+      setScheduleData(mapped);
+      safeLocalStorageSet('user_schedule_data', mapped);
     }
   }, [serverSlots]);
 
@@ -167,7 +164,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
 
   // Synchronisation automatique de la configuration vers Cloudflare D1
   useEffect(() => {
-    if (!hasConfigLoadedRef.current) return;
+    if (!hasConfigLoadedRef.current || !userId || userId === 'default-user') return;
     const timer = setTimeout(() => {
       StudyCloudAPI.updateScheduleConfig(userId, JSON.stringify(days), JSON.stringify(hours), zoomLevel)
         .then(() => invalidateCloudQueries.scheduleConfig())
@@ -180,13 +177,13 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
     const handleRestore = () => {
       try {
         const savedData = localStorage.getItem('user_schedule_data');
-        if (savedData) setScheduleData(JSON.parse(savedData));
+        setScheduleData(savedData ? JSON.parse(savedData) : {});
         const savedDays = localStorage.getItem('user_schedule_days');
-        if (savedDays) setDays(JSON.parse(savedDays));
+        setDays(savedDays ? JSON.parse(savedDays) : DEFAULT_DAYS);
         const savedHours = localStorage.getItem('user_schedule_hours');
-        if (savedHours) setHours(JSON.parse(savedHours));
+        setHours(savedHours ? JSON.parse(savedHours) : DEFAULT_HOURS);
         const savedZoom = localStorage.getItem('user_schedule_zoom');
-        if (savedZoom) setZoomLevel(Number(savedZoom));
+        setZoomLevel(savedZoom ? Number(savedZoom) : 100);
       } catch (e) {}
     };
     window.addEventListener('unifolder_data_restored', handleRestore);
