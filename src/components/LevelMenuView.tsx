@@ -801,7 +801,14 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                 <YAxis stroke="#2D4A3E" tick={<CustomYTick />} domain={[0, standardScale]} ticks={ticks} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#F5F0E8', borderColor: '#2D4A3E', borderRadius: '8px', color: '#2D4A3E', fontWeight: 'bold' }}
-                  formatter={(value: any, name: any, item: any) => [item.payload.displayLabel, 'Moyenne']}
+                  formatter={(value: any, name: any, item: any) => {
+                    const val = Number(value);
+                    const hasNote = item?.payload?.hasNote || val > 0;
+                    return [
+                      hasNote ? `${val.toFixed(2).replace('.', ',')} / ${standardScale}` : 'Pas de note',
+                      'Moyenne'
+                    ];
+                  }}
                 />
                 <Bar 
                   dataKey="count" 
@@ -810,19 +817,26 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                   label={{ 
                     position: 'top', 
                     content: (props: any) => { 
-                      const { x, y, width, index } = props; 
-                      const item = trimesterData[index]; 
-                      if (!item) return null;
+                      const { x, y, width } = props; 
+                      const item = props.payload || (typeof props.index === 'number' ? trimesterData[props.index] : null); 
+                      const val = Number(props.value ?? item?.count ?? 0);
+                      const hasNote = Boolean(item?.hasNote || val > 0);
+                      if (!hasNote && val <= 0) return null;
+                      const labelText = hasNote 
+                        ? (item?.displayLabel && !item.displayLabel.includes('Pas de note') 
+                            ? item.displayLabel 
+                            : `${val.toFixed(2).replace('.', ',')} / ${standardScale}`)
+                        : 'Pas de note';
                       return (
                         <text 
                           x={x + width / 2} 
                           y={y - 8} 
-                          fill={item.hasNote ? '#2D4A3E' : '#ef4444'} 
+                          fill={hasNote ? '#2D4A3E' : '#ef4444'} 
                           textAnchor="middle" 
                           fontSize="11" 
                           fontWeight="bold"
                         >
-                          {item.displayLabel}
+                          {labelText}
                         </text>
                       ); 
                     } 
@@ -846,7 +860,14 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                     <YAxis stroke="#2D4A3E" tick={<CustomYTick />} domain={[0, standardScale]} ticks={ticks} />
                     <Tooltip 
                       contentStyle={{ backgroundColor: '#F5F0E8', borderColor: '#2D4A3E', borderRadius: '8px', color: '#2D4A3E', fontWeight: 'bold' }}
-                      formatter={(value: any, name: any, item: any) => [item.payload.displayLabel, 'Moyenne']}
+                      formatter={(value: any, name: any, item: any) => {
+                        const val = Number(value);
+                        const hasNote = item?.payload?.hasNote || val > 0;
+                        return [
+                          hasNote ? `${val.toFixed(2).replace('.', ',')} / ${standardScale}` : 'Pas de note',
+                          'Moyenne'
+                        ];
+                      }}
                     />
                     <Bar 
                       dataKey="count" 
@@ -855,19 +876,26 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                       label={{ 
                         position: 'top', 
                         content: (props: any) => { 
-                          const { x, y, width, index } = props; 
-                          const item = subjectData[index]; 
-                          if (!item) return null;
+                          const { x, y, width } = props; 
+                          const item = props.payload || (typeof props.index === 'number' ? subjectData[props.index] : null); 
+                          const val = Number(props.value ?? item?.count ?? 0);
+                          const hasNote = Boolean(item?.hasNote || val > 0);
+                          if (!hasNote && val <= 0) return null;
+                          const labelText = hasNote 
+                            ? (item?.displayLabel && !item.displayLabel.includes('Pas de note') 
+                                ? item.displayLabel 
+                                : `${val.toFixed(2).replace('.', ',')} / ${standardScale}`)
+                            : 'Pas de note';
                           return (
                             <text 
                               x={x + width / 2} 
                               y={y - 8} 
-                              fill={item.hasNote ? '#2D4A3E' : '#ef4444'} 
+                              fill={hasNote ? '#2D4A3E' : '#ef4444'} 
                               textAnchor="middle" 
                               fontSize="10" 
                               fontWeight="bold"
                             >
-                              {item.displayLabel}
+                              {labelText}
                             </text>
                           ); 
                         } 
@@ -906,7 +934,14 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                     <YAxis stroke="#2D4A3E" tick={<CustomYTick />} domain={[0, standardScale]} ticks={ticks} />
                     <Tooltip 
                       contentStyle={{ backgroundColor: '#F5F0E8', borderColor: '#2D4A3E', borderRadius: '8px', color: '#2D4A3E', fontWeight: 'bold' }}
-                      formatter={(value: any, name: any, item: any) => [item.payload.displayLabel, 'Note']}
+                      formatter={(value: any, name: any, item: any) => {
+                        const val = Number(value);
+                        const hasNote = item?.payload?.hasNote || val > 0;
+                        return [
+                          hasNote ? `${val.toFixed(2).replace('.', ',')} / ${standardScale}` : 'Pas de note',
+                          'Note'
+                        ];
+                      }}
                     />
                     <Bar 
                       dataKey="count" 
@@ -916,19 +951,26 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                       label={{ 
                         position: 'top', 
                         content: (props: any) => { 
-                          const { x, y, width, index } = props; 
-                          const item = noteData[index]; 
-                          if (!item) return null;
+                          const { x, y, width } = props; 
+                          const item = props.payload || (typeof props.index === 'number' ? noteData[props.index] : null); 
+                          const val = Number(props.value ?? item?.count ?? 0);
+                          const hasNote = Boolean(item?.hasNote || val > 0);
+                          if (!hasNote && val <= 0) return null;
+                          const labelText = hasNote 
+                            ? (item?.displayLabel && !item.displayLabel.includes('Pas de note') 
+                                ? item.displayLabel 
+                                : `${val.toFixed(2).replace('.', ',')} / ${standardScale}`)
+                            : 'Pas de note';
                           return (
                             <text 
                               x={x + width / 2} 
                               y={y - 8} 
-                              fill={item.hasNote ? '#2D4A3E' : '#ef4444'} 
+                              fill={hasNote ? '#2D4A3E' : '#ef4444'} 
                               textAnchor="middle" 
                               fontSize="11" 
                               fontWeight="bold"
                             >
-                              {item.displayLabel}
+                              {labelText}
                             </text>
                           ); 
                         } 
