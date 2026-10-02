@@ -4,25 +4,49 @@ import path from 'path';
 import fs from 'fs';
 import { defineConfig } from 'vite';
 
+const currentBuildId = Date.now().toString(36);
+
 function swVersionPlugin() {
   return {
     name: 'sw-version-plugin',
     closeBundle() {
+      // 1. Mettre à jour dist/sw.js
       const swDistPath = path.resolve(__dirname, 'dist', 'sw.js');
       if (fs.existsSync(swDistPath)) {
         let content = fs.readFileSync(swDistPath, 'utf-8');
-        const buildId = Date.now().toString(36);
-        content = content.replace(/const CACHE_NAME = 'studycloud-pwa-[^']*';/, `const CACHE_NAME = 'studycloud-pwa-v${buildId}';`);
-        content += `\n// BUILD_DEPLOY_VERSION_${buildId}\n`;
+        content = content.replace(/const CACHE_NAME = 'studycloud-pwa-[^']*';/, `const CACHE_NAME = 'studycloud-pwa-v${currentBuildId}';`);
+        content += `\n// BUILD_DEPLOY_VERSION_${currentBuildId}\n`;
         fs.writeFileSync(swDistPath, content);
-        console.log(`[PWA] dist/sw.js versionné avec succès : v${buildId}`);
+        console.log(`[PWA] dist/sw.js versionné avec succès : v${currentBuildId}`);
       }
+
+      // 2. Générer dist/version.json pour détection universelle 100% appareils / comptes
+      const versionDistPath = path.resolve(__dirname, 'dist', 'version.json');
+      fs.writeFileSync(versionDistPath, JSON.stringify({
+        buildId: currentBuildId,
+        timestamp: Date.now(),
+        version: '1.0.0'
+      }, null, 2));
+      console.log(`[PWA] dist/version.json généré : buildId = ${currentBuildId}`);
+
+      // 3. Également dans public/version.json
+      const versionPublicPath = path.resolve(__dirname, 'public', 'version.json');
+      try {
+        fs.writeFileSync(versionPublicPath, JSON.stringify({
+          buildId: currentBuildId,
+          timestamp: Date.now(),
+          version: '1.0.0'
+        }, null, 2));
+      } catch (e) {}
     }
   };
 }
 
 export default defineConfig(() => {
   return {
+    define: {
+      '__STUDYCLOUD_BUILD_ID__': JSON.stringify(currentBuildId),
+    },
     plugins: [react(), tailwindcss(), swVersionPlugin()],
     resolve: {
       alias: {

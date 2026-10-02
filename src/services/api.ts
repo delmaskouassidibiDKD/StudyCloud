@@ -994,8 +994,26 @@ export async function getAiWorkspaceHistory(userId: string, sessionId?: string):
 }
 
 
+let lastActivityCheckTimestamp = 0;
+function notifyActivityVersionCheck() {
+  if (typeof window === 'undefined') return;
+  const uid = typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : null;
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('sc_auth_token') : null;
+  const isConnected = Boolean((uid && uid !== 'default-user' && uid !== 'user_anonymous') || token);
+  if (!isConnected) return;
+
+  const now = Date.now();
+  // Vérification de version ultra-légère pendant que l'utilisateur travaille (au maximum toutes les 25 secondes)
+  if (now - lastActivityCheckTimestamp < 25000) return;
+  lastActivityCheckTimestamp = now;
+  window.dispatchEvent(new CustomEvent('studycloud_check_app_version'));
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const method = (options.method || 'GET').toUpperCase();
+
+  // Déclencher la détection de version en arrière-plan pendant que l'utilisateur travaille
+  notifyActivityVersionCheck();
 
   // Surveillance active : si une mise à jour est en attente et que l'utilisateur l'a reportée ("Plus tard"),
   // on bloque préventivement toute tentative d'écriture ou modification (POST, PUT, DELETE, PATCH)
@@ -1079,6 +1097,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
 // Helper dédié pour les requêtes à l'IA (Worker IA uniquement)
 async function aiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  notifyActivityVersionCheck();
   const baseUrl = getAiWorkerUrl().replace(/\/+$/, '');
   const url = `${baseUrl}${endpoint}`;
 
@@ -1109,6 +1128,7 @@ async function aiRequest<T>(endpoint: string, options: RequestInit = {}): Promis
 
 // Helper spécialement pour les routes d'auth (utilise Authorization Bearer)
 async function requestAuth<T = any>(endpoint: string, options: RequestInit = {}, token?: string): Promise<T> {
+  notifyActivityVersionCheck();
   const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
   const url = `${baseUrl}${endpoint}`;
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };

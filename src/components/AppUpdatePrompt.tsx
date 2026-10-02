@@ -8,26 +8,88 @@ export const AppUpdatePrompt: React.FC = () => {
   const [blockedReason, setBlockedReason] = useState<string>('');
   const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
 
+  // Vérifier strictement si l'utilisateur est connecté avec un compte
+  const isTargetAccountConnected = (): boolean => {
+    if (typeof localStorage === 'undefined') return false;
+    const token = localStorage.getItem('sc_auth_token');
+    const uid = localStorage.getItem('unifolder_user_id');
+    const user = localStorage.getItem('sc_auth_user');
+
+    if (token && token.trim().length > 0) return true;
+    if (uid && uid !== 'default-user' && uid !== 'user_anonymous' && uid.trim().length > 0) return true;
+    if (user) {
+      try {
+        const parsed = JSON.parse(user);
+        if (parsed?.id && parsed.id !== 'default-user' && parsed.id !== 'user_anonymous') return true;
+      } catch {}
+    }
+    return false;
+  };
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
 
-    // 0. VÉRIFICATION AU RECHARGEMENT DE L'ÉCRAN :
-    // Si une mise à jour était en attente (et non appliquée), réafficher systématiquement
-    // le message à chaque rechargement pour que l'utilisateur soit informé !
-    const wasPending = localStorage.getItem('studycloud_update_pending') === 'true';
-    if (wasPending) {
+    // 1. Déclencheur d'affichage sécurisé (uniquement pour les comptes connectés)
+    const triggerUpdatePrompt = (critical = false, reason = '') => {
+      if (!isTargetAccountConnected()) return;
+      localStorage.setItem('studycloud_update_pending', 'true');
+      if (critical) {
+        localStorage.removeItem('studycloud_update_postponed');
+        setIsCriticalBlocked(true);
+        if (reason) setBlockedReason(reason);
+      }
       setShowUpdate(true);
+    };
+
+    // 2. Si une mise à jour était déjà en attente au rechargement de l'écran :
+    const wasPending = localStorage.getItem('studycloud_update_pending') === 'true';
+    if (wasPending && isTargetAccountConnected()) {
+      triggerUpdatePrompt();
     }
 
-    if (!('serviceWorker' in navigator)) {
-      return;
+    // 3. Fonction de vérification universelle (fonctionne sur 100% des appareils, y compris iOS Safari)
+    const checkForUpdate = (reg?: ServiceWorkerRegistration | null) => {
+      if (!isTargetAccountConnected()) return;
+
+      // A. Forcer le Service Worker à vérifier si un nouveau build existe
+      const activeReg = reg || registrationRef.current;
+      if (activeReg) {
+        activeReg.update().catch(() => {});
+      }
+
+      // B. Vérification directe via /version.json (0 boucle périodique, déclenchée sur événement ou action)
+      fetch('/version.json?t=' + Date.now(), { cache: 'no-store' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (!isTargetAccountConnected()) return;
+
+          if (data?.buildId && typeof __STUDYCLOUD_BUILD_ID__ !== 'undefined') {
+            if (data.buildId !== __STUDYCLOUD_BUILD_ID__) {
+              // L'utilisateur n'est pas à jour : afficher immédiatement le message pendant qu'il travaille
+              console.log('[StudyCloud Update] Nouvelle version détectée pendant le travail de l\'utilisateur :', data.buildId);
+              triggerUpdatePrompt();
+            } else {
+              // L'utilisateur est déjà à jour : réinitialiser
+              localStorage.removeItem('studycloud_update_pending');
+              localStorage.removeItem('studycloud_update_postponed');
+              setShowUpdate(false);
+              setIsCriticalBlocked(false);
+            }
+          }
+        })
+        .catch(() => {});
+    };
+
+    // Vérification initiale dès l'ouverture si connecté
+    if (isTargetAccountConnected()) {
+      checkForUpdate();
     }
 
     let refreshing = false;
 
-    // 1. Écouter le changement de contrôleur pour recharger immédiatement la page
+    // 4. Écouter le changement de contrôleur pour recharger immédiatement la page
     const handleControllerChange = () => {
       if (!refreshing) {
         refreshing = true;
@@ -37,69 +99,108 @@ export const AppUpdatePrompt: React.FC = () => {
         window.location.reload();
       }
     };
-    navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
 
-    // 2. Détection purement événementielle via le Service Worker (0 boucle de polling)
-    navigator.serviceWorker.ready.then((registration) => {
-      registrationRef.current = registration;
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
 
-      // Si un Service Worker est déjà en attente d'activation
-      if (registration.waiting && navigator.serviceWorker.controller) {
-        console.log('[StudyCloud Update] Mise à jour déjà téléchargée en attente.');
-        localStorage.setItem('studycloud_update_pending', 'true');
-        setShowUpdate(true);
-      }
+      navigator.serviceWorker.ready.then((registration) => {
+        registrationRef.current = registration;
 
-      // Écouter l'arrivée d'une nouvelle version sur Cloudflare
-      registration.addEventListener('updatefound', () => {
-        const newWorker = registration.installing;
-        if (!newWorker) return;
+        // Si l'utilisateur est connecté, forcer une vérification dès que le Service Worker est prêt
+        if (isTargetAccountConnected()) {
+          registration.update().catch(() => {});
+        }
 
-        newWorker.addEventListener('statechange', () => {
-          // Si le nouveau worker est installé ET qu'un ancien contrôlait déjà la page
-          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            console.log('[StudyCloud Update] Nouvelle version détectée et prête à être installée.');
-            localStorage.setItem('studycloud_update_pending', 'true');
-            setShowUpdate(true);
-          }
+        // Si un worker attendait déjà
+        if (registration.waiting && isTargetAccountConnected()) {
+          triggerUpdatePrompt();
+        }
+
+        // Écouter l'arrivée d'une nouvelle version
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (!newWorker) return;
+
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && isTargetAccountConnected()) {
+              console.log('[StudyCloud Update] Nouveau worker installé, affichage du message...');
+              triggerUpdatePrompt();
+            }
+          });
         });
+      }).catch((err) => {
+        console.warn('[StudyCloud Update] Erreur Service Worker:', err);
       });
-    }).catch((err) => {
-      console.warn('[StudyCloud Update] Erreur écoute Service Worker:', err);
-    });
+    }
 
-    // 3. Déclenchement événementiel unique lors du retour sur l'onglet (sans boucle)
+    // 5. Détection sur changement d'onglet ou retour sur l'écran
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && registrationRef.current) {
-        // Demande au navigateur de vérifier si sw.js a changé sur Cloudflare
-        registrationRef.current.update().catch(() => {});
+      if (document.visibilityState === 'visible') {
+        checkForUpdate();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // 4. Filet de sécurité événementiel en cas de chunk obsolète suite à un nouveau déploiement
+    // 6. Détection quand la fenêtre reprend le focus
+    const handleWindowFocus = () => {
+      checkForUpdate();
+    };
+    window.addEventListener('focus', handleWindowFocus);
+
+    // 7. DÉTECTION PENDANT QUE L'UTILISATEUR EST DÉJÀ EN TRAIN DE TRAVAILLER :
+    // Clics, frappes de notes, appuis tactiles, navigation dans l'appli.
+    // ZÉRO boucle périodique (aucun setInterval). Déclenché uniquement par le travail réel de l'utilisateur.
+    let lastWorkInteraction = 0;
+    const handleUserWorking = () => {
+      if (!isTargetAccountConnected()) return;
+      const now = Date.now();
+      // Au maximum une vérification silencieuse toutes les 25 secondes de travail actif
+      if (now - lastWorkInteraction < 25000) return;
+      lastWorkInteraction = now;
+      checkForUpdate();
+    };
+
+    window.addEventListener('pointerdown', handleUserWorking, { passive: true });
+    window.addEventListener('keydown', handleUserWorking, { passive: true });
+    window.addEventListener('touchstart', handleUserWorking, { passive: true });
+    window.addEventListener('popstate', handleUserWorking);
+
+    // 8. Détection lors de toute activité de requêtes API (sauvegarde de note, calcul de note, chat IA, sync...)
+    const handleActivityCheck = () => {
+      checkForUpdate();
+    };
+    window.addEventListener('studycloud_check_app_version', handleActivityCheck);
+
+    // 9. Filet de sécurité en cas de chunk obsolète suite à un nouveau déploiement
     const handlePreloadError = (e: Event) => {
       e.preventDefault();
-      console.warn('[StudyCloud Update] Erreur de chargement de chunk détectée (nouvelle version déployée).');
-      localStorage.setItem('studycloud_update_pending', 'true');
-      setShowUpdate(true);
+      console.warn('[StudyCloud Update] Erreur de chunk détectée (nouvelle version déployée).');
+      if (isTargetAccountConnected()) {
+        triggerUpdatePrompt();
+      }
     };
     window.addEventListener('vite:preloadError', handlePreloadError);
 
-    // 5. SURVEILLANCE ACTIVE : Détecter les tentatives d'actions nécessitant la mise à jour
+    // 10. SURVEILLANCE ACTIVE : Détecter les actions nécessitant la mise à jour
     const handleCriticalUpdate = (e: any) => {
       console.warn('[StudyCloud Security Lock] Action nécessitant mise à jour:', e.detail);
-      localStorage.setItem('studycloud_update_pending', 'true');
-      localStorage.removeItem('studycloud_update_postponed'); // Révoquer le report pour exiger l'actualisation
-      setBlockedReason(e.detail?.message || 'Une mise à jour est nécessaire pour continuer. Veuillez mettre à jour l\'application.');
-      setIsCriticalBlocked(true);
-      setShowUpdate(true);
+      if (isTargetAccountConnected()) {
+        triggerUpdatePrompt(true, e.detail?.message);
+      }
     };
     window.addEventListener('studycloud_critical_update_required', handleCriticalUpdate);
 
     return () => {
-      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+      }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('pointerdown', handleUserWorking);
+      window.removeEventListener('keydown', handleUserWorking);
+      window.removeEventListener('touchstart', handleUserWorking);
+      window.removeEventListener('popstate', handleUserWorking);
+      window.removeEventListener('studycloud_check_app_version', handleActivityCheck);
       window.removeEventListener('vite:preloadError', handlePreloadError);
       window.removeEventListener('studycloud_critical_update_required', handleCriticalUpdate);
     };
@@ -140,7 +241,7 @@ export const AppUpdatePrompt: React.FC = () => {
     setIsCriticalBlocked(false);
   };
 
-  if (!showUpdate) {
+  if (!showUpdate || !isTargetAccountConnected()) {
     return null;
   }
 
