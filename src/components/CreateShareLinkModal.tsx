@@ -93,6 +93,10 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
       setErrorMsg('Le nom du lien est obligatoire.');
       return;
     }
+    if (totalItems === 0) {
+      setErrorMsg('Impossible de créer un lien de partage sans aucun fichier. Veuillez sélectionner au moins 1 fichier.');
+      return;
+    }
     setErrorMsg('');
     setIsCreating(true);
 
@@ -315,9 +319,10 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               </button>
               <button
                 type="submit"
-                className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs py-3 rounded-xl border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
+                disabled={totalItems === 0 || isCreating}
+                className="flex-1 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs py-3 rounded-xl border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
               >
-                Créer le lien
+                {totalItems === 0 ? 'Aucun fichier sélectionné' : isCreating ? 'Création en cours...' : 'Créer le lien'}
               </button>
             </div>
           </form>

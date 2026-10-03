@@ -380,6 +380,24 @@ export default function App() {
           let fileUrl = item.url || '';
           let storedR2Key: string | undefined = (item as any).r2Key || (item as any).r2_key;
           let fileBlob: Blob | null = null;
+          let calculatedSize = 0;
+
+          if (typeof item.size === 'number' && !isNaN(item.size) && item.size > 0) {
+            calculatedSize = item.size;
+          } else if (typeof (item as any).sizeBytes === 'number' && (item as any).sizeBytes > 0) {
+            calculatedSize = (item as any).sizeBytes;
+          } else if (typeof item.size === 'string') {
+            const s = (item.size as string).trim().toLowerCase();
+            const match = s.match(/^([\d.,]+)\s*(o|ko|mo|go)?$/);
+            if (match) {
+              const num = parseFloat(match[1].replace(',', '.'));
+              const unit = match[2] || 'o';
+              if (unit === 'go') calculatedSize = Math.round(num * 1024 * 1024 * 1024);
+              else if (unit === 'mo') calculatedSize = Math.round(num * 1024 * 1024);
+              else if (unit === 'ko') calculatedSize = Math.round(num * 1024);
+              else calculatedSize = Math.round(num);
+            }
+          }
 
           try {
             // Si le fichier n'a pas encore de clé R2 ou a seulement un blob local
@@ -399,6 +417,7 @@ export default function App() {
 
               const r2Key = buildSharedLinkFileKey(userId, item.id, item.name);
               if (fileBlob) {
+                calculatedSize = calculatedSize || fileBlob.size;
                 const fileObj = new File([fileBlob], item.name, {
                   type: item.type || fileBlob.type || 'application/octet-stream',
                 });
@@ -415,11 +434,15 @@ export default function App() {
             console.warn('Erreur upload vers R2 lors de la création du partage:', err);
           }
 
+          if (!fileUrl && storedR2Key) {
+            fileUrl = `${workerUrl}/api/storage/file/${encodeURIComponent(storedR2Key)}`;
+          }
+
           return {
             id: item.id || crypto.randomUUID(),
             fileId: item.id,
-            name: item.name,
-            size: item.size || (fileBlob ? fileBlob.size : 0),
+            name: item.name || 'Fichier',
+            size: calculatedSize || (fileBlob ? fileBlob.size : 0),
             type: item.type || (fileBlob ? fileBlob.type : 'file'),
             url: fileUrl,
             r2Key: storedR2Key,
@@ -427,7 +450,7 @@ export default function App() {
         })
       );
 
-      const totalSize = files.reduce((acc, f) => acc + f.size, 0);
+      const totalSize = files.reduce((acc, f) => acc + (Number(f.size) || 0), 0);
 
       const newFolder: SharedFolder = {
         id: folderId,
@@ -468,7 +491,7 @@ export default function App() {
           authorName: userName,
           school: userSchool,
           country: userCountry,
-          isPublic,
+          isPublic: newFolder.isPublic,
           isPasswordProtected: false,
           allowDownload: true,
           shareCode,
@@ -478,7 +501,7 @@ export default function App() {
           files,
         });
         // Actualiser immédiatement la liste depuis D1
-        loadUserSharesFromD1();
+        await loadUserSharesFromD1();
       } catch (err) {
         console.warn('Sync share with Worker:', err);
       }

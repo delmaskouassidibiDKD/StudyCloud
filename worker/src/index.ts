@@ -11511,7 +11511,8 @@ export default {
           const finalShareUrl = shareUrl || `${url.origin}/s/${finalShareCode}`;
           const finalQrCodeData = qrCodeData || finalShareUrl;
           const finalCountry = country || "Côte d'Ivoire";
-          const finalIsPublic = isPublic ? 1 : 0;
+          // Prise en charge stricte et robuste de isPublic (booléen, nombre ou chaîne)
+          const finalIsPublic = (isPublic === true || isPublic === 1 || isPublic === '1' || isPublic === 'true') ? 1 : 0;
           const finalAllowDownload = allowDownload !== undefined ? (allowDownload ? 1 : 0) : 1;
 
           await env.DB.prepare(`
@@ -11553,20 +11554,39 @@ export default {
             isPasswordProtected ? 1 : 0,
             passwordHash || null,
             finalAllowDownload,
-            totalSize || 0
+            Number(totalSize) || 0
           ).run();
 
-          if (Array.isArray(files)) {
-            await env.DB.prepare('DELETE FROM shared_folder_files WHERE shared_folder_id = ?').bind(id).run();
-            for (const f of files) {
-              await env.DB.prepare(`
-                INSERT INTO shared_folder_files (id, shared_folder_id, file_id, name, size, type, r2_key, file_url)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-              `).bind(f.id || crypto.randomUUID(), id, f.fileId || null, f.name, f.size || 0, f.type || 'file', f.r2Key || null, f.url || '').run();
-            }
-            // Purger la staging pour cet utilisateur car les fichiers sont maintenant officialisés dans le partage
+          if (Array.isArray(files) && files.length > 0) {
+            // 1. Purger d'abord la staging de l'utilisateur pour éviter tout conflit d'ID primaire
             if (userId) {
               await env.DB.prepare('DELETE FROM shared_folder_files WHERE shared_folder_id = ?').bind(`staging_${userId}`).run().catch(() => {});
+            }
+
+            // 2. Nettoyer les fichiers préexistants pour ce dossier partagé
+            await env.DB.prepare('DELETE FROM shared_folder_files WHERE shared_folder_id = ?').bind(id).run().catch(() => {});
+
+            // 3. Insérer chaque fichier avec un identifiant primaire unique garanti et gestion d'erreur isolée
+            for (const f of files) {
+              try {
+                const sffId = crypto.randomUUID();
+                const fileIdRef = f.fileId || f.id || null;
+                const fileName = f.name || f.fileName || f.title || 'Fichier';
+                const fileSize = Number(f.size) || Number(f.sizeBytes) || 0;
+                const fileType = f.type || 'application/octet-stream';
+                const fileR2Key = f.r2Key || f.r2_key || null;
+                let fileUrl = f.url || f.file_url || f.fileUrl || '';
+                if (!fileUrl && fileR2Key) {
+                  fileUrl = `${url.origin}/api/storage/file/${encodeURIComponent(fileR2Key)}`;
+                }
+
+                await env.DB.prepare(`
+                  INSERT OR REPLACE INTO shared_folder_files (id, shared_folder_id, file_id, name, size, type, r2_key, file_url)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                `).bind(sffId, id, fileIdRef, fileName, fileSize, fileType, fileR2Key, fileUrl).run();
+              } catch (fileErr) {
+                console.warn('[Shares] Erreur insertion fichier partage:', fileErr);
+              }
             }
           }
 
