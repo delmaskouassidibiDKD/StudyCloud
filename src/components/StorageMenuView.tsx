@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
-  Sparkles,
   Zap,
   HardDrive,
   FileText,
@@ -27,6 +26,8 @@ import {
   requestStorageUpgrade,
   getUserStorageRequests,
   getUserPurchasesHistory,
+  getSubscriptionPlans,
+  SubscriptionPlan,
   UserStorageQuotaDetails
 } from '../services/api';
 
@@ -44,8 +45,12 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
   const [activeRequestTab, setActiveRequestTab] = useState<'pending' | 'history'>('pending');
   const [allRequests, setAllRequests] = useState<any[]>([]);
 
+  // Vraies formules d'abonnements stockage issues de la base D1
+  const [storagePlans, setStoragePlans] = useState<SubscriptionPlan[]>([]);
+  const [loadingPlans, setLoadingPlans] = useState<boolean>(true);
+  const [selectedPlanId, setSelectedPlanId] = useState<string>('');
+
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
-  const [selectedPack, setSelectedPack] = useState<'pack_1gb' | 'pack_5gb' | 'pack_10gb'>('pack_5gb');
   const [contactPhone, setContactPhone] = useState('');
   const [upgradeNotes, setUpgradeNotes] = useState('');
   const [submittingUpgrade, setSubmittingUpgrade] = useState(false);
@@ -95,6 +100,22 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
         (a, b) => new Date(b.created_at || b.purchased_at || 0).getTime() - new Date(a.created_at || a.purchased_at || 0).getTime()
       );
       setAllRequests(combined);
+
+      // Charger les vraies formules de stockage D1
+      try {
+        setLoadingPlans(true);
+        const plansRes = await getSubscriptionPlans();
+        if (plansRes && plansRes.success && Array.isArray(plansRes.storagePlans)) {
+          setStoragePlans(plansRes.storagePlans);
+          if (plansRes.storagePlans.length > 0) {
+            setSelectedPlanId(prev => prev || plansRes.storagePlans[0].id);
+          }
+        }
+      } catch (errPlans) {
+        console.warn("[StorageMenuView] Erreur chargement forfaits stockage:", errPlans);
+      } finally {
+        setLoadingPlans(false);
+      }
     } catch (err: any) {
       console.error("[StorageMenuView] Erreur chargement:", err);
       setError(err?.message || "Erreur de connexion au serveur");
@@ -127,18 +148,17 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
     e.preventDefault();
     setSubmittingUpgrade(true);
 
-    const packDetails = {
-      pack_1gb: { name: 'Pack Découverte (+1 Go)', mb: 1024, words: 100000, priceFcfa: 6500 },
-      pack_5gb: { name: 'Pack Performance (+5 Go)', mb: 5120, words: 500000, priceFcfa: 20000 },
-      pack_10gb: { name: 'Pack Illimité Master (+10 Go)', mb: 10240, words: 1000000, priceFcfa: 55000 },
-    }[selectedPack];
+    const chosenPlan = storagePlans.find(p => p.id === selectedPlanId) || storagePlans[0];
+    const packName = chosenPlan?.name ? `Formule ${chosenPlan.name}` : 'Extension de Stockage';
+    const additionalMb = chosenPlan?.storage_mb || 10240;
+    const priceFcfa = Number(chosenPlan?.price) || 1000;
 
     try {
       const res = await requestStorageUpgrade({
-        packId: selectedPack,
-        packName: packDetails.name,
-        additionalMb: packDetails.mb,
-        additionalWords: packDetails.words,
+        packId: chosenPlan?.id || 'storage_custom',
+        packName: packName,
+        additionalMb: additionalMb,
+        additionalWords: 0,
         contactPhone: contactPhone.trim(),
         notes: upgradeNotes.trim(),
       });
@@ -148,9 +168,9 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
           const currentList = JSON.parse(localStorage.getItem('studycloud_storage_upgrade_requests') || '[]');
           currentList.unshift({
             id: `req-${Date.now()}`,
-            pack_name: packDetails.name,
-            additional_mb: packDetails.mb,
-            price_display: `${packDetails.priceFcfa.toLocaleString('fr-FR')} FCFA`,
+            pack_name: packName,
+            additional_mb: additionalMb,
+            price_display: `${priceFcfa.toLocaleString('fr-FR')} FCFA`,
             created_at: new Date().toISOString(),
             status: 'pending',
             payment_method: 'Mobile Money / Virement',
@@ -191,6 +211,17 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
     : totalPercentage >= 70
     ? '#f59e0b'
     : '#10b981';
+
+  // Formatage propre du prix d'un forfait
+  const formatPlanPrice = (plan: SubscriptionPlan) => {
+    const isOneTime = plan.pricing_model === 'one_time' || plan.pricing_model === 'pack';
+    const currSymbol = plan.primary_currency === 'XOF' ? 'FCFA' : plan.primary_currency === 'EUR' ? '€' : plan.primary_currency === 'USD' ? '$' : (plan.primary_currency || 'FCFA');
+    const formattedPrice = (Number(plan.price) || 0).toLocaleString('fr-FR');
+    if (isOneTime) {
+      return `${formattedPrice} ${currSymbol}`;
+    }
+    return `${formattedPrice} ${currSymbol} / mois`;
+  };
 
   // Arc SVG pour la jauge circulaire
   const radius = 54;
@@ -727,28 +758,71 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
             <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-amber-400/10 blur-2xl pointer-events-none" />
             <div className="relative z-10 space-y-3">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-amber-300" />
+                <HardDrive className="w-5 h-5 text-amber-300" />
                 <h3 className="text-white font-black text-sm">Besoin de plus d'espace ?</h3>
               </div>
               <p className="text-white/70 text-xs leading-relaxed">
-                Débloquez jusqu'à <strong className="text-amber-300">10 Go supplémentaires</strong> et des millions de crédits IA avec nos packs étudiants.
+                Augmentez votre espace de stockage pour enregistrer tous vos cours, devoirs et documents sans contrainte.
               </p>
-              <div className="space-y-2">
-                {[
-                  { key: 'pack_1gb', label: 'Pack Découverte', size: '+1 Go', price: '6 500', color: 'bg-white/10' },
-                  { key: 'pack_5gb', label: 'Pack Performance', size: '+5 Go', price: '20 000', color: 'bg-amber-500/30', recommended: true },
-                  { key: 'pack_10gb', label: 'Pack Master', size: '+10 Go', price: '55 000', color: 'bg-white/10' },
-                ].map((pack) => (
-                  <div key={pack.key} className={`${pack.color} rounded-xl p-2.5 flex items-center justify-between border ${pack.recommended ? 'border-amber-400/60' : 'border-white/10'}`}>
-                    <div>
-                      <span className="text-white font-bold text-xs">{pack.label}</span>
-                      {pack.recommended && <span className="ml-1.5 text-amber-300 text-[9px] font-black uppercase">⭐ Recommandé</span>}
-                      <p className="text-white/60 text-[10px]">{pack.size} de stockage</p>
-                    </div>
-                    <span className="text-amber-300 font-black text-xs">{pack.price} FCFA</span>
-                  </div>
-                ))}
-              </div>
+
+              {/* Vraies formules de stockage issues de la base D1 */}
+              {loadingPlans ? (
+                <div className="space-y-2 py-1">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-white/10 rounded-xl p-3 animate-pulse h-14 border border-white/10" />
+                  ))}
+                </div>
+              ) : storagePlans.length === 0 ? (
+                <div className="bg-white/10 rounded-xl p-3.5 border border-white/15 text-center space-y-1">
+                  <p className="text-white/90 text-xs font-bold">Consultez nos formules de stockage</p>
+                  <p className="text-white/60 text-[10px]">Découvrez les forfaits disponibles dans l'espace abonnement.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {storagePlans.map((plan) => {
+                    const storageDisplay = plan.storage_amount || (plan.storage_mb ? `${plan.storage_mb >= 1024 ? (plan.storage_mb / 1024).toFixed(0) + ' Go' : plan.storage_mb + ' Mo'} supplémentaires` : 'Extension');
+                    const isOneTime = plan.pricing_model === 'one_time' || plan.pricing_model === 'pack';
+                    const hasBadge = !!(plan.badge && plan.badge.trim());
+
+                    return (
+                      <div
+                        key={plan.id}
+                        onClick={() => {
+                          if (onOpenPricing) onOpenPricing('storage');
+                          else window.dispatchEvent(new CustomEvent('studycloud_open_pricing', { detail: { tab: 'storage' } }));
+                        }}
+                        className={`rounded-xl p-3 flex items-center justify-between border transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98] ${
+                          hasBadge
+                            ? 'bg-amber-500/30 border-amber-400/60 shadow-sm'
+                            : 'bg-white/10 hover:bg-white/15 border-white/10'
+                        }`}
+                        title="Cliquer pour voir la formule et souscrire"
+                      >
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-white font-extrabold text-xs">{plan.name}</span>
+                            {hasBadge && (
+                              <span className="text-amber-300 text-[9px] font-black uppercase bg-amber-400/20 px-1.5 py-0.5 rounded border border-amber-400/40">
+                                {plan.badge}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-white/75 text-[11px] font-semibold flex items-center gap-1">
+                            <span>{storageDisplay}</span>
+                            {isOneTime && <span className="text-white/50 text-[10px] font-normal">• Unique</span>}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-amber-300 font-black text-xs block">
+                            {formatPlanPrice(plan)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               <button
                 onClick={() => {
                   if (onOpenPricing) onOpenPricing('storage');
@@ -757,7 +831,7 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
                     setIsUpgradeModalOpen(true);
                   }
                 }}
-                className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-amber-400 to-orange-500 text-stone-900 font-extrabold text-xs rounded-xl border-2 border-white/30 shadow-[0_4px_15px_rgba(251,146,60,0.4)] transition-all cursor-pointer hover:scale-105 active:scale-95 mt-1"
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-stone-900 font-extrabold text-xs rounded-xl border-2 border-white/30 shadow-[0_4px_15px_rgba(251,146,60,0.4)] transition-all cursor-pointer hover:scale-105 active:scale-95 mt-1"
               >
                 <Upload className="w-4 h-4" />
                 Augmenter mon espace
@@ -875,44 +949,56 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
             ) : (
               <form onSubmit={handleUpgradeSubmit} className="space-y-4">
                 <div className="space-y-2.5">
-                  <label className="text-xs font-black uppercase text-stone-600 dark:text-slate-400">Sélectionnez un pack</label>
+                  <label className="text-xs font-black uppercase text-stone-600 dark:text-slate-400">Sélectionnez une formule</label>
 
-                  {[
-                    { key: 'pack_1gb' as const, label: 'Pack Découverte', size: '+1 Go', price: '6 500 FCFA', desc: '+1 024 Mo + 100 000 crédits IA' },
-                    { key: 'pack_5gb' as const, label: 'Pack Étudiant Performance', size: '+5 Go', price: '20 000 FCFA', desc: '+5 120 Mo + 500 000 crédits IA', recommended: true },
-                    { key: 'pack_10gb' as const, label: 'Pack Ultime Master', size: '+10 Go', price: '55 000 FCFA', desc: '+10 240 Mo + 1 000 000 crédits IA' },
-                  ].map((pack) => (
-                    <div
-                      key={pack.key}
-                      onClick={() => setSelectedPack(pack.key)}
-                      className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between gap-3 relative ${
-                        selectedPack === pack.key
-                          ? 'border-amber-500 bg-amber-50/60 dark:bg-amber-950/30'
-                          : 'border-stone-200 dark:border-slate-800 hover:border-stone-300'
-                      }`}
-                    >
-                      {pack.recommended && (
-                        <span className="absolute -top-2.5 right-4 px-2 py-0.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-black text-[9px] rounded-full uppercase tracking-wider">
-                          Recommandé
-                        </span>
-                      )}
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-xs text-stone-900 dark:text-white">{pack.label}</span>
-                          <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${pack.recommended ? 'bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300' : 'bg-stone-100 dark:bg-slate-800 text-stone-600 dark:text-slate-400'}`}>
-                            {pack.size}
-                          </span>
+                  {storagePlans.length > 0 ? (
+                    storagePlans.map((plan) => {
+                      const storageDisplay = plan.storage_amount || (plan.storage_mb ? `${plan.storage_mb >= 1024 ? (plan.storage_mb / 1024).toFixed(0) + ' Go' : plan.storage_mb + ' Mo'} supplémentaires` : 'Extension');
+                      const isSelected = selectedPlanId === plan.id;
+                      const hasBadge = !!(plan.badge && plan.badge.trim());
+
+                      return (
+                        <div
+                          key={plan.id}
+                          onClick={() => setSelectedPlanId(plan.id)}
+                          className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between gap-3 relative ${
+                            isSelected
+                              ? 'border-amber-500 bg-amber-50/60 dark:bg-amber-950/30'
+                              : 'border-stone-200 dark:border-slate-800 hover:border-stone-300'
+                          }`}
+                        >
+                          {hasBadge && (
+                            <span className="absolute -top-2.5 right-4 px-2 py-0.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-black text-[9px] rounded-full uppercase tracking-wider">
+                              {plan.badge}
+                            </span>
+                          )}
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-xs text-stone-900 dark:text-white">{plan.name}</span>
+                              <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-stone-100 dark:bg-slate-800 text-stone-600 dark:text-slate-400">
+                                {storageDisplay}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-stone-500 dark:text-slate-400 mt-0.5">
+                              {storageDisplay} pour votre espace personnel StudyCloud
+                            </p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="text-xs font-black text-stone-900 dark:text-white">
+                              {formatPlanPrice(plan)}
+                            </span>
+                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-amber-500 bg-amber-500' : 'border-stone-400'}`}>
+                              {isSelected && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                            </div>
+                          </div>
                         </div>
-                        <p className="text-[11px] text-stone-500 dark:text-slate-400 mt-0.5">{pack.desc}</p>
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <span className="text-xs font-black text-stone-900 dark:text-white">{pack.price}</span>
-                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${selectedPack === pack.key ? 'border-amber-500 bg-amber-500' : 'border-stone-400'}`}>
-                          {selectedPack === pack.key && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
-                        </div>
-                      </div>
+                      );
+                    })
+                  ) : (
+                    <div className="p-4 text-center text-xs text-stone-500">
+                      Chargement des formules disponibles...
                     </div>
-                  ))}
+                  )}
                 </div>
 
                 <div className="space-y-1">
