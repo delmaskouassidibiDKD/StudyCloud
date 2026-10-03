@@ -10244,6 +10244,14 @@ a:hover{transform:translateY(-2px)}
             files
           } = body;
           if (!id || !userId || !title) return errorResponse("id, userId et title requis", 400, origin);
+          const downloadableFiles = Array.isArray(files) ? files.filter((f) => f && (f.r2Key || f.r2_key || typeof (f.url || f.file_url) === "string" && String(f.url || f.file_url).startsWith("http"))) : [];
+          if (downloadableFiles.length === 0) {
+            return jsonResponse({
+              success: false,
+              error: "EMPTY_SHARE",
+              message: "Impossible de cr\xE9er un lien sans fichier. Aucun fichier valide n'a \xE9t\xE9 re\xE7u."
+            }, 400, origin);
+          }
           const finalShareCode = shareCode || generateCleanShareCode();
           const finalShareUrl = shareUrl || `${url.origin}/s/${finalShareCode}`;
           const finalQrCodeData = qrCodeData || finalShareUrl;
@@ -10291,14 +10299,11 @@ a:hover{transform:translateY(-2px)}
             finalAllowDownload,
             Number(totalSize) || 0
           ).run();
-          if (Array.isArray(files) && files.length > 0) {
-            if (userId) {
-              await env.DB.prepare("DELETE FROM shared_folder_files WHERE shared_folder_id = ?").bind(`staging_${userId}`).run().catch(() => {
-              });
-            }
+          {
             await env.DB.prepare("DELETE FROM shared_folder_files WHERE shared_folder_id = ?").bind(id).run().catch(() => {
             });
-            for (const f of files) {
+            let insertedCount = 0;
+            for (const f of downloadableFiles) {
               try {
                 const sffId = crypto.randomUUID();
                 const fileIdRef = f.fileId || f.id || null;
@@ -10307,17 +10312,31 @@ a:hover{transform:translateY(-2px)}
                 const fileType = f.type || "application/octet-stream";
                 const fileR2Key = f.r2Key || f.r2_key || null;
                 let fileUrl = f.url || f.file_url || f.fileUrl || "";
-                if (!fileUrl && fileR2Key) {
+                if ((!fileUrl || !String(fileUrl).startsWith("http")) && fileR2Key) {
                   fileUrl = `${url.origin}/api/storage/file/${encodeURIComponent(fileR2Key)}`;
                 }
                 await env.DB.prepare(`
                   INSERT OR REPLACE INTO shared_folder_files (id, shared_folder_id, file_id, name, size, type, r2_key, file_url)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 `).bind(sffId, id, fileIdRef, fileName, fileSize, fileType, fileR2Key, fileUrl).run();
+                insertedCount++;
               } catch (fileErr) {
                 console.warn("[Shares] Erreur insertion fichier partage:", fileErr);
               }
             }
+            const countRow = await env.DB.prepare("SELECT COUNT(*) as cnt FROM shared_folder_files WHERE shared_folder_id = ?").bind(id).first().catch(() => ({ cnt: insertedCount }));
+            const savedCount = Number(countRow?.cnt ?? insertedCount) || 0;
+            if (savedCount === 0) {
+              await env.DB.prepare("DELETE FROM shared_folders WHERE id = ?").bind(id).run().catch(() => {
+              });
+              return jsonResponse({
+                success: false,
+                error: "SHARE_FILES_NOT_SAVED",
+                message: "Les fichiers n'ont pas pu \xEAtre enregistr\xE9s. Le lien n'a pas \xE9t\xE9 cr\xE9\xE9, veuillez r\xE9essayer."
+              }, 500, origin);
+            }
+            await env.DB.prepare("DELETE FROM shared_folder_files WHERE shared_folder_id = ?").bind(`staging_${userId}`).run().catch(() => {
+            });
           }
           return jsonResponse({
             success: true,

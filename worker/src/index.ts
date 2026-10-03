@@ -11526,6 +11526,18 @@ a:hover{transform:translateY(-2px)}
           } = body;
           if (!id || !userId || !title) return errorResponse('id, userId et title requis', 400, origin);
 
+          // RÈGLE : un lien de partage DOIT contenir au moins 1 fichier téléchargeable
+          const downloadableFiles = Array.isArray(files)
+            ? files.filter((f: any) => f && (f.r2Key || f.r2_key || (typeof (f.url || f.file_url) === 'string' && String(f.url || f.file_url).startsWith('http'))))
+            : [];
+          if (downloadableFiles.length === 0) {
+            return jsonResponse({
+              success: false,
+              error: 'EMPTY_SHARE',
+              message: "Impossible de créer un lien sans fichier. Aucun fichier valide n'a été reçu.",
+            }, 400, origin);
+          }
+
           const finalShareCode = shareCode || generateCleanShareCode();
           const finalShareUrl = shareUrl || `${url.origin}/s/${finalShareCode}`;
           const finalQrCodeData = qrCodeData || finalShareUrl;
@@ -11576,17 +11588,14 @@ a:hover{transform:translateY(-2px)}
             Number(totalSize) || 0
           ).run();
 
-          if (Array.isArray(files) && files.length > 0) {
-            // 1. Purger d'abord la staging de l'utilisateur pour éviter tout conflit d'ID primaire
-            if (userId) {
-              await env.DB.prepare('DELETE FROM shared_folder_files WHERE shared_folder_id = ?').bind(`staging_${userId}`).run().catch(() => {});
-            }
-
-            // 2. Nettoyer les fichiers préexistants pour ce dossier partagé
+          {
+            // 1. Nettoyer les fichiers préexistants pour ce dossier partagé
             await env.DB.prepare('DELETE FROM shared_folder_files WHERE shared_folder_id = ?').bind(id).run().catch(() => {});
 
-            // 3. Insérer chaque fichier avec un identifiant primaire unique garanti et gestion d'erreur isolée
-            for (const f of files) {
+            // 2. Insérer chaque fichier avec un identifiant primaire UNIQUE (UUID) :
+            //    plus aucun conflit avec les lignes de staging qui portent l'id d'origine du fichier
+            let insertedCount = 0;
+            for (const f of downloadableFiles) {
               try {
                 const sffId = crypto.randomUUID();
                 const fileIdRef = f.fileId || f.id || null;
@@ -11595,7 +11604,7 @@ a:hover{transform:translateY(-2px)}
                 const fileType = f.type || 'application/octet-stream';
                 const fileR2Key = f.r2Key || f.r2_key || null;
                 let fileUrl = f.url || f.file_url || f.fileUrl || '';
-                if (!fileUrl && fileR2Key) {
+                if ((!fileUrl || !String(fileUrl).startsWith('http')) && fileR2Key) {
                   fileUrl = `${url.origin}/api/storage/file/${encodeURIComponent(fileR2Key)}`;
                 }
 
@@ -11603,10 +11612,29 @@ a:hover{transform:translateY(-2px)}
                   INSERT OR REPLACE INTO shared_folder_files (id, shared_folder_id, file_id, name, size, type, r2_key, file_url)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 `).bind(sffId, id, fileIdRef, fileName, fileSize, fileType, fileR2Key, fileUrl).run();
+                insertedCount++;
               } catch (fileErr) {
                 console.warn('[Shares] Erreur insertion fichier partage:', fileErr);
               }
             }
+
+            // 3. Vérification finale dans D1 : jamais de lien vide
+            const countRow: any = await env.DB.prepare('SELECT COUNT(*) as cnt FROM shared_folder_files WHERE shared_folder_id = ?')
+              .bind(id).first().catch(() => ({ cnt: insertedCount }));
+            const savedCount = Number(countRow?.cnt ?? insertedCount) || 0;
+
+            if (savedCount === 0) {
+              // Annuler la création du dossier : aucun lien à 0 fichier ne doit exister
+              await env.DB.prepare('DELETE FROM shared_folders WHERE id = ?').bind(id).run().catch(() => {});
+              return jsonResponse({
+                success: false,
+                error: 'SHARE_FILES_NOT_SAVED',
+                message: "Les fichiers n'ont pas pu être enregistrés. Le lien n'a pas été créé, veuillez réessayer.",
+              }, 500, origin);
+            }
+
+            // 4. Succès : purger la staging (les fichiers sont désormais officialisés dans le partage)
+            await env.DB.prepare('DELETE FROM shared_folder_files WHERE shared_folder_id = ?').bind(`staging_${userId}`).run().catch(() => {});
           }
 
           return jsonResponse({

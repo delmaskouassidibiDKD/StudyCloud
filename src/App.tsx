@@ -360,7 +360,7 @@ export default function App() {
     linkName: string,
     comment: string,
     items: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[],
-    onComplete?: (folder: SharedFolder) => void,
+    onComplete?: (folder: SharedFolder | null, error?: string) => void,
     isPublic: boolean = false
   ) => {
     setTimeout(async () => {
@@ -450,18 +450,27 @@ export default function App() {
         })
       );
 
-      const totalSize = files.reduce((acc, f) => acc + (Number(f.size) || 0), 0);
+      // Ne garder que les fichiers réellement téléchargeables (clé R2 ou URL http valide)
+      const validFiles = files.filter((f) => Boolean(f.r2Key) || (typeof f.url === 'string' && f.url.startsWith('http')));
+
+      if (validFiles.length === 0) {
+        showToast('⚠️ Impossible de créer le lien : aucun fichier n\'a pu être envoyé sur le cloud. Vérifiez votre connexion et réessayez.');
+        if (onComplete) onComplete(null, "Aucun fichier n'a pu être envoyé sur le cloud. Le lien n'a pas été créé.");
+        return;
+      }
+
+      const totalSize = validFiles.reduce((acc, f) => acc + (Number(f.size) || 0), 0);
 
       const newFolder: SharedFolder = {
         id: folderId,
         title: linkName.trim(),
-        description: comment.trim() ? `${comment.trim()} • Contient ${items.length} élément(s).` : `Dossier partagé contenant ${items.length} élément(s).`,
+        description: comment.trim() ? `${comment.trim()} • Contient ${validFiles.length} élément(s).` : `Dossier partagé contenant ${validFiles.length} élément(s).`,
         category: 'Cours',
         author: userName,
         school: userSchool,
         country: userCountry,
         createdAt: new Date().toISOString(),
-        files,
+        files: validFiles,
         totalSize,
         downloadsCount: 0,
         isPasswordProtected: false,
@@ -469,20 +478,15 @@ export default function App() {
         shareCode,
         shareUrl,
         qrCodeData,
-        isPublic,
+        isPublic: isPublic === true,
         allowDownload: true,
       };
 
-      setFolders((prev) => [newFolder, ...prev]);
-      setUploadedItems([]);
-      setSelectedItemIds([]);
+      // 1. Enregistrer d'abord dans D1 : le lien n'existe que si le serveur confirme les fichiers
+      let created = false;
+      let serverError = '';
       try {
-        localStorage.removeItem('unifolder_uploaded_items');
-      } catch (e) {}
-      showToast(`✨ Votre lien "${linkName.trim()}" a été créé avec succès (${userCountry}) ! Retrouvez-le dans Liens Actifs.`);
-
-      try {
-        await StudyCloudAPI.createShare({
+        const res: any = await StudyCloudAPI.createShare({
           id: folderId,
           userId,
           title: newFolder.title,
@@ -498,13 +502,32 @@ export default function App() {
           shareUrl,
           qrCodeData,
           totalSize,
-          files,
+          files: validFiles,
         });
-        // Actualiser immédiatement la liste depuis D1
-        await loadUserSharesFromD1();
-      } catch (err) {
+        created = Boolean(res && res.success !== false);
+        if (!created) serverError = res?.message || res?.error || '';
+      } catch (err: any) {
         console.warn('Sync share with Worker:', err);
+        serverError = err?.message || '';
       }
+
+      if (!created) {
+        showToast(`⚠️ Le lien "${linkName.trim()}" n'a pas pu être créé. ${serverError || 'Veuillez réessayer.'}`);
+        if (onComplete) onComplete(null, serverError || "Le lien n'a pas pu être créé. Veuillez réessayer.");
+        return;
+      }
+
+      // 2. Succès confirmé par le serveur : afficher le lien et vider la zone d'import
+      setFolders((prev) => [newFolder, ...prev]);
+      setUploadedItems([]);
+      setSelectedItemIds([]);
+      try {
+        localStorage.removeItem('unifolder_uploaded_items');
+      } catch (e) {}
+      showToast(`✨ Votre lien "${linkName.trim()}" a été créé avec succès (${validFiles.length} fichier${validFiles.length > 1 ? 's' : ''}) ! Retrouvez-le dans Liens Actifs.`);
+
+      // Actualiser immédiatement la liste depuis D1 (source de vérité)
+      loadUserSharesFromD1().catch(() => {});
 
       if (onComplete) {
         onComplete(newFolder);

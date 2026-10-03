@@ -23,7 +23,7 @@ interface CreateShareLinkModalProps {
     linkName: string,
     comment: string,
     items: any[],
-    onComplete?: (folder: SharedFolder) => void,
+    onComplete?: (folder: SharedFolder | null, error?: string) => void,
     isPublic?: boolean
   ) => void;
 }
@@ -58,7 +58,8 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
 }) => {
   const [linkName, setLinkName] = useState(initialLinkName);
   const [comment, setComment] = useState('');
-  const [isPublic, setIsPublic] = useState(true);
+  // Décoché par défaut : le lien ne devient public que si l'utilisateur coche explicitement
+  const [isPublic, setIsPublic] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [createdFolder, setCreatedFolder] = useState<SharedFolder | null>(null);
@@ -100,8 +101,12 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
     setErrorMsg('');
     setIsCreating(true);
 
-    onStartBackgroundCreation(linkName, comment, uploadedItems, (folder) => {
+    onStartBackgroundCreation(linkName, comment, uploadedItems, (folder, error) => {
       setIsCreating(false);
+      if (!folder) {
+        setErrorMsg(error || "Le lien n'a pas pu être créé. Veuillez réessayer.");
+        return;
+      }
       setCreatedFolder(folder);
     }, isPublic);
   };
