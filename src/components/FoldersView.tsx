@@ -466,19 +466,54 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         label = 'Mes fichiers';
         defaultAction = () => setViewMode('files-menu');
         iconContent = (
-          <div className="w-full h-full p-2 flex items-center justify-center">
-            <svg className="w-full h-full drop-shadow-md" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M 18 32 C 18 28 21 25 25 25 L 42 25 L 50 32 L 75 32 C 79 32 82 35 82 39 L 82 72 C 82 76 79 79 75 79 L 25 79 C 21 79 18 76 18 72 Z" fill="#B45309" />
-              <rect x="26" y="28" width="48" height="38" rx="3" fill="#FFFFFF" />
-              <line x1="32" y1="36" x2="60" y2="36" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" />
-              <line x1="32" y1="44" x2="52" y2="44" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" />
-              <path d="M 15 40 C 15 36 18 34 22 34 L 78 34 C 82 34 85 36 85 40 L 82 73 C 82 77 79 80 75 80 L 25 80 C 21 80 18 77 18 73 Z" fill="url(#folderFrontGrad)" />
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-full h-full" viewBox="0 0 100 90" fill="none" xmlns="http://www.w3.org/2000/svg">
               <defs>
-                <linearGradient id="folderFrontGrad" x1="15" y1="34" x2="85" y2="80" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#FDE047" />
-                  <stop offset="1" stopColor="#EAB308" />
+                <linearGradient id="p2FilesBackGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#FB923C" />
+                  <stop offset="100%" stopColor="#EA580C" />
+                </linearGradient>
+                <linearGradient id="p2FilesFrontGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#BAE6FD" />
+                  <stop offset="50%" stopColor="#60A5FA" />
+                  <stop offset="100%" stopColor="#38BDF8" />
                 </linearGradient>
               </defs>
+              <path 
+                d="M 44 14 L 86 14 C 91 14 94 17 94 22 L 94 40 L 44 40 Z" 
+                fill="url(#p2FilesBackGrad)" 
+                stroke="#18181B" 
+                strokeWidth="1.3" 
+                strokeLinejoin="round" 
+              />
+              <path 
+                d="
+                  M 16 14
+                  L 44 14
+                  C 48 14 50 17 52 20
+                  C 54 23 56 25 60 25
+                  L 86 25
+                  C 91 25 94 28 94 33
+                  L 94 76
+                  C 94 81 91 84 86 84
+                  L 14 84
+                  C 9 84 6 81 6 76
+                  L 6 22
+                  C 6 17 9 14 14 14
+                  Z
+                " 
+                fill="url(#p2FilesFrontGrad)" 
+                stroke="#18181B" 
+                strokeWidth="1.3" 
+                strokeLinejoin="round" 
+                strokeLinecap="round" 
+              />
+              <path
+                d="M 16 16 L 43 16 C 47 16 49 18 51 21 C 53 24 55 26 59 26 L 85 26"
+                stroke="#EA580C"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
             </svg>
           </div>
         );
@@ -488,14 +523,36 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         label = 'Mon emploi du temps';
         defaultAction = () => setViewMode('schedule-menu');
         iconContent = (
-          <div className="w-full h-full p-2 flex items-center justify-center">
-            <svg className="w-full h-full drop-shadow-md" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="16" y="20" width="68" height="66" rx="12" fill="#FFFFFF" />
-              <path d="M 16 32 C 16 25 21 20 28 20 L 72 20 C 79 20 84 25 84 32 L 84 38 L 16 38 Z" fill="#EF4444" />
-              <text x="50" y="32" fill="#FFFFFF" fontSize="10" fontWeight="900" textAnchor="middle" letterSpacing="1">JUL</text>
-              <rect x="32" y="14" width="5" height="12" rx="2.5" fill="#94A3B8" />
-              <rect x="63" y="14" width="5" height="12" rx="2.5" fill="#94A3B8" />
-              <text x="50" y="70" fill="#1E293B" fontSize="28" fontWeight="900" textAnchor="middle">17</text>
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="p2SchedHeaderGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#F87171" />
+                  <stop offset="100%" stopColor="#DC2626" />
+                </linearGradient>
+                <linearGradient id="p2SchedBodyGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#FFFFFF" />
+                  <stop offset="100%" stopColor="#F1F5F9" />
+                </linearGradient>
+                <linearGradient id="p2RingGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#E2E8F0" />
+                  <stop offset="50%" stopColor="#FFFFFF" />
+                  <stop offset="100%" stopColor="#94A3B8" />
+                </linearGradient>
+              </defs>
+              <rect x="12" y="18" width="76" height="72" rx="14" fill="url(#p2SchedBodyGrad)" stroke="#18181B" strokeWidth="1.3" />
+              <path 
+                d="M 12 32 C 12 24 18 18 26 18 L 74 18 C 82 18 88 24 88 32 L 88 38 L 12 38 Z" 
+                fill="url(#p2SchedHeaderGrad)" 
+                stroke="#18181B" 
+                strokeWidth="1.3" 
+              />
+              <text x="50" y="31" fill="#FFFFFF" fontSize="10" fontWeight="900" textAnchor="middle" letterSpacing="2">EDT</text>
+              <rect x="28" y="10" width="7" height="15" rx="3.5" fill="url(#p2RingGrad)" stroke="#18181B" strokeWidth="1" />
+              <rect x="65" y="10" width="7" height="15" rx="3.5" fill="url(#p2RingGrad)" stroke="#18181B" strokeWidth="1" />
+              <text x="50" y="66" fill="#1E293B" fontSize="26" fontWeight="900" textAnchor="middle">17</text>
+              <rect x="28" y="72" width="44" height="4" rx="2" fill="#38BDF8" />
+              <rect x="34" y="79" width="32" height="3" rx="1.5" fill="#34D399" />
             </svg>
           </div>
         );
@@ -505,18 +562,36 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         label = 'Bloc-notes';
         defaultAction = () => setViewMode('notes-menu');
         iconContent = (
-          <div className="w-full h-full p-2 flex items-center justify-center">
-            <svg className="w-full h-full drop-shadow-md" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="20" y="15" width="56" height="70" rx="8" fill="#F8FAFC" />
-              <line x1="30" y1="30" x2="66" y2="30" stroke="#CBD5E1" strokeWidth="3" strokeLinecap="round" />
-              <line x1="30" y1="40" x2="66" y2="40" stroke="#CBD5E1" strokeWidth="3" strokeLinecap="round" />
-              <line x1="30" y1="50" x2="66" y2="50" stroke="#CBD5E1" strokeWidth="3" strokeLinecap="round" />
-              <line x1="30" y1="60" x2="52" y2="60" stroke="#CBD5E1" strokeWidth="3" strokeLinecap="round" />
-              <g transform="translate(48, 32) rotate(35)">
-                <rect x="0" y="0" width="12" height="42" rx="2" fill="#F97316" />
-                <path d="M 0 42 L 6 52 L 12 42 Z" fill="#FED7AA" />
-                <path d="M 4 48 L 6 52 L 8 48 Z" fill="#1E293B" />
-                <rect x="0" y="0" width="12" height="8" rx="1" fill="#F43F5E" />
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="p2NotesCoverGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#38BDF8" />
+                  <stop offset="100%" stopColor="#0284C7" />
+                </linearGradient>
+                <linearGradient id="p2NotesPencilGrad" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="#FDBA74" />
+                  <stop offset="50%" stopColor="#F97316" />
+                  <stop offset="100%" stopColor="#EA580C" />
+                </linearGradient>
+              </defs>
+              <rect x="14" y="12" width="62" height="76" rx="8" fill="url(#p2NotesCoverGrad)" stroke="#18181B" strokeWidth="1.3" />
+              <rect x="18" y="15" width="56" height="70" rx="5" fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="1" />
+              <line x1="28" y1="28" x2="66" y2="28" stroke="#93C5FD" strokeWidth="2.2" strokeLinecap="round" />
+              <line x1="28" y1="38" x2="66" y2="38" stroke="#E2E8F0" strokeWidth="2.2" strokeLinecap="round" />
+              <line x1="28" y1="48" x2="66" y2="48" stroke="#E2E8F0" strokeWidth="2.2" strokeLinecap="round" />
+              <line x1="28" y1="58" x2="52" y2="58" stroke="#E2E8F0" strokeWidth="2.2" strokeLinecap="round" />
+              <line x1="28" y1="68" x2="60" y2="68" stroke="#E2E8F0" strokeWidth="2.2" strokeLinecap="round" />
+              <line x1="32" y1="15" x2="32" y2="85" stroke="#FCA5A5" strokeWidth="1.2" strokeDasharray="3 2" />
+              {[22, 34, 46, 58, 70].map(y => (
+                <ellipse key={y} cx="16" cy={y} rx="3" ry="2" fill="#E2E8F0" stroke="#18181B" strokeWidth="1" />
+              ))}
+              <g transform="translate(56, 34) rotate(32)">
+                <rect x="0" y="0" width="10" height="46" rx="2" fill="url(#p2NotesPencilGrad)" stroke="#18181B" strokeWidth="1" />
+                <path d="M 0 46 L 5 56 L 10 46 Z" fill="#FED7AA" stroke="#18181B" strokeWidth="1" />
+                <path d="M 3.5 52 L 5 56 L 6.5 52 Z" fill="#18181B" />
+                <rect x="0" y="0" width="10" height="8" rx="2" fill="#F43F5E" />
+                <rect x="0" y="7" width="10" height="3" fill="#CBD5E1" />
               </g>
             </svg>
           </div>
@@ -527,29 +602,33 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         label = "Mes notes d'évaluation";
         defaultAction = () => setViewMode('grades-menu');
         iconContent = (
-          <div className="w-full h-full p-2 flex items-center justify-center">
-            <svg className="w-full h-full drop-shadow-sm" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="6" y="6" width="88" height="88" rx="24" fill="url(#orangeGrad)" />
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
               <defs>
-                <linearGradient id="orangeGrad" x1="6" y1="6" x2="94" y2="94" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#FBBF24" />
-                  <stop offset="1" stopColor="#F59E0B" />
+                <linearGradient id="p2GradesBoardGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#F59E0B" />
+                  <stop offset="100%" stopColor="#D97706" />
+                </linearGradient>
+                <linearGradient id="p2GradesClipGrad" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="#94A3B8" />
+                  <stop offset="50%" stopColor="#F8FAFC" />
+                  <stop offset="100%" stopColor="#64748B" />
                 </linearGradient>
               </defs>
-              <rect x="22" y="16" width="56" height="70" rx="5" fill="#18568A" />
-              <rect x="26" y="20" width="48" height="62" rx="3" fill="#FFFFFF" />
-              <path d="M 43 11 C 43 7.5 57 7.5 57 11 L 57 16 L 43 16 Z" fill="#F7C858" />
-              <circle cx="50" cy="11" r="2.5" fill="#18568A" />
-              <rect x="37" y="15" width="26" height="9" rx="2" fill="#F7C858" />
-              <rect x="37" y="19" width="26" height="5" fill="#E8A938" opacity="0.6" />
-              {[25, 36, 47, 58, 69].map((y, i) => (
-                <g key={i} transform={`translate(29, ${y})`}>
-                  <rect x="0" y="0" width="8" height="8" rx="2" fill="#72C055" />
-                  <path d="M 2 4 L 3.5 5.5 L 6 2" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  <rect x="11" y="1.5" width="26" height="2.5" rx="1" fill="#18568A" />
-                  <rect x="11" y="5" width="18" height="1.8" rx="0.9" fill="#DCE4EC" />
+              <rect x="12" y="14" width="76" height="78" rx="12" fill="url(#p2GradesBoardGrad)" stroke="#18181B" strokeWidth="1.3" />
+              <rect x="18" y="20" width="64" height="68" rx="6" fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="1" />
+              <rect x="34" y="8" width="32" height="14" rx="4" fill="url(#p2GradesClipGrad)" stroke="#18181B" strokeWidth="1.2" />
+              <circle cx="50" cy="14" r="3" fill="#1E293B" />
+              {[32, 44, 56, 68].map((y, i) => (
+                <g key={y}>
+                  <rect x="24" y={y} width="10" height="10" rx="3" fill="#10B981" />
+                  <path d={`M 26.5 ${y + 5} L 28.5 ${y + 7.5} L 31.5 ${y + 3}`} stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <rect x="38" y={y + 1.5} width={26 + (i % 2) * 8} height="3" rx="1.5" fill="#1E293B" />
+                  <rect x="38" y={y + 6} width={16 + (i % 3) * 6} height="2" rx="1" fill="#94A3B8" />
                 </g>
               ))}
+              <circle cx="72" cy="74" r="10" fill="#F59E0B" stroke="#B45309" strokeWidth="1" />
+              <text x="72" y="78" fill="#FFFFFF" fontSize="10" fontWeight="900" textAnchor="middle">A+</text>
             </svg>
           </div>
         );
@@ -559,25 +638,40 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         label = 'Calendrier';
         defaultAction = () => setViewMode('calendar-menu');
         iconContent = (
-          <div className="w-full h-full p-2 flex items-center justify-center">
-            <svg className="w-full h-full drop-shadow-md" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="14" y="16" width="72" height="72" rx="14" fill="#FFFFFF" />
-              <path d="M 14 30 C 14 22 20 16 28 16 L 72 16 C 80 16 86 22 86 30 L 86 36 L 14 36 Z" fill="#E11D48" />
-              <text x="50" y="30" fill="#FFFFFF" fontSize="10" fontWeight="900" textAnchor="middle" letterSpacing="1">JUL</text>
-              <rect x="30" y="10" width="6" height="12" rx="3" fill="#94A3B8" />
-              <rect x="64" y="10" width="6" height="12" rx="3" fill="#94A3B8" />
-              <circle cx="30" cy="48" r="4" fill="#CBD5E1" />
-              <circle cx="43" cy="48" r="4" fill="#CBD5E1" />
-              <circle cx="56" cy="48" r="4" fill="#CBD5E1" />
-              <circle cx="69" cy="48" r="4" fill="#CBD5E1" />
-              <circle cx="30" cy="61" r="4" fill="#CBD5E1" />
-              <circle cx="43" cy="61" r="5" fill="#E11D48" />
-              <circle cx="56" cy="61" r="4" fill="#CBD5E1" />
-              <circle cx="69" cy="61" r="4" fill="#CBD5E1" />
-              <circle cx="30" cy="74" r="4" fill="#CBD5E1" />
-              <circle cx="43" cy="74" r="4" fill="#CBD5E1" />
-              <circle cx="56" cy="74" r="4" fill="#CBD5E1" />
-              <circle cx="69" cy="74" r="4" fill="#CBD5E1" />
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="p2CalHeaderGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#EC4899" />
+                  <stop offset="100%" stopColor="#BE185D" />
+                </linearGradient>
+                <linearGradient id="p2CalPaperGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#FFFFFF" />
+                  <stop offset="100%" stopColor="#F1F5F9" />
+                </linearGradient>
+              </defs>
+              <rect x="12" y="16" width="76" height="74" rx="14" fill="url(#p2CalPaperGrad)" stroke="#18181B" strokeWidth="1.3" />
+              <path 
+                d="M 12 30 C 12 22 18 16 26 16 L 74 16 C 82 16 88 22 88 30 L 88 36 L 12 36 Z" 
+                fill="url(#p2CalHeaderGrad)" 
+                stroke="#18181B" 
+                strokeWidth="1.3" 
+              />
+              <text x="50" y="29" fill="#FFFFFF" fontSize="9.5" fontWeight="900" textAnchor="middle" letterSpacing="1.5">CALENDRIER</text>
+              <rect x="28" y="10" width="7" height="13" rx="3.5" fill="#CBD5E1" stroke="#18181B" strokeWidth="1" />
+              <rect x="65" y="10" width="7" height="13" rx="3.5" fill="#CBD5E1" stroke="#18181B" strokeWidth="1" />
+              {[45, 57, 69, 81].map(rowY => (
+                <g key={rowY}>
+                  {[24, 37, 50, 63, 76].map(colX => {
+                    const isSpecial = (rowY === 57 && colX === 50);
+                    return isSpecial ? (
+                      <circle key={colX} cx={colX} cy={rowY} r="5.5" fill="#EC4899" />
+                    ) : (
+                      <circle key={colX} cx={colX} cy={rowY} r="3.5" fill="#CBD5E1" />
+                    );
+                  })}
+                </g>
+              ))}
             </svg>
           </div>
         );
@@ -587,16 +681,35 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         label = 'Favoris';
         defaultAction = () => setViewMode('favorites-menu');
         iconContent = (
-          <div className="w-full h-full p-2 flex items-center justify-center">
-            <svg className="w-full h-full drop-shadow-md" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M 50 82 C 50 82 18 60 18 36 C 18 24 27 16 38 16 C 45 16 50 20 50 20 C 50 20 55 16 62 16 C 73 16 82 24 82 36 C 82 60 50 82 50 82 Z" fill="#FFFFFF" />
-              <path d="M 50 76 C 50 76 22 56 22 36 C 22 26 29 19 38 19 C 44 19 48 22 50 22 C 52 22 56 19 62 19 C 71 19 78 26 78 36 C 78 56 50 76 50 76 Z" fill="url(#pinkHeartGrad)" />
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
               <defs>
-                <linearGradient id="pinkHeartGrad" x1="18" y1="16" x2="82" y2="82" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#FF80AB" />
-                  <stop offset="1" stopColor="#F43F5E" />
+                <linearGradient id="p2FavHeart3DGrad" x1="20" y1="12" x2="80" y2="88" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#FB7185" />
+                  <stop offset="30%" stopColor="#F43F5E" />
+                  <stop offset="70%" stopColor="#E11D48" />
+                  <stop offset="100%" stopColor="#9F1239" />
+                </linearGradient>
+                <linearGradient id="p2FavHighlightGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.85" />
+                  <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
                 </linearGradient>
               </defs>
+              <path 
+                d="M 50 84 C 50 84 14 58 14 33 C 14 18 26 10 38 10 C 45 10 50 15 50 15 C 50 15 55 10 62 10 C 74 10 86 18 86 33 C 86 58 50 84 50 84 Z" 
+                fill="url(#p2FavHeart3DGrad)" 
+                stroke="#18181B" 
+                strokeWidth="1.3" 
+                strokeLinejoin="round" 
+              />
+              <path 
+                d="M 23 30 C 23 20 29 14 38 14 C 43 14 47 17 48 19 C 42 20 30 24 25 36 C 24 34 23 32 23 30 Z" 
+                fill="url(#p2FavHighlightGrad)" 
+              />
+              <path 
+                d="M 72 22 L 74 28 L 80 30 L 74 32 L 72 38 L 70 32 L 64 30 L 70 28 Z" 
+                fill="#FEF08A" 
+              />
             </svg>
           </div>
         );
@@ -606,16 +719,32 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         label = 'Horloge';
         defaultAction = () => setViewMode('clock-menu');
         iconContent = (
-          <div className="w-full h-full p-2 flex items-center justify-center">
-            <svg className="w-full h-full drop-shadow-md" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M 20 28 C 16 20 28 14 34 22 Z" fill="#EF4444" />
-              <path d="M 80 28 C 84 20 72 14 66 22 Z" fill="#EF4444" />
-              <rect x="26" y="76" width="8" height="12" rx="3" fill="#334155" transform="rotate(25 30 82)" />
-              <rect x="66" y="76" width="8" height="12" rx="3" fill="#334155" transform="rotate(-25 70 82)" />
-              <circle cx="50" cy="52" r="32" fill="#EF4444" />
-              <circle cx="50" cy="52" r="26" fill="#FFFFFF" />
-              <path d="M 50 52 L 50 34" stroke="#1E293B" strokeWidth="4.5" strokeLinecap="round" />
-              <path d="M 50 52 L 66 52" stroke="#1E293B" strokeWidth="4.5" strokeLinecap="round" />
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="p2ClockBodyGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#F87171" />
+                  <stop offset="40%" stopColor="#EF4444" />
+                  <stop offset="100%" stopColor="#B91C1C" />
+                </linearGradient>
+                <linearGradient id="p2ClockBellGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#FCA5A5" />
+                  <stop offset="100%" stopColor="#991B1B" />
+                </linearGradient>
+              </defs>
+              <rect x="22" y="76" width="9" height="16" rx="3.5" fill="#64748B" stroke="#18181B" strokeWidth="1" transform="rotate(25 26 84)" />
+              <rect x="69" y="76" width="9" height="16" rx="3.5" fill="#64748B" stroke="#18181B" strokeWidth="1" transform="rotate(-25 73 84)" />
+              <path d="M 18 30 C 14 18 30 12 36 22 Z" fill="url(#p2ClockBellGrad)" stroke="#18181B" strokeWidth="1.3" />
+              <path d="M 82 30 C 86 18 70 12 64 22 Z" fill="url(#p2ClockBellGrad)" stroke="#18181B" strokeWidth="1.3" />
+              <rect x="47" y="12" width="6" height="10" rx="2" fill="#94A3B8" stroke="#18181B" strokeWidth="1" />
+              <circle cx="50" cy="52" r="36" fill="url(#p2ClockBodyGrad)" stroke="#18181B" strokeWidth="1.3" />
+              <circle cx="50" cy="52" r="28" fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="1" />
+              <line x1="50" y1="28" x2="50" y2="32" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" />
+              <line x1="50" y1="72" x2="50" y2="76" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" />
+              <line x1="26" y1="52" x2="30" y2="52" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" />
+              <line x1="70" y1="52" x2="74" y2="52" stroke="#94A3B8" strokeWidth="2.5" strokeLinecap="round" />
+              <path d="M 50 52 L 50 36" stroke="#1E293B" strokeWidth="4.5" strokeLinecap="round" />
+              <path d="M 50 52 L 66 52" stroke="#1E293B" strokeWidth="3.5" strokeLinecap="round" />
               <circle cx="50" cy="52" r="4" fill="#EF4444" />
             </svg>
           </div>
@@ -626,23 +755,46 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         label = "Évolution & Stats";
         defaultAction = () => setViewMode('level-menu');
         iconContent = (
-          <div className="w-full h-full p-2 flex items-center justify-center">
-            <svg className="w-full h-full drop-shadow-sm" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="6" y="6" width="88" height="88" rx="24" fill="url(#levelGrad)" />
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
               <defs>
-                <linearGradient id="levelGrad" x1="6" y1="6" x2="94" y2="94" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#3B82F6" />
-                  <stop offset="1" stopColor="#1E3A8A" />
+                <linearGradient id="p2BarGrad1" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#38BDF8" />
+                  <stop offset="100%" stopColor="#0284C7" />
+                </linearGradient>
+                <linearGradient id="p2BarGrad2" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#818CF8" />
+                  <stop offset="100%" stopColor="#4F46E5" />
+                </linearGradient>
+                <linearGradient id="p2BarGrad3" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#34D399" />
+                  <stop offset="100%" stopColor="#059669" />
+                </linearGradient>
+                <linearGradient id="p2BarGrad4" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#FBBF24" />
+                  <stop offset="100%" stopColor="#D97706" />
+                </linearGradient>
+                <linearGradient id="p2StatsPlateGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#334155" />
+                  <stop offset="100%" stopColor="#0F172A" />
                 </linearGradient>
               </defs>
-              <rect x="18" y="62" width="8" height="18" rx="2" fill="#93C5FD" opacity="0.9" />
-              <rect x="30" y="52" width="8" height="28" rx="2" fill="#60A5FA" opacity="0.9" />
-              <rect x="42" y="42" width="8" height="38" rx="2" fill="#3B82F6" opacity="0.9" />
-              <rect x="54" y="54" width="8" height="26" rx="2" fill="#93C5FD" opacity="0.9" />
-              <rect x="66" y="32" width="8" height="48" rx="2" fill="#1D4ED8" opacity="0.9" />
-              <rect x="78" y="22" width="8" height="58" rx="2" fill="#1E3A8A" opacity="0.9" />
-              <path d="M22 60 L46 40 L58 48 L82 24" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M72 24 L82 24 L82 34" stroke="white" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+              <ellipse cx="50" cy="85" rx="42" ry="9" fill="url(#p2StatsPlateGrad)" stroke="#18181B" strokeWidth="1.2" />
+              <ellipse cx="50" cy="83" rx="40" ry="7" fill="#1E293B" />
+              <rect x="18" y="55" width="12" height="28" rx="4" fill="url(#p2BarGrad1)" stroke="#18181B" strokeWidth="1" />
+              <rect x="34" y="43" width="12" height="40" rx="4" fill="url(#p2BarGrad2)" stroke="#18181B" strokeWidth="1" />
+              <rect x="50" y="31" width="12" height="52" rx="4" fill="url(#p2BarGrad3)" stroke="#18181B" strokeWidth="1" />
+              <rect x="66" y="17" width="12" height="66" rx="4" fill="url(#p2BarGrad4)" stroke="#18181B" strokeWidth="1" />
+              <path 
+                d="M 20 52 Q 46 36 74 13" 
+                stroke="#EF4444" 
+                strokeWidth="4" 
+                strokeLinecap="round" 
+              />
+              <path 
+                d="M 64 13 L 76 13 L 76 25 Z" 
+                fill="#EF4444" 
+              />
             </svg>
           </div>
         );
@@ -652,49 +804,53 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         label = 'Calculatrice';
         defaultAction = () => setViewMode('calculator-menu');
         iconContent = (
-          <div className="w-full h-full p-1.5 flex items-center justify-center">
-            <svg className="w-full h-full drop-shadow-lg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="16" y="8" width="68" height="84" rx="10" fill="#22252A" />
-              <rect x="23" y="15" width="54" height="20" rx="4" fill="#383C42" />
-              <text x="72" y="30" fill="#F3F4F6" fontFamily="monospace" fontSize="13" fontWeight="bold" textAnchor="end">397</text>
-              <rect x="23" y="40" width="11.5" height="8.5" rx="2.5" fill="#EF4444" />
-              <text x="28.75" y="46" fill="#FFFFFF" fontSize="5" fontWeight="bold" textAnchor="middle">AC</text>
-              <rect x="37" y="40" width="11.5" height="8.5" rx="2.5" fill="#4B5563" />
-              <text x="42.75" y="46" fill="#FFFFFF" fontSize="5.5" fontWeight="bold" textAnchor="middle">%</text>
-              <rect x="51" y="40" width="11.5" height="8.5" rx="2.5" fill="#4B5563" />
-              <text x="56.75" y="46" fill="#FFFFFF" fontSize="5.5" fontWeight="bold" textAnchor="middle">X</text>
-              <rect x="65.5" y="40" width="11.5" height="8.5" rx="2.5" fill="#4B5563" />
-              <text x="71.25" y="46" fill="#FFFFFF" fontSize="6" fontWeight="bold" textAnchor="middle">÷</text>
-              <rect x="23" y="50.5" width="11.5" height="8.5" rx="2.5" fill="#4B5563" />
-              <text x="28.75" y="56.5" fill="#FFFFFF" fontSize="5.5" fontWeight="bold" textAnchor="middle">7</text>
-              <rect x="37" y="50.5" width="11.5" height="8.5" rx="2.5" fill="#4B5563" />
-              <text x="42.75" y="56.5" fill="#FFFFFF" fontSize="5.5" fontWeight="bold" textAnchor="middle">8</text>
-              <rect x="51" y="50.5" width="11.5" height="8.5" rx="2.5" fill="#4B5563" />
-              <text x="56.75" y="56.5" fill="#FFFFFF" fontSize="5.5" fontWeight="bold" textAnchor="middle">9</text>
-              <rect x="65.5" y="50.5" width="11.5" height="8.5" rx="2.5" fill="#4B5563" />
-              <text x="71.25" y="56.5" fill="#FFFFFF" fontSize="6" fontWeight="bold" textAnchor="middle">-</text>
-              <rect x="23" y="61" width="11.5" height="8.5" rx="2.5" fill="#4B5563" />
-              <text x="28.75" y="67" fill="#FFFFFF" fontSize="5.5" fontWeight="bold" textAnchor="middle">4</text>
-              <rect x="37" y="61" width="11.5" height="8.5" rx="2.5" fill="#4B5563" />
-              <text x="42.75" y="67" fill="#FFFFFF" fontSize="5.5" fontWeight="bold" textAnchor="middle">5</text>
-              <rect x="51" y="61" width="11.5" height="8.5" rx="2.5" fill="#4B5563" />
-              <text x="56.75" y="67" fill="#FFFFFF" fontSize="5.5" fontWeight="bold" textAnchor="middle">6</text>
-              <rect x="65.5" y="61" width="11.5" height="8.5" rx="2.5" fill="#4B5563" />
-              <text x="71.25" y="67" fill="#FFFFFF" fontSize="6" fontWeight="bold" textAnchor="middle">+</text>
-              <rect x="23" y="71.5" width="11.5" height="8.5" rx="2.5" fill="#4B5563" />
-              <text x="28.75" y="77.5" fill="#FFFFFF" fontSize="5.5" fontWeight="bold" textAnchor="middle">1</text>
-              <rect x="37" y="71.5" width="11.5" height="8.5" rx="2.5" fill="#4B5563" />
-              <text x="42.75" y="77.5" fill="#FFFFFF" fontSize="5.5" fontWeight="bold" textAnchor="middle">2</text>
-              <rect x="51" y="71.5" width="11.5" height="8.5" rx="2.5" fill="#4B5563" />
-              <text x="56.75" y="77.5" fill="#FFFFFF" fontSize="5.5" fontWeight="bold" textAnchor="middle">3</text>
-              <rect x="23" y="82" width="11.5" height="8.5" rx="2.5" fill="#4B5563" />
-              <text x="28.75" y="88" fill="#FFFFFF" fontSize="5.5" fontWeight="bold" textAnchor="middle">0</text>
-              <rect x="37" y="82" width="11.5" height="8.5" rx="2.5" fill="#4B5563" />
-              <text x="42.75" y="88" fill="#FFFFFF" fontSize="5.5" fontWeight="bold" textAnchor="middle">,</text>
-              <rect x="51" y="82" width="11.5" height="8.5" rx="2.5" fill="#4B5563" />
-              <text x="56.75" y="88" fill="#FFFFFF" fontSize="4.5" fontWeight="bold" textAnchor="middle">+/-</text>
-              <rect x="65.5" y="71.5" width="11.5" height="19" rx="2.5" fill="#F97316" />
-              <text x="71.25" y="83" fill="#FFFFFF" fontSize="7" fontWeight="bold" textAnchor="middle">=</text>
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="p2CalcBodyGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#334155" />
+                  <stop offset="100%" stopColor="#1E293B" />
+                </linearGradient>
+                <linearGradient id="p2CalcScreenGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#0F172A" />
+                  <stop offset="100%" stopColor="#1E293B" />
+                </linearGradient>
+              </defs>
+              <rect x="16" y="8" width="68" height="84" rx="14" fill="url(#p2CalcBodyGrad)" stroke="#18181B" strokeWidth="1.3" />
+              <rect x="23" y="15" width="54" height="20" rx="6" fill="url(#p2CalcScreenGrad)" stroke="#0284C7" strokeWidth="1" />
+              <text x="72" y="30" fill="#38BDF8" fontFamily="monospace" fontSize="14" fontWeight="900" textAnchor="end">397</text>
+              <rect x="23" y="40" width="11.5" height="9" rx="3" fill="#EF4444" />
+              <text x="28.75" y="46.5" fill="#FFFFFF" fontSize="5.5" fontWeight="bold" textAnchor="middle">AC</text>
+              <rect x="37" y="40" width="11.5" height="9" rx="3" fill="#64748B" />
+              <text x="42.75" y="46.5" fill="#FFFFFF" fontSize="6" fontWeight="bold" textAnchor="middle">%</text>
+              <rect x="51" y="40" width="11.5" height="9" rx="3" fill="#64748B" />
+              <text x="56.75" y="46.5" fill="#FFFFFF" fontSize="6" fontWeight="bold" textAnchor="middle">×</text>
+              <rect x="65.5" y="40" width="11.5" height="9" rx="3" fill="#F97316" />
+              <text x="71.25" y="46.5" fill="#FFFFFF" fontSize="6.5" fontWeight="bold" textAnchor="middle">÷</text>
+              <rect x="23" y="51" width="11.5" height="9" rx="3" fill="#475569" />
+              <text x="28.75" y="57.5" fill="#FFFFFF" fontSize="6" fontWeight="bold" textAnchor="middle">7</text>
+              <rect x="37" y="51" width="11.5" height="9" rx="3" fill="#475569" />
+              <text x="42.75" y="57.5" fill="#FFFFFF" fontSize="6" fontWeight="bold" textAnchor="middle">8</text>
+              <rect x="51" y="51" width="11.5" height="9" rx="3" fill="#475569" />
+              <text x="56.75" y="57.5" fill="#FFFFFF" fontSize="6" fontWeight="bold" textAnchor="middle">9</text>
+              <rect x="65.5" y="51" width="11.5" height="9" rx="3" fill="#F97316" />
+              <text x="71.25" y="57.5" fill="#FFFFFF" fontSize="7" fontWeight="bold" textAnchor="middle">-</text>
+              <rect x="23" y="62" width="11.5" height="9" rx="3" fill="#475569" />
+              <text x="28.75" y="68.5" fill="#FFFFFF" fontSize="6" fontWeight="bold" textAnchor="middle">4</text>
+              <rect x="37" y="62" width="11.5" height="9" rx="3" fill="#475569" />
+              <text x="42.75" y="68.5" fill="#FFFFFF" fontSize="6" fontWeight="bold" textAnchor="middle">5</text>
+              <rect x="51" y="62" width="11.5" height="9" rx="3" fill="#475569" />
+              <text x="56.75" y="68.5" fill="#FFFFFF" fontSize="6" fontWeight="bold" textAnchor="middle">6</text>
+              <rect x="65.5" y="62" width="11.5" height="9" rx="3" fill="#F97316" />
+              <text x="71.25" y="68.5" fill="#FFFFFF" fontSize="7" fontWeight="bold" textAnchor="middle">+</text>
+              <rect x="23" y="73" width="11.5" height="9" rx="3" fill="#475569" />
+              <text x="28.75" y="79.5" fill="#FFFFFF" fontSize="6" fontWeight="bold" textAnchor="middle">1</text>
+              <rect x="37" y="73" width="11.5" height="9" rx="3" fill="#475569" />
+              <text x="42.75" y="79.5" fill="#FFFFFF" fontSize="6" fontWeight="bold" textAnchor="middle">2</text>
+              <rect x="51" y="73" width="11.5" height="9" rx="3" fill="#475569" />
+              <text x="56.75" y="79.5" fill="#FFFFFF" fontSize="6" fontWeight="bold" textAnchor="middle">3</text>
+              <rect x="65.5" y="73" width="11.5" height="9" rx="3" fill="#10B981" />
+              <text x="71.25" y="79.5" fill="#FFFFFF" fontSize="7.5" fontWeight="bold" textAnchor="middle">=</text>
             </svg>
           </div>
         );
@@ -704,40 +860,32 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         label = 'Mon stockage';
         defaultAction = () => setViewMode('storage-menu');
         iconContent = (
-          <div className="w-full h-full p-2 flex items-center justify-center">
-            <svg className="w-full h-full drop-shadow-md" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              {/* Nuage supérieur moderne avec dégradé cyan / bleu */}
-              <path
-                d="M 32 48 C 23 48 16 41 16 33 C 16 25 22 18 30 17 C 34 9 46 7 55 13 C 61 9 70 11 74 17 C 82 18 88 25 88 33 C 88 41 81 48 72 48 Z"
-                fill="url(#storageCloudGrad)"
-              />
-              {/* Disque serveur 1 */}
-              <ellipse cx="50" cy="54" rx="27" ry="7.5" fill="#1E293B" />
-              <ellipse cx="50" cy="53" rx="27" ry="7.5" fill="#38BDF8" />
-              <ellipse cx="50" cy="52" rx="26" ry="6.5" fill="#F1F5F9" />
-              <path d="M 24 52 v 9 c 0 4.2 11.6 7.5 26 7.5 s 26 -3.3 26 -7.5 v -9" fill="#0284C7" />
-              <ellipse cx="50" cy="61" rx="26" ry="7" fill="#38BDF8" />
-              <circle cx="34" cy="61" r="2" fill="#22C55E" />
-              <circle cx="41" cy="61" r="2" fill="#F8FAFC" />
-
-              {/* Disque serveur 2 */}
-              <path d="M 24 63 v 9 c 0 4.2 11.6 7.5 26 7.5 s 26 -3.3 26 -7.5 v -9" fill="#0369A1" />
-              <ellipse cx="50" cy="72" rx="26" ry="7" fill="#0284C7" />
-              <circle cx="34" cy="72" r="2" fill="#22C55E" />
-              <circle cx="41" cy="72" r="2" fill="#F8FAFC" />
-
-              {/* Disque serveur 3 */}
-              <path d="M 24 74 v 9 c 0 4.2 11.6 7.5 26 7.5 s 26 -3.3 26 -7.5 v -9" fill="#0F172A" />
-              <ellipse cx="50" cy="83" rx="26" ry="7" fill="#0369A1" />
-              <circle cx="34" cy="83" r="2" fill="#22C55E" />
-              <circle cx="41" cy="83" r="2" fill="#FACC15" />
-
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
               <defs>
-                <linearGradient id="storageCloudGrad" x1="16" y1="7" x2="88" y2="48" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#38BDF8" />
-                  <stop offset="1" stopColor="#0284C7" />
+                <linearGradient id="p2StorageCloudGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#38BDF8" />
+                  <stop offset="100%" stopColor="#0284C7" />
                 </linearGradient>
               </defs>
+              <path
+                d="M 32 44 C 22 44 14 36 14 26 C 14 17 21 9 30 8 C 35 2 48 0 58 6 C 64 2 74 4 78 11 C 86 12 92 20 92 29 C 92 38 84 44 74 44 Z"
+                fill="url(#p2StorageCloudGrad)"
+                stroke="#18181B"
+                strokeWidth="1.3"
+              />
+              <path d="M 22 48 v 10 c 0 4.5 12.5 8 28 8 s 28 -3.5 28 -8 v -10" fill="#0284C7" stroke="#18181B" strokeWidth="1.2" />
+              <ellipse cx="50" cy="48" rx="28" ry="8" fill="#E2E8F0" stroke="#18181B" strokeWidth="1.2" />
+              <circle cx="34" cy="58" r="2.2" fill="#22C55E" />
+              <circle cx="42" cy="58" r="2.2" fill="#38BDF8" />
+              <path d="M 22 62 v 10 c 0 4.5 12.5 8 28 8 s 28 -3.5 28 -8 v -10" fill="#0369A1" stroke="#18181B" strokeWidth="1.2" />
+              <ellipse cx="50" cy="62" rx="28" ry="8" fill="#38BDF8" stroke="#18181B" strokeWidth="1.2" />
+              <circle cx="34" cy="72" r="2.2" fill="#22C55E" />
+              <circle cx="42" cy="72" r="2.2" fill="#F8FAFC" />
+              <path d="M 22 76 v 10 c 0 4.5 12.5 8 28 8 s 28 -3.5 28 -8 v -10" fill="#0F172A" stroke="#18181B" strokeWidth="1.2" />
+              <ellipse cx="50" cy="76" rx="28" ry="8" fill="#0284C7" stroke="#18181B" strokeWidth="1.2" />
+              <circle cx="34" cy="86" r="2.2" fill="#22C55E" />
+              <circle cx="42" cy="86" r="2.2" fill="#FACC15" />
             </svg>
           </div>
         );
@@ -749,37 +897,26 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           setTab('ai-subscriptions');
         };
         iconContent = (
-          <div className="w-full h-full p-2 flex items-center justify-center">
-            <svg className="w-full h-full drop-shadow-md" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="8" y="8" width="84" height="84" rx="22" fill="url(#aiAppCardGrad)" />
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
               <defs>
-                <linearGradient id="aiAppCardGrad" x1="8" y1="8" x2="92" y2="92" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#6366F1" />
-                  <stop offset="50%" stopColor="#8B5CF6" />
+                <linearGradient id="p2AiCoreGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#818CF8" />
+                  <stop offset="50%" stopColor="#A855F7" />
                   <stop offset="100%" stopColor="#EC4899" />
                 </linearGradient>
               </defs>
-              {/* Grand éclat / Étoile centrale brillante */}
+              <circle cx="50" cy="50" r="38" fill="url(#p2AiCoreGrad)" stroke="#18181B" strokeWidth="1.3" />
               <path
-                d="M 50 16 L 54 36 L 74 40 L 54 44 L 50 64 L 46 44 L 26 40 L 46 36 Z"
+                d="M 50 16 L 55 38 L 76 43 L 55 48 L 50 70 L 45 48 L 24 43 L 45 38 Z"
                 fill="#FFFFFF"
-                className="drop-shadow-[0_2px_10px_rgba(255,255,255,0.8)]"
               />
-              {/* Petite étoile dorée en haut à droite */}
               <path
-                d="M 76 22 L 78 29 L 85 31 L 78 33 L 76 40 L 74 33 L 67 31 L 74 29 Z"
+                d="M 74 24 L 76 30 L 82 32 L 76 34 L 74 40 L 72 34 L 66 32 L 72 30 Z"
                 fill="#FDE047"
               />
-              {/* Petite étoile cyan en bas à gauche */}
-              <path
-                d="M 26 56 L 28 62 L 34 64 L 28 66 L 26 72 L 24 66 L 18 64 L 24 62 Z"
-                fill="#38BDF8"
-              />
-              {/* Anneau subtil */}
-              <circle cx="50" cy="48" r="30" stroke="#FFFFFF" strokeWidth="1.8" strokeDasharray="3 3" opacity="0.45" />
-              {/* Badge IA PRO en bas */}
-              <rect x="30" y="69" width="40" height="15" rx="4" fill="#0F172A" stroke="#FDE047" strokeWidth="1.2" />
-              <text x="50" y="80" fill="#FDE047" fontSize="8" fontWeight="900" textAnchor="middle" letterSpacing="1">IA PRO</text>
+              <rect x="28" y="70" width="44" height="16" rx="5" fill="#0F172A" stroke="#FDE047" strokeWidth="1.2" />
+              <text x="50" y="82" fill="#FDE047" fontSize="9" fontWeight="900" textAnchor="middle" letterSpacing="1">IA PRO</text>
             </svg>
           </div>
         );
@@ -802,15 +939,15 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           }
           defaultAction();
         }}
-        className={`${isMobileOnlyApp ? 'flex md:hidden' : 'flex'} group flex-col items-center cursor-pointer w-full max-w-[94px] sm:max-w-[102px] md:w-24 lg:w-26 md:shrink-0 transition-all duration-200 hover:scale-105`}
+        className={`${isMobileOnlyApp ? 'flex md:hidden' : 'flex'} group flex-col items-center cursor-pointer w-full max-w-[94px] sm:max-w-[102px] md:w-24 lg:w-26 md:shrink-0 transition-transform duration-200 select-none`}
       >
-        <div className="w-full aspect-square bg-stone-900 dark:bg-slate-800/80 dark:backdrop-blur-xl border-2 border-stone-800 dark:border-white/15 rounded-2xl shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-[0_8px_25px_rgba(0,0,0,0.45)] dark:hover:border-blue-400/40 dark:hover:shadow-[0_12px_30px_rgba(37,99,235,0.25)] flex items-center justify-center group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all relative">
+        <div className="w-20 h-20 sm:w-22 sm:h-22 md:w-24 md:h-24 lg:w-26 lg:h-26 flex items-center justify-center transition-all duration-300 filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.18)] dark:drop-shadow-[0_10px_24px_rgba(0,0,0,0.55)] group-hover:drop-shadow-[0_14px_28px_rgba(0,0,0,0.28)] group-hover:scale-110 active:scale-95">
           {iconContent}
         </div>
-        <span className={`text-[11px] sm:text-xs md:text-sm font-extrabold mt-1.5 sm:mt-2 text-center px-0.5 leading-snug tracking-wide w-full line-clamp-2 transition-colors ${
+        <span className={`text-[11px] sm:text-xs md:text-sm font-black mt-2 text-center px-0.5 leading-snug tracking-tight w-full line-clamp-2 transition-colors ${
           dashboardWallpaper && viewMode === 'home'
-            ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]'
-            : 'text-stone-950 dark:text-blue-400'
+            ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)] bg-black/45 px-2 py-0.5 rounded-full border border-white/10'
+            : 'text-stone-900 dark:text-stone-100'
         }`}>{label}</span>
       </div>
     );
