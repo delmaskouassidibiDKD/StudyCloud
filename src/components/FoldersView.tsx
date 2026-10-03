@@ -1878,63 +1878,133 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                     }}
                     className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-150 hover:scale-105 active:scale-[0.98]"
                   >
-                    {/* Dossier 3D affiné, taille un peu réduite, teinté bleu doux avec bord orange et contour fin */}
-                    <div className="w-24 h-21 sm:w-28 sm:h-24 md:w-32 md:h-28 transition-all duration-300 filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.15)] dark:drop-shadow-[0_10px_22px_rgba(0,0,0,0.45)] group-hover:drop-shadow-[0_14px_24px_rgba(56,189,248,0.35)]">
+                    {/* Dossier 3D Espace Cloud avec Nuage Orange au milieu */}
+                    <div className="w-24 h-21 sm:w-28 sm:h-24 md:w-32 md:h-28 transition-all duration-300 filter drop-shadow-[0_8px_18px_rgba(0,0,0,0.18)] dark:drop-shadow-[0_12px_26px_rgba(0,0,0,0.5)] group-hover:drop-shadow-[0_16px_30px_rgba(249,115,22,0.35)] group-hover:scale-108 active:scale-95">
                       <svg className="w-full h-full" viewBox="0 0 100 90" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <defs>
-                          {/* Dégradé Orange pour le bord / onglet arrière */}
+                          {/* Dégradé Onglet arrière */}
                           <linearGradient id="p1FolderBackGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#FB923C" />
-                            <stop offset="100%" stopColor="#EA580C" />
+                            <stop offset="0%" stopColor="#38BDF8" />
+                            <stop offset="100%" stopColor="#0284C7" />
                           </linearGradient>
-                          {/* Dégradé Bleu doux non-pur pour la face avant du dossier */}
+
+                          {/* Dégradé Bleu doux pour la face avant du dossier */}
                           <linearGradient id="p1FolderFrontGrad" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stopColor="#BAE6FD" />
-                            <stop offset="50%" stopColor="#60A5FA" />
-                            <stop offset="100%" stopColor="#38BDF8" />
+                            <stop offset="45%" stopColor="#60A5FA" />
+                            <stop offset="100%" stopColor="#0284C7" />
                           </linearGradient>
+
+                          {/* Dégradé Orange Vibrant 3D pour le nuage central */}
+                          <linearGradient id="p1OrangeCloudGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#FED7AA" />
+                            <stop offset="25%" stopColor="#FB923C" />
+                            <stop offset="70%" stopColor="#EA580C" />
+                            <stop offset="100%" stopColor="#C2410C" />
+                          </linearGradient>
+
+                          {/* Papier intérieur avec bordure bleutée */}
+                          <linearGradient id="p1DocPaperGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#FFFFFF" />
+                            <stop offset="100%" stopColor="#F0F9FF" />
+                          </linearGradient>
+
+                          {/* Ombre portée douce sous le nuage orange */}
+                          <filter id="p1CloudShadow" x="-20%" y="-20%" width="140%" height="140%">
+                            <feDropShadow dx="0" dy="3" stdDeviation="2.5" floodColor="#000000" floodOpacity="0.25" />
+                          </filter>
                         </defs>
 
-                        {/* Dos du dossier avec bordure supérieure Orange bien visible */}
+                        {/* Dos du dossier avec onglet arrière */}
                         <path 
-                          d="M 44 14 L 86 14 C 91 14 94 17 94 22 L 94 40 L 44 40 Z" 
+                          d="M 14 18 C 14 14 17 12 21 12 L 42 12 C 45 12 48 15 50 18 L 54 22 L 86 22 C 90 22 93 25 93 29 L 93 42 L 14 42 Z" 
                           fill="url(#p1FolderBackGrad)" 
                           stroke="#18181B" 
                           strokeWidth="1.3" 
                           strokeLinejoin="round" 
                         />
 
+                        {/* Feuilles de documents blanches qui dépassent à l'intérieur */}
+                        <rect x="22" y="16" width="56" height="30" rx="3.5" fill="url(#p1DocPaperGrad)" stroke="#BAE6FD" strokeWidth="1" />
+                        <line x1="30" y1="22" x2="68" y2="22" stroke="#38BDF8" strokeWidth="2" strokeLinecap="round" />
+                        <line x1="30" y1="27" x2="54" y2="27" stroke="#93C5FD" strokeWidth="2" strokeLinecap="round" />
+
                         {/* Corps principal avant du dossier en bleu élégant avec contour fin */}
                         <path 
                           d="
-                            M 16 14
-                            L 44 14
-                            C 48 14 50 17 52 20
-                            C 54 23 56 25 60 25
-                            L 86 25
-                            C 91 25 94 28 94 33
-                            L 94 76
-                            C 94 81 91 84 86 84
-                            L 14 84
-                            C 9 84 6 81 6 76
-                            L 6 22
-                            C 6 17 9 14 14 14
+                            M 14 26
+                            L 44 26
+                            C 48 26 50 28 52 31
+                            C 54 34 56 36 60 36
+                            L 86 36
+                            C 91 36 94 39 94 44
+                            L 94 77
+                            C 94 82 91 85 86 85
+                            L 14 85
+                            C 9 85 6 82 6 77
+                            L 6 32
+                            C 6 28 9 26 14 26
                             Z
                           " 
-                            fill="url(#p1FolderFrontGrad)" 
+                          fill="url(#p1FolderFrontGrad)" 
                           stroke="#18181B" 
                           strokeWidth="1.3" 
                           strokeLinejoin="round" 
                           strokeLinecap="round" 
                         />
 
-                        {/* Liseré fin orange sur le pli supérieur du rabat */}
+                        {/* Liseré fin bleu clair sur le pli supérieur du rabat */}
                         <path
-                          d="M 16 16 L 43 16 C 47 16 49 18 51 21 C 53 24 55 26 59 26 L 85 26"
-                          stroke="#EA580C"
+                          d="M 14 28 L 43 28 C 47 28 49 30 51 33 C 53 36 55 38 59 38 L 86 38"
+                          stroke="#E0F2FE"
                           strokeWidth="1.5"
                           strokeLinecap="round"
                         />
+
+                        {/* ========================================================= */}
+                        {/* NUAGE ORANGE 3D AU MILIEU DU DOSSIER                      */}
+                        {/* ========================================================= */}
+                        <g filter="url(#p1CloudShadow)">
+                          {/* Forme du Nuage Orange Bombé 3D */}
+                          <path
+                            d="
+                              M 38 67
+                              C 30 67 24 61.5 24 55
+                              C 24 49 28.5 44.5 34.5 44
+                              C 37 36.5 44 34 51 37
+                              C 55.5 33.5 62.5 35 66 39.5
+                              C 72 40.5 76 45.5 76 52
+                              C 76 59.5 71 67 62 67
+                              Z
+                            "
+                            fill="url(#p1OrangeCloudGrad)"
+                            stroke="#7C2D12"
+                            strokeWidth="1.3"
+                            strokeLinejoin="round"
+                          />
+
+                          {/* Ligne de reflet brillant blanc-doré sur le dôme supérieur du nuage */}
+                          <path
+                            d="M 40 43 C 43.5 38 48 37 53 38"
+                            stroke="#FEF08A"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M 58 37.5 C 61 37 64 38.5 66 41"
+                            stroke="#FEF08A"
+                            strokeWidth="1.3"
+                            strokeLinecap="round"
+                          />
+
+                          {/* Petite étincelle / étoile dorée scintillante à côté du nuage */}
+                          <path
+                            d="M 74 38 L 75.5 42 L 79.5 43.5 L 75.5 45 L 74 49 L 72.5 45 L 68.5 43.5 L 72.5 42 Z"
+                            fill="#FDE047"
+                            stroke="#B45309"
+                            strokeWidth="0.6"
+                          />
+                        </g>
                       </svg>
                     </div>
 
@@ -1943,7 +2013,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                         ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-2.5 py-0.5 rounded-full border border-white/10' 
                         : 'text-stone-900 dark:text-stone-100'
                     }`}>
-                      Fichiers
+                      Espace Cloud
                     </span>
                   </div>
                 </div>
