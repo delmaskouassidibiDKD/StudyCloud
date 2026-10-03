@@ -421,7 +421,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       }
     };
     window.addEventListener('unifolder_data_restored', handleDataRestored);
-    return () => window.removeEventListener('unifolder_data_restored', handleDataRestored);
+    window.addEventListener('unifolder_matieres_updated', handleDataRestored);
+    return () => {
+      window.removeEventListener('unifolder_data_restored', handleDataRestored);
+      window.removeEventListener('unifolder_matieres_updated', handleDataRestored);
+    };
   }, []);
 
   const notify = (_msg: string) => {
@@ -433,10 +437,20 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     if (!mat) return;
     if (!window.confirm(`Voulez-vous vraiment supprimer le dossier de la matière "${mat.name}" ainsi que ses fichiers ?`)) return;
     localStorage.removeItem(`unifolder_matiere_files_${mat.name}`);
-    setSavedMatieres(prev => prev.filter((_, i) => i !== index));
+    setSavedMatieres(prev => {
+      const updated = prev.filter((_, i) => i !== index);
+      localStorage.setItem('unifolder_saved_matieres', JSON.stringify(updated));
+      return updated;
+    });
     if (mat.id) {
       StudyCloudAPI.deleteMatiere(mat.id).catch(() => {});
+    } else if (mat.name) {
+      StudyCloudAPI.deleteMatiere(mat.name).catch(() => {});
     }
+    invalidateCloudQueries.matieresList();
+    invalidateCloudQueries.filesMenu();
+    window.dispatchEvent(new Event('unifolder_matieres_updated'));
+    window.dispatchEvent(new Event('unifolder_files_updated'));
     notify("Matière supprimée avec succès !");
   };
 
@@ -445,11 +459,30 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   };
 
   const handleUpdateMatiereColor = (index: number, color: string) => {
+    const mat = savedMatieres[index];
+    if (!mat) return;
+    const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || '';
+    const matId = mat.id || ('mat-' + Date.now() + '-' + index);
+
     setSavedMatieres(prev => {
       const updated = [...prev];
-      updated[index] = { ...updated[index], color };
+      updated[index] = { ...updated[index], id: matId, color };
+      localStorage.setItem('unifolder_saved_matieres', JSON.stringify(updated));
       return updated;
     });
+
+    if (userId && userId !== 'default-user') {
+      StudyCloudAPI.createMatiere({
+        id: matId,
+        userId,
+        name: mat.name,
+        coefficient: parseFloat(mat.coefficient) || 1.0,
+        color: color,
+      }).catch((err) => console.warn('Erreur mise à jour couleur matière D1:', err));
+    }
+
+    invalidateCloudQueries.matieresList();
+    window.dispatchEvent(new Event('unifolder_matieres_updated'));
   };
 
   const [showThreeDotsMenu, setShowThreeDotsMenu] = useState(false);
@@ -1441,7 +1474,13 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                     });
                   }
 
-                  setSavedMatieres(prev => [...prev, ...createdWithIds]);
+                  setSavedMatieres(prev => {
+                    const updated = [...prev, ...createdWithIds];
+                    localStorage.setItem('unifolder_saved_matieres', JSON.stringify(updated));
+                    return updated;
+                  });
+                  invalidateCloudQueries.matieresList();
+                  window.dispatchEvent(new Event('unifolder_matieres_updated'));
                   notify("Matières créées avec succès !");
                   setIsMatiereMenuOpen(false);
                   setShowEmptyError(false);
@@ -1507,27 +1546,50 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                     const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || '';
                     const targetMat = savedMatieres[editingMatiere.index];
                     const matId = targetMat?.id || ('mat-' + Date.now());
-                    
+                    const oldName = targetMat?.name;
+                    const newName = editingMatiere.name.trim();
+                    const newCoeff = parseFloat(editingMatiere.coefficient) || 1.0;
+                    const matColor = targetMat?.color || '#EA580C';
+
                     if (userId && userId !== 'default-user') {
                       StudyCloudAPI.createMatiere({
                         id: matId,
                         userId,
-                        name: editingMatiere.name.trim(),
-                        coefficient: parseFloat(editingMatiere.coefficient) || 1.0,
-                        color: targetMat?.color || '#EA580C',
+                        name: newName,
+                        coefficient: newCoeff,
+                        color: matColor,
+                        oldName: oldName !== newName ? oldName : undefined
                       }).catch((err) => console.warn('Erreur modification matière D1:', err));
+                    }
+
+                    if (oldName && oldName !== newName) {
+                      try {
+                        const oldKey = `unifolder_matiere_files_${oldName}`;
+                        const newKey = `unifolder_matiere_files_${newName}`;
+                        const existingFiles = localStorage.getItem(oldKey);
+                        if (existingFiles) {
+                          localStorage.setItem(newKey, existingFiles);
+                          localStorage.removeItem(oldKey);
+                        }
+                      } catch (_) {}
                     }
 
                     setSavedMatieres(prev => {
                       const updated = [...prev];
                       updated[editingMatiere.index] = { 
                         id: matId,
-                        name: editingMatiere.name.trim(), 
-                        coefficient: editingMatiere.coefficient.trim() || '1',
-                        color: targetMat?.color || '#EA580C'
+                        name: newName, 
+                        coefficient: String(newCoeff),
+                        color: matColor
                       };
+                      localStorage.setItem('unifolder_saved_matieres', JSON.stringify(updated));
                       return updated;
                     });
+
+                    invalidateCloudQueries.matieresList();
+                    invalidateCloudQueries.filesMenu();
+                    window.dispatchEvent(new Event('unifolder_matieres_updated'));
+                    window.dispatchEvent(new Event('unifolder_files_updated'));
                     notify("Matière modifiée avec succès !");
                     setEditingMatiere(null);
                   }

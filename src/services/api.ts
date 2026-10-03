@@ -1280,13 +1280,18 @@ export const StudyCloudAPI = {
     return request<{ success: boolean; data: any[] }>(`/api/matieres?userId=${encodeURIComponent(userId)}`);
   },
 
-  async createMatiere(matiere: { id: string; userId: string; name: string; coefficient?: number; color?: string; category?: string; displayOrder?: number }) {
+  async createMatiere(matiere: { id: string; userId: string; name: string; coefficient?: number; color?: string; category?: string; displayOrder?: number; oldName?: string }) {
     if (!matiere.userId || matiere.userId === 'default-user') return { success: false, message: 'Non autorisé' };
     return request('/api/matieres', { method: 'POST', body: JSON.stringify(matiere) });
   },
 
+  async updateMatiere(id: string, data: { userId: string; name?: string; coefficient?: number; color?: string; category?: string; displayOrder?: number; oldName?: string }) {
+    if (!data.userId || data.userId === 'default-user') return { success: false, message: 'Non autorisé' };
+    return request(`/api/matieres/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) });
+  },
+
   async deleteMatiere(id: string) {
-    return request(`/api/matieres/${id}`, { method: 'DELETE' });
+    return request(`/api/matieres/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 
   // --------------------------------------------------------------------------

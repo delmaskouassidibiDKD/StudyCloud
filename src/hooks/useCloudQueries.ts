@@ -179,12 +179,23 @@ export function useFilesMenuList(userId?: string) {
     queryKey: QUERY_KEYS.filesMenu(currentUid),
     queryFn: async () => {
       if (!currentUid || currentUid === 'default-user') return [];
-      const res = await StudyCloudAPI.getFiles(currentUid, 'root', false);
+      const res = await StudyCloudAPI.getFiles(currentUid, 'all', false);
       if (res && res.success && Array.isArray(res.data)) {
         const nonStudyRows = res.data.filter((row: any) => !row.is_study_session && !row.isStudyImport);
+        let matieresList: any[] = [];
+        try {
+          const raw = localStorage.getItem('unifolder_saved_matieres');
+          if (raw) matieresList = JSON.parse(raw);
+        } catch (_) {}
+
         const filesWithUrls: ImportedItem[] = await Promise.all(
           nonStudyRows.map(async (row: any) => {
             const localBlobUrl = await getFileBlobUrl(row.id);
+            const mId = row.matiere_id && row.matiere_id !== 'Mes fichiers' && row.matiere_id !== 'root' ? row.matiere_id : '';
+            const matchedMat = matieresList.find((m: any) => m.id === mId || m.name === mId);
+            const matName = matchedMat ? matchedMat.name : (mId || '');
+            const matUniqueId = matchedMat ? matchedMat.id : (mId || undefined);
+
             return {
               id: row.id,
               name: row.name,
@@ -194,7 +205,9 @@ export function useFilesMenuList(userId?: string) {
               url: localBlobUrl || row.file_url || '',
               r2Key: row.r2_key,
               isFavorite: !!row.is_favorite,
-              matiere: row.matiere_id && row.matiere_id !== 'Mes fichiers' && row.matiere_id !== 'root' ? row.matiere_id : '',
+              matiere: matName,
+              matiereId: matUniqueId,
+              folderName: matName || 'Mes fichiers',
               importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
               createdAt: row.created_at,
               timestamp: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
@@ -221,7 +234,15 @@ export function useMatiereFilesList(matiereName: string, userId?: string) {
     queryKey: QUERY_KEYS.matiereFiles(matiereName, currentUid),
     queryFn: async () => {
       if (!matiereName || !currentUid || currentUid === 'default-user') return [];
-      const res = await StudyCloudAPI.getFiles(currentUid, matiereName);
+      let matieresList: any[] = [];
+      try {
+        const raw = localStorage.getItem('unifolder_saved_matieres');
+        if (raw) matieresList = JSON.parse(raw);
+      } catch (_) {}
+      const matchedMat = matieresList.find((m: any) => m.name === matiereName || m.id === matiereName);
+      const queryId = matchedMat?.id || matiereName;
+
+      const res = await StudyCloudAPI.getFiles(currentUid, queryId);
       if (res && res.success && Array.isArray(res.data)) {
         const filesWithUrls: ImportedItem[] = await Promise.all(
           res.data.map(async (row: any) => {
@@ -235,7 +256,8 @@ export function useMatiereFilesList(matiereName: string, userId?: string) {
               url: localBlobUrl || row.file_url || '',
               r2Key: row.r2_key,
               isFavorite: !!row.is_favorite,
-              matiere: row.matiere_id || matiereName,
+              matiere: matchedMat?.name || matiereName,
+              matiereId: matchedMat?.id || undefined,
               importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
               createdAt: row.created_at,
               timestamp: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),

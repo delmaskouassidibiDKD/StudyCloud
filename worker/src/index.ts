@@ -6563,7 +6563,7 @@ a:hover{transform:translateY(-2px)}
 
         if (method === 'POST') {
           const body: any = await request.json();
-          const { id, userId, name, coefficient, color, category, displayOrder } = body;
+          const { id, userId, name, coefficient, color, category, displayOrder, oldName } = body;
           if (!id || !userId || !name || userId === 'default-user') return errorResponse('id, userId et name requis', 400, origin);
 
           await env.DB.prepare(`
@@ -6577,15 +6577,72 @@ a:hover{transform:translateY(-2px)}
               display_order = excluded.display_order
           `).bind(id, userId, name, coefficient ?? 1.0, color || '#EA580C', category || 'Général', displayOrder ?? 0).run();
 
-          return jsonResponse({ success: true, data: { id, name } }, 201, origin);
+          // Rattacher tous les fichiers au petit id de la matière
+          if (oldName && oldName !== name) {
+            await env.DB.prepare(`
+              UPDATE files 
+              SET matiere_id = ? 
+              WHERE user_id = ? AND (matiere_id = ? OR matiere_id = ?)
+            `).bind(id, userId, oldName, id).run().catch(() => {});
+          } else {
+            // Migrer les fichiers qui portaient le nom textuel vers l'ID unique
+            await env.DB.prepare(`
+              UPDATE files 
+              SET matiere_id = ? 
+              WHERE user_id = ? AND matiere_id = ?
+            `).bind(id, userId, name).run().catch(() => {});
+          }
+
+          return jsonResponse({ success: true, data: { id, name, coefficient, color } }, 201, origin);
         }
+      }
+
+      if (path.startsWith('/api/matieres') && method === 'PUT') {
+        if (env.DB) await ensureCloudMediaTables(env.DB);
+        const parts = path.split('/');
+        const pathId = parts.length > 3 ? decodeURIComponent(parts[3]) : '';
+        const body: any = await request.json().catch(() => ({}));
+        const targetId = pathId || body.id;
+        const userId = body.userId;
+        if (!targetId) return errorResponse('id requis', 400, origin);
+
+        const updates: string[] = [];
+        const params: any[] = [];
+        if (body.name !== undefined) { updates.push('name = ?'); params.push(body.name); }
+        if (body.coefficient !== undefined) { updates.push('coefficient = ?'); params.push(body.coefficient); }
+        if (body.color !== undefined) { updates.push('color = ?'); params.push(body.color); }
+        if (body.category !== undefined) { updates.push('category = ?'); params.push(body.category); }
+        if (body.displayOrder !== undefined) { updates.push('display_order = ?'); params.push(body.displayOrder); }
+
+        if (updates.length > 0) {
+          params.push(targetId);
+          await env.DB.prepare(`UPDATE matieres SET ${updates.join(', ')} WHERE id = ?`).bind(...params).run();
+        }
+
+        if (body.oldName && userId) {
+          await env.DB.prepare(`
+            UPDATE files SET matiere_id = ? WHERE user_id = ? AND (matiere_id = ? OR matiere_id = ?)
+          `).bind(targetId, userId, body.oldName, targetId).run().catch(() => {});
+        }
+
+        return jsonResponse({ success: true, message: 'Matière mise à jour' }, 200, origin);
       }
 
       if (path.startsWith('/api/matieres/') && method === 'DELETE') {
         if (env.DB) await ensureCloudMediaTables(env.DB);
-        const id = path.split('/')[3];
-        await env.DB.prepare('DELETE FROM matieres WHERE id = ?').bind(id).run();
-        return jsonResponse({ success: true, message: 'Matière supprimée' }, 200, origin);
+        const rawId = path.split('/')[3] || '';
+        const id = decodeURIComponent(rawId);
+
+        const matRow: any = await env.DB.prepare('SELECT name, user_id FROM matieres WHERE id = ? OR name = ?').bind(id, id).first().catch(() => null);
+        await env.DB.prepare('DELETE FROM matieres WHERE id = ? OR name = ?').bind(id, id).run();
+
+        if (matRow && matRow.user_id) {
+          await env.DB.prepare('DELETE FROM files WHERE user_id = ? AND (matiere_id = ? OR matiere_id = ?)').bind(matRow.user_id, id, matRow.name).run().catch(() => {});
+        } else {
+          await env.DB.prepare('DELETE FROM files WHERE matiere_id = ?').bind(id).run().catch(() => {});
+        }
+
+        return jsonResponse({ success: true, message: 'Matière et ses fichiers supprimés' }, 200, origin);
       }
 
       // ----------------------------------------------------------------------
@@ -6606,8 +6663,8 @@ a:hover{transform:translateY(-2px)}
           if (matiereId === 'root' || matiereId === 'none') {
             query += ' AND (matiere_id IS NULL OR matiere_id = "" OR matiere_id = "Mes fichiers")';
           } else if (matiereId && matiereId !== 'all') {
-            query += ' AND (matiere_id = ? OR matiere_id IN (SELECT id FROM matieres WHERE name = ? AND user_id = ?))';
-            params.push(matiereId, matiereId, userId);
+            query += ' AND (matiere_id = ? OR matiere_id IN (SELECT id FROM matieres WHERE (name = ? OR id = ?) AND user_id = ?) OR matiere_id IN (SELECT name FROM matieres WHERE (id = ? OR name = ?) AND user_id = ?))';
+            params.push(matiereId, matiereId, matiereId, userId, matiereId, matiereId, userId);
           }
 
           if (isFavorite === 'true' || isFavorite === '1') {
@@ -6646,7 +6703,7 @@ a:hover{transform:translateY(-2px)}
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
-              matiere_id = excluded.matiere_id,
+              matiere_id = COALESCE(excluded.matiere_id, files.matiere_id),
               size = excluded.size,
               type = excluded.type,
               r2_key = COALESCE(excluded.r2_key, files.r2_key),

@@ -470,10 +470,14 @@ class UploadQueueManager {
       if (uploadUrl && r2Key) {
         const currentUserId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
         const extVal = (task.fileItem as any)?.extension || (fileName.includes('.') ? fileName.split('.').pop()?.toUpperCase() : 'FICHIER');
+        const resolvedMatiereId = (task.fileItem as any)?.matiereId || 
+          (task.folderId && task.folderId !== 'root' && task.folderId !== 'mes-fichiers' ? task.folderId : null) || 
+          ((task.fileItem as any)?.matiere && (task.fileItem as any).matiere !== 'Mes fichiers' ? (task.fileItem as any).matiere : null);
+
         StudyCloudAPI.registerFileMetadata({
           id: serverFileId || id,
           userId: currentUserId,
-          matiereId: task.uploadSource === 'mes-fichiers' ? null : (task.folderId || null),
+          matiereId: resolvedMatiereId || undefined,
           name: fileName,
           size: task.fileItem?.sizeBytes || file.size,
           type: file.type || 'application/octet-stream',

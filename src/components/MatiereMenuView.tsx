@@ -163,6 +163,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     }
 
     invalidateCloudQueries.matieresList();
+    window.dispatchEvent(new Event('unifolder_matieres_updated'));
   };
 
   const isInitialMatiereMount = useRef(true);
@@ -177,23 +178,45 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
 
   useEffect(() => {
     const handleDataRestored = () => {
-      const saved = localStorage.getItem('unifolder_saved_matieres');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          setSavedMatieres(parsed.map((m: any, idx: number) => ({
-            id: m.id || ('mat-' + Math.random().toString(36).substring(2, 9) + '-' + idx),
-            name: m.name,
-            coefficient: m.coefficient,
-            color: m.color
-          })));
-        } catch (e) { }
+      const userId = localStorage.getItem('unifolder_user_id');
+      if (userId && userId !== 'default-user') {
+        StudyCloudAPI.getMatieres(userId).then(res => {
+          if (res && res.success && Array.isArray(res.data)) {
+            const apiMatieres = res.data.map((m: any, idx: number) => ({
+              id: m.id || ('mat-' + Date.now() + '-' + idx),
+              name: m.name,
+              coefficient: String(m.coefficient ?? '1'),
+              color: m.color || '#EA580C'
+            }));
+            setSavedMatieres(apiMatieres);
+            safeLocalStorageSet('unifolder_saved_matieres', apiMatieres);
+          }
+        }).catch(() => {});
       } else {
-        setSavedMatieres([]);
+        const saved = localStorage.getItem('unifolder_saved_matieres');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            setSavedMatieres(parsed.map((m: any, idx: number) => ({
+              id: m.id || ('mat-' + Math.random().toString(36).substring(2, 9) + '-' + idx),
+              name: m.name,
+              coefficient: m.coefficient,
+              color: m.color
+            })));
+          } catch (e) {}
+        } else {
+          setSavedMatieres([]);
+        }
       }
     };
+
+    handleDataRestored();
     window.addEventListener('unifolder_data_restored', handleDataRestored);
-    return () => window.removeEventListener('unifolder_data_restored', handleDataRestored);
+    window.addEventListener('unifolder_matieres_updated', handleDataRestored);
+    return () => {
+      window.removeEventListener('unifolder_data_restored', handleDataRestored);
+      window.removeEventListener('unifolder_matieres_updated', handleDataRestored);
+    };
   }, []);
 
   const [selectedMatiereIds, setSelectedMatiereIds] = useState<string[]>([]);
@@ -404,10 +427,12 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     StudyCloudAPI.toggleFileFavorite(id, newFav).catch(() => {
       if (file) {
         const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+        const targetMat = savedMatieres.find(m => m.name.toLowerCase() === matiereName.toLowerCase() || m.id === matiereName);
+        const resolvedMatiereId = targetMat?.id || file.matiere || matiereName;
         StudyCloudAPI.registerFileMetadata({
           id: file.id,
           userId,
-          matiereId: file.matiere || matiereName,
+          matiereId: resolvedMatiereId,
           name: file.name,
           size: file.size,
           type: file.type,
@@ -446,10 +471,12 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
 
     if (targetFile) {
       const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+      const targetMat = savedMatieres.find(m => m.name.toLowerCase() === matiereName.toLowerCase() || m.id === matiereName);
+      const resolvedMatiereId = targetMat?.id || targetFile.matiere || matiereName;
       StudyCloudAPI.registerFileMetadata({
         id: targetFile.id,
         userId,
-        matiereId: targetFile.matiere || matiereName,
+        matiereId: resolvedMatiereId,
         name: newFileName.trim(),
         size: targetFile.size,
         type: targetFile.type,
@@ -720,10 +747,12 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
 
         // 3. Enregistrement D1 immédiat (sans attendre R2)
         const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+        const targetMat = savedMatieres.find(m => m.name.toLowerCase() === matiereName.toLowerCase() || m.id === matiereName);
+        const targetMatiereId = targetMat?.id || matiereName;
         StudyCloudAPI.registerFileMetadata({
           id,
           userId,
-          matiereId: matiereName,
+          matiereId: targetMatiereId,
           name: f.name,
           size: compResult.originalSizeBytes,
           type: f.type || 'application/octet-stream',
@@ -750,10 +779,12 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         CloudDataStore.addOptimisticFile(item as any);
       });
 
+      const targetMatForQueue = savedMatieres.find(m => m.name.toLowerCase() === matiereName.toLowerCase() || m.id === matiereName);
       // 6. UploadQueue.enqueueExisting — R2 en arrière-plan avec retry automatique
       UploadQueue.enqueueExisting(itemsWithFiles, {
         category: 'documents',
-        uploadSource: `matiere-${matiereName}`
+        uploadSource: `matiere-${matiereName}`,
+        folderId: targetMatForQueue?.id || matiereName
       });
 
       // Ajouter automatiquement et immédiatement dans "Mes fichiers" avec le tag de matière

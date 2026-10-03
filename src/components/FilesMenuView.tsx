@@ -34,6 +34,8 @@ export interface ImportedItem {
   r2Key?: string;
   isImage?: boolean;
   matiere?: string;
+  matiereId?: string;
+  folderName?: string;
   isLeftMenuImport?: boolean;
   importedAt?: number | string;
   createdAt?: number | string;
@@ -352,25 +354,57 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   }, [initialMatiere]);
 
   useEffect(() => {
-    const handleMatieresSync = () => {
-      try {
+    const loadMatieresFromCloud = () => {
+      const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+      if (!userId || userId === 'default-user') {
         const saved = localStorage.getItem('unifolder_saved_matieres');
         if (saved) {
-          const parsed = JSON.parse(saved);
-          setSavedMatieres(parsed.map((m: any, idx: number) => ({
-            id: m.id || ('mat-' + Math.random().toString(36).substring(2, 9) + '-' + idx),
-            name: m.name,
-            coefficient: m.coefficient,
-            color: m.color
-          })));
+          try {
+            const parsed = JSON.parse(saved);
+            setSavedMatieres(parsed.map((m: any, idx: number) => ({
+              id: m.id || ('mat-' + Math.random().toString(36).substring(2, 9) + '-' + idx),
+              name: m.name,
+              coefficient: m.coefficient,
+              color: m.color
+            })));
+          } catch (e) {}
         }
-      } catch (e) {}
+        return;
+      }
+
+      StudyCloudAPI.getMatieres(userId).then(res => {
+        if (res && res.success && Array.isArray(res.data)) {
+          const apiMatieres = res.data.map((m: any, idx: number) => ({
+            id: m.id || ('mat-' + Date.now() + '-' + idx),
+            name: m.name,
+            coefficient: String(m.coefficient ?? '1'),
+            color: m.color || '#EA580C'
+          }));
+          setSavedMatieres(apiMatieres);
+          safeLocalStorageSet('unifolder_saved_matieres', apiMatieres);
+        }
+      }).catch(() => {
+        const saved = localStorage.getItem('unifolder_saved_matieres');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            setSavedMatieres(parsed.map((m: any, idx: number) => ({
+              id: m.id || ('mat-' + Math.random().toString(36).substring(2, 9) + '-' + idx),
+              name: m.name,
+              coefficient: m.coefficient,
+              color: m.color
+            })));
+          } catch (e) {}
+        }
+      });
     };
-    window.addEventListener('storage', handleMatieresSync);
-    window.addEventListener('unifolder_matieres_updated', handleMatieresSync);
+
+    loadMatieresFromCloud();
+    window.addEventListener('storage', loadMatieresFromCloud);
+    window.addEventListener('unifolder_matieres_updated', loadMatieresFromCloud);
     return () => {
-      window.removeEventListener('storage', handleMatieresSync);
-      window.removeEventListener('unifolder_matieres_updated', handleMatieresSync);
+      window.removeEventListener('storage', loadMatieresFromCloud);
+      window.removeEventListener('unifolder_matieres_updated', loadMatieresFromCloud);
     };
   }, []);
 
@@ -602,7 +636,9 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   const filteredFiles = importedFiles.filter(f => {
     // 1. Filtrage selon l'onglet / la matière sélectionnée
     if (selectedTab !== 'Mes fichiers') {
+      const targetMatiere = savedMatieres.find(m => m.name.trim().toLowerCase() === selectedTab.trim().toLowerCase() || m.id === selectedTab);
       const matchMatiere = (f.matiere && f.matiere.trim().toLowerCase() === selectedTab.trim().toLowerCase()) ||
+                            (targetMatiere && (f.matiereId === targetMatiere.id || f.matiere === targetMatiere.id)) ||
                             (f.folderName && f.folderName.trim().toLowerCase() === selectedTab.trim().toLowerCase());
       if (!matchMatiere) return false;
     }
@@ -673,6 +709,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         color: '#EA580C'
       }).catch(() => {});
     }
+    invalidateCloudQueries.matieresList();
+    window.dispatchEvent(new Event('unifolder_matieres_updated'));
   };
 
   useEffect(() => {
@@ -732,10 +770,12 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
       if (userId && userId !== 'default-user') {
         const existingExt = targetFile.extension || (targetFile.name.includes('.') ? targetFile.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
+        const resolvedMat = savedMatieres.find(m => m.name === targetFile.matiere || m.id === targetFile.matiereId || m.id === targetFile.matiere);
+        const resolvedMatiereId = targetFile.matiereId || resolvedMat?.id || targetFile.matiere || null;
         StudyCloudAPI.registerFileMetadata({
           id: targetFile.id,
           userId,
-          matiereId: targetFile.matiere || null,
+          matiereId: resolvedMatiereId,
           name: newFileName.trim(),
           size: targetFile.size,
           type: targetFile.type,
@@ -796,10 +836,12 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
     const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
     if (userId && userId !== 'default-user') {
+      const resolvedMat = savedMatieres.find(m => m.name === duplicated.matiere || m.id === duplicated.matiereId || m.id === duplicated.matiere);
+      const resolvedMatiereId = duplicated.matiereId || resolvedMat?.id || duplicated.matiere || null;
       StudyCloudAPI.registerFileMetadata({
         id: newId,
         userId,
-        matiereId: duplicated.matiere || null,
+        matiereId: resolvedMatiereId,
         name: duplicated.name,
         size: duplicated.size,
         type: duplicated.type,
@@ -839,11 +881,13 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     if (file) {
       const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
       if (userId && userId !== 'default-user') {
+        const resolvedMat = savedMatieres.find(m => m.name === file.matiere || m.id === file.matiereId || m.id === file.matiere);
+        const resolvedMatiereId = file.matiereId || resolvedMat?.id || file.matiere || null;
         StudyCloudAPI.toggleFileFavorite(id, newFav).catch(() => {
           StudyCloudAPI.registerFileMetadata({
             id: file.id,
             userId,
-            matiereId: file.matiere || null,
+            matiereId: resolvedMatiereId,
             name: file.name,
             size: file.size,
             type: file.type,
@@ -969,18 +1013,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   };
 
   const cleanupUnusedMatieres = () => {
-    const updated = savedMatieres.filter(mat => {
-      if (selectedMatiereIds.includes(mat.id)) return true;
-      const storageKey = `unifolder_matiere_files_${mat.name}`;
-      try {
-        const existing = localStorage.getItem(storageKey);
-        const list = existing ? JSON.parse(existing) : [];
-        if (list.length > 0) return true;
-      } catch (e) {}
-      return false;
-    });
-    setSavedMatieres(updated);
-    safeLocalStorageSet('unifolder_saved_matieres', updated);
+    // Les matières créées restent conservées dans la base de données D1
   };
 
   const handleCloseModal = () => {
@@ -994,15 +1027,18 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     const selectedMats = savedMatieres.filter(m => selectedMatiereIds.includes(m.id));
     const matiereNames = selectedMats.map(m => m.name);
     const matiereString = matiereNames.join(', ');
+    const firstTargetMat = selectedMats[0];
+    const resolvedMatiereId = firstTargetMat?.id || selectedMatiereIds[0] || null;
     
     // Find all files being classified
     const filesToClassify = importedFiles.filter(item => classifyFileIds.includes(item.id));
 
-    setImportedFiles(prev => prev.map(item => classifyFileIds.includes(item.id) ? { ...item, matiere: matiereString } : item));
+    setImportedFiles(prev => prev.map(item => classifyFileIds.includes(item.id) ? { ...item, matiere: matiereString, matiereId: resolvedMatiereId || item.matiereId } : item));
 
     // Also add a copy of each file to each selected matiere's independent storage
     filesToClassify.forEach(fileToClassify => {
-      matiereNames.forEach(matName => {
+      selectedMats.forEach(mat => {
+        const matName = mat.name;
         const storageKey = `unifolder_matiere_files_${matName}`;
         try {
           const existing = localStorage.getItem(storageKey);
@@ -1010,7 +1046,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           const copiedFile: ImportedItem = {
             ...fileToClassify,
             id: 'file-' + Math.random().toString(36).substring(2, 9),
-            matiere: matName
+            matiere: matName,
+            matiereId: mat.id
           };
           list.push(copiedFile);
           safeLocalStorageSet(storageKey, list);
@@ -1027,7 +1064,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         StudyCloudAPI.registerFileMetadata({
           id: fileToClassify.id,
           userId,
-          matiereId: matiereNames[0] || null,
+          matiereId: resolvedMatiereId,
           name: fileToClassify.name,
           size: fileToClassify.size,
           type: fileToClassify.type,
@@ -1158,6 +1195,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
         const extVal = f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : (f.type ? f.type.split('/').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
         const isSubject = selectedTab !== 'Mes fichiers';
+        const targetMat = isSubject ? savedMatieres.find(m => m.name.toLowerCase() === selectedTab.toLowerCase() || m.id === selectedTab) : null;
+        const targetMatiereId = targetMat?.id || (isSubject ? selectedTab : null);
+        const targetMatiereName = targetMat?.name || (isSubject ? selectedTab : '');
+
         const item: ImportedItem = {
           id,
           name: f.name,
@@ -1166,8 +1207,9 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           extension: extVal,
           url: localUrl,
           isImage: isImg,
-          matiere: isSubject ? selectedTab : '',
-          folderName: isSubject ? selectedTab : 'Mes fichiers',
+          matiere: targetMatiereName,
+          matiereId: targetMatiereId || undefined,
+          folderName: isSubject ? targetMatiereName : 'Mes fichiers',
           importedAt: now + i,
           createdAt: now + i,
           timestamp: now + i,
@@ -1181,7 +1223,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           StudyCloudAPI.registerFileMetadata({
             id,
             userId,
-            matiereId: isSubject ? selectedTab : null,
+            matiereId: targetMatiereId,
             name: f.name,
             size: f.size,
             type: f.type || 'application/octet-stream',
@@ -1225,10 +1267,12 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         CloudDataStore.addOptimisticFile(item as any);
       });
 
+      const targetMatForQueue = selectedTab !== 'Mes fichiers' ? savedMatieres.find(m => m.name.toLowerCase() === selectedTab.toLowerCase() || m.id === selectedTab) : null;
       // 6. UploadQueue.enqueueExisting — R2 en arrière-plan avec retry automatique
       UploadQueue.enqueueExisting(itemsWithFiles, {
         category: 'documents',
-        uploadSource: 'mes-fichiers'
+        uploadSource: 'mes-fichiers',
+        folderId: targetMatForQueue?.id || undefined
       });
 
       if (newItems.length > 0) {
@@ -1266,6 +1310,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       // Invalider les requêtes TanStack Query
       invalidateCloudQueries.filesMenu();
       invalidateCloudQueries.overview();
+      if (selectedTab !== 'Mes fichiers') invalidateCloudQueries.matiereFiles(selectedTab);
+      if (targetMatForQueue?.id) invalidateCloudQueries.matiereFiles(targetMatForQueue.id);
 
       try {
         const existingShares = JSON.parse(localStorage.getItem('unifolder_shares') || '[]');
