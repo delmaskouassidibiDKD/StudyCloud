@@ -2267,9 +2267,21 @@ export function computeFallbackUserStorage(userId: string): UserStorageQuotaDeta
     dataBytes = JSON.stringify({ matieres, notes, schedule, grades }).length * 2;
   } catch (e) {}
 
-  const welcomeMb = 30;
-  const paidMb = 0;
-  const bonusMb = 0;
+  let welcomeMb = 100;
+  let paidMb = 0;
+  let bonusMb = 0;
+  try {
+    const cached = localStorage.getItem('studycloud_cached_user_storage');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed) {
+        if (typeof parsed.welcomeStorage?.totalMb === 'number') welcomeMb = parsed.welcomeStorage.totalMb;
+        if (typeof parsed.paidStorage?.totalMb === 'number') paidMb = parsed.paidStorage.totalMb;
+        if (typeof parsed.bonusStorage?.totalMb === 'number') bonusMb = parsed.bonusStorage.totalMb;
+      }
+    }
+  } catch {}
+
   const totalAllowedMb = welcomeMb + paidMb + bonusMb;
 
   const usedFilesMb = Number((localFilesBytes / (1024 * 1024)).toFixed(2));
@@ -2285,25 +2297,25 @@ export function computeFallbackUserStorage(userId: string): UserStorageQuotaDeta
 
   return {
     userId,
-    planName: 'Plan Étudiant Gratuit',
+    planName: paidMb > 0 ? 'Plan Avancé' : 'Plan Étudiant Gratuit',
     welcomeStorage: {
       totalMb: welcomeMb,
-      filesMb: 25,
-      dataMb: 5,
-      formatted: `${welcomeMb} Mo`,
+      filesMb: Math.round(welcomeMb / 3),
+      dataMb: Math.round((welcomeMb * 2) / 3),
+      formatted: welcomeMb >= 1024 ? `${(welcomeMb / 1024).toFixed(2)} Go` : `${welcomeMb} Mo`,
     },
     paidStorage: {
       totalMb: paidMb,
-      filesMb: 0,
-      dataMb: 0,
-      formatted: `${paidMb} Mo`,
+      filesMb: Math.round(paidMb / 2),
+      dataMb: Math.round(paidMb / 2),
+      formatted: paidMb >= 1024 ? `${(paidMb / 1024).toFixed(2)} Go` : `${paidMb} Mo`,
     },
     bonusStorage: {
       totalMb: bonusMb,
       formatted: `${bonusMb} Mo`,
     },
     totalAllowedMb,
-    totalAllowedFormatted: `${totalAllowedMb} Mo`,
+    totalAllowedFormatted: totalAllowedMb >= 1024 ? `${(totalAllowedMb / 1024).toFixed(2)} Go` : `${totalAllowedMb} Mo`,
     totalUsedBytes: localFilesBytes + dataBytes,
     totalUsedMb,
     totalUsedFormatted: formatSize(localFilesBytes + dataBytes),
@@ -2369,13 +2381,15 @@ export async function getUserStorageQuota(userId?: string): Promise<{
     if (res.ok) {
       const json = await res.json().catch(() => null);
       if (json && json.success && json.data) {
+        try {
+          localStorage.setItem('studycloud_cached_user_storage', JSON.stringify(json.data));
+        } catch {}
         return { success: true, data: json.data };
       }
     }
 
-    // Essai sur les workers miroirs
+    // Essai sur le worker miroir de production API (l'interface reste découplée du tableau de bord admin)
     const fallbackUrls = [
-      `https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev/api/user/storage?userId=${encodeURIComponent(currentUserId)}`,
       `https://studycloud-worker.delmaskouassidibi.workers.dev/api/user/storage?userId=${encodeURIComponent(currentUserId)}`,
     ];
 
@@ -2391,6 +2405,9 @@ export async function getUserStorageQuota(userId?: string): Promise<{
         if (fbRes.ok) {
           const fbJson = await fbRes.json().catch(() => null);
           if (fbJson && fbJson.success && fbJson.data) {
+            try {
+              localStorage.setItem('studycloud_cached_user_storage', JSON.stringify(fbJson.data));
+            } catch {}
             return { success: true, data: fbJson.data };
           }
         }

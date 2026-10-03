@@ -197,9 +197,9 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
   };
 
   // Valeurs calculées
-  const welcomeMb = storageData?.welcomeStorage.totalMb ?? 30;
+  const welcomeMb = storageData?.welcomeStorage.totalMb ?? 100;
   const paidMb = storageData?.paidStorage.totalMb ?? 0;
-  const totalAllowedMb = storageData?.totalAllowedMb ?? 30;
+  const totalAllowedMb = storageData?.totalAllowedMb ?? 100;
   const totalUsedMb = storageData?.totalUsedMb ?? 0;
   const totalPercentage = storageData?.totalPercentage ?? 0;
   const filesStorage = storageData?.filesStorage;

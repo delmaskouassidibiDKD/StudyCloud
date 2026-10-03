@@ -10,13 +10,15 @@
 // - Formulaire interactif pour modifier le stockage de bienvenue et payant de chaque utilisateur avec sauvegarde D1 en temps réel.
 // ============================================================================
 
-function formatBytes(bytes, decimals = 1) {
+function formatBytes(bytes, decimals = 2) {
   if (!bytes || bytes <= 0 || isNaN(bytes)) return '0 Octets';
   const k = 1024;
-  const dm = decimals < 0 ? 0 : decimals;
   const sizes = ['Octets', 'Ko', 'Mo', 'Go', 'To'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  if (i < 0) return '0 Octets';
+  const dm = (i >= 2) ? Math.max(decimals, 2) : (i === 1 ? Math.max(decimals, 1) : 0);
+  const val = parseFloat((bytes / Math.pow(k, i)).toFixed(dm));
+  return val + ' ' + sizes[i];
 }
 
 function corsHeaders(origin = '*') {
@@ -5104,14 +5106,14 @@ function renderDashboardHtml(data) {
     let activeHistoryUserId = null;
     let activeHistoryTab = 'requests';
 
-    function formatBytes(bytes, decimals = 1) {
+    function formatBytes(bytes, decimals = 2) {
       if (!bytes || bytes <= 0 || isNaN(bytes)) return '0 Octets';
       const k = 1024;
-      const dm = decimals < 0 ? 0 : decimals;
       const sizes = ['Octets', 'Ko', 'Mo', 'Go', 'To'];
       const i = Math.floor(Math.log(bytes) / Math.log(k));
       if (i < 0) return '0 Octets';
-      const val = parseFloat((bytes / Math.pow(k, i)).toFixed(dm));
+      const prec = (i >= 2) ? Math.max(decimals, 2) : (i === 1 ? Math.max(decimals, 1) : 0);
+      const val = parseFloat((bytes / Math.pow(k, i)).toFixed(prec));
       return val + ' ' + sizes[i];
     }
 
@@ -5424,7 +5426,7 @@ function renderDashboardHtml(data) {
               </div>
             </div>
             <div class="text-right shrink-0 font-mono text-[11px]">
-              <div class="font-bold text-orange-400 text-xs">\${s.original ? s.original.totalFormatted : (s.net ? s.net.totalFormatted : s.totalFormatted)}</div>
+              <div class="font-bold text-orange-400 text-xs">\${formatBytes((Number(s.r2 ? s.r2.totalBytes : 0) + Number(s.d1 ? s.d1.totalBytes : 0)) || s.totalBytes || 0, 2)}</div>
               <div class="text-[9px] text-slate-400 flex items-center justify-end gap-1">
                 <span>Quota: \${q.totalAllowedFormatted}</span>
                 \${s.compression && s.compression.ratio > 0 ? \`<span class="px-1 rounded bg-emerald-500/20 text-emerald-400 font-mono text-[8px]" title="Gain compression R2">-\${s.compression.ratio}%</span>\` : ''}
@@ -5439,7 +5441,6 @@ function renderDashboardHtml(data) {
       renderUsersLeftList(document.getElementById('users-search-left').value);
     }
 
-    
     async function recalculateUserStorage(userId) {
       if (!userId) return;
       const btn = document.getElementById('btn-recalc-storage-' + userId);
@@ -5496,19 +5497,27 @@ function renderDashboardHtml(data) {
       const d1 = s.d1;
 
       const isNet = userStorageViewMode === 'net';
-      const displayR2Formatted = isNet ? (s.net ? s.net.r2Formatted : r2.totalFormatted) : (s.gross ? s.gross.r2Formatted : r2.totalFormatted);
       const displayR2Bytes = isNet ? (s.net ? s.net.r2Bytes : r2.totalBytes) : (s.gross ? s.gross.r2Bytes : r2.totalBytes);
-      const displayD1Formatted = isNet ? (s.net ? s.net.d1Formatted : d1.totalFormatted) : (s.gross ? s.gross.d1Formatted : d1.totalFormatted);
       const displayD1Bytes = isNet ? (s.net ? s.net.d1Bytes : d1.totalBytes) : (s.gross ? s.gross.d1Bytes : d1.totalBytes);
       const displayD1Rows = isNet ? (s.net ? s.net.d1Rows : d1.totalRows) : (s.gross ? s.gross.d1Rows : d1.totalRows);
-      const displayTotalFormatted = isNet ? (s.net ? s.net.totalFormatted : s.totalFormatted) : (s.gross ? s.gross.totalFormatted : s.totalFormatted);
-      const displayUsagePercentage = isNet ? (s.net ? s.net.usagePercentage : s.usagePercentage) : (s.gross ? s.gross.usagePercentage : s.usagePercentage);
+
+      // Calcul explicite et garanti de la somme R2 (Fichiers) + D1 (Données SQLite)
+      const totalFactureBytes = (Number(displayR2Bytes) || 0) + (Number(displayD1Bytes) || 0);
+      const displayTotalFormatted = formatBytes(totalFactureBytes, 2);
+      const displayR2Formatted = formatBytes(displayR2Bytes, 2);
+      const displayD1Formatted = formatBytes(displayD1Bytes, 1);
+
+      const totalAllowedBytes = (q.totalAllowedMb || 100) * 1024 * 1024;
+      const displayUsagePercentage = totalAllowedBytes > 0 
+        ? Math.min(100, parseFloat(((totalFactureBytes / totalAllowedBytes) * 100).toFixed(1)))
+        : 0;
+
       const exempted = s.exempted || { totalFormatted: '0 Octets', totalBytes: 0, r2Formatted: '0 Octets', d1Formatted: '0 Octets', exemptD1Rows: 0 };
       const totalUserR2Files = r2 && r2.folders ? Object.values(r2.folders).reduce((acc, f) => acc + (f?.count || 0), 0) : 0;
       const totalUserD1RowsCalculated = d1 && d1.tables ? Object.values(d1.tables).reduce((acc, t) => acc + (t?.count || 0), 0) : 0;
       const finalD1Rows = Math.max(displayD1Rows, totalUserD1RowsCalculated);
 
-      panel.innerHTML = \`
+      panel.innerHTML = `
         <!-- En-tête profil complet listé verticalement ligne par ligne -->
         <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-800">
           <div class="flex items-start gap-3.5">
@@ -5628,7 +5637,7 @@ function renderDashboardHtml(data) {
         <div class="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 flex-wrap">
           <div class="flex items-center gap-2">
             <span class="text-xs font-bold text-slate-200">📊 Audit D1 / R2 (\${tablesMeta.length} Tables) :</span>
-            <span class="text-[11px] px-2 py-0.5 rounded-md bg-orange-500/20 text-orange-400 font-mono font-bold">\${s.original ? s.original.totalFormatted : displayTotalFormatted} facturés</span>
+            <span class="text-[11px] px-2 py-0.5 rounded-md bg-orange-500/20 text-orange-400 font-mono font-bold">\${displayTotalFormatted} facturés</span>
           </div>
           <button 
             onclick="recalculateUserStorage('\${u.id}')" 
@@ -5645,10 +5654,10 @@ function renderDashboardHtml(data) {
           <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 border-l-4 border-l-amber-500 shadow-sm">
             <div class="flex items-center justify-between">
               <span class="text-[10px] uppercase font-bold text-slate-400">Stockage Facturé</span>
-              <span class="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold">Quota</span>
+              <span class="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold">R2 + D1</span>
             </div>
-            <div class="text-lg font-black text-amber-400 mt-1">\${s.original ? s.original.totalFormatted : displayTotalFormatted}</div>
-            <div class="text-[10px] text-slate-400 font-medium truncate">Volume brut non compressé</div>
+            <div class="text-lg font-black text-amber-400 mt-1">\${displayTotalFormatted}</div>
+            <div class="text-[10px] text-slate-400 font-medium truncate" title="Somme R2 (\${displayR2Formatted}) + D1 (\${displayD1Formatted})">Somme R2 + D1</div>
           </div>
 
           <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 border-l-4 border-l-blue-500 shadow-sm">
@@ -5656,7 +5665,7 @@ function renderDashboardHtml(data) {
               <span class="text-[10px] uppercase font-bold text-slate-400">Fichiers Physiques R2</span>
               <span class="text-[9px] px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 font-bold">R2 Réel</span>
             </div>
-            <div class="text-lg font-black text-blue-400 mt-1">\${s.r2 ? s.r2.totalFormatted : displayR2Formatted}</div>
+            <div class="text-lg font-black text-blue-400 mt-1">\${displayR2Formatted}</div>
             <div class="text-[10px] text-slate-400 font-medium truncate">\${(r2.folders['user-files/']?.count || 0) + (r2.folders['ai-studies/']?.count || 0) + (r2.folders['products/images/']?.count || 0)} fichiers hébergés</div>
           </div>
 
@@ -5665,8 +5674,8 @@ function renderDashboardHtml(data) {
               <span class="text-[10px] uppercase font-bold text-slate-400">Base SQLite D1</span>
               <span class="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">D1 Données</span>
             </div>
-            <div class="text-lg font-black text-emerald-400 mt-1">\${s.d1 ? s.d1.totalFormatted : displayD1Formatted}</div>
-            <div class="text-[10px] text-slate-400 font-medium truncate">\${displayD1Rows} lignes SQL enregistrées</div>
+            <div class="text-lg font-black text-emerald-400 mt-1">\${displayD1Formatted}</div>
+            <div class="text-[10px] text-slate-400 font-medium truncate">\${finalD1Rows} lignes SQL enregistrées</div>
           </div>
 
           <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 border-l-4 border-l-purple-500 shadow-sm">
@@ -5691,7 +5700,7 @@ function renderDashboardHtml(data) {
             </div>
             <div class="text-[10px] text-slate-400 flex items-center justify-between pt-0.5">
               <span>0 Mo</span>
-              <span class="text-emerald-400 font-medium">Partage libre • Documents et base puisent dans le même quota sans plafond individuel</span>
+              <span class="text-emerald-400 font-medium">Partage libre • Documents (\${displayR2Formatted}) + Base (\${displayD1Formatted}) = \${displayTotalFormatted}</span>
               <span>\${q.totalAllowedFormatted}</span>
             </div>
           </div>

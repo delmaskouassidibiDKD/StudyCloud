@@ -128,11 +128,13 @@ function errorResponse(error: string, status = 400, origin = '*') {
 }
 
 function formatBytes(bytes: number): string {
-  if (!bytes || bytes === 0) return '0 o';
+  if (!bytes || bytes === 0 || isNaN(bytes)) return '0 o';
   const k = 1024;
-  const sizes = ['o', 'Ko', 'Mo', 'Go'];
+  const sizes = ['o', 'Ko', 'Mo', 'Go', 'To'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  if (i < 0) return '0 o';
+  const dm = (i >= 2) ? 2 : (i === 1 ? 1 : 0);
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + (sizes[i] || 'o');
 }
 
 function escapeHtml(str: any): string {
@@ -3256,6 +3258,73 @@ async function ensureCloudMediaTables(db: any) {
         compression_ratio REAL DEFAULT 0.0,
         total_files_count INTEGER DEFAULT 0,
         breakdown_json TEXT DEFAULT '{}',
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    // 11b. Configuration globale du stockage (storage_global_config)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS storage_global_config (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        default_welcome_total_mb REAL DEFAULT 100.0,
+        default_welcome_r2_mb REAL DEFAULT 33.0,
+        default_welcome_d1_mb REAL DEFAULT 67.0,
+        welcome_storage_mb INTEGER DEFAULT 100,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    try { await db.prepare("ALTER TABLE storage_global_config ADD COLUMN default_welcome_total_mb REAL DEFAULT 100.0").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE storage_global_config ADD COLUMN welcome_storage_mb INTEGER DEFAULT 100").run(); } catch (e) {}
+
+    // 11c. Quotas individuels par utilisateur (user_storage_quotas)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_storage_quotas (
+        user_id TEXT PRIMARY KEY,
+        welcome_total_mb REAL DEFAULT 100.0,
+        welcome_r2_mb REAL DEFAULT 33.0,
+        welcome_d1_mb REAL DEFAULT 67.0,
+        paid_total_mb REAL DEFAULT 0.0,
+        paid_r2_mb REAL DEFAULT 0.0,
+        paid_d1_mb REAL DEFAULT 0.0,
+        bonus_total_mb REAL DEFAULT 0.0,
+        bonus_r2_mb REAL DEFAULT 0.0,
+        bonus_d1_mb REAL DEFAULT 0.0,
+        plan_name TEXT DEFAULT 'gratuit',
+        is_unlimited INTEGER DEFAULT 0,
+        notes TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    try { await db.prepare("ALTER TABLE user_storage_quotas ADD COLUMN welcome_total_mb REAL DEFAULT 100.0").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_storage_quotas ADD COLUMN paid_total_mb REAL DEFAULT 0.0").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_storage_quotas ADD COLUMN bonus_total_mb REAL DEFAULT 0.0").run(); } catch (e) {}
+
+    // 11d. Demandes d'extension et achats de stockage (storage_upgrade_requests)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS storage_upgrade_requests (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        user_name TEXT,
+        user_phone TEXT,
+        user_email TEXT,
+        pack_id TEXT,
+        pack_name TEXT,
+        additional_mb INTEGER DEFAULT 0,
+        additional_words INTEGER DEFAULT 0,
+        price_paid REAL DEFAULT 0,
+        price_display TEXT,
+        currency TEXT DEFAULT 'FCFA',
+        payment_method TEXT,
+        status TEXT DEFAULT 'pending',
+        receipt_r2_key TEXT,
+        confirmed_start_date TEXT,
+        confirmed_end_date TEXT,
+        grace_period_days INTEGER DEFAULT 5,
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run().catch(() => {});
@@ -14154,7 +14223,7 @@ export default {
               data: { count: 0, bytes: 0, formatted: '0 o' },
               totalUsedBytes: 0,
               totalUsedMb: 0,
-              maxAllowedMb: 30,
+              maxAllowedMb: 100,
               usagePercent: 0,
               purchasedMb: 0,
               purchasedWords: 0
@@ -14162,11 +14231,11 @@ export default {
             data: {
               userId: userId || 'default-user',
               planName: 'Plan Étudiant Gratuit',
-              welcomeStorage: { totalMb: 30, filesMb: 25, dataMb: 5, formatted: '30 Mo' },
+              welcomeStorage: { totalMb: 100, filesMb: 33, dataMb: 67, formatted: '100 Mo' },
               paidStorage: { totalMb: 0, filesMb: 0, dataMb: 0, formatted: '0 Mo' },
               bonusStorage: { totalMb: 0, formatted: '0 Mo' },
-              totalAllowedMb: 30,
-              totalAllowedFormatted: '30 Mo',
+              totalAllowedMb: 100,
+              totalAllowedFormatted: '100 Mo',
               totalUsedBytes: 0,
               totalUsedMb: 0,
               totalUsedFormatted: '0 o',
@@ -14178,8 +14247,8 @@ export default {
                 usedBytes: 0,
                 usedMb: 0,
                 usedFormatted: '0 o',
-                allowedMb: 30,
-                allowedFormatted: '30 Mo',
+                allowedMb: 100,
+                allowedFormatted: '100 Mo',
                 percentage: 0,
                 freeNote: 'Partage libre / Sur quota global'
               },
@@ -14190,8 +14259,8 @@ export default {
                 usedBytes: 0,
                 usedMb: 0,
                 usedFormatted: '0 o',
-                allowedMb: 30,
-                allowedFormatted: '30 Mo',
+                allowedMb: 100,
+                allowedFormatted: '100 Mo',
                 percentage: 0,
                 freeNote: 'Partage libre / Sur quota global'
               },
@@ -14208,22 +14277,71 @@ export default {
           }, 200, origin);
         }
 
+        let globalWelcomeMb = 100.0;
+        let welcomeMb = 100.0;
+        let paidMb = 0;
+        let bonusMb = 0;
+        let purchasedWords = 0;
+        let planName = 'Plan Étudiant Gratuit';
         let totalFilesCount = 0;
         let totalFilesBytes = 0;
         let totalDataCount = 0;
         let totalDataBytes = 0;
-        let purchasedMb = 0;
-        let purchasedWords = 0;
         let telemetryData: any = null;
 
         if (env.DB) {
           try {
             await ensureCloudMediaTables(env.DB);
-            // CORRECTION DU POINT CRITIQUE DÉCOUVERT :
-            // On appelle recalculateAndSaveUserStorage qui scanne en temps réel
-            // 100% des tables D1 (y compris fiches, wallpapers, compressions, récents masqués, partages, commandes)
-            // et 100% des buckets/fichiers R2 (médias, miniatures, fonds d'écran, images de produits).
-            // Cela alimente également la table maîtresse user_storage_usage pour une facturation exacte !
+
+            // 1. Configuration globale de bienvenue
+            const globalCfg: any = await env.DB.prepare(
+              "SELECT default_welcome_total_mb, welcome_storage_mb FROM storage_global_config WHERE id IN ('global', 'default') ORDER BY updated_at DESC LIMIT 1"
+            ).first().catch(() => null);
+            if (globalCfg) {
+              globalWelcomeMb = Number(globalCfg.default_welcome_total_mb ?? globalCfg.welcome_storage_mb ?? 100.0);
+            }
+            welcomeMb = globalWelcomeMb;
+
+            // 2. Quota individuel personnalisé de l'utilisateur
+            const quotaRow: any = await env.DB.prepare(
+              "SELECT * FROM user_storage_quotas WHERE user_id = ?"
+            ).bind(userId).first().catch(() => null);
+
+            if (quotaRow) {
+              if (quotaRow.welcome_total_mb !== null && quotaRow.welcome_total_mb !== undefined) {
+                welcomeMb = Number(quotaRow.welcome_total_mb);
+              }
+              paidMb = Number(quotaRow.paid_total_mb || 0);
+              bonusMb = Number(quotaRow.bonus_total_mb || 0);
+              if (quotaRow.plan_name && quotaRow.plan_name !== 'gratuit') {
+                planName = quotaRow.plan_name;
+              }
+            }
+
+            // 3. Demandes d'extension approuvées
+            try {
+              const reqs: any = await env.DB.prepare(
+                "SELECT COALESCE(SUM(additional_mb), 0) as totalMb, COALESCE(SUM(additional_words), 0) as totalWords FROM storage_upgrade_requests WHERE user_id = ? AND status IN ('active', 'approved', 'completed')"
+              ).bind(userId).first();
+              if (reqs && reqs.totalMb) {
+                const reqMb = Number(reqs.totalMb);
+                if (reqMb > paidMb) {
+                  paidMb = reqMb;
+                }
+                purchasedWords += Number(reqs.totalWords || 0);
+              }
+            } catch (e) {}
+
+            try {
+              const aiCred: any = await env.DB.prepare(
+                'SELECT remaining_credits FROM user_ai_credits WHERE user_id = ?'
+              ).bind(userId).first();
+              if (aiCred) {
+                purchasedWords += Number(aiCred.remaining_credits || 0);
+              }
+            } catch (e) {}
+
+            // 4. Recalcul réel R2 + D1
             const storageUsage: any = await recalculateAndSaveUserStorage(env.DB, userId);
             if (storageUsage) {
               totalFilesCount = Number(storageUsage.totalFiles || 0);
@@ -14248,32 +14366,16 @@ export default {
               totalDataCount = Number(matieresStat?.count || 0) + Number(notesStat?.count || 0);
               totalDataBytes = totalDataCount * 2048;
             }
-
-            try {
-              const reqs: any = await env.DB.prepare(
-                'SELECT COALESCE(SUM(additional_mb), 0) as totalMb, COALESCE(SUM(additional_words), 0) as totalWords FROM storage_upgrade_requests WHERE user_id = ? AND status = "active"'
-              ).bind(userId).first();
-              if (reqs) {
-                purchasedMb = Number(reqs.totalMb || 0);
-                purchasedWords = Number(reqs.totalWords || 0);
-              }
-            } catch (e) {}
-
-            try {
-              const aiCred: any = await env.DB.prepare(
-                'SELECT remaining_credits FROM user_ai_credits WHERE user_id = ?'
-              ).bind(userId).first();
-              if (aiCred) {
-                purchasedWords += Number(aiCred.remaining_credits || 0);
-              }
-            } catch (e) {}
           } catch (dbErr) {
             console.warn('[Storage Route] Erreur lecture DB:', dbErr);
           }
         }
 
-        const welcomeMb = 30;
-        const totalAllowedMb = welcomeMb + purchasedMb;
+        if (paidMb > 0 && (!planName || planName === 'Plan Étudiant Gratuit' || planName === 'gratuit')) {
+          planName = 'Plan Avancé';
+        }
+
+        const totalAllowedMb = welcomeMb + paidMb + bonusMb;
         const usedFilesMb = Number((totalFilesBytes / (1024 * 1024)).toFixed(2));
         const usedDataMb = Number((totalDataBytes / (1024 * 1024)).toFixed(2));
         const totalUsedMb = Number((usedFilesMb + usedDataMb).toFixed(2));
@@ -14287,28 +14389,28 @@ export default {
 
         const resultData = {
           userId,
-          planName: purchasedMb > 0 ? 'Plan Avancé' : 'Plan Étudiant Gratuit',
+          planName,
           welcomeStorage: {
             totalMb: welcomeMb,
-            filesMb: 25,
-            dataMb: 5,
-            formatted: `${welcomeMb} Mo`
+            filesMb: Math.round(welcomeMb / 3),
+            dataMb: Math.round(welcomeMb * 2 / 3),
+            formatted: welcomeMb >= 1024 ? `${(welcomeMb / 1024).toFixed(2)} Go` : `${welcomeMb} Mo`
           },
           paidStorage: {
-            totalMb: purchasedMb,
-            filesMb: purchasedMb,
-            dataMb: 0,
-            formatted: `${purchasedMb} Mo`
+            totalMb: paidMb,
+            filesMb: Math.round(paidMb / 2),
+            dataMb: Math.round(paidMb / 2),
+            formatted: paidMb >= 1024 ? `${(paidMb / 1024).toFixed(2)} Go` : `${paidMb} Mo`
           },
           bonusStorage: {
-            totalMb: 0,
-            formatted: '0 Mo'
+            totalMb: bonusMb,
+            formatted: `${bonusMb} Mo`
           },
           totalAllowedMb,
-          totalAllowedFormatted: `${totalAllowedMb} Mo`,
-          totalUsedBytes: totalFilesBytes + totalDataBytes,
+          totalAllowedFormatted: totalAllowedMb >= 1024 ? `${(totalAllowedMb / 1024).toFixed(2)} Go` : `${totalAllowedMb} Mo`,
+          totalUsedBytes: totalActuallyConsumedBytes,
           totalUsedMb,
-          totalUsedFormatted: formatSize(totalFilesBytes + totalDataBytes),
+          totalUsedFormatted: formatSize(totalActuallyConsumedBytes),
           totalPercentage,
           filesStorage: {
             name: 'Stockage Documents & Fichiers',
@@ -14318,8 +14420,8 @@ export default {
             usedMb: usedFilesMb,
             usedFormatted: formatSize(totalFilesBytes),
             allowedMb: totalAllowedMb,
-            allowedFormatted: `${totalAllowedMb} Mo`,
-            percentage: Math.min(100, Math.round((usedFilesMb / totalAllowedMb) * 100)),
+            allowedFormatted: totalAllowedMb >= 1024 ? `${(totalAllowedMb / 1024).toFixed(2)} Go` : `${totalAllowedMb} Mo`,
+            percentage: totalAllowedMb > 0 ? Math.min(100, Math.round((usedFilesMb / totalAllowedMb) * 100)) : 0,
             freeNote: 'Partage libre / Sur quota global'
           },
           dataStorage: {
@@ -14330,8 +14432,8 @@ export default {
             usedMb: usedDataMb,
             usedFormatted: formatSize(totalDataBytes),
             allowedMb: totalAllowedMb,
-            allowedFormatted: `${totalAllowedMb} Mo`,
-            percentage: Math.min(100, Math.round((usedDataMb / totalAllowedMb) * 100)),
+            allowedFormatted: totalAllowedMb >= 1024 ? `${(totalAllowedMb / 1024).toFixed(2)} Go` : `${totalAllowedMb} Mo`,
+            percentage: totalAllowedMb > 0 ? Math.min(100, Math.round((usedDataMb / totalAllowedMb) * 100)) : 0,
             freeNote: 'Partage libre / Sur quota global'
           },
           wordsUsage: {
@@ -14403,6 +14505,144 @@ export default {
           } catch (e) {}
         }
         return jsonResponse({ success: true, requests: list }, 200, origin);
+      }
+
+      // ----------------------------------------------------------------------
+      // Synchronisation directe des Quotas dans D1 depuis le Tableau de bord
+      // ----------------------------------------------------------------------
+      if (path === '/api/storage/update-user-quota' && method === 'POST') {
+        const body: any = await request.json().catch(() => ({}));
+        const userId = body.userId;
+        if (!userId) return errorResponse('userId requis', 400, origin);
+        const wTotal = Number(body.welcomeTotalMb ?? ((Number(body.welcomeR2Mb || 33)) + (Number(body.welcomeD1Mb || 67))));
+        const wR2 = Number(body.welcomeR2Mb ?? Math.round(wTotal / 3));
+        const wD1 = Number(body.welcomeD1Mb ?? Math.round((wTotal * 2) / 3));
+        const pTotal = Number(body.paidTotalMb ?? ((Number(body.paidR2Mb || 0)) + (Number(body.paidD1Mb || 0))));
+        const pR2 = Number(body.paidR2Mb ?? Math.round(pTotal / 2));
+        const pD1 = Number(body.paidD1Mb ?? Math.round(pTotal / 2));
+        const planName = body.planName || (pTotal > 0 ? 'Plan Avancé' : 'Plan Étudiant Gratuit');
+
+        if (env.DB) {
+          await ensureCloudMediaTables(env.DB);
+          await env.DB.prepare(`
+            INSERT INTO user_storage_quotas (user_id, welcome_total_mb, welcome_r2_mb, welcome_d1_mb, paid_total_mb, paid_r2_mb, paid_d1_mb, plan_name, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET
+              welcome_total_mb = excluded.welcome_total_mb,
+              welcome_r2_mb = excluded.welcome_r2_mb,
+              welcome_d1_mb = excluded.welcome_d1_mb,
+              paid_total_mb = excluded.paid_total_mb,
+              paid_r2_mb = excluded.paid_r2_mb,
+              paid_d1_mb = excluded.paid_d1_mb,
+              plan_name = excluded.plan_name,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(userId, wTotal, wR2, wD1, pTotal, pR2, pD1, planName).run().catch(() => {});
+        }
+
+        return jsonResponse({
+          success: true,
+          userId,
+          welcomeTotalMb: wTotal,
+          paidTotalMb: pTotal,
+          totalMb: wTotal + pTotal
+        }, 200, origin);
+      }
+
+      if (path === '/api/storage/update-welcome-and-apply-all' && method === 'POST') {
+        const body: any = await request.json().catch(() => ({}));
+        const defTotal = Number(body.welcomeTotalMb ?? 100.0);
+        if (isNaN(defTotal) || defTotal < 0) {
+          return errorResponse('Montant invalide', 400, origin);
+        }
+        const defR2 = Math.round(defTotal / 3);
+        const defD1 = Math.round((defTotal * 2) / 3);
+
+        if (env.DB) {
+          await ensureCloudMediaTables(env.DB);
+          await env.DB.prepare(`
+            INSERT INTO storage_global_config (id, default_welcome_total_mb, default_welcome_r2_mb, default_welcome_d1_mb, welcome_storage_mb, updated_at)
+            VALUES ('default', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              default_welcome_total_mb = excluded.default_welcome_total_mb,
+              default_welcome_r2_mb = excluded.default_welcome_r2_mb,
+              default_welcome_d1_mb = excluded.default_welcome_d1_mb,
+              welcome_storage_mb = excluded.welcome_storage_mb,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(defTotal, defR2, defD1, Math.round(defTotal)).run().catch(() => {});
+
+          await env.DB.prepare(`
+            INSERT INTO storage_global_config (id, default_welcome_total_mb, default_welcome_r2_mb, default_welcome_d1_mb, welcome_storage_mb, updated_at)
+            VALUES ('global', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              default_welcome_total_mb = excluded.default_welcome_total_mb,
+              default_welcome_r2_mb = excluded.default_welcome_r2_mb,
+              default_welcome_d1_mb = excluded.default_welcome_d1_mb,
+              welcome_storage_mb = excluded.welcome_storage_mb,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(defTotal, defR2, defD1, Math.round(defTotal)).run().catch(() => {});
+
+          await env.DB.prepare(`
+            UPDATE user_storage_quotas
+            SET welcome_total_mb = ?,
+                welcome_r2_mb = ?,
+                welcome_d1_mb = ?,
+                updated_at = CURRENT_TIMESTAMP
+          `).bind(defTotal, defR2, defD1).run().catch(() => {});
+        }
+
+        return jsonResponse({
+          success: true,
+          welcomeTotalMb: defTotal,
+          welcomeR2Mb: defR2,
+          welcomeD1Mb: defD1,
+          message: "Stockage de bienvenue appliqué à tous les utilisateurs"
+        }, 200, origin);
+      }
+
+      if (path === '/api/storage-requests/approve' && method === 'POST') {
+        const body: any = await request.json().catch(() => ({}));
+        const requestId = body.requestId;
+        if (!requestId) return errorResponse('requestId requis', 400, origin);
+
+        if (env.DB) {
+          await ensureCloudMediaTables(env.DB);
+          const reqRow: any = await env.DB.prepare("SELECT * FROM storage_upgrade_requests WHERE id = ?").bind(requestId).first().catch(() => null);
+          if (!reqRow) return errorResponse('Demande introuvable', 404, origin);
+
+          const userId = reqRow.user_id;
+          const addMb = Number(body.allocatedMb !== undefined ? body.allocatedMb : (reqRow.additional_mb || 1024));
+          const startDate = body.startDate || new Date().toISOString();
+          const endDate = body.endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+          const gracePeriodDays = Number(body.gracePeriodDays || 5);
+
+          await env.DB.prepare(`
+            UPDATE storage_upgrade_requests 
+            SET status = 'approved', 
+                confirmed_start_date = ?, 
+                confirmed_end_date = ?, 
+                grace_period_days = ?, 
+                updated_at = CURRENT_TIMESTAMP 
+            WHERE id = ?
+          `).bind(startDate, endDate, gracePeriodDays, requestId).run().catch(() => {});
+
+          const currentQuota: any = await env.DB.prepare("SELECT * FROM user_storage_quotas WHERE user_id = ?").bind(userId).first().catch(() => null);
+          const currentPaid = currentQuota ? Number(currentQuota.paid_total_mb || 0) : 0;
+          const wTotal = currentQuota ? Number(currentQuota.welcome_total_mb || 100) : 100;
+          const newPaid = currentPaid + addMb;
+
+          await env.DB.prepare(`
+            INSERT INTO user_storage_quotas (user_id, welcome_total_mb, welcome_r2_mb, welcome_d1_mb, paid_total_mb, paid_r2_mb, paid_d1_mb, plan_name, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'payant', CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET
+              paid_total_mb = excluded.paid_total_mb,
+              paid_r2_mb = excluded.paid_r2_mb,
+              paid_d1_mb = excluded.paid_d1_mb,
+              plan_name = 'payant',
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(userId, wTotal, Math.round(wTotal/3), Math.round(wTotal*2/3), newPaid, Math.round(newPaid/2), Math.round(newPaid/2)).run().catch(() => {});
+        }
+
+        return jsonResponse({ success: true, message: 'Demande approuvée et quota alloué avec succès' }, 200, origin);
       }
 
       // ==============================================================================
