@@ -2936,39 +2936,39 @@ async function ensureCloudMediaTables(db) {
       const defaultAlertRules = [
         {
           pct: 50,
-          subject: "⚠️ Information : 50% de votre stockage StudyCloud consommé",
-          title: "Vous avez atteint 50% de votre espace",
-          body: "Votre compte StudyCloud a atteint la moitié de sa capacité de stockage autorisée. Vous pouvez continuer vos activités confortablement."
+          subject: "ℹ️ Information : Vous avez utilisé 50% de votre stockage StudyCloud",
+          title: "Votre espace de stockage est utilisé à 50%",
+          body: "La moitié de votre capacité de stockage allouée est actuellement utilisée. Vos données et fichiers sont en parfaite sécurité. Si vous prévoyez d'enregistrer des contenus volumineux, vous pouvez augmenter votre capacité à tout moment pour profiter de plus d'espace."
         },
         {
           pct: 75,
-          subject: "⚠️ Rappel : 75% de votre stockage StudyCloud consommé",
-          title: "Attention, 75% de votre stockage est utilisé",
-          body: "Vous approchez du seuil de confort de votre espace personnel. Pensez à vérifier vos fichiers ou à souscrire une extension."
+          subject: "⚠️ Notification : 75% de votre stockage StudyCloud consommé",
+          title: "Attention : 75% de votre espace de stockage est utilisé",
+          body: "Votre espace de stockage approche de sa limite (75% utilisé). Pensez à augmenter votre capacité de stockage dès maintenant afin de continuer à enregistrer vos documents et fichiers sans interruption."
         },
         {
           pct: 85,
-          subject: "🟠 Alerte : 85% de votre stockage StudyCloud consommé",
-          title: "Espace bientôt saturé (85%)",
-          body: "Votre espace personnel StudyCloud est presque plein. Plus que 15% d'espace disponible pour vos cours et devoirs."
+          subject: "🟠 Alerte stockage : 85% de capacité atteinte sur StudyCloud",
+          title: "Espace bientôt saturé : Plus que 15% d'espace libre",
+          body: "Attention, votre espace de stockage est presque plein avec 85% d'utilisation. Pour éviter tout ralentissement ou blocage futur de vos enregistrements et sauvegardes, nous vous conseillons de passer à une formule supérieure pour débloquer plus d'espace."
         },
         {
           pct: 90,
-          subject: "🔴 Alerte urgente : 90% de votre stockage StudyCloud consommé",
-          title: "Alerte saturation : 90% atteint",
-          body: "Votre espace personnel StudyCloud est presque saturé. Augmentez votre espace pour éviter tout blocage futur de vos importations."
+          subject: "🔴 Alerte importante : 90% de votre stockage StudyCloud est consommé",
+          title: "Seuil critique : 90% de votre espace de stockage atteint",
+          body: "Votre stockage atteint un niveau critique de 90%. Afin de garantir la continuité de vos sauvegardes et l'ajout de nouveaux contenus, augmentez votre espace de stockage dès aujourd'hui."
         },
         {
           pct: 95,
-          subject: "🚨 Urgence : 95% de votre stockage StudyCloud saturé",
-          title: "Stockage critique : 95% consommé",
-          body: "Votre espace personnel est sur le point d'être complètement bloqué. Veuillez augmenter votre stockage sans tarder pour continuer vos études."
+          subject: "🚨 Seuil d'urgence : 95% de votre espace de stockage StudyCloud saturé",
+          title: "Stockage presque saturé : 95% consommé",
+          body: "Votre espace de stockage personnel est sur le point d'atteindre sa limite maximale (plus que 5% disponible). Dès saturation à 100%, l'enregistrement de tout nouveau fichier sera temporairement suspendu. Augmentez votre formule de stockage dès maintenant pour profiter de plus d'espace en toute tranquillité."
         },
         {
           pct: 100,
-          subject: "⛔ Blocage immédiat : Votre stockage StudyCloud est à 100%",
-          title: "Stockage 100% plein - Importations bloquées",
-          body: "Votre quota de stockage est entièrement saturé. Tout nouvel enregistrement de fichier sera rejeté jusqu'à extension de votre compte."
+          subject: "⛔ Saturation totale (100%) : Nouveaux ajouts de fichiers bloqués",
+          title: "Stockage 100% saturé — Enregistrements suspendus",
+          body: "Votre quota de stockage est intégralement rempli. L'ensemble de vos fichiers existants reste accessible et parfaitement sécurisé, mais aucun nouveau fichier ne pourra être enregistré. Veuillez augmenter votre espace de stockage pour débloquer immédiatement l'enregistrement de vos données."
         }
       ];
       for (const rule of defaultAlertRules) {
@@ -2977,6 +2977,21 @@ async function ensureCloudMediaTables(db) {
           VALUES (?, 1, ?, ?, ?, 24, 5, 72, 3)
         `).bind(rule.pct, rule.subject, rule.title, rule.body).run().catch(() => {});
       }
+
+      // Migration automatique des anciens textes vers les textes professionnels de stockage
+      try {
+        await db.prepare(`
+          UPDATE storage_alert_rules 
+          SET email_body = 'Votre espace de stockage personnel est sur le point d''atteindre sa limite maximale (plus que 5% disponible). Dès saturation à 100%, l''enregistrement de tout nouveau fichier sera temporairement suspendu. Augmentez votre formule de stockage dès maintenant pour profiter de plus d''espace en toute tranquillité.'
+          WHERE threshold_percent = 95 AND (email_body LIKE '%étude%' OR email_body LIKE '%etude%')
+        `).run().catch(() => {});
+
+        await db.prepare(`
+          UPDATE storage_alert_rules 
+          SET email_body = 'Attention, votre espace de stockage est presque plein avec 85% d''utilisation. Pour éviter tout ralentissement ou blocage futur de vos enregistrements et sauvegardes, nous vous conseillons de passer à une formule supérieure pour débloquer plus d''espace.'
+          WHERE threshold_percent = 85 AND (email_body LIKE '%cours%' OR email_body LIKE '%devoir%')
+        `).run().catch(() => {});
+      } catch (_) {}
     } catch (eAlerts) {
       console.warn("[storage_alert_rules init error]", eAlerts);
     }
@@ -3081,7 +3096,29 @@ async function sendStorageAlertEmail({ resendApiKey, toEmail, userName, threshol
 
   const subject = rule?.email_subject || `⚠️ Alerte Stockage StudyCloud : ${thresholdPercent}% atteint`;
   const title = rule?.email_title || `Votre stockage StudyCloud a atteint ${thresholdPercent}%`;
-  const bodyText = rule?.email_body || `Vous avez consommé ${totalUsedMb} Mo sur ${totalAllowedMb} Mo disponibles.`;
+  const rawBodyText = rule?.email_body || `Vous avez consommé ${totalUsedMb} Mo sur ${totalAllowedMb} Mo disponibles.`;
+  const bodyText = rawBodyText
+    .replace(/pour continuer vos études\.?/gi, "pour profiter de plus d'espace et éviter toute interruption.")
+    .replace(/vos cours et devoirs\.?/gi, "vos documents et fichiers.")
+    .replace(/vos révisions et l'enregistrement de vos fichiers/gi, "l'enregistrement et la sauvegarde de vos fichiers")
+    .replace(/vos documents et cours/gi, "vos documents et fichiers");
+
+  let cleanGreeting = "Bonjour,";
+  if (userName && typeof userName === "string") {
+    const trimmed = userName.trim();
+    const lower = trimmed.toLowerCase();
+    const isGeneric = !trimmed ||
+      lower.includes("admin") ||
+      lower.includes("test") ||
+      lower.includes("étudiant") ||
+      lower.includes("etudiant") ||
+      lower.includes("élève") ||
+      lower.includes("eleve") ||
+      trimmed.includes("@");
+    if (!isGeneric) {
+      cleanGreeting = `Bonjour <strong>${trimmed}</strong>,`;
+    }
+  }
 
   const badgeColor = thresholdPercent >= 95 ? "#DC2626" : thresholdPercent >= 85 ? "#EA580C" : thresholdPercent >= 75 ? "#D97706" : "#2563EB";
 
@@ -3120,7 +3157,7 @@ async function sendStorageAlertEmail({ resendApiKey, toEmail, userName, threshol
               </h2>
 
               <p style="margin:0 0 24px 0;color:#475569;font-size:15px;line-height:1.6;text-align:center;">
-                Bonjour <strong>${userName}</strong>,<br>
+                ${cleanGreeting}<br>
                 ${bodyText}
               </p>
 
@@ -3346,7 +3383,7 @@ async function runStorageAlertsCron(env) {
         const sendRes = await sendStorageAlertEmail({
           resendApiKey: RESEND_API_KEY,
           toEmail: userEmail,
-          userName: u.name || "Étudiant",
+          userName: u.name || "",
           thresholdPercent: activeThreshold,
           totalUsedMb: totalUsedMb.toFixed(2),
           totalAllowedMb,
@@ -13735,7 +13772,7 @@ Lien vers le produit : ${productShareUrl}`;
         const sendRes = await sendStorageAlertEmail({
           resendApiKey: effectiveKey,
           toEmail,
-          userName: body.userName || "Administrateur Test",
+          userName: body.userName || "",
           thresholdPercent: pct,
           totalUsedMb: (100 * pct / 100).toFixed(2),
           totalAllowedMb: 100,

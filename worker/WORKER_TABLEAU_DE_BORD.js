@@ -612,57 +612,57 @@ async function ensureStorageTables(db) {
         const defaultRules = [
           {
             pct: 50,
-            subj: "📊 Votre stockage StudyCloud a atteint 50%",
-            title: "Vous avez utilisé la moitié de votre espace de stockage",
-            body: "Votre consommation de stockage atteint désormais 50%. Vos documents et cours continuent d'être synchronisés en toute sécurité.",
-            interval: 24,
+            subj: "ℹ️ Information : Vous avez utilisé 50% de votre stockage StudyCloud",
+            title: "Votre espace de stockage est utilisé à 50%",
+            body: "La moitié de votre capacité de stockage allouée est actuellement utilisée. Vos données et fichiers sont en parfaite sécurité. Si vous prévoyez d'enregistrer des contenus volumineux, vous pouvez augmenter votre capacité à tout moment pour profiter de plus d'espace.",
+            interval: 48,
             p1: 1,
             p2: 0
           },
           {
             pct: 75,
-            subj: "⚠️ Attention : Votre stockage StudyCloud est rempli à 75%",
-            title: "Votre espace de stockage commence à se saturer (75%)",
-            body: "Il ne vous reste plus qu'un quart de votre quota global disponible. Pensez à faire du tri ou à augmenter votre capacité pour éviter tout blocage.",
-            interval: 24,
-            p1: 1,
+            subj: "⚠️ Notification : 75% de votre stockage StudyCloud consommé",
+            title: "Attention : 75% de votre espace de stockage est utilisé",
+            body: "Votre espace de stockage approche de sa limite (75% utilisé). Pensez à augmenter votre capacité de stockage dès maintenant afin de continuer à enregistrer vos documents et fichiers sans interruption.",
+            interval: 48,
+            p1: 2,
             p2: 0
           },
           {
             pct: 85,
-            subj: "🚨 Alerte importante : Votre stockage StudyCloud atteint 85%",
-            title: "Seuil critique proche : 85% de stockage consommé",
-            body: "Attention, votre espace de stockage approche de sa limite maximale. Nous vous recommandons d'augmenter votre forfait dès maintenant.",
+            subj: "🟠 Alerte stockage : 85% de capacité atteinte sur StudyCloud",
+            title: "Espace bientôt saturé : Plus que 15% d'espace libre",
+            body: "Attention, votre espace de stockage est presque plein avec 85% d'utilisation. Pour éviter tout ralentissement ou blocage futur de vos enregistrements et sauvegardes, nous vous conseillons de passer à une formule supérieure pour débloquer plus d'espace.",
             interval: 24,
-            p1: 1,
+            p1: 2,
             p2: 0
           },
           {
             pct: 90,
-            subj: "⚡ Alerte urgente : 90% de votre espace de stockage utilisé",
-            title: "Plus que 10% d'espace disponible sur StudyCloud",
-            body: "Votre quota est presque plein. À 100%, l'enregistrement de nouveaux fichiers, images et documents sera immédiatement interrompu.",
+            subj: "🔴 Alerte importante : 90% de votre stockage StudyCloud est consommé",
+            title: "Seuil critique : 90% de votre espace de stockage atteint",
+            body: "Votre stockage atteint un niveau critique de 90%. Afin de garantir la continuité de vos sauvegardes et l'ajout de nouveaux contenus, augmentez votre espace de stockage dès aujourd'hui.",
             interval: 24,
-            p1: 1,
+            p1: 3,
             p2: 0
           },
           {
             pct: 95,
-            subj: "🔴 ALERTE CRITIQUE : 95% de saturation de votre stockage StudyCloud",
-            title: "Saturation imminente (95%) - Risque de blocage d'importation",
-            body: "Votre stockage est plein à 95%. Pour garantir la continuité de vos révisions et l'enregistrement de vos fichiers, passez à la formule supérieure.",
-            interval: 24,
-            p1: 5,
-            p2: 3
+            subj: "🚨 Seuil d'urgence : 95% de votre espace de stockage StudyCloud saturé",
+            title: "Stockage presque saturé : 95% consommé",
+            body: "Votre espace de stockage personnel est sur le point d'atteindre sa limite maximale (plus que 5% disponible). Dès saturation à 100%, l'enregistrement de tout nouveau fichier sera temporairement suspendu. Augmentez votre formule de stockage dès maintenant pour profiter de plus d'espace en toute tranquillité.",
+            interval: 12,
+            p1: 3,
+            p2: 0
           },
           {
             pct: 100,
-            subj: "⛔ BLOCAGE IMMINENT : Votre stockage StudyCloud est à 100% (Plein)",
-            title: "Stockage 100% saturé : Nouveaux imports bloqués",
-            body: "Votre quota de stockage est intégralement utilisé. Tout nouvel import ou sauvegarde de fichier est rejeté jusqu'à libération d'espace ou surclassement.",
-            interval: 24,
+            subj: "⛔ Saturation totale (100%) : Nouveaux ajouts de fichiers bloqués",
+            title: "Stockage 100% saturé — Enregistrements suspendus",
+            body: "Votre quota de stockage est intégralement rempli. L'ensemble de vos fichiers existants reste accessible et parfaitement sécurisé, mais aucun nouveau fichier ne pourra être enregistré. Veuillez augmenter votre espace de stockage pour débloquer immédiatement l'enregistrement de vos données.",
+            interval: 12,
             p1: 5,
-            p2: 3
+            p2: 0
           }
         ];
 
@@ -673,6 +673,27 @@ async function ensureStorageTables(db) {
           `).bind(r.pct, r.subj, r.title, r.body, r.interval, r.p1, r.p2).run().catch(() => {});
         }
       }
+
+      // Migration automatique des anciens textes vers les textes professionnels de stockage
+      try {
+        await db.prepare(`
+          UPDATE storage_alert_rules 
+          SET email_body = 'Votre espace de stockage personnel est sur le point d''atteindre sa limite maximale (plus que 5% disponible). Dès saturation à 100%, l''enregistrement de tout nouveau fichier sera temporairement suspendu. Augmentez votre formule de stockage dès maintenant pour profiter de plus d''espace en toute tranquillité.'
+          WHERE threshold_percent = 95 AND (email_body LIKE '%étude%' OR email_body LIKE '%etude%' OR email_body LIKE '%révision%' OR email_body LIKE '%revision%')
+        `).run().catch(() => {});
+
+        await db.prepare(`
+          UPDATE storage_alert_rules 
+          SET email_body = 'Attention, votre espace de stockage est presque plein avec 85% d''utilisation. Pour éviter tout ralentissement ou blocage futur de vos enregistrements et sauvegardes, nous vous conseillons de passer à une formule supérieure pour débloquer plus d''espace.'
+          WHERE threshold_percent = 85 AND (email_body LIKE '%cours%' OR email_body LIKE '%devoir%')
+        `).run().catch(() => {});
+
+        await db.prepare(`
+          UPDATE storage_alert_rules 
+          SET email_body = 'La moitié de votre capacité de stockage allouée est actuellement utilisée. Vos données et fichiers sont en parfaite sécurité. Si vous prévoyez d''enregistrer des contenus volumineux, vous pouvez augmenter votre capacité à tout moment pour profiter de plus d''espace.'
+          WHERE threshold_percent = 50 AND (email_body LIKE '%cours%' OR email_body LIKE '%étude%' OR email_body LIKE '%etude%')
+        `).run().catch(() => {});
+      } catch (_) {}
     } catch(errRules) {
       console.warn('[Storage Tables Init] Erreur rules:', errRules);
     }
@@ -2377,7 +2398,29 @@ async function sendStorageAlertEmail({ resendApiKey, toEmail, userName, threshol
 
   const subject = rule?.email_subject || `⚠️ Alerte Stockage StudyCloud : ${thresholdPercent}% atteint`;
   const title = rule?.email_title || `Votre stockage StudyCloud a atteint ${thresholdPercent}%`;
-  const bodyText = rule?.email_body || `Vous avez consommé ${totalUsedMb} Mo sur ${totalAllowedMb} Mo disponibles.`;
+  const rawBodyText = rule?.email_body || `Vous avez consommé ${totalUsedMb} Mo sur ${totalAllowedMb} Mo disponibles.`;
+  const bodyText = rawBodyText
+    .replace(/pour continuer vos études\.?/gi, "pour profiter de plus d'espace et éviter toute interruption.")
+    .replace(/vos cours et devoirs\.?/gi, "vos documents et fichiers.")
+    .replace(/vos révisions et l'enregistrement de vos fichiers/gi, "l'enregistrement et la sauvegarde de vos fichiers")
+    .replace(/vos documents et cours/gi, "vos documents et fichiers");
+
+  let cleanGreeting = "Bonjour,";
+  if (userName && typeof userName === "string") {
+    const trimmed = userName.trim();
+    const lower = trimmed.toLowerCase();
+    const isGeneric = !trimmed ||
+      lower.includes("admin") ||
+      lower.includes("test") ||
+      lower.includes("étudiant") ||
+      lower.includes("etudiant") ||
+      lower.includes("élève") ||
+      lower.includes("eleve") ||
+      trimmed.includes("@");
+    if (!isGeneric) {
+      cleanGreeting = `Bonjour <strong>${trimmed}</strong>,`;
+    }
+  }
 
   const badgeColor = thresholdPercent >= 95 ? "#DC2626" : thresholdPercent >= 85 ? "#EA580C" : thresholdPercent >= 75 ? "#D97706" : "#2563EB";
 
@@ -2416,7 +2459,7 @@ async function sendStorageAlertEmail({ resendApiKey, toEmail, userName, threshol
               </h2>
 
               <p style="margin:0 0 24px 0;color:#475569;font-size:15px;line-height:1.6;text-align:center;">
-                Bonjour <strong>${userName}</strong>,<br>
+                ${cleanGreeting}<br>
                 ${bodyText}
               </p>
 
@@ -4944,8 +4987,8 @@ function renderDashboardHtml(data) {
         max_attempts_phase1: 1,
         phase1_max_notifications: 1,
         email_subject: "ℹ️ Information : Vous avez utilisé 50% de votre stockage StudyCloud",
-        email_title: "Votre espace de stockage est à 50%",
-        email_body: "Bonjour, vous venez d'atteindre la moitié de votre espace de stockage StudyCloud. Tout fonctionne normalement, mais pensez à vérifier vos fichiers ou à envisager un forfait supérieur si vos besoins augmentent."
+        email_title: "Votre espace de stockage est utilisé à 50%",
+        email_body: "La moitié de votre capacité de stockage allouée est actuellement utilisée. Vos données et fichiers sont en parfaite sécurité. Si vous prévoyez d'enregistrer des contenus volumineux, vous pouvez augmenter votre capacité à tout moment pour profiter de plus d'espace."
       },
       {
         threshold_percent: 75,
@@ -4955,9 +4998,9 @@ function renderDashboardHtml(data) {
         phase1_repeat_interval_hours: 48,
         max_attempts_phase1: 2,
         phase1_max_notifications: 2,
-        email_subject: "⚠️ Attention : 75% de votre espace de stockage StudyCloud est consommé",
-        email_title: "Attention : Stockage à 75%",
-        email_body: "Bonjour, votre espace de stockage StudyCloud atteint maintenant 75%. Afin d'éviter tout blocage de vos imports et sauvegardes à venir, nous vous conseillons de faire de la place ou de passer au forfait supérieur."
+        email_subject: "⚠️ Notification : 75% de votre stockage StudyCloud consommé",
+        email_title: "Attention : 75% de votre espace de stockage est utilisé",
+        email_body: "Votre espace de stockage approche de sa limite (75% utilisé). Pensez à augmenter votre capacité de stockage dès maintenant afin de continuer à enregistrer vos documents et fichiers sans interruption."
       },
       {
         threshold_percent: 85,
@@ -4967,9 +5010,9 @@ function renderDashboardHtml(data) {
         phase1_repeat_interval_hours: 24,
         max_attempts_phase1: 2,
         phase1_max_notifications: 2,
-        email_subject: "⚠️ Alerte importante : Votre stockage StudyCloud est à 85%",
-        email_title: "Alerte : Plus que 15% d'espace libre",
-        email_body: "Bonjour, il ne vous reste plus que 15% d'espace libre sur votre compte StudyCloud. Dès saturation, les nouveaux fichiers ne pourront plus être enregistrés. Passez à la formule supérieure pour continuer en toute sérénité."
+        email_subject: "🟠 Alerte stockage : 85% de capacité atteinte sur StudyCloud",
+        email_title: "Espace bientôt saturé : Plus que 15% d'espace libre",
+        email_body: "Attention, votre espace de stockage est presque plein avec 85% d'utilisation. Pour éviter tout ralentissement ou blocage futur de vos enregistrements et sauvegardes, nous vous conseillons de passer à une formule supérieure pour débloquer plus d'espace."
       },
       {
         threshold_percent: 90,
@@ -4979,9 +5022,9 @@ function renderDashboardHtml(data) {
         phase1_repeat_interval_hours: 24,
         max_attempts_phase1: 3,
         phase1_max_notifications: 3,
-        email_subject: "🚨 Seuil critique : 90% de votre stockage StudyCloud est plein",
-        email_title: "Stockage critique : 90% atteint",
-        email_body: "Bonjour, attention, vous avez atteint 90% de votre capacité maximale. Nous vous recommandons vivement d'augmenter votre forfait de stockage immédiatement afin de ne pas risquer l'interruption de vos synchronisations."
+        email_subject: "🔴 Alerte importante : 90% de votre stockage StudyCloud est consommé",
+        email_title: "Seuil critique : 90% de votre espace de stockage atteint",
+        email_body: "Votre stockage atteint un niveau critique de 90%. Afin de garantir la continuité de vos sauvegardes et l'ajout de nouveaux contenus, augmentez votre espace de stockage dès aujourd'hui."
       },
       {
         threshold_percent: 95,
@@ -4991,9 +5034,9 @@ function renderDashboardHtml(data) {
         phase1_repeat_interval_hours: 12,
         max_attempts_phase1: 3,
         phase1_max_notifications: 3,
-        email_subject: "🚨 ALERTE URGENTE : 95% de votre stockage StudyCloud est saturé !",
-        email_title: "Urgence : Plus que 5% avant saturation complète !",
-        email_body: "Bonjour, votre espace de stockage est presque totalement saturé (95%). Dès 100%, tout nouvel import sera strictement rejeté et détruit pour préserver l'intégrité de votre compte. Veuillez augmenter votre stockage sans attendre."
+        email_subject: "🚨 Seuil d'urgence : 95% de votre espace de stockage StudyCloud saturé",
+        email_title: "Stockage presque saturé : 95% consommé",
+        email_body: "Votre espace de stockage personnel est sur le point d'atteindre sa limite maximale (plus que 5% disponible). Dès saturation à 100%, l'enregistrement de tout nouveau fichier sera temporairement suspendu. Augmentez votre formule de stockage dès maintenant pour profiter de plus d'espace en toute tranquillité."
       },
       {
         threshold_percent: 100,
@@ -5003,9 +5046,9 @@ function renderDashboardHtml(data) {
         phase1_repeat_interval_hours: 12,
         max_attempts_phase1: 5,
         phase1_max_notifications: 5,
-        email_subject: "🛑 STOCKAGE PLEIN (100%) : Nouveaux imports bloqués sur StudyCloud",
-        email_title: "Stockage 100% saturé : Nouveaux ajouts bloqués",
-        email_body: "Bonjour, votre espace de stockage StudyCloud a atteint 100%. Vos fichiers existants sont protégés et sécurisés, mais l'enregistrement de tout nouveau fichier est actuellement bloqué. Mettez votre compte à niveau pour débloquer l'envoi immédiatement."
+        email_subject: "⛔ Saturation totale (100%) : Nouveaux ajouts de fichiers bloqués",
+        email_title: "Stockage 100% saturé — Enregistrements suspendus",
+        email_body: "Votre quota de stockage est intégralement rempli. L'ensemble de vos fichiers existants reste accessible et parfaitement sécurisé, mais aucun nouveau fichier ne pourra être enregistré. Veuillez augmenter votre espace de stockage pour débloquer immédiatement l'enregistrement de vos données."
       }
     ];
 
@@ -11225,7 +11268,7 @@ function renderDashboardHtml(data) {
         const payload = {
           toEmail: toEmail,
           thresholdPercent: threshold,
-          userName: 'Administrateur StudyCloud',
+          userName: '',
           rule: targetRule || null,
           resendApiKey: (keyInput ? keyInput.value : '').trim() || undefined
         };
@@ -13176,7 +13219,7 @@ export default {
           emailResult = await sendStorageAlertEmail({
             resendApiKey: candidateKey,
             toEmail,
-            userName: body.userName || "Administrateur Test",
+            userName: body.userName || "",
             thresholdPercent,
             totalUsedMb: thresholdPercent >= 100 ? "30.00" : (30 * thresholdPercent / 100).toFixed(1),
             totalAllowedMb: "30.00",
@@ -13194,7 +13237,7 @@ export default {
               body: JSON.stringify({
                 toEmail,
                 thresholdPercent,
-                userName: body.userName || "Administrateur Test",
+                userName: body.userName || "",
                 rule,
                 resendApiKey: candidateKey || undefined
               })
