@@ -3345,9 +3345,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             name: file.name,
             size: file.sizeBytes || 0,
             type: file.extension || file.category || 'file',
-            url: file.url || file.previewUrl
+            url: file.url || file.previewUrl,
+            category: file.category || 'file',
+            extension: file.extension,
+            r2Key: (file as any).r2Key || (file as any).r2_key,
+            file: (file as any).file,
           }]);
-          showToast(`Création du lien pour "${file.name}"...`);
         } else {
           const link = `${window.location.origin}${window.location.pathname}#${file.category || 'file'}-${file.id}`;
           try {
@@ -3931,7 +3934,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             url: item.url || item.previewUrl,
             category: item.category,
             extension: item.extension,
-            isImage: item.category === 'images' || Boolean((item as any).isImage)
+            isImage: item.category === 'images' || Boolean((item as any).isImage),
+            r2Key: (item as any).r2Key || (item as any).r2_key,
+            file: (item as any).file,
           });
         }
       }
@@ -5208,7 +5213,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       type: t.extension || 'MP3',
       url: t.audioUrl || t.url,
       category: 'audio',
-      extension: t.extension
+      extension: t.extension,
+      r2Key: (t as any).r2Key || (t as any).r2_key,
+      file: (t as any).file,
     }));
     if (onOpenCreateShareLink && filesToShare.length > 0) {
       onOpenCreateShareLink(filesToShare);
@@ -6312,7 +6319,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           name: f.name,
           size: f.sizeBytes || 0,
           type: f.extension || f.category || 'file',
-          url: f.url || f.previewUrl
+          url: f.url || f.previewUrl,
+          category: f.category || 'file',
+          extension: f.extension,
+          r2Key: (f as any).r2Key || (f as any).r2_key,
+          file: (f as any).file,
         }));
 
         if (onOpenCreateShareLink && filesToShare.length > 0) {

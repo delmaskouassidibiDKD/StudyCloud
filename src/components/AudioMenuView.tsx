@@ -929,9 +929,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
             type: track.extension || 'MP3',
             url: track.audioUrl || track.url,
             category: 'audio',
-            extension: track.extension
+            extension: track.extension,
+            r2Key: (track as any).r2Key || (track as any).r2_key,
+            file: (track as any).file,
           }]);
-          showToast(`Création du lien pour "${track.name}"...`);
         } else {
           const link = `${window.location.origin}${window.location.pathname}#audio-${track.id}`;
           try {
@@ -2538,7 +2539,9 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                     type: track.extension || 'MP3',
                     url: track.audioUrl || track.url,
                     category: 'audio',
-                    extension: track.extension
+                    extension: track.extension,
+                    r2Key: (track as any).r2Key || (track as any).r2_key,
+                    file: (track as any).file,
                   })));
                   setSelectedItemIds([]);
                   setIsSelectionMode(false);

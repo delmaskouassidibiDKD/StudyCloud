@@ -703,9 +703,10 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
             url: img.previewUrl || img.url,
             isImage: true,
             category: 'images',
-            extension: img.extension
+            extension: img.extension,
+            r2Key: (img as any).r2Key || (img as any).r2_key,
+            file: (img as any).file,
           }]);
-          showToast(`Création du lien pour "${img.name}"...`);
         } else {
           try {
             const shareUrl = `${window.location.origin}/?fileId=${encodeURIComponent(img.id)}&category=images`;
@@ -2118,7 +2119,9 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
                     url: img.previewUrl || img.url,
                     isImage: true,
                     category: 'images',
-                    extension: img.extension
+                    extension: img.extension,
+                    r2Key: (img as any).r2Key || (img as any).r2_key,
+                    file: (img as any).file,
                   })));
                   setSelectedItemIds([]);
                   setIsSelectionMode(false);

@@ -16,7 +16,7 @@ interface CreateShareLinkModalProps {
     category?: string;
     extension?: string;
   }[];
-  onClose: () => void;
+  onClose: (wasCreated?: boolean) => void;
   /** Nom initial pré-rempli dans le champ (facultatif) */
   initialLinkName?: string;
   onStartBackgroundCreation: (
@@ -64,6 +64,10 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [createdFolder, setCreatedFolder] = useState<SharedFolder | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const handleClose = () => {
+    onClose(Boolean(createdFolder));
+  };
 
   // Mettre à jour le nom si la prop change (ex : ouverture successive)
   useEffect(() => {
@@ -125,7 +129,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
     <div className="fixed inset-0 z-[9999] overflow-y-auto p-4 flex items-start sm:items-center justify-center bg-black/50 backdrop-blur-xs animate-fadeIn">
       <div className="bg-[#FDFBF7] border-3 border-stone-800 rounded-3xl p-6 md:p-8 w-full max-w-md shadow-[8px_8px_0px_0px_#1c1917] relative my-auto">
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="absolute top-4 right-4 p-1.5 hover:bg-stone-200 rounded-lg text-stone-700 border-2 border-stone-800 bg-[#F5F1E9] shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer"
         >
           <X className="w-4 h-4" />
@@ -207,7 +211,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
             </div>
 
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs py-3 rounded-xl border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
             >
               Terminer
@@ -317,7 +321,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
             <div className="flex items-center gap-3 pt-1">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleClose}
                 className="flex-1 bg-white hover:bg-stone-100 text-stone-800 font-bold text-xs py-3 rounded-xl border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
               >
                 Annuler

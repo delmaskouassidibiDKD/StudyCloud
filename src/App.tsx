@@ -340,6 +340,93 @@ export default function App() {
   const [showCreateShareLinkModal, setShowCreateShareLinkModal] = useState(false);
   const [shareModalTargetItems, setShareModalTargetItems] = useState<any[] | null>(null);
   const [shareModalInitialName, setShareModalInitialName] = useState<string>('');
+  const [isPreparingExternalShare, setIsPreparingExternalShare] = useState(false);
+  const [externalSharePreparingMessage, setExternalSharePreparingMessage] = useState('');
+  const [isExternalShareActive, setIsExternalShareActive] = useState(false);
+  const [externalShareUploadedR2Keys, setExternalShareUploadedR2Keys] = useState<string[]>([]);
+
+  const handleOpenExternalCreateShareLink = async (rawItems: any[]) => {
+    if (!rawItems || rawItems.length === 0) return;
+    const currentUserId = user?.id || localStorage.getItem('unifolder_user_id') || 'default-user';
+
+    setIsPreparingExternalShare(true);
+    setExternalSharePreparingMessage(`⏳ Enregistrement de ${rawItems.length} fichier(s)...`);
+
+    const newlyUploadedKeys: string[] = [];
+    const preparedItems: any[] = [];
+
+    try {
+      for (let i = 0; i < rawItems.length; i++) {
+        const item = rawItems[i];
+        let fileUrl = item.url || item.previewUrl || '';
+        let r2Key = item.r2Key || item.r2_key;
+        let calculatedSize = typeof item.size === 'number' ? item.size : (item.sizeBytes || 0);
+        let fileBlob: Blob | null = null;
+
+        // Si le fichier n'a pas encore de clé R2 ou est un blob local
+        if (!r2Key || !fileUrl || fileUrl.startsWith('blob:')) {
+          fileBlob = await getFileBlob(item.id);
+          if (!fileBlob && item.file instanceof Blob) {
+            fileBlob = item.file;
+          }
+          if (!fileBlob && fileUrl) {
+            try {
+              const resp = await fetch(fileUrl);
+              if (resp.ok) fileBlob = await resp.blob();
+            } catch (fetchErr) {
+              console.warn('Sync fetch blob pour partage externe:', fetchErr);
+            }
+          }
+
+          if (fileBlob) {
+            calculatedSize = calculatedSize || fileBlob.size;
+            const newKey = buildSharedLinkFileKey(currentUserId, `ext-${Date.now()}-${i}`, item.name || 'document');
+            const fileObj = new File([fileBlob], item.name || 'document', {
+              type: item.type || fileBlob.type || 'application/octet-stream',
+            });
+            const r2Res = await StudyCloudAPI.uploadFileToR2(fileObj, newKey, fileObj.type, fileObj.size);
+            if (r2Res.success && r2Res.url) {
+              fileUrl = r2Res.url;
+              r2Key = newKey;
+              newlyUploadedKeys.push(newKey);
+            }
+          }
+        }
+
+        const isImg = item.isImage || item.category === 'images' || item.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(item.name || '');
+
+        preparedItems.push({
+          id: item.id || `ext-${Date.now()}-${i}`,
+          name: item.name || 'Fichier',
+          size: calculatedSize,
+          type: item.type || item.extension || 'file',
+          url: fileUrl,
+          r2Key,
+          isImage: isImg,
+          category: item.category || 'documents',
+          extension: item.extension,
+        });
+      }
+    } catch (err) {
+      console.warn('Erreur préparation partage externe:', err);
+    } finally {
+      setIsPreparingExternalShare(false);
+      setExternalSharePreparingMessage('');
+    }
+
+    if (preparedItems.length === 0) {
+      setToastMessage("⚠️ Impossible de préparer les fichiers pour le partage.");
+      return;
+    }
+
+    setExternalShareUploadedR2Keys(newlyUploadedKeys);
+    setIsExternalShareActive(true);
+    setShareModalTargetItems(preparedItems);
+    setShareModalInitialName(
+      preparedItems.length === 1 ? preparedItems[0].name.replace(/\.[^/.]+$/, '') : `Partage (${preparedItems.length} fichiers)`
+    );
+    setShowCreateShareLinkModal(true);
+  };
 
   const handleStartBackgroundCreation = (
     linkName: string,
@@ -1560,11 +1647,7 @@ export default function App() {
                 setIsStudySpaceOpen(true);
               }}
               onOpenCreateShareLink={(items) => {
-                setShareModalTargetItems(items);
-                setShareModalInitialName(
-                  items.length === 1 ? items[0].name.replace(/\.[^/.]+$/, '') : `Partage (${items.length} fichiers)`
-                );
-                setShowCreateShareLinkModal(true);
+                handleOpenExternalCreateShareLink(items);
               }}
             />
           ) : currentTab === 'upload' ? (
@@ -1582,6 +1665,8 @@ export default function App() {
                 }
               }}
               onOpenCreateShareLink={(items) => {
+                setIsExternalShareActive(false);
+                setExternalShareUploadedR2Keys([]);
                 if (items && items.length > 0) {
                   setShareModalTargetItems(items);
                   setShareModalInitialName(
@@ -2133,19 +2218,61 @@ export default function App() {
         setTimerFinishedAlert={setTimerFinishedAlert}
       />
 
+      {/* Overlay plein écran avec rond de chargement lors de la préparation des fichiers depuis un menu externe */}
+      {isPreparingExternalShare && (
+        <div className="fixed inset-0 z-[100001] flex flex-col items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn select-none">
+          <div className="bg-[#FDFBF7] dark:bg-stone-900 border-3 border-stone-800 dark:border-stone-700 rounded-3xl p-8 max-w-sm w-full shadow-[8px_8px_0px_0px_#1c1917] flex flex-col items-center text-center space-y-4">
+            <div className="relative">
+              <div className="w-16 h-16 rounded-full border-4 border-orange-200 border-t-orange-500 animate-spin flex items-center justify-center shadow-lg" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-xl">⏳</span>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <h4 className="font-extrabold text-base text-stone-900 dark:text-white">Préparation du partage</h4>
+              <p className="text-xs font-bold text-stone-700 dark:text-stone-300">
+                {externalSharePreparingMessage || 'Enregistrement des fichiers en cours...'}
+              </p>
+            </div>
+            <p className="text-[11px] text-stone-500 dark:text-stone-400">
+              Veuillez patienter pendant la validation sur les serveurs StudyCloud...
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Modal de Partage de Document / Dossier (Placé au premier plan absolu z-[100000]) */}
       {showCreateShareLinkModal && (
         <CreateShareLinkModal
           uploadedItems={shareModalTargetItems || uploadedItems}
           initialLinkName={shareModalInitialName}
-          onClose={() => {
+          onClose={async (wasCreated) => {
             setShowCreateShareLinkModal(false);
+            const isExternal = isExternalShareActive;
+            const keysToPurge = [...externalShareUploadedR2Keys];
+            setIsExternalShareActive(false);
+            setExternalShareUploadedR2Keys([]);
             setShareModalTargetItems(null);
             setShareModalInitialName('');
-            // RÈGLE : Même si un lien est créé, l'aperçu des fichiers DOIT RESTER AFFICHÉ !
-            // Il ne sera masqué/effacé que si l'utilisateur clique sur « Nouveau partage ».
+
+            if (isExternal && !wasCreated) {
+              // L'utilisateur a annulé la procédure de partage depuis un menu externe
+              if (keysToPurge.length > 0) {
+                const currentUserId = user?.id || localStorage.getItem('unifolder_user_id') || 'default-user';
+                await StudyCloudAPI.deleteStagingShareFiles(currentUserId, undefined, keysToPurge).catch(() => {});
+              }
+              setToastMessage('Échec de partage vous avez annulé les procédures');
+            }
           }}
-          onStartBackgroundCreation={handleStartBackgroundCreation}
+          onStartBackgroundCreation={(linkName, comment, items, onComplete, isPublic) => {
+            handleStartBackgroundCreation(linkName, comment, items, (folder, error) => {
+              if (folder) {
+                // Le lien est créé avec succès : conserver définitivement les fichiers dans R2
+                setExternalShareUploadedR2Keys([]);
+              }
+              if (onComplete) onComplete(folder, error);
+            }, isPublic);
+          }}
         />
       )}
 

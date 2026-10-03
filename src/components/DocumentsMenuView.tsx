@@ -741,9 +741,10 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             type: doc.extension || 'PDF',
             url: doc.previewUrl || doc.url,
             category: 'documents',
-            extension: doc.extension
+            extension: doc.extension,
+            r2Key: (doc as any).r2Key || (doc as any).r2_key,
+            file: (doc as any).file,
           }]);
-          showToast(`Création du lien pour "${doc.name}"...`);
         } else {
           const link = `${window.location.origin}${window.location.pathname}#doc-${doc.id}`;
           try {
@@ -2230,7 +2231,9 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                     type: doc.extension || 'PDF',
                     url: doc.previewUrl || doc.url,
                     category: 'documents',
-                    extension: doc.extension
+                    extension: doc.extension,
+                    r2Key: (doc as any).r2Key || (doc as any).r2_key,
+                    file: (doc as any).file,
                   })));
                   setSelectedItemIds([]);
                   setIsSelectionMode(false);

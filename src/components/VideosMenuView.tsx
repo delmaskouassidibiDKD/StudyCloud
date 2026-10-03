@@ -713,9 +713,10 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
             type: vid.extension || 'MP4',
             url: vid.videoUrl || vid.url,
             category: 'videos',
-            extension: vid.extension
+            extension: vid.extension,
+            r2Key: (vid as any).r2Key || (vid as any).r2_key,
+            file: (vid as any).file,
           }]);
-          showToast(`Création du lien pour "${vid.name}"...`);
         } else {
           const link = `${window.location.origin}${window.location.pathname}#video-${vid.id}`;
           try {
@@ -2116,7 +2117,9 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
                     type: vid.extension || 'MP4',
                     url: vid.videoUrl || vid.url,
                     category: 'videos',
-                    extension: vid.extension
+                    extension: vid.extension,
+                    r2Key: (vid as any).r2Key || (vid as any).r2_key,
+                    file: (vid as any).file,
                   })));
                   setSelectedItemIds([]);
                   setIsSelectionMode(false);

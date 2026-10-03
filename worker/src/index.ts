@@ -11549,6 +11549,11 @@ a:hover{transform:translateY(-2px)}
               deleteParams.push(...targetIds, ...targetIds);
             }
             await env.DB.prepare(deleteQuery).bind(...deleteParams).run().catch(() => {});
+
+            if (targetR2Keys && targetR2Keys.length > 0) {
+              const r2Placeholders = targetR2Keys.map(() => '?').join(',');
+              await env.DB.prepare(`DELETE FROM shared_folder_files WHERE r2_key IN (${r2Placeholders})`).bind(...targetR2Keys).run().catch(() => {});
+            }
           } catch (e) {
             console.warn('Erreur purge staging R2/D1:', e);
           }
