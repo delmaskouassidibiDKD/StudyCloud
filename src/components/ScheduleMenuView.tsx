@@ -33,6 +33,23 @@ const COLORS = [
   { name: 'Violet Pastel', bg: 'bg-purple-100 dark:bg-purple-950/80', text: 'text-purple-900 dark:text-purple-200', border: 'border-purple-300 dark:border-purple-700' },
 ];
 
+// Décode une valeur potentiellement doublement encodée en tableau de chaînes (sinon fallback)
+const toStringArray = (value: any, fallback: string[]): string[] => {
+  let out = value;
+  for (let i = 0; i < 3 && typeof out === 'string'; i++) {
+    try { out = JSON.parse(out); } catch { return fallback; }
+  }
+  return Array.isArray(out) && out.length > 0 ? out.map(String) : fallback;
+};
+
+const toScheduleObject = (value: any): Record<string, ScheduleEntry> => {
+  let out = value;
+  for (let i = 0; i < 3 && typeof out === 'string'; i++) {
+    try { out = JSON.parse(out); } catch { return {}; }
+  }
+  return out && typeof out === 'object' && !Array.isArray(out) ? out : {};
+};
+
 export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) => {
   const userId = getCurrentUserId() || (typeof window !== 'undefined' ? localStorage.getItem('unifolder_user_id') : null) || '';
 
@@ -42,28 +59,19 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
 
   const [scheduleData, setScheduleData] = useState<Record<string, ScheduleEntry>>(() => {
     try {
-      const saved = safeLocalStorageGet('user_schedule_data', null);
-      if (saved && typeof saved === 'object') return saved;
-      const raw = localStorage.getItem('user_schedule_data');
-      if (raw) return JSON.parse(raw);
+      return toScheduleObject(localStorage.getItem('user_schedule_data'));
     } catch (e) {}
     return {};
   });
   const [days, setDays] = useState<string[]>(() => {
     try {
-      const saved = safeLocalStorageGet('user_schedule_days', null);
-      if (Array.isArray(saved) && saved.length > 0) return saved;
-      const raw = localStorage.getItem('user_schedule_days');
-      if (raw) return JSON.parse(raw);
+      return toStringArray(localStorage.getItem('user_schedule_days'), DEFAULT_DAYS);
     } catch (e) {}
     return DEFAULT_DAYS;
   });
   const [hours, setHours] = useState<string[]>(() => {
     try {
-      const saved = safeLocalStorageGet('user_schedule_hours', null);
-      if (Array.isArray(saved) && saved.length > 0) return saved;
-      const raw = localStorage.getItem('user_schedule_hours');
-      if (raw) return JSON.parse(raw);
+      return toStringArray(localStorage.getItem('user_schedule_hours'), DEFAULT_HOURS);
     } catch (e) {}
     return DEFAULT_HOURS;
   });
@@ -95,22 +103,18 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
   useEffect(() => {
     if (serverConfig) {
       if (serverConfig.days_json) {
-        try {
-          const d = JSON.parse(serverConfig.days_json);
-          if (Array.isArray(d) && d.length > 0) {
-            setDays(d);
-            safeLocalStorageSet('user_schedule_days', d);
-          }
-        } catch (e) {}
+        const d = toStringArray(serverConfig.days_json, []);
+        if (d.length > 0) {
+          setDays(d);
+          safeLocalStorageSet('user_schedule_days', d);
+        }
       }
       if (serverConfig.hours_json) {
-        try {
-          const h = JSON.parse(serverConfig.hours_json);
-          if (Array.isArray(h) && h.length > 0) {
-            setHours(h);
-            safeLocalStorageSet('user_schedule_hours', h);
-          }
-        } catch (e) {}
+        const h = toStringArray(serverConfig.hours_json, []);
+        if (h.length > 0) {
+          setHours(h);
+          safeLocalStorageSet('user_schedule_hours', h);
+        }
       }
       if (serverConfig.zoom_level) {
         const z = Number(serverConfig.zoom_level);
@@ -176,12 +180,9 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
   useEffect(() => {
     const handleRestore = () => {
       try {
-        const savedData = localStorage.getItem('user_schedule_data');
-        setScheduleData(savedData ? JSON.parse(savedData) : {});
-        const savedDays = localStorage.getItem('user_schedule_days');
-        setDays(savedDays ? JSON.parse(savedDays) : DEFAULT_DAYS);
-        const savedHours = localStorage.getItem('user_schedule_hours');
-        setHours(savedHours ? JSON.parse(savedHours) : DEFAULT_HOURS);
+        setScheduleData(toScheduleObject(localStorage.getItem('user_schedule_data')));
+        setDays(toStringArray(localStorage.getItem('user_schedule_days'), DEFAULT_DAYS));
+        setHours(toStringArray(localStorage.getItem('user_schedule_hours'), DEFAULT_HOURS));
         const savedZoom = localStorage.getItem('user_schedule_zoom');
         setZoomLevel(savedZoom ? Number(savedZoom) : 100);
       } catch (e) {}

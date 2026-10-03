@@ -159,8 +159,17 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
 
       // 5. Emploi du temps
       if (d.scheduleConfig) {
-        if (d.scheduleConfig.days_json) safeLocalStorageSet('user_schedule_days', d.scheduleConfig.days_json);
-        if (d.scheduleConfig.hours_json) safeLocalStorageSet('user_schedule_hours', d.scheduleConfig.hours_json);
+        const toArr = (v: any): string[] | null => {
+          let out = v;
+          for (let i = 0; i < 3 && typeof out === 'string'; i++) {
+            try { out = JSON.parse(out); } catch { return null; }
+          }
+          return Array.isArray(out) && out.length > 0 ? out.map(String) : null;
+        };
+        const daysArr = toArr(d.scheduleConfig.days_json);
+        const hoursArr = toArr(d.scheduleConfig.hours_json);
+        if (daysArr) safeLocalStorageSet('user_schedule_days', daysArr);
+        if (hoursArr) safeLocalStorageSet('user_schedule_hours', hoursArr);
         if (d.scheduleConfig.zoom_level) safeLocalStorageSet('user_schedule_zoom', String(d.scheduleConfig.zoom_level));
       } else {
         localStorage.removeItem('user_schedule_days');
@@ -304,9 +313,16 @@ export function triggerDebouncedCloudBackup(delayMs = 2000): void {
       }
 
       const calendarEvents = JSON.parse(localStorage.getItem('unifolder_calendar_data') || '[]');
+      const parseArr = (raw: string | null, fallback: string[]): string[] => {
+        let out: any = raw;
+        for (let i = 0; i < 3 && typeof out === 'string'; i++) {
+          try { out = JSON.parse(out); } catch { return fallback; }
+        }
+        return Array.isArray(out) && out.length > 0 ? out.map(String) : fallback;
+      };
       const scheduleConfig = {
-        days: JSON.parse(localStorage.getItem('user_schedule_days') || '["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"]'),
-        hours: JSON.parse(localStorage.getItem('user_schedule_hours') || '["08:00 - 10:00","10:00 - 12:00","14:00 - 16:00","16:00 - 18:00"]'),
+        days: parseArr(localStorage.getItem('user_schedule_days'), ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi']),
+        hours: parseArr(localStorage.getItem('user_schedule_hours'), ['08:00 - 10:00', '10:00 - 12:00', '14:00 - 16:00', '16:00 - 18:00']),
         zoomLevel: Number(localStorage.getItem('user_schedule_zoom') || '100'),
       };
       const rawAlarms = JSON.parse(localStorage.getItem('unifolder_clock_alarms') || localStorage.getItem('unifolder_alarms') || '[]');
