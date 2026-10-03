@@ -469,50 +469,89 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           <div className="w-full h-full flex items-center justify-center">
             <svg className="w-full h-full" viewBox="0 0 100 90" fill="none" xmlns="http://www.w3.org/2000/svg">
               <defs>
-                <linearGradient id="p2FilesBackGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#FB923C" />
-                  <stop offset="100%" stopColor="#EA580C" />
+                {/* Dos et onglet arrière en Dégradé Bleu Roi / Électrique */}
+                <linearGradient id="p2FilesBackBlueGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#38BDF8" />
+                  <stop offset="40%" stopColor="#2563EB" />
+                  <stop offset="100%" stopColor="#1D4ED8" />
                 </linearGradient>
-                <linearGradient id="p2FilesFrontGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#BAE6FD" />
-                  <stop offset="50%" stopColor="#60A5FA" />
-                  <stop offset="100%" stopColor="#38BDF8" />
+
+                {/* Face avant du dossier en Dégradé Orange Vibrant / Ambré */}
+                <linearGradient id="p2FilesFrontOrangeGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#FED7AA" />
+                  <stop offset="25%" stopColor="#FB923C" />
+                  <stop offset="70%" stopColor="#EA580C" />
+                  <stop offset="100%" stopColor="#C2410C" />
+                </linearGradient>
+
+                {/* Papier intérieur avec bordure bleutée */}
+                <linearGradient id="p2FilesPaperGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#FFFFFF" />
+                  <stop offset="100%" stopColor="#F0F9FF" />
                 </linearGradient>
               </defs>
+
+              {/* Onglet et dos du dossier en BLEU intense */}
               <path 
-                d="M 44 14 L 86 14 C 91 14 94 17 94 22 L 94 40 L 44 40 Z" 
-                fill="url(#p2FilesBackGrad)" 
+                d="M 14 20 C 14 16 17 13 21 13 L 42 13 C 45 13 48 16 50 19 L 54 24 L 84 24 C 88 24 91 27 91 31 L 91 46 L 14 46 Z" 
+                fill="url(#p2FilesBackBlueGrad)" 
                 stroke="#18181B" 
                 strokeWidth="1.3" 
                 strokeLinejoin="round" 
               />
+
+              {/* Liseré lumineux cyan sur le haut de l'onglet bleu */}
+              <path 
+                d="M 21 15 L 42 15 C 44 15 46 17 48 19 L 51 24 L 84 24" 
+                stroke="#BAE6FD" 
+                strokeWidth="1.2" 
+                strokeLinecap="round" 
+              />
+
+              {/* Feuilles de documents blancs/bleutés qui dépassent à l'intérieur */}
+              <rect x="22" y="18" width="56" height="34" rx="4" fill="url(#p2FilesPaperGrad)" stroke="#BAE6FD" strokeWidth="1" />
+              <line x1="30" y1="25" x2="68" y2="25" stroke="#38BDF8" strokeWidth="2.2" strokeLinecap="round" />
+              <line x1="30" y1="31" x2="56" y2="31" stroke="#93C5FD" strokeWidth="2.2" strokeLinecap="round" />
+
+              {/* Corps principal avant du dossier en ORANGE chaleureux 3D */}
               <path 
                 d="
-                  M 16 14
-                  L 44 14
-                  C 48 14 50 17 52 20
-                  C 54 23 56 25 60 25
-                  L 86 25
-                  C 91 25 94 28 94 33
-                  L 94 76
-                  C 94 81 91 84 86 84
-                  L 14 84
-                  C 9 84 6 81 6 76
-                  L 6 22
-                  C 6 17 9 14 14 14
+                  M 14 34
+                  L 44 34
+                  C 48 34 50 36 52 38
+                  C 54 40 56 42 60 42
+                  L 86 42
+                  C 91 42 94 45 94 49
+                  L 92 78
+                  C 92 82 88 85 84 85
+                  L 16 85
+                  C 11 85 8 82 8 78
+                  L 8 40
+                  C 8 36 10 34 14 34
                   Z
                 " 
-                fill="url(#p2FilesFrontGrad)" 
+                fill="url(#p2FilesFrontOrangeGrad)" 
                 stroke="#18181B" 
                 strokeWidth="1.3" 
                 strokeLinejoin="round" 
                 strokeLinecap="round" 
               />
+
+              {/* Liseré fin BLEU ÉLECTRIQUE sur le pli supérieur du rabat orange (mélange orange & bleu parfait) */}
               <path
-                d="M 16 16 L 43 16 C 47 16 49 18 51 21 C 53 24 55 26 59 26 L 85 26"
-                stroke="#EA580C"
-                strokeWidth="1.5"
+                d="M 14 36 L 43 36 C 47 36 49 38 51 40 C 53 42 55 44 59 44 L 86 44"
+                stroke="#0284C7"
+                strokeWidth="2"
                 strokeLinecap="round"
+              />
+
+              {/* Reflet de brillance dorée sous le liseré */}
+              <path
+                d="M 14 39 L 43 39"
+                stroke="#FEF08A"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+                opacity="0.8"
               />
             </svg>
           </div>
