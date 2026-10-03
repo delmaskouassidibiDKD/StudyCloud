@@ -976,7 +976,7 @@ export default function App() {
       filesToProcess = filesToProcess.slice(0, MAX_IMPORT_FILES);
     }
 
-    setToastMessage(`⏳ Envoi de ${filesToProcess.length} fichier(s) vers votre espace Cloud sécurisé...`);
+    setToastMessage(`⏳ Enregistrement de ${filesToProcess.length} fichier(s)...`);
 
     const imageFilesToCompress: { id: string; file: File }[] = [];
 
@@ -1005,14 +1005,14 @@ export default function App() {
             type: f.type || defaultType,
             r2Key,
             url: r2Url,
-          }).catch((err) => console.warn('Erreur staging D1:', err));
+          }).catch((err) => console.warn('Erreur staging:', err));
         }
       } catch (uploadErr: any) {
         if (uploadErr?.message?.includes('STORAGE_LIMIT_EXCEEDED') || uploadErr?.status === 413) {
           setToastMessage(`⚠️ Votre espace de stockage est insuffisant pour enregistrer "${f.name}".`);
           continue;
         }
-        console.warn('Erreur upload Cloud R2:', uploadErr);
+        console.warn('Erreur upload:', uploadErr);
       }
 
       let previewUrl = r2Url;
@@ -1038,7 +1038,7 @@ export default function App() {
 
     setCurrentTab('upload');
     localStorage.setItem('unifolder_current_tab', 'upload');
-    setToastMessage(`✓ Fichiers importés et sauvegardés dans votre Cloud D1/R2`);
+    setToastMessage(`✓ Vos fichiers ont été enregistrés avec succès. Vous pouvez appuyer sur « Créer le lien de partage » pour générer votre lien ou sur « Nouveau partage » pour les effacer.`);
 
     imageFilesToCompress.forEach(({ id, file }) => {
       compressImage(file).then((dataUrl) => {
@@ -1290,7 +1290,7 @@ export default function App() {
     }
     try {
       await StudyCloudAPI.deleteShare(folderId);
-      setToastMessage('✓ Lien de partage et ses fichiers supprimés définitivement de D1 et R2');
+      setToastMessage('✓ Lien de partage et ses fichiers supprimés avec succès.');
       loadUserSharesFromD1();
     } catch (e) {
       console.warn('Erreur suppression partage:', e);
@@ -1332,7 +1332,7 @@ export default function App() {
           <div className="bg-[#F5F1E9] border-3 border-stone-800 rounded-2xl p-8 max-w-sm text-center shadow-[6px_6px_0px_0px_#1c1917] flex flex-col items-center gap-3 animate-fadeIn">
             <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
             <h3 className="text-base font-extrabold text-stone-900">Chargement du document partagé...</h3>
-            <p className="text-xs text-stone-600">Connexion sécurisée à Cloudflare D1/R2...</p>
+            <p className="text-xs text-stone-600">Chargement de votre document...</p>
           </div>
         </div>
       );
@@ -1674,7 +1674,7 @@ export default function App() {
                     localStorage.removeItem('unifolder_uploaded_items');
                   } catch (e) {}
                   setShowClearConfirmModal(false);
-                  setToastMessage('✓ Fichiers importés annulés et supprimés du Cloud D1/R2.');
+                  setToastMessage('✓ Fichiers effacés. Vous pouvez commencer un nouveau partage.');
                 }}
                 className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer"
               >

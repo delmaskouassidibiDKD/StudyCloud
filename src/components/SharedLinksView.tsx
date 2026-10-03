@@ -82,7 +82,7 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
               <button
                 onClick={onRefresh}
                 disabled={isLoading}
-                title="Actualiser les liens depuis la base de données D1"
+                title="Actualiser vos liens de partage"
                 className="p-1.5 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-white rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center disabled:opacity-50"
               >
                 <RotateCw className={`w-4 h-4 text-orange-600 dark:text-orange-400 ${isLoading ? 'animate-spin' : ''}`} />
@@ -191,7 +191,7 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
           <div className="flex flex-col items-center justify-center py-24 text-center space-y-3">
             <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
             <p className="text-xs font-bold text-stone-600 dark:text-slate-400">
-              Synchronisation de vos liens actifs avec la base de données D1...
+              Chargement de vos liens actifs...
             </p>
           </div>
         ) : sortedFolders.length === 0 ? (
