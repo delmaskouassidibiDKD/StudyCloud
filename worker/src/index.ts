@@ -3540,8 +3540,8 @@ async function ensureCloudMediaTables(db: any) {
     `).run().catch(() => {});
     try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_sff_folder ON shared_folder_files(shared_folder_id)").run(); } catch(e){}
 
-    // Garantir que 'default-user' existe pour satisfaire toute contrainte de clé étrangère existante
-    await db.prepare("INSERT OR IGNORE INTO users (id, name, email) VALUES ('default-user', 'Étudiant StudyCloud', 'guest@studycloud.com')").run().catch(() => {});
+    // Nettoyage automatique : s'assurer que 'default-user' n'est jamais présent dans la table des utilisateurs réels
+    await db.prepare("DELETE FROM users WHERE id = 'default-user' OR id = 'user_anonymous' OR email = 'guest@studycloud.com'").run().catch(() => {});
 
     isCloudMediaTablesInitialized = true;
   } catch (err) {

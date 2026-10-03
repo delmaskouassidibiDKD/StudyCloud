@@ -5498,6 +5498,37 @@ function renderDashboardHtml(data) {
     }
     window.recalculateUserStorage = recalculateUserStorage;
 
+    async function deleteUserAccount(userId, userName) {
+      if (!confirm('Êtes-vous sûr de vouloir supprimer définitivement l\'utilisateur "' + (userName || userId) + '" de la base D1 ?')) {
+        return;
+      }
+      try {
+        const res = await fetch('/api/users/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data && data.success) {
+          showToast('✓ Utilisateur supprimé avec succès de la base D1');
+          allUsers = allUsers.filter(x => x.user.id !== userId);
+          selectedUserId = allUsers.length > 0 ? allUsers[0].user.id : null;
+          renderUsersLeftList(document.getElementById('users-search-left')?.value || '');
+          if (selectedUserId) {
+            renderUserRightDetails(selectedUserId);
+          } else {
+            const panel = document.getElementById('user-details-right-panel');
+            if (panel) panel.innerHTML = '<div class="p-8 text-center text-slate-500">Aucun utilisateur sélectionné</div>';
+          }
+        } else {
+          showToast('⚠️ Erreur: ' + (data?.error || 'Suppression impossible'));
+        }
+      } catch (err) {
+        showToast('⚠️ Erreur réseau lors de la suppression');
+      }
+    }
+    window.deleteUserAccount = deleteUserAccount;
+
     function selectUser(userId) {
       selectedUserId = userId;
       renderUsersLeftList(document.getElementById('users-search-left').value);
@@ -5570,6 +5601,14 @@ function renderDashboardHtml(data) {
                 >
                   <span>\${u.isOnline ? '🔴' : '🟢'}</span>
                   <span>Basculer en \${u.isOnline ? 'Hors ligne' : 'En ligne'}</span>
+                </button>
+                <button 
+                  onclick="deleteUserAccount('\${u.id}', '\${(u.name || '').replace(/'/g, \"\\\\'\")}')" 
+                  class="px-2.5 py-1 text-[10px] font-bold rounded-md cursor-pointer transition flex items-center gap-1 shadow-sm bg-rose-950/40 text-rose-300 hover:bg-rose-900/60 border border-rose-800/50"
+                  title="Supprimer définitivement cet utilisateur de la base D1"
+                >
+                  <span>🗑️</span>
+                  <span>Supprimer le compte</span>
                 </button>
               </div>
 
@@ -12474,15 +12513,37 @@ export default {
         };
       }
 
-      // Récupération de tous les utilisateurs (sélection résiliente)
+      // Nettoyage automatique des comptes invités résiduels
+      await safeRun(db, "DELETE FROM users WHERE id IN ('default-user', 'user_anonymous') OR email = 'guest@studycloud.com'");
+
+      // Récupération de tous les utilisateurs réels (sélection résiliente)
       let usersQuery = await safeQuery(db, `
         SELECT * 
         FROM users 
+        WHERE id NOT IN ('default-user', 'user_anonymous') AND email != 'guest@studycloud.com'
         ORDER BY created_at DESC
       `, [], null);
 
       if (!usersQuery || !usersQuery.results) {
-        usersQuery = await safeQuery(db, `SELECT id, name, email FROM users`, [], { results: [] });
+        usersQuery = await safeQuery(db, `SELECT id, name, email FROM users WHERE id NOT IN ('default-user', 'user_anonymous') AND email != 'guest@studycloud.com'`, [], { results: [] });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/users/delete (SUPPRESSION DÉFINITIVE D'UN UTILISATEUR)
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/users/delete') {
+        const body = await request.json().catch(() => ({}));
+        const targetUserId = body.userId;
+        if (!targetUserId) {
+          return new Response(JSON.stringify({ success: false, error: 'userId requis' }), { status: 400, headers: corsHeaders(origin) });
+        }
+        await safeRun(db, 'DELETE FROM users WHERE id = ?', [targetUserId]);
+        await safeRun(db, 'DELETE FROM user_storage_quotas WHERE user_id = ?', [targetUserId]);
+        await safeRun(db, 'DELETE FROM user_storage_usage WHERE user_id = ?', [targetUserId]);
+        return new Response(JSON.stringify({ success: true, deletedUserId: targetUserId }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
       }
 
       // ----------------------------------------------------------------------

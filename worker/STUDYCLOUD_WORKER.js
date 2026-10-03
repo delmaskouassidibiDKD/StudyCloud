@@ -3029,7 +3029,7 @@ async function ensureCloudMediaTables(db) {
       await db.prepare("CREATE INDEX IF NOT EXISTS idx_sff_folder ON shared_folder_files(shared_folder_id)").run();
     } catch (e) {
     }
-    await db.prepare("INSERT OR IGNORE INTO users (id, name, email) VALUES ('default-user', '\xC9tudiant StudyCloud', 'guest@studycloud.com')").run().catch(() => {
+    await db.prepare("DELETE FROM users WHERE id = 'default-user' OR id = 'user_anonymous' OR email = 'guest@studycloud.com'").run().catch(() => {
     });
     isCloudMediaTablesInitialized = true;
   } catch (err) {
