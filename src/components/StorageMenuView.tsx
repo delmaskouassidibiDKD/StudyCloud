@@ -200,8 +200,11 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
   const welcomeMb = storageData?.welcomeStorage.totalMb ?? 100;
   const paidMb = storageData?.paidStorage.totalMb ?? 0;
   const totalAllowedMb = storageData?.totalAllowedMb ?? 100;
-  const totalUsedMb = storageData?.totalUsedMb ?? 0;
-  const totalPercentage = storageData?.totalPercentage ?? 0;
+  // RÈGLE STRICTE : Le stockage utilisé affiché (devant) ne doit JAMAIS dépasser le quota autorisé (derrière) : used <= allowed
+  const rawUsedMb = storageData?.totalUsedMb ?? 0;
+  const totalUsedMb = Math.min(rawUsedMb, totalAllowedMb);
+  const totalPercentage = Math.min(100, storageData?.totalPercentage ?? (totalAllowedMb > 0 ? Math.round((totalUsedMb / totalAllowedMb) * 100) : 0));
+  const isStorageSaturated = rawUsedMb >= totalAllowedMb;
   const filesStorage = storageData?.filesStorage;
   const dataStorage = storageData?.dataStorage;
 
@@ -334,7 +337,7 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
                   </text>
                 </svg>
                 <p className="text-white/80 text-xs mt-1 font-medium text-center">
-                  {loading ? '...' : storageData?.totalUsedFormatted || `${totalUsedMb} Mo`}
+                  {loading ? '...' : (isStorageSaturated ? (storageData?.totalAllowedFormatted || `${totalAllowedMb} Mo`) : (storageData?.totalUsedFormatted || `${totalUsedMb} Mo`))}
                   <span className="text-white/50"> / </span>
                   {storageData?.totalAllowedFormatted || `${totalAllowedMb} Mo`}
                 </p>
@@ -398,7 +401,7 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
             <div className="flex items-center justify-between text-[11px] text-white/60">
               <span>0</span>
               <span className="font-semibold text-white/80">
-                {totalPercentage < 70 ? '✓ Espace disponible confortable' : totalPercentage < 90 ? '⚠ Espace en cours de saturation' : '🔴 Espace presque saturé'}
+                {totalPercentage < 70 ? '✓ Espace disponible confortable' : totalPercentage < 90 ? '⚠ Espace en cours de saturation' : totalPercentage < 100 ? '🔴 Espace presque saturé' : '⛔ Espace saturé (100% atteint) — Importations bloquées'}
               </span>
               <span>{storageData?.totalAllowedFormatted || `${totalAllowedMb} Mo`}</span>
             </div>
@@ -427,6 +430,24 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
 
         {/* ── COLONNE GAUCHE (2/3 de la largeur) ── */}
         <div className="xl:col-span-2 space-y-5">
+
+          {/* Alerte Espace Saturé */}
+          {isStorageSaturated && (
+            <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-500/60 rounded-2xl flex items-center justify-between gap-3 text-amber-900 dark:text-amber-200 text-xs sm:text-sm">
+              <div className="flex items-center gap-2.5">
+                <AlertCircle className="w-5 h-5 shrink-0 text-amber-500" />
+                <span>
+                  <strong>Votre espace de stockage est plein ({storageData?.totalAllowedFormatted || `${totalAllowedMb} Mo`}).</strong> Tout nouvel import de fichier est bloqué pour protéger votre compte. Libérez de l'espace ou augmentez votre quota.
+                </span>
+              </div>
+              <button
+                onClick={() => setShowUpgradeModal(true)}
+                className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold rounded-xl text-xs shrink-0 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer"
+              >
+                Augmenter
+              </button>
+            </div>
+          )}
 
           {/* Message d'erreur */}
           {error && (

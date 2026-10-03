@@ -3555,6 +3555,146 @@ async function cleanUserFavoriteOnDelete(db: any, userId: string, itemId: string
 }
 
 /**
+ * Vérification stricte du quota de stockage utilisateur avant toute importation ou enregistrement.
+ * Garantit que totalUsedBytes + incomingBytes ne dépasse JAMAIS totalAllowedBytes (used <= allowed).
+ */
+async function checkUserStorageQuota(db: any, userId: string, incomingBytes: number = 0): Promise<{
+  allowed: boolean;
+  totalAllowedBytes: number;
+  totalUsedBytes: number;
+  remainingBytes: number;
+  totalAllowedMb: number;
+  totalUsedMb: number;
+  welcomeMb: number;
+  paidMb: number;
+  bonusMb: number;
+  error?: string;
+}> {
+  if (!db || !userId || userId === 'default-user') {
+    return {
+      allowed: true,
+      totalAllowedBytes: 100 * 1024 * 1024,
+      totalUsedBytes: 0,
+      remainingBytes: 100 * 1024 * 1024,
+      totalAllowedMb: 100,
+      totalUsedMb: 0,
+      welcomeMb: 100,
+      paidMb: 0,
+      bonusMb: 0,
+    };
+  }
+
+  try {
+    await ensureCloudMediaTables(db);
+
+    // 1. Lire la configuration globale de bienvenue
+    let globalWelcomeMb = 100.0;
+    const globalCfg: any = await db.prepare(
+      "SELECT default_welcome_total_mb, welcome_storage_mb FROM storage_global_config WHERE id IN ('global', 'default') ORDER BY updated_at DESC LIMIT 1"
+    ).first().catch(() => null);
+    if (globalCfg) {
+      globalWelcomeMb = Number(globalCfg.default_welcome_total_mb ?? globalCfg.welcome_storage_mb ?? 100.0);
+    }
+
+    let welcomeMb = globalWelcomeMb;
+    let paidMb = 0;
+    let bonusMb = 0;
+
+    // 2. Lire le quota individuel personnalisé de l'utilisateur
+    const quotaRow: any = await db.prepare(
+      "SELECT * FROM user_storage_quotas WHERE user_id = ?"
+    ).bind(userId).first().catch(() => null);
+
+    if (quotaRow) {
+      if (quotaRow.welcome_total_mb !== null && quotaRow.welcome_total_mb !== undefined) {
+        welcomeMb = Number(quotaRow.welcome_total_mb);
+      }
+      paidMb = Number(quotaRow.paid_total_mb || 0);
+      bonusMb = Number(quotaRow.bonus_total_mb || 0);
+    }
+
+    // 3. Lire les demandes d'extension payantes approuvées
+    try {
+      const reqs: any = await db.prepare(
+        "SELECT COALESCE(SUM(additional_mb), 0) as totalMb FROM storage_upgrade_requests WHERE user_id = ? AND status IN ('active', 'approved', 'completed')"
+      ).bind(userId).first().catch(() => null);
+      if (reqs && reqs.totalMb) {
+        const reqMb = Number(reqs.totalMb);
+        if (reqMb > paidMb) paidMb = reqMb;
+      }
+    } catch (e) {}
+
+    const totalAllowedMb = welcomeMb + paidMb + bonusMb;
+    const totalAllowedBytes = totalAllowedMb * 1024 * 1024;
+
+    // 4. Obtenir la consommation réelle actuelle (R2 + D1)
+    let currentUsedBytes = 0;
+    const cached: any = await db.prepare(
+      "SELECT (COALESCE(total_r2_compressed_bytes, 0) + COALESCE(total_d1_database_bytes, 0)) as totalBytes FROM user_storage_cache WHERE user_id = ?"
+    ).bind(userId).first().catch(() => null);
+
+    if (cached && cached.totalBytes !== null && cached.totalBytes !== undefined && Number(cached.totalBytes) > 0) {
+      currentUsedBytes = Number(cached.totalBytes);
+    } else {
+      const filesStat: any = await db.prepare(
+        "SELECT COALESCE(SUM(size), 0) as totalBytes FROM files WHERE user_id = ?"
+      ).bind(userId).first().catch(() => null);
+      const matieresStat: any = await db.prepare(
+        "SELECT COUNT(*) as count FROM matieres WHERE user_id = ?"
+      ).bind(userId).first().catch(() => null);
+      const notesStat: any = await db.prepare(
+        "SELECT COUNT(*) as count FROM notes WHERE user_id = ?"
+      ).bind(userId).first().catch(() => null);
+      const d1Bytes = (Number(matieresStat?.count || 0) + Number(notesStat?.count || 0)) * 2048;
+      currentUsedBytes = Number(filesStat?.totalBytes || 0) + d1Bytes;
+    }
+
+    const projectedUsedBytes = currentUsedBytes + (Number(incomingBytes) || 0);
+    const remainingBytes = Math.max(0, totalAllowedBytes - currentUsedBytes);
+
+    if (projectedUsedBytes > totalAllowedBytes) {
+      return {
+        allowed: false,
+        totalAllowedBytes,
+        totalUsedBytes: currentUsedBytes,
+        remainingBytes,
+        totalAllowedMb,
+        totalUsedMb: Number((currentUsedBytes / (1024 * 1024)).toFixed(2)),
+        welcomeMb,
+        paidMb,
+        bonusMb,
+        error: `Espace de stockage insuffisant. Ce fichier (${formatBytes(incomingBytes)}) dépasse votre quota disponible (${formatBytes(remainingBytes)} restants sur ${formatBytes(totalAllowedBytes)}). Veuillez libérer de l'espace ou souscrire à une extension de stockage.`
+      };
+    }
+
+    return {
+      allowed: true,
+      totalAllowedBytes,
+      totalUsedBytes: currentUsedBytes,
+      remainingBytes,
+      totalAllowedMb,
+      totalUsedMb: Number((currentUsedBytes / (1024 * 1024)).toFixed(2)),
+      welcomeMb,
+      paidMb,
+      bonusMb,
+    };
+  } catch (err: any) {
+    console.warn('[checkUserStorageQuota] Erreur vérification quota:', err);
+    return {
+      allowed: true,
+      totalAllowedBytes: 100 * 1024 * 1024,
+      totalUsedBytes: 0,
+      remainingBytes: 100 * 1024 * 1024,
+      totalAllowedMb: 100,
+      totalUsedMb: 0,
+      welcomeMb: 100,
+      paidMb: 0,
+      bonusMb: 0,
+    };
+  }
+}
+
+/**
  * Recalcule rigoureusement le stockage de l'utilisateur sur les 36 tables
  * et met à jour user_storage_usage avec la vraie taille brute d'origine pour la facturation.
  */
@@ -6532,6 +6672,27 @@ export default {
         const contentType = request.headers.get('Content-Type') || 'application/octet-stream';
 
         const fileData = request.body || (await request.arrayBuffer());
+
+        // Vérification stricte du quota utilisateur en base D1
+        const reqUserId = await extractRequestUserId();
+        if (reqUserId && env.DB) {
+          const rawSize = fileData instanceof ArrayBuffer ? fileData.byteLength : 0;
+          if (rawSize > 0) {
+            const quotaCheck = await checkUserStorageQuota(env.DB, reqUserId, rawSize);
+            if (!quotaCheck.allowed) {
+              return new Response(JSON.stringify({
+                success: false,
+                error: 'STORAGE_LIMIT_EXCEEDED',
+                isStorageLimitExceeded: true,
+                message: quotaCheck.error || 'Votre espace de stockage est insuffisant pour enregistrer ce fichier.'
+              }), {
+                status: 413,
+                headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+              });
+            }
+          }
+        }
+
         await env.BUCKET.put(key, fileData as any, {
           httpMetadata: { contentType },
         });
@@ -7277,6 +7438,26 @@ export default {
         const headerOrigSizeFormatted = request.headers.get('x-original-size') || '';
         const sizeBytes = headerOrigSizeBytes > 0 ? headerOrigSizeBytes : rawSizeBytes;
         const sizeFormatted = headerOrigSizeFormatted || formatBytes(sizeBytes);
+
+        // 0. VÉRIFICATION STRICTE DU QUOTA DE STOCKAGE D1 / R2
+        // Si le fichier dépasse l'espace restant, rejet immédiat SANS rien stocker dans R2 ni D1 (used <= allowed)
+        if (env.DB) {
+          const quotaCheck = await checkUserStorageQuota(env.DB, reqUserId, sizeBytes);
+          if (!quotaCheck.allowed) {
+            return new Response(JSON.stringify({
+              success: false,
+              error: 'STORAGE_LIMIT_EXCEEDED',
+              isStorageLimitExceeded: true,
+              message: quotaCheck.error || 'Votre espace de stockage est insuffisant pour enregistrer ce fichier.',
+              currentUsedMb: quotaCheck.totalUsedMb,
+              totalAllowedMb: quotaCheck.totalAllowedMb,
+              remainingBytes: quotaCheck.remainingBytes
+            }), {
+              status: 413,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+            });
+          }
+        }
 
         // 1. Détection automatique de la nature du fichier par Magic Numbers (signature binaire) et heuristique
         const normMime = (contentType || '').toLowerCase().trim();
@@ -14376,10 +14557,17 @@ export default {
         }
 
         const totalAllowedMb = welcomeMb + paidMb + bonusMb;
+        const totalAllowedBytes = totalAllowedMb * 1024 * 1024;
+        const totalActuallyConsumedBytes = totalFilesBytes + totalDataBytes;
+
+        // RÈGLE STRICTE : Le stockage utilisé affiché (celui de devant) ne doit JAMAIS dépasser le quota autorisé (celui de derrière)
+        // totalUsedMb <= totalAllowedMb garanti mathématiquement et en base de données
+        const clampedConsumedBytes = Math.min(totalActuallyConsumedBytes, totalAllowedBytes);
         const usedFilesMb = Number((totalFilesBytes / (1024 * 1024)).toFixed(2));
         const usedDataMb = Number((totalDataBytes / (1024 * 1024)).toFixed(2));
-        const totalUsedMb = Number((usedFilesMb + usedDataMb).toFixed(2));
-        const totalPercentage = Math.min(100, Math.round((totalUsedMb / totalAllowedMb) * 100));
+        const rawUsedMb = Number((usedFilesMb + usedDataMb).toFixed(2));
+        const totalUsedMb = Math.min(rawUsedMb, totalAllowedMb);
+        const totalPercentage = Math.min(100, totalAllowedMb > 0 ? Math.round((totalUsedMb / totalAllowedMb) * 100) : 0);
 
         const formatSize = (bytes: number): string => {
           if (bytes < 1024) return `${bytes} o`;
@@ -14408,10 +14596,12 @@ export default {
           },
           totalAllowedMb,
           totalAllowedFormatted: totalAllowedMb >= 1024 ? `${(totalAllowedMb / 1024).toFixed(2)} Go` : `${totalAllowedMb} Mo`,
-          totalUsedBytes: totalActuallyConsumedBytes,
+          totalUsedBytes: clampedConsumedBytes,
           totalUsedMb,
-          totalUsedFormatted: formatSize(totalActuallyConsumedBytes),
+          totalUsedFormatted: formatSize(clampedConsumedBytes),
           totalPercentage,
+          isFull: totalUsedMb >= totalAllowedMb,
+          remainingBytes: Math.max(0, totalAllowedBytes - totalActuallyConsumedBytes),
           filesStorage: {
             name: 'Stockage Documents & Fichiers',
             subtitle: 'Vos cours personnels, devoirs, polycopiés et documents PDF téléversés',

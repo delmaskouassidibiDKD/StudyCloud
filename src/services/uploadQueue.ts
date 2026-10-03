@@ -272,6 +272,28 @@ class UploadQueueManager {
     const normName = fileName.toLowerCase();
 
     try {
+      // Étape 0 : Vérification proactive du quota disponible avant transfert
+      try {
+        const cached = localStorage.getItem('studycloud_cached_user_storage');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          const totalAllowedMb = Number(parsed?.totalAllowedMb || 100);
+          const totalAllowedBytes = totalAllowedMb * 1024 * 1024;
+          const totalUsedBytes = Number(parsed?.totalUsedBytes || 0);
+          const remainingBytes = Math.max(0, totalAllowedBytes - totalUsedBytes);
+
+          if (file.size > remainingBytes) {
+            const formatSizeShort = (b: number) => b < 1024 * 1024 ? `${(b / 1024).toFixed(1)} Ko` : `${(b / (1024 * 1024)).toFixed(2)} Mo`;
+            const err: any = new Error(`Espace de stockage insuffisant. Ce fichier (${formatSizeShort(file.size)}) dépasse votre quota disponible (${formatSizeShort(remainingBytes)} restants sur ${totalAllowedMb} Mo).`);
+            err.isStorageLimitExceeded = true;
+            err.storageMessage = err.message;
+            throw err;
+          }
+        }
+      } catch (checkErr: any) {
+        if (checkErr?.isStorageLimitExceeded) throw checkErr;
+      }
+
       // Étape A : Génération / Réutilisation de la miniature réelle
       let previewDataUrl: string | null = task.fileItem?.thumbnailUrl || task.fileItem?.previewUrl || task.fileItem?.coverUrl || null;
       const isAudio = category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|m4b)$/i);
