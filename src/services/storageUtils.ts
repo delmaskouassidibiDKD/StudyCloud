@@ -96,3 +96,31 @@ export function buildSharedLinkFileKey(folderId: string, fileId: string, fileNam
   return `${R2_FOLDERS.SHARED_LINKS}/${cleanFolder}/${cleanId}-${cleanName}`;
 }
 
+/**
+ * Génère un identifiant unique dédié pour chaque instance de fichier
+ * entrant dans la procédure de création d'un lien de partage.
+ * Même si le même fichier physique ou homonyme est sélectionné plusieurs fois,
+ * chaque tentative reçoit un ID unique strictement rattaché à l'ID utilisateur.
+ * Format: shf_{cleanUserId}_{timestamp}_{randomHex}
+ */
+export function generateShareFileId(userId: string): string {
+  const cleanUid = sanitizeFileName(userId || 'user');
+  const ts = Date.now();
+  const rand = Math.random().toString(36).substring(2, 9);
+  return `shf_${cleanUid}_${ts}_${rand}`;
+}
+
+/**
+ * Construit la clé Cloudflare R2 unique pour chaque instance de fichier dans un partage.
+ * Utilise l'identifiant unique d'instance pour garantir qu'aucune suppression n'affecte
+ * un fichier d'un autre lien ou un fichier de la bibliothèque personnelle.
+ * Format: shared-links/files/{cleanUserId}/{uniqueShareFileId}-{cleanFileName}
+ */
+export function buildShareFileR2Key(userId: string, uniqueShareFileId: string, fileName: string): string {
+  const cleanUid = sanitizeFileName(userId || 'user');
+  const cleanId = sanitizeFileName(uniqueShareFileId || Date.now().toString());
+  const cleanName = sanitizeFileName(fileName || 'document');
+  return `${R2_FOLDERS.SHARED_LINKS}/${cleanUid}/${cleanId}-${cleanName}`;
+}
+
+

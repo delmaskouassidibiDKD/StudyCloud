@@ -27,7 +27,7 @@ import { RightMenu } from './components/RightMenu';
 import { StudyTimerModal, formatTimerDisplay } from './components/StudyTimerModal';
 import { StudyCloudAPI, generateCleanShareCode, getWorkerApiUrl } from './services/api';
 import { getFileBlob, storeFileBlob } from './services/localFileStorage';
-import { buildSharedLinkFileKey } from './services/storageUtils';
+import { buildSharedLinkFileKey, generateShareFileId, buildShareFileR2Key } from './services/storageUtils';
 import { useAuth } from './context/AuthContext';
 import { AuthPage } from './components/auth/AuthPage';
 import { OnboardingPage } from './components/auth/OnboardingPage';
@@ -344,6 +344,7 @@ export default function App() {
   const [externalSharePreparingMessage, setExternalSharePreparingMessage] = useState('');
   const [isExternalShareActive, setIsExternalShareActive] = useState(false);
   const [externalShareUploadedR2Keys, setExternalShareUploadedR2Keys] = useState<string[]>([]);
+  const [externalShareUploadedFileIds, setExternalShareUploadedFileIds] = useState<string[]>([]);
 
   const handleOpenExternalCreateShareLink = async (rawItems: any[]) => {
     if (!rawItems || rawItems.length === 0) return;
@@ -353,55 +354,75 @@ export default function App() {
     setExternalSharePreparingMessage(`⏳ Enregistrement de ${rawItems.length} fichier(s)...`);
 
     const newlyUploadedKeys: string[] = [];
+    const newlyCreatedFileIds: string[] = [];
     const preparedItems: any[] = [];
 
     try {
       for (let i = 0; i < rawItems.length; i++) {
         const item = rawItems[i];
         let fileUrl = item.url || item.previewUrl || '';
-        let r2Key = item.r2Key || item.r2_key;
+        let originalR2Key = item.r2Key || item.r2_key;
         let calculatedSize = typeof item.size === 'number' ? item.size : (item.sizeBytes || 0);
         let fileBlob: Blob | null = null;
 
-        // Si le fichier n'a pas encore de clé R2 ou est un blob local
-        if (!r2Key || !fileUrl || fileUrl.startsWith('blob:')) {
-          fileBlob = await getFileBlob(item.id);
-          if (!fileBlob && item.file instanceof Blob) {
-            fileBlob = item.file;
-          }
-          if (!fileBlob && fileUrl) {
-            try {
-              const resp = await fetch(fileUrl);
-              if (resp.ok) fileBlob = await resp.blob();
-            } catch (fetchErr) {
-              console.warn('Sync fetch blob pour partage externe:', fetchErr);
-            }
-          }
+        // Attribuer un identifiant unique dédié à cette instance de partage, strictement lié à l'ID utilisateur
+        const uniqueShareFileId = generateShareFileId(currentUserId);
+        const dedicatedR2Key = buildShareFileR2Key(currentUserId, uniqueShareFileId, item.name || 'document');
+        let finalR2Key = originalR2Key || dedicatedR2Key;
 
-          if (fileBlob) {
-            calculatedSize = calculatedSize || fileBlob.size;
-            const newKey = buildSharedLinkFileKey(currentUserId, `ext-${Date.now()}-${i}`, item.name || 'document');
-            const fileObj = new File([fileBlob], item.name || 'document', {
-              type: item.type || fileBlob.type || 'application/octet-stream',
-            });
-            const r2Res = await StudyCloudAPI.uploadFileToR2(fileObj, newKey, fileObj.type, fileObj.size);
-            if (r2Res.success && r2Res.url) {
-              fileUrl = r2Res.url;
-              r2Key = newKey;
-              newlyUploadedKeys.push(newKey);
-            }
+        // Récupérer le blob du fichier si possible (depuis IndexedDB, mémoire ou URL)
+        fileBlob = await getFileBlob(item.id);
+        if (!fileBlob && (item as any).file instanceof Blob) {
+          fileBlob = (item as any).file;
+        }
+        if (!fileBlob && fileUrl) {
+          try {
+            const resp = await fetch(fileUrl);
+            if (resp.ok) fileBlob = await resp.blob();
+          } catch (fetchErr) {
+            console.warn('Sync fetch blob pour partage externe:', fetchErr);
           }
         }
+
+        // Si on a le blob : on l'enregistre sur la clé dédiée unique pour ce partage
+        if (fileBlob) {
+          calculatedSize = calculatedSize || fileBlob.size;
+          const fileObj = new File([fileBlob], item.name || 'document', {
+            type: item.type || fileBlob.type || 'application/octet-stream',
+          });
+          const r2Res = await StudyCloudAPI.uploadFileToR2(fileObj, dedicatedR2Key, fileObj.type, fileObj.size);
+          if (r2Res.success && r2Res.url) {
+            fileUrl = r2Res.url;
+            finalR2Key = dedicatedR2Key;
+            newlyUploadedKeys.push(dedicatedR2Key);
+          }
+        } else if (!finalR2Key) {
+          finalR2Key = dedicatedR2Key;
+        }
+
+        // Enregistrer immédiatement dans la table D1 de staging avec l'identifiant unique
+        await StudyCloudAPI.stageShareFile({
+          userId: currentUserId,
+          id: uniqueShareFileId,
+          name: item.name || 'Fichier',
+          size: calculatedSize,
+          type: item.type || item.extension || 'file',
+          r2Key: finalR2Key,
+          url: fileUrl,
+        }).catch((err) => console.warn('Erreur staging externe:', err));
+
+        newlyCreatedFileIds.push(uniqueShareFileId);
 
         const isImg = item.isImage || item.category === 'images' || item.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(item.name || '');
 
         preparedItems.push({
-          id: item.id || `ext-${Date.now()}-${i}`,
+          id: uniqueShareFileId,
+          originalFileId: item.id,
           name: item.name || 'Fichier',
           size: calculatedSize,
           type: item.type || item.extension || 'file',
           url: fileUrl,
-          r2Key,
+          r2Key: finalR2Key,
           isImage: isImg,
           category: item.category || 'documents',
           extension: item.extension,
@@ -420,6 +441,7 @@ export default function App() {
     }
 
     setExternalShareUploadedR2Keys(newlyUploadedKeys);
+    setExternalShareUploadedFileIds(newlyCreatedFileIds);
     setIsExternalShareActive(true);
     setShareModalTargetItems(preparedItems);
     setShareModalInitialName(
@@ -487,7 +509,10 @@ export default function App() {
                 }
               }
 
-              const r2Key = buildSharedLinkFileKey(folderId, item.id, item.name);
+              const uniqueFileId = (item.id && typeof item.id === 'string' && item.id.startsWith('shf_')) 
+                ? item.id 
+                : generateShareFileId(userId);
+              const r2Key = buildShareFileR2Key(userId, uniqueFileId, item.name);
               if (fileBlob) {
                 calculatedSize = calculatedSize || fileBlob.size;
                 const fileObj = new File([fileBlob], item.name, {
@@ -510,9 +535,13 @@ export default function App() {
             fileUrl = `${workerUrl}/api/storage/file/${encodeURIComponent(storedR2Key)}`;
           }
 
+          const uniqueFileId = (item.id && typeof item.id === 'string' && item.id.startsWith('shf_')) 
+            ? item.id 
+            : generateShareFileId(userId);
+
           return {
-            id: item.id || crypto.randomUUID(),
-            fileId: item.id,
+            id: uniqueFileId,
+            fileId: (item as any).originalFileId || item.id,
             name: item.name || 'Fichier',
             size: calculatedSize || (fileBlob ? fileBlob.size : 0),
             type: item.type || (fileBlob ? fileBlob.type : 'file'),
@@ -1167,13 +1196,13 @@ export default function App() {
       const f = filesToProcess[i];
       const isPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
       const isImg = !isPdf && (f.type.startsWith('image/') || defaultType.toLowerCase().includes('image') || /\.(jpg|jpeg|png|webp|gif)$/i.test(f.name));
-      const id = `item-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 9)}`;
+      const id = generateShareFileId(currentUserId);
 
       // 1. Sauvegarde locale de secours
       storeFileBlob(id, f).catch(() => {});
 
-      // 2. Upload immédiat vers Cloudflare R2
-      const r2Key = buildSharedLinkFileKey(currentUserId, id, f.name);
+      // 2. Upload immédiat vers Cloudflare R2 avec clé unique dédiée
+      const r2Key = buildShareFileR2Key(currentUserId, id, f.name);
       let r2Url = '';
       try {
         const r2Res = await StudyCloudAPI.uploadFileToR2(f, r2Key, f.type || 'application/octet-stream', f.size);
@@ -1703,11 +1732,7 @@ export default function App() {
               onSelectFolder={(folder) => setActiveFolderDetail(folder)}
               setActivePreviewItem={setActivePreviewItem}
               onOpenCreateShareLink={(items) => {
-                setShareModalTargetItems(items);
-                setShareModalInitialName(
-                  items.length === 1 ? items[0].name.replace(/\.[^/.]+$/, '') : `Partage (${items.length} fichiers)`
-                );
-                setShowCreateShareLinkModal(true);
+                handleOpenExternalCreateShareLink(items);
               }}
             />
           ) : currentTab === 'shared' ? (
@@ -1867,12 +1892,13 @@ export default function App() {
                   const targetIds = itemsToDelete && itemsToDelete.length > 0 ? itemsToDelete : undefined;
                   const isAll = !targetIds || targetIds.length >= uploadedItems.length;
 
-                  // Récupérer les r2Keys des fichiers pour vérification complète côté Worker
+                  // Récupérer les r2Keys et les IDs uniques des fichiers pour vérification stricte côté Worker
                   const filesToCheck = isAll ? uploadedItems : uploadedItems.filter(i => targetIds?.includes(i.id));
                   const targetR2Keys = filesToCheck.map((f: any) => f.r2Key || f.r2_key).filter(Boolean);
+                  const targetFileIds = filesToCheck.map((f: any) => f.id).filter(Boolean);
 
-                  // Supprimer les fichiers temporaires avec vérification de lien côté serveur
-                  await StudyCloudAPI.deleteStagingShareFiles(currentUserId, targetIds, targetR2Keys).catch(() => {});
+                  // Supprimer les fichiers temporaires de staging avec vérification côté serveur
+                  await StudyCloudAPI.deleteStagingShareFiles(currentUserId, targetFileIds, targetR2Keys).catch(() => {});
 
                   if (isAll) {
                     setUploadedItems([]);
@@ -2052,9 +2078,7 @@ export default function App() {
                     <button
                       onClick={() => {
                         if (!activePreviewItem) return;
-                        setShareModalTargetItems([activePreviewItem]);
-                        setShareModalInitialName(activePreviewItem.name.replace(/\.[^/.]+$/, ''));
-                        setShowCreateShareLinkModal(true);
+                        handleOpenExternalCreateShareLink([activePreviewItem]);
                       }}
                       className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-white hover:bg-stone-100 text-stone-900 rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 shrink-0"
                       title="Créer un lien de partage pour ce document"
@@ -2250,16 +2274,18 @@ export default function App() {
             setShowCreateShareLinkModal(false);
             const isExternal = isExternalShareActive;
             const keysToPurge = [...externalShareUploadedR2Keys];
+            const fileIdsToPurge = [...externalShareUploadedFileIds];
             setIsExternalShareActive(false);
             setExternalShareUploadedR2Keys([]);
+            setExternalShareUploadedFileIds([]);
             setShareModalTargetItems(null);
             setShareModalInitialName('');
 
             if (isExternal && !wasCreated) {
               // L'utilisateur a annulé la procédure de partage depuis un menu externe
-              if (keysToPurge.length > 0) {
-                const currentUserId = user?.id || localStorage.getItem('unifolder_user_id') || 'default-user';
-                await StudyCloudAPI.deleteStagingShareFiles(currentUserId, undefined, keysToPurge).catch(() => {});
+              const currentUserId = user?.id || localStorage.getItem('unifolder_user_id') || 'default-user';
+              if (keysToPurge.length > 0 || fileIdsToPurge.length > 0) {
+                await StudyCloudAPI.deleteStagingShareFiles(currentUserId, fileIdsToPurge, keysToPurge).catch(() => {});
               }
               setToastMessage('Échec de partage vous avez annulé les procédures');
             }
@@ -2269,6 +2295,7 @@ export default function App() {
               if (folder) {
                 // Le lien est créé avec succès : conserver définitivement les fichiers dans R2
                 setExternalShareUploadedR2Keys([]);
+                setExternalShareUploadedFileIds([]);
               }
               if (onComplete) onComplete(folder, error);
             }, isPublic);

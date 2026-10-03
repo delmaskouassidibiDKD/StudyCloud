@@ -10282,7 +10282,7 @@ a:hover{transform:translateY(-2px)}
             });
             if (targetR2Keys && targetR2Keys.length > 0) {
               const r2Placeholders = targetR2Keys.map(() => "?").join(",");
-              await env.DB.prepare(`DELETE FROM shared_folder_files WHERE r2_key IN (${r2Placeholders})`).bind(...targetR2Keys).run().catch(() => {
+              await env.DB.prepare(`DELETE FROM shared_folder_files WHERE shared_folder_id = ? AND r2_key IN (${r2Placeholders})`).bind(stagingId, ...targetR2Keys).run().catch(() => {
               });
             }
           } catch (e) {
