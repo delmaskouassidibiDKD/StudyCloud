@@ -565,33 +565,54 @@ export default function App() {
     try {
       const res = await StudyCloudAPI.getStagingShareFiles(currentUserId);
       if (res && res.success && Array.isArray(res.files)) {
-        const mapped = res.files.map((row: any) => {
-          const r2Key = row.r2_key || row.r2Key;
-          let fileUrl = row.file_url || row.url;
-          if ((!fileUrl || fileUrl.includes('localhost') || fileUrl.startsWith('blob:')) && r2Key) {
-            fileUrl = `${getWorkerApiUrl().replace(/\/+$/, '')}/api/storage/file/${encodeURIComponent(r2Key)}`;
-          }
-          const isImg = row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(row.name);
-          return {
-            id: row.file_id || row.id,
-            name: row.name,
-            size: row.size || 0,
-            type: row.type || 'file',
-            url: fileUrl || undefined,
-            r2Key,
-            isImage: isImg,
-          };
-        });
-        setUploadedItems(mapped);
-        try {
-          if (mapped.length > 0) {
+        if (res.files.length > 0) {
+          const mapped = res.files.map((row: any) => {
+            const r2Key = row.r2_key || row.r2Key;
+            let fileUrl = row.file_url || row.url;
+            if ((!fileUrl || fileUrl.includes('localhost') || fileUrl.startsWith('blob:')) && r2Key) {
+              fileUrl = `${getWorkerApiUrl().replace(/\/+$/, '')}/api/storage/file/${encodeURIComponent(r2Key)}`;
+            }
+            const isImg = row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(row.name);
+            return {
+              id: row.id || row.file_id,
+              name: row.name,
+              size: row.size || 0,
+              type: row.type || 'file',
+              url: fileUrl || undefined,
+              r2Key,
+              isImage: isImg,
+            };
+          });
+          setUploadedItems(mapped);
+          try {
             localStorage.setItem(`unifolder_uploaded_items_${currentUserId}`, JSON.stringify(mapped));
             localStorage.setItem('unifolder_uploaded_items', JSON.stringify(mapped));
-          } else {
-            localStorage.removeItem(`unifolder_uploaded_items_${currentUserId}`);
-            localStorage.removeItem('unifolder_uploaded_items');
+          } catch (e) {}
+        } else {
+          // Si D1 n'a pas de fichiers en staging mais que l'application en a en mémoire/localStorage,
+          // restaurer et synchroniser vers D1 pour éviter toute disparition intempestive au rechargement
+          const savedLocal = localStorage.getItem(`unifolder_uploaded_items_${currentUserId}`) || localStorage.getItem('unifolder_uploaded_items');
+          if (savedLocal) {
+            try {
+              const localItems = JSON.parse(savedLocal);
+              if (Array.isArray(localItems) && localItems.length > 0) {
+                setUploadedItems(localItems);
+                // Synchroniser silencieusement vers la staging D1
+                for (const item of localItems) {
+                  StudyCloudAPI.stageShareFile({
+                    userId: currentUserId,
+                    id: item.id,
+                    name: item.name,
+                    size: item.size,
+                    type: item.type,
+                    r2Key: item.r2Key || item.r2_key,
+                    url: item.url,
+                  }).catch(() => {});
+                }
+              }
+            } catch (e) {}
           }
-        } catch (e) {}
+        }
       }
     } catch (err) {
       console.warn('Erreur chargement staging D1:', err);
@@ -1263,9 +1284,6 @@ export default function App() {
     if (isAuthenticated && user?.id) {
       loadUserSharesFromD1();
       loadStagingShareFilesFromD1();
-    } else if (!isAuthenticated) {
-      setUploadedItems([]);
-      setSelectedItemIds([]);
     }
   }, [isAuthenticated, user?.id, loadUserSharesFromD1, loadStagingShareFilesFromD1]);
 
@@ -1746,7 +1764,7 @@ export default function App() {
             <p className="text-xs font-medium text-stone-700 leading-relaxed">
               {itemsToDelete && itemsToDelete.length < uploadedItems.length
                 ? `Voulez-vous supprimer les ${itemsToDelete.length} élément(s) sélectionné(s) ? La vérification du lien sera effectuée pour chaque élément.`
-                : 'Voulez-vous supprimer les éléments importés et vider le cache pour commencer un nouveau partage ?'}
+                : "Voulez-vous couper l'affichage de ces fichiers et commencer un nouveau partage ? Les fichiers associés à un lien actif resteront disponibles pour vos destinataires, et les fichiers non liés seront définitivement supprimés."}
             </p>
             <div className="flex items-center justify-end gap-2.5 pt-2">
               <button
@@ -1764,8 +1782,12 @@ export default function App() {
                   const targetIds = itemsToDelete && itemsToDelete.length > 0 ? itemsToDelete : undefined;
                   const isAll = !targetIds || targetIds.length >= uploadedItems.length;
 
+                  // Récupérer les r2Keys des fichiers pour vérification complète côté Worker
+                  const filesToCheck = isAll ? uploadedItems : uploadedItems.filter(i => targetIds?.includes(i.id));
+                  const targetR2Keys = filesToCheck.map((f: any) => f.r2Key || f.r2_key).filter(Boolean);
+
                   // Supprimer les fichiers temporaires avec vérification de lien côté serveur
-                  await StudyCloudAPI.deleteStagingShareFiles(currentUserId, targetIds).catch(() => {});
+                  await StudyCloudAPI.deleteStagingShareFiles(currentUserId, targetIds, targetR2Keys).catch(() => {});
 
                   if (isAll) {
                     setUploadedItems([]);
@@ -1776,14 +1798,14 @@ export default function App() {
                     } catch (e) {}
                     setToastMessage('✓ Fichiers effacés. Vous pouvez commencer un nouveau partage.');
                   } else {
-                    const remaining = uploadedItems.filter((i) => !targetIds.includes(i.id));
+                    const remaining = uploadedItems.filter((i) => !targetIds!.includes(i.id));
                     setUploadedItems(remaining);
-                    setSelectedItemIds((prev) => prev.filter((id) => !targetIds.includes(id)));
+                    setSelectedItemIds((prev) => prev.filter((id) => !targetIds!.includes(id)));
                     try {
                       localStorage.setItem(`unifolder_uploaded_items_${currentUserId}`, JSON.stringify(remaining));
                       localStorage.setItem('unifolder_uploaded_items', JSON.stringify(remaining));
                     } catch (e) {}
-                    setToastMessage(`✓ ${targetIds.length} fichier(s) supprimé(s).`);
+                    setToastMessage(`✓ ${targetIds!.length} fichier(s) supprimé(s).`);
                   }
 
                   setShowClearConfirmModal(false);
@@ -2118,16 +2140,10 @@ export default function App() {
           initialLinkName={shareModalInitialName}
           onClose={() => {
             setShowCreateShareLinkModal(false);
-            const hadSpecificTargets = Boolean(shareModalTargetItems);
             setShareModalTargetItems(null);
             setShareModalInitialName('');
-            if (!hadSpecificTargets) {
-              setUploadedItems([]);
-              setSelectedItemIds([]);
-              try {
-                localStorage.removeItem('unifolder_uploaded_items');
-              } catch (e) {}
-            }
+            // RÈGLE : Même si un lien est créé, l'aperçu des fichiers DOIT RESTER AFFICHÉ !
+            // Il ne sera masqué/effacé que si l'utilisateur clique sur « Nouveau partage ».
           }}
           onStartBackgroundCreation={handleStartBackgroundCreation}
         />

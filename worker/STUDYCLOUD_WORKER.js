@@ -10173,27 +10173,53 @@ a:hover{transform:translateY(-2px)}
             "Staging"
           ).run().catch(() => {
           });
-          await env.DB.prepare(`
-            INSERT INTO shared_folder_files (id, shared_folder_id, file_id, name, size, type, r2_key, file_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-              name = excluded.name,
-              size = excluded.size,
-              type = excluded.type,
-              r2_key = excluded.r2_key,
-              file_url = excluded.file_url
-          `).bind(
-            id || crypto.randomUUID(),
-            `staging_${userId}`,
-            id || null,
-            name,
-            size || 0,
-            type || "file",
-            finalKey,
-            finalUrl
-          ).run().catch(() => {
-          });
-          return jsonResponse({ success: true, r2Key: finalKey, url: finalUrl }, 200, origin);
+          let stagingInsertSuccess = false;
+          try {
+            await env.DB.prepare(`
+              INSERT INTO shared_folder_files (id, shared_folder_id, file_id, name, size, type, r2_key, file_url)
+              VALUES (?, ?, NULL, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                size = excluded.size,
+                type = excluded.type,
+                r2_key = excluded.r2_key,
+                file_url = excluded.file_url
+            `).bind(
+              id || crypto.randomUUID(),
+              `staging_${userId}`,
+              name,
+              size || 0,
+              type || "file",
+              finalKey,
+              finalUrl
+            ).run();
+            stagingInsertSuccess = true;
+          } catch (e1) {
+            try {
+              await env.DB.prepare(`
+                INSERT INTO shared_folder_files (id, shared_folder_id, name, size, type, r2_key, file_url)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                  name = excluded.name,
+                  size = excluded.size,
+                  type = excluded.type,
+                  r2_key = excluded.r2_key,
+                  file_url = excluded.file_url
+              `).bind(
+                id || crypto.randomUUID(),
+                `staging_${userId}`,
+                name,
+                size || 0,
+                type || "file",
+                finalKey,
+                finalUrl
+              ).run();
+              stagingInsertSuccess = true;
+            } catch (e2) {
+              console.warn("[Staging] Erreur insertion staging:", e2);
+            }
+          }
+          return jsonResponse({ success: stagingInsertSuccess, r2Key: finalKey, url: finalUrl }, 200, origin);
         }
         if (method === "DELETE") {
           const userId = url.searchParams.get("userId");
@@ -10208,6 +10234,7 @@ a:hover{transform:translateY(-2px)}
           } catch (e) {
           }
           const targetIds = Array.isArray(body.ids) && body.ids.length > 0 ? body.ids : null;
+          const targetR2Keys = Array.isArray(body.r2Keys) ? body.r2Keys : [];
           try {
             let selectQuery = "SELECT id, file_id, r2_key FROM shared_folder_files WHERE shared_folder_id = ?";
             const selectParams = [stagingId];
@@ -10217,38 +10244,46 @@ a:hover{transform:translateY(-2px)}
               selectParams.push(...targetIds, ...targetIds);
             }
             const { results: stagedFiles } = await env.DB.prepare(selectQuery).bind(...selectParams).all().catch(() => ({ results: [] }));
+            const allKeysToCheck = /* @__PURE__ */ new Set();
             if (stagedFiles && stagedFiles.length > 0) {
-              for (const f of stagedFiles) {
-                if (f.r2_key && env.BUCKET) {
-                  const linkCheck = await env.DB.prepare(
-                    "SELECT COUNT(*) as count FROM shared_folder_files WHERE shared_folder_id != ? AND shared_folder_id NOT LIKE 'staging_%' AND (r2_key = ? OR file_id = ?)"
-                  ).bind(stagingId, f.r2_key, f.file_id || f.id).first().catch(() => null);
-                  const activeLinksCount = linkCheck ? linkCheck.count || 0 : 0;
-                  const fileCheck = await env.DB.prepare(
-                    "SELECT COUNT(*) as count FROM files WHERE r2_key = ? OR id = ?"
-                  ).bind(f.r2_key, f.file_id || f.id).first().catch(() => null);
-                  const activeFilesCount = fileCheck ? fileCheck.count || 0 : 0;
-                  if (activeLinksCount === 0 && activeFilesCount === 0) {
-                    await env.BUCKET.delete(f.r2_key).catch((err) => console.warn("Erreur suppression R2 staging:", err));
-                  } else {
-                    console.log(`[Staging] Fichier conserv\xE9 sur R2 (${f.r2_key}) car associ\xE9 \xE0 un partage officiel.`);
-                  }
-                }
-              }
-              let deleteQuery = "DELETE FROM shared_folder_files WHERE shared_folder_id = ?";
-              const deleteParams = [stagingId];
-              if (targetIds && targetIds.length > 0) {
-                const placeholders = targetIds.map(() => "?").join(",");
-                deleteQuery += ` AND (file_id IN (${placeholders}) OR id IN (${placeholders}))`;
-                deleteParams.push(...targetIds, ...targetIds);
-              }
-              await env.DB.prepare(deleteQuery).bind(...deleteParams).run().catch(() => {
+              stagedFiles.forEach((f) => {
+                if (f.r2_key) allKeysToCheck.add(f.r2_key);
               });
             }
+            targetR2Keys.forEach((k) => {
+              if (k) allKeysToCheck.add(k);
+            });
+            for (const r2Key of allKeysToCheck) {
+              if (r2Key && env.BUCKET) {
+                const linkCheck = await env.DB.prepare(
+                  "SELECT COUNT(*) as count FROM shared_folder_files WHERE shared_folder_id != ? AND shared_folder_id NOT LIKE 'staging_%' AND r2_key = ?"
+                ).bind(stagingId, r2Key).first().catch(() => null);
+                const activeLinksCount = linkCheck ? linkCheck.count || 0 : 0;
+                const fileCheck = await env.DB.prepare(
+                  "SELECT COUNT(*) as count FROM files WHERE r2_key = ?"
+                ).bind(r2Key).first().catch(() => null);
+                const activeFilesCount = fileCheck ? fileCheck.count || 0 : 0;
+                if (activeLinksCount === 0 && activeFilesCount === 0) {
+                  await env.BUCKET.delete(r2Key).catch((err) => console.warn("Erreur suppression R2 staging:", err));
+                  console.log(`[Staging] Fichier orphelin purg\xE9 de R2 : ${r2Key}`);
+                } else {
+                  console.log(`[Staging] Fichier conserv\xE9 sur R2 (${r2Key}) car associ\xE9 \xE0 un partage officiel.`);
+                }
+              }
+            }
+            let deleteQuery = "DELETE FROM shared_folder_files WHERE shared_folder_id = ?";
+            const deleteParams = [stagingId];
+            if (targetIds && targetIds.length > 0) {
+              const placeholders = targetIds.map(() => "?").join(",");
+              deleteQuery += ` AND (file_id IN (${placeholders}) OR id IN (${placeholders}))`;
+              deleteParams.push(...targetIds, ...targetIds);
+            }
+            await env.DB.prepare(deleteQuery).bind(...deleteParams).run().catch(() => {
+            });
           } catch (e) {
             console.warn("Erreur purge staging R2/D1:", e);
           }
-          return jsonResponse({ success: true, message: "Fichiers temporaires supprim\xE9s avec v\xE9rification du lien" }, 200, origin);
+          return jsonResponse({ success: true, message: "Fichiers temporaires trait\xE9s avec v\xE9rification du lien" }, 200, origin);
         }
       }
       if (path === "/api/shares") {
