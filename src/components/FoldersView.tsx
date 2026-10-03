@@ -1795,12 +1795,27 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         }}
       />}
       {typeof viewMode === 'string' && viewMode.startsWith('matiere-') && (
-        <MatiereMenuView 
+        <FilesMenuView 
           key={viewMode}
-          matiereName={viewMode.replace('matiere-', '')} 
+          initialMatiere={viewMode.replace('matiere-', '')} 
           onBack={() => setViewMode('home')} 
           setActivePreviewItem={setActivePreviewItem} 
           onOpenCreateShareLink={onOpenCreateShareLink}
+          onImportFile={onOpenUpload}
+          onPublishFiles={(files) => {
+            try {
+              const payload = files.map(f => ({
+                id: f.id || `pub-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                name: f.name,
+                size: f.size,
+                type: f.type,
+                url: f.url || '',
+                isImage: f.isImage || false,
+              }));
+              localStorage.setItem('published_selected_files', JSON.stringify(payload));
+            } catch (e) {}
+            if (onOpenPublishView) onOpenPublishView();
+          }}
         />
       )}
       {viewMode === 'schedule-menu' && <ScheduleMenuView onBack={() => setViewMode('home')} />}

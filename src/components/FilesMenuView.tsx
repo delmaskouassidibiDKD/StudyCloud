@@ -20,6 +20,7 @@ interface FilesMenuViewProps {
   setActivePreviewItem?: (item: any) => void;
   onOpenCreateShareLink?: (items: any[]) => void;
   onPublishFiles?: (files: any[]) => void;
+  initialMatiere?: string;
 }
 
 export interface ImportedItem {
@@ -221,7 +222,7 @@ export const isGalleryOrDemoFile = (f: any): boolean => {
   return false;
 };
 
-export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFile, setActivePreviewItem, onOpenCreateShareLink, onPublishFiles }) => {
+export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFile, setActivePreviewItem, onOpenCreateShareLink, onPublishFiles, initialMatiere }) => {
   const loadAllUserFiles = (): ImportedItem[] => {
     // 0. Purger activement et immédiatement les clés et entrées parasites de galeries Page 1 dans le localStorage
     const galleryKeysToRemove = [
@@ -324,6 +325,53 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   const [incompatibleAlertInfo, setIncompatibleAlertInfo] = useState<IncompatibleAlertInfo | null>(null);
   const { data: serverFiles = [], isLoading: isFilesQueryLoading } = useFilesMenuList();
   const [importedFiles, setImportedFiles] = useState<ImportedItem[]>(() => loadAllUserFiles());
+
+  const [savedMatieres, setSavedMatieres] = useState<{ id: string; name: string; coefficient: string; color?: string }[]>(() => {
+    const saved = localStorage.getItem('unifolder_saved_matieres');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return parsed.map((m: any, idx: number) => ({
+          id: m.id || ('mat-' + Math.random().toString(36).substring(2, 9) + '-' + idx),
+          name: m.name,
+          coefficient: m.coefficient,
+          color: m.color
+        }));
+      } catch (e) { }
+    }
+    return [];
+  });
+
+  const [selectedTab, setSelectedTab] = useState<string>(initialMatiere || 'Mes fichiers');
+
+  useEffect(() => {
+    if (initialMatiere) {
+      setSelectedTab(initialMatiere);
+    }
+  }, [initialMatiere]);
+
+  useEffect(() => {
+    const handleMatieresSync = () => {
+      try {
+        const saved = localStorage.getItem('unifolder_saved_matieres');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          setSavedMatieres(parsed.map((m: any, idx: number) => ({
+            id: m.id || ('mat-' + Math.random().toString(36).substring(2, 9) + '-' + idx),
+            name: m.name,
+            coefficient: m.coefficient,
+            color: m.color
+          })));
+        }
+      } catch (e) {}
+    };
+    window.addEventListener('storage', handleMatieresSync);
+    window.addEventListener('unifolder_matieres_updated', handleMatieresSync);
+    return () => {
+      window.removeEventListener('storage', handleMatieresSync);
+      window.removeEventListener('unifolder_matieres_updated', handleMatieresSync);
+    };
+  }, []);
 
   // Synchronisation réactive continue avec TanStack Query (Hono/D1)
   useEffect(() => {
@@ -535,15 +583,28 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   }, [isSearchOpen]);
 
   const filteredFiles = importedFiles.filter(f => {
+    // 1. Filtrage selon l'onglet / la matière sélectionnée
+    if (selectedTab !== 'Mes fichiers') {
+      const matchMatiere = (f.matiere && f.matiere.trim().toLowerCase() === selectedTab.trim().toLowerCase()) ||
+                            (f.folderName && f.folderName.trim().toLowerCase() === selectedTab.trim().toLowerCase());
+      if (!matchMatiere) return false;
+    }
+
     if (showDuplicatesOnly) {
       const isDup = f.name.includes('(Copie)') || importedFiles.filter(item => item.name.toLowerCase() === f.name.toLowerCase()).length > 1;
       if (!isDup) return false;
     }
-    return (
-      f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      f.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (f.matiere && f.matiere.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchName = f.name.toLowerCase().includes(q);
+      const matchType = f.type && f.type.toLowerCase().includes(q);
+      const matchExt = f.extension && f.extension.toLowerCase().includes(q);
+      const matchMatiere = f.matiere && f.matiere.toLowerCase().includes(q);
+      return matchName || matchType || matchExt || matchMatiere;
+    }
+
+    return true;
   }).sort((a, b) => {
     // Le dernier fichier importé dans toute l'application s'affiche toujours à l'en-tête même
     const lastId = localStorage.getItem('unifolder_last_imported_id');
@@ -568,21 +629,6 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     }
   });
 
-  const [savedMatieres, setSavedMatieres] = useState<{ id: string; name: string; coefficient: string; color?: string }[]>(() => {
-    const saved = localStorage.getItem('unifolder_saved_matieres');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return parsed.map((m: any, idx: number) => ({
-          id: m.id || ('mat-' + Math.random().toString(36).substring(2, 9) + '-' + idx),
-          name: m.name,
-          coefficient: m.coefficient,
-          color: m.color
-        }));
-      } catch (e) { }
-    }
-    return [];
-  });
 
   const handleAddNewMatiere = () => {
     if (!newMatiereName.trim()) return;
@@ -1094,6 +1140,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         }
 
         const extVal = f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : (f.type ? f.type.split('/').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
+        const isSubject = selectedTab !== 'Mes fichiers';
         const item: ImportedItem = {
           id,
           name: f.name,
@@ -1102,7 +1149,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           extension: extVal,
           url: localUrl,
           isImage: isImg,
-          matiere: '',
+          matiere: isSubject ? selectedTab : '',
+          folderName: isSubject ? selectedTab : 'Mes fichiers',
           importedAt: now + i,
           createdAt: now + i,
           timestamp: now + i,
@@ -1116,7 +1164,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           StudyCloudAPI.registerFileMetadata({
             id,
             userId,
-            matiereId: null,
+            matiereId: isSubject ? selectedTab : null,
             name: f.name,
             size: f.size,
             type: f.type || 'application/octet-stream',
@@ -1138,7 +1186,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
               f.type.startsWith('video/') ? 'videos' :
               f.type.startsWith('audio/') ? 'audio' : 'documents'
             ),
-            source: 'Mes fichiers',
+            source: isSubject ? selectedTab : 'Mes fichiers',
             sizeBytes: f.size,
             date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
             previewUrl: localUrl,
@@ -1178,10 +1226,25 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         let directList: ImportedItem[] = directSaved ? JSON.parse(directSaved) : [];
         directList = [...newItems, ...directList];
         safeLocalStorageSet('unifolder_files_menu_items', directList);
-        window.dispatchEvent(new Event('unifolder_files_updated'));
       } catch (e) {
         console.error(e);
       }
+
+      // Si importé dans une matière spécifique, sauvegarder également dans le stockage de cette matière
+      if (selectedTab !== 'Mes fichiers') {
+        try {
+          const matKey = `unifolder_matiere_files_${selectedTab}`;
+          const matSaved = localStorage.getItem(matKey);
+          let matList: ImportedItem[] = matSaved ? JSON.parse(matSaved) : [];
+          matList = [...newItems, ...matList];
+          safeLocalStorageSet(matKey, matList);
+          invalidateCloudQueries.matiereFiles(selectedTab);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      window.dispatchEvent(new Event('unifolder_files_updated'));
 
       // Invalider les requêtes TanStack Query
       invalidateCloudQueries.filesMenu();
@@ -1193,7 +1256,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         const newSharedFolder = {
           id: 'folder-' + Math.random().toString(36).substring(2, 9),
           title: folderTitle,
-          description: 'Document ajouté dans Mes fichiers',
+          description: `Document ajouté dans ${selectedTab}`,
           category: 'Cours',
           author: 'Utilisateur',
           createdAt: new Date().toISOString(),
@@ -1216,8 +1279,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       }
 
       const successMsg = newItems.length > 1
-        ? 'Fichiers importés avec succès dans Mes fichiers !'
-        : 'Fichier importé avec succès dans Mes fichiers !';
+        ? `Fichiers importés avec succès dans « ${selectedTab} » !`
+        : `Fichier importé avec succès dans « ${selectedTab} » !`;
       setSuccessMessage(successMsg);
       setTimeout(() => setSuccessMessage(null), 3500);
 
@@ -1291,31 +1354,79 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         multiple 
         onChange={handleFileChange} 
       />
-      <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-start justify-between z-40 pointer-events-none gap-2">
+      <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-center justify-between z-40 pointer-events-none gap-2">
+        {/* GAUCHE : Bouton Retour */}
         <div className="flex items-center gap-1.5 md:gap-2 pointer-events-auto shrink-0">
           <button
             onClick={onBack}
-            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+            title="Retour"
           >
-            <ArrowLeft className="w-3 h-3 text-[#2D4A3E] dark:text-white" />
+            <ArrowLeft className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-white" />
             <span>Retour</span>
-          </button>
-
-          <button
-            onClick={handleButtonClick}
-            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
-            title="Importer des fichiers"
-          >
-            <Upload className="w-3 h-3 text-[#2D4A3E] dark:text-white" />
-            <span>Importer</span>
           </button>
         </div>
 
-        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-stone-900 dark:text-stone-900 bg-amber-400 dark:bg-amber-500 px-3 py-1 rounded-lg border-2 border-dashed border-stone-600/60 dark:border-stone-400/60 shadow-xs self-start">
-          Mes fichiers
-        </h1>
+        {/* MILIEU : Liste horizontale des matières (Mes fichiers en premier, puis toutes les matières créées) */}
+        <div className="flex-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-1 px-1 pointer-events-auto min-w-0">
+          {/* Bouton premier : Mes fichiers */}
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedTab('Mes fichiers');
+              setSearchQuery('');
+            }}
+            className={`px-3 py-1 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 select-none ${
+              selectedTab === 'Mes fichiers'
+                ? 'bg-amber-400 dark:bg-amber-500 text-stone-900 font-black border-2 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917] scale-[1.02]'
+                : 'bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-stone-300 font-bold border-2 border-stone-400/40 dark:border-stone-700 shadow-xs'
+            }`}
+            title="Mes fichiers (Tous les fichiers)"
+          >
+            <span>Mes fichiers</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded bg-black/10 dark:bg-black/30 font-mono font-bold">
+              {importedFiles.length}
+            </span>
+          </button>
 
-        <div className="flex items-center gap-1.5 md:gap-2 pointer-events-auto self-start">
+          {/* Matières créées */}
+          {savedMatieres.map((m) => {
+            const isSelected = selectedTab === m.name;
+            const isHex = m.color && m.color.startsWith('#');
+            const colorClass = !isHex && m.color ? m.color : (!isHex ? 'bg-[#1f4e79] text-white' : '');
+            const count = importedFiles.filter(f => f.matiere === m.name || f.folderName === m.name).length;
+
+            return (
+              <button
+                key={m.id || m.name}
+                type="button"
+                onClick={() => {
+                  setSelectedTab(m.name);
+                  setSearchQuery('');
+                }}
+                style={isHex ? { backgroundColor: m.color, color: '#fff' } : undefined}
+                className={`px-3 py-1 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 select-none border-2 ${colorClass} ${
+                  isSelected
+                    ? 'ring-2 ring-amber-400 dark:ring-amber-400 ring-offset-2 ring-offset-[#C5B0A4] dark:ring-offset-[#0b0f19] border-stone-900 dark:border-white font-black scale-[1.04] shadow-md z-10'
+                    : 'border-stone-700/50 hover:border-stone-900 opacity-85 hover:opacity-100 font-bold hover:scale-[1.02]'
+                }`}
+                title={`${m.name} (Coeff: ${m.coefficient || 1})`}
+              >
+                <span>{m.name}</span>
+                {m.coefficient && (
+                  <span className="text-[9px] px-1 py-0.2 rounded bg-black/30 text-white font-mono">
+                    C:{m.coefficient}
+                  </span>
+                )}
+                <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-white/20 text-white font-mono">
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-1.5 md:gap-2 pointer-events-auto shrink-0">
           {/* Bouton œil pour basculer Mode compact (sans aperçu) / Mode aperçu (style Documents) */}
           <button
             type="button"
@@ -1542,40 +1653,70 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         </div>
       )}
 
-      <div className="w-full px-2 sm:px-4 pt-11 sm:pt-12">
+      <div className="w-full px-2 sm:px-4 pt-12 sm:pt-14">
         <div className="pt-1 pb-64 w-full max-w-7xl mx-auto">
-          {importedFiles.length === 0 ? (
-            <div className="text-center">
-              <h1 className="text-3xl sm:text-5xl font-serif dark:font-sans dark:font-extrabold font-normal text-[#2D4A3E] dark:text-white mb-3 tracking-tight">Mes fichiers</h1>
-              <p className="text-sm font-sans text-[#5C6B5A] dark:text-slate-400 mb-6">Sélectionnez et importez vos fichiers ou dossiers depuis votre appareil.</p>
-              
-              <div 
+          {/* Sous-barre : Bouton Importer poussé un peu en bas + Petit champ de recherche + Compteur */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 mb-4 bg-[#F5F1E9]/90 dark:bg-[#111a2e]/90 backdrop-blur-md p-2.5 sm:p-3 rounded-2xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none">
+            <div className="flex items-center gap-2 sm:gap-2.5 flex-1 min-w-[220px]">
+              {/* Bouton Importer poussé en bas */}
+              <button
                 onClick={handleButtonClick}
-                className="border-3 border-dashed border-[#2D4A3E]/30 dark:border-blue-500/40 rounded-2xl p-8 bg-[#E8DFD0]/40 dark:bg-white/[0.04] dark:backdrop-blur-xl flex flex-col items-center justify-center cursor-pointer hover:bg-[#E8DFD0]/70 dark:hover:bg-white/[0.08] dark:hover:border-blue-400/60 dark:hover:shadow-[0_0_30px_rgba(59,130,246,0.2)] transition-all max-w-lg mx-auto group"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#2D4A3E] hover:bg-[#1e332a] text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 shrink-0"
+                title={`Importer des fichiers dans « ${selectedTab} »`}
               >
-                <div className="w-16 h-16 bg-[#2D4A3E]/10 dark:bg-blue-500/20 rounded-full flex items-center justify-center mb-3 text-[#2D4A3E] dark:text-blue-400 group-hover:scale-110 transition-transform">
-                  <Upload className="w-8 h-8" />
-                </div>
-                <p className="font-bold text-sm text-[#2D4A3E] dark:text-white mb-1">Cliquez pour importer des fichiers ou dossiers</p>
-                <p className="text-xs text-[#5C6B5A] dark:text-slate-400">Ouvre le sélecteur natif de votre appareil</p>
+                <Upload className="w-3.5 h-3.5 text-white" />
+                <span>Importer</span>
+              </button>
+
+              {/* Petit champ de recherche pour le menu sélectionné */}
+              <div className="relative flex-1 max-w-xs sm:max-w-md">
+                <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={selectedTab === 'Mes fichiers' ? 'Rechercher un fichier...' : `Rechercher dans ${selectedTab}...`}
+                  className="w-full pl-8.5 pr-7 py-1.5 text-xs font-semibold bg-white dark:bg-[#070a13] text-stone-900 dark:text-white border-2 border-stone-800 dark:border-[#334155] rounded-xl shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none focus:outline-none focus:ring-2 focus:ring-amber-500 placeholder:text-stone-400"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 dark:hover:text-white p-0.5 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
-          ) : filteredFiles.length === 0 ? (
-            <div className="text-center py-12">
-              <h1 className="text-2xl font-serif dark:font-sans dark:font-bold font-normal text-[#2D4A3E] dark:text-white mb-2">Mes fichiers</h1>
-              <p className="text-sm text-[#5C6B5A] dark:text-slate-400">Aucun fichier ne correspond à votre recherche "{searchQuery}".</p>
+
+            {/* Compteur et tag du menu sélectionné */}
+            <div className="flex items-center gap-2 text-xs font-bold text-stone-700 dark:text-slate-300 shrink-0">
+              <span className="font-extrabold">
+                {filteredFiles.length} fichier{filteredFiles.length > 1 ? 's' : ''} disponible{filteredFiles.length > 1 ? 's' : ''}
+              </span>
+              <span className="text-[10px] uppercase tracking-wider bg-stone-300/80 dark:bg-white/10 text-stone-800 dark:text-white px-2 py-0.5 rounded-md font-mono border border-stone-400/50 dark:border-white/10">
+                {selectedTab}
+              </span>
+            </div>
+          </div>
+
+          {filteredFiles.length === 0 ? (
+            <div className="text-center py-12 bg-white/40 dark:bg-white/[0.02] rounded-2xl border-2 border-dashed border-stone-400/40 dark:border-stone-700/50 p-8 my-4">
+              <h2 className="text-xl font-bold text-[#2D4A3E] dark:text-white mb-2">{selectedTab}</h2>
+              <p className="text-sm text-[#5C6B5A] dark:text-slate-400 mb-4">
+                {searchQuery ? `Aucun fichier ne correspond à votre recherche "${searchQuery}".` : `Aucun fichier dans ${selectedTab}.`}
+              </p>
+              <button
+                onClick={handleButtonClick}
+                className="px-4 py-2 bg-[#2D4A3E] hover:bg-[#1e332a] text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer inline-flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Importer un fichier dans {selectedTab}</span>
+              </button>
             </div>
           ) : (
             <div className="w-full">
-              {/* Entête mode aperçu avec compteur de fichiers */}
-              {isPreviewMode && (
-                <div className="mb-3 px-1 text-xs font-bold text-stone-600 dark:text-slate-400 flex items-center justify-between">
-                  <span>{filteredFiles.length} fichier{filteredFiles.length > 1 ? 's' : ''} disponible{filteredFiles.length > 1 ? 's' : ''}</span>
-                  <span className="text-[10px] uppercase tracking-wider bg-stone-200/70 dark:bg-white/10 px-2 py-0.5 rounded font-mono">
-                    Mode Aperçu
-                  </span>
-                </div>
-              )}
 
               {isPreviewMode ? (
                 /* Grille en mode aperçu (style Documents Image 2) */
