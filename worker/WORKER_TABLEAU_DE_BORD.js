@@ -5517,7 +5517,7 @@ function renderDashboardHtml(data) {
       const totalUserD1RowsCalculated = d1 && d1.tables ? Object.values(d1.tables).reduce((acc, t) => acc + (t?.count || 0), 0) : 0;
       const finalD1Rows = Math.max(displayD1Rows, totalUserD1RowsCalculated);
 
-      panel.innerHTML = `
+      panel.innerHTML = \`
         <!-- En-tête profil complet listé verticalement ligne par ligne -->
         <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-800">
           <div class="flex items-start gap-3.5">
