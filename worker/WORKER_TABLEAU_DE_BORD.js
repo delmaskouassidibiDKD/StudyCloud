@@ -4482,28 +4482,59 @@ function renderDashboardHtml(data) {
 
       <!-- JOURNAL DES ALERTES ENVOYÉES -->
       <div class="neo-card p-4 sm:p-5 bg-slate-900/90 border border-slate-800 space-y-3">
-        <div class="flex items-center justify-between">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-800/80">
           <div class="flex items-center gap-2">
             <span class="text-base">📜</span>
-            <h4 class="text-xs sm:text-sm font-extrabold text-white">Journal des Alertes Envoyées (storage_alert_logs)</h4>
+            <div>
+              <h4 class="text-xs sm:text-sm font-extrabold text-white">Journal des Alertes Envoyées (storage_alert_logs)</h4>
+              <p class="text-[10px] text-slate-400">Historique des notifications de stockage expédiées avec options de suppression</p>
+            </div>
           </div>
-          <button 
-            type="button" 
-            onclick="loadAlertLogs()" 
-            class="text-[11px] text-orange-400 hover:text-orange-300 font-bold cursor-pointer"
-          >
-            Rafraîchir l'historique
-          </button>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button 
+              type="button" 
+              id="btn-delete-selected-logs"
+              onclick="deleteSelectedAlertLogs()" 
+              disabled
+              class="px-3 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50 text-[11px] font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 shadow-sm"
+              title="Supprimer les alertes cochées dans la base D1"
+            >
+              <span>🗑️</span>
+              <span id="btn-delete-selected-label">Supprimer la sélection</span>
+            </button>
+            <button 
+              type="button" 
+              onclick="clearAllAlertLogs()" 
+              class="px-3 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+              title="Vider entièrement le journal dans la base D1"
+            >
+              <span>⚡</span>
+              <span>Tout effacer</span>
+            </button>
+            <button 
+              type="button" 
+              onclick="loadAlertLogs()" 
+              class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-orange-400 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 border border-slate-700 shadow-sm"
+              title="Recharger l'historique depuis la base D1"
+            >
+              <span>🔄</span>
+              <span>Actualiser</span>
+            </button>
+          </div>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs text-slate-300">
             <thead class="bg-slate-950/60 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
               <tr>
+                <th class="py-2.5 px-3 w-10 text-center">
+                  <input type="checkbox" id="check-all-alert-logs" onchange="toggleSelectAllAlertLogs(this.checked)" class="rounded bg-slate-900 border-slate-700 text-orange-500 focus:ring-0 cursor-pointer" title="Tout cocher / Tout décocher">
+                </th>
                 <th class="py-2.5 px-3">Date</th>
                 <th class="py-2.5 px-3">Email Utilisateur</th>
                 <th class="py-2.5 px-3">Seuil</th>
                 <th class="py-2.5 px-3">Phase / Tentative</th>
                 <th class="py-2.5 px-3">Statut</th>
+                <th class="py-2.5 px-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody id="alert-logs-tbody" class="divide-y divide-slate-800/60 font-mono text-[11px]">
@@ -11157,17 +11188,150 @@ function renderDashboardHtml(data) {
       }
     }
 
+    let selectedAlertLogIds = new Set();
+
+    function updateSelectedLogsButton() {
+      const btn = document.getElementById('btn-delete-selected-logs');
+      const lbl = document.getElementById('btn-delete-selected-label');
+      if (!btn || !lbl) return;
+      const count = selectedAlertLogIds.size;
+      if (count > 0) {
+        btn.disabled = false;
+        lbl.textContent = 'Supprimer la sélection (' + count + ')';
+      } else {
+        btn.disabled = true;
+        lbl.textContent = 'Supprimer la sélection';
+      }
+    }
+
+    function toggleSelectAllAlertLogs(checked) {
+      if (checked) {
+        allAlertLogs.forEach(log => {
+          const logId = (log.id !== undefined && log.id !== null && log.id !== '') ? String(log.id) : String(log.rowid || '');
+          if (logId) selectedAlertLogIds.add(logId);
+        });
+      } else {
+        selectedAlertLogIds.clear();
+      }
+      renderAlertLogs();
+    }
+
+    function toggleSelectAlertLog(logId, checked) {
+      const idStr = String(logId);
+      if (checked) {
+        selectedAlertLogIds.add(idStr);
+      } else {
+        selectedAlertLogIds.delete(idStr);
+      }
+      const chkAll = document.getElementById('check-all-alert-logs');
+      if (chkAll && allAlertLogs.length > 0) {
+        chkAll.checked = selectedAlertLogIds.size === allAlertLogs.length;
+      }
+      updateSelectedLogsButton();
+    }
+
+    async function deleteSingleAlertLog(logId) {
+      if (!logId) return;
+      if (!confirm("Voulez-vous vraiment supprimer cet enregistrement d'alerte de la base de données ?")) return;
+      try {
+        const res = await fetch('/api/storage/alert-logs', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: logId })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data.success) {
+          allAlertLogs = allAlertLogs.filter(l => {
+            const currentId = (l.id !== undefined && l.id !== null && l.id !== '') ? String(l.id) : String(l.rowid || '');
+            return currentId !== String(logId);
+          });
+          selectedAlertLogIds.delete(String(logId));
+          renderAlertLogs();
+          showToast('✓ Enregistrement supprimé de la base D1');
+        } else {
+          showToast('⚠️ Erreur suppression : ' + (data.error || 'Erreur serveur'));
+        }
+      } catch (err) {
+        showToast('⚠️ Erreur réseau lors de la suppression');
+      }
+    }
+
+    async function deleteSelectedAlertLogs() {
+      const count = selectedAlertLogIds.size;
+      if (count === 0) return;
+      if (!confirm("Confirmez-vous la suppression de " + count + " alerte(s) sélectionnée(s) de la base de données ?")) return;
+
+      const idsToDelete = Array.from(selectedAlertLogIds);
+      try {
+        const res = await fetch('/api/storage/alert-logs', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: idsToDelete })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data.success) {
+          const deleteSet = new Set(idsToDelete.map(String));
+          allAlertLogs = allAlertLogs.filter(l => {
+            const currentId = (l.id !== undefined && l.id !== null && l.id !== '') ? String(l.id) : String(l.rowid || '');
+            return !deleteSet.has(currentId);
+          });
+          selectedAlertLogIds.clear();
+          renderAlertLogs();
+          showToast('✓ ' + count + ' alerte(s) supprimée(s) de la base D1');
+        } else {
+          showToast('⚠️ Erreur lors de la suppression par lot');
+        }
+      } catch (err) {
+        showToast('⚠️ Erreur réseau lors de la suppression');
+      }
+    }
+
+    async function clearAllAlertLogs() {
+      if (!Array.isArray(allAlertLogs) || allAlertLogs.length === 0) {
+        showToast('ℹ️ Le journal des alertes est déjà vide');
+        return;
+      }
+      if (!confirm("⚠️ ATTENTION : Êtes-vous sûr de vouloir vider TOUT le journal des alertes envoyées ? Cette action effacera définitivement tous les enregistrements de la base de données D1.")) return;
+
+      try {
+        const res = await fetch('/api/storage/alert-logs', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ all: true })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data.success) {
+          allAlertLogs = [];
+          selectedAlertLogIds.clear();
+          renderAlertLogs();
+          showToast("✓ Tout l'historique des alertes a été effacé de D1");
+        } else {
+          showToast('⚠️ Erreur lors du nettoyage du journal');
+        }
+      } catch (err) {
+        showToast('⚠️ Erreur réseau lors du nettoyage');
+      }
+    }
+
     function renderAlertLogs() {
       const tbody = document.getElementById('alert-logs-tbody');
       if (!tbody) return;
 
+      const chkAll = document.getElementById('check-all-alert-logs');
+      if (chkAll) {
+        chkAll.checked = allAlertLogs.length > 0 && selectedAlertLogIds.size === allAlertLogs.length;
+      }
+
       if (!Array.isArray(allAlertLogs) || allAlertLogs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="py-4 text-center text-slate-500">Aucun historique d\\\'alerte envoyé pour le moment.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-slate-500">Aucune alerte enregistrée dans le journal.</td></tr>';
+        updateSelectedLogsButton();
         return;
       }
 
       let html = '';
       allAlertLogs.forEach(log => {
+        const logId = (log.id !== undefined && log.id !== null && log.id !== '') ? String(log.id) : String(log.rowid || '');
+        const isSelected = selectedAlertLogIds.has(logId);
         const dateStr = log.sent_at ? new Date(log.sent_at).toLocaleString('fr-FR') : 'Récemment';
         const userEmail = log.user_email || log.user_id || 'Inconnu';
         const pct = log.threshold_percent || 0;
@@ -11175,16 +11339,26 @@ function renderDashboardHtml(data) {
         const attempt = log.attempt_number || log.attempt_count || 1;
         const status = log.status || 'sent';
 
-        html += '<tr class="hover:bg-slate-800/30 transition-colors">';
+        html += '<tr class="hover:bg-slate-800/30 transition-colors' + (isSelected ? ' bg-orange-500/10' : '') + '">';
+        html += '  <td class="py-2.5 px-3 text-center">';
+        html += '    <input type="checkbox" class="alert-log-checkbox rounded bg-slate-900 border-slate-700 text-orange-500 focus:ring-0 cursor-pointer" value="' + escapeHtmlAlert(logId) + '" ' + (isSelected ? 'checked' : '') + ' onchange="toggleSelectAlertLog(this.value, this.checked)">';
+        html += '  </td>';
         html += '  <td class="py-2.5 px-3 text-slate-400">' + dateStr + '</td>';
         html += '  <td class="py-2.5 px-3 font-semibold text-white">' + escapeHtmlAlert(userEmail) + '</td>';
         html += '  <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold ' + (pct >= 95 ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'bg-orange-500/20 text-orange-400 border border-orange-500/30') + '">' + pct + '%</span></td>';
         html += '  <td class="py-2.5 px-3 text-slate-300">' + phase + ' (Tentative #' + attempt + ')</td>';
         html += '  <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">' + status + '</span></td>';
+        html += '  <td class="py-2.5 px-3 text-right">';
+        html += '    <button type="button" data-id="' + escapeHtmlAlert(logId) + '" onclick="deleteSingleAlertLog(this.dataset.id)" class="p-1 px-2.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 hover:text-rose-300 border border-rose-800/40 text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-1 shadow-sm" title="Supprimer de la base D1">';
+        html += '      <span>🗑️</span>';
+        html += '      <span>Supprimer</span>';
+        html += '    </button>';
+        html += '  </td>';
         html += '</tr>';
       });
 
       tbody.innerHTML = html;
+      updateSelectedLogsButton();
     }
 
     async function loadAlertLogs() {
@@ -13040,7 +13214,7 @@ export default {
         alertRulesRes = await db.prepare("SELECT * FROM storage_alert_rules ORDER BY threshold_percent ASC").all();
       } catch (e) {}
       try {
-        alertLogsRes = await db.prepare("SELECT * FROM storage_alert_logs ORDER BY sent_at DESC LIMIT 50").all();
+        alertLogsRes = await db.prepare("SELECT rowid, * FROM storage_alert_logs ORDER BY sent_at DESC LIMIT 100").all();
       } catch (e) {}
 
       
@@ -13282,9 +13456,44 @@ export default {
       }
 
       if (request.method === 'GET' && path === '/api/storage/alert-logs') {
-        const logs = await db.prepare("SELECT * FROM storage_alert_logs ORDER BY sent_at DESC LIMIT 50").all();
+        const logs = await db.prepare("SELECT rowid, * FROM storage_alert_logs ORDER BY sent_at DESC LIMIT 100").all();
         return new Response(JSON.stringify({ success: true, logs: logs?.results || [] }), {
           status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      if (request.method === 'DELETE' && path === '/api/storage/alert-logs') {
+        const body = await request.json().catch(() => ({}));
+
+        if (body.all === true) {
+          await db.prepare("DELETE FROM storage_alert_logs").run().catch(() => {});
+          return new Response(JSON.stringify({ success: true, message: "Tout l'historique des alertes a été supprimé" }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+
+        if (Array.isArray(body.ids) && body.ids.length > 0) {
+          for (const id of body.ids) {
+            await db.prepare("DELETE FROM storage_alert_logs WHERE id = ? OR rowid = ?").bind(id, id).run().catch(() => {});
+          }
+          return new Response(JSON.stringify({ success: true, message: `${body.ids.length} alertes supprimées` }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+
+        if (body.id !== undefined && body.id !== null) {
+          await db.prepare("DELETE FROM storage_alert_logs WHERE id = ? OR rowid = ?").bind(body.id, body.id).run().catch(() => {});
+          return new Response(JSON.stringify({ success: true, message: "Alerte supprimée avec succès" }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+
+        return new Response(JSON.stringify({ success: false, error: "Identifiant ou sélection requis" }), {
+          status: 400,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         });
       }

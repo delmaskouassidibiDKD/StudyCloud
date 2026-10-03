@@ -13799,8 +13799,33 @@ Lien vers le produit : ${productShareUrl}`;
 
       if (path === "/api/storage/alert-logs" && method === "GET") {
         if (env.DB) await ensureCloudMediaTables(env.DB);
-        const logs = await env.DB.prepare("SELECT * FROM storage_alert_logs ORDER BY sent_at DESC LIMIT 50").all();
+        const logs = await env.DB.prepare("SELECT rowid, * FROM storage_alert_logs ORDER BY sent_at DESC LIMIT 100").all();
         return jsonResponse({ success: true, logs: logs?.results || [] }, 200, origin);
+      }
+
+      if (path === "/api/storage/alert-logs" && method === "DELETE") {
+        if (!env.DB) return errorResponse("Base de données inaccessible", 500, origin);
+        await ensureCloudMediaTables(env.DB);
+        const body = await request.json().catch(() => ({}));
+
+        if (body.all === true) {
+          await env.DB.prepare("DELETE FROM storage_alert_logs").run().catch(() => {});
+          return jsonResponse({ success: true, message: "Tout l'historique des alertes a été supprimé" }, 200, origin);
+        }
+
+        if (Array.isArray(body.ids) && body.ids.length > 0) {
+          for (const id of body.ids) {
+            await env.DB.prepare("DELETE FROM storage_alert_logs WHERE id = ? OR rowid = ?").bind(id, id).run().catch(() => {});
+          }
+          return jsonResponse({ success: true, message: `${body.ids.length} alertes supprimées` }, 200, origin);
+        }
+
+        if (body.id !== undefined && body.id !== null) {
+          await env.DB.prepare("DELETE FROM storage_alert_logs WHERE id = ? OR rowid = ?").bind(body.id, body.id).run().catch(() => {});
+          return jsonResponse({ success: true, message: "Alerte supprimée avec succès" }, 200, origin);
+        }
+
+        return errorResponse("Identifiant ou sélection requis", 400, origin);
       }
 
       return errorResponse(`Route non trouv\xE9e : ${method} ${path}`, 404, origin);
