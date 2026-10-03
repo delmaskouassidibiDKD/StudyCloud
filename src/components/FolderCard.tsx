@@ -73,7 +73,7 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
     }, 1500);
   };
 
-  const isPublic = folder.isPublic !== undefined ? folder.isPublic : !folder.isPasswordProtected;
+  const isPublic = folder.isPublic !== undefined ? Boolean(folder.isPublic) : false;
 
   return (
     <div

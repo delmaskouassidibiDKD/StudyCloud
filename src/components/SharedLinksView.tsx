@@ -66,11 +66,13 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
 
     if (!matchesSearch) return false;
 
+    const isPublic = Boolean(f.isPublic);
+
     if (filterStatus === 'published') {
-      return !f.isPasswordProtected;
+      return isPublic;
     }
     if (filterStatus === 'unpublished') {
-      return f.isPasswordProtected;
+      return !isPublic;
     }
     return true;
   });
@@ -203,7 +205,7 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
             }`}
           >
             <Globe className="w-3.5 h-3.5" />
-            <span>Lien public</span>
+            <span>Lien rendu public</span>
           </button>
         </div>
       </div>
