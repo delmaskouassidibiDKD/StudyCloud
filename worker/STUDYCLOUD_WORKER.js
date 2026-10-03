@@ -12994,8 +12994,14 @@ Lien vers le produit : ${productShareUrl}`;
               ).bind(userId).first();
               if (reqs && reqs.totalMb) {
                 const reqMb = Number(reqs.totalMb);
-                if (reqMb > paidMb) {
+                if (quotaRow === null || quotaRow.paid_total_mb === null || Number(quotaRow.paid_total_mb || 0) === 0 && reqMb > 0) {
                   paidMb = reqMb;
+                  await env.DB.prepare(`
+                    INSERT INTO user_storage_quotas (user_id, welcome_total_mb, welcome_r2_mb, welcome_d1_mb, paid_total_mb, paid_r2_mb, paid_d1_mb, plan_name, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'Plan Avanc\xE9', CURRENT_TIMESTAMP)
+                    ON CONFLICT(user_id) DO UPDATE SET paid_total_mb = excluded.paid_total_mb, plan_name = 'Plan Avanc\xE9', updated_at = CURRENT_TIMESTAMP
+                  `).bind(userId, welcomeMb, Math.round(welcomeMb / 3), Math.round(welcomeMb * 2 / 3), paidMb, Math.round(paidMb / 2), Math.round(paidMb / 2)).run().catch(() => {
+                  });
                 }
                 purchasedWords += Number(reqs.totalWords || 0);
               }
@@ -13199,6 +13205,26 @@ Lien vers le produit : ${productShareUrl}`;
               updated_at = CURRENT_TIMESTAMP
           `).bind(userId, wTotal, wR2, wD1, pTotal, pR2, pD1, planName).run().catch(() => {
           });
+          if (pTotal > 0) {
+            const existingReq = await env.DB.prepare(
+              "SELECT id FROM storage_upgrade_requests WHERE user_id = ? AND status IN ('active', 'approved', 'completed') ORDER BY created_at DESC LIMIT 1"
+            ).bind(userId).first().catch(() => null);
+            if (existingReq) {
+              await env.DB.prepare("UPDATE storage_upgrade_requests SET additional_mb = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(pTotal, existingReq.id).run().catch(() => {
+              });
+            } else {
+              await env.DB.prepare(`
+                INSERT INTO storage_upgrade_requests (id, user_id, pack_id, pack_name, additional_mb, status, created_at, updated_at)
+                VALUES (?, ?, 'admin_manual', 'Attribution Admin', ?, 'approved', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+              `).bind(crypto.randomUUID(), userId, pTotal).run().catch(() => {
+              });
+            }
+          } else {
+            await env.DB.prepare(
+              "UPDATE storage_upgrade_requests SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND status IN ('active', 'approved', 'completed')"
+            ).bind(userId).run().catch(() => {
+            });
+          }
         }
         return jsonResponse({
           success: true,

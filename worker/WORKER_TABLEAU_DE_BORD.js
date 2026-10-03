@@ -1721,9 +1721,28 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig, preloade
   const welcomeR2Mb = Number(quotaRow.welcome_r2_mb ?? 10.0);
   const welcomeD1Mb = Number(quotaRow.welcome_d1_mb ?? 20.0);
 
-  const paidTotalMb = Number(quotaRow.paid_total_mb ?? (Number(quotaRow.paid_r2_mb || 0.0) + Number(quotaRow.paid_d1_mb || 0.0)));
-  const paidR2Mb = Number(quotaRow.paid_r2_mb ?? 0.0);
-  const paidD1Mb = Number(quotaRow.paid_d1_mb ?? 0.0);
+  // Demandes d'extension payantes approuvées enregistrées dans storage_upgrade_requests
+  const upgradeReqs = await safeFirst(db, `
+    SELECT COALESCE(SUM(additional_mb), 0) as totalMb 
+    FROM storage_upgrade_requests 
+    WHERE user_id = ? AND status IN ('active', 'approved', 'completed')
+  `, [userId]);
+  const approvedUpgradeMb = Number(upgradeReqs?.totalMb || 0);
+
+  let paidTotalMb = Number(quotaRow.paid_total_mb ?? (Number(quotaRow.paid_r2_mb || 0.0) + Number(quotaRow.paid_d1_mb || 0.0)));
+  if (approvedUpgradeMb > paidTotalMb) {
+    paidTotalMb = approvedUpgradeMb;
+    await safeRun(db, `
+      UPDATE user_storage_quotas 
+      SET paid_total_mb = ?, plan_name = 'payant', updated_at = CURRENT_TIMESTAMP 
+      WHERE user_id = ?
+    `, [paidTotalMb, userId]);
+    quotaRow.paid_total_mb = paidTotalMb;
+    quotaRow.plan_name = 'payant';
+  }
+
+  const paidR2Mb = Number(quotaRow.paid_r2_mb ?? Math.round(paidTotalMb / 2));
+  const paidD1Mb = Number(quotaRow.paid_d1_mb ?? Math.round(paidTotalMb / 2));
 
   const bonusR2Mb = Number(quotaRow.bonus_r2_mb ?? 0.0);
   const bonusD1Mb = Number(quotaRow.bonus_d1_mb ?? 0.0);
@@ -6005,7 +6024,7 @@ function renderDashboardHtml(data) {
           <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 border-l-4 border-l-blue-500">
             <div class="flex items-center justify-between">
               <span class="text-[10px] uppercase font-bold text-slate-400">🎁 Bienvenue</span>
-              <span class="text-xs font-mono font-bold text-blue-400">\${q.welcomeTotalMb} Mo</span>
+              <span class="text-xs font-mono font-bold text-blue-400">\${q.welcomeTotalMb >= 1024 ? (q.welcomeTotalMb / 1024).toFixed(2) + ' Go' : q.welcomeTotalMb + ' Mo'}</span>
             </div>
             <div class="text-[11px] text-slate-300 mt-2 space-y-0.5 font-mono">
               <div class="text-blue-300 font-sans text-[11px]">Quota gratuit à l'inscription</div>
@@ -6016,7 +6035,7 @@ function renderDashboardHtml(data) {
           <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 border-l-4 border-l-emerald-500">
             <div class="flex items-center justify-between">
               <span class="text-[10px] uppercase font-bold text-slate-400">💳 Payant / Acheté</span>
-              <span class="text-xs font-mono font-bold text-emerald-400">\${q.paidTotalMb} Mo</span>
+              <span class="text-xs font-mono font-bold text-emerald-400">\${q.paidTotalMb >= 1024 ? (q.paidTotalMb / 1024).toFixed(2) + ' Go' : q.paidTotalMb + ' Mo'}</span>
             </div>
             <div class="text-[11px] text-slate-300 mt-2 space-y-0.5 font-mono">
               <div class="text-emerald-300 font-sans text-[11px]">Stockage additionnel payé</div>
@@ -6068,7 +6087,10 @@ function renderDashboardHtml(data) {
               <span class="text-blue-400 font-bold block text-xs">1. Stockage de Bienvenue Global (Mo) :</span>
               <div class="flex items-center justify-between gap-2">
                 <label class="text-slate-400">Quota Bienvenue :</label>
-                <input type="number" id="user-edit-w-total" class="w-28 bg-slate-900 text-white font-mono text-xs px-2.5 py-1 rounded border border-slate-700 text-center" value="\${q.welcomeTotalMb}">
+                <div class="flex items-center gap-1.5">
+                  <input type="number" id="user-edit-w-total" class="w-24 bg-slate-900 text-white font-mono text-xs px-2 py-1 rounded border border-slate-700 text-center" value="\${q.welcomeTotalMb}">
+                  <span class="text-[10px] text-slate-400 font-mono">\${q.welcomeTotalMb >= 1024 ? '(' + (q.welcomeTotalMb/1024).toFixed(1) + ' Go)' : 'Mo'}</span>
+                </div>
               </div>
               <p class="text-[10px] text-slate-500">Partage libre entre documents (R2) et base (D1)</p>
             </div>
@@ -6078,7 +6100,10 @@ function renderDashboardHtml(data) {
               <span class="text-emerald-400 font-bold block text-xs">2. Stockage Payant Additionnel (Mo) :</span>
               <div class="flex items-center justify-between gap-2">
                 <label class="text-slate-400">Quota Acheté :</label>
-                <input type="number" id="user-edit-p-total" class="w-28 bg-slate-900 text-white font-mono text-xs px-2.5 py-1 rounded border border-slate-700 text-center" value="\${q.paidTotalMb}">
+                <div class="flex items-center gap-1.5">
+                  <input type="number" id="user-edit-p-total" class="w-24 bg-slate-900 text-white font-mono text-xs px-2 py-1 rounded border border-slate-700 text-center" value="\${q.paidTotalMb}">
+                  <span class="text-[10px] text-slate-400 font-mono">\${q.paidTotalMb >= 1024 ? '(' + (q.paidTotalMb/1024).toFixed(1) + ' Go)' : 'Mo'}</span>
+                </div>
               </div>
               <p class="text-[10px] text-slate-500">Ajouté au stockage total de l'utilisateur</p>
             </div>
@@ -12020,6 +12045,21 @@ export default {
             plan_name = excluded.plan_name,
             updated_at = CURRENT_TIMESTAMP
         `, [userId, wTotal, wR2, wD1, pTotal, pR2, pD1, planName]);
+
+        // Synchroniser également avec storage_upgrade_requests pour cohérence absolue D1
+        if (pTotal > 0) {
+          const existingReq = await safeFirst(db, "SELECT id FROM storage_upgrade_requests WHERE user_id = ? AND status IN ('active', 'approved', 'completed') ORDER BY created_at DESC LIMIT 1", [userId]);
+          if (existingReq) {
+            await safeRun(db, "UPDATE storage_upgrade_requests SET additional_mb = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [pTotal, existingReq.id]);
+          } else {
+            await safeRun(db, `
+              INSERT INTO storage_upgrade_requests (id, user_id, pack_id, pack_name, additional_mb, status, created_at, updated_at)
+              VALUES (?, ?, 'admin_manual', 'Attribution Admin', ?, 'approved', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            `, [crypto.randomUUID(), userId, pTotal]);
+          }
+        } else {
+          await safeRun(db, "UPDATE storage_upgrade_requests SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND status IN ('active', 'approved', 'completed')", [userId]);
+        }
 
         return new Response(JSON.stringify({ 
           success: true, 
