@@ -2898,9 +2898,480 @@ async function ensureCloudMediaTables(db) {
       await db.prepare("CREATE INDEX IF NOT EXISTS idx_storage_upg_user ON storage_upgrade_requests(user_id, status)").run();
     } catch (e) {
     }
+
+    // Tables d'alertes de stockage et planification d'emails
+    try {
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS storage_alert_rules (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          threshold_percent INTEGER NOT NULL UNIQUE,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          email_subject TEXT NOT NULL,
+          email_title TEXT NOT NULL,
+          email_body TEXT NOT NULL,
+          phase1_interval_hours INTEGER NOT NULL DEFAULT 24,
+          phase1_max_attempts INTEGER NOT NULL DEFAULT 5,
+          phase2_interval_hours INTEGER NOT NULL DEFAULT 72,
+          phase2_max_attempts INTEGER NOT NULL DEFAULT 3,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS storage_alert_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id TEXT NOT NULL,
+          user_email TEXT,
+          threshold_percent INTEGER NOT NULL,
+          sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          attempt_count INTEGER NOT NULL DEFAULT 1,
+          phase TEXT NOT NULL DEFAULT 'phase1',
+          last_used_mb REAL,
+          total_allowed_mb REAL,
+          resend_id TEXT,
+          status TEXT DEFAULT 'sent'
+        )
+      `).run();
+
+      const defaultAlertRules = [
+        {
+          pct: 50,
+          subject: "⚠️ Information : 50% de votre stockage StudyCloud consommé",
+          title: "Vous avez atteint 50% de votre espace",
+          body: "Votre compte StudyCloud a atteint la moitié de sa capacité de stockage autorisée. Vous pouvez continuer vos activités confortablement."
+        },
+        {
+          pct: 75,
+          subject: "⚠️ Rappel : 75% de votre stockage StudyCloud consommé",
+          title: "Attention, 75% de votre stockage est utilisé",
+          body: "Vous approchez du seuil de confort de votre espace personnel. Pensez à vérifier vos fichiers ou à souscrire une extension."
+        },
+        {
+          pct: 85,
+          subject: "🟠 Alerte : 85% de votre stockage StudyCloud consommé",
+          title: "Espace bientôt saturé (85%)",
+          body: "Votre espace personnel StudyCloud est presque plein. Plus que 15% d'espace disponible pour vos cours et devoirs."
+        },
+        {
+          pct: 90,
+          subject: "🔴 Alerte urgente : 90% de votre stockage StudyCloud consommé",
+          title: "Alerte saturation : 90% atteint",
+          body: "Votre espace personnel StudyCloud est presque saturé. Augmentez votre espace pour éviter tout blocage futur de vos importations."
+        },
+        {
+          pct: 95,
+          subject: "🚨 Urgence : 95% de votre stockage StudyCloud saturé",
+          title: "Stockage critique : 95% consommé",
+          body: "Votre espace personnel est sur le point d'être complètement bloqué. Veuillez augmenter votre stockage sans tarder pour continuer vos études."
+        },
+        {
+          pct: 100,
+          subject: "⛔ Blocage immédiat : Votre stockage StudyCloud est à 100%",
+          title: "Stockage 100% plein - Importations bloquées",
+          body: "Votre quota de stockage est entièrement saturé. Tout nouvel enregistrement de fichier sera rejeté jusqu'à extension de votre compte."
+        }
+      ];
+      for (const rule of defaultAlertRules) {
+        await db.prepare(`
+          INSERT OR IGNORE INTO storage_alert_rules (threshold_percent, is_active, email_subject, email_title, email_body, phase1_interval_hours, phase1_max_attempts, phase2_interval_hours, phase2_max_attempts)
+          VALUES (?, 1, ?, ?, ?, 24, 5, 72, 3)
+        `).bind(rule.pct, rule.subject, rule.title, rule.body).run().catch(() => {});
+      }
+    } catch (eAlerts) {
+      console.warn("[storage_alert_rules init error]", eAlerts);
+    }
+
     isCloudMediaTablesInitialized = true;
   } catch (err) {
     console.error("[StudyCloud Cloud Media Tables Init Error]", err);
+  }
+}
+
+/**
+ * Vérifie si l'utilisateur dispose de l'espace nécessaire avant d'enregistrer un fichier ou des données
+ * Bloque immédiatement et rejette sans écriture si le quota total est dépassé
+ */
+async function checkUserStorageQuotaAllowed(db, userId, incomingBytes = 0) {
+  if (!db || !userId || userId === "default-user") return { allowed: true };
+  try {
+    // 1. Quota alloué à l'utilisateur
+    let welcomeMb = 100;
+    try {
+      const quotaRow = await db.prepare(
+        "SELECT storage_mb, plan_name FROM user_storage_quotas WHERE user_id = ?"
+      ).bind(userId).first();
+      if (quotaRow && Number(quotaRow.storage_mb) > 0) {
+        welcomeMb = Number(quotaRow.storage_mb);
+      } else {
+        const globalRow = await db.prepare(
+          "SELECT welcome_storage_mb FROM storage_global_config WHERE id = 1"
+        ).first();
+        if (globalRow && Number(globalRow.welcome_storage_mb) > 0) {
+          welcomeMb = Number(globalRow.welcome_storage_mb);
+        }
+      }
+    } catch (_) {}
+
+    // 2. Extensions achetées et validées
+    let purchasedMb = 0;
+    try {
+      const pur = await db.prepare(
+        'SELECT COALESCE(SUM(additional_mb), 0) as totalMb FROM storage_upgrade_requests WHERE user_id = ? AND status IN ("active", "approved", "completed")'
+      ).bind(userId).first();
+      if (pur && Number(pur.totalMb) > 0) {
+        purchasedMb = Number(pur.totalMb);
+      }
+    } catch (_) {}
+
+    const totalAllowedMb = welcomeMb + purchasedMb;
+    const totalAllowedBytes = totalAllowedMb * 1024 * 1024;
+
+    // 3. Stockage actuellement consommé
+    let currentUsedBytes = 0;
+    try {
+      const usageRow = await db.prepare(
+        "SELECT total_r2_compressed_bytes, total_d1_database_bytes FROM user_storage_usage WHERE user_id = ?"
+      ).bind(userId).first();
+      if (usageRow) {
+        currentUsedBytes = Number(usageRow.total_r2_compressed_bytes || 0) + Number(usageRow.total_d1_database_bytes || 0);
+      }
+    } catch (_) {}
+
+    const futureUsedBytes = currentUsedBytes + Number(incomingBytes || 0);
+    if (futureUsedBytes > totalAllowedBytes) {
+      const currentUsedMb = (currentUsedBytes / (1024 * 1024)).toFixed(2);
+      const incomingMb = (Number(incomingBytes || 0) / (1024 * 1024)).toFixed(2);
+      const remainingBytes = Math.max(0, totalAllowedBytes - currentUsedBytes);
+      const remainingMb = (remainingBytes / (1024 * 1024)).toFixed(2);
+      return {
+        allowed: false,
+        currentUsedBytes,
+        currentUsedMb,
+        totalAllowedBytes,
+        totalAllowedMb,
+        incomingBytes,
+        incomingMb,
+        remainingBytes,
+        remainingMb,
+        error: "STORAGE_LIMIT_EXCEEDED",
+        message: `Votre espace de stockage est insuffisant pour enregistrer ce fichier (Taille requise : ${incomingMb} Mo, Espace disponible restant : ${remainingMb} Mo sur ${totalAllowedMb} Mo). Veuillez augmenter votre stockage pour continuer.`
+      };
+    }
+    return {
+      allowed: true,
+      currentUsedBytes,
+      totalAllowedBytes,
+      totalAllowedMb
+    };
+  } catch (err) {
+    console.error("[checkUserStorageQuotaAllowed] Erreur:", err);
+    return { allowed: true };
+  }
+}
+
+/**
+ * Envoie un email d'alerte de stockage via Resend avec le logo officiel ADN
+ */
+async function sendStorageAlertEmail({ resendApiKey, toEmail, userName, thresholdPercent, totalUsedMb, totalAllowedMb, usagePercent, rule }) {
+  if (!resendApiKey || !toEmail) return { success: false, error: "Missing Resend API Key or email" };
+
+  const publicAssetOrigin = "https://studycloud.dkd-technologies.com";
+  const logoUrl = `${publicAssetOrigin}/assets/dna-logo.png`;
+  const pricingUrl = `${publicAssetOrigin}/?tab=abondamment&type=storage`;
+
+  const subject = rule?.email_subject || `⚠️ Alerte Stockage StudyCloud : ${thresholdPercent}% atteint`;
+  const title = rule?.email_title || `Votre stockage StudyCloud a atteint ${thresholdPercent}%`;
+  const bodyText = rule?.email_body || `Vous avez consommé ${totalUsedMb} Mo sur ${totalAllowedMb} Mo disponibles.`;
+
+  const badgeColor = thresholdPercent >= 95 ? "#DC2626" : thresholdPercent >= 85 ? "#EA580C" : thresholdPercent >= 75 ? "#D97706" : "#2563EB";
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#f1f5f9;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 12px 35px rgba(0,0,0,0.08);border:1px solid #e2e8f0;">
+          <tr>
+            <td style="background:linear-gradient(135deg, #1E1B4B 0%, #0F172A 100%);padding:36px;text-align:center;">
+              <img src="${logoUrl}" alt="StudyCloud Logo ADN" width="60" height="60" style="display:inline-block;margin-bottom:12px;border-radius:14px;background:#ffffff;padding:4px;" />
+              <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:900;letter-spacing:-0.5px;">
+                <span style="color:#EA580C;">Study</span><span style="color:#38BDF8;">Cloud</span>
+              </h1>
+              <p style="margin:4px 0 0 0;color:#94a3b8;font-size:11px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase;">
+                DKD TECHNOLOGIES
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:40px 36px;">
+              <div style="text-align:center;margin-bottom:24px;">
+                <span style="display:inline-block;background-color:${badgeColor};color:#ffffff;font-weight:900;font-size:12px;text-transform:uppercase;padding:6px 16px;border-radius:999px;letter-spacing:1px;">
+                  ⚠️ Niveau de saturation : ${usagePercent}%
+                </span>
+              </div>
+
+              <h2 style="margin:0 0 16px 0;color:#0f172a;font-size:22px;font-weight:800;text-align:center;line-height:1.3;">
+                ${title}
+              </h2>
+
+              <p style="margin:0 0 24px 0;color:#475569;font-size:15px;line-height:1.6;text-align:center;">
+                Bonjour <strong>${userName}</strong>,<br>
+                ${bodyText}
+              </p>
+
+              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background:#f8fafc;border-radius:16px;padding:20px;border:1px solid #e2e8f0;margin-bottom:28px;">
+                <tr>
+                  <td width="33%" align="center" style="padding:8px;">
+                    <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Consommé</div>
+                    <div style="font-size:18px;color:#0f172a;font-weight:900;margin-top:4px;">${totalUsedMb} Mo</div>
+                  </td>
+                  <td width="33%" align="center" style="padding:8px;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">
+                    <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Utilisation</div>
+                    <div style="font-size:18px;color:${badgeColor};font-weight:900;margin-top:4px;">${usagePercent}%</div>
+                  </td>
+                  <td width="33%" align="center" style="padding:8px;">
+                    <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;">Total Alloué</div>
+                    <div style="font-size:18px;color:#0f172a;font-weight:900;margin-top:4px;">${totalAllowedMb} Mo</div>
+                  </td>
+                </tr>
+              </table>
+
+              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin:28px 0 20px 0;">
+                <tr>
+                  <td align="center">
+                    <a href="${pricingUrl}" target="_blank" style="display:inline-block;background:linear-gradient(135deg, #EA580C 0%, #D97706 100%);color:#ffffff;text-decoration:none;font-weight:800;font-size:15px;padding:16px 36px;border-radius:14px;box-shadow:0 6px 20px rgba(234,88,12,0.35);letter-spacing:0.3px;">
+                      ⚡ Augmenter mon stockage
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:20px 0 0 0;color:#94a3b8;font-size:12px;line-height:1.5;text-align:center;">
+                Si vous avez déjà souscrit à une formule récemment, votre espace sera mis à jour dès validation de votre reçu par l'équipe.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#f8fafc;padding:24px 36px;text-align:center;border-top:1px solid #f1f5f9;">
+              <p style="margin:0;color:#64748b;font-size:12px;font-weight:500;">
+                &copy; ${new Date().getFullYear()} StudyCloud • Propulsé par DKD Technologies
+              </p>
+              <p style="margin:6px 0 0 0;color:#94a3b8;font-size:11px;">
+                Support : <a href="mailto:StudyClouddkd@gmail.com" style="color:#EA580C;text-decoration:none;">StudyClouddkd@gmail.com</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        from: "StudyCloud <noreply@dkd-technologies.com>",
+        to: [toEmail],
+        reply_to: "StudyClouddkd@gmail.com",
+        subject,
+        html
+      })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, id: data?.id };
+    } else {
+      const errTxt = await res.text();
+      console.error("[sendStorageAlertEmail Resend Error]", errTxt);
+      return { success: false, error: errTxt };
+    }
+  } catch (err) {
+    console.error("[sendStorageAlertEmail Error]", err);
+    return { success: false, error: err?.message };
+  }
+}
+
+/**
+ * Exécute la vérification automatique des alertes de stockage par email (Cron quotidien)
+ */
+async function runStorageAlertsCron(env) {
+  if (!env || !env.DB) return;
+  const db = env.DB;
+  const rawEnv = env || {};
+  const RESEND_API_KEY = rawEnv.RESEND_API_KEY || "";
+  if (!RESEND_API_KEY) {
+    console.warn("[Cron Storage Alert] RESEND_API_KEY manquante, envoi ignoré");
+    return;
+  }
+
+  try {
+    await ensureCloudMediaTables(db);
+
+    // 1. Charger les règles configurées
+    const rules = await db.prepare("SELECT * FROM storage_alert_rules ORDER BY threshold_percent ASC").all();
+    if (!rules || !rules.results || rules.results.length === 0) return;
+    const rulesMap = new Map();
+    for (const r of rules.results) {
+      rulesMap.set(Number(r.threshold_percent), r);
+    }
+
+    // Si TOUTES les alertes sont inactives, ne rien envoyer !
+    const hasAnyActive = rules.results.some(r => Number(r.is_active) === 1);
+    if (!hasAnyActive) {
+      console.log("[Cron Storage Alert] Alertes désactivées dans le tableau de bord.");
+      return;
+    }
+
+    // 2. Parcourir tous les utilisateurs enregistrés
+    const users = await db.prepare("SELECT id, name, email FROM users").all();
+    if (!users || !users.results) return;
+
+    for (const u of users.results) {
+      const userId = u.id;
+      const userEmail = (u.email || "").trim();
+      if (!userEmail || !userEmail.includes("@") || userEmail.endsWith("@studycloud.app")) continue;
+
+      // Calculer le quota alloué
+      let welcomeMb = 100;
+      try {
+        const qRow = await db.prepare("SELECT storage_mb FROM user_storage_quotas WHERE user_id = ?").bind(userId).first();
+        if (qRow && Number(qRow.storage_mb) > 0) welcomeMb = Number(qRow.storage_mb);
+        else {
+          const gRow = await db.prepare("SELECT welcome_storage_mb FROM storage_global_config WHERE id = 1").first();
+          if (gRow && Number(gRow.welcome_storage_mb) > 0) welcomeMb = Number(gRow.welcome_storage_mb);
+        }
+      } catch (_) {}
+
+      let purchasedMb = 0;
+      try {
+        const pur = await db.prepare('SELECT COALESCE(SUM(additional_mb), 0) as totalMb FROM storage_upgrade_requests WHERE user_id = ? AND status IN ("active", "approved", "completed")').bind(userId).first();
+        if (pur) purchasedMb = Number(pur.totalMb || 0);
+      } catch (_) {}
+
+      const totalAllowedMb = welcomeMb + purchasedMb;
+      if (totalAllowedMb <= 0) continue;
+
+      // Stockage utilisé
+      let totalUsedBytes = 0;
+      try {
+        const usg = await db.prepare("SELECT total_r2_compressed_bytes, total_d1_database_bytes FROM user_storage_usage WHERE user_id = ?").bind(userId).first();
+        if (usg) {
+          totalUsedBytes = Number(usg.total_r2_compressed_bytes || 0) + Number(usg.total_d1_database_bytes || 0);
+        }
+      } catch (_) {}
+
+      const totalUsedMb = (totalUsedBytes / (1024 * 1024));
+      const usagePercent = Math.min(100, Math.round((totalUsedMb / totalAllowedMb) * 100));
+
+      // Déterminer le seuil le plus élevé franchi
+      let activeThreshold = null;
+      if (usagePercent >= 100) activeThreshold = 100;
+      else if (usagePercent >= 95) activeThreshold = 95;
+      else if (usagePercent >= 90) activeThreshold = 90;
+      else if (usagePercent >= 85) activeThreshold = 85;
+      else if (usagePercent >= 75) activeThreshold = 75;
+      else if (usagePercent >= 50) activeThreshold = 50;
+
+      if (!activeThreshold) continue;
+
+      const rule = rulesMap.get(activeThreshold);
+      if (!rule || Number(rule.is_active) !== 1) continue; // Désactivé par l'admin !
+
+      // Historique des envois pour ce seuil
+      const lastLogs = await db.prepare(
+        "SELECT * FROM storage_alert_logs WHERE user_id = ? AND threshold_percent = ? ORDER BY sent_at DESC LIMIT 1"
+      ).bind(userId, activeThreshold).first();
+
+      const now = Date.now();
+      let shouldSend = false;
+      let nextAttempt = 1;
+      let nextPhase = "phase1";
+
+      if (!lastLogs) {
+        shouldSend = true;
+        nextAttempt = 1;
+        nextPhase = "phase1";
+      } else {
+        const lastSentTime = new Date(lastLogs.sent_at).getTime();
+        const elapsedHours = (now - lastSentTime) / (1000 * 3600);
+        const currentAttempt = Number(lastLogs.attempt_count || 1);
+        const currentPhase = lastLogs.phase || "phase1";
+
+        if (activeThreshold < 95) {
+          // Pour 50%, 75%, 85%, 90% : un seul email lors du franchissement
+          shouldSend = false;
+        } else {
+          // Pour 95% et 100% :
+          // Phase 1 : chaque 24h (défaut) pendant 5 tentatives max
+          // Phase 2 : ensuite chaque 3 jours (72h) jusqu'à 3 tentatives max
+          const p1Interval = Number(rule.phase1_interval_hours || 24);
+          const p1Max = Number(rule.phase1_max_attempts || 5);
+          const p2Interval = Number(rule.phase2_interval_hours || 72);
+          const p2Max = Number(rule.phase2_max_attempts || 3);
+
+          if (currentPhase === "phase1") {
+            if (currentAttempt < p1Max) {
+              if (elapsedHours >= p1Interval) {
+                shouldSend = true;
+                nextAttempt = currentAttempt + 1;
+                nextPhase = "phase1";
+              }
+            } else {
+              // Basculer en phase 2 si le délai de phase 2 est écoulé depuis le 5e envoi
+              if (elapsedHours >= p2Interval) {
+                shouldSend = true;
+                nextAttempt = 1;
+                nextPhase = "phase2";
+              }
+            }
+          } else if (currentPhase === "phase2") {
+            if (currentAttempt < p2Max) {
+              if (elapsedHours >= p2Interval) {
+                shouldSend = true;
+                nextAttempt = currentAttempt + 1;
+                nextPhase = "phase2";
+              }
+            } else {
+              // Relances épuisées
+              shouldSend = false;
+            }
+          }
+        }
+      }
+
+      if (shouldSend) {
+        const sendRes = await sendStorageAlertEmail({
+          resendApiKey: RESEND_API_KEY,
+          toEmail: userEmail,
+          userName: u.name || "Étudiant",
+          thresholdPercent: activeThreshold,
+          totalUsedMb: totalUsedMb.toFixed(2),
+          totalAllowedMb,
+          usagePercent,
+          rule
+        });
+
+        if (sendRes.success) {
+          await db.prepare(`
+            INSERT INTO storage_alert_logs (user_id, user_email, threshold_percent, attempt_count, phase, last_used_mb, total_allowed_mb, resend_id, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent')
+          `).bind(userId, userEmail, activeThreshold, nextAttempt, nextPhase, totalUsedMb, totalAllowedMb, sendRes.id || "").run().catch(() => {});
+        }
+      }
+    }
+  } catch (cronErr) {
+    console.error("[runStorageAlertsCron Error]", cronErr);
   }
 }
 async function recordSyncItem(db, userId, id, category, contentObj, isDeleted = 0) {
@@ -5451,8 +5922,27 @@ var index_default = {
       if (path === "/api/storage/upload" && method === "PUT") {
         const key = url.searchParams.get("key");
         if (!key) return errorResponse("Cl\xE9 de stockage manquante", 400, origin);
+        const reqUserId = await extractRequestUserId() || url.searchParams.get("userId") || (key.startsWith("user_") ? key.split("/")[0].replace("user_", "") : "");
         const contentType = request.headers.get("Content-Type") || "application/octet-stream";
-        const fileData = request.body || await request.arrayBuffer();
+        const fileData = await request.arrayBuffer();
+        const incomingBytes = fileData.byteLength;
+
+        // CONTRÔLE STRICT DU QUOTA DE STOCKAGE
+        if (reqUserId && env.DB) {
+          const quotaCheck = await checkUserStorageQuotaAllowed(env.DB, reqUserId, incomingBytes);
+          if (!quotaCheck.allowed) {
+            return jsonResponse({
+              success: false,
+              error: "STORAGE_LIMIT_EXCEEDED",
+              message: quotaCheck.message,
+              totalAllowedMb: quotaCheck.totalAllowedMb,
+              currentUsedMb: quotaCheck.currentUsedMb,
+              incomingMb: quotaCheck.incomingMb,
+              remainingMb: quotaCheck.remainingMb
+            }, 413, origin);
+          }
+        }
+
         await env.BUCKET.put(key, fileData, {
           httpMetadata: { contentType }
         });
@@ -6105,6 +6595,22 @@ var index_default = {
         const headerOrigSizeFormatted = request.headers.get("x-original-size") || "";
         const sizeBytes = headerOrigSizeBytes > 0 ? headerOrigSizeBytes : rawSizeBytes;
         const sizeFormatted = headerOrigSizeFormatted || formatBytes(sizeBytes);
+
+        // CONTRÔLE STRICT DU QUOTA DE STOCKAGE
+        if (env.DB) {
+          const quotaCheck = await checkUserStorageQuotaAllowed(env.DB, reqUserId, sizeBytes);
+          if (!quotaCheck.allowed) {
+            return jsonResponse({
+              success: false,
+              error: "STORAGE_LIMIT_EXCEEDED",
+              message: quotaCheck.message,
+              totalAllowedMb: quotaCheck.totalAllowedMb,
+              currentUsedMb: quotaCheck.currentUsedMb,
+              incomingMb: quotaCheck.incomingMb,
+              remainingMb: quotaCheck.remainingMb
+            }, 413, origin);
+          }
+        }
         const normMime = (contentType || "").toLowerCase().trim();
         const ext = fileName.includes(".") ? (fileName.split(".").pop() || "").toLowerCase().trim() : "";
         const lowerFileName = fileName.toLowerCase().trim();
@@ -12061,6 +12567,23 @@ Lien vers le produit : ${productShareUrl}`;
         const body = await request.json();
         const { userId, userProfile, matieres, notes, scheduleSlots, scheduleConfig, alarms, shopProfile } = body;
         if (!userId || userId === "default-user") return errorResponse("userId requis", 400, origin);
+
+        // CONTRÔLE STRICT DU QUOTA POUR LES DONNÉES ENTRANTES D1
+        if (env.DB) {
+          const incomingDataBytes = JSON.stringify(body).length;
+          const quotaCheck = await checkUserStorageQuotaAllowed(env.DB, userId, incomingDataBytes);
+          if (!quotaCheck.allowed) {
+            return jsonResponse({
+              success: false,
+              error: "STORAGE_LIMIT_EXCEEDED",
+              message: quotaCheck.message,
+              totalAllowedMb: quotaCheck.totalAllowedMb,
+              currentUsedMb: quotaCheck.currentUsedMb,
+              incomingMb: quotaCheck.incomingMb,
+              remainingMb: quotaCheck.remainingMb
+            }, 413, origin);
+          }
+        }
         if (userProfile) {
           const cleanEmail = (userProfile.email || `${userId}@studycloud.app`).toLowerCase().trim();
           const existing = await env.DB.prepare(
@@ -13163,6 +13686,86 @@ Lien vers le produit : ${productShareUrl}`;
         }
         return errorResponse("Image de paiement introuvable", 404, origin);
       }
+
+      // ====================================================================
+      // API GESTION DES RÈGLES D'ALERTES DE STOCKAGE & PLANNING
+      // ====================================================================
+      if (path === "/api/storage/alert-rules" && method === "GET") {
+        if (env.DB) await ensureCloudMediaTables(env.DB);
+        const rules = await env.DB.prepare("SELECT * FROM storage_alert_rules ORDER BY threshold_percent ASC").all();
+        return jsonResponse({ success: true, rules: rules?.results || [] }, 200, origin);
+      }
+
+      if (path === "/api/storage/alert-rules" && (method === "PUT" || method === "POST")) {
+        if (env.DB) await ensureCloudMediaTables(env.DB);
+        const body = await request.json();
+        const { rules } = body;
+        if (Array.isArray(rules)) {
+          for (const r of rules) {
+            await env.DB.prepare(`
+              UPDATE storage_alert_rules SET
+                is_active = ?,
+                email_subject = ?,
+                email_title = ?,
+                email_body = ?,
+                phase1_interval_hours = ?,
+                phase1_max_attempts = ?,
+                phase2_interval_hours = ?,
+                phase2_max_attempts = ?,
+                updated_at = CURRENT_TIMESTAMP
+              WHERE threshold_percent = ?
+            `).bind(
+              r.is_active ? 1 : 0,
+              r.email_subject || "",
+              r.email_title || "",
+              r.email_body || "",
+              Number(r.phase1_interval_hours || 24),
+              Number(r.phase1_max_attempts || 5),
+              Number(r.phase2_interval_hours || 72),
+              Number(r.phase2_max_attempts || 3),
+              Number(r.threshold_percent)
+            ).run();
+          }
+        }
+        return jsonResponse({ success: true, message: "Planning des alertes mis \xE0 jour avec succ\xE8s" }, 200, origin);
+      }
+
+      if (path === "/api/storage/alert-rules/test-email" && method === "POST") {
+        const body = await request.json();
+        const { toEmail, thresholdPercent } = body;
+        if (!toEmail) return errorResponse("Email requis", 400, origin);
+        const pct = Number(thresholdPercent || 95);
+        let rule = null;
+        if (env.DB) {
+          rule = await env.DB.prepare("SELECT * FROM storage_alert_rules WHERE threshold_percent = ?").bind(pct).first();
+        }
+        const sendRes = await sendStorageAlertEmail({
+          resendApiKey: rawEnv.RESEND_API_KEY || "",
+          toEmail,
+          userName: "Administrateur Test",
+          thresholdPercent: pct,
+          totalUsedMb: (100 * pct / 100).toFixed(2),
+          totalAllowedMb: 100,
+          usagePercent: pct,
+          rule: rule || {
+            email_subject: `[TEST] Alerte Stockage StudyCloud : ${pct}%`,
+            email_title: `Test Alerte Stockage ${pct}%`,
+            email_body: "Ceci est un email de test g\xE9n\xE9r\xE9 depuis votre Tableau de Bord StudyCloud pour v\xE9rifier le rendu avec le logo ADN."
+          }
+        });
+        if (sendRes.success) {
+          return jsonResponse({ success: true, message: "Email de test envoy\xE9 avec succ\xE8s \xE0 " + toEmail }, 200, origin);
+        } else {
+          return errorResponse("\xC9chec d'envoi du test : " + (sendRes.error || "Erreur Resend"), 500, origin);
+        }
+      }
+
+      if (path === "/api/storage/alert-logs" && method === "GET") {
+        if (env.DB) await ensureCloudMediaTables(env.DB);
+        const logs = await env.DB.prepare("SELECT * FROM storage_alert_logs ORDER BY sent_at DESC LIMIT 50").all();
+        return jsonResponse({ success: true, logs: logs?.results || [] }, 200, origin);
+      }
+
       return errorResponse(`Route non trouv\xE9e : ${method} ${path}`, 404, origin);
     } catch (err) {
       console.error("Worker API Error:", err);
@@ -13183,6 +13786,9 @@ Lien vers le produit : ${productShareUrl}`;
           WHERE created_at < datetime('now', '-21 days')
         `).run();
         console.log("[StudyCloud Cron] Purge des notifications de plus de 3 semaines (21 jours) effectu\xE9e avec succ\xE8s.");
+        
+        // Exécution automatique de la vérification et envoi des alertes de saturation de stockage
+        await runStorageAlertsCron(env);
       } catch (e) {
         console.error("[StudyCloud Cron Error]", e);
       }

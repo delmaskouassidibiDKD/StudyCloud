@@ -333,6 +333,12 @@ class UploadQueueManager {
             this.notify();
           }
         );
+        if (!uploadRes || uploadRes.success === false) {
+          const err: any = new Error((uploadRes as any)?.message || (uploadRes as any)?.error || "Échec de l'envoi du classeur");
+          err.isStorageLimitExceeded = (uploadRes as any)?.isStorageLimitExceeded || (uploadRes as any)?.error === 'STORAGE_LIMIT_EXCEEDED';
+          err.storageMessage = (uploadRes as any)?.message;
+          throw err;
+        }
         uploadUrl = uploadRes.url;
         r2Key = uploadRes.key;
         serverFileId = uploadRes.id;
@@ -363,7 +369,14 @@ class UploadQueueManager {
           }
         );
 
-        if (res?.success && res.file) {
+        if (!res || res.success === false) {
+          const err: any = new Error(res?.message || res?.error || "Échec de l'envoi");
+          err.isStorageLimitExceeded = (res as any)?.isStorageLimitExceeded || res?.error === 'STORAGE_LIMIT_EXCEEDED';
+          err.storageMessage = (res as any)?.message;
+          throw err;
+        }
+
+        if (res.file) {
           uploadUrl = res.file.url || '';
           r2Key = (res.file as any).r2Key || (res.file as any).key || (res as any).r2Key || (res as any).key || '';
           serverFileId = res.file.id;
@@ -470,6 +483,33 @@ class UploadQueueManager {
       }
     } catch (err: any) {
       console.warn(`[UploadQueue] Échec sur "${fileName}":`, err);
+
+      const isQuotaExceeded = err?.isStorageLimitExceeded || 
+        err?.code === 'STORAGE_LIMIT_EXCEEDED' || 
+        err?.message?.includes('STORAGE_LIMIT_EXCEEDED') || 
+        err?.message?.includes('insuffisant') ||
+        (err?.message?.includes('413') && !err?.message?.includes('> 100 Mo'));
+
+      if (isQuotaExceeded) {
+        task.retries = MAX_RETRIES;
+        task.status = 'error';
+        const errorMsg = err?.storageMessage || err?.message || 'Votre espace de stockage est insuffisant pour enregistrer ce fichier.';
+        task.error = errorMsg;
+
+        // Détruire / supprimer le fichier temporaire du store pour ne rien laisser consommer d'espace
+        try {
+          CloudDataStore.removeFile(id);
+        } catch(e) {}
+
+        this.notify();
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('studycloud_storage_limit_exceeded', {
+            detail: { fileId: id, fileName, message: errorMsg }
+          }));
+        }
+        return;
+      }
 
       if (task.retries < MAX_RETRIES) {
         task.retries++;

@@ -34,6 +34,7 @@ import { OnboardingPage } from './components/auth/OnboardingPage';
 import { GoogleSecuritySetupPage } from './components/auth/GoogleSecuritySetupPage';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { AppUpdatePrompt } from './components/AppUpdatePrompt';
+import { StorageAlertNotificationModal } from './components/StorageAlertNotificationModal';
 import { UploadQueueWidget } from './components/UploadQueueWidget';
 import { purgeVolatileStorage } from './utils/safeStorage';
 
@@ -2013,6 +2014,9 @@ export default function App() {
 
       {/* Notification événementielle de mise à jour Cloudflare (sans boucle) */}
       <AppUpdatePrompt />
+
+      {/* Modal d'alerte et de blocage de saturation de stockage (50%, 75%, 85%, 95%, >=96%) */}
+      <StorageAlertNotificationModal />
     </div>
   );
 }

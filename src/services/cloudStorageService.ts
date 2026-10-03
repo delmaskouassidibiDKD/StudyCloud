@@ -971,7 +971,16 @@ export const CloudStorageAPI = {
     originalSizeFormatted?: string,
     fileId?: string,
     onProgress?: (percent: number) => void
-  ): Promise<{ success: boolean; category?: string; detectedCategory?: string; file?: FileItem; error?: string }> {
+  ): Promise<{ 
+    success: boolean; 
+    category?: string; 
+    detectedCategory?: string; 
+    file?: FileItem; 
+    error?: string; 
+    message?: string; 
+    isStorageLimitExceeded?: boolean; 
+    status?: number; 
+  }> {
     return new Promise((resolve) => {
       try {
         const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
@@ -1011,13 +1020,27 @@ export const CloudStorageAPI = {
             if (xhr.status >= 200 && xhr.status < 300 && json.success) {
               resolve(json);
             } else {
-              resolve({ success: false, error: json.error || `Erreur serveur (${xhr.status})` });
+              const isStorageLimit = json.error === 'STORAGE_LIMIT_EXCEEDED' || xhr.status === 413 || (typeof json.message === 'string' && json.message.toLowerCase().includes('stockage est insuffisant'));
+              resolve({
+                success: false,
+                error: json.error || `Erreur serveur (${xhr.status})`,
+                message: json.message || (isStorageLimit ? "Votre espace de stockage est insuffisant pour enregistrer ce fichier." : undefined),
+                isStorageLimitExceeded: isStorageLimit,
+                status: xhr.status
+              });
             }
           } catch {
             if (xhr.status >= 200 && xhr.status < 300) {
               resolve({ success: true });
             } else {
-              resolve({ success: false, error: `Erreur serveur HTTP ${xhr.status}` });
+              const isStorageLimit = xhr.status === 413;
+              resolve({
+                success: false,
+                error: `Erreur serveur HTTP ${xhr.status}`,
+                message: isStorageLimit ? "Votre espace de stockage est insuffisant pour enregistrer ce fichier." : undefined,
+                isStorageLimitExceeded: isStorageLimit,
+                status: xhr.status
+              });
             }
           }
         };
