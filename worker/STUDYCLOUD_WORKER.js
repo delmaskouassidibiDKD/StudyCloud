@@ -3274,19 +3274,20 @@ async function runStorageAlertsCron(env) {
       const totalUsedMb = (totalUsedBytes / (1024 * 1024));
       const usagePercent = Math.min(100, Math.round((totalUsedMb / totalAllowedMb) * 100));
 
-      // Déterminer le seuil le plus élevé franchi
+      // Déterminer le seuil configuré le plus élevé franchi
       let activeThreshold = null;
-      if (usagePercent >= 100) activeThreshold = 100;
-      else if (usagePercent >= 95) activeThreshold = 95;
-      else if (usagePercent >= 90) activeThreshold = 90;
-      else if (usagePercent >= 85) activeThreshold = 85;
-      else if (usagePercent >= 75) activeThreshold = 75;
-      else if (usagePercent >= 50) activeThreshold = 50;
+      const sortedThresholds = Array.from(rulesMap.keys()).sort((a, b) => b - a);
+      for (const th of sortedThresholds) {
+        if (usagePercent >= th) {
+          activeThreshold = th;
+          break;
+        }
+      }
 
       if (!activeThreshold) continue;
 
       const rule = rulesMap.get(activeThreshold);
-      if (!rule || Number(rule.is_active) !== 1) continue; // Désactivé par l'admin !
+      if (!rule || (rule.is_active !== undefined ? Number(rule.is_active) : Number(rule.is_enabled || 1)) !== 1) continue; // Désactivé par l'admin !
 
       // Historique des envois pour ce seuil
       const lastLogs = await db.prepare(
@@ -3308,44 +3309,35 @@ async function runStorageAlertsCron(env) {
         const currentAttempt = Number(lastLogs.attempt_count || 1);
         const currentPhase = lastLogs.phase || "phase1";
 
-        if (activeThreshold < 95) {
-          // Pour 50%, 75%, 85%, 90% : un seul email lors du franchissement
-          shouldSend = false;
-        } else {
-          // Pour 95% et 100% :
-          // Phase 1 : chaque 24h (défaut) pendant 5 tentatives max
-          // Phase 2 : ensuite chaque 3 jours (72h) jusqu'à 3 tentatives max
-          const p1Interval = Number(rule.phase1_interval_hours || 24);
-          const p1Max = Number(rule.phase1_max_attempts || 5);
-          const p2Interval = Number(rule.phase2_interval_hours || 72);
-          const p2Max = Number(rule.phase2_max_attempts || 3);
+        // Planning paramétrable pour n'importe quel seuil selon les configurations du tableau de bord
+        const p1Interval = Number(rule.repeat_interval_hours || rule.phase1_interval_hours || 24);
+        const p1Max = Number(rule.max_attempts_phase1 || rule.phase1_max_attempts || 1);
+        const p2Interval = Number(rule.phase2_interval_hours || 72);
+        const p2Max = Number(rule.phase2_max_attempts || 0);
 
-          if (currentPhase === "phase1") {
-            if (currentAttempt < p1Max) {
-              if (elapsedHours >= p1Interval) {
-                shouldSend = true;
-                nextAttempt = currentAttempt + 1;
-                nextPhase = "phase1";
-              }
-            } else {
-              // Basculer en phase 2 si le délai de phase 2 est écoulé depuis le 5e envoi
-              if (elapsedHours >= p2Interval) {
-                shouldSend = true;
-                nextAttempt = 1;
-                nextPhase = "phase2";
-              }
+        if (currentPhase === "phase1") {
+          if (currentAttempt < p1Max) {
+            if (elapsedHours >= p1Interval) {
+              shouldSend = true;
+              nextAttempt = currentAttempt + 1;
+              nextPhase = "phase1";
             }
-          } else if (currentPhase === "phase2") {
-            if (currentAttempt < p2Max) {
-              if (elapsedHours >= p2Interval) {
-                shouldSend = true;
-                nextAttempt = currentAttempt + 1;
-                nextPhase = "phase2";
-              }
-            } else {
-              // Relances épuisées
-              shouldSend = false;
+          } else if (p2Max > 0 && elapsedHours >= p2Interval) {
+            shouldSend = true;
+            nextAttempt = 1;
+            nextPhase = "phase2";
+          } else {
+            shouldSend = false;
+          }
+        } else if (currentPhase === "phase2") {
+          if (currentAttempt < p2Max) {
+            if (elapsedHours >= p2Interval) {
+              shouldSend = true;
+              nextAttempt = currentAttempt + 1;
+              nextPhase = "phase2";
             }
+          } else {
+            shouldSend = false;
           }
         }
       }

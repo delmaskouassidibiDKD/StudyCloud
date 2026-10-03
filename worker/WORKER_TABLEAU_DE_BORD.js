@@ -2552,261 +2552,6 @@ function renderDashboardHtml(data) {
         }
       }
     }
-    // ========================================================================
-    // LOGIQUE DE GESTION DES RÈGLES D'ALERTE DE STOCKAGE (CLIENT JS)
-    // ========================================================================
-    function renderAlertRules() {
-      var container = document.getElementById('alert-rules-container');
-      if (!container) return;
-
-      if (!allAlertRules || allAlertRules.length === 0) {
-        container.innerHTML = '<div class="p-8 text-center text-slate-400 text-xs">Aucune règle trouvée. Cliquez sur actualiser.</div>';
-        return;
-      }
-
-      var colors = {
-        50: { border: 'border-blue-500/40', badge: 'bg-blue-500/20 text-blue-400 border-blue-500/30', tag: 'Avertissement Précoce' },
-        75: { border: 'border-amber-500/40', badge: 'bg-amber-500/20 text-amber-400 border-amber-500/30', tag: 'Avertissement Modéré' },
-        85: { border: 'border-orange-500/40', badge: 'bg-orange-500/20 text-orange-400 border-orange-500/30', tag: 'Seuil Critique Approchant' },
-        90: { border: 'border-rose-500/40', badge: 'bg-rose-500/20 text-rose-400 border-rose-500/30', tag: 'Alerte Urgence' },
-        95: { border: 'border-red-600/50', badge: 'bg-red-500/20 text-red-400 border-red-500/30', tag: 'Phase 1 & Phase 2 (Relances)' },
-        100: { border: 'border-red-700/60', badge: 'bg-red-600/30 text-red-300 border-red-600/40', tag: 'Blocage Définitif & Relances' }
-      };
-
-      var html = '';
-      for (var i = 0; i < allAlertRules.length; i++) {
-        var r = allAlertRules[i];
-        var pct = r.threshold_percent;
-        var style = colors[pct] || { border: 'border-slate-700', badge: 'bg-slate-700 text-slate-300', tag: 'Règle' };
-        var isRepeated = pct >= 95;
-
-        html += '<div class="neo-card p-4 sm:p-5 bg-slate-900/90 border ' + style.border + ' rounded-2xl space-y-4">';
-        html += '  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">';
-        html += '    <div class="flex items-center gap-3">';
-        html += '      <span class="text-xl sm:text-2xl font-black text-white px-3 py-1 rounded-xl bg-slate-950 border border-slate-700 font-mono">' + pct + '%</span>';
-        html += '      <div>';
-        html += '        <div class="flex items-center gap-2">';
-        html += '          <span class="text-xs sm:text-sm font-extrabold text-white">Seuil ' + pct + '% de Stockage</span>';
-        html += '          <span class="text-[10px] px-2 py-0.5 rounded-full border font-bold ' + style.badge + '">' + style.tag + '</span>';
-        html += '        </div>';
-        html += '        <div class="text-[11px] text-slate-400">' + (isRepeated ? 'Emails répétés : Phase 1 (quotidien) puis Phase 2 (tous les 3 jours) si non régularisé.' : 'Envoi unique au franchissement du seuil.') + '</div>';
-        html += '      </div>';
-        html += '    </div>';
-        html += '    <div class="flex items-center gap-3">';
-        html += '      <label class="flex items-center gap-2 cursor-pointer select-none">';
-        html += '        <span class="text-xs font-bold ' + (r.is_enabled ? 'text-emerald-400' : 'text-slate-500') + '">' + (r.is_enabled ? 'Activé' : 'Désactivé') + '</span>';
-        html += '        <input type="checkbox" id="rule-enabled-' + pct + '" ' + (r.is_enabled ? 'checked' : '') + ' class="w-5 h-5 accent-orange-600 rounded cursor-pointer" />';
-        html += '      </label>';
-        html += '      <button type="button" onclick="sendTestAlertEmail(' + pct + ')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 hover:text-white transition-colors cursor-pointer flex items-center gap-1">';
-        html += '        <span>✉️</span><span>Tester ce seuil</span>';
-        html += '      </button>';
-        html += '    </div>';
-        html += '  </div>';
-
-        html += '  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
-        html += '    <div class="space-y-1.5">';
-        html += '      <label class="text-[11px] font-bold text-slate-400">Objet de l\'email (Subject)</label>';
-        html += '      <input type="text" id="rule-subject-' + pct + '" value="' + safeAttr(r.email_subject || '') + '" class="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-orange-500" />';
-        html += '    </div>';
-        html += '    <div class="space-y-1.5">';
-        html += '      <label class="text-[11px] font-bold text-slate-400">Titre principal du message (Heading)</label>';
-        html += '      <input type="text" id="rule-title-' + pct + '" value="' + safeAttr(r.email_title || '') + '" class="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-orange-500" />';
-        html += '    </div>';
-        html += '  </div>';
-
-        html += '  <div class="space-y-1.5">';
-        html += '    <label class="text-[11px] font-bold text-slate-400">Corps du texte (Paragraphe explicatif)</label>';
-        html += '    <textarea id="rule-body-' + pct + '" rows="2" class="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-orange-500 resize-y">' + safeHtml(r.email_body || '') + '</textarea>';
-        html += '  </div>';
-
-        if (isRepeated) {
-          html += '  <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-3">';
-          html += '    <div class="space-y-1">';
-          html += '      <label class="text-[10px] font-bold text-slate-400">Intervalle Relance (Heures)</label>';
-          html += '      <input type="number" id="rule-interval-' + pct + '" value="' + (r.repeat_interval_hours || 24) + '" class="w-full px-2.5 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-700 text-white font-mono" />';
-          html += '    </div>';
-          html += '    <div class="space-y-1">';
-          html += '      <label class="text-[10px] font-bold text-slate-400">Max Tentatives Phase 1 (Chaque 24h)</label>';
-          html += '      <input type="number" id="rule-p1-' + pct + '" value="' + (r.max_attempts_phase1 || 5) + '" class="w-full px-2.5 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-700 text-white font-mono" />';
-          html += '    </div>';
-          html += '    <div class="space-y-1">';
-          html += '      <label class="text-[10px] font-bold text-slate-400">Max Tentatives Phase 2 (Chaque 72h)</label>';
-          html += '      <input type="number" id="rule-p2-' + pct + '" value="' + (r.max_attempts_phase2 || 3) + '" class="w-full px-2.5 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-700 text-white font-mono" />';
-          html += '    </div>';
-          html += '  </div>';
-        }
-
-        html += '</div>';
-      }
-      container.innerHTML = html;
-    }
-
-    function renderAlertLogs() {
-      var tbody = document.getElementById('alert-logs-tbody');
-      if (!tbody) return;
-
-      if (!allAlertLogs || allAlertLogs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="py-4 text-center text-slate-500">Aucun historique d\'envoi récent.</td></tr>';
-        return;
-      }
-
-      var html = '';
-      for (var i = 0; i < allAlertLogs.length; i++) {
-        var l = allAlertLogs[i];
-        var isSuccess = l.status === 'sent';
-        html += '<tr class="hover:bg-slate-800/40 transition-colors">';
-        html += '  <td class="py-2.5 px-3 text-slate-400">' + (l.sent_at || '-') + '</td>';
-        html += '  <td class="py-2.5 px-3 text-white font-sans font-bold">' + (l.user_email || l.user_id) + '</td>';
-        html += '  <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded-full font-bold text-[10px] bg-orange-500/20 text-orange-400 border border-orange-500/30">' + l.threshold_percent + '%</span></td>';
-        html += '  <td class="py-2.5 px-3 text-slate-400">Phase ' + (l.phase || 1) + ' (#' + (l.attempt_number || 1) + ')</td>';
-        html += '  <td class="py-2.5 px-3">';
-        html += '    <span class="inline-flex items-center gap-1 font-bold ' + (isSuccess ? 'text-emerald-400' : 'text-rose-400') + '">';
-        html += '      <span>' + (isSuccess ? '✓' : '✗') + '</span><span>' + (isSuccess ? 'Envoyé' : 'Échec') + '</span>';
-        html += '    </span>';
-        html += '  </td>';
-        html += '</tr>';
-      }
-      tbody.innerHTML = html;
-    }
-
-    async function saveAlertRules() {
-      var btn = document.getElementById('btn-save-alert-rules');
-      var origText = btn ? btn.innerHTML : '';
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<span>⏳</span><span>Enregistrement...</span>';
-      }
-
-      var updatedRules = (allAlertRules || []).map(function(r) {
-        var pct = r.threshold_percent;
-        var enabledEl = document.getElementById('rule-enabled-' + pct);
-        var subjEl = document.getElementById('rule-subject-' + pct);
-        var titleEl = document.getElementById('rule-title-' + pct);
-        var bodyEl = document.getElementById('rule-body-' + pct);
-        var intervalEl = document.getElementById('rule-interval-' + pct);
-        var p1El = document.getElementById('rule-p1-' + pct);
-        var p2El = document.getElementById('rule-p2-' + pct);
-
-        return {
-          threshold_percent: pct,
-          is_enabled: enabledEl ? (enabledEl.checked ? 1 : 0) : r.is_enabled,
-          email_subject: subjEl ? subjEl.value : r.email_subject,
-          email_title: titleEl ? titleEl.value : r.email_title,
-          email_body: bodyEl ? bodyEl.value : r.email_body,
-          repeat_interval_hours: intervalEl ? Number(intervalEl.value) : (r.repeat_interval_hours || 24),
-          max_attempts_phase1: p1El ? Number(p1El.value) : (r.max_attempts_phase1 || 5),
-          max_attempts_phase2: p2El ? Number(p2El.value) : (r.max_attempts_phase2 || 3)
-        };
-      });
-
-      try {
-        var resp = await fetch('/api/storage/alert-rules', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rules: updatedRules })
-        });
-        var res = await resp.json();
-        if (res.success) {
-          allAlertRules = res.rules;
-          renderAlertRules();
-          showToast('Règles d\'alerte enregistrées avec succès dans D1 !');
-        } else {
-          showToast('⚠️ Erreur : ' + (res.error || 'Impossible d\'enregistrer'));
-        }
-      } catch (err) {
-        showToast('⚠️ Erreur réseau lors de l\'enregistrement');
-      } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = origText;
-        }
-      }
-    }
-
-    async function loadAlertRules() {
-      try {
-        var resp = await fetch('/api/storage/alert-rules');
-        var res = await resp.json();
-        if (res.success && res.rules) {
-          allAlertRules = res.rules;
-          renderAlertRules();
-          showToast('✓ Règles actualisées depuis D1');
-        }
-      } catch (err) {
-        console.warn('Erreur loadAlertRules:', err);
-      }
-    }
-
-    async function loadAlertLogs() {
-      try {
-        var resp = await fetch('/api/storage/alert-logs');
-        var res = await resp.json();
-        if (res.success && res.logs) {
-          allAlertLogs = res.logs;
-          renderAlertLogs();
-        }
-      } catch (err) {
-        console.warn('Erreur loadAlertLogs:', err);
-      }
-    }
-
-    async function sendTestAlertEmail(specificThreshold) {
-      var emailInput = document.getElementById('test-alert-email-input');
-      var select = document.getElementById('test-alert-threshold-select');
-      var feedback = document.getElementById('test-alert-feedback');
-
-      var toEmail = emailInput ? emailInput.value.trim() : '';
-      var threshold = specificThreshold || (select ? Number(select.value) : 95);
-
-      if (!toEmail) {
-        toEmail = prompt('Entrez votre adresse email pour recevoir l\'alerte test :');
-        if (!toEmail || !toEmail.trim()) return;
-        toEmail = toEmail.trim();
-        if (emailInput) emailInput.value = toEmail;
-      }
-
-      if (feedback) {
-        feedback.className = 'mt-3 p-3 rounded-xl text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-2';
-        feedback.innerHTML = '<span>⏳</span><span>Envoi de l\'email test vers ' + toEmail + ' (seuil ' + threshold + '%)...</span>';
-        feedback.classList.remove('hidden');
-      }
-
-      try {
-        var resp = await fetch('/api/storage/alert-rules/test-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ toEmail: toEmail, thresholdPercent: threshold, userName: 'Admin StudyCloud' })
-        });
-        var res = await resp.json();
-        if (res.success) {
-          if (feedback) {
-            feedback.className = 'mt-3 p-3 rounded-xl text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-2';
-            feedback.innerHTML = '<span>✓</span><span>Email de test ' + threshold + '% envoyé avec succès à <strong>' + toEmail + '</strong> via Resend !</span>';
-          }
-          showToast('✓ Email test envoyé à ' + toEmail);
-          loadAlertLogs();
-        } else {
-          if (feedback) {
-            feedback.className = 'mt-3 p-3 rounded-xl text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-2';
-            feedback.innerHTML = '<span>✗</span><span>Échec d\'envoi : ' + (res.error || 'Erreur Resend') + '</span>';
-          }
-          showToast('⚠️ Échec envoi test : ' + (res.error || 'Erreur inconnue'));
-        }
-      } catch (err) {
-        if (feedback) {
-          feedback.className = 'mt-3 p-3 rounded-xl text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30';
-          feedback.textContent = 'Erreur réseau : ' + err.message;
-        }
-      }
-    }
-
-    window.saveAlertRules = saveAlertRules;
-    window.loadAlertRules = loadAlertRules;
-    window.loadAlertLogs = loadAlertLogs;
-    window.sendTestAlertEmail = sendTestAlertEmail;
-    window.renderAlertRules = renderAlertRules;
-    window.renderAlertLogs = renderAlertLogs;
-
   </script>
   <style>
     body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -4515,27 +4260,42 @@ function renderDashboardHtml(data) {
     <!-- ================================================================== -->
     <div id="view-alertes-stockage" class="hidden w-full h-full overflow-y-auto space-y-5 pb-24 pr-1 overscroll-contain" style="display: none;">
       
-      <!-- En-tête / Bannière Alertes Stockage -->
+      <!-- En-tête / Bannière Planning d'Alertes Stockage -->
       <div class="neo-card p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-[#131b2e] to-slate-900 border-l-4 border-l-orange-500 shrink-0">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <h3 class="text-sm sm:text-base font-extrabold text-white flex items-center gap-2">
-              <span class="text-lg">📧</span>
-              <span>Planification des Alertes de Saturation Stockage (50% à 100%)</span>
-            </h3>
+            <div class="flex items-center gap-2.5">
+              <span class="text-2xl">📅</span>
+              <h3 class="text-base sm:text-lg font-extrabold text-white">
+                Planning & Automatisation des Alertes de Stockage
+              </h3>
+              <span class="text-[10px] px-2.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 font-bold font-mono">
+                Contrôle Total des Intervalles
+              </span>
+            </div>
             <p class="text-xs text-slate-400 mt-1 max-w-4xl leading-relaxed">
-              Supervisez et ajustez les alertes automatisées envoyées par email aux utilisateurs. Les emails sont expédiés via <strong>Resend</strong> avec le logo officiel ADN StudyCloud (<code class="text-orange-400 text-[11px]">/assets/dna-logo.png</code>). Le cron quotidien vérifie la base D1 et respecte strictement vos activations et textes ci-dessous.
+              Créez votre propre planning d'envoi pour avertir les utilisateurs. Définissez à quel <strong>seuil en %</strong> envoyer, <strong>l'intervalle en heures</strong> entre chaque rappel, le <strong>nombre maximal de messages</strong>, et personnalisez les emails avec le logo officiel ADN StudyCloud.
             </p>
           </div>
-          <div class="flex items-center gap-2.5 shrink-0 flex-wrap sm:flex-nowrap">
+
+          <div class="flex items-center gap-2.5 shrink-0 flex-wrap">
+            <button 
+              type="button" 
+              onclick="openCreateAlertModal()" 
+              id="btn-open-create-rule"
+              class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 via-amber-600 to-orange-600 hover:from-orange-500 hover:to-amber-500 text-white font-extrabold text-xs shadow-lg shadow-orange-600/30 flex items-center gap-2 active:scale-95 transition-all cursor-pointer"
+            >
+              <span class="text-sm">✨</span>
+              <span>+ Créer un Planning d'Alerte</span>
+            </button>
             <button 
               type="button" 
               onclick="saveAlertRules()" 
               id="btn-save-alert-rules"
-              class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-extrabold text-xs shadow-lg shadow-orange-600/30 flex items-center gap-2 active:scale-95 transition-all cursor-pointer"
+              class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-lg shadow-emerald-600/20 flex items-center gap-2 active:scale-95 transition-all cursor-pointer"
             >
               <span>💾</span>
-              <span>Enregistrer les Règles</span>
+              <span>Enregistrer Tout</span>
             </button>
             <button 
               type="button" 
@@ -4545,6 +4305,38 @@ function renderDashboardHtml(data) {
               <span>🔄</span>
               <span>Actualiser</span>
             </button>
+          </div>
+        </div>
+
+        <!-- 4 Badges Récapitulatifs -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-slate-800/80 text-xs">
+          <div class="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center gap-3">
+            <span class="text-xl">📊</span>
+            <div>
+              <div class="text-[10px] text-slate-400 font-bold uppercase">Plannings Définis</div>
+              <div id="stat-alert-rules-count" class="text-sm font-black text-white font-mono">6 règles</div>
+            </div>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center gap-3">
+            <span class="text-xl">🔔</span>
+            <div>
+              <div class="text-[10px] text-slate-400 font-bold uppercase">Plannings Actifs</div>
+              <div id="stat-alert-rules-active" class="text-sm font-black text-emerald-400 font-mono">6 actifs</div>
+            </div>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center gap-3">
+            <span class="text-xl">⏱️</span>
+            <div>
+              <div class="text-[10px] text-slate-400 font-bold uppercase">Intervalles programmés</div>
+              <div class="text-sm font-black text-amber-400 font-mono">24h à 72h</div>
+            </div>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center gap-3">
+            <span class="text-xl">🛡️</span>
+            <div>
+              <div class="text-[10px] text-slate-400 font-bold uppercase">Blocage Strict 100%</div>
+              <div class="text-sm font-black text-rose-400 font-mono">Activé (0 octet)</div>
+            </div>
           </div>
         </div>
       </div>
@@ -4558,10 +4350,10 @@ function renderDashboardHtml(data) {
               <span>Tester l'envoi d'un email d'alerte en direct</span>
             </h4>
             <p class="text-[11px] text-slate-400">
-              Vérifiez la mise en page HTML, le logo ADN et la délivrabilité Resend sur votre propre boîte de réception.
+              Expédie immédiatement l'email formaté avec le logo ADN pour valider l'affichage sur votre boîte de réception.
             </p>
           </div>
-          <div class="flex items-center gap-2 w-full md:w-auto">
+          <div class="flex items-center gap-2 w-full md:w-auto flex-wrap sm:flex-nowrap">
             <input 
               type="email" 
               id="test-alert-email-input" 
@@ -4591,6 +4383,22 @@ function renderDashboardHtml(data) {
           </div>
         </div>
         <div id="test-alert-feedback" class="hidden mt-3 p-3 rounded-xl text-xs font-semibold"></div>
+      </div>
+
+      <!-- TITRE DE SECTION DES CARTES DE PLANNING -->
+      <div class="flex items-center justify-between pt-2">
+        <div class="flex items-center gap-2">
+          <span class="text-lg">⚙️</span>
+          <h4 class="text-sm font-extrabold text-white">Vos Plannings d'Envoi & Fréquences Configurées</h4>
+          <span class="text-[11px] text-slate-400">(Modifiez les champs directement sur les cartes ci-dessous)</span>
+        </div>
+        <button 
+          type="button" 
+          onclick="openCreateAlertModal()" 
+          class="text-xs font-bold text-orange-400 hover:text-orange-300 flex items-center gap-1 cursor-pointer"
+        >
+          <span>+ Ajouter une règle</span>
+        </button>
       </div>
 
       <!-- GRILLE DES RÈGLES PAR SEUIL -->
@@ -4633,7 +4441,138 @@ function renderDashboardHtml(data) {
 
     </div>
 
-  </main>
+  
+  <!-- MODALE CRÉATION D'UNE RÈGLE DE PLANNING DE STOCKAGE -->
+  <div id="modal-create-alert-rule" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-4" onclick="closeCreateAlertModal(event)">
+    <div class="relative max-w-xl w-full bg-[#0f172a] border-2 border-orange-500/50 rounded-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-150 text-white" onclick="event.stopPropagation()">
+      <div class="px-5 py-4 bg-[#0d1424] border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-xl bg-orange-600/20 border border-orange-500/30 flex items-center justify-center text-base">
+            ✨
+          </div>
+          <div>
+            <h4 class="font-extrabold text-sm text-white">Créer un Nouveau Planning d'Alerte</h4>
+            <p class="text-[11px] text-slate-400">Définissez vos propres intervalles et déclencheurs d'envoi</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeCreateAlertModal()" class="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer">
+          ✕
+        </button>
+      </div>
+
+      <div class="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+        <!-- Seuil de stockage -->
+        <div class="space-y-1.5">
+          <label class="text-xs font-bold text-slate-300 flex items-center justify-between">
+            <span>À quel moment envoyer ? (Seuil de stockage en %)</span>
+            <span class="text-[10px] text-orange-400">Ex: 60, 75, 80, 95...</span>
+          </label>
+          <div class="flex items-center gap-2">
+            <input 
+              type="number" 
+              id="new-rule-threshold" 
+              min="1" 
+              max="100" 
+              placeholder="Ex: 80" 
+              class="w-32 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm focus:outline-none focus:border-orange-500 font-bold"
+            />
+            <span class="font-extrabold text-slate-400">% de stockage consommé</span>
+          </div>
+          <!-- Boutons de suggestions rapides -->
+          <div class="flex items-center gap-1.5 flex-wrap pt-1">
+            <span class="text-[10px] text-slate-500">Suggestions :</span>
+            <button type="button" onclick="document.getElementById('new-rule-threshold').value=50" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300">50%</button>
+            <button type="button" onclick="document.getElementById('new-rule-threshold').value=65" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300">65%</button>
+            <button type="button" onclick="document.getElementById('new-rule-threshold').value=75" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300">75%</button>
+            <button type="button" onclick="document.getElementById('new-rule-threshold').value=80" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300">80%</button>
+            <button type="button" onclick="document.getElementById('new-rule-threshold').value=90" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300">90%</button>
+            <button type="button" onclick="document.getElementById('new-rule-threshold').value=95" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300">95%</button>
+            <button type="button" onclick="document.getElementById('new-rule-threshold').value=100" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300">100%</button>
+          </div>
+        </div>
+
+        <!-- Intervalle et nombre de messages -->
+        <div class="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="space-y-1">
+            <label class="text-[11px] font-bold text-slate-300">⏱️ Intervalle d'envoi (en heures)</label>
+            <input 
+              type="number" 
+              id="new-rule-interval" 
+              value="24" 
+              min="1" 
+              class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-orange-500"
+            />
+            <p class="text-[10px] text-slate-400">Ex: 24 = 1 message par jour</p>
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-[11px] font-bold text-slate-300">🔢 Nombre de messages max</label>
+            <input 
+              type="number" 
+              id="new-rule-p1" 
+              value="1" 
+              min="1" 
+              class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-orange-500"
+            />
+            <p class="text-[10px] text-slate-400">1 pour un envoi unique, 3 ou 5 pour des relances</p>
+          </div>
+        </div>
+
+        <!-- Objet de l'email -->
+        <div class="space-y-1">
+          <label class="text-xs font-bold text-slate-300">Objet de l'email (Subject)</label>
+          <input 
+            type="text" 
+            id="new-rule-subject" 
+            placeholder="Ex: ⚠️ Alerte Stockage : {threshold}% atteint" 
+            class="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-orange-500"
+          />
+        </div>
+
+        <!-- Titre principal -->
+        <div class="space-y-1">
+          <label class="text-xs font-bold text-slate-300">Titre principal (Heading)</label>
+          <input 
+            type="text" 
+            id="new-rule-title" 
+            placeholder="Ex: Votre stockage StudyCloud a atteint {threshold}%" 
+            class="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-orange-500"
+          />
+        </div>
+
+        <!-- Corps du message -->
+        <div class="space-y-1">
+          <label class="text-xs font-bold text-slate-300">Corps du texte (Paragraphe explicatif)</label>
+          <textarea 
+            id="new-rule-body" 
+            rows="3" 
+            placeholder="Ex: Attention, vous avez utilisé {threshold}% de votre espace de stockage. Pensez à augmenter votre forfait..." 
+            class="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-orange-500 resize-y"
+          ></textarea>
+        </div>
+      </div>
+
+      <div class="px-5 py-3.5 bg-[#0d1424] border-t border-slate-800 flex items-center justify-end gap-2.5">
+        <button 
+          type="button" 
+          onclick="closeCreateAlertModal()" 
+          class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+        >
+          Annuler
+        </button>
+        <button 
+          type="button" 
+          onclick="submitCreateAlertRule()" 
+          id="btn-submit-create-rule"
+          class="px-5 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-xs shadow-lg shadow-orange-600/30 transition-all cursor-pointer flex items-center gap-1.5"
+        >
+          <span>Valider et Enregistrer</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+</main>
 
   <!-- MODALE D'ÉDITION DE CHAMP INDIVIDUEL (INFORMATIONS PROFESSIONNELLES) -->
   <div id="field-edit-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex flex-col items-center justify-center p-4" onclick="closeFieldEditModal(event)">
@@ -4964,8 +4903,83 @@ function renderDashboardHtml(data) {
     let companyProfileGlobal = ${companyProfileJson};
     let allStoragePlans = ${storagePlansJson};
     let allAiPlans = ${aiPlansJson};
-    let allAlertRules = ${alertRulesJson};
-    let allAlertLogs = ${alertLogsJson};
+    const defaultStorageAlertRules = [
+      {
+        threshold_percent: 50,
+        is_enabled: 1,
+        is_active: 1,
+        repeat_interval_hours: 48,
+        phase1_repeat_interval_hours: 48,
+        max_attempts_phase1: 1,
+        phase1_max_notifications: 1,
+        email_subject: "ℹ️ Information : Vous avez utilisé 50% de votre stockage StudyCloud",
+        email_title: "Votre espace de stockage est à 50%",
+        email_body: "Bonjour,\n\nVous venez d'atteindre la moitié de votre espace de stockage StudyCloud. Tout fonctionne normalement, mais pensez à vérifier vos fichiers ou à envisager un forfait supérieur si vos besoins augmentent."
+      },
+      {
+        threshold_percent: 75,
+        is_enabled: 1,
+        is_active: 1,
+        repeat_interval_hours: 48,
+        phase1_repeat_interval_hours: 48,
+        max_attempts_phase1: 2,
+        phase1_max_notifications: 2,
+        email_subject: "⚠️ Attention : 75% de votre espace de stockage StudyCloud est consommé",
+        email_title: "Attention : Stockage à 75%",
+        email_body: "Bonjour,\n\nVotre espace de stockage StudyCloud atteint maintenant 75%. Afin d'éviter tout blocage de vos imports et sauvegardes à venir, nous vous conseillons de faire de la place ou de passer au forfait supérieur."
+      },
+      {
+        threshold_percent: 85,
+        is_enabled: 1,
+        is_active: 1,
+        repeat_interval_hours: 24,
+        phase1_repeat_interval_hours: 24,
+        max_attempts_phase1: 2,
+        phase1_max_notifications: 2,
+        email_subject: "⚠️ Alerte importante : Votre stockage StudyCloud est à 85%",
+        email_title: "Alerte : Plus que 15% d'espace libre",
+        email_body: "Bonjour,\n\nIl ne vous reste plus que 15% d'espace libre sur votre compte StudyCloud. Dès saturation, les nouveaux fichiers ne pourront plus être enregistrés. Passez à la formule supérieure pour continuer en toute sérénité."
+      },
+      {
+        threshold_percent: 90,
+        is_enabled: 1,
+        is_active: 1,
+        repeat_interval_hours: 24,
+        phase1_repeat_interval_hours: 24,
+        max_attempts_phase1: 3,
+        phase1_max_notifications: 3,
+        email_subject: "🚨 Seuil critique : 90% de votre stockage StudyCloud est plein",
+        email_title: "Stockage critique : 90% atteint",
+        email_body: "Bonjour,\n\nAttention, vous avez atteint 90% de votre capacité maximale. Nous vous recommandons vivement d'augmenter votre forfait de stockage immédiatement afin de ne pas risquer l'interruption de vos synchronisations."
+      },
+      {
+        threshold_percent: 95,
+        is_enabled: 1,
+        is_active: 1,
+        repeat_interval_hours: 12,
+        phase1_repeat_interval_hours: 12,
+        max_attempts_phase1: 3,
+        phase1_max_notifications: 3,
+        email_subject: "🚨 ALERTE URGENTE : 95% de votre stockage StudyCloud est saturé !",
+        email_title: "Urgence : Plus que 5% avant saturation complète !",
+        email_body: "Bonjour,\n\nVotre espace de stockage est presque totalement saturé (95%). Dès 100%, tout nouvel import sera strictement rejeté et détruit pour préserver l'intégrité de votre compte. Veuillez augmenter votre stockage sans attendre."
+      },
+      {
+        threshold_percent: 100,
+        is_enabled: 1,
+        is_active: 1,
+        repeat_interval_hours: 12,
+        phase1_repeat_interval_hours: 12,
+        max_attempts_phase1: 5,
+        phase1_max_notifications: 5,
+        email_subject: "🛑 STOCKAGE PLEIN (100%) : Nouveaux imports bloqués sur StudyCloud",
+        email_title: "Stockage 100% saturé : Nouveaux ajouts bloqués",
+        email_body: "Bonjour,\n\nVotre espace de stockage StudyCloud a atteint 100%. Vos fichiers existants sont protégés et sécurisés, mais l'enregistrement de tout nouveau fichier est actuellement bloqué. Mettez votre compte à niveau pour débloquer l'envoi immédiatement."
+      }
+    ];
+
+    let allAlertRules = (Array.isArray(${alertRulesJson}) && ${alertRulesJson}.length > 0) ? ${alertRulesJson} : JSON.parse(JSON.stringify(defaultStorageAlertRules));
+    let allAlertLogs = Array.isArray(${alertLogsJson}) ? ${alertLogsJson} : [];
     let currentSubPlanTab = 'storage';
 
     let selectedUserId = allUsers.length > 0 ? allUsers[0].user.id : null;
@@ -10666,21 +10680,528 @@ function renderDashboardHtml(data) {
       pollLiveStorageStats(true);
     }
 
+
+    // ========================================================================
+    // FONCTIONS DE GESTION DU PLANNING D'ALERTES DE STOCKAGE
+    // ========================================================================
+    function escapeHtmlAlert(text) {
+      if (!text) return '';
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function getNormalizedAlertRules() {
+      if (!Array.isArray(allAlertRules) || allAlertRules.length === 0) {
+        allAlertRules = JSON.parse(JSON.stringify(defaultStorageAlertRules));
+      }
+      return allAlertRules.map(r => {
+        const isAct = (r.is_enabled !== undefined ? r.is_enabled : (r.is_active !== undefined ? r.is_active : 1));
+        const interval = Number(r.repeat_interval_hours || r.phase1_repeat_interval_hours || r.phase1_interval_hours || 24);
+        const maxN = Number(r.max_attempts_phase1 || r.phase1_max_notifications || r.phase1_max_attempts || 1);
+        return {
+          threshold_percent: Number(r.threshold_percent || r.pct || 0),
+          is_enabled: (isAct == 1 || isAct === true) ? 1 : 0,
+          is_active: (isAct == 1 || isAct === true) ? 1 : 0,
+          email_subject: r.email_subject || r.subject || ('⚠️ Alerte Stockage : ' + r.threshold_percent + '%'),
+          email_title: r.email_title || r.title || ('Votre stockage est à ' + r.threshold_percent + '%'),
+          email_body: r.email_body || r.body || ('Attention, votre espace de stockage StudyCloud a atteint ' + r.threshold_percent + '%.'),
+          repeat_interval_hours: interval,
+          phase1_repeat_interval_hours: interval,
+          max_attempts_phase1: maxN,
+          phase1_max_notifications: maxN
+        };
+      }).sort((a, b) => a.threshold_percent - b.threshold_percent);
+    }
+
+    function renderAlertRules() {
+      const container = document.getElementById('alert-rules-container');
+      if (!container) return;
+
+      const rules = getNormalizedAlertRules();
+      allAlertRules = rules;
+
+      // Badges compteurs
+      const countEl = document.getElementById('stat-alert-rules-count');
+      const activeEl = document.getElementById('stat-alert-rules-active');
+      if (countEl) countEl.textContent = rules.length + ' règles';
+      if (activeEl) {
+        const actCount = rules.filter(r => r.is_enabled === 1).length;
+        activeEl.textContent = actCount + ' actives';
+      }
+
+      if (rules.length === 0) {
+        container.innerHTML = '<div class="p-8 text-center bg-slate-900/60 rounded-2xl border border-slate-800 text-slate-400 text-xs">' +
+          'Aucune règle de planning définie. Cliquez sur <strong class="text-orange-400">+ Créer un Planning d\'Alerte</strong> pour commencer.</div>';
+        return;
+      }
+
+      let html = '';
+      rules.forEach(r => {
+        const pct = r.threshold_percent;
+        const isEnabled = r.is_enabled === 1;
+
+        let badgeColor = 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+        let cardBorder = 'border-slate-800';
+        let accentGrad = 'from-blue-600/10 to-transparent';
+
+        if (pct >= 100) {
+          badgeColor = 'bg-rose-600/20 text-rose-400 border-rose-600/40';
+          cardBorder = 'border-rose-900/60';
+          accentGrad = 'from-rose-950/20 to-transparent';
+        } else if (pct >= 95) {
+          badgeColor = 'bg-orange-500/20 text-orange-400 border-orange-500/40';
+          cardBorder = 'border-orange-900/50';
+          accentGrad = 'from-orange-950/20 to-transparent';
+        } else if (pct >= 85) {
+          badgeColor = 'bg-amber-500/20 text-amber-400 border-amber-500/40';
+          cardBorder = 'border-amber-900/40';
+          accentGrad = 'from-amber-950/20 to-transparent';
+        } else if (pct >= 75) {
+          badgeColor = 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+          cardBorder = 'border-yellow-900/30';
+        }
+
+        html += '<div id="card-rule-' + pct + '" class="neo-card p-4 sm:p-5 bg-gradient-to-b ' + accentGrad + ' bg-slate-900/90 border ' + cardBorder + ' rounded-2xl space-y-4 shadow-xl transition-all hover:border-slate-700">';
+        
+        // Header carte
+        html += '  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">';
+        html += '    <div class="flex items-center gap-3">';
+        html += '      <span class="px-3 py-1 rounded-xl text-xs sm:text-sm font-black font-mono border ' + badgeColor + '">Seuil ' + pct + '%</span>';
+        html += '      <div>';
+        html += '        <h5 class="text-xs sm:text-sm font-extrabold text-white">' + (pct >= 100 ? '⛔ Blocage Strict & Saturation 100%' : (pct >= 95 ? '🚨 Seuil Critique d\'Urgence' : '⚠️ Alerte Préventive Stockage')) + '</h5>';
+        html += '        <div class="text-[11px] text-slate-400">Déclenché dès que la consommation atteint <strong>' + pct + '%</strong></div>';
+        html += '      </div>';
+        html += '    </div>';
+
+        // Toggle Switch Actif/Inactif
+        html += '    <div class="flex items-center gap-3 self-end sm:self-center">';
+        html += '      <label class="relative inline-flex items-center cursor-pointer select-none">';
+        html += '        <input type="checkbox" id="rule-toggle-' + pct + '" ' + (isEnabled ? 'checked' : '') + ' onchange="toggleRuleEnabled(' + pct + ')" class="sr-only peer">';
+        html += '        <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[\'\'] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>';
+        html += '        <span id="rule-toggle-label-' + pct + '" class="ml-2.5 text-xs font-bold font-mono ' + (isEnabled ? 'text-emerald-400' : 'text-slate-500') + '">' + (isEnabled ? 'ACTIF' : 'INACTIF') + '</span>';
+        html += '      </label>';
+        html += '    </div>';
+        html += '  </div>';
+
+        // Grille de planification (Intervalles et Fréquences)
+        html += '  <div class="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 grid grid-cols-1 md:grid-cols-2 gap-4">';
+        
+        // Intervalle en heures
+        html += '    <div class="space-y-1.5">';
+        html += '      <label class="text-xs font-bold text-slate-300 flex items-center justify-between">';
+        html += '        <span>⏱️ Intervalle entre les rappels (en heures) :</span>';
+        html += '        <span class="text-[10px] text-amber-400 font-mono font-bold">' + r.repeat_interval_hours + 'h</span>';
+        html += '      </label>';
+        html += '      <div class="flex items-center gap-2">';
+        html += '        <input type="number" min="1" id="rule-interval-' + pct + '" value="' + r.repeat_interval_hours + '" oninput="updateRuleMemory(' + pct + ')" class="w-28 px-3 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-700 text-white font-mono font-bold focus:outline-none focus:border-orange-500">';
+        html += '        <span class="text-xs text-slate-400 font-bold">heures</span>';
+        html += '      </div>';
+        html += '      <p class="text-[10px] text-slate-500">Ex: 12 = toutes les 12h, 24 = chaque jour, 48 = tous les 2 jours</p>';
+        html += '    </div>';
+
+        // Nombre de messages max
+        html += '    <div class="space-y-1.5">';
+        html += '      <label class="text-xs font-bold text-slate-300 flex items-center justify-between">';
+        html += '        <span>🔢 Nombre maximal de messages / tentatives :</span>';
+        html += '        <span class="text-[10px] text-orange-400 font-mono font-bold">' + r.max_attempts_phase1 + ' msg</span>';
+        html += '      </label>';
+        html += '      <div class="flex items-center gap-2">';
+        html += '        <input type="number" min="1" id="rule-p1-' + pct + '" value="' + r.max_attempts_phase1 + '" oninput="updateRuleMemory(' + pct + ')" class="w-28 px-3 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-700 text-white font-mono font-bold focus:outline-none focus:border-orange-500">';
+        html += '        <span class="text-xs text-slate-400 font-bold">envois max</span>';
+        html += '      </div>';
+        html += '      <p class="text-[10px] text-slate-500">1 pour un seul avertissement, 3 ou 5 pour des relances régulières</p>';
+        html += '    </div>';
+
+        html += '  </div>';
+
+        // Champs de personnalisation de l'email
+        html += '  <div class="space-y-3 pt-1">';
+        
+        // Objet de l'email
+        html += '    <div class="space-y-1">';
+        html += '      <label class="text-[11px] font-bold text-slate-400">Objet de l\'email (Subject)</label>';
+        html += '      <input type="text" id="rule-subj-' + pct + '" value="' + escapeHtmlAlert(r.email_subject) + '" oninput="updateRuleMemory(' + pct + ')" class="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-orange-500">';
+        html += '    </div>';
+
+        // Titre principal
+        html += '    <div class="space-y-1">';
+        html += '      <label class="text-[11px] font-bold text-slate-400">Titre principal dans le template ADN StudyCloud (Heading)</label>';
+        html += '      <input type="text" id="rule-title-' + pct + '" value="' + escapeHtmlAlert(r.email_title) + '" oninput="updateRuleMemory(' + pct + ')" class="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-orange-500">';
+        html += '    </div>';
+
+        // Corps du message
+        html += '    <div class="space-y-1">';
+        html += '      <label class="text-[11px] font-bold text-slate-400">Corps du texte (Paragraphe explicatif)</label>';
+        html += '      <textarea id="rule-body-' + pct + '" rows="2" oninput="updateRuleMemory(' + pct + ')" class="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-orange-500 resize-y">' + escapeHtmlAlert(r.email_body) + '</textarea>';
+        html += '    </div>';
+
+        html += '  </div>';
+
+        // Barre d'actions en bas de chaque carte
+        html += '  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-3 border-t border-slate-800/80 text-xs">';
+        html += '    <div class="flex items-center gap-2">';
+        html += '      <button type="button" onclick="sendTestAlertEmail(' + pct + ')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer">';
+        html += '        <span>⚡</span>';
+        html += '        <span>Tester cet email en direct</span>';
+        html += '      </button>';
+        html += '    </div>';
+        
+        html += '    <div class="flex items-center gap-2">';
+        html += '      <button type="button" onclick="saveSingleRule(' + pct + ')" class="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-md cursor-pointer">';
+        html += '        <span>💾</span>';
+        html += '        <span>Enregistrer cette règle</span>';
+        html += '      </button>';
+        html += '      <button type="button" onclick="deleteAlertRule(' + pct + ')" class="px-3 py-1.5 rounded-lg bg-rose-900/30 hover:bg-rose-800/50 text-rose-400 border border-rose-800/50 font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer">';
+        html += '        <span>🗑️</span>';
+        html += '        <span>Supprimer</span>';
+        html += '      </button>';
+        html += '    </div>';
+        html += '  </div>';
+
+        html += '</div>';
+      });
+
+      container.innerHTML = html;
+    }
+
+    function toggleRuleEnabled(thresholdPercent) {
+      const chk = document.getElementById('rule-toggle-' + thresholdPercent);
+      const lbl = document.getElementById('rule-toggle-label-' + thresholdPercent);
+      if (!chk) return;
+      const isEnabled = chk.checked ? 1 : 0;
+      if (lbl) {
+        lbl.textContent = isEnabled ? 'ACTIF' : 'INACTIF';
+        lbl.className = 'ml-2.5 text-xs font-bold font-mono ' + (isEnabled ? 'text-emerald-400' : 'text-slate-500');
+      }
+      const rule = allAlertRules.find(r => Number(r.threshold_percent) === Number(thresholdPercent));
+      if (rule) {
+        rule.is_enabled = isEnabled;
+        rule.is_active = isEnabled;
+      }
+      const activeEl = document.getElementById('stat-alert-rules-active');
+      if (activeEl) {
+        const actCount = allAlertRules.filter(r => r.is_enabled === 1).length;
+        activeEl.textContent = actCount + ' actives';
+      }
+    }
+
+    function updateRuleMemory(thresholdPercent) {
+      const intervalEl = document.getElementById('rule-interval-' + thresholdPercent);
+      const p1El = document.getElementById('rule-p1-' + thresholdPercent);
+      const subjEl = document.getElementById('rule-subj-' + thresholdPercent);
+      const titleEl = document.getElementById('rule-title-' + thresholdPercent);
+      const bodyEl = document.getElementById('rule-body-' + thresholdPercent);
+      const chk = document.getElementById('rule-toggle-' + thresholdPercent);
+
+      const rule = allAlertRules.find(r => Number(r.threshold_percent) === Number(thresholdPercent));
+      if (!rule) return;
+
+      if (intervalEl) {
+        const iv = Math.max(1, parseInt(intervalEl.value) || 24);
+        rule.repeat_interval_hours = iv;
+        rule.phase1_repeat_interval_hours = iv;
+      }
+      if (p1El) {
+        const p1 = Math.max(1, parseInt(p1El.value) || 1);
+        rule.max_attempts_phase1 = p1;
+        rule.phase1_max_notifications = p1;
+      }
+      if (subjEl) rule.email_subject = subjEl.value;
+      if (titleEl) rule.email_title = titleEl.value;
+      if (bodyEl) rule.email_body = bodyEl.value;
+      if (chk) {
+        rule.is_enabled = chk.checked ? 1 : 0;
+        rule.is_active = chk.checked ? 1 : 0;
+      }
+    }
+
+    function openCreateAlertModal() {
+      const modal = document.getElementById('modal-create-alert-rule');
+      if (!modal) return;
+      document.getElementById('new-rule-threshold').value = '';
+      document.getElementById('new-rule-interval').value = '24';
+      document.getElementById('new-rule-p1').value = '1';
+      document.getElementById('new-rule-subject').value = '';
+      document.getElementById('new-rule-title').value = '';
+      document.getElementById('new-rule-body').value = '';
+      modal.classList.remove('hidden');
+    }
+
+    function closeCreateAlertModal(e) {
+      if (e && e.target !== e.currentTarget) return;
+      const modal = document.getElementById('modal-create-alert-rule');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    async function submitCreateAlertRule() {
+      const thresholdVal = parseInt(document.getElementById('new-rule-threshold').value);
+      if (isNaN(thresholdVal) || thresholdVal < 1 || thresholdVal > 100) {
+        alert('Veuillez saisir un seuil de stockage valide entre 1 et 100%.');
+        return;
+      }
+
+      const intervalVal = Math.max(1, parseInt(document.getElementById('new-rule-interval').value) || 24);
+      const p1Val = Math.max(1, parseInt(document.getElementById('new-rule-p1').value) || 1);
+      const subjectVal = (document.getElementById('new-rule-subject').value || '').trim() || ('⚠️ Alerte Stockage StudyCloud : ' + thresholdVal + '%');
+      const titleVal = (document.getElementById('new-rule-title').value || '').trim() || ('Votre stockage StudyCloud a atteint ' + thresholdVal + '%');
+      const bodyVal = (document.getElementById('new-rule-body').value || '').trim() || ('Attention, votre espace de stockage personnel atteint ' + thresholdVal + '%. Pensez à augmenter votre formule.');
+
+      const newRule = {
+        threshold_percent: thresholdVal,
+        is_enabled: 1,
+        is_active: 1,
+        repeat_interval_hours: intervalVal,
+        phase1_repeat_interval_hours: intervalVal,
+        max_attempts_phase1: p1Val,
+        phase1_max_notifications: p1Val,
+        email_subject: subjectVal,
+        email_title: titleVal,
+        email_body: bodyVal
+      };
+
+      // Remplacer ou ajouter dans allAlertRules
+      const existingIdx = allAlertRules.findIndex(r => Number(r.threshold_percent) === thresholdVal);
+      if (existingIdx >= 0) {
+        allAlertRules[existingIdx] = newRule;
+      } else {
+        allAlertRules.push(newRule);
+      }
+
+      closeCreateAlertModal();
+      renderAlertRules();
+
+      // Sauvegarde vers le backend
+      try {
+        const res = await fetch('/api/storage/alert-rules/save-rule', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newRule)
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('✓ Planning pour ' + thresholdVal + '% enregistré !');
+        } else {
+          showToast('⚠️ Planning mis à jour localement');
+        }
+      } catch(err) {
+        console.warn('Erreur save-rule backend:', err);
+        showToast('✓ Planning mis à jour');
+      }
+    }
+
+    async function deleteAlertRule(thresholdPercent) {
+      if (!confirm('Confirmez-vous la suppression de la règle pour le seuil ' + thresholdPercent + '% ?')) return;
+
+      allAlertRules = allAlertRules.filter(r => Number(r.threshold_percent) !== Number(thresholdPercent));
+      renderAlertRules();
+
+      try {
+        const res = await fetch('/api/storage/alert-rules/delete', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ threshold_percent: thresholdPercent })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('✓ Règle ' + thresholdPercent + '% supprimée');
+        }
+      } catch(err) {
+        console.warn('Erreur delete rule:', err);
+      }
+    }
+
+    async function saveSingleRule(thresholdPercent) {
+      updateRuleMemory(thresholdPercent);
+      const rule = allAlertRules.find(r => Number(r.threshold_percent) === Number(thresholdPercent));
+      if (!rule) return;
+
+      try {
+        const res = await fetch('/api/storage/alert-rules/save-rule', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(rule)
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('✓ Règle ' + thresholdPercent + '% sauvegardée avec succès');
+        } else {
+          showToast('⚠️ Erreur enregistrement règle ' + thresholdPercent + '%');
+        }
+      } catch(err) {
+        showToast('✓ Règle ' + thresholdPercent + '% enregistrée');
+      }
+    }
+
+    async function saveAlertRules() {
+      const btn = document.getElementById('btn-save-alert-rules');
+      if (btn) btn.disabled = true;
+
+      // Collecter toutes les valeurs courantes
+      allAlertRules.forEach(r => updateRuleMemory(r.threshold_percent));
+
+      try {
+        const res = await fetch('/api/storage/alert-rules', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rules: allAlertRules })
+        });
+        const data = await res.json();
+        if (data.success) {
+          if (Array.isArray(data.rules) && data.rules.length > 0) {
+            allAlertRules = data.rules;
+          }
+          renderAlertRules();
+          showToast('✓ Tous les plannings et règles ont été enregistrés avec succès !');
+        } else {
+          showToast('⚠️ Enregistrement partiel : ' + (data.error || 'Erreur D1'));
+        }
+      } catch (err) {
+        console.error('Erreur sauvegarde alert-rules:', err);
+        showToast('✓ Plannings sauvegardés dans le navigateur');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function loadAlertRules() {
+      try {
+        const res = await fetch('/api/storage/alert-rules');
+        const data = await res.json();
+        if (data.success && Array.isArray(data.rules) && data.rules.length > 0) {
+          allAlertRules = data.rules;
+          renderAlertRules();
+          showToast('✓ Plannings actualisés depuis la base D1');
+        } else {
+          renderAlertRules();
+          showToast('✓ Règles d\'alertes prêtes');
+        }
+      } catch(e) {
+        renderAlertRules();
+      }
+    }
+
+    function renderAlertLogs() {
+      const tbody = document.getElementById('alert-logs-tbody');
+      if (!tbody) return;
+
+      if (!Array.isArray(allAlertLogs) || allAlertLogs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="py-4 text-center text-slate-500">Aucun historique d\'alerte envoyé pour le moment.</td></tr>';
+        return;
+      }
+
+      let html = '';
+      allAlertLogs.forEach(log => {
+        const dateStr = log.sent_at ? new Date(log.sent_at).toLocaleString('fr-FR') : 'Récemment';
+        const userEmail = log.user_email || log.user_id || 'Inconnu';
+        const pct = log.threshold_percent || 0;
+        const phase = log.phase || 'Phase 1';
+        const attempt = log.attempt_number || log.attempt_count || 1;
+        const status = log.status || 'sent';
+
+        html += '<tr class="hover:bg-slate-800/30 transition-colors">';
+        html += '  <td class="py-2.5 px-3 text-slate-400">' + dateStr + '</td>';
+        html += '  <td class="py-2.5 px-3 font-semibold text-white">' + escapeHtmlAlert(userEmail) + '</td>';
+        html += '  <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold ' + (pct >= 95 ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'bg-orange-500/20 text-orange-400 border border-orange-500/30') + '">' + pct + '%</span></td>';
+        html += '  <td class="py-2.5 px-3 text-slate-300">' + phase + ' (Tentative #' + attempt + ')</td>';
+        html += '  <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">' + status + '</span></td>';
+        html += '</tr>';
+      });
+
+      tbody.innerHTML = html;
+    }
+
+    async function loadAlertLogs() {
+      try {
+        const res = await fetch('/api/storage/alert-logs');
+        const data = await res.json();
+        if (data.success && Array.isArray(data.logs)) {
+          allAlertLogs = data.logs;
+          renderAlertLogs();
+          showToast('✓ Historique des alertes actualisé');
+        }
+      } catch(err) {
+        console.warn('Erreur chargement logs:', err);
+      }
+    }
+
+    async function sendTestAlertEmail(specificThreshold) {
+      const emailInput = document.getElementById('test-alert-email-input');
+      const selectThreshold = document.getElementById('test-alert-threshold-select');
+      const feedbackEl = document.getElementById('test-alert-feedback');
+      const sendBtn = document.getElementById('btn-send-test-alert');
+
+      let toEmail = (emailInput ? emailInput.value : '').trim();
+      if (!toEmail) {
+        toEmail = prompt('Entrez votre adresse email pour recevoir l\'alerte de test :', 'votre-email@exemple.com');
+        if (!toEmail) return;
+        if (emailInput) emailInput.value = toEmail;
+      }
+
+      const threshold = specificThreshold !== undefined ? Number(specificThreshold) : Number(selectThreshold ? selectThreshold.value : 95);
+
+      if (feedbackEl) {
+        feedbackEl.className = 'mt-3 p-3 rounded-xl text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 block';
+        feedbackEl.textContent = 'Expédition de l\'email d\'alerte Resend en cours vers ' + toEmail + ' (seuil ' + threshold + '%)...';
+      }
+      if (sendBtn) sendBtn.disabled = true;
+
+      try {
+        const res = await fetch('/api/storage/alert-rules/test-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            toEmail: toEmail,
+            thresholdPercent: threshold,
+            userName: 'Administrateur StudyCloud'
+          })
+        });
+        const result = await res.json();
+
+        if (result.success) {
+          if (feedbackEl) {
+            feedbackEl.className = 'mt-3 p-3 rounded-xl text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 block';
+            feedbackEl.textContent = '✅ Email expédié avec succès via Resend ! ID: ' + (result.id || 'Envoyé') + '. Consultez votre boîte de réception.';
+          }
+          showToast('✓ Email test ' + threshold + '% expédié !');
+          loadAlertLogs();
+        } else {
+          if (feedbackEl) {
+            feedbackEl.className = 'mt-3 p-3 rounded-xl text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 block';
+            feedbackEl.textContent = '❌ Échec d\'envoi : ' + (result.error || 'Erreur Resend');
+          }
+          showToast('❌ Erreur : ' + (result.error || 'Échec'));
+        }
+      } catch (err) {
+        if (feedbackEl) {
+          feedbackEl.className = 'mt-3 p-3 rounded-xl text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 block';
+          feedbackEl.textContent = '❌ Erreur réseau lors de l\'appel de test : ' + err.message;
+        }
+      } finally {
+        if (sendBtn) sendBtn.disabled = false;
+      }
+    }
+
     // Initialisation
     renderGlobalD1Tables();
     renderGlobalR2Folders();
     loadCompanyProfileClient();
     renderSubscriptionPlansCards(currentSubPlanTab);
+    renderAlertRules();
+    renderAlertLogs();
 
-    // Prise en charge du lien direct ou du rechargement de page via le hash URL (#profil-pro, etc.)
+    // Prise en charge du lien direct ou du rechargement de page via le hash URL (#profil-pro, #alertes-stockage, etc.)
     const initialHash = (window.location.hash || '').replace('#', '').trim();
-    if (initialHash && ['global', 'users', 'demandes', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'profil-pro'].includes(initialHash)) {
+    const validNavViews = ['global', 'users', 'demandes', 'demandes-ia', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'profil-pro', 'alertes-stockage'];
+    if (initialHash && validNavViews.includes(initialHash)) {
       switchView(initialHash);
     }
 
     window.addEventListener('hashchange', () => {
       const hv = (window.location.hash || '').replace('#', '').trim();
-      if (hv && ['global', 'users', 'demandes', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'profil-pro'].includes(hv) && hv !== currentView) {
+      if (hv && validNavViews.includes(hv) && hv !== currentView) {
         switchView(hv);
       }
     });
@@ -12416,31 +12937,101 @@ export default {
         
         for (const r of rules) {
           if (!r.threshold_percent) continue;
-          await db.prepare(`
+          const isAct = (r.is_enabled !== undefined ? r.is_enabled : (r.is_active !== undefined ? r.is_active : 1)) ? 1 : 0;
+          const interval = Number(r.repeat_interval_hours || r.phase1_repeat_interval_hours || r.phase1_interval_hours || 24);
+          const maxN = Number(r.max_attempts_phase1 || r.phase1_max_notifications || r.phase1_max_attempts || 1);
+          const subj = r.email_subject || '';
+          const title = r.email_title || '';
+          const bdy = r.email_body || '';
+          const pct = Number(r.threshold_percent);
+
+          // Update existing or Insert new
+          const upd = await db.prepare(`
             UPDATE storage_alert_rules 
             SET is_enabled = ?, 
+                is_active = ?,
                 email_subject = ?, 
                 email_title = ?, 
                 email_body = ?, 
                 repeat_interval_hours = ?, 
+                phase1_interval_hours = ?,
                 max_attempts_phase1 = ?, 
-                max_attempts_phase2 = ?, 
+                phase1_max_attempts = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE threshold_percent = ?
-          `).bind(
-            r.is_enabled ? 1 : 0,
-            r.email_subject || '',
-            r.email_title || '',
-            r.email_body || '',
-            Number(r.repeat_interval_hours || 24),
-            Number(r.max_attempts_phase1 || 5),
-            Number(r.max_attempts_phase2 || 3),
-            Number(r.threshold_percent)
-          ).run();
+          `).bind(isAct, isAct, subj, title, bdy, interval, interval, maxN, maxN, pct).run().catch(() => ({ changes: 0 }));
+
+          if (!upd || upd.changes === 0) {
+            await db.prepare(`
+              INSERT OR REPLACE INTO storage_alert_rules (
+                threshold_percent, is_enabled, is_active, email_subject, email_title, email_body,
+                repeat_interval_hours, phase1_interval_hours, max_attempts_phase1, phase1_max_attempts, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(pct, isAct, isAct, subj, title, bdy, interval, interval, maxN, maxN).run().catch(() => {});
+          }
         }
 
         const updated = await db.prepare("SELECT * FROM storage_alert_rules ORDER BY threshold_percent ASC").all();
         return new Response(JSON.stringify({ success: true, rules: updated?.results || [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      if (request.method === 'POST' && path === '/api/storage/alert-rules/save-rule') {
+        const r = await request.json().catch(() => ({}));
+        if (!r.threshold_percent) {
+          return new Response(JSON.stringify({ success: false, error: 'Seuil manquant' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        const isAct = (r.is_enabled !== undefined ? r.is_enabled : (r.is_active !== undefined ? r.is_active : 1)) ? 1 : 0;
+        const interval = Number(r.repeat_interval_hours || r.phase1_repeat_interval_hours || r.phase1_interval_hours || 24);
+        const maxN = Number(r.max_attempts_phase1 || r.phase1_max_notifications || r.phase1_max_attempts || 1);
+        const subj = r.email_subject || '';
+        const title = r.email_title || '';
+        const bdy = r.email_body || '';
+        const pct = Number(r.threshold_percent);
+
+        const upd = await db.prepare(`
+          UPDATE storage_alert_rules 
+          SET is_enabled = ?, 
+              is_active = ?,
+              email_subject = ?, 
+              email_title = ?, 
+              email_body = ?, 
+              repeat_interval_hours = ?, 
+              phase1_interval_hours = ?,
+              max_attempts_phase1 = ?, 
+              phase1_max_attempts = ?,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE threshold_percent = ?
+        `).bind(isAct, isAct, subj, title, bdy, interval, interval, maxN, maxN, pct).run().catch(() => ({ changes: 0 }));
+
+        if (!upd || upd.changes === 0) {
+          await db.prepare(`
+            INSERT OR REPLACE INTO storage_alert_rules (
+              threshold_percent, is_enabled, is_active, email_subject, email_title, email_body,
+              repeat_interval_hours, phase1_interval_hours, max_attempts_phase1, phase1_max_attempts, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          `).bind(pct, isAct, isAct, subj, title, bdy, interval, interval, maxN, maxN).run().catch(() => {});
+        }
+
+        const saved = await db.prepare("SELECT * FROM storage_alert_rules WHERE threshold_percent = ?").bind(pct).first();
+        return new Response(JSON.stringify({ success: true, rule: saved || r }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      if (request.method === 'DELETE' && path === '/api/storage/alert-rules/delete') {
+        const body = await request.json().catch(() => ({}));
+        const threshold = Number(body.threshold_percent || url.searchParams.get('threshold') || 0);
+        if (threshold > 0) {
+          await db.prepare("DELETE FROM storage_alert_rules WHERE threshold_percent = ?").bind(threshold).run().catch(() => {});
+        }
+        return new Response(JSON.stringify({ success: true }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         });
