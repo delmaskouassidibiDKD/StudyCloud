@@ -11541,11 +11541,16 @@ a:hover{transform:translateY(-2px)}
           let query = "SELECT * FROM shared_folders WHERE id NOT LIKE 'staging_%'";
           const params: any[] = [];
 
-          if (userId && userId !== 'all') {
+          if (userId && userId !== 'all' && userId !== 'public') {
+            // L'utilisateur demande ses propres liens : filtrage strict par son ID utilisateur
             query += ' AND user_id = ?';
             params.push(userId);
+          } else {
+            // Aucun userId spécifique (ex: bibliothèque publique communautaire) :
+            // Seuls les liens explicitement rendus publics (is_public = 1) sont accessibles !
+            query += ' AND is_public = 1';
           }
-          if (isPublicOnly) {
+          if (isPublicOnly && !query.includes('is_public = 1')) {
             query += ' AND is_public = 1';
           }
 
@@ -11746,6 +11751,14 @@ a:hover{transform:translateY(-2px)}
       // Basculer la visibilité publique d'un partage
       if (path.startsWith('/api/shares/') && path.endsWith('/public') && method === 'PUT') {
         const shareId = path.split('/')[3];
+        const requestingUserId = url.searchParams.get('userId') || request.headers.get('x-user-id');
+        if (requestingUserId && requestingUserId !== 'admin') {
+          const owner = await env.DB.prepare('SELECT user_id FROM shared_folders WHERE id = ?').bind(shareId).first<any>();
+          if (owner && owner.user_id && owner.user_id !== requestingUserId && owner.user_id !== 'default-user') {
+            return errorResponse('Non autorisé : vous ne pouvez modifier que vos propres partages', 403, origin);
+          }
+        }
+
         const body: any = await request.json();
         const isPublic = body.isPublic ? 1 : 0;
         const allowDownload = body.allowDownload !== undefined ? (body.allowDownload ? 1 : 0) : 1;
@@ -11775,6 +11788,13 @@ a:hover{transform:translateY(-2px)}
 
       if (path.startsWith('/api/shares/') && method === 'DELETE') {
         const shareId = path.split('/')[3];
+        const requestingUserId = url.searchParams.get('userId') || request.headers.get('x-user-id');
+        if (requestingUserId && requestingUserId !== 'admin') {
+          const owner = await env.DB.prepare('SELECT user_id FROM shared_folders WHERE id = ?').bind(shareId).first<any>();
+          if (owner && owner.user_id && owner.user_id !== requestingUserId && owner.user_id !== 'default-user') {
+            return errorResponse('Non autorisé : vous ne pouvez supprimer que vos propres partages', 403, origin);
+          }
+        }
         try {
           const { results: filesToDelete } = await env.DB.prepare('SELECT r2_key FROM shared_folder_files WHERE shared_folder_id = ?').bind(shareId).all<any>();
           if (env.BUCKET && filesToDelete && filesToDelete.length > 0) {

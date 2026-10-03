@@ -10265,11 +10265,13 @@ a:hover{transform:translateY(-2px)}
           }
           let query = "SELECT * FROM shared_folders WHERE id NOT LIKE 'staging_%'";
           const params = [];
-          if (userId && userId !== "all") {
+          if (userId && userId !== "all" && userId !== "public") {
             query += " AND user_id = ?";
             params.push(userId);
+          } else {
+            query += " AND is_public = 1";
           }
-          if (isPublicOnly) {
+          if (isPublicOnly && !query.includes("is_public = 1")) {
             query += " AND is_public = 1";
           }
           query += " ORDER BY created_at DESC";
@@ -10440,6 +10442,13 @@ a:hover{transform:translateY(-2px)}
       }
       if (path.startsWith("/api/shares/") && path.endsWith("/public") && method === "PUT") {
         const shareId = path.split("/")[3];
+        const requestingUserId = url.searchParams.get("userId") || request.headers.get("x-user-id");
+        if (requestingUserId && requestingUserId !== "admin") {
+          const owner = await env.DB.prepare("SELECT user_id FROM shared_folders WHERE id = ?").bind(shareId).first();
+          if (owner && owner.user_id && owner.user_id !== requestingUserId && owner.user_id !== "default-user") {
+            return errorResponse("Non autoris\xE9 : vous ne pouvez modifier que vos propres partages", 403, origin);
+          }
+        }
         const body = await request.json();
         const isPublic = body.isPublic ? 1 : 0;
         const allowDownload = body.allowDownload !== void 0 ? body.allowDownload ? 1 : 0 : 1;
@@ -10466,6 +10475,13 @@ a:hover{transform:translateY(-2px)}
       }
       if (path.startsWith("/api/shares/") && method === "DELETE") {
         const shareId = path.split("/")[3];
+        const requestingUserId = url.searchParams.get("userId") || request.headers.get("x-user-id");
+        if (requestingUserId && requestingUserId !== "admin") {
+          const owner = await env.DB.prepare("SELECT user_id FROM shared_folders WHERE id = ?").bind(shareId).first();
+          if (owner && owner.user_id && owner.user_id !== requestingUserId && owner.user_id !== "default-user") {
+            return errorResponse("Non autoris\xE9 : vous ne pouvez supprimer que vos propres partages", 403, origin);
+          }
+        }
         try {
           const { results: filesToDelete } = await env.DB.prepare("SELECT r2_key FROM shared_folder_files WHERE shared_folder_id = ?").bind(shareId).all();
           if (env.BUCKET && filesToDelete && filesToDelete.length > 0) {
