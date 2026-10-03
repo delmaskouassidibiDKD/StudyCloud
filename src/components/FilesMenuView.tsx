@@ -1599,31 +1599,6 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         </div>
       </div>
 
-      {isSearchOpen && (
-        <div className="fixed top-[66px] md:top-[70px] left-4 right-4 z-50 bg-white border-3 border-stone-900 px-4 py-3 flex items-center justify-center gap-3 shadow-2xl rounded-2xl max-w-xl mx-auto animate-fadeIn">
-          <div className="relative w-full flex items-center">
-            <Search className="absolute left-3 w-4 h-4 text-stone-600" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher un fichier dans mes fichiers..."
-              autoFocus
-              className="w-full bg-stone-50 text-stone-900 text-xs sm:text-sm font-medium pl-9 pr-3 py-2 rounded-xl border-2 border-stone-800 focus:outline-none focus:ring-2 focus:ring-[#2D4A3E]"
-            />
-          </div>
-          <button
-            onClick={() => {
-              setSearchQuery('');
-              setIsSearchOpen(false);
-            }}
-            className="p-2 bg-stone-100 hover:bg-stone-200 border-2 border-stone-800 rounded-xl text-stone-700 hover:text-stone-900 transition-colors cursor-pointer shrink-0 flex items-center justify-center shadow-[1px_1px_0px_0px_#1c1917]"
-            title="Fermer la recherche"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
 
       {/* Top Selection Action Bar */}
       {isSelectionMode && !classifyFileIds && (
