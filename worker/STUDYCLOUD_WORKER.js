@@ -13723,18 +13723,19 @@ Lien vers le produit : ${productShareUrl}`;
       }
 
       if (path === "/api/storage/alert-rules/test-email" && method === "POST") {
-        const body = await request.json();
+        const body = await request.json().catch(() => ({}));
         const { toEmail, thresholdPercent } = body;
         if (!toEmail) return errorResponse("Email requis", 400, origin);
         const pct = Number(thresholdPercent || 95);
-        let rule = null;
-        if (env.DB) {
+        let rule = body.rule || null;
+        if (!rule && env.DB) {
           rule = await env.DB.prepare("SELECT * FROM storage_alert_rules WHERE threshold_percent = ?").bind(pct).first();
         }
+        const effectiveKey = (body.resendApiKey || "").trim() || rawEnv.RESEND_API_KEY || "";
         const sendRes = await sendStorageAlertEmail({
-          resendApiKey: rawEnv.RESEND_API_KEY || "",
+          resendApiKey: effectiveKey,
           toEmail,
-          userName: "Administrateur Test",
+          userName: body.userName || "Administrateur Test",
           thresholdPercent: pct,
           totalUsedMb: (100 * pct / 100).toFixed(2),
           totalAllowedMb: 100,
@@ -13742,13 +13743,20 @@ Lien vers le produit : ${productShareUrl}`;
           rule: rule || {
             email_subject: `[TEST] Alerte Stockage StudyCloud : ${pct}%`,
             email_title: `Test Alerte Stockage ${pct}%`,
-            email_body: "Ceci est un email de test g\xE9n\xE9r\xE9 depuis votre Tableau de Bord StudyCloud pour v\xE9rifier le rendu avec le logo ADN."
+            email_body: "Ceci est un email de test généré depuis votre Tableau de Bord StudyCloud pour vérifier le rendu avec le logo ADN."
           }
         });
         if (sendRes.success) {
-          return jsonResponse({ success: true, message: "Email de test envoy\xE9 avec succ\xE8s \xE0 " + toEmail }, 200, origin);
+          if (env.DB) {
+            await ensureCloudMediaTables(env.DB);
+            await env.DB.prepare(`
+              INSERT INTO storage_alert_logs (user_id, user_email, threshold_percent, attempt_count, phase, last_used_mb, total_allowed_mb, resend_id, status)
+              VALUES (?, ?, ?, 1, 'TEST', ?, ?, ?, 'sent')
+            `).bind('admin_test', toEmail, pct, (100 * pct / 100), 100, sendRes.id || '').run().catch(() => {});
+          }
+          return jsonResponse({ success: true, id: sendRes.id, message: "Email de test envoyé avec succès à " + toEmail }, 200, origin);
         } else {
-          return errorResponse("\xC9chec d'envoi du test : " + (sendRes.error || "Erreur Resend"), 500, origin);
+          return errorResponse("Échec d'envoi du test : " + (sendRes.error || "Erreur Resend"), 500, origin);
         }
       }
 

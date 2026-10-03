@@ -183,6 +183,7 @@ async function ensureStorageTables(db) {
     `).run();
 
     try { await db.prepare("ALTER TABLE storage_global_config ADD COLUMN default_welcome_total_mb REAL DEFAULT 30.0").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE storage_global_config ADD COLUMN resend_api_key TEXT DEFAULT ''").run(); } catch (e) {}
 
     await db.prepare(`
       INSERT OR IGNORE INTO storage_global_config (id, default_welcome_total_mb, default_welcome_r2_mb, default_welcome_d1_mb)
@@ -4343,22 +4344,23 @@ function renderDashboardHtml(data) {
 
       <!-- BLOC TEST EN DIRECT D'EMAIL RESEND -->
       <div class="neo-card p-4 sm:p-5 bg-slate-900/90 border border-slate-800">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div class="space-y-1">
             <h4 class="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
               <span class="text-amber-400">⚡</span>
-              <span>Tester l'envoi d'un email d'alerte en direct</span>
+              <span>Tester l'envoi d'un email d'alerte en direct (Resend)</span>
             </h4>
             <p class="text-[11px] text-slate-400">
-              Expédie immédiatement l'email formaté avec le logo ADN pour valider l'affichage sur votre boîte de réception.
+              Expédie immédiatement l'email officiel avec logo ADN et données réelles vers votre propre boîte de réception.
             </p>
           </div>
-          <div class="flex items-center gap-2 w-full md:w-auto flex-wrap sm:flex-nowrap">
+          <div class="flex items-center gap-2 w-full lg:w-auto flex-wrap sm:flex-nowrap">
             <input 
               type="email" 
               id="test-alert-email-input" 
-              placeholder="votre-email@exemple.com" 
-              class="flex-1 md:w-64 px-3.5 py-2 text-xs rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-orange-500"
+              value="StudyClouddkd@gmail.com"
+              placeholder="votre-email@gmail.com" 
+              class="flex-1 lg:w-72 px-3.5 py-2 text-xs rounded-xl bg-slate-950 border border-slate-700 text-white font-semibold focus:outline-none focus:border-orange-500"
             />
             <select 
               id="test-alert-threshold-select" 
@@ -4375,13 +4377,42 @@ function renderDashboardHtml(data) {
               type="button" 
               id="btn-send-test-alert"
               onclick="sendTestAlertEmail()" 
-              class="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-xs shadow-md transition-all shrink-0 cursor-pointer flex items-center gap-1.5"
+              class="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-extrabold text-xs shadow-md transition-all shrink-0 cursor-pointer flex items-center gap-1.5 active:scale-95"
             >
               <span>🚀</span>
               <span>Envoyer Test</span>
             </button>
           </div>
         </div>
+
+        <!-- Clé API Resend optionnelle / Délégation automatique -->
+        <div class="mt-3 pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-slate-400 font-bold flex items-center gap-1.5">
+              <span>🔑</span>
+              <span>Clé API Resend :</span>
+            </span>
+            <input 
+              type="password" 
+              id="config-resend-api-key" 
+              placeholder="re_... (Optionnel si active sur le Worker principal)" 
+              class="w-64 px-2.5 py-1 text-xs rounded-lg bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-orange-500"
+            />
+            <button 
+              type="button" 
+              onclick="saveResendApiKey()" 
+              class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer transition-colors"
+            >
+              Enregistrer
+            </button>
+            <span id="resend-key-feedback" class="text-[11px] text-emerald-400 font-bold hidden"></span>
+          </div>
+          <div class="text-[11px] text-emerald-400/90 font-medium flex items-center gap-1.5">
+            <span>🛡️</span>
+            <span>Connecté à api-worker.dkd-technologies.com</span>
+          </div>
+        </div>
+
         <div id="test-alert-feedback" class="hidden mt-3 p-3 rounded-xl text-xs font-semibold"></div>
       </div>
 
@@ -11127,20 +11158,62 @@ function renderDashboardHtml(data) {
       }
     }
 
+    async function saveResendApiKey() {
+      const input = document.getElementById('config-resend-api-key');
+      const feedback = document.getElementById('resend-key-feedback');
+      const key = (input ? input.value : '').trim();
+      if (!key) {
+        alert("Veuillez saisir votre clé API Resend (commençant par re_).");
+        return;
+      }
+      try {
+        const res = await fetch('/api/storage/resend-key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resendApiKey: key })
+        });
+        const data = await res.json();
+        if (data.success) {
+          if (feedback) {
+            feedback.textContent = '✓ Clé enregistrée dans D1 !';
+            feedback.classList.remove('hidden');
+            setTimeout(() => feedback.classList.add('hidden'), 4000);
+          }
+          showToast('✓ Clé API Resend enregistrée dans D1');
+        } else {
+          showToast('⚠️ Erreur enregistrement clé');
+        }
+      } catch (err) {
+        showToast('⚠️ Erreur réseau');
+      }
+    }
+
     async function sendTestAlertEmail(specificThreshold) {
       const emailInput = document.getElementById('test-alert-email-input');
       const selectThreshold = document.getElementById('test-alert-threshold-select');
       const feedbackEl = document.getElementById('test-alert-feedback');
       const sendBtn = document.getElementById('btn-send-test-alert');
+      const keyInput = document.getElementById('config-resend-api-key');
 
       let toEmail = (emailInput ? emailInput.value : '').trim();
       if (!toEmail) {
-        toEmail = prompt('Entrez votre adresse email pour recevoir l\'alerte de test :', 'votre-email@exemple.com');
+        toEmail = prompt('Entrez votre véritable adresse email pour recevoir l\'alerte de test :', 'StudyClouddkd@gmail.com');
         if (!toEmail) return;
+        toEmail = toEmail.trim();
         if (emailInput) emailInput.value = toEmail;
       }
 
+      if (toEmail.toLowerCase().includes('@example.com') || toEmail.toLowerCase().endsWith('example.com')) {
+        alert("⚠️ Le service Resend refuse les adresses de démonstration en @example.com.\nVeuillez renseigner votre véritable adresse email personnelle ou professionnelle.");
+        if (feedbackEl) {
+          feedbackEl.className = 'mt-3 p-3 rounded-xl text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 block';
+          feedbackEl.textContent = '❌ Adresse invalide : Resend interdit les domaines comme @example.com. Utilisez une vraie adresse email.';
+        }
+        return;
+      }
+
       const threshold = specificThreshold !== undefined ? Number(specificThreshold) : Number(selectThreshold ? selectThreshold.value : 95);
+      const targetRule = (Array.isArray(allAlertRules) ? allAlertRules : []).find(r => Number(r.threshold_percent) === threshold);
 
       if (feedbackEl) {
         feedbackEl.className = 'mt-3 p-3 rounded-xl text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 block';
@@ -11149,30 +11222,40 @@ function renderDashboardHtml(data) {
       if (sendBtn) sendBtn.disabled = true;
 
       try {
+        const payload = {
+          toEmail: toEmail,
+          thresholdPercent: threshold,
+          userName: 'Administrateur StudyCloud',
+          rule: targetRule || null,
+          resendApiKey: (keyInput ? keyInput.value : '').trim() || undefined
+        };
+
         const res = await fetch('/api/storage/alert-rules/test-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            toEmail: toEmail,
-            thresholdPercent: threshold,
-            userName: 'Administrateur StudyCloud'
-          })
+          body: JSON.stringify(payload)
         });
-        const result = await res.json();
+        const result = await res.json().catch(() => ({ success: false, error: 'Réponse serveur non valide' }));
 
         if (result.success) {
           if (feedbackEl) {
             feedbackEl.className = 'mt-3 p-3 rounded-xl text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 block';
-            feedbackEl.textContent = '✅ Email expédié avec succès via Resend ! ID: ' + (result.id || 'Envoyé') + '. Consultez votre boîte de réception.';
+            feedbackEl.textContent = '✅ Email expédié avec succès via Resend ! ID: ' + (result.id || 'Envoyé') + '. Consultez votre boîte de réception (' + toEmail + ').';
           }
           showToast('✓ Email test ' + threshold + '% expédié !');
           loadAlertLogs();
         } else {
+          let errMessage = result.error || 'Erreur Resend';
+          try {
+            const parsed = JSON.parse(errMessage);
+            if (parsed.message) errMessage = parsed.message;
+          } catch (_) {}
+
           if (feedbackEl) {
             feedbackEl.className = 'mt-3 p-3 rounded-xl text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 block';
-            feedbackEl.textContent = '❌ Échec d\'envoi : ' + (result.error || 'Erreur Resend');
+            feedbackEl.textContent = '❌ Échec d\'envoi : ' + errMessage;
           }
-          showToast('❌ Erreur : ' + (result.error || 'Échec'));
+          showToast('❌ Erreur : ' + errMessage);
         }
       } catch (err) {
         if (feedbackEl) {
@@ -13037,9 +13120,21 @@ export default {
         });
       }
 
+      if (request.method === 'POST' && path === '/api/storage/resend-key') {
+        const body = await request.json().catch(() => ({}));
+        const key = (body.resendApiKey || '').trim();
+        await db.prepare(`
+          UPDATE storage_global_config SET resend_api_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'default' OR id = 'global'
+        `).bind(key).run().catch(() => {});
+        return new Response(JSON.stringify({ success: true, message: "Clé Resend enregistrée dans D1" }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
       if (request.method === 'POST' && path === '/api/storage/alert-rules/test-email') {
         const body = await request.json().catch(() => ({}));
-        const toEmail = body.toEmail || body.email;
+        const toEmail = (body.toEmail || body.email || '').trim();
         const thresholdPercent = Number(body.thresholdPercent || 95);
         if (!toEmail) {
           return new Response(JSON.stringify({ success: false, error: "Adresse email de destination requise" }), {
@@ -13048,33 +13143,91 @@ export default {
           });
         }
 
-        const rule = await db.prepare("SELECT * FROM storage_alert_rules WHERE threshold_percent = ?").bind(thresholdPercent).first();
-        const resendApiKey = env.RESEND_API_KEY || 're_7VqQc1Cg_H4t8P81hN6aL2rK8sZ9yT3v';
+        if (toEmail.toLowerCase().includes('@example.com') || toEmail.toLowerCase().endsWith('example.com')) {
+          return new Response(JSON.stringify({ 
+            success: false, 
+            error: "Le service Resend refuse les adresses de test en @example.com. Veuillez renseigner une véritable adresse email (Gmail, etc.)." 
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
 
-        const emailResult = await sendStorageAlertEmail({
-          resendApiKey: env.RESEND_API_KEY || resendApiKey,
-          toEmail,
-          userName: body.userName || "Administrateur Test",
-          thresholdPercent,
-          totalUsedMb: thresholdPercent >= 100 ? "30.00" : (30 * thresholdPercent / 100).toFixed(1),
-          totalAllowedMb: "30.00",
-          usagePercent: thresholdPercent,
-          rule
-        });
+        let rule = body.rule || null;
+        if (!rule && db) {
+          rule = await db.prepare("SELECT * FROM storage_alert_rules WHERE threshold_percent = ?").bind(thresholdPercent).first().catch(() => null);
+        }
+
+        let emailResult = { success: false, error: "" };
+
+        // 1. Clé locale (env.RESEND_API_KEY ou stockée dans storage_global_config)
+        let candidateKey = (env.RESEND_API_KEY || body.resendApiKey || '').trim();
+        if (!candidateKey && db) {
+          try {
+            const cfg = await db.prepare("SELECT resend_api_key FROM storage_global_config WHERE id = 'default' OR id = 'global' LIMIT 1").first();
+            if (cfg && cfg.resend_api_key && cfg.resend_api_key.trim()) {
+              candidateKey = cfg.resend_api_key.trim();
+            }
+          } catch (_) {}
+        }
+
+        // Tenter d'expédier directement si une clé locale valide existe
+        if (candidateKey && candidateKey.startsWith('re_') && !candidateKey.includes('re_7VqQc1Cg')) {
+          emailResult = await sendStorageAlertEmail({
+            resendApiKey: candidateKey,
+            toEmail,
+            userName: body.userName || "Administrateur Test",
+            thresholdPercent,
+            totalUsedMb: thresholdPercent >= 100 ? "30.00" : (30 * thresholdPercent / 100).toFixed(1),
+            totalAllowedMb: "30.00",
+            usagePercent: thresholdPercent,
+            rule
+          });
+        }
+
+        // 2. Si pas de clé locale valide ou échec direct, relayer vers api-worker.dkd-technologies.com qui possède la clé officielle validée !
+        if (!emailResult.success) {
+          try {
+            const apiRes = await fetch("https://api-worker.dkd-technologies.com/api/storage/alert-rules/test-email", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                toEmail,
+                thresholdPercent,
+                userName: body.userName || "Administrateur Test",
+                rule,
+                resendApiKey: candidateKey || undefined
+              })
+            });
+            const apiData = await apiRes.json().catch(() => ({}));
+            if (apiRes.ok && apiData.success) {
+              emailResult = { success: true, id: apiData.id || "envoye-via-api-worker" };
+            } else {
+              let errMsg = apiData.error || apiData.message || (emailResult.error || "Échec d'envoi");
+              try {
+                const parsed = JSON.parse(errMsg);
+                if (parsed.message) errMsg = parsed.message;
+              } catch (_) {}
+              emailResult = { success: false, error: errMsg };
+            }
+          } catch (forwardErr) {
+            console.error("[Test Email Forward Error]", forwardErr);
+            if (!emailResult.error) {
+              emailResult = { success: false, error: forwardErr.message || "Erreur communication API Worker" };
+            }
+          }
+        }
 
         if (emailResult.success) {
           try {
             await db.prepare(`
               INSERT INTO storage_alert_logs (id, user_id, user_email, threshold_percent, phase, attempt_number, status, sent_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              VALUES (?, ?, ?, ?, 1, 1, 'sent', CURRENT_TIMESTAMP)
             `).bind(
               'TEST_' + Math.random().toString(36).substring(2, 9),
               'admin_test',
               toEmail,
-              thresholdPercent,
-              1,
-              1,
-              'sent'
+              thresholdPercent
             ).run();
           } catch(e) {}
         }
