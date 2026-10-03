@@ -4945,7 +4945,7 @@ function renderDashboardHtml(data) {
         phase1_max_notifications: 1,
         email_subject: "ℹ️ Information : Vous avez utilisé 50% de votre stockage StudyCloud",
         email_title: "Votre espace de stockage est à 50%",
-        email_body: "Bonjour,\n\nVous venez d'atteindre la moitié de votre espace de stockage StudyCloud. Tout fonctionne normalement, mais pensez à vérifier vos fichiers ou à envisager un forfait supérieur si vos besoins augmentent."
+        email_body: "Bonjour, vous venez d'atteindre la moitié de votre espace de stockage StudyCloud. Tout fonctionne normalement, mais pensez à vérifier vos fichiers ou à envisager un forfait supérieur si vos besoins augmentent."
       },
       {
         threshold_percent: 75,
@@ -4957,7 +4957,7 @@ function renderDashboardHtml(data) {
         phase1_max_notifications: 2,
         email_subject: "⚠️ Attention : 75% de votre espace de stockage StudyCloud est consommé",
         email_title: "Attention : Stockage à 75%",
-        email_body: "Bonjour,\n\nVotre espace de stockage StudyCloud atteint maintenant 75%. Afin d'éviter tout blocage de vos imports et sauvegardes à venir, nous vous conseillons de faire de la place ou de passer au forfait supérieur."
+        email_body: "Bonjour, votre espace de stockage StudyCloud atteint maintenant 75%. Afin d'éviter tout blocage de vos imports et sauvegardes à venir, nous vous conseillons de faire de la place ou de passer au forfait supérieur."
       },
       {
         threshold_percent: 85,
@@ -4969,7 +4969,7 @@ function renderDashboardHtml(data) {
         phase1_max_notifications: 2,
         email_subject: "⚠️ Alerte importante : Votre stockage StudyCloud est à 85%",
         email_title: "Alerte : Plus que 15% d'espace libre",
-        email_body: "Bonjour,\n\nIl ne vous reste plus que 15% d'espace libre sur votre compte StudyCloud. Dès saturation, les nouveaux fichiers ne pourront plus être enregistrés. Passez à la formule supérieure pour continuer en toute sérénité."
+        email_body: "Bonjour, il ne vous reste plus que 15% d'espace libre sur votre compte StudyCloud. Dès saturation, les nouveaux fichiers ne pourront plus être enregistrés. Passez à la formule supérieure pour continuer en toute sérénité."
       },
       {
         threshold_percent: 90,
@@ -4981,7 +4981,7 @@ function renderDashboardHtml(data) {
         phase1_max_notifications: 3,
         email_subject: "🚨 Seuil critique : 90% de votre stockage StudyCloud est plein",
         email_title: "Stockage critique : 90% atteint",
-        email_body: "Bonjour,\n\nAttention, vous avez atteint 90% de votre capacité maximale. Nous vous recommandons vivement d'augmenter votre forfait de stockage immédiatement afin de ne pas risquer l'interruption de vos synchronisations."
+        email_body: "Bonjour, attention, vous avez atteint 90% de votre capacité maximale. Nous vous recommandons vivement d'augmenter votre forfait de stockage immédiatement afin de ne pas risquer l'interruption de vos synchronisations."
       },
       {
         threshold_percent: 95,
@@ -4993,7 +4993,7 @@ function renderDashboardHtml(data) {
         phase1_max_notifications: 3,
         email_subject: "🚨 ALERTE URGENTE : 95% de votre stockage StudyCloud est saturé !",
         email_title: "Urgence : Plus que 5% avant saturation complète !",
-        email_body: "Bonjour,\n\nVotre espace de stockage est presque totalement saturé (95%). Dès 100%, tout nouvel import sera strictement rejeté et détruit pour préserver l'intégrité de votre compte. Veuillez augmenter votre stockage sans attendre."
+        email_body: "Bonjour, votre espace de stockage est presque totalement saturé (95%). Dès 100%, tout nouvel import sera strictement rejeté et détruit pour préserver l'intégrité de votre compte. Veuillez augmenter votre stockage sans attendre."
       },
       {
         threshold_percent: 100,
@@ -5005,7 +5005,7 @@ function renderDashboardHtml(data) {
         phase1_max_notifications: 5,
         email_subject: "🛑 STOCKAGE PLEIN (100%) : Nouveaux imports bloqués sur StudyCloud",
         email_title: "Stockage 100% saturé : Nouveaux ajouts bloqués",
-        email_body: "Bonjour,\n\nVotre espace de stockage StudyCloud a atteint 100%. Vos fichiers existants sont protégés et sécurisés, mais l'enregistrement de tout nouveau fichier est actuellement bloqué. Mettez votre compte à niveau pour débloquer l'envoi immédiatement."
+        email_body: "Bonjour, votre espace de stockage StudyCloud a atteint 100%. Vos fichiers existants sont protégés et sécurisés, mais l'enregistrement de tout nouveau fichier est actuellement bloqué. Mettez votre compte à niveau pour débloquer l'envoi immédiatement."
       }
     ];
 
@@ -10765,7 +10765,7 @@ function renderDashboardHtml(data) {
 
       if (rules.length === 0) {
         container.innerHTML = '<div class="p-8 text-center bg-slate-900/60 rounded-2xl border border-slate-800 text-slate-400 text-xs">' +
-          'Aucune règle de planning définie. Cliquez sur <strong class="text-orange-400">+ Créer un Planning d\'Alerte</strong> pour commencer.</div>';
+          'Aucune règle de planning définie. Cliquez sur <strong class="text-orange-400">+ Créer un Planning d\\\'Alerte</strong> pour commencer.</div>';
         return;
       }
 
@@ -10802,7 +10802,7 @@ function renderDashboardHtml(data) {
         html += '    <div class="flex items-center gap-3">';
         html += '      <span class="px-3 py-1 rounded-xl text-xs sm:text-sm font-black font-mono border ' + badgeColor + '">Seuil ' + pct + '%</span>';
         html += '      <div>';
-        html += '        <h5 class="text-xs sm:text-sm font-extrabold text-white">' + (pct >= 100 ? '⛔ Blocage Strict & Saturation 100%' : (pct >= 95 ? '🚨 Seuil Critique d\'Urgence' : '⚠️ Alerte Préventive Stockage')) + '</h5>';
+        html += '        <h5 class="text-xs sm:text-sm font-extrabold text-white">' + (pct >= 100 ? '⛔ Blocage Strict & Saturation 100%' : (pct >= 95 ? '🚨 Seuil Critique d\\\'Urgence' : '⚠️ Alerte Préventive Stockage')) + '</h5>';
         html += '        <div class="text-[11px] text-slate-400">Déclenché dès que la consommation atteint <strong>' + pct + '%</strong></div>';
         html += '      </div>';
         html += '    </div>';
@@ -10811,7 +10811,7 @@ function renderDashboardHtml(data) {
         html += '    <div class="flex items-center gap-3 self-end sm:self-center">';
         html += '      <label class="relative inline-flex items-center cursor-pointer select-none">';
         html += '        <input type="checkbox" id="rule-toggle-' + pct + '" ' + (isEnabled ? 'checked' : '') + ' onchange="toggleRuleEnabled(' + pct + ')" class="sr-only peer">';
-        html += '        <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[\'\'] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>';
+        html += '        <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[\\\'\\\'] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>';
         html += '        <span id="rule-toggle-label-' + pct + '" class="ml-2.5 text-xs font-bold font-mono ' + (isEnabled ? 'text-emerald-400' : 'text-slate-500') + '">' + (isEnabled ? 'ACTIF' : 'INACTIF') + '</span>';
         html += '      </label>';
         html += '    </div>';
@@ -10853,7 +10853,7 @@ function renderDashboardHtml(data) {
         
         // Objet de l'email
         html += '    <div class="space-y-1">';
-        html += '      <label class="text-[11px] font-bold text-slate-400">Objet de l\'email (Subject)</label>';
+        html += '      <label class="text-[11px] font-bold text-slate-400">Objet de l\\\'email (Subject)</label>';
         html += '      <input type="text" id="rule-subj-' + pct + '" value="' + escapeHtmlAlert(r.email_subject) + '" oninput="updateRuleMemory(' + pct + ')" class="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-white focus:outline-none focus:border-orange-500">';
         html += '    </div>';
 
@@ -11107,7 +11107,7 @@ function renderDashboardHtml(data) {
           showToast('✓ Plannings actualisés depuis la base D1');
         } else {
           renderAlertRules();
-          showToast('✓ Règles d\'alertes prêtes');
+          showToast('✓ Règles d\\\'alertes prêtes');
         }
       } catch(e) {
         renderAlertRules();
@@ -11119,7 +11119,7 @@ function renderDashboardHtml(data) {
       if (!tbody) return;
 
       if (!Array.isArray(allAlertLogs) || allAlertLogs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="py-4 text-center text-slate-500">Aucun historique d\'alerte envoyé pour le moment.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="py-4 text-center text-slate-500">Aucun historique d\\\'alerte envoyé pour le moment.</td></tr>';
         return;
       }
 
@@ -11197,14 +11197,14 @@ function renderDashboardHtml(data) {
 
       let toEmail = (emailInput ? emailInput.value : '').trim();
       if (!toEmail) {
-        toEmail = prompt('Entrez votre véritable adresse email pour recevoir l\'alerte de test :', 'StudyClouddkd@gmail.com');
+        toEmail = prompt('Entrez votre véritable adresse email pour recevoir l\\\'alerte de test :', 'StudyClouddkd@gmail.com');
         if (!toEmail) return;
         toEmail = toEmail.trim();
         if (emailInput) emailInput.value = toEmail;
       }
 
       if (toEmail.toLowerCase().includes('@example.com') || toEmail.toLowerCase().endsWith('example.com')) {
-        alert("⚠️ Le service Resend refuse les adresses de démonstration en @example.com.\nVeuillez renseigner votre véritable adresse email personnelle ou professionnelle.");
+        alert("⚠️ Le service Resend refuse les adresses de démonstration en @example.com.\\nVeuillez renseigner votre véritable adresse email personnelle ou professionnelle.");
         if (feedbackEl) {
           feedbackEl.className = 'mt-3 p-3 rounded-xl text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 block';
           feedbackEl.textContent = '❌ Adresse invalide : Resend interdit les domaines comme @example.com. Utilisez une vraie adresse email.';
@@ -11217,7 +11217,7 @@ function renderDashboardHtml(data) {
 
       if (feedbackEl) {
         feedbackEl.className = 'mt-3 p-3 rounded-xl text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 block';
-        feedbackEl.textContent = 'Expédition de l\'email d\'alerte Resend en cours vers ' + toEmail + ' (seuil ' + threshold + '%)...';
+        feedbackEl.textContent = 'Expédition de l\\\'email d\\\'alerte Resend en cours vers ' + toEmail + ' (seuil ' + threshold + '%)...';
       }
       if (sendBtn) sendBtn.disabled = true;
 
@@ -11253,14 +11253,14 @@ function renderDashboardHtml(data) {
 
           if (feedbackEl) {
             feedbackEl.className = 'mt-3 p-3 rounded-xl text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 block';
-            feedbackEl.textContent = '❌ Échec d\'envoi : ' + errMessage;
+            feedbackEl.textContent = '❌ Échec d\\\'envoi : ' + errMessage;
           }
           showToast('❌ Erreur : ' + errMessage);
         }
       } catch (err) {
         if (feedbackEl) {
           feedbackEl.className = 'mt-3 p-3 rounded-xl text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 block';
-          feedbackEl.textContent = '❌ Erreur réseau lors de l\'appel de test : ' + err.message;
+          feedbackEl.textContent = '❌ Erreur réseau lors de l\\\'appel de test : ' + err.message;
         }
       } finally {
         if (sendBtn) sendBtn.disabled = false;
