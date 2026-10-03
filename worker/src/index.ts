@@ -11386,8 +11386,19 @@ a:hover{transform:translateY(-2px)}
       // ------------------------------------------------------------------------
       if (path === '/api/shares/staging') {
         if (method === 'GET') {
-          const userId = url.searchParams.get('userId');
+          const userId = url.searchParams.get('userId') || request.headers.get('x-user-id');
           if (!userId || !env.DB) return jsonResponse({ success: true, files: [] }, 200, origin);
+
+          // Migration automatique multi-appareils : si un utilisateur authentifié interroge son staging,
+          // on associe automatiquement les fichiers créés sous 'staging_default-user' à son compte
+          if (userId !== 'default-user' && userId !== 'user_anonymous') {
+            await env.DB.prepare(`
+              UPDATE shared_folder_files
+              SET shared_folder_id = ?
+              WHERE shared_folder_id = 'staging_default-user'
+            `).bind(`staging_${userId}`).run().catch(() => {});
+          }
+
           const { results: files } = await env.DB.prepare(
             'SELECT * FROM shared_folder_files WHERE shared_folder_id = ? ORDER BY created_at ASC'
           ).bind(`staging_${userId}`).all<any>().catch(() => ({ results: [] }));

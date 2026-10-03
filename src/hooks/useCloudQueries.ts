@@ -573,4 +573,74 @@ export function useToggleSharePublicMutation() {
   });
 }
 
+export interface StagingShareItem {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  url?: string;
+  r2Key?: string;
+  isImage?: boolean;
+}
+
+/**
+ * Hook TanStack Query pour le Menu Importer / Partage (Fichiers en staging) :
+ * - Charge les fichiers directement depuis Cloudflare D1 (aucun fichier coincé en local)
+ * - Synchronisation multi-appareils automatique en temps réel dès la connexion
+ * - staleTime 20s en mémoire, refetch automatique sur changement d'onglet ou retour sur l'appareil
+ */
+export function useStagingShareFiles(userId?: string) {
+  const currentUid = userId || getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+
+  return useQuery<StagingShareItem[]>({
+    queryKey: QUERY_KEYS.stagingShareFiles(currentUid),
+    queryFn: async () => {
+      if (!currentUid || currentUid === 'default-user' || currentUid === 'user_anonymous') return [];
+      const res = await StudyCloudAPI.getStagingShareFiles(currentUid);
+      if (res && res.success && Array.isArray(res.files)) {
+        const originUrl = getWorkerApiUrl().replace(/\/+$/, '');
+        return res.files.map((row: any) => {
+          const r2Key = row.r2_key || row.r2Key;
+          let fileUrl = row.file_url || row.url;
+          if ((!fileUrl || fileUrl.includes('localhost') || fileUrl.startsWith('blob:')) && r2Key) {
+            fileUrl = `${originUrl}/api/storage/file/${encodeURIComponent(r2Key)}`;
+          }
+          const isImg = row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(row.name || '');
+          return {
+            id: row.id || row.file_id,
+            name: row.name,
+            size: Number(row.size) || 0,
+            type: row.type || 'file',
+            url: fileUrl || undefined,
+            r2Key,
+            isImage: isImg,
+          };
+        });
+      }
+      return [];
+    },
+    enabled: Boolean(currentUid && currentUid !== 'default-user' && currentUid !== 'user_anonymous'),
+    staleTime: 1000 * 20, // 20s de fraîcheur en RAM
+    refetchOnWindowFocus: true, // Se synchronise dès qu'on change d'appareil ou d'onglet
+    refetchOnReconnect: true,
+  });
+}
+
+/**
+ * Mutation TanStack Query pour supprimer des fichiers temporaires du Menu Importer :
+ * - Supprime dans la staging Cloudflare D1 et purge R2 si orphelin
+ * - Revalide immédiatement le cache TanStack pour synchroniser tous les appareils
+ */
+export function useDeleteStagingShareFilesMutation() {
+  return useMutation({
+    mutationFn: async ({ userId, ids, r2Keys }: { userId: string; ids?: string[]; r2Keys?: string[] }) => {
+      return await StudyCloudAPI.deleteStagingShareFiles(userId, ids, r2Keys);
+    },
+    onSettled: () => {
+      invalidateCloudQueries.stagingShareFiles();
+    },
+  });
+}
+
+
 

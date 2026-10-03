@@ -45,6 +45,7 @@ if (typeof window !== 'undefined') {
 import { sanitizeFoldersForStorage } from './utils/sanitizeFolders';
 export { sanitizeFoldersForStorage } from './utils/sanitizeFolders';
 import { invalidateCloudQueries } from './services/queryClient';
+import { useStagingShareFiles } from './hooks/useCloudQueries';
 
 export default function App() {
   const { user, isAuthenticated, isLoading: authLoading, needsOnboarding, needsSecuritySetup, loginWithToken } = useAuth();
@@ -627,6 +628,7 @@ export default function App() {
       // Actualiser immédiatement la liste depuis D1 (source de vérité) et le cache TanStack Query
       loadUserSharesFromD1().catch(() => {});
       invalidateCloudQueries.shares();
+      invalidateCloudQueries.stagingShareFiles();
 
       if (onComplete) {
         onComplete(newFolder);
@@ -660,80 +662,21 @@ export default function App() {
 
   const [activeQRCodeFolder, setActiveQRCodeFolder] = useState<SharedFolder | null>(null);
   const [itemsToDelete, setItemsToDelete] = useState<string[] | null>(null);
-  const [uploadedItems, setUploadedItems] = useState<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[]>(() => {
-    const currentUserId = localStorage.getItem('unifolder_user_id');
-    const userSpecificKey = currentUserId && currentUserId !== 'default-user' ? `unifolder_uploaded_items_${currentUserId}` : 'unifolder_uploaded_items';
-    const saved = localStorage.getItem(userSpecificKey) || localStorage.getItem('unifolder_uploaded_items');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch (e) {
-        console.error(e);
-      }
+  // Synchronisation temps réel TanStack Query (@tanstack/react-query) depuis Cloudflare D1
+  const { data: cloudStagingFiles, isLoading: isLoadingStagingFiles, refetch: refetchStagingFiles } = useStagingShareFiles(user?.id);
+
+  const [uploadedItems, setUploadedItems] = useState<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[]>([]);
+
+  // Synchronisation réactive immédiate dès que D1 renvoie les fichiers pour cet utilisateur sur n'importe quel appareil
+  useEffect(() => {
+    if (Array.isArray(cloudStagingFiles)) {
+      setUploadedItems(cloudStagingFiles);
     }
-    return [];
-  });
+  }, [cloudStagingFiles]);
 
   const loadStagingShareFilesFromD1 = useCallback(async () => {
-    const currentUserId = user?.id || localStorage.getItem('unifolder_user_id');
-    if (!currentUserId || currentUserId === 'default-user' || currentUserId === 'user_anonymous') return;
-    try {
-      const res = await StudyCloudAPI.getStagingShareFiles(currentUserId);
-      if (res && res.success && Array.isArray(res.files)) {
-        if (res.files.length > 0) {
-          const mapped = res.files.map((row: any) => {
-            const r2Key = row.r2_key || row.r2Key;
-            let fileUrl = row.file_url || row.url;
-            if ((!fileUrl || fileUrl.includes('localhost') || fileUrl.startsWith('blob:')) && r2Key) {
-              fileUrl = `${getWorkerApiUrl().replace(/\/+$/, '')}/api/storage/file/${encodeURIComponent(r2Key)}`;
-            }
-            const isImg = row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(row.name);
-            return {
-              id: row.id || row.file_id,
-              name: row.name,
-              size: row.size || 0,
-              type: row.type || 'file',
-              url: fileUrl || undefined,
-              r2Key,
-              isImage: isImg,
-            };
-          });
-          setUploadedItems(mapped);
-          try {
-            localStorage.setItem(`unifolder_uploaded_items_${currentUserId}`, JSON.stringify(mapped));
-            localStorage.setItem('unifolder_uploaded_items', JSON.stringify(mapped));
-          } catch (e) {}
-        } else {
-          // Si D1 n'a pas de fichiers en staging mais que l'application en a en mémoire/localStorage,
-          // restaurer et synchroniser vers D1 pour éviter toute disparition intempestive au rechargement
-          const savedLocal = localStorage.getItem(`unifolder_uploaded_items_${currentUserId}`) || localStorage.getItem('unifolder_uploaded_items');
-          if (savedLocal) {
-            try {
-              const localItems = JSON.parse(savedLocal);
-              if (Array.isArray(localItems) && localItems.length > 0) {
-                setUploadedItems(localItems);
-                // Synchroniser silencieusement vers la staging D1
-                for (const item of localItems) {
-                  StudyCloudAPI.stageShareFile({
-                    userId: currentUserId,
-                    id: item.id,
-                    name: item.name,
-                    size: item.size,
-                    type: item.type,
-                    r2Key: item.r2Key || item.r2_key,
-                    url: item.url,
-                  }).catch(() => {});
-                }
-              }
-            } catch (e) {}
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('Erreur chargement staging D1:', err);
-    }
-  }, [user?.id]);
+    refetchStagingFiles();
+  }, [refetchStagingFiles]);
   const [activePreviewItemState, setActivePreviewItemState] = useState<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean; folderName?: string; lockFullscreen?: boolean } | null>(() => {
     try {
       const saved = localStorage.getItem('studycloud_active_preview_item');
@@ -1163,21 +1106,6 @@ export default function App() {
     setActiveLongPressItem(null);
   };
 
-  useEffect(() => {
-    try {
-      const currentUserId = user?.id || localStorage.getItem('unifolder_user_id');
-      const userSpecificKey = currentUserId && currentUserId !== 'default-user' ? `unifolder_uploaded_items_${currentUserId}` : 'unifolder_uploaded_items';
-      if (uploadedItems.length === 0) {
-        localStorage.removeItem(userSpecificKey);
-        localStorage.removeItem('unifolder_uploaded_items');
-      } else {
-        localStorage.setItem(userSpecificKey, JSON.stringify(uploadedItems));
-        localStorage.setItem('unifolder_uploaded_items', JSON.stringify(uploadedItems));
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  }, [uploadedItems, user?.id]);
 
   const processAndUploadShareFiles = async (fileList: File[], defaultType: string) => {
     const currentUserId = user?.id || localStorage.getItem('unifolder_user_id') || 'default-user';
@@ -1251,6 +1179,7 @@ export default function App() {
     setCurrentTab('upload');
     localStorage.setItem('unifolder_current_tab', 'upload');
     setToastMessage(`✓ Vos fichiers ont été enregistrés avec succès. Vous pouvez appuyer sur « Créer le lien de partage » pour générer votre lien ou sur « Nouveau partage » pour les effacer.`);
+    invalidateCloudQueries.stagingShareFiles();
 
     imageFilesToCompress.forEach(({ id, file }) => {
       compressImage(file).then((dataUrl) => {
@@ -1723,6 +1652,7 @@ export default function App() {
               handleSelectAll={handleSelectAll}
               setReplacingItemId={setReplacingItemId}
               onFilesDropped={handleFilesDropped}
+              isLoading={isLoadingStagingFiles}
             />
           ) : currentTab === 'library' ? (
             <LibraryView
@@ -1899,6 +1829,7 @@ export default function App() {
 
                   // Supprimer les fichiers temporaires de staging avec vérification côté serveur
                   await StudyCloudAPI.deleteStagingShareFiles(currentUserId, targetFileIds, targetR2Keys).catch(() => {});
+                  invalidateCloudQueries.stagingShareFiles();
 
                   if (isAll) {
                     setUploadedItems([]);

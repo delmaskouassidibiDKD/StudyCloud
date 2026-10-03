@@ -28,6 +28,7 @@ interface UploadViewProps {
   handleSelectAll: () => void;
   setReplacingItemId: (id: string | null) => void;
   onFilesDropped?: (files: File[]) => void;
+  isLoading?: boolean;
 }
 
 export const UploadView: React.FC<UploadViewProps> = ({
@@ -54,6 +55,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
   handleSelectAll,
   setReplacingItemId,
   onFilesDropped,
+  isLoading,
 }) => {
   const [isDragging, setIsDragging] = React.useState(false);
 
@@ -185,7 +187,12 @@ export const UploadView: React.FC<UploadViewProps> = ({
       </div>
 
       <div className={`flex-1 w-full overflow-y-auto px-4 md:px-8 pt-2 pb-4 ${uploadedItems.length === 0 ? 'flex flex-col items-center justify-center min-h-[70vh]' : ''}`}>
-        {uploadedItems.length === 0 ? (
+        {isLoading && uploadedItems.length === 0 ? (
+          <div className="w-full flex flex-col items-center justify-center my-auto py-12 space-y-3">
+            <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-xs font-bold text-stone-600 dark:text-stone-300">Synchronisation de vos fichiers depuis Cloudflare D1...</p>
+          </div>
+        ) : uploadedItems.length === 0 ? (
           <div className="w-full flex flex-col items-center justify-center my-auto">
             <button
               onClick={onOpenAddMenu}
