@@ -4191,22 +4191,41 @@ export default {
       }
 
       // ----------------------------------------------------------------------
-      // Health Check & Diagnostic des liaisons Cloudflare
+      // Racine de l'API : AUCUNE information technique exposée (404 propre)
+      // Les liens /s/... restent publics et fonctionnent normalement.
       // ----------------------------------------------------------------------
-      if (path === '/' || path === '/api/health') {
-        return jsonResponse({
-          success: true,
-          service: 'StudyCloud Cloudflare Worker API (Auth, Files & Database)',
-          status: 'online',
-          database: dbInstance ? 'Connecté (D1: d1-studycloud)' : 'Non lié',
-          storage: bucketInstance ? 'Connecté (R2: r2-studycloud)' : 'Non lié',
-          ai: 'Géré exclusivement par le Worker IA dédié (studycloud-ai.delmaskouassidibi.workers.dev)',
-          bindings: {
-            d1: !!dbInstance,
-            r2: !!bucketInstance,
+      if (path === '/' || path === '' || path === '/index.html') {
+        const notFoundRootHtml = `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow"><title>404 • Page introuvable</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:radial-gradient(circle at 30% 20%,#1e293b,#0f172a 70%);color:#e2e8f0;padding:24px}
+.card{max-width:440px;width:100%;text-align:center;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:40px 28px;backdrop-filter:blur(12px);box-shadow:0 20px 50px rgba(0,0,0,.4)}
+.code{font-size:72px;font-weight:900;background:linear-gradient(135deg,#f97316,#3b82f6);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1}
+h1{font-size:20px;margin:14px 0 8px;color:#fff}
+p{font-size:14px;color:#94a3b8;line-height:1.6;margin-bottom:24px}
+a{display:inline-block;padding:12px 22px;border-radius:14px;background:linear-gradient(135deg,#f97316,#ea580c);color:#fff;font-weight:700;font-size:14px;text-decoration:none;transition:transform .2s}
+a:hover{transform:translateY(-2px)}
+</style></head><body><main class="card">
+<div class="code">404</div><h1>Page introuvable</h1>
+<p>Cette adresse n'est pas accessible. Si vous avez reçu un lien de téléchargement, utilisez le lien complet qui vous a été envoyé.</p>
+<a href="https://studycloud.dkd-technologies.com">Accéder à StudyCloud</a>
+</main></body></html>`;
+        return new Response(notFoundRootHtml, {
+          status: 404,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-store',
+            'X-Robots-Tag': 'noindex, nofollow',
+            ...corsHeaders(origin),
           },
-          timestamp: new Date().toISOString(),
-        }, 200, origin);
+        });
+      }
+
+      // Health check minimal (utilisé par l'app) : aucun détail sur D1 / R2 / liaisons
+      if (path === '/api/health') {
+        return jsonResponse({ success: true, status: 'online' }, 200, origin);
       }
 
       // ----------------------------------------------------------------------
