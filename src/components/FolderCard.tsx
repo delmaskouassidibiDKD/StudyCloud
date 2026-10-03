@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Folder, FileText, Download, Share2, QrCode, Copy, Check, Lock, Unlock, Globe, Eye, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 import { SharedFolder } from '../types';
 import { FileIconBadge } from './FileIconBadge';
-import { StudyCloudAPI } from '../services/api';
+import { StudyCloudAPI, getWorkerApiUrl } from '../services/api';
 
 interface FolderCardProps {
   folder: SharedFolder;
@@ -21,7 +21,7 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
   const [commentError, setCommentError] = useState(false);
   const [publishingState, setPublishingState] = useState<'idle' | 'loading' | 'success'>('idle');
 
-  const shareUrl = `${window.location.origin}/#share=${folder.id}`;
+  const shareUrl = folder.shareUrl || `${getWorkerApiUrl().replace(/\/+$/, '')}/s/${folder.shareCode || folder.id}`;
 
   const handleCopyLink = (e: React.MouseEvent) => {
     e.stopPropagation();

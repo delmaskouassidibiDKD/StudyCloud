@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { FolderCard } from './components/FolderCard';
 import { UploadModal } from './components/UploadModal';
@@ -184,6 +184,7 @@ export default function App() {
     }
     return [];
   });
+  const [isLoadingShares, setIsLoadingShares] = useState(false);
 
   const [currentTab, setCurrentTab] = useState<NavigationTab>(() => {
     try {
@@ -299,6 +300,58 @@ export default function App() {
     }, 8000);
   };
 
+  const loadUserSharesFromD1 = useCallback(async () => {
+    const currentUserId = user?.id || localStorage.getItem('unifolder_user_id');
+    if (!currentUserId) return;
+    setIsLoadingShares(true);
+    try {
+      const res = await StudyCloudAPI.getShares(currentUserId);
+      if (res.success && Array.isArray(res.data)) {
+        const mapped: SharedFolder[] = res.data.map((row: any) => ({
+          id: row.id,
+          title: row.title,
+          description: row.description || '',
+          category: row.category || "Pas d'informations",
+          author: row.author_name || user?.name || 'Étudiant',
+          school: row.school || user?.school || '',
+          country: row.country || user?.country || "Côte d'Ivoire",
+          createdAt: row.created_at || new Date().toISOString(),
+          files: Array.isArray(row.files)
+            ? row.files.map((f: any) => ({
+                id: f.id || f.file_id || crypto.randomUUID(),
+                name: f.name,
+                size: f.size || 0,
+                type: f.type || 'file',
+                url: f.file_url || f.url || (f.r2_key ? `${getWorkerApiUrl().replace(/\/+$/, '')}/api/storage/file/${encodeURIComponent(f.r2_key)}` : ''),
+                r2Key: f.r2_key || f.r2Key || undefined,
+              }))
+            : [],
+          totalSize: row.total_size || 0,
+          downloadsCount: row.downloads_count || 0,
+          isPasswordProtected: false,
+          password: row.password_hash || undefined,
+          viewsCount: row.views_count || 0,
+          shareCode: row.share_code,
+          shareUrl: row.share_url || `${getWorkerApiUrl().replace(/\/+$/, '')}/s/${row.share_code || row.id}`,
+          qrCodeData: row.qr_code_data,
+          isPublic: Boolean(row.is_public),
+          allowDownload: Boolean(row.allow_download),
+        }));
+        setFolders(mapped);
+        try {
+          const sanitizedMapped = sanitizeFoldersForStorage(mapped);
+          localStorage.setItem('unifolder_shares', JSON.stringify(sanitizedMapped));
+        } catch (e) {
+          console.warn('Erreur mise en cache locale des partages distants:', e);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load user shares from D1:', err);
+    } finally {
+      setIsLoadingShares(false);
+    }
+  }, [user?.id, user?.name, user?.school, user?.country]);
+
   const [showCreateShareLinkModal, setShowCreateShareLinkModal] = useState(false);
   const [shareModalTargetItems, setShareModalTargetItems] = useState<any[] | null>(null);
   const [shareModalInitialName, setShareModalInitialName] = useState<string>('');
@@ -313,58 +366,50 @@ export default function App() {
     setTimeout(async () => {
       const folderId = 'folder-' + Math.random().toString(36).substring(2, 9);
       const shareCode = generateCleanShareCode();
-      const userCountry = localStorage.getItem('unifolder_user_country') || "Côte d'Ivoire";
-      const userName = localStorage.getItem('unifolder_user_name') || 'Alexandre K.';
-      const userSchool = localStorage.getItem('unifolder_user_school') || 'CME';
-      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
-      const workerUrl = getWorkerApiUrl();
+      const userCountry = user?.country || localStorage.getItem('unifolder_user_country') || "Côte d'Ivoire";
+      const userName = user?.name || localStorage.getItem('unifolder_user_name') || 'Étudiant';
+      const userSchool = user?.school || localStorage.getItem('unifolder_user_school') || 'CME';
+      const userId = user?.id || localStorage.getItem('unifolder_user_id') || 'default-user';
+      const workerUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const shareUrl = `${workerUrl}/s/${shareCode}`;
       const qrCodeData = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(shareUrl)}`;
 
-      // Enregistrer exclusivement les fichiers associés au lien dans le dossier dédié Cloudflare R2 (shared-links/files)
+      // Récupérer ou finaliser les fichiers associés au lien
       const files = await Promise.all(
         items.map(async (item) => {
           let fileUrl = item.url || '';
-          let storedR2Key: string | undefined = undefined;
+          let storedR2Key: string | undefined = (item as any).r2Key || (item as any).r2_key;
           let fileBlob: Blob | null = null;
 
           try {
-            // 1. Tenter de récupérer le fichier binaire depuis IndexedDB
-            fileBlob = await getFileBlob(item.id);
-
-            // 2. Si non trouvé, vérifier si un Blob / File est directement attaché à l'objet
-            if (!fileBlob && (item as any).file instanceof Blob) {
-              fileBlob = (item as any).file;
-            }
-
-            // 3. Si toujours aucun blob mais qu'une URL locale ou distante existe (blob:, data: ou http)
-            if (!fileBlob && fileUrl) {
-              try {
-                const resp = await fetch(fileUrl);
-                if (resp.ok) {
-                  fileBlob = await resp.blob();
+            // Si le fichier n'a pas encore de clé R2 ou a seulement un blob local
+            if (!storedR2Key || !fileUrl || fileUrl.startsWith('blob:')) {
+              fileBlob = await getFileBlob(item.id);
+              if (!fileBlob && (item as any).file instanceof Blob) {
+                fileBlob = (item as any).file;
+              }
+              if (!fileBlob && fileUrl) {
+                try {
+                  const resp = await fetch(fileUrl);
+                  if (resp.ok) fileBlob = await resp.blob();
+                } catch (fetchErr) {
+                  console.warn('Sync fetch blob pour partage:', fetchErr);
                 }
-              } catch (fetchErr) {
-                console.warn('Sync fetch blob pour partage:', fetchErr);
               }
-            }
 
-            // Clé R2 dédiée exclusivement aux fichiers de liens partagés
-            const r2Key = buildSharedLinkFileKey(folderId, item.id, item.name);
-
-            // 4. Si nous avons le fichier binaire, l'uploader dans le dossier dédié R2
-            if (fileBlob) {
-              const fileObj = new File([fileBlob], item.name, {
-                type: item.type || fileBlob.type || 'application/octet-stream',
-              });
-              const r2Res = await StudyCloudAPI.uploadFileToR2(fileObj, r2Key);
-              if (r2Res.success && r2Res.url) {
-                fileUrl = r2Res.url;
-                storedR2Key = r2Res.key;
+              const r2Key = buildSharedLinkFileKey(userId, item.id, item.name);
+              if (fileBlob) {
+                const fileObj = new File([fileBlob], item.name, {
+                  type: item.type || fileBlob.type || 'application/octet-stream',
+                });
+                const r2Res = await StudyCloudAPI.uploadFileToR2(fileObj, r2Key, fileObj.type, fileObj.size);
+                if (r2Res.success && r2Res.url) {
+                  fileUrl = r2Res.url;
+                  storedR2Key = r2Res.key;
+                }
+              } else if (fileUrl && fileUrl.startsWith('http')) {
+                storedR2Key = r2Key;
               }
-            } else if (fileUrl && fileUrl.startsWith('http')) {
-              // Fichier distant déjà stocké
-              storedR2Key = (item as any).r2Key || (item as any).r2_key || r2Key;
             }
           } catch (err) {
             console.warn('Erreur upload vers R2 lors de la création du partage:', err);
@@ -411,7 +456,7 @@ export default function App() {
       try {
         localStorage.removeItem('unifolder_uploaded_items');
       } catch (e) {}
-      showToast(`✨ Votre lien "${linkName.trim()}" a été créé avec succès (${userCountry}) ! Retrouvez-le dans Partagés.`);
+      showToast(`✨ Votre lien "${linkName.trim()}" a été créé avec succès (${userCountry}) ! Retrouvez-le dans Liens Actifs.`);
 
       try {
         await StudyCloudAPI.createShare({
@@ -432,6 +477,8 @@ export default function App() {
           totalSize,
           files,
         });
+        // Actualiser immédiatement la liste depuis D1
+        loadUserSharesFromD1();
       } catch (err) {
         console.warn('Sync share with Worker:', err);
       }
@@ -920,61 +967,94 @@ export default function App() {
     }
   }, [uploadedItems]);
 
-  const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>, typeLabel: string) => {
-    try {
-      if (e.target.files && e.target.files.length > 0) {
-        const MAX_IMPORT_FILES = 10;
-        let fileList = Array.from(e.target.files) as File[];
-        if (fileList.length > MAX_IMPORT_FILES) {
-          setToastMessage(`⚠️ Limite de ${MAX_IMPORT_FILES} fichiers maximum à la fois : seuls les ${MAX_IMPORT_FILES} premiers sont importés.`);
-          fileList = fileList.slice(0, MAX_IMPORT_FILES);
-        }
-        const newItems: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[] = [];
-        const imageFilesToCompress: { id: string; file: File }[] = [];
+  const processAndUploadShareFiles = async (fileList: File[], defaultType: string) => {
+    const currentUserId = user?.id || localStorage.getItem('unifolder_user_id') || 'default-user';
+    const MAX_IMPORT_FILES = 10;
+    let filesToProcess = fileList;
+    if (filesToProcess.length > MAX_IMPORT_FILES) {
+      setToastMessage(`⚠️ Limite de ${MAX_IMPORT_FILES} fichiers maximum à la fois : seuls les ${MAX_IMPORT_FILES} premiers sont importés.`);
+      filesToProcess = filesToProcess.slice(0, MAX_IMPORT_FILES);
+    }
 
-        for (let i = 0; i < fileList.length; i++) {
-          const f = fileList[i];
-          const isPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
-          const isImg = !isPdf && (f.type.startsWith('image/') || typeLabel === 'images' || typeLabel === 'Images' || /\.(jpg|jpeg|png|webp|gif)$/i.test(f.name));
-          const id = `item-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 9)}`;
-          
-          // Sauvegarder immédiatement le binaire réel dans IndexedDB
-          storeFileBlob(id, f).catch((err) => console.warn('Erreur stockage IndexedDB:', err));
+    setToastMessage(`⏳ Envoi de ${filesToProcess.length} fichier(s) vers votre espace Cloud sécurisé...`);
 
-          let url: string | undefined = undefined;
-          try {
-            if (isImg) {
-              url = URL.createObjectURL(f);
-              imageFilesToCompress.push({ id, file: f });
-            }
-          } catch (blobErr) {
-            console.error(blobErr);
-          }
+    const imageFilesToCompress: { id: string; file: File }[] = [];
 
-          newItems.push({
+    for (let i = 0; i < filesToProcess.length; i++) {
+      const f = filesToProcess[i];
+      const isPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+      const isImg = !isPdf && (f.type.startsWith('image/') || defaultType.toLowerCase().includes('image') || /\.(jpg|jpeg|png|webp|gif)$/i.test(f.name));
+      const id = `item-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 9)}`;
+
+      // 1. Sauvegarde locale de secours
+      storeFileBlob(id, f).catch(() => {});
+
+      // 2. Upload immédiat vers Cloudflare R2
+      const r2Key = buildSharedLinkFileKey(currentUserId, id, f.name);
+      let r2Url = '';
+      try {
+        const r2Res = await StudyCloudAPI.uploadFileToR2(f, r2Key, f.type || 'application/octet-stream', f.size);
+        if (r2Res.success && r2Res.url) {
+          r2Url = r2Res.url;
+          // 3. Enregistrement immédiat dans la table D1 de staging
+          await StudyCloudAPI.stageShareFile({
+            userId: currentUserId,
             id,
             name: f.name,
             size: f.size,
-            type: f.type || typeLabel,
-            url,
-            isImage: isImg
-          });
+            type: f.type || defaultType,
+            r2Key,
+            url: r2Url,
+          }).catch((err) => console.warn('Erreur staging D1:', err));
         }
+      } catch (uploadErr: any) {
+        if (uploadErr?.message?.includes('STORAGE_LIMIT_EXCEEDED') || uploadErr?.status === 413) {
+          setToastMessage(`⚠️ Votre espace de stockage est insuffisant pour enregistrer "${f.name}".`);
+          continue;
+        }
+        console.warn('Erreur upload Cloud R2:', uploadErr);
+      }
 
-        setUploadedItems((prev) => [...prev, ...newItems]);
-        setCurrentTab('upload');
-        localStorage.setItem('unifolder_current_tab', 'upload');
+      let previewUrl = r2Url;
+      if (!previewUrl && isImg) {
+        try {
+          previewUrl = URL.createObjectURL(f);
+          imageFilesToCompress.push({ id, file: f });
+        } catch (e) {}
+      }
 
-        // Background compression for persistent local storage previews without losing state
-        imageFilesToCompress.forEach(({ id, file }) => {
-          compressImage(file).then((dataUrl) => {
-            if (dataUrl) {
-              setUploadedItems((prev) =>
-                prev.map((item) => (item.id === id ? { ...item, url: dataUrl } : item))
-              );
-            }
-          });
-        });
+      const newItem = {
+        id,
+        name: f.name,
+        size: f.size,
+        type: f.type || defaultType,
+        url: previewUrl,
+        r2Key,
+        isImage: isImg,
+      };
+
+      setUploadedItems((prev) => [...prev, newItem]);
+    }
+
+    setCurrentTab('upload');
+    localStorage.setItem('unifolder_current_tab', 'upload');
+    setToastMessage(`✓ Fichiers importés et sauvegardés dans votre Cloud D1/R2`);
+
+    imageFilesToCompress.forEach(({ id, file }) => {
+      compressImage(file).then((dataUrl) => {
+        if (dataUrl) {
+          setUploadedItems((prev) =>
+            prev.map((item) => (item.id === id && !item.url ? { ...item, url: dataUrl } : item))
+          );
+        }
+      });
+    });
+  };
+
+  const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>, typeLabel: string) => {
+    try {
+      if (e.target.files && e.target.files.length > 0) {
+        processAndUploadShareFiles(Array.from(e.target.files) as File[], typeLabel);
       }
     } catch (err) {
       console.error(err);
@@ -988,51 +1068,7 @@ export default function App() {
   const handleFilesDropped = (files: File[]) => {
     try {
       if (files && files.length > 0) {
-        const newItems: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[] = [];
-        const imageFilesToCompress: { id: string; file: File }[] = [];
-
-        for (let i = 0; i < files.length; i++) {
-          const f = files[i];
-          const isPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
-          const isImg = !isPdf && (f.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(f.name));
-          const id = `item-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 9)}`;
-          
-          // Sauvegarder immédiatement le binaire réel dans IndexedDB
-          storeFileBlob(id, f).catch((err) => console.warn('Erreur stockage IndexedDB:', err));
-
-          let url: string | undefined = undefined;
-          try {
-            if (isImg) {
-              url = URL.createObjectURL(f);
-              imageFilesToCompress.push({ id, file: f });
-            }
-          } catch (blobErr) {
-            console.error(blobErr);
-          }
-
-          newItems.push({
-            id,
-            name: f.name,
-            size: f.size,
-            type: f.type || 'Fichiers',
-            url,
-            isImage: isImg
-          });
-        }
-
-        setUploadedItems((prev) => [...prev, ...newItems]);
-        setCurrentTab('upload');
-        localStorage.setItem('unifolder_current_tab', 'upload');
-
-        imageFilesToCompress.forEach(({ id, file }) => {
-          compressImage(file).then((dataUrl) => {
-            if (dataUrl) {
-              setUploadedItems((prev) =>
-                prev.map((item) => (item.id === id ? { ...item, url: dataUrl } : item))
-              );
-            }
-          });
-        });
+        processAndUploadShareFiles(files, 'Fichiers');
       }
     } catch (err) {
       console.error(err);
@@ -1149,51 +1185,16 @@ export default function App() {
   }, [folders]);
 
   useEffect(() => {
-    if (!isAuthenticated || !user?.id) return;
-    StudyCloudAPI.getShares(user.id)
-      .then((res) => {
-        if (res.success && Array.isArray(res.data)) {
-          const mapped: SharedFolder[] = res.data.map((row: any) => ({
-            id: row.id,
-            title: row.title,
-            description: row.description || '',
-            category: row.category || "Pas d'informations",
-            author: row.author_name || user?.name || 'Étudiant',
-            school: row.school || user?.school || '',
-            country: row.country || user?.country || "Côte d'Ivoire",
-            createdAt: row.created_at || new Date().toISOString(),
-            files: Array.isArray(row.files)
-              ? row.files.map((f: any) => ({
-                  id: f.id || f.file_id || crypto.randomUUID(),
-                  name: f.name,
-                  size: f.size || 0,
-                  type: f.type || 'file',
-                  url: f.file_url || f.url || '',
-                  r2Key: f.r2_key || f.r2Key || undefined,
-                }))
-              : [],
-            totalSize: row.total_size || 0,
-            downloadsCount: row.downloads_count || 0,
-            isPasswordProtected: false,
-            password: row.password_hash || undefined,
-            viewsCount: row.views_count || 0,
-            shareCode: row.share_code,
-            shareUrl: `${getWorkerApiUrl().replace(/\/+$/, '')}/s/${row.share_code || row.id}`,
-            qrCodeData: row.qr_code_data,
-            isPublic: Boolean(row.is_public),
-            allowDownload: Boolean(row.allow_download),
-          }));
-          setFolders(mapped);
-          try {
-            const sanitizedMapped = sanitizeFoldersForStorage(mapped);
-            localStorage.setItem('unifolder_shares', JSON.stringify(sanitizedMapped));
-          } catch (e) {
-            console.warn('Erreur mise en cache locale des partages distants:', e);
-          }
-        }
-      })
-      .catch((err) => console.warn('Failed to load user shares from D1:', err));
-  }, [isAuthenticated, user?.id]);
+    if (isAuthenticated && user?.id) {
+      loadUserSharesFromD1();
+    }
+  }, [isAuthenticated, user?.id, loadUserSharesFromD1]);
+
+  useEffect(() => {
+    if (currentTab === 'shared' && isAuthenticated && user?.id) {
+      loadUserSharesFromD1();
+    }
+  }, [currentTab, isAuthenticated, user?.id, loadUserSharesFromD1]);
 
   useEffect(() => {
     const handleRestore = () => {
@@ -1282,12 +1283,18 @@ export default function App() {
     }).catch((e) => console.warn('Sync share to cloud:', e));
   };
 
-  const handleDeleteFolder = (folderId: string) => {
+  const handleDeleteFolder = async (folderId: string) => {
     setFolders((prev) => prev.filter((f) => f.id !== folderId));
     if (activeFolderDetail?.id === folderId) {
       setActiveFolderDetail(null);
     }
-    StudyCloudAPI.deleteShare(folderId).catch(() => {});
+    try {
+      await StudyCloudAPI.deleteShare(folderId);
+      setToastMessage('✓ Lien de partage et ses fichiers supprimés définitivement de D1 et R2');
+      loadUserSharesFromD1();
+    } catch (e) {
+      console.warn('Erreur suppression partage:', e);
+    }
   };
 
   const handleIncrementDownload = (folderId: string) => {
@@ -1525,6 +1532,8 @@ export default function App() {
               onOpenQR={(folder) => setActiveQRCodeFolder(folder)}
               onDeleteFolder={handleDeleteFolder}
               setFolders={setFolders}
+              isLoading={isLoadingShares}
+              onRefresh={loadUserSharesFromD1}
             />
           ) : currentTab === 'settings' ? (
             <SettingsView />
@@ -1655,10 +1664,17 @@ export default function App() {
                 Annuler
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
+                  const currentUserId = user?.id || localStorage.getItem('unifolder_user_id') || 'default-user';
+                  // Supprimer les fichiers temporaires de R2 et D1 si aucun lien n'a été créé
+                  await StudyCloudAPI.deleteStagingShareFiles(currentUserId).catch(() => {});
                   setUploadedItems([]);
                   setSelectedItemIds([]);
+                  try {
+                    localStorage.removeItem('unifolder_uploaded_items');
+                  } catch (e) {}
                   setShowClearConfirmModal(false);
+                  setToastMessage('✓ Fichiers importés annulés et supprimés du Cloud D1/R2.');
                 }}
                 className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer"
               >

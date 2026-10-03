@@ -1481,6 +1481,31 @@ export const StudyCloudAPI = {
     });
   },
 
+  async stageShareFile(fileData: {
+    userId: string;
+    id: string;
+    name: string;
+    size: number;
+    type: string;
+    r2Key: string;
+    url: string;
+  }) {
+    return request<{ success: boolean; r2Key: string; url: string }>('/api/shares/staging', {
+      method: 'POST',
+      body: JSON.stringify(fileData),
+    });
+  },
+
+  async getStagingShareFiles(userId: string) {
+    return request<{ success: boolean; files: any[] }>(`/api/shares/staging?userId=${encodeURIComponent(userId)}&_t=${Date.now()}`);
+  },
+
+  async deleteStagingShareFiles(userId: string) {
+    return request<{ success: boolean; message?: string }>(`/api/shares/staging?userId=${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+    });
+  },
+
   // --------------------------------------------------------------------------
   // Emploi du temps
   // --------------------------------------------------------------------------

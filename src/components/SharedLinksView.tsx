@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Trash2, MoreVertical, Share2, Lock, Globe, ArrowUpDown, Clock, HardDrive, Folder } from 'lucide-react';
+import { Search, Trash2, MoreVertical, Share2, Lock, Globe, ArrowUpDown, Clock, HardDrive, Folder, RotateCw, Loader2 } from 'lucide-react';
 import { SharedFolder } from '../types';
 import { FolderCard } from './FolderCard';
 
@@ -11,6 +11,8 @@ interface SharedLinksViewProps {
   onOpenQR: (folder: SharedFolder) => void;
   onDeleteFolder: (folderId: string) => void;
   setFolders: React.Dispatch<React.SetStateAction<SharedFolder[]>>;
+  isLoading?: boolean;
+  onRefresh?: () => void;
 }
 
 export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
@@ -21,6 +23,8 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
   onOpenQR,
   onDeleteFolder,
   setFolders,
+  isLoading = false,
+  onRefresh,
 }) => {
   const [sortBy, setSortBy] = useState<'recent' | 'oldest' | 'size'>('recent');
   const [filterStatus, setFilterStatus] = useState<'all' | 'published' | 'unpublished'>('all');
@@ -74,6 +78,16 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
             />
           </div>
           <div className="flex items-center gap-1.5 shrink-0 relative">
+            {onRefresh && (
+              <button
+                onClick={onRefresh}
+                disabled={isLoading}
+                title="Actualiser les liens depuis la base de données D1"
+                className="p-1.5 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-white rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center disabled:opacity-50"
+              >
+                <RotateCw className={`w-4 h-4 text-orange-600 dark:text-orange-400 ${isLoading ? 'animate-spin' : ''}`} />
+              </button>
+            )}
             <button
               onClick={() => setShowDeleteAllModal(true)}
               title="Supprimer tous les liens"
@@ -173,7 +187,14 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
 
       {/* Content Area */}
       <div className="pt-2">
-        {sortedFolders.length === 0 ? (
+        {isLoading && sortedFolders.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 text-center space-y-3">
+            <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
+            <p className="text-xs font-bold text-stone-600 dark:text-slate-400">
+              Synchronisation de vos liens actifs avec la base de données D1...
+            </p>
+          </div>
+        ) : sortedFolders.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
             <div className="w-14 h-14 bg-stone-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-stone-500 dark:text-slate-400">
               <Share2 className="w-7 h-7 stroke-[1.8]" />

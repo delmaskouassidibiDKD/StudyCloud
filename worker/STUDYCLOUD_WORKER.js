@@ -210,13 +210,16 @@ function renderShareLandingHtml(folder, files, originUrl) {
   const shareUrl = `${originUrl}/s/${encodeURIComponent(folder.share_code || folder.id)}`;
   const ogTitle = escapeHtml(`${title} \u2022 StudyCloud`);
   const appDesc = escapeHtml("T\xE9l\xE9chargez votre fichier en cliquant sur ce lien. StudyCloud : Plateforme cloud de stockage s\xE9curis\xE9 pour \xE9l\xE8ves, \xE9tudiants, entreprises et professionnels.");
-  const filesJson = JSON.stringify((files || []).map((f) => ({
-    id: f.id,
-    name: f.name,
-    size: f.size || 0,
-    type: f.type || "application/octet-stream",
-    url: f.file_url || f.url || ""
-  })));
+  const filesJson = JSON.stringify((files || []).map((f) => {
+    const resolvedUrl = f.file_url || f.url || (f.r2_key ? `${originUrl}/api/storage/file/${encodeURIComponent(f.r2_key)}` : "");
+    return {
+      id: f.id,
+      name: f.name,
+      size: f.size || 0,
+      type: f.type || "application/octet-stream",
+      url: resolvedUrl
+    };
+  }));
   const filesGridHtml = files && files.length > 0 ? files.map((f) => {
     const meta = getFileIconMeta(f.name);
     const iconSvg = renderFileDocIconSvg(meta.color, meta.label);
@@ -10377,11 +10380,76 @@ var index_default = {
       if (path.startsWith("/api/shares") && env.DB && !isSchemaInitialized) {
         await ensureDatabaseSchema(env.DB);
       }
+
+      // ------------------------------------------------------------------------
+      // ROUTES STAGING : Fichiers importés en attente de création de lien
+      // ------------------------------------------------------------------------
+      if (path === "/api/shares/staging") {
+        if (method === "GET") {
+          const userId = url.searchParams.get("userId");
+          if (!userId || !env.DB) return jsonResponse({ success: true, files: [] }, 200, origin);
+          const { results: files } = await env.DB.prepare(
+            "SELECT * FROM shared_folder_files WHERE shared_folder_id = ? ORDER BY created_at ASC"
+          ).bind(`staging_${userId}`).all().catch(() => ({ results: [] }));
+          return jsonResponse({ success: true, files: files || [] }, 200, origin);
+        }
+
+        if (method === "POST") {
+          const body = await request.json().catch(() => ({}));
+          const { userId, id, name, size, type, r2Key, r2_key, url: fileUrl, file_url } = body;
+          if (!userId || !name || !env.DB) return errorResponse("userId et name requis", 400, origin);
+          const finalKey = r2Key || r2_key || null;
+          const finalUrl = fileUrl || file_url || (finalKey ? `${url.origin}/api/storage/file/${encodeURIComponent(finalKey)}` : "");
+          await env.DB.prepare(`
+            INSERT INTO shared_folder_files (id, shared_folder_id, file_id, name, size, type, r2_key, file_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              size = excluded.size,
+              type = excluded.type,
+              r2_key = excluded.r2_key,
+              file_url = excluded.file_url
+          `).bind(
+            id || crypto.randomUUID(),
+            `staging_${userId}`,
+            id || null,
+            name,
+            size || 0,
+            type || "file",
+            finalKey,
+            finalUrl
+          ).run().catch(() => {});
+          return jsonResponse({ success: true, r2Key: finalKey, url: finalUrl }, 200, origin);
+        }
+
+        if (method === "DELETE") {
+          const userId = url.searchParams.get("userId");
+          if (!userId || !env.DB) return jsonResponse({ success: true }, 200, origin);
+          const stagingId = `staging_${userId}`;
+          try {
+            const { results: filesToDelete } = await env.DB.prepare(
+              "SELECT r2_key FROM shared_folder_files WHERE shared_folder_id = ?"
+            ).bind(stagingId).all().catch(() => ({ results: [] }));
+            if (env.BUCKET && filesToDelete && filesToDelete.length > 0) {
+              for (const f of filesToDelete) {
+                if (f.r2_key) {
+                  await env.BUCKET.delete(f.r2_key).catch(() => {});
+                }
+              }
+            }
+            await env.DB.prepare("DELETE FROM shared_folder_files WHERE shared_folder_id = ?").bind(stagingId).run().catch(() => {});
+          } catch (e) {
+            console.warn("Erreur purge staging R2/D1:", e);
+          }
+          return jsonResponse({ success: true, message: "Fichiers temporaires supprimés de R2 et D1" }, 200, origin);
+        }
+      }
+
       if (path === "/api/shares") {
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
           const isPublicOnly = url.searchParams.get("publicOnly") === "true" || url.searchParams.get("isPublic") === "1";
-          let query = "SELECT * FROM shared_folders WHERE 1=1";
+          let query = "SELECT * FROM shared_folders WHERE id NOT LIKE 'staging_%'";
           const params = [];
           if (userId) {
             query += " AND user_id = ?";
@@ -10471,13 +10539,28 @@ var index_default = {
             finalAllowDownload,
             totalSize || 0
           ).run();
-          if (Array.isArray(files)) {
+          if (Array.isArray(files) && files.length > 0) {
             await env.DB.prepare("DELETE FROM shared_folder_files WHERE shared_folder_id = ?").bind(id).run();
             for (const f of files) {
+              const fileKey = f.r2Key || f.r2_key || null;
+              const directUrl = f.url || f.file_url || (fileKey ? `${url.origin}/api/storage/file/${encodeURIComponent(fileKey)}` : "");
               await env.DB.prepare(`
                 INSERT INTO shared_folder_files (id, shared_folder_id, file_id, name, size, type, r2_key, file_url)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-              `).bind(f.id || crypto.randomUUID(), id, f.fileId || null, f.name, f.size || 0, f.type || "file", f.r2Key || null, f.url || "").run();
+              `).bind(
+                f.id || crypto.randomUUID(),
+                id,
+                f.fileId || f.id || null,
+                f.name,
+                f.size || 0,
+                f.type || "file",
+                fileKey,
+                directUrl
+              ).run();
+            }
+            // Purger la staging pour cet utilisateur car les fichiers sont maintenant officialisés dans le partage
+            if (userId) {
+              await env.DB.prepare("DELETE FROM shared_folder_files WHERE shared_folder_id = ?").bind(`staging_${userId}`).run().catch(() => {});
             }
           }
           return jsonResponse({
