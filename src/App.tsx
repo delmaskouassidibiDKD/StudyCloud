@@ -42,24 +42,9 @@ import { purgeVolatileStorage } from './utils/safeStorage';
 if (typeof window !== 'undefined') {
   purgeVolatileStorage();
 }
-
-// Utilitaire de sécurisation du stockage local pour éviter l'erreur "QuotaExceededError" (5MB max)
-export const sanitizeFoldersForStorage = (foldersList: SharedFolder[]): SharedFolder[] => {
-  if (!Array.isArray(foldersList)) return [];
-  return foldersList.map((folder) => ({
-    ...folder,
-    qrCodeData: folder.qrCodeData && folder.qrCodeData.length > 500 ? undefined : folder.qrCodeData,
-    files: (folder.files || []).map((file) => ({
-      id: file.id,
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      // Ne JAMAIS persister de data URL base64 dans le stockage local pour éviter l'erreur de dépassement de quota
-      url: file.url && !file.url.startsWith('data:') ? file.url : '',
-      r2Key: file.r2Key || undefined,
-    })),
-  }));
-};
+import { sanitizeFoldersForStorage } from './utils/sanitizeFolders';
+export { sanitizeFoldersForStorage } from './utils/sanitizeFolders';
+import { invalidateCloudQueries } from './services/queryClient';
 
 export default function App() {
   const { user, isAuthenticated, isLoading: authLoading, needsOnboarding, needsSecuritySetup, loginWithToken } = useAuth();
@@ -526,8 +511,9 @@ export default function App() {
       } catch (e) {}
       showToast(`✨ Votre lien "${linkName.trim()}" a été créé avec succès (${validFiles.length} fichier${validFiles.length > 1 ? 's' : ''}) ! Retrouvez-le dans Liens Actifs.`);
 
-      // Actualiser immédiatement la liste depuis D1 (source de vérité)
+      // Actualiser immédiatement la liste depuis D1 (source de vérité) et le cache TanStack Query
       loadUserSharesFromD1().catch(() => {});
+      invalidateCloudQueries.shares();
 
       if (onComplete) {
         onComplete(newFolder);
@@ -1391,6 +1377,7 @@ export default function App() {
       await StudyCloudAPI.deleteShare(folderId);
       setToastMessage('✓ Lien de partage et ses fichiers supprimés avec succès.');
       loadUserSharesFromD1();
+      invalidateCloudQueries.shares();
     } catch (e) {
       console.warn('Erreur suppression partage:', e);
     }
@@ -1634,6 +1621,7 @@ export default function App() {
               setFolders={setFolders}
               isLoading={isLoadingShares}
               onRefresh={loadUserSharesFromD1}
+              userId={user?.id || localStorage.getItem('unifolder_user_id') || undefined}
             />
           ) : currentTab === 'settings' ? (
             <SettingsView />

@@ -10199,11 +10199,19 @@ a:hover{transform:translateY(-2px)}
       }
       if (path === "/api/shares") {
         if (method === "GET") {
-          const userId = url.searchParams.get("userId");
+          const userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
           const isPublicOnly = url.searchParams.get("publicOnly") === "true" || url.searchParams.get("isPublic") === "1";
+          if (userId && userId !== "default-user" && userId !== "all") {
+            await env.DB.prepare(`
+              UPDATE shared_folders
+              SET user_id = ?
+              WHERE user_id = 'default-user'
+            `).bind(userId).run().catch(() => {
+            });
+          }
           let query = "SELECT * FROM shared_folders WHERE id NOT LIKE 'staging_%'";
           const params = [];
-          if (userId) {
+          if (userId && userId !== "all") {
             query += " AND user_id = ?";
             params.push(userId);
           }

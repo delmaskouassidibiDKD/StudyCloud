@@ -4,10 +4,12 @@ import { QUERY_KEYS, invalidateCloudQueries, queryClient } from '../services/que
 import { FileItem } from '../components/Page1FilesMenuView';
 import { ClasseurCreatedFolder } from '../components/Folder3DModels';
 import { DownloadedItem } from '../services/downloadsManager';
-import { StudyCloudAPI } from '../services/api';
+import { StudyCloudAPI, getWorkerApiUrl } from '../services/api';
 import { getCurrentUserId } from '../services/userSync';
 import { getFileBlobUrl } from '../services/localFileStorage';
 import { ImportedItem } from '../components/FilesMenuView';
+import { SharedFolder } from '../types';
+import { sanitizeFoldersForStorage } from '../utils/sanitizeFolders';
 
 // ─── HOOKS DE LECTURE (QUERIES) ────────────────────────────────────────────────
 
@@ -428,4 +430,147 @@ export function useResetDashboardWallpaper() {
     },
   });
 }
+
+/**
+ * Hook TanStack Query pour les Liens Partagés (Dossiers partagés et liens de téléchargement) :
+ * - Synchronisation automatique et réactive avec Cloudflare D1
+ * - Hydratation instantanée 0ms depuis le cache local (localStorage)
+ * - Refetch automatique au focus de la fenêtre (refetchOnWindowFocus) pour synchroniser entre appareils
+ * - Réactivité instantanée sur toute mutation (création, suppression, modification de statut public)
+ */
+export function useUserShares(userId?: string) {
+  const currentUid = userId || getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+
+  return useQuery<SharedFolder[]>({
+    queryKey: QUERY_KEYS.shares(currentUid),
+    queryFn: async () => {
+      const res = await StudyCloudAPI.getShares(currentUid || undefined);
+      if (res && res.success && Array.isArray(res.data)) {
+        const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+        const mapped: SharedFolder[] = res.data.map((row: any) => ({
+          id: row.id,
+          title: row.title,
+          description: row.description || '',
+          category: row.category || "Pas d'informations",
+          author: row.author_name || 'Étudiant',
+          school: row.school || '',
+          country: row.country || "Côte d'Ivoire",
+          createdAt: row.created_at || new Date().toISOString(),
+          files: Array.isArray(row.files)
+            ? row.files.map((f: any) => ({
+                id: f.id || f.file_id || crypto.randomUUID(),
+                name: f.name || f.fileName || f.title || 'Fichier',
+                size: Number(f.size) || Number(f.sizeBytes) || 0,
+                type: f.type || 'file',
+                url: f.file_url || f.url || (f.r2_key ? `${baseUrl}/api/storage/file/${encodeURIComponent(f.r2_key)}` : ''),
+                r2Key: f.r2_key || f.r2Key || undefined,
+              }))
+            : [],
+          totalSize: Number(row.total_size) || 0,
+          downloadsCount: Number(row.downloads_count) || 0,
+          isPasswordProtected: Boolean(row.is_password_protected),
+          password: row.password_hash || undefined,
+          viewsCount: Number(row.views_count) || 0,
+          shareCode: row.share_code,
+          shareUrl: row.share_url || `${baseUrl}/s/${row.share_code || row.id}`,
+          qrCodeData: row.qr_code_data,
+          isPublic: Boolean(row.is_public),
+          allowDownload: row.allow_download !== undefined ? Boolean(row.allow_download) : true,
+        }));
+
+        // Mettre à jour le cache local pour l'hydratation instantanée lors des prochaines ouvertures
+        try {
+          const sanitized = sanitizeFoldersForStorage(mapped);
+          localStorage.setItem('unifolder_shares', JSON.stringify(sanitized));
+        } catch (e) {
+          console.warn('Erreur mise en cache locale unifolder_shares:', e);
+        }
+
+        return mapped;
+      }
+      return [];
+    },
+    // Hydratation 0ms depuis le stockage local si disponible
+    initialData: () => {
+      try {
+        const saved = localStorage.getItem('unifolder_shares');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+      return undefined;
+    },
+    staleTime: 1000 * 20, // 20s de fraîcheur en RAM
+    refetchOnWindowFocus: true, // Se synchronise dès qu'on change d'onglet, revient sur l'application ou l'appareil
+    refetchOnReconnect: true,
+  });
+}
+
+/**
+ * Mutation TanStack Query pour supprimer un lien partagé :
+ * - Suppression optimiste immédiate dans le cache
+ * - Suppression sur le backend Cloudflare D1
+ * - Revalidation automatique du cache des partages
+ */
+export function useDeleteShareMutation() {
+  return useMutation({
+    mutationFn: async (shareId: string) => {
+      return await StudyCloudAPI.deleteShare(shareId);
+    },
+    onMutate: async (shareId: string) => {
+      await queryClient.cancelQueries({ queryKey: ['cloud', 'shares'] });
+      queryClient.setQueriesData<SharedFolder[]>({ queryKey: ['cloud', 'shares'] }, (old) => {
+        if (!Array.isArray(old)) return [];
+        return old.filter((f) => f.id !== shareId);
+      });
+    },
+    onSettled: () => {
+      invalidateCloudQueries.shares();
+    },
+  });
+}
+
+/**
+ * Mutation TanStack Query pour changer le statut public / privé d'un lien :
+ * - Mise à jour optimiste immédiate dans le cache TanStack
+ * - Persistance dans Cloudflare D1
+ * - Revalidation du cache
+ */
+export function useToggleSharePublicMutation() {
+  return useMutation({
+    mutationFn: async ({
+      shareId,
+      isPublic,
+      description,
+      allowDownload = true,
+    }: {
+      shareId: string;
+      isPublic: boolean;
+      description?: string;
+      allowDownload?: boolean;
+    }) => {
+      return await StudyCloudAPI.toggleSharePublic(shareId, isPublic, description, allowDownload);
+    },
+    onMutate: async ({ shareId, isPublic, description, allowDownload }) => {
+      await queryClient.cancelQueries({ queryKey: ['cloud', 'shares'] });
+      queryClient.setQueriesData<SharedFolder[]>({ queryKey: ['cloud', 'shares'] }, (old) => {
+        if (!Array.isArray(old)) return [];
+        return old.map((f) => {
+          if (f.id !== shareId) return f;
+          return {
+            ...f,
+            isPublic,
+            description: description !== undefined ? description : f.description,
+            allowDownload: allowDownload !== undefined ? allowDownload : f.allowDownload,
+          };
+        });
+      });
+    },
+    onSettled: () => {
+      invalidateCloudQueries.shares();
+    },
+  });
+}
+
 

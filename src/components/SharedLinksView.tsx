@@ -2,21 +2,24 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Search, Trash2, MoreVertical, Share2, Lock, Globe, ArrowUpDown, Clock, HardDrive, Folder, RotateCw, Loader2 } from 'lucide-react';
 import { SharedFolder } from '../types';
 import { FolderCard } from './FolderCard';
+import { useUserShares, useDeleteShareMutation, useToggleSharePublicMutation } from '../hooks/useCloudQueries';
+import { invalidateCloudQueries } from '../services/queryClient';
 
 interface SharedLinksViewProps {
-  folders: SharedFolder[];
+  folders?: SharedFolder[];
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   onSelectFolder: (folder: SharedFolder) => void;
   onOpenQR: (folder: SharedFolder) => void;
-  onDeleteFolder: (folderId: string) => void;
-  setFolders: React.Dispatch<React.SetStateAction<SharedFolder[]>>;
+  onDeleteFolder?: (folderId: string) => void;
+  setFolders?: React.Dispatch<React.SetStateAction<SharedFolder[]>>;
   isLoading?: boolean;
   onRefresh?: () => void;
+  userId?: string;
 }
 
 export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
-  folders,
+  folders: propFolders,
   searchQuery,
   setSearchQuery,
   onSelectFolder,
@@ -25,6 +28,7 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
   setFolders,
   isLoading = false,
   onRefresh,
+  userId,
 }) => {
   const [sortBy, setSortBy] = useState<'recent' | 'oldest' | 'size'>('recent');
   const [filterStatus, setFilterStatus] = useState<'all' | 'published' | 'unpublished'>('all');
@@ -32,8 +36,29 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // TanStack Query : synchronisation réactive avec Cloudflare D1
+  const { data: serverFolders = [], isLoading: isQueryLoading, refetch } = useUserShares(userId);
+  const deleteMutation = useDeleteShareMutation();
+  const togglePublicMutation = useToggleSharePublicMutation();
+
+  // Les données D1 gérées par TanStack Query sont la source de vérité absolue
+  const activeFolders = serverFolders.length > 0 ? serverFolders : (propFolders || []);
+  const effectiveLoading = isLoading || (isQueryLoading && activeFolders.length === 0);
+
+  const handleDeleteItem = (folderId: string) => {
+    deleteMutation.mutate(folderId);
+    if (onDeleteFolder) onDeleteFolder(folderId);
+    if (setFolders) setFolders((prev) => prev.filter((f) => f.id !== folderId));
+  };
+
+  const handleRefresh = async () => {
+    await refetch();
+    if (onRefresh) onRefresh();
+    invalidateCloudQueries.shares();
+  };
+
   // Filter folders
-  const filtered = folders.filter((f) => {
+  const filtered = activeFolders.filter((f) => {
     const matchesSearch =
       f.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       f.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -78,16 +103,14 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
             />
           </div>
           <div className="flex items-center gap-1.5 shrink-0 relative">
-            {onRefresh && (
-              <button
-                onClick={onRefresh}
-                disabled={isLoading}
-                title="Actualiser vos liens de partage"
-                className="p-1.5 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-white rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center disabled:opacity-50"
-              >
-                <RotateCw className={`w-4 h-4 text-orange-600 dark:text-orange-400 ${isLoading ? 'animate-spin' : ''}`} />
-              </button>
-            )}
+            <button
+              onClick={handleRefresh}
+              disabled={effectiveLoading}
+              title="Actualiser vos liens de partage"
+              className="p-1.5 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-white rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center disabled:opacity-50"
+            >
+              <RotateCw className={`w-4 h-4 text-orange-600 dark:text-orange-400 ${effectiveLoading ? 'animate-spin' : ''}`} />
+            </button>
             <button
               onClick={() => setShowDeleteAllModal(true)}
               title="Supprimer tous les liens"
@@ -187,7 +210,7 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
 
       {/* Content Area */}
       <div className="pt-2">
-        {isLoading && sortedFolders.length === 0 ? (
+        {effectiveLoading && sortedFolders.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center space-y-3">
             <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
             <p className="text-xs font-bold text-stone-600 dark:text-slate-400">
@@ -212,10 +235,18 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
                 folder={folder}
                 onSelect={onSelectFolder}
                 onOpenQR={onOpenQR}
-                onDelete={onDeleteFolder}
+                onDelete={handleDeleteItem}
                 isPublicView={false}
                 onUpdateFolder={(updated) => {
-                  setFolders((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
+                  togglePublicMutation.mutate({
+                    shareId: updated.id,
+                    isPublic: updated.isPublic ?? false,
+                    description: updated.description,
+                    allowDownload: updated.allowDownload,
+                  });
+                  if (setFolders) {
+                    setFolders((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
+                  }
                 }}
               />
             ))}
@@ -245,8 +276,9 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
               </button>
               <button
                 onClick={() => {
-                  folders.forEach((f) => onDeleteFolder(f.id));
-                  setFolders([]);
+                  activeFolders.forEach((f) => {
+                    handleDeleteItem(f.id);
+                  });
                   setShowDeleteAllModal(false);
                 }}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer"
