@@ -10,7 +10,7 @@ interface UploadViewProps {
   setSearchQuery: (query: string) => void;
   onOpenUploadModal: () => void;
   onOpenAddMenu: () => void;
-  onOpenClearConfirm: () => void;
+  onOpenClearConfirm: (targetIds?: string[]) => void;
   onOpenCreateShareLink: (items?: any[]) => void;
   uploadedItems: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[];
   setUploadedItems: React.Dispatch<React.SetStateAction<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[]>>;
@@ -154,7 +154,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
           </div>
 
           <button
-            onClick={uploadedItems.length > 0 ? onOpenClearConfirm : undefined}
+            onClick={uploadedItems.length > 0 ? () => onOpenClearConfirm() : undefined}
             disabled={uploadedItems.length === 0}
             className={`flex items-center gap-1.5 font-bold text-xs px-3 py-2 rounded-xl border-2 transition-all shrink-0 select-none ${
               uploadedItems.length === 0
@@ -255,7 +255,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setUploadedItems((prev) => prev.filter((i) => i.id !== item.id));
+                      onOpenClearConfirm([item.id]);
                     }}
                     className="absolute top-1 right-1 w-5 h-5 bg-black/70 hover:bg-black text-red-400 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-10"
                     title="Supprimer"
@@ -320,8 +320,8 @@ export const UploadView: React.FC<UploadViewProps> = ({
 
                       <button
                         onClick={() => {
-                          setUploadedItems((prev) => prev.filter((i) => i.id !== item.id));
                           setActiveLongPressItem(null);
+                          onOpenClearConfirm([item.id]);
                         }}
                         className="flex items-center gap-2 px-2.5 py-1.5 text-[11px] font-medium text-red-400 hover:bg-red-950/40 rounded-lg transition-colors cursor-pointer text-left"
                       >
@@ -381,8 +381,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
               </button>
               <button
                 onClick={() => {
-                  setUploadedItems((prev) => prev.filter((i) => !selectedItemIds.includes(i.id)));
-                  setSelectedItemIds([]);
+                  onOpenClearConfirm(selectedItemIds);
                 }}
                 className="px-3 py-1.5 bg-red-950 hover:bg-red-900 text-red-300 text-xs font-bold rounded-xl transition-colors cursor-pointer"
               >

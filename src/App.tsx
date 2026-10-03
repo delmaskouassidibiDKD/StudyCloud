@@ -514,18 +514,60 @@ export default function App() {
   }, [activeFolderDetail]);
 
   const [activeQRCodeFolder, setActiveQRCodeFolder] = useState<SharedFolder | null>(null);
+  const [itemsToDelete, setItemsToDelete] = useState<string[] | null>(null);
   const [uploadedItems, setUploadedItems] = useState<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[]>(() => {
-    const saved = localStorage.getItem('unifolder_uploaded_items');
+    const currentUserId = localStorage.getItem('unifolder_user_id');
+    const userSpecificKey = currentUserId && currentUserId !== 'default-user' ? `unifolder_uploaded_items_${currentUserId}` : 'unifolder_uploaded_items';
+    const saved = localStorage.getItem(userSpecificKey) || localStorage.getItem('unifolder_uploaded_items');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return parsed;
+        return Array.isArray(parsed) ? parsed : [];
       } catch (e) {
         console.error(e);
       }
     }
     return [];
   });
+
+  const loadStagingShareFilesFromD1 = useCallback(async () => {
+    const currentUserId = user?.id || localStorage.getItem('unifolder_user_id');
+    if (!currentUserId || currentUserId === 'default-user' || currentUserId === 'user_anonymous') return;
+    try {
+      const res = await StudyCloudAPI.getStagingShareFiles(currentUserId);
+      if (res && res.success && Array.isArray(res.files)) {
+        const mapped = res.files.map((row: any) => {
+          const r2Key = row.r2_key || row.r2Key;
+          let fileUrl = row.file_url || row.url;
+          if ((!fileUrl || fileUrl.includes('localhost') || fileUrl.startsWith('blob:')) && r2Key) {
+            fileUrl = `${getWorkerApiUrl().replace(/\/+$/, '')}/api/storage/file/${encodeURIComponent(r2Key)}`;
+          }
+          const isImg = row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(row.name);
+          return {
+            id: row.file_id || row.id,
+            name: row.name,
+            size: row.size || 0,
+            type: row.type || 'file',
+            url: fileUrl || undefined,
+            r2Key,
+            isImage: isImg,
+          };
+        });
+        setUploadedItems(mapped);
+        try {
+          if (mapped.length > 0) {
+            localStorage.setItem(`unifolder_uploaded_items_${currentUserId}`, JSON.stringify(mapped));
+            localStorage.setItem('unifolder_uploaded_items', JSON.stringify(mapped));
+          } else {
+            localStorage.removeItem(`unifolder_uploaded_items_${currentUserId}`);
+            localStorage.removeItem('unifolder_uploaded_items');
+          }
+        } catch (e) {}
+      }
+    } catch (err) {
+      console.warn('Erreur chargement staging D1:', err);
+    }
+  }, [user?.id]);
   const [activePreviewItemState, setActivePreviewItemState] = useState<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean; folderName?: string; lockFullscreen?: boolean } | null>(() => {
     try {
       const saved = localStorage.getItem('studycloud_active_preview_item');
@@ -957,15 +999,19 @@ export default function App() {
 
   useEffect(() => {
     try {
+      const currentUserId = user?.id || localStorage.getItem('unifolder_user_id');
+      const userSpecificKey = currentUserId && currentUserId !== 'default-user' ? `unifolder_uploaded_items_${currentUserId}` : 'unifolder_uploaded_items';
       if (uploadedItems.length === 0) {
+        localStorage.removeItem(userSpecificKey);
         localStorage.removeItem('unifolder_uploaded_items');
       } else {
+        localStorage.setItem(userSpecificKey, JSON.stringify(uploadedItems));
         localStorage.setItem('unifolder_uploaded_items', JSON.stringify(uploadedItems));
       }
     } catch (e) {
       console.error(e);
     }
-  }, [uploadedItems]);
+  }, [uploadedItems, user?.id]);
 
   const processAndUploadShareFiles = async (fileList: File[], defaultType: string) => {
     const currentUserId = user?.id || localStorage.getItem('unifolder_user_id') || 'default-user';
@@ -1187,14 +1233,21 @@ export default function App() {
   useEffect(() => {
     if (isAuthenticated && user?.id) {
       loadUserSharesFromD1();
+      loadStagingShareFilesFromD1();
+    } else if (!isAuthenticated) {
+      setUploadedItems([]);
+      setSelectedItemIds([]);
     }
-  }, [isAuthenticated, user?.id, loadUserSharesFromD1]);
+  }, [isAuthenticated, user?.id, loadUserSharesFromD1, loadStagingShareFilesFromD1]);
 
   useEffect(() => {
     if (currentTab === 'shared' && isAuthenticated && user?.id) {
       loadUserSharesFromD1();
     }
-  }, [currentTab, isAuthenticated, user?.id, loadUserSharesFromD1]);
+    if (currentTab === 'upload' && isAuthenticated && user?.id) {
+      loadStagingShareFilesFromD1();
+    }
+  }, [currentTab, isAuthenticated, user?.id, loadUserSharesFromD1, loadStagingShareFilesFromD1]);
 
   useEffect(() => {
     const handleRestore = () => {
@@ -1474,8 +1527,9 @@ export default function App() {
               setSearchQuery={setSearchQuery}
               onOpenUploadModal={() => setShowUploadModal(true)}
               onOpenAddMenu={() => setShowAddMenu(true)}
-              onOpenClearConfirm={() => {
+              onOpenClearConfirm={(targetIds) => {
                 if (uploadedItems.length > 0) {
+                  setItemsToDelete(targetIds && targetIds.length > 0 ? targetIds : null);
                   setShowClearConfirmModal(true);
                 }
               }}
@@ -1645,20 +1699,30 @@ export default function App() {
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/30 backdrop-blur-xs animate-fadeIn">
           <div className="bg-[#FDFBF7] border-3 border-stone-800 rounded-3xl p-6 w-full max-w-sm shadow-[8px_8px_0px_0px_#1c1917] space-y-4 relative">
             <div className="flex items-center justify-between pb-3 border-b-2 border-stone-300">
-              <h3 className="font-extrabold text-lg text-stone-900">Nouveau partage</h3>
+              <h3 className="font-extrabold text-lg text-stone-900">
+                {itemsToDelete && itemsToDelete.length < uploadedItems.length ? 'Supprimer la sélection' : 'Nouveau partage'}
+              </h3>
               <button
-                onClick={() => setShowClearConfirmModal(false)}
+                onClick={() => {
+                  setShowClearConfirmModal(false);
+                  setItemsToDelete(null);
+                }}
                 className="p-1.5 hover:bg-stone-200 rounded-lg text-stone-700 border-2 border-stone-800 bg-[#F5F1E9] shadow-[2px_2px_0px_0px_#1c1917]"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <p className="text-xs font-medium text-stone-700 leading-relaxed">
-              Voulez-vous supprimer les éléments importés et vider le cache pour commencer un nouveau partage ?
+              {itemsToDelete && itemsToDelete.length < uploadedItems.length
+                ? `Voulez-vous supprimer les ${itemsToDelete.length} élément(s) sélectionné(s) ? La vérification du lien sera effectuée pour chaque élément.`
+                : 'Voulez-vous supprimer les éléments importés et vider le cache pour commencer un nouveau partage ?'}
             </p>
             <div className="flex items-center justify-end gap-2.5 pt-2">
               <button
-                onClick={() => setShowClearConfirmModal(false)}
+                onClick={() => {
+                  setShowClearConfirmModal(false);
+                  setItemsToDelete(null);
+                }}
                 className="px-4 py-2 bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 font-bold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer"
               >
                 Annuler
@@ -1666,15 +1730,33 @@ export default function App() {
               <button
                 onClick={async () => {
                   const currentUserId = user?.id || localStorage.getItem('unifolder_user_id') || 'default-user';
-                  // Supprimer les fichiers temporaires de R2 et D1 si aucun lien n'a été créé
-                  await StudyCloudAPI.deleteStagingShareFiles(currentUserId).catch(() => {});
-                  setUploadedItems([]);
-                  setSelectedItemIds([]);
-                  try {
-                    localStorage.removeItem('unifolder_uploaded_items');
-                  } catch (e) {}
+                  const targetIds = itemsToDelete && itemsToDelete.length > 0 ? itemsToDelete : undefined;
+                  const isAll = !targetIds || targetIds.length >= uploadedItems.length;
+
+                  // Supprimer les fichiers temporaires avec vérification de lien côté serveur
+                  await StudyCloudAPI.deleteStagingShareFiles(currentUserId, targetIds).catch(() => {});
+
+                  if (isAll) {
+                    setUploadedItems([]);
+                    setSelectedItemIds([]);
+                    try {
+                      localStorage.removeItem(`unifolder_uploaded_items_${currentUserId}`);
+                      localStorage.removeItem('unifolder_uploaded_items');
+                    } catch (e) {}
+                    setToastMessage('✓ Fichiers effacés. Vous pouvez commencer un nouveau partage.');
+                  } else {
+                    const remaining = uploadedItems.filter((i) => !targetIds.includes(i.id));
+                    setUploadedItems(remaining);
+                    setSelectedItemIds((prev) => prev.filter((id) => !targetIds.includes(id)));
+                    try {
+                      localStorage.setItem(`unifolder_uploaded_items_${currentUserId}`, JSON.stringify(remaining));
+                      localStorage.setItem('unifolder_uploaded_items', JSON.stringify(remaining));
+                    } catch (e) {}
+                    setToastMessage(`✓ ${targetIds.length} fichier(s) supprimé(s).`);
+                  }
+
                   setShowClearConfirmModal(false);
-                  setToastMessage('✓ Fichiers effacés. Vous pouvez commencer un nouveau partage.');
+                  setItemsToDelete(null);
                 }}
                 className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer"
               >

@@ -11064,12 +11064,153 @@ export default {
         await ensureDatabaseSchema(env.DB);
       }
 
+      // ------------------------------------------------------------------------
+      // ROUTES STAGING : Fichiers importés en attente de création de lien
+      // ------------------------------------------------------------------------
+      if (path === '/api/shares/staging') {
+        if (method === 'GET') {
+          const userId = url.searchParams.get('userId');
+          if (!userId || !env.DB) return jsonResponse({ success: true, files: [] }, 200, origin);
+          const { results: files } = await env.DB.prepare(
+            'SELECT * FROM shared_folder_files WHERE shared_folder_id = ? ORDER BY created_at ASC'
+          ).bind(`staging_${userId}`).all<any>().catch(() => ({ results: [] }));
+
+          const originUrl = url.origin;
+          const mappedFiles = (files || []).map((f: any) => {
+            let fileUrl = f.file_url;
+            if ((!fileUrl || fileUrl.includes('localhost') || fileUrl.startsWith('blob:')) && f.r2_key) {
+              fileUrl = `${originUrl}/api/storage/file/${encodeURIComponent(f.r2_key)}`;
+            }
+            return {
+              ...f,
+              file_url: fileUrl,
+            };
+          });
+          return jsonResponse({ success: true, files: mappedFiles }, 200, origin);
+        }
+
+        if (method === 'POST') {
+          const body: any = await request.json().catch(() => ({}));
+          const { userId, id, name, size, type, r2Key, r2_key, url: fileUrl, file_url } = body;
+          if (!userId || !name || !env.DB) return errorResponse('userId et name requis', 400, origin);
+          const finalKey = r2Key || r2_key || null;
+          const finalUrl = fileUrl || file_url || (finalKey ? `${url.origin}/api/storage/file/${encodeURIComponent(finalKey)}` : '');
+
+          // Assurer que le dossier parent staging existe pour éviter tout blocage de clé étrangère
+          await env.DB.prepare(`
+            INSERT OR IGNORE INTO shared_folders (id, user_id, share_code, share_url, title, author_name)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).bind(
+            `staging_${userId}`,
+            userId,
+            `staging_${userId}`,
+            '',
+            'Staging',
+            'Staging'
+          ).run().catch(() => {});
+
+          await env.DB.prepare(`
+            INSERT INTO shared_folder_files (id, shared_folder_id, file_id, name, size, type, r2_key, file_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              size = excluded.size,
+              type = excluded.type,
+              r2_key = excluded.r2_key,
+              file_url = excluded.file_url
+          `).bind(
+            id || crypto.randomUUID(),
+            `staging_${userId}`,
+            id || null,
+            name,
+            size || 0,
+            type || 'file',
+            finalKey,
+            finalUrl
+          ).run().catch(() => {});
+          return jsonResponse({ success: true, r2Key: finalKey, url: finalUrl }, 200, origin);
+        }
+
+        if (method === 'DELETE') {
+          const userId = url.searchParams.get('userId');
+          if (!userId || !env.DB) return jsonResponse({ success: true }, 200, origin);
+          const stagingId = `staging_${userId}`;
+
+          let body: any = {};
+          try {
+            const rawBody = await request.text();
+            if (rawBody) {
+              body = JSON.parse(rawBody);
+            }
+          } catch (e) {}
+
+          const targetIds: string[] | null = Array.isArray(body.ids) && body.ids.length > 0 ? body.ids : null;
+
+          try {
+            // 1. Trouver les fichiers à supprimer dans la staging de cet utilisateur
+            let selectQuery = 'SELECT id, file_id, r2_key FROM shared_folder_files WHERE shared_folder_id = ?';
+            const selectParams: any[] = [stagingId];
+            if (targetIds && targetIds.length > 0) {
+              const placeholders = targetIds.map(() => '?').join(',');
+              selectQuery += ` AND (file_id IN (${placeholders}) OR id IN (${placeholders}))`;
+              selectParams.push(...targetIds, ...targetIds);
+            }
+
+            const { results: stagedFiles } = await env.DB.prepare(selectQuery)
+              .bind(...selectParams)
+              .all<any>()
+              .catch(() => ({ results: [] }));
+
+            if (stagedFiles && stagedFiles.length > 0) {
+              // 2. Vérification du lien pour chaque fichier : est-il lié à un lien de partage officiel ou bibliothèque ?
+              for (const f of stagedFiles) {
+                if (f.r2_key && env.BUCKET) {
+                  // Vérification si un partage officiel utilise ce fichier
+                  const linkCheck = await env.DB.prepare(
+                    "SELECT COUNT(*) as count FROM shared_folder_files WHERE shared_folder_id != ? AND shared_folder_id NOT LIKE 'staging_%' AND (r2_key = ? OR file_id = ?)"
+                  ).bind(stagingId, f.r2_key, f.file_id || f.id).first<any>().catch(() => null);
+
+                  const activeLinksCount = linkCheck ? (linkCheck.count || 0) : 0;
+
+                  // Vérification si la bibliothèque personnelle utilise ce fichier
+                  const fileCheck = await env.DB.prepare(
+                    'SELECT COUNT(*) as count FROM files WHERE r2_key = ? OR id = ?'
+                  ).bind(f.r2_key, f.file_id || f.id).first<any>().catch(() => null);
+
+                  const activeFilesCount = fileCheck ? (fileCheck.count || 0) : 0;
+
+                  // Si le fichier n'est lié à aucun partage officiel ni fichier perso : suppression de R2
+                  if (activeLinksCount === 0 && activeFilesCount === 0) {
+                    await env.BUCKET.delete(f.r2_key).catch((err: any) => console.warn('Erreur suppression R2 staging:', err));
+                  } else {
+                    console.log(`[Staging] Fichier conservé sur R2 (${f.r2_key}) car associé à un partage officiel.`);
+                  }
+                }
+              }
+
+              // 3. Supprimer de la table shared_folder_files pour la staging
+              let deleteQuery = 'DELETE FROM shared_folder_files WHERE shared_folder_id = ?';
+              const deleteParams: any[] = [stagingId];
+              if (targetIds && targetIds.length > 0) {
+                const placeholders = targetIds.map(() => '?').join(',');
+                deleteQuery += ` AND (file_id IN (${placeholders}) OR id IN (${placeholders}))`;
+                deleteParams.push(...targetIds, ...targetIds);
+              }
+              await env.DB.prepare(deleteQuery).bind(...deleteParams).run().catch(() => {});
+            }
+          } catch (e) {
+            console.warn('Erreur purge staging R2/D1:', e);
+          }
+          return jsonResponse({ success: true, message: 'Fichiers temporaires supprimés avec vérification du lien' }, 200, origin);
+        }
+      }
+
       if (path === '/api/shares') {
         if (method === 'GET') {
           const userId = url.searchParams.get('userId');
           const isPublicOnly = url.searchParams.get('publicOnly') === 'true' || url.searchParams.get('isPublic') === '1';
 
-          let query = 'SELECT * FROM shared_folders WHERE 1=1';
+          let query = "SELECT * FROM shared_folders WHERE id NOT LIKE 'staging_%'";
           const params: any[] = [];
 
           if (userId) {
@@ -11172,6 +11313,10 @@ export default {
                 INSERT INTO shared_folder_files (id, shared_folder_id, file_id, name, size, type, r2_key, file_url)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
               `).bind(f.id || crypto.randomUUID(), id, f.fileId || null, f.name, f.size || 0, f.type || 'file', f.r2Key || null, f.url || '').run();
+            }
+            // Purger la staging pour cet utilisateur car les fichiers sont maintenant officialisés dans le partage
+            if (userId) {
+              await env.DB.prepare('DELETE FROM shared_folder_files WHERE shared_folder_id = ?').bind(`staging_${userId}`).run().catch(() => {});
             }
           }
 

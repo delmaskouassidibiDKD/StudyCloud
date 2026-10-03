@@ -55,6 +55,7 @@ export function clearUserDataOnLogout(): void {
     'unifolder_importing_ids',
     'unifolder_shared_folders',
     'unifolder_shares',
+    'unifolder_uploaded_items',
     'unifolder_published_products',
     'unifolder_cart',
     'unifolder_cart_items',

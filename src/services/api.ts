@@ -1500,9 +1500,10 @@ export const StudyCloudAPI = {
     return request<{ success: boolean; files: any[] }>(`/api/shares/staging?userId=${encodeURIComponent(userId)}&_t=${Date.now()}`);
   },
 
-  async deleteStagingShareFiles(userId: string) {
+  async deleteStagingShareFiles(userId: string, ids?: string[]) {
     return request<{ success: boolean; message?: string }>(`/api/shares/staging?userId=${encodeURIComponent(userId)}`, {
       method: 'DELETE',
+      body: ids && ids.length > 0 ? JSON.stringify({ ids }) : undefined,
     });
   },
 
