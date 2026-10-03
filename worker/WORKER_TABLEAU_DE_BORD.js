@@ -2617,12 +2617,20 @@ function renderDashboardHtml(data) {
         }
       }
     };
+    let _lastSidebarToggle = 0;
     function toggleSidebar(forceState) {
+      const now = Date.now();
+      const isForced = (typeof forceState === 'boolean');
+      if (!isForced && (now - _lastSidebarToggle < 200)) {
+        return; // Bloque les doubles déclenchements instantanés (onclick + pointerdown/click)
+      }
+      _lastSidebarToggle = now;
+
       const drawer = document.getElementById('sidebar-drawer');
       const backdrop = document.getElementById('sidebar-backdrop');
       if (!drawer || !backdrop) return;
       const isOpen = drawer.classList.contains('open');
-      const willOpen = (typeof forceState === 'boolean') ? forceState : !isOpen;
+      const willOpen = isForced ? forceState : !isOpen;
       if (willOpen) {
         drawer.classList.add('open');
         drawer.style.setProperty('transform', 'translateX(0)', 'important');
@@ -5178,11 +5186,18 @@ function renderDashboardHtml(data) {
     }
 
     function toggleSidebar(forceState) {
+      const now = Date.now();
+      const isForced = (typeof forceState === 'boolean');
+      if (!isForced && (now - _lastSidebarToggle < 200)) {
+        return;
+      }
+      _lastSidebarToggle = now;
+
       const drawer = document.getElementById('sidebar-drawer');
       const backdrop = document.getElementById('sidebar-backdrop');
       if (!drawer || !backdrop) return;
       const isOpen = drawer.classList.contains('open');
-      const willOpen = (typeof forceState === 'boolean') ? forceState : !isOpen;
+      const willOpen = isForced ? forceState : !isOpen;
 
       if (willOpen) {
         drawer.classList.add('open');
@@ -11591,13 +11606,6 @@ function renderDashboardHtml(data) {
       }
     });
 
-    const hamburgerBtn = document.getElementById('btn-hamburger');
-    if (hamburgerBtn) {
-      hamburgerBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        toggleSidebar();
-      });
-    }
 
     // AUCUNE boucle infinie ni polling continu en arrière-plan :
     // L'écoute est 100% intelligente et événementielle (très économique pour vos quotas Cloudflare) :
