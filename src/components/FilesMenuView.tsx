@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Edit3, ArrowLeft, Upload, File, Folder, Check, MoreVertical, X, Search, Copy, Plus, Download, Link as LinkIcon, Globe, Eye, EyeOff, Menu, Star } from 'lucide-react';
 import { StudyCloudAPI } from '../services/api';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob, getFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
@@ -462,6 +463,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const floatingSearchInputRef = useRef<HTMLInputElement>(null);
   const [showFilesMenuDropdown, setShowFilesMenuDropdown] = useState(false);
   const [sortBy, setSortBy] = useState<'recent' | 'oldest' | 'size'>('recent');
 
@@ -577,9 +579,24 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   }, []);
 
   useEffect(() => {
-    if (!isSearchOpen) {
+    if (isSearchOpen) {
+      const timer = setTimeout(() => {
+        floatingSearchInputRef.current?.focus();
+      }, 60);
+      return () => clearTimeout(timer);
+    } else {
       setSearchQuery('');
     }
+  }, [isSearchOpen]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isSearchOpen) {
+        setIsSearchOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isSearchOpen]);
 
   const filteredFiles = importedFiles.filter(f => {
@@ -1328,6 +1345,18 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     }
   };
 
+  const isMesFichiers = selectedTab === 'Mes fichiers';
+  const currentMatiere = savedMatieres.find(
+    m => m.name.trim().toLowerCase() === selectedTab.trim().toLowerCase()
+  );
+  const isCurrentMatiereHex = !isMesFichiers && Boolean(currentMatiere?.color && currentMatiere.color.startsWith('#'));
+  const currentMatiereColor = isCurrentMatiereHex ? currentMatiere?.color : undefined;
+  const importerThemeClass = isMesFichiers
+    ? 'bg-amber-400 hover:bg-amber-500 text-stone-900 border-stone-800'
+    : (isCurrentMatiereHex
+        ? 'border-stone-900 text-white hover:brightness-110'
+        : (currentMatiere?.color || 'bg-[#1f4e79] hover:bg-[#153757] text-white border-stone-800'));
+
   return (
     <div 
       onDragOver={handleDragOver}
@@ -1354,21 +1383,32 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         multiple 
         onChange={handleFileChange} 
       />
-      <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-center justify-between z-40 pointer-events-none gap-2">
-        {/* GAUCHE : Bouton Retour */}
-        <div className="flex items-center gap-1.5 md:gap-2 pointer-events-auto shrink-0">
+      <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-start justify-between z-40 pointer-events-none gap-2">
+        {/* GAUCHE : Bouton Retour + Bouton Importer en bas prenant la couleur du menu/matière active */}
+        <div className="flex flex-col items-start gap-1 pointer-events-auto shrink-0">
           <button
             onClick={onBack}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 w-full justify-center"
             title="Retour"
           >
             <ArrowLeft className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-white" />
             <span>Retour</span>
           </button>
+
+          <button
+            type="button"
+            onClick={handleButtonClick}
+            style={isCurrentMatiereHex ? { backgroundColor: currentMatiereColor, color: '#ffffff' } : undefined}
+            className={`flex items-center gap-1 px-2.5 py-1 font-extrabold text-[10px] rounded-lg border-2 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 w-full justify-center ${importerThemeClass}`}
+            title={`Importer des fichiers dans « ${selectedTab} »`}
+          >
+            <Upload className="w-3 h-3 stroke-[2.5]" />
+            <span>Importer</span>
+          </button>
         </div>
 
         {/* MILIEU : Liste horizontale des matières (Mes fichiers en premier, puis toutes les matières créées) */}
-        <div className="flex-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-1 px-1 pointer-events-auto min-w-0">
+        <div className="flex-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-0.5 px-1 pointer-events-auto min-w-0">
           {/* Bouton premier : Mes fichiers */}
           <button
             type="button"
@@ -1426,7 +1466,24 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           })}
         </div>
 
-        <div className="flex items-center gap-1.5 md:gap-2 pointer-events-auto shrink-0">
+        <div className="flex items-center gap-1.5 md:gap-2 pointer-events-auto shrink-0 pt-0.5">
+          {/* Bouton loupe devant le bouton œil */}
+          <button
+            type="button"
+            onClick={() => setIsSearchOpen(prev => !prev)}
+            className={`p-1.5 rounded-lg border-2 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center relative ${
+              isSearchOpen || searchQuery
+                ? 'bg-amber-400 text-stone-900 border-stone-800 font-bold'
+                : 'bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white border-[#2D4A3E] dark:border-[#334155]'
+            }`}
+            title={isSearchOpen ? "Fermer la recherche" : "Rechercher des fichiers"}
+          >
+            <Search className="w-3.5 h-3.5 stroke-[2.4]" />
+            {Boolean(searchQuery) && (
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full border border-white dark:border-stone-900" />
+            )}
+          </button>
+
           {/* Bouton œil pour basculer Mode compact (sans aperçu) / Mode aperçu (style Documents) */}
           <button
             type="button"
@@ -1653,67 +1710,116 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         </div>
       )}
 
-      <div className="w-full px-2 sm:px-4 pt-12 sm:pt-14">
-        <div className="pt-1 pb-64 w-full max-w-7xl mx-auto">
-          {/* Sous-barre : Bouton Importer poussé un peu en bas + Petit champ de recherche + Compteur */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 mb-4 bg-[#F5F1E9]/90 dark:bg-[#111a2e]/90 backdrop-blur-md p-2.5 sm:p-3 rounded-2xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none">
-            <div className="flex items-center gap-2 sm:gap-2.5 flex-1 min-w-[220px]">
-              {/* Bouton Importer poussé en bas */}
-              <button
-                onClick={handleButtonClick}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#2D4A3E] hover:bg-[#1e332a] text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 shrink-0"
-                title={`Importer des fichiers dans « ${selectedTab} »`}
-              >
-                <Upload className="w-3.5 h-3.5 text-white" />
-                <span>Importer</span>
-              </button>
+      {/* Recherche flottante affichée au-dessus de la page comme une notification */}
+      <AnimatePresence>
+        {isSearchOpen && (
+          <>
+            {/* Arrière-plan transparent pour fermer en cliquant en dehors */}
+            <div 
+              className="fixed inset-0 z-[80] bg-black/15 dark:bg-black/40 backdrop-blur-[1px]"
+              onClick={() => setIsSearchOpen(false)}
+            />
 
-              {/* Petit champ de recherche pour le menu sélectionné */}
-              <div className="relative flex-1 max-w-xs sm:max-w-md">
-                <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <motion.div
+              initial={{ opacity: 0, y: -25, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.95 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="fixed top-20 md:top-24 left-1/2 -translate-x-1/2 z-[90] w-[92%] sm:w-[480px] bg-[#F5F1E9] dark:bg-[#111a2e] border-2 border-stone-800 dark:border-stone-600 rounded-2xl shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-none p-3.5 pointer-events-auto"
+            >
+              <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-stone-300 dark:border-stone-700/60">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-5 h-5 rounded-md bg-amber-400 text-stone-900 flex items-center justify-center border border-stone-800 shadow-xs">
+                    <Search className="w-3 h-3 stroke-[2.8]" />
+                  </div>
+                  <span className="text-xs font-bold text-stone-800 dark:text-stone-200">
+                    Rechercher dans <span className="font-extrabold text-amber-600 dark:text-amber-400">« {selectedTab} »</span>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSearchOpen(false)}
+                  className="p-1 text-stone-500 hover:text-stone-900 dark:hover:text-white rounded-lg hover:bg-stone-200 dark:hover:bg-stone-800 transition-colors cursor-pointer"
+                  title="Fermer la recherche"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="relative flex items-center">
+                <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
+                  ref={floatingSearchInputRef}
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={selectedTab === 'Mes fichiers' ? 'Rechercher un fichier...' : `Rechercher dans ${selectedTab}...`}
-                  className="w-full pl-8.5 pr-7 py-1.5 text-xs font-semibold bg-white dark:bg-[#070a13] text-stone-900 dark:text-white border-2 border-stone-800 dark:border-[#334155] rounded-xl shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none focus:outline-none focus:ring-2 focus:ring-amber-500 placeholder:text-stone-400"
+                  placeholder={selectedTab === 'Mes fichiers' ? 'Tapez le nom d\'un fichier...' : `Rechercher dans ${selectedTab}...`}
+                  className="w-full pl-9 pr-8 py-2 text-xs font-semibold bg-white dark:bg-[#070a13] text-stone-900 dark:text-white border-2 border-stone-800 dark:border-stone-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 placeholder:text-stone-400 shadow-inner"
+                  autoFocus
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 dark:hover:text-white p-0.5 cursor-pointer"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 dark:hover:text-white p-0.5 cursor-pointer"
+                    title="Effacer"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
                 )}
               </div>
-            </div>
 
-            {/* Compteur et tag du menu sélectionné */}
-            <div className="flex items-center gap-2 text-xs font-bold text-stone-700 dark:text-slate-300 shrink-0">
-              <span className="font-extrabold">
-                {filteredFiles.length} fichier{filteredFiles.length > 1 ? 's' : ''} disponible{filteredFiles.length > 1 ? 's' : ''}
-              </span>
-              <span className="text-[10px] uppercase tracking-wider bg-stone-300/80 dark:bg-white/10 text-stone-800 dark:text-white px-2 py-0.5 rounded-md font-mono border border-stone-400/50 dark:border-white/10">
-                {selectedTab}
-              </span>
-            </div>
-          </div>
+              <div className="flex items-center justify-between mt-2 pt-1 text-[11px] text-stone-600 dark:text-stone-400 font-medium px-1">
+                <span>
+                  {searchQuery.trim() ? (
+                    <>
+                      <strong className="text-stone-900 dark:text-white">{filteredFiles.length}</strong> résultat{filteredFiles.length > 1 ? 's' : ''} trouvé{filteredFiles.length > 1 ? 's' : ''}
+                    </>
+                  ) : (
+                    <span>Entrez un mot-clé pour filtrer les fichiers</span>
+                  )}
+                </span>
+                {searchQuery.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="text-[10px] text-rose-500 hover:underline font-bold cursor-pointer"
+                  >
+                    Effacer
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
+      <div className="w-full px-2 sm:px-4 pt-16 sm:pt-20">
+        <div className="pt-1 pb-64 w-full max-w-7xl mx-auto">
           {filteredFiles.length === 0 ? (
             <div className="text-center py-12 bg-white/40 dark:bg-white/[0.02] rounded-2xl border-2 border-dashed border-stone-400/40 dark:border-stone-700/50 p-8 my-4">
               <h2 className="text-xl font-bold text-[#2D4A3E] dark:text-white mb-2">{selectedTab}</h2>
               <p className="text-sm text-[#5C6B5A] dark:text-slate-400 mb-4">
                 {searchQuery ? `Aucun fichier ne correspond à votre recherche "${searchQuery}".` : `Aucun fichier dans ${selectedTab}.`}
               </p>
-              <button
-                onClick={handleButtonClick}
-                className="px-4 py-2 bg-[#2D4A3E] hover:bg-[#1e332a] text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer inline-flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
-              >
-                <Upload className="w-4 h-4" />
-                <span>Importer un fichier dans {selectedTab}</span>
-              </button>
+              {searchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="px-4 py-2 bg-stone-200 hover:bg-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 dark:border-stone-600 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer inline-flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                >
+                  <X className="w-4 h-4" />
+                  <span>Effacer la recherche</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleButtonClick}
+                  className="px-4 py-2 bg-[#2D4A3E] hover:bg-[#1e332a] text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer inline-flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>Importer un fichier dans {selectedTab}</span>
+                </button>
+              )}
             </div>
           ) : (
             <div className="w-full">
