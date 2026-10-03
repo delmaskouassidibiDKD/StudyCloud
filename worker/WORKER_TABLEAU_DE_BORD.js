@@ -2616,7 +2616,26 @@ function renderDashboardHtml(data) {
           }
         }
       }
+    };
+    function toggleSidebar(forceState) {
+      const drawer = document.getElementById('sidebar-drawer');
+      const backdrop = document.getElementById('sidebar-backdrop');
+      if (!drawer || !backdrop) return;
+      const isOpen = drawer.classList.contains('open');
+      const willOpen = (typeof forceState === 'boolean') ? forceState : !isOpen;
+      if (willOpen) {
+        drawer.classList.add('open');
+        drawer.style.setProperty('transform', 'translateX(0)', 'important');
+        backdrop.classList.remove('hidden');
+        backdrop.style.display = 'block';
+      } else {
+        drawer.classList.remove('open');
+        drawer.style.setProperty('transform', 'translateX(-100%)', 'important');
+        backdrop.classList.add('hidden');
+        backdrop.style.display = 'none';
+      }
     }
+    window.toggleSidebar = toggleSidebar;
   </script>
   <style>
     body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -5158,20 +5177,12 @@ function renderDashboardHtml(data) {
       setTimeout(() => t.classList.add('hidden'), 3500);
     }
 
-    let lastSidebarToggleTime = 0;
     function toggleSidebar(forceState) {
-      const isForced = (typeof forceState === 'boolean');
-      const now = Date.now();
-      if (!isForced && now - lastSidebarToggleTime < 250) {
-        return; // Ignore les double-clics ou doubles-événements tactiles en moins de 250ms
-      }
-      lastSidebarToggleTime = now;
-
       const drawer = document.getElementById('sidebar-drawer');
       const backdrop = document.getElementById('sidebar-backdrop');
       if (!drawer || !backdrop) return;
       const isOpen = drawer.classList.contains('open');
-      const willOpen = isForced ? forceState : !isOpen;
+      const willOpen = (typeof forceState === 'boolean') ? forceState : !isOpen;
 
       if (willOpen) {
         drawer.classList.add('open');
@@ -5499,7 +5510,8 @@ function renderDashboardHtml(data) {
     window.recalculateUserStorage = recalculateUserStorage;
 
     async function deleteUserAccount(userId, userName) {
-      if (!confirm('Êtes-vous sûr de vouloir supprimer définitivement l\'utilisateur "' + (userName || userId) + '" de la base D1 ?')) {
+      const confirmMsg = "Êtes-vous sûr de vouloir supprimer définitivement l'utilisateur (" + (userName || userId) + ") de la base D1 ?";
+      if (!confirm(confirmMsg)) {
         return;
       }
       try {
@@ -11579,7 +11591,13 @@ function renderDashboardHtml(data) {
       }
     });
 
-// Gestionnaire unique par onclick direct sur le bouton hamburger
+    const hamburgerBtn = document.getElementById('btn-hamburger');
+    if (hamburgerBtn) {
+      hamburgerBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleSidebar();
+      });
+    }
 
     // AUCUNE boucle infinie ni polling continu en arrière-plan :
     // L'écoute est 100% intelligente et événementielle (très économique pour vos quotas Cloudflare) :
