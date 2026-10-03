@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Menu, X, Search, Upload, Home, MoreVertical } from 'lucide-react';
+import { Menu, X, Search, Upload, Home, MoreVertical, FolderPlus } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
+import { DnaLogo } from './DnaLogo';
 
 interface MenuDrawerProps {
   onNavigateHome: () => void;
@@ -15,6 +16,7 @@ interface MenuDrawerProps {
   onEditMatiere?: (index: number, name: string, coefficient: string) => void;
   onUpdateMatiereColor?: (index: number, color: string) => void;
   onSelectMatiere?: (matiereName: string) => void;
+  onOpenAddMatiere?: () => void;
 }
 
 const COLOR_OPTIONS = [
@@ -78,6 +80,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
   onEditMatiere,
   onUpdateMatiereColor,
   onSelectMatiere,
+  onOpenAddMatiere,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeMenuIndex, setActiveMenuIndex] = useState<number | null>(null);
@@ -106,11 +109,50 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
             transition={{ type: 'tween', ease: 'easeOut', duration: 0.25 }}
             className="fixed top-0 left-0 bottom-0 z-[9999] w-80 md:w-96 bg-[#FDFBF7] dark:bg-[#070a13] border-r-3 border-stone-800 dark:border-[#1e293b] px-6 pt-4 pb-6 flex flex-col shadow-2xl"
           >
-            {/* Drawer Header - Bouton Fermer */}
-            <div className="flex items-center justify-end pb-3 mb-3 border-b-2 border-stone-200 dark:border-[#1e293b]">
+            {/* Drawer Header */}
+            <div className="flex items-center justify-between pb-3 mb-3 border-b-2 border-stone-200 dark:border-[#1e293b] gap-2 min-h-[46px]">
+              {/* Version Ordinateur: Bouton Ajouter des matières ou autre */}
               <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  if (onOpenAddMatiere) {
+                    onOpenAddMatiere();
+                  }
+                }}
+                className="hidden md:flex items-center gap-2 px-3 py-2 rounded-xl border-2 border-stone-800 dark:border-[#334155] bg-[#F5F1E9] hover:bg-orange-100/70 dark:bg-[#1e293b] dark:hover:bg-[#283852] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 group shrink-0"
+                title="Ajouter des matières ou autre"
+              >
+                <div className="p-1 rounded-lg bg-orange-500/10 dark:bg-orange-500/20 text-orange-500 dark:text-orange-400 group-hover:scale-110 transition-transform flex items-center justify-center">
+                  <FolderPlus className="w-4 h-4 text-orange-500 dark:text-orange-400 shrink-0" />
+                </div>
+                <span className="font-extrabold text-[12.5px] tracking-tight text-stone-900 dark:text-white whitespace-nowrap">
+                  Ajouter des matières ou autre
+                </span>
+              </button>
+
+              {/* Version Téléphone: Logo ADN + Nom de l'application (comme Image 3) */}
+              <div className="flex md:hidden items-center gap-2 select-none">
+                <DnaLogo className="w-7 h-7 shrink-0 drop-shadow-[0_0_2px_rgba(0,0,0,0.9)]" glow={true} />
+                <div className="notranslate flex flex-col justify-center">
+                  <h1 className="font-black tracking-tight text-[17px] leading-tight flex items-center select-none">
+                    <span className="font-black text-orange-500">Study</span>
+                    <span className="font-black text-sky-400 dark:text-blue-400">Cloud</span>
+                  </h1>
+                  <p 
+                    className="text-[8.5px] font-black uppercase tracking-widest mt-0.5 leading-none" 
+                    style={{ letterSpacing: '0.12em', color: '#f59e0b' }}
+                  >
+                    DKD TECHNOLOGIES
+                  </p>
+                </div>
+              </div>
+
+              {/* Bouton Fermer */}
+              <button
+                type="button"
                 onClick={() => setIsOpen(false)}
-                className="p-1.5 hover:bg-stone-200 dark:hover:bg-[#283852] rounded-lg transition-colors text-stone-700 dark:text-white border-2 border-stone-800 dark:border-[#334155] bg-[#F5F1E9] dark:bg-[#1e293b] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none shrink-0 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
+                className="p-1.5 hover:bg-stone-200 dark:hover:bg-[#283852] rounded-lg transition-colors text-stone-700 dark:text-white border-2 border-stone-800 dark:border-[#334155] bg-[#F5F1E9] dark:bg-[#1e293b] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none shrink-0 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer ml-auto"
                 title="Fermer"
               >
                 <X className="w-4 h-4 text-stone-800 dark:text-white" />
