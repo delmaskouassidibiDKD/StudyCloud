@@ -564,4 +564,52 @@ p.brand-tagline,
   animation-play-state: paused !important;
 }
 
+/* ========================================================================= */
+/* BORDURE TOURNANTE ORANGE & BLEU DOUCE ET LENTE (MON STOCKAGE & CRÉDITS IA) */
+/* ========================================================================= */
+@keyframes spinBorderSlow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.rotating-orange-blue-border {
+  position: relative;
+  padding: 2.5px;
+  border-radius: 14px;
+  overflow: hidden;
+  isolation: isolate;
+  box-shadow: 0 4px 14px -2px rgba(249, 115, 22, 0.25), 0 4px 14px -2px rgba(56, 189, 248, 0.25);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rotating-orange-blue-border:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px -1px rgba(249, 115, 22, 0.35), 0 6px 18px -1px rgba(56, 189, 248, 0.35);
+}
+
+.rotating-orange-blue-border::before {
+  content: '';
+  position: absolute;
+  top: -65%;
+  left: -65%;
+  width: 230%;
+  height: 230%;
+  background: conic-gradient(
+    from 0deg,
+    #F97316 0deg,
+    #FB923C 60deg,
+    #38BDF8 150deg,
+    #0284C7 210deg,
+    #F97316 280deg,
+    #FB923C 330deg,
+    #38BDF8 360deg
+  );
+  animation: spinBorderSlow 7.5s linear infinite;
+  z-index: 0;
+}
+
 

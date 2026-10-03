@@ -12,14 +12,14 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCount, onOpenUpload, publishStatus }) => {
-  const desktopNavItems: Array<{ id: NavigationTab; label: string; icon: any; highlight?: boolean; badge?: string | number }> = [
+  const desktopNavItems: Array<{ id: NavigationTab; label: string; icon: any; highlight?: boolean; badge?: string | number; specialGlow?: boolean }> = [
     { id: 'folders' as NavigationTab, label: 'Tableau de bord', icon: LayoutDashboard },
-    { id: 'storage-menu' as NavigationTab, label: 'Mon stockage', icon: HardDrive },
-    { id: 'ai-subscriptions' as NavigationTab, label: 'Crédits IA', icon: Sparkles },
     { id: 'upload' as NavigationTab, label: 'Partager', icon: Upload, highlight: true },
     { id: 'shared' as NavigationTab, label: 'Liens Actifs', icon: Share2 },
     { id: 'library' as NavigationTab, label: 'Bibliothèque', icon: BookOpen },
     { id: 'settings' as NavigationTab, label: 'Profil', icon: UserCircle },
+    { id: 'storage-menu' as NavigationTab, label: 'Mon stockage', icon: HardDrive, specialGlow: true },
+    { id: 'ai-subscriptions' as NavigationTab, label: 'Crédits IA', icon: Sparkles, specialGlow: true },
   ];
 
   const mobileNavItems: Array<{ id: NavigationTab; label: string; icon: any }> = [
@@ -58,6 +58,44 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
           {desktopNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentTab === item.id;
+
+            if (item.specialGlow) {
+              return (
+                <div key={item.id} className="rotating-orange-blue-border my-1.5">
+                  <button
+                    onClick={() => {
+                      setTab(item.id);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-[12px] transition-all relative z-10 cursor-pointer ${
+                      isActive
+                        ? 'bg-white text-[#1F4761] dark:bg-[#1e293b] dark:text-white shadow-sm'
+                        : 'bg-[#18394e] hover:bg-[#204963] text-white dark:bg-[#0c1424] dark:hover:bg-[#15233c]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Icon 
+                        className={`w-5 h-5 shrink-0 stroke-[2.2] transition-colors ${
+                          isActive 
+                            ? 'text-[#1F4761] dark:text-orange-400' 
+                            : 'text-orange-400 dark:text-sky-400'
+                        }`} 
+                      />
+                      <span className={`font-black text-[15.5px] tracking-tight whitespace-nowrap ${
+                        isActive ? 'text-[#1F4761] dark:text-white' : 'text-white'
+                      }`}>
+                        {item.label}
+                      </span>
+                    </div>
+                    {item.badge !== undefined && (
+                      <span className="text-xs px-2 py-0.5 bg-white border-2 border-black rounded-md font-mono font-black shadow-[1px_1px_0px_0px_#000000] text-black dark:bg-[#0f172a] dark:border-slate-600 dark:text-white dark:shadow-none">
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              );
+            }
+
             return (
               <button
                 key={item.id}
