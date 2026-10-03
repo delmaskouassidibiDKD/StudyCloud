@@ -3495,6 +3495,54 @@ async function ensureCloudMediaTables(db: any) {
     `).run().catch(() => {});
     try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_storage_upg_user ON storage_upgrade_requests(user_id, status)").run(); } catch(e){}
 
+    // 23. Table des dossiers partagés (liens uniques)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS shared_folders (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        share_code TEXT,
+        share_url TEXT,
+        qr_code_data TEXT,
+        title TEXT NOT NULL,
+        description TEXT,
+        category TEXT DEFAULT 'Cours',
+        author_name TEXT,
+        school TEXT,
+        country TEXT DEFAULT 'Côte d''Ivoire',
+        is_public INTEGER DEFAULT 0,
+        is_password_protected INTEGER DEFAULT 0,
+        password_hash TEXT,
+        allow_download INTEGER DEFAULT 1,
+        total_size INTEGER DEFAULT 0,
+        downloads_count INTEGER DEFAULT 0,
+        views_count INTEGER DEFAULT 0,
+        expires_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_shared_folders_user ON shared_folders(user_id)").run(); } catch(e){}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_shared_folders_code ON shared_folders(share_code)").run(); } catch(e){}
+
+    // 24. Table des fichiers associés aux liens de partage (dédiée aux partages)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS shared_folder_files (
+        id TEXT PRIMARY KEY,
+        shared_folder_id TEXT NOT NULL,
+        file_id TEXT,
+        name TEXT NOT NULL,
+        size INTEGER DEFAULT 0,
+        type TEXT,
+        r2_key TEXT,
+        file_url TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_sff_folder ON shared_folder_files(shared_folder_id)").run(); } catch(e){}
+
+    // Garantir que 'default-user' existe pour satisfaire toute contrainte de clé étrangère existante
+    await db.prepare("INSERT OR IGNORE INTO users (id, name, email) VALUES ('default-user', 'Étudiant StudyCloud', 'guest@studycloud.com')").run().catch(() => {});
+
     isCloudMediaTablesInitialized = true;
   } catch (err) {
     console.error('[StudyCloud Cloud Media Tables Init Error]', err);
@@ -11609,7 +11657,6 @@ a:hover{transform:translateY(-2px)}
             for (const f of downloadableFiles) {
               try {
                 const sffId = crypto.randomUUID();
-                const fileIdRef = f.fileId || f.id || null;
                 const fileName = f.name || f.fileName || f.title || 'Fichier';
                 const fileSize = Number(f.size) || Number(f.sizeBytes) || 0;
                 const fileType = f.type || 'application/octet-stream';
@@ -11619,22 +11666,37 @@ a:hover{transform:translateY(-2px)}
                   fileUrl = `${url.origin}/api/storage/file/${encodeURIComponent(fileR2Key)}`;
                 }
 
-                await env.DB.prepare(`
-                  INSERT OR REPLACE INTO shared_folder_files (id, shared_folder_id, file_id, name, size, type, r2_key, file_url)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                `).bind(sffId, id, fileIdRef, fileName, fileSize, fileType, fileR2Key, fileUrl).run();
-                insertedCount++;
+                // Insérer dans shared_folder_files : file_id est mis à NULL pour satisfaire
+                // toute contrainte FOREIGN KEY (file_id) REFERENCES files(id) existante
+                let success = false;
+                try {
+                  await env.DB.prepare(`
+                    INSERT INTO shared_folder_files (id, shared_folder_id, file_id, name, size, type, r2_key, file_url)
+                    VALUES (?, ?, NULL, ?, ?, ?, ?, ?)
+                  `).bind(sffId, id, fileName, fileSize, fileType, fileR2Key, fileUrl).run();
+                  success = true;
+                } catch (insErr1) {
+                  try {
+                    await env.DB.prepare(`
+                      INSERT INTO shared_folder_files (id, shared_folder_id, name, size, type, r2_key, file_url)
+                      VALUES (?, ?, ?, ?, ?, ?, ?)
+                    `).bind(sffId, id, fileName, fileSize, fileType, fileR2Key, fileUrl).run();
+                    success = true;
+                  } catch (insErr2) {
+                    console.warn('[Shares] Erreur insertion fichier partage:', insErr2);
+                  }
+                }
+
+                if (success) {
+                  insertedCount++;
+                }
               } catch (fileErr) {
-                console.warn('[Shares] Erreur insertion fichier partage:', fileErr);
+                console.warn('[Shares] Erreur préparation fichier partage:', fileErr);
               }
             }
 
             // 3. Vérification finale dans D1 : jamais de lien vide
-            const countRow: any = await env.DB.prepare('SELECT COUNT(*) as cnt FROM shared_folder_files WHERE shared_folder_id = ?')
-              .bind(id).first().catch(() => ({ cnt: insertedCount }));
-            const savedCount = Number(countRow?.cnt ?? insertedCount) || 0;
-
-            if (savedCount === 0) {
+            if (insertedCount === 0) {
               // Annuler la création du dossier : aucun lien à 0 fichier ne doit exister
               await env.DB.prepare('DELETE FROM shared_folders WHERE id = ?').bind(id).run().catch(() => {});
               return jsonResponse({
@@ -11644,8 +11706,9 @@ a:hover{transform:translateY(-2px)}
               }, 500, origin);
             }
 
-            // 4. Succès : purger la staging (les fichiers sont désormais officialisés dans le partage)
-            await env.DB.prepare('DELETE FROM shared_folder_files WHERE shared_folder_id = ?').bind(`staging_${userId}`).run().catch(() => {});
+            // 4. Les fichiers importés restent dans le menu d'importation (staging) pour que
+            // l'utilisateur puisse recréer un lien avec les mêmes fichiers ou en ajouter/retirer.
+            // Ils ne seront retirés de la vue que si l'utilisateur clique sur « Nouveau partage ».
           }
 
           return jsonResponse({

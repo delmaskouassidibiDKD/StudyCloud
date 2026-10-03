@@ -400,7 +400,7 @@ export default function App() {
                 }
               }
 
-              const r2Key = buildSharedLinkFileKey(userId, item.id, item.name);
+              const r2Key = buildSharedLinkFileKey(folderId, item.id, item.name);
               if (fileBlob) {
                 calculatedSize = calculatedSize || fileBlob.size;
                 const fileObj = new File([fileBlob], item.name, {
@@ -502,13 +502,10 @@ export default function App() {
         return;
       }
 
-      // 2. Succès confirmé par le serveur : afficher le lien et vider la zone d'import
+      // 2. Succès confirmé par le serveur : afficher le lien.
+      // Les fichiers importés restent dans le menu d'importation pour permettre d'autres créations ou retraits
       setFolders((prev) => [newFolder, ...prev]);
-      setUploadedItems([]);
       setSelectedItemIds([]);
-      try {
-        localStorage.removeItem('unifolder_uploaded_items');
-      } catch (e) {}
       showToast(`✨ Votre lien "${linkName.trim()}" a été créé avec succès (${validFiles.length} fichier${validFiles.length > 1 ? 's' : ''}) ! Retrouvez-le dans Liens Actifs.`);
 
       // Actualiser immédiatement la liste depuis D1 (source de vérité) et le cache TanStack Query
