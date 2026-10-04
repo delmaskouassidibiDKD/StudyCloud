@@ -501,6 +501,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   const playAudio = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    if (audio.ended || (audio.duration && !isNaN(audio.duration) && audio.currentTime >= audio.duration)) {
+      audio.currentTime = 0;
+      setCurrentTime(0);
+    }
     desiredPlaybackStateRef.current = true;
     setIsAudioPlaying(true);
     isChangingTrackRef.current = false;
@@ -557,6 +561,28 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
   const handleAudioNext = () => {
     if (filteredAudio.length === 0) return;
+    const curIdx = selectedTrack ? filteredAudio.findIndex(t => t.id === selectedTrack.id) : -1;
+    // Si une seule piste ou dernière piste en mode sans répétition : arrêt propre et immédiat
+    if ((filteredAudio.length <= 1 || curIdx >= filteredAudio.length - 1) && isAudioRepeat === 'off') {
+      setIsAudioPlaying(false);
+      desiredPlaybackStateRef.current = false;
+      isChangingTrackRef.current = false;
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      setCurrentTime(0);
+      return;
+    }
+    if (filteredAudio.length === 1) {
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        playAudio();
+      }
+      setCurrentTime(0);
+      setIsAudioPlaying(true);
+      return;
+    }
     isChangingTrackRef.current = true;
     desiredPlaybackStateRef.current = true;
     setIsAudioPlaying(true);
@@ -566,13 +592,28 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       setSelectedTrack(filteredAudio[randIdx]);
       return;
     }
-    const curIdx = selectedTrack ? filteredAudio.findIndex(t => t.id === selectedTrack.id) : -1;
     const nextIdx = (curIdx + 1) % filteredAudio.length;
+    if (curIdx === nextIdx) {
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        playAudio();
+      }
+      return;
+    }
     setSelectedTrack(filteredAudio[nextIdx]);
   };
 
   const handleAudioPrev = () => {
     if (filteredAudio.length === 0) return;
+    if (filteredAudio.length === 1) {
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        playAudio();
+      }
+      setCurrentTime(0);
+      setIsAudioPlaying(true);
+      return;
+    }
     isChangingTrackRef.current = true;
     desiredPlaybackStateRef.current = true;
     setIsAudioPlaying(true);
@@ -584,6 +625,13 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     }
     const curIdx = selectedTrack ? filteredAudio.findIndex(t => t.id === selectedTrack.id) : 0;
     const prevIdx = (curIdx - 1 + filteredAudio.length) % filteredAudio.length;
+    if (curIdx === prevIdx) {
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        playAudio();
+      }
+      return;
+    }
     setSelectedTrack(filteredAudio[prevIdx]);
   };
 
@@ -1700,6 +1748,15 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           preload="auto"
           autoPlay={isAudioPlaying}
           loop={isAudioRepeat === 'one'}
+          onLoadedMetadata={() => {
+            if (audioRef.current && audioRef.current.duration && !isNaN(audioRef.current.duration)) {
+              const dur = Math.floor(audioRef.current.duration);
+              setDuration(dur);
+              if (selectedTrack && (!selectedTrack.durationSec || selectedTrack.durationSec === 0)) {
+                setFilteredAudio(prev => prev.map(t => t.id === selectedTrack.id ? { ...t, durationSec: dur } : t));
+              }
+            }
+          }}
           onCanPlay={() => {
             if (desiredPlaybackStateRef.current && audioRef.current && audioRef.current.paused) {
               playAudio();
@@ -1715,6 +1772,17 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
             setIsAudioPlaying(true);
           }}
           onPause={() => {
+            if (audioRef.current?.ended) {
+              if (isAudioRepeat === 'off') {
+                const curIdx = selectedTrack ? filteredAudio.findIndex(t => t.id === selectedTrack.id) : -1;
+                if (curIdx === -1 || curIdx >= filteredAudio.length - 1) {
+                  setIsAudioPlaying(false);
+                  desiredPlaybackStateRef.current = false;
+                  isChangingTrackRef.current = false;
+                  return;
+                }
+              }
+            }
             if (!isChangingTrackRef.current) {
               setIsAudioPlaying(false);
             }
@@ -1756,15 +1824,49 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                 playAudio();
               }
               setCurrentTime(0);
+            } else if (isAudioRepeat === 'all') {
+              if (filteredAudio.length <= 1) {
+                if (audioRef.current) {
+                  audioRef.current.currentTime = 0;
+                  playAudio();
+                }
+                setCurrentTime(0);
+              } else {
+                handleAudioNext();
+              }
             } else {
-              handleAudioNext();
+              // Répétition désactivée ('off') : passer au suivant s'il y en a un dans la liste, sinon arrêter net
+              const curIdx = selectedTrack ? filteredAudio.findIndex(t => t.id === selectedTrack.id) : -1;
+              if (curIdx >= 0 && curIdx < filteredAudio.length - 1) {
+                handleAudioNext();
+              } else {
+                setIsAudioPlaying(false);
+                desiredPlaybackStateRef.current = false;
+                isChangingTrackRef.current = false;
+                setCurrentTime(0);
+                if (audioRef.current) {
+                  audioRef.current.pause();
+                  audioRef.current.currentTime = 0;
+                }
+              }
             }
           }}
           onTimeUpdate={() => {
             if (audioRef.current) {
-              setCurrentTime(Math.floor(audioRef.current.currentTime));
-              if (audioRef.current.duration && !isNaN(audioRef.current.duration)) {
-                setDuration(Math.floor(audioRef.current.duration));
+              const cur = Math.floor(audioRef.current.currentTime);
+              setCurrentTime(cur);
+              if (audioRef.current.duration && !isNaN(audioRef.current.duration) && audioRef.current.duration > 0) {
+                const dur = Math.floor(audioRef.current.duration);
+                setDuration(dur);
+                // Si la chanson arrive à la fin et que la répétition est 'off' et qu'il n'y a pas de son suivant
+                if (cur >= dur && isAudioRepeat === 'off') {
+                  const curIdx = selectedTrack ? filteredAudio.findIndex(t => t.id === selectedTrack.id) : -1;
+                  if (curIdx === -1 || curIdx >= filteredAudio.length - 1) {
+                    setIsAudioPlaying(false);
+                    desiredPlaybackStateRef.current = false;
+                    isChangingTrackRef.current = false;
+                  }
+                }
               }
             }
           }}
@@ -2361,19 +2463,35 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                           >
                             <span
                               className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-1' : ''}`}
-                              style={{ height: isAudioPlaying ? undefined : '5px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }}
+                              style={{ 
+                                height: isAudioPlaying ? undefined : '5px', 
+                                animation: isAudioPlaying ? undefined : 'none', 
+                                animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                              }}
                             />
                             <span
                               className={`w-1 rounded-full bg-amber-300 ${isAudioPlaying ? 'music-bar-2' : ''}`}
-                              style={{ height: isAudioPlaying ? undefined : '14px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }}
+                              style={{ 
+                                height: isAudioPlaying ? undefined : '14px', 
+                                animation: isAudioPlaying ? undefined : 'none', 
+                                animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                              }}
                             />
                             <span
                               className={`w-1 rounded-full bg-yellow-400 ${isAudioPlaying ? 'music-bar-3' : ''}`}
-                              style={{ height: isAudioPlaying ? undefined : '9px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }}
+                              style={{ 
+                                height: isAudioPlaying ? undefined : '9px', 
+                                animation: isAudioPlaying ? undefined : 'none', 
+                                animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                              }}
                             />
                             <span
                               className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-4' : ''}`}
-                              style={{ height: isAudioPlaying ? undefined : '4px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }}
+                              style={{ 
+                                height: isAudioPlaying ? undefined : '4px', 
+                                animation: isAudioPlaying ? undefined : 'none', 
+                                animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                              }}
                             />
                           </div>
                         )}
