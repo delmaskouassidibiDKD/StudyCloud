@@ -466,8 +466,13 @@ class UploadQueueManager {
         CloudStorageAPI.saveAudio(audioToSave as any).catch(() => {});
       }
 
-      // Synchronisation directe dans la table files de D1 (pour Mes Fichiers et multi-appareils)
-      if (uploadUrl && r2Key) {
+      // Synchronisation directe et EXCLUSIVE dans la table files de D1 (pour Mes Fichiers et Matières)
+      const isMesFichiersUpload = category === 'mes-fichiers' || 
+        task.uploadSource === 'mes-fichiers' || 
+        Boolean((task.fileItem as any)?.matiere) || 
+        (task.folderId && !['documents', 'images', 'videos', 'audio', 'default-folder', 'root'].includes(task.folderId));
+
+      if (uploadUrl && r2Key && isMesFichiersUpload) {
         const currentUserId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
         const extVal = (task.fileItem as any)?.extension || (fileName.includes('.') ? fileName.split('.').pop()?.toUpperCase() : 'FICHIER');
         const resolvedMatiereId = (task.fileItem as any)?.matiereId || 
@@ -484,13 +489,14 @@ class UploadQueueManager {
           extension: extVal,
           r2Key: r2Key,
           fileUrl: uploadUrl,
+          thumbnailUrl: previewDataUrl || task.fileItem?.thumbnailUrl || (task.fileItem as any)?.coverUrl || (task.fileItem as any)?.previewUrl || undefined,
           isFavorite: !!task.fileItem?.isFavorite,
           isImported: true,
           lastImported: Date.now()
         }).catch(err => console.warn('[UploadQueue] Erreur update registerFileMetadata:', err));
       }
 
-      // Invalider immédiatement le cache TanStack Query
+      // Invalider immédiatement le cache TanStack Query ciblé pour préserver l'isolation
       try {
         if (category === 'audio') invalidateCloudQueries.audio();
         else if (category === 'videos') invalidateCloudQueries.videos();
@@ -498,8 +504,11 @@ class UploadQueueManager {
         else if (category === 'documents') invalidateCloudQueries.documents();
         else if (category === 'classeur') invalidateCloudQueries.classeurFiles(folderId);
         else if (category === 'mes-fichiers') invalidateCloudQueries.filesMenu();
+        
         invalidateCloudQueries.overview();
-        invalidateCloudQueries.all();
+        if (category !== 'mes-fichiers' && category !== 'documents') {
+          invalidateCloudQueries.all();
+        }
       } catch {}
 
       // Déclencher un événement global pour tout listener de mise à jour

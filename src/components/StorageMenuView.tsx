@@ -441,7 +441,13 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
                 </span>
               </div>
               <button
-                onClick={() => setShowUpgradeModal(true)}
+                onClick={() => {
+                  if (onOpenPricing) onOpenPricing('storage');
+                  else {
+                    window.dispatchEvent(new CustomEvent('studycloud_open_pricing', { detail: { tab: 'storage' } }));
+                    setIsUpgradeModalOpen(true);
+                  }
+                }}
                 className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold rounded-xl text-xs shrink-0 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer"
               >
                 Augmenter

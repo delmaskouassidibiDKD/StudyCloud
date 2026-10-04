@@ -31,6 +31,8 @@ export interface ImportedItem {
   type: string;
   extension?: string;
   url?: string;
+  thumbnailUrl?: string;
+  previewUrl?: string;
   r2Key?: string;
   isImage?: boolean;
   matiere?: string;
@@ -623,13 +625,56 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isSearchOpen]);
 
+  const isMatchingMatiere = (file: ImportedItem, targetMatiere: any | string): boolean => {
+    if (!file) return false;
+    const targetName = typeof targetMatiere === 'string' ? targetMatiere.trim().toLowerCase() : (targetMatiere?.name || '').trim().toLowerCase();
+    const targetId = typeof targetMatiere === 'object' && targetMatiere?.id ? targetMatiere.id : '';
+
+    if (!targetName && !targetId) return false;
+
+    // 1. Vérifier f.matiere (nom, liste séparée par virgule, ou ID)
+    if (file.matiere) {
+      const mStr = file.matiere.trim().toLowerCase();
+      if (mStr === targetName) return true;
+      if (targetId && mStr === targetId.toLowerCase()) return true;
+      const parts = mStr.split(',').map(s => s.trim().toLowerCase());
+      if (parts.includes(targetName)) return true;
+      if (targetId && parts.includes(targetId.toLowerCase())) return true;
+    }
+
+    // 2. Vérifier f.matiereId
+    if (file.matiereId) {
+      const mid = file.matiereId.trim().toLowerCase();
+      if (targetId && mid === targetId.toLowerCase()) return true;
+      if (mid === targetName) return true;
+      const parts = mid.split(',').map(s => s.trim().toLowerCase());
+      if (targetId && parts.includes(targetId.toLowerCase())) return true;
+      if (parts.includes(targetName)) return true;
+    }
+
+    // 3. Vérifier f.folderName
+    if (file.folderName) {
+      const fName = file.folderName.trim().toLowerCase();
+      if (fName === targetName) return true;
+      if (targetId && fName === targetId.toLowerCase()) return true;
+    }
+
+    return false;
+  };
+
   const filteredFiles = importedFiles.filter(f => {
+    // 0. Protection absolue : ignorer tout fichier appartenant exclusivement à d'autres menus
+    const fCat = ((f as any).category || '').toLowerCase();
+    const fSource = ((f as any).source || '').toLowerCase();
+    if (['images', 'videos', 'audio'].includes(fCat) && !f.matiere && fSource !== 'mes fichiers') {
+      return false;
+    }
+
     // 1. Filtrage selon l'onglet / la matière sélectionnée
+    // Si "Mes fichiers" est sélectionné, on affiche tous les fichiers du menu (y compris ceux classés dans une matière)
     if (selectedTab !== 'Mes fichiers') {
       const targetMatiere = savedMatieres.find(m => m.name.trim().toLowerCase() === selectedTab.trim().toLowerCase() || m.id === selectedTab);
-      const matchMatiere = (f.matiere && f.matiere.trim().toLowerCase() === selectedTab.trim().toLowerCase()) ||
-                            (targetMatiere && (f.matiereId === targetMatiere.id || f.matiere === targetMatiere.id)) ||
-                            (f.folderName && f.folderName.trim().toLowerCase() === selectedTab.trim().toLowerCase());
+      const matchMatiere = isMatchingMatiere(f, targetMatiere || selectedTab);
       if (!matchMatiere) return false;
     }
 
@@ -928,7 +973,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     setOpenMenuId(null);
     setSelectedFileIds(prev => prev.filter(i => i !== id));
     deleteFileBlob(id);
-    StudyCloudAPI.deleteFile(id).catch(() => {});
+    const currentUserId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+    StudyCloudAPI.deleteFile(id, currentUserId).catch(() => {});
 
     // Supprimer du stockage direct
     try {
@@ -969,10 +1015,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     invalidateCloudQueries.favorites();
 
     window.dispatchEvent(new Event('unifolder_files_updated'));
-    setSuccessMessage('Fichier supprimé avec succès');
+    setSuccessMessage('Fichier supprimé avec succès (supprimé de Cloudflare R2 & D1)');
     setTimeout(() => {
       setSuccessMessage(null);
-    }, 3000);
+    }, 3500);
   };
 
   const performBatchDelete = (ids: string[]) => {
@@ -981,9 +1027,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     const filesToDelete = importedFiles.filter(item => idsToDelete.includes(item.id));
     setImportedFiles(prev => prev.filter(item => !idsToDelete.includes(item.id)));
 
+    const currentUserId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
     idsToDelete.forEach(id => {
       deleteFileBlob(id);
-      StudyCloudAPI.deleteFile(id).catch(() => {});
+      StudyCloudAPI.deleteFile(id, currentUserId).catch(() => {});
     });
 
     // Supprimer du stockage direct
@@ -1029,10 +1076,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     window.dispatchEvent(new Event('unifolder_files_updated'));
     setSelectedFileIds([]);
     setIsSelectionMode(false);
-    setSuccessMessage(idsToDelete.length > 1 ? 'Fichiers supprimés avec succès' : 'Fichier supprimé avec succès');
+    setSuccessMessage(idsToDelete.length > 1 ? `${idsToDelete.length} fichiers supprimés avec succès (de Cloudflare R2 & D1)` : 'Fichier supprimé avec succès (supprimé de Cloudflare R2 & D1)');
     setTimeout(() => {
       setSuccessMessage(null);
-    }, 3000);
+    }, 3500);
   };
 
   const cleanupUnusedMatieres = () => {
@@ -1103,6 +1150,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           extension: fileToClassify.extension,
           r2Key: (fileToClassify as any).r2Key || null,
           fileUrl: fileToClassify.url,
+          thumbnailUrl: fileToClassify.thumbnailUrl || fileToClassify.previewUrl || undefined,
           isFavorite: fileToClassify.isFavorite,
           isImported: true,
           lastImported: typeof fileToClassify.importedAt === 'number' ? fileToClassify.importedAt : Date.now()
@@ -1116,14 +1164,14 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     cleanupUnusedMatieres();
     setClassifyFileIds(null);
     window.dispatchEvent(new Event('unifolder_files_updated'));
-    setSuccessMessage("Ajouté avec succès !");
+    setSuccessMessage(`Fichier classé avec succès dans : ${matiereString}`);
     setTimeout(() => {
       setSuccessMessage(null);
       setSelectedFileIds([]);
       setIsSelectionMode(false);
       setOpenMenuId(null);
       setSelectedMatiereIds([]);
-    }, 1500);
+    }, 2000);
   };
 
   const compressImage = (file: File): Promise<string> => {
@@ -1262,25 +1310,25 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
             extension: extVal,
             r2Key: null,
             fileUrl: localUrl,
+            thumbnailUrl: localUrl,
             isFavorite: false,
             isImported: true,
             lastImported: now + i
           }).catch(() => {});
         }
 
-        // 3. Préparer les données pour UploadQueue
+        // 3. Préparer les données pour UploadQueue avec catégorie exclusive mes-fichiers
         itemsWithFiles.push({
           file: f,
           item: {
             ...item,
-            category: isImg ? 'images' : (
-              f.type.startsWith('video/') ? 'videos' :
-              f.type.startsWith('audio/') ? 'audio' : 'documents'
-            ),
+            category: 'mes-fichiers',
+            uploadSource: 'mes-fichiers',
             source: isSubject ? selectedTab : 'Mes fichiers',
             sizeBytes: f.size,
             date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
             previewUrl: localUrl,
+            thumbnailUrl: localUrl,
             videoUrl: f.type.startsWith('video/') ? localUrl : undefined,
             audioUrl: f.type.startsWith('audio/') ? localUrl : undefined,
           },
@@ -1565,7 +1613,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
               const isSelected = selectedTab === m.name;
               const isHex = m.color && m.color.startsWith('#');
               const colorClass = !isHex && m.color ? m.color : (!isHex ? 'bg-[#1f4e79] text-white' : '');
-              const count = importedFiles.filter(f => f.matiere === m.name || f.folderName === m.name).length;
+              const count = importedFiles.filter(f => isMatchingMatiere(f, m)).length;
 
               return (
                 <button

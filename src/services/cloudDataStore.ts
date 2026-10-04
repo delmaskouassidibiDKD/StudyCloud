@@ -24,6 +24,7 @@ export interface FileItem {
   category?: 'classeur' | 'downloads' | 'images' | 'videos' | 'audio' | 'documents' | 'trash' | 'secure' | 'folder' | 'classeur_folder' | 'apps' | 'mes-fichiers' | string;
   originalCategory?: 'classeur' | 'downloads' | 'images' | 'videos' | 'audio' | 'documents' | 'trash' | 'secure' | 'folder' | 'classeur_folder' | 'apps' | 'mes-fichiers' | string;
   url?: string;
+  fileUrl?: string;
   previewUrl?: string;
   thumbnailUrl?: string;
   videoUrl?: string;

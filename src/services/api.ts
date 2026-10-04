@@ -1367,6 +1367,8 @@ export const StudyCloudAPI = {
     extension?: string;
     r2Key?: string | null;
     fileUrl?: string;
+    thumbnailUrl?: string | null;
+    previewUrl?: string | null;
     isFavorite?: boolean;
     isImported?: boolean;
     isStudySession?: boolean;
@@ -1385,8 +1387,10 @@ export const StudyCloudAPI = {
     });
   },
 
-  async deleteFile(id: string) {
-    return request(`/api/files/${id}`, { method: 'DELETE' });
+  async deleteFile(id: string, userId?: string) {
+    const uid = userId || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+    const query = uid ? `?userId=${encodeURIComponent(uid)}` : '';
+    return request<{ success: boolean; message: string }>(`/api/files/${encodeURIComponent(id)}${query}`, { method: 'DELETE' });
   },
 
   // Fichiers d'étude (Fichiers Importés lors du travail/bosse - Indépendants de Mes dossiers)

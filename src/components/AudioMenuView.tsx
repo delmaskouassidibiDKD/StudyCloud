@@ -406,7 +406,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     deleteFileBlob(audId).catch(() => {});
     if (selectedTrack?.id === audId) {
       setSelectedTrack(null);
-      setIsAudioPlaying(false);
+      pauseAudio();
     }
     showToast("Son non enregistré retiré.");
   };
@@ -677,7 +677,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     setAudioList(prev => prev.filter(t => t.id !== track.id));
     if (selectedTrack?.id === track.id) {
       setSelectedTrack(null);
-      setIsAudioPlaying(false);
+      pauseAudio();
     }
     setSelectedItemIds(prev => prev.filter(id => id !== track.id));
 
@@ -857,7 +857,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
         setAudioList(prev => prev.filter(t => t.id !== track.id));
         if (selectedTrack?.id === track.id) {
           setSelectedTrack(null);
-          setIsAudioPlaying(false);
+          pauseAudio();
         }
         setSelectedItemIds(prev => prev.filter(id => id !== track.id));
 
@@ -1003,7 +1003,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
         }
         if (selectedTrack && idsToRemove.has(selectedTrack.id)) {
           setSelectedTrack(null);
-          setIsAudioPlaying(false);
+          pauseAudio();
         }
       }
 
@@ -1704,7 +1704,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               type="button"
               onClick={() => {
                 setSelectedTrack(null);
-                setIsAudioPlaying(false);
+                pauseAudio();
               }}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
               title="Fermer le lecteur audio"
@@ -1784,7 +1784,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           <button
             type="button"
             onClick={() => {
-              setIsAudioShuffle(!isAudioShuffle);
+              toggleAudioShuffle();
               showToast(!isAudioShuffle ? 'Lecture aléatoire activée' : 'Lecture aléatoire désactivée');
             }}
             className={`p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer ${
@@ -2393,7 +2393,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               setAudioList(prev => prev.filter(t => !ids.includes(t.id)));
               if (selectedTrack && ids.includes(selectedTrack.id)) {
                 setSelectedTrack(null);
-                setIsAudioPlaying(false);
+                pauseAudio();
               }
               setSelectedItemIds([]);
               setIsSelectionMode(false);

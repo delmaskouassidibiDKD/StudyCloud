@@ -62,8 +62,9 @@ export const DocumentCardPreview: React.FC<DocumentCardPreviewProps> = ({ doc })
             if (isMounted && url) {
               setThumbUrl(url);
               setCachedMediaThumbnail(doc.id, url);
+              const targetCategory = ((doc as any).category === 'mes-fichiers' || (doc as any).uploadSource === 'mes-fichiers' || (doc as any).source === 'Mes fichiers' || (doc as any).folderName === 'Mes fichiers') ? 'mes-fichiers' : ((doc as any).category || 'documents');
               if (doc.id && !doc.id.startsWith('blob:')) {
-                CloudStorageAPI.saveMediaThumbnail(doc.id, 'documents', url, doc.name).catch(() => {});
+                CloudStorageAPI.saveMediaThumbnail(doc.id, targetCategory, url, doc.name).catch(() => {});
               }
             }
           });
@@ -75,8 +76,9 @@ export const DocumentCardPreview: React.FC<DocumentCardPreviewProps> = ({ doc })
             if (isMounted && url) {
               setThumbUrl(url);
               setCachedMediaThumbnail(doc.id, url);
+              const targetCategory = ((doc as any).category === 'mes-fichiers' || (doc as any).uploadSource === 'mes-fichiers' || (doc as any).source === 'Mes fichiers' || (doc as any).folderName === 'Mes fichiers') ? 'mes-fichiers' : ((doc as any).category || 'documents');
               if (doc.id && !doc.id.startsWith('blob:')) {
-                CloudStorageAPI.saveMediaThumbnail(doc.id, 'documents', url, doc.name).catch(() => {});
+                CloudStorageAPI.saveMediaThumbnail(doc.id, targetCategory, url, doc.name).catch(() => {});
               }
             }
           });

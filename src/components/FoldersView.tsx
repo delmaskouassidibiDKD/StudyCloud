@@ -22,6 +22,7 @@ import { NavigationTab } from '../types';
 import { triggerDebouncedCloudBackup, getCurrentUserId } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
 import { useDashboardWallpaper, useMatieresList } from '../hooks/useCloudQueries';
+import { invalidateCloudQueries } from '../services/queryClient';
 import { getActiveWallpaperReliable } from '../utils/wallpaperHelper';
 import { HeaderMelodyControl } from './HeaderMelodyControl';
 

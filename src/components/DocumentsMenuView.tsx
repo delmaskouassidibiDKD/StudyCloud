@@ -137,6 +137,15 @@ const getDocumentTheme = (ext: string = 'PDF') => {
   };
 };
 
+const isExcludedFromDocuments = (d: any): boolean => {
+  if (!d) return true;
+  if (d.category === 'mes-fichiers' || (d as any).uploadSource === 'mes-fichiers' || d.source === 'mes-fichiers' || d.source === 'Mes fichiers') return true;
+  if (d.matiere || (d as any).matiereId) return true;
+  if (d.r2Key && d.r2Key.includes('/mes-fichiers/')) return true;
+  if (d.folderName && d.folderName !== 'Documents' && d.folderName !== 'root' && d.folderName !== 'default-folder') return true;
+  return false;
+};
+
 export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
   onBack,
   onOpenStudySpace,
@@ -146,7 +155,8 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
 }) => {
   const { data: serverDocuments = [], isLoading: isDocumentsQueryLoading } = useDocumentsList();
   const [documentsList, setDocumentsList] = useState<FileItem[]>(() => {
-    return CloudDataStore.getState().documents || [];
+    const raw = CloudDataStore.getState().documents || [];
+    return raw.filter(d => !isExcludedFromDocuments(d));
   });
   const [loading, setLoading] = useState(true);
 
@@ -379,9 +389,9 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
   useEffect(() => {
     if (serverDocuments && Array.isArray(serverDocuments)) {
       setDocumentsList(prev => {
-        const cleanServer = serverDocuments.filter(d => !isItemDeleted(d.id));
+        const cleanServer = serverDocuments.filter(d => !isItemDeleted(d.id) && !isExcludedFromDocuments(d));
         const serverIds = new Set(cleanServer.map(d => d.id));
-        const pending = prev.filter(d => !serverIds.has(d.id) && Boolean(d.isUploading) && !isItemDeleted(d.id));
+        const pending = prev.filter(d => !serverIds.has(d.id) && Boolean(d.isUploading) && !isItemDeleted(d.id) && !isExcludedFromDocuments(d));
         const merged = [...pending, ...cleanServer];
         const seenIds = new Set<string>();
         const seenSigs = new Set<string>();

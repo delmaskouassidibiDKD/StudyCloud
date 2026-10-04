@@ -217,6 +217,7 @@ export interface FileItem {
   originalCategory?: string;
   originalSource?: string;
   url?: string;
+  fileUrl?: string;
   positionX?: number;
   positionY?: number;
   displayOrder?: number;

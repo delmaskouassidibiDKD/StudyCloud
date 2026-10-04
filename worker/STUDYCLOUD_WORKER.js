@@ -2067,6 +2067,9 @@ async function getObjectFromAnyBucket(rawEnv, category, key, rangeOptions) {
   const mainBucket = rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
   if (mainBucket && !bucketsToTry.includes(mainBucket)) bucketsToTry.push(mainBucket);
   const candidates = [
+    rawEnv.BUCKET_MES_FICHIERS,
+    rawEnv.MON_R2_MES_FICHIERS,
+    rawEnv["MON_R2-MES_FICHIERS"],
     rawEnv.BUCKET_WALLPAPERS,
     rawEnv.MON_R2_WALLPAPERS,
     rawEnv["MON_R2-WALLPAPERS"],
@@ -5660,7 +5663,11 @@ a:hover{transform:translateY(-2px)}
           const isStudySession = url.searchParams.get("isStudySession");
           const isFavorite = url.searchParams.get("isFavorite");
           if (!userId || userId === "default-user") return jsonResponse({ success: true, data: [] }, 200, origin);
-          let query = "SELECT * FROM files WHERE user_id = ?";
+          await env.DB.prepare(`
+            DELETE FROM files WHERE user_id = ? AND matiere_id IN ('menu-documents', 'menu-images', 'menu-videos', 'menu-audio')
+          `).bind(userId).run().catch(() => {
+          });
+          let query = 'SELECT * FROM files WHERE user_id = ? AND (matiere_id NOT IN ("menu-documents", "menu-images", "menu-videos", "menu-audio") OR matiere_id IS NULL)';
           const params = [userId];
           if (matiereId === "root" || matiereId === "none") {
             query += ' AND (matiere_id IS NULL OR matiere_id = "" OR matiere_id = "Mes fichiers")';
@@ -5683,23 +5690,29 @@ a:hover{transform:translateY(-2px)}
             if ((!finalUrl || finalUrl.startsWith("blob:")) && row.r2_key) {
               finalUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(row.id)}`;
             }
+            let thumbUrl = row.thumbnail_url || "";
+            if (!thumbUrl && row.id) {
+              thumbUrl = `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(row.id)}?userId=${encodeURIComponent(userId)}`;
+            }
             return {
               ...row,
-              file_url: finalUrl
+              file_url: finalUrl,
+              thumbnail_url: thumbUrl,
+              preview_url: thumbUrl || finalUrl
             };
           });
           return jsonResponse({ success: true, data: formatted }, 200, origin);
         }
         if (method === "POST") {
           const body = await request.json();
-          const { id, userId, matiereId, name, size, type, extension, r2Key, fileUrl, isFavorite, isImported, isStudySession, lastImported } = body;
+          const { id, userId, matiereId, name, size, type, extension, r2Key, fileUrl, thumbnailUrl, isFavorite, isImported, isStudySession, lastImported } = body;
           if (!id || !userId || !name || userId === "default-user") return errorResponse("id, userId et name requis", 400, origin);
           await env.DB.prepare(`
-            INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, thumbnail_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
-              matiere_id = COALESCE(excluded.matiere_id, files.matiere_id),
+              matiere_id = excluded.matiere_id,
               size = excluded.size,
               type = excluded.type,
               r2_key = COALESCE(excluded.r2_key, files.r2_key),
@@ -5708,6 +5721,11 @@ a:hover{transform:translateY(-2px)}
                      AND files.file_url IS NOT NULL AND files.file_url != '' AND files.file_url NOT LIKE 'blob:%' 
                 THEN files.file_url
                 ELSE COALESCE(excluded.file_url, files.file_url)
+              END,
+              thumbnail_url = CASE
+                WHEN excluded.thumbnail_url IS NOT NULL AND excluded.thumbnail_url != '' AND excluded.thumbnail_url NOT LIKE 'blob:%'
+                THEN excluded.thumbnail_url
+                ELSE files.thumbnail_url
               END,
               is_favorite = excluded.is_favorite,
               is_imported = excluded.is_imported,
@@ -5724,6 +5742,7 @@ a:hover{transform:translateY(-2px)}
             extension || "",
             r2Key || null,
             fileUrl || "",
+            thumbnailUrl || null,
             isFavorite ? 1 : 0,
             isImported ? 1 : 0,
             isStudySession ? 1 : 0,
@@ -5744,33 +5763,13 @@ a:hover{transform:translateY(-2px)}
         if (env.DB) await ensureCloudMediaTables(env.DB);
         const id = path.split("/")[3];
         const reqUserId = await extractRequestUserId();
-        const [fileRow, audRow, imgRow, vidRow, docRow, classRow, dlRow] = await Promise.all([
-          env.DB.prepare("SELECT r2_key, file_url, user_id FROM files WHERE id = ?").bind(id).first().catch(() => null),
-          env.DB.prepare("SELECT r2_key, audio_url, user_id FROM audio_files WHERE id = ?").bind(id).first().catch(() => null),
-          env.DB.prepare("SELECT r2_key, image_url, user_id FROM image_files WHERE id = ?").bind(id).first().catch(() => null),
-          env.DB.prepare("SELECT r2_key, video_url, user_id FROM video_files WHERE id = ?").bind(id).first().catch(() => null),
-          env.DB.prepare("SELECT r2_key, file_url, user_id FROM document_files WHERE id = ?").bind(id).first().catch(() => null),
-          env.DB.prepare("SELECT r2_key, file_url, user_id, category FROM classeur_files WHERE id = ?").bind(id).first().catch(() => null),
-          env.DB.prepare("SELECT r2_key, file_url, user_id FROM download_files WHERE id = ?").bind(id).first().catch(() => null)
-        ]);
-        const targetUser = fileRow?.user_id || audRow?.user_id || imgRow?.user_id || vidRow?.user_id || docRow?.user_id || classRow?.user_id || dlRow?.user_id || reqUserId;
-        const targetR2Key = fileRow?.r2_key || audRow?.r2_key || imgRow?.r2_key || vidRow?.r2_key || docRow?.r2_key || classRow?.r2_key || dlRow?.r2_key;
-        const targetUrl = fileRow?.file_url || audRow?.audio_url || imgRow?.image_url || vidRow?.video_url || docRow?.file_url || classRow?.file_url || dlRow?.file_url;
-        const targetCategory = classRow?.category || (audRow ? "audio" : imgRow ? "images" : vidRow ? "videos" : docRow ? "documents" : "documents");
+        const fileRow = await env.DB.prepare("SELECT r2_key, file_url, user_id FROM files WHERE id = ?").bind(id).first().catch(() => null);
+        const targetUser = fileRow?.user_id || reqUserId;
+        const targetR2Key = fileRow?.r2_key;
+        const targetUrl = fileRow?.file_url;
+        const targetCategory = "mes-fichiers";
         await deleteR2ObjectAndThumbnails(rawEnv, targetUser, id, targetR2Key, targetUrl, targetCategory);
         await env.DB.prepare("DELETE FROM files WHERE id = ?").bind(id).run();
-        await env.DB.prepare("DELETE FROM document_files WHERE id = ?").bind(id).run().catch(() => {
-        });
-        await env.DB.prepare("DELETE FROM audio_files WHERE id = ?").bind(id).run().catch(() => {
-        });
-        await env.DB.prepare("DELETE FROM image_files WHERE id = ?").bind(id).run().catch(() => {
-        });
-        await env.DB.prepare("DELETE FROM video_files WHERE id = ?").bind(id).run().catch(() => {
-        });
-        await env.DB.prepare("DELETE FROM classeur_files WHERE id = ?").bind(id).run().catch(() => {
-        });
-        await env.DB.prepare("DELETE FROM download_files WHERE id = ?").bind(id).run().catch(() => {
-        });
         await env.DB.prepare("DELETE FROM media_thumbnails WHERE file_id = ?").bind(id).run().catch(() => {
         });
         if (targetUser && targetUser !== "default-user") {
@@ -5779,7 +5778,7 @@ a:hover{transform:translateY(-2px)}
           recalculateAndSaveUserStorage(env.DB, targetUser).catch(() => {
           });
         }
-        return jsonResponse({ success: true, message: "Fichier supprim\xE9 d\xE9finitivement" }, 200, origin);
+        return jsonResponse({ success: true, message: "Fichier supprim\xE9 d\xE9finitivement de Cloudflare R2 et D1" }, 200, origin);
       }
       if (path === "/api/storage/upload" && method === "PUT") {
         const key = url.searchParams.get("key");
@@ -5947,7 +5946,7 @@ a:hover{transform:translateY(-2px)}
           foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "classeur" as category FROM classeur_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "documents" as category FROM files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "mes-fichiers" as category FROM files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
           foundRecord = await env.DB.prepare('SELECT id, r2_key, file_type as extension, title as name, "documents" as category FROM published_documents WHERE id = ? LIMIT 1').bind(fileId).first();
@@ -6083,12 +6082,29 @@ a:hover{transform:translateY(-2px)}
                   if (owner) targetR2Key = `${owner}/thumbnails/${fileId}_thumb.jpg`;
                 }
               }
+              let fRow = null;
+              if (reqUserId && reqUserId !== "default-user") {
+                fRow = await env.DB.prepare("SELECT thumbnail_url, r2_key, user_id FROM files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId).first();
+              }
+              if (!fRow) {
+                fRow = await env.DB.prepare("SELECT thumbnail_url, r2_key, user_id FROM files WHERE id = ? LIMIT 1").bind(fileId).first();
+              }
+              if (fRow) {
+                targetCategory = "mes-fichiers";
+                if (fRow.thumbnail_url && !fRow.thumbnail_url.includes("/api/cloud/thumbnail/")) {
+                  fallbackDataUrl = fRow.thumbnail_url;
+                }
+                if (!targetR2Key && fRow.r2_key) {
+                  const owner = fRow.user_id || (reqUserId !== "default-user" ? reqUserId : "");
+                  if (owner) targetR2Key = `${owner}/mes-fichiers/thumbnails/${fileId}_thumb.jpg`;
+                }
+              }
             }
           } catch (e) {
           }
         }
         if (!targetR2Key && reqUserId && reqUserId !== "default-user") {
-          targetR2Key = `${reqUserId}/thumbnails/${fileId}_thumb.jpg`;
+          targetR2Key = targetCategory === "mes-fichiers" ? `${reqUserId}/mes-fichiers/thumbnails/${fileId}_thumb.jpg` : `${reqUserId}/thumbnails/${fileId}_thumb.jpg`;
         }
         let object = null;
         if (targetR2Key) {
@@ -6097,8 +6113,11 @@ a:hover{transform:translateY(-2px)}
             if (!found?.object && !targetR2Key.endsWith(".png")) {
               found = await getObjectFromAnyBucket(rawEnv, targetCategory || "audio", targetR2Key.replace(/\.jpg$/, ".png"));
             }
-            if (!found?.object && reqUserId && targetR2Key !== `${reqUserId}/thumbnails/${fileId}.jpg`) {
-              found = await getObjectFromAnyBucket(rawEnv, targetCategory || "audio", `${reqUserId}/thumbnails/${fileId}.jpg`);
+            if (!found?.object && reqUserId) {
+              const fallbackKey = targetCategory === "mes-fichiers" ? `${reqUserId}/mes-fichiers/thumbnails/${fileId}.jpg` : `${reqUserId}/thumbnails/${fileId}.jpg`;
+              if (targetR2Key !== fallbackKey) {
+                found = await getObjectFromAnyBucket(rawEnv, targetCategory || "audio", fallbackKey);
+              }
             }
             if (found?.object) {
               object = found.object;
@@ -6163,7 +6182,7 @@ a:hover{transform:translateY(-2px)}
             return errorResponse("Format de donn\xE9es image invalide", 400, origin);
           }
         }
-        const r2Key = `${reqUserId}/thumbnails/${fileId}_thumb.${thumbExt}`;
+        const r2Key = category === "mes-fichiers" || category === "mes_fichiers" ? `${reqUserId}/mes-fichiers/thumbnails/${fileId}_thumb.${thumbExt}` : `${reqUserId}/thumbnails/${fileId}_thumb.${thumbExt}`;
         const targetBucket = getBucketForCategory(rawEnv, category) || rawEnv.BUCKET || env.BUCKET;
         if (targetBucket && imageBuffer) {
           await targetBucket.put(r2Key, imageBuffer, {
@@ -6209,8 +6228,6 @@ a:hover{transform:translateY(-2px)}
             if (category === "videos") {
               await env.DB.prepare("UPDATE video_files SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(thumbnailUrl, fileId, reqUserId).run().catch(() => {
               });
-              await env.DB.prepare("UPDATE files SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(thumbnailUrl, fileId, reqUserId).run().catch(() => {
-              });
             } else if (category === "audio" || category === "musique") {
               await env.DB.prepare("UPDATE audio_files SET cover_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(thumbnailUrl, fileId, reqUserId).run().catch(() => {
               });
@@ -6222,6 +6239,9 @@ a:hover{transform:translateY(-2px)}
               });
             } else if (category === "classeur") {
               await env.DB.prepare("UPDATE classeur_files SET preview_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(thumbnailUrl, fileId, reqUserId).run().catch(() => {
+              });
+            } else if (category === "mes-fichiers" || category === "mes_fichiers") {
+              await env.DB.prepare("UPDATE files SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(thumbnailUrl, fileId, reqUserId).run().catch(() => {
               });
             }
           } catch (dbErr) {
@@ -6540,7 +6560,9 @@ a:hover{transform:translateY(-2px)}
           detectedNature = "documents";
         }
         let finalCategory;
-        if (requestedCategory === "auto" || requestedCategory === "" || requestedCategory === "all") {
+        if (requestedCategory === "mes-fichiers" || requestedCategory === "mes_fichiers" || uploadSource === "mes-fichiers") {
+          finalCategory = "mes-fichiers";
+        } else if (requestedCategory === "auto" || requestedCategory === "" || requestedCategory === "all") {
           finalCategory = detectedNature;
         } else if (requestedCategory === "classeur") {
           finalCategory = "classeur";
@@ -6567,7 +6589,7 @@ a:hover{transform:translateY(-2px)}
         } else {
           finalCategory = detectedNature;
         }
-        const categoryBucket = getBucketForCategory(rawEnv, finalCategory === "classeur" ? "classeur" : finalCategory);
+        const categoryBucket = getBucketForCategory(rawEnv, finalCategory);
         if (!categoryBucket) {
           return errorResponse("Bucket de stockage non configur\xE9 pour la cat\xE9gorie " + finalCategory, 503, origin);
         }
@@ -6606,7 +6628,7 @@ a:hover{transform:translateY(-2px)}
             for (let i = 0; i < binaryStr.length; i++) {
               bytes[i] = binaryStr.charCodeAt(i);
             }
-            thumbR2Key = `${reqUserId}/thumbnails/${fileId}_thumb.${thumbExt}`;
+            thumbR2Key = `${reqUserId}/${finalCategory === "mes-fichiers" ? "mes-fichiers/" : ""}thumbnails/${fileId}_thumb.${thumbExt}`;
             const targetBucket = categoryBucket || env.BUCKET;
             if (targetBucket) {
               await targetBucket.put(thumbR2Key, bytes.buffer, {
@@ -6666,20 +6688,6 @@ a:hover{transform:translateY(-2px)}
                   thumbnail_url = excluded.thumbnail_url,
                   updated_at = CURRENT_TIMESTAMP
               `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
-              try {
-                await env.DB.prepare(`
-                  INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
-                  VALUES (?, ?, 'menu-images', ?, ?, 'image/jpeg', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                  ON CONFLICT(id) DO UPDATE SET
-                    name = excluded.name,
-                    size = excluded.size,
-                    r2_key = COALESCE(excluded.r2_key, files.r2_key),
-                    file_url = excluded.file_url,
-                    last_imported = excluded.last_imported,
-                    updated_at = CURRENT_TIMESTAMP
-                `).bind(fileId, reqUserId, fileName, sizeBytes, extUpper, storageKey, fileUrl, Date.now()).run();
-              } catch (e) {
-              }
             } else if (finalCategory === "videos") {
               await env.DB.prepare(`
                 INSERT INTO video_files (id, user_id, name, size, size_bytes, extension, date_formatted, r2_key, video_url, thumbnail_url, created_at, updated_at)
@@ -6697,20 +6705,6 @@ a:hover{transform:translateY(-2px)}
                   END,
                   updated_at = CURRENT_TIMESTAMP
               `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
-              try {
-                await env.DB.prepare(`
-                  INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
-                  VALUES (?, ?, 'menu-videos', ?, ?, 'video/mp4', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                  ON CONFLICT(id) DO UPDATE SET
-                    name = excluded.name,
-                    size = excluded.size,
-                    r2_key = COALESCE(excluded.r2_key, files.r2_key),
-                    file_url = excluded.file_url,
-                    last_imported = excluded.last_imported,
-                    updated_at = CURRENT_TIMESTAMP
-                `).bind(fileId, reqUserId, fileName, sizeBytes, extUpper, storageKey, fileUrl, Date.now()).run();
-              } catch (e) {
-              }
             } else if (finalCategory === "audio") {
               await env.DB.prepare(`
                 INSERT INTO audio_files (id, user_id, name, title, artist, size, size_bytes, date_formatted, r2_key, audio_url, cover_url, created_at, updated_at)
@@ -6734,25 +6728,6 @@ a:hover{transform:translateY(-2px)}
                   END,
                   updated_at = CURRENT_TIMESTAMP
               `).bind(fileId, reqUserId, fileName, fileName, sizeFormatted, sizeBytes, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
-              try {
-                await env.DB.prepare(`
-                  INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, thumbnail_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
-                  VALUES (?, ?, 'menu-audio', ?, ?, 'audio/mpeg', ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                  ON CONFLICT(id) DO UPDATE SET
-                    name = excluded.name,
-                    size = excluded.size,
-                    r2_key = COALESCE(excluded.r2_key, files.r2_key),
-                    file_url = excluded.file_url,
-                    thumbnail_url = CASE
-                      WHEN excluded.thumbnail_url IS NOT NULL AND excluded.thumbnail_url != '' AND excluded.thumbnail_url NOT LIKE 'blob:%'
-                      THEN excluded.thumbnail_url
-                      ELSE files.thumbnail_url
-                    END,
-                    last_imported = excluded.last_imported,
-                    updated_at = CURRENT_TIMESTAMP
-                `).bind(fileId, reqUserId, fileName, sizeBytes, extUpper, storageKey, fileUrl, finalThumbnailUrl, Date.now()).run();
-              } catch (e) {
-              }
             } else if (finalCategory === "documents") {
               await env.DB.prepare(`
                 INSERT INTO document_files (id, user_id, name, size, size_bytes, extension, document_category, date_formatted, r2_key, file_url, preview_url, created_at, updated_at)
@@ -6779,13 +6754,11 @@ a:hover{transform:translateY(-2px)}
                   preview_url = excluded.preview_url,
                   updated_at = CURRENT_TIMESTAMP
               `).bind(fileId, reqUserId, folderId || "default-folder", fileName, sizeFormatted, sizeBytes, detectedNature, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
-            }
-            const isMesFichiers = uploadSource === "mes-fichiers" || requestedCategory === "mes-fichiers" || finalCategory === "mes-fichiers";
-            if (isMesFichiers || folderId && !["documents", "images", "videos", "audio"].includes(folderId)) {
-              const targetMatiereId = folderId || (isMesFichiers ? "Mes fichiers" : null);
+            } else if (finalCategory === "mes-fichiers") {
+              const targetMatiereId = folderId && folderId !== "Mes fichiers" && folderId !== "root" ? folderId : null;
               await env.DB.prepare(`
-                INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, thumbnail_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT(id) DO UPDATE SET
                   name = excluded.name,
                   size = excluded.size,
@@ -6801,6 +6774,11 @@ a:hover{transform:translateY(-2px)}
                     THEN excluded.file_url
                     ELSE files.file_url
                   END,
+                  thumbnail_url = CASE
+                    WHEN excluded.thumbnail_url IS NOT NULL AND excluded.thumbnail_url != '' AND excluded.thumbnail_url NOT LIKE 'blob:%'
+                    THEN excluded.thumbnail_url
+                    ELSE files.thumbnail_url
+                  END,
                   last_imported = excluded.last_imported,
                   updated_at = CURRENT_TIMESTAMP
               `).bind(
@@ -6813,6 +6791,7 @@ a:hover{transform:translateY(-2px)}
                 extUpper,
                 storageKey,
                 fileUrl,
+                finalThumbnailUrl,
                 Date.now()
               ).run();
             }
@@ -8472,22 +8451,16 @@ a:hover{transform:translateY(-2px)}
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
+          await env.DB.prepare(`
+            DELETE FROM document_files WHERE user_id = ? AND r2_key LIKE '%/mes-fichiers/%'
+          `).bind(reqUserId).run().catch(() => {
+          });
           const { results: docs } = await env.DB.prepare(`
-            SELECT * FROM document_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
+            SELECT * FROM document_files 
+            WHERE user_id = ? AND (r2_key NOT LIKE '%/mes-fichiers/%' OR r2_key IS NULL)
+            ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId).all();
           let extraDocs = [];
-          try {
-            const { results: extra } = await env.DB.prepare(`
-              SELECT * FROM files 
-              WHERE user_id = ? AND (
-                LOWER(extension) IN ('pdf','doc','docx','xls','xlsx','ppt','pptx','txt','csv','rtf','odt')
-                OR type LIKE '%pdf%' OR type LIKE '%document%' OR type LIKE '%text%' OR type LIKE '%sheet%'
-              )
-              ORDER BY last_imported DESC, created_at DESC
-            `).bind(reqUserId).all();
-            extraDocs = extra || [];
-          } catch (e) {
-          }
           let trashedDocIdSet = /* @__PURE__ */ new Set();
           try {
             const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
@@ -8603,25 +8576,6 @@ a:hover{transform:translateY(-2px)}
             fileUrl,
             previewUrl
           ).run();
-          try {
-            await env.DB.prepare(`
-              INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
-              VALUES (?, ?, 'menu-documents', ?, ?, 'application/pdf', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-              ON CONFLICT(id) DO UPDATE SET
-                name = excluded.name,
-                size = excluded.size,
-                r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
-                file_url = CASE
-                  WHEN (excluded.file_url IS NULL OR excluded.file_url = '' OR excluded.file_url LIKE 'blob:%')
-                       AND files.file_url IS NOT NULL AND files.file_url != '' AND files.file_url NOT LIKE 'blob:%'
-                  THEN files.file_url
-                  ELSE excluded.file_url
-                END,
-                last_imported = excluded.last_imported,
-                updated_at = CURRENT_TIMESTAMP
-            `).bind(id, reqUserId, name, sizeBytes, extension, r2Key, fileUrl, Date.now()).run();
-          } catch (e) {
-          }
           await recordSyncItem(env.DB, reqUserId, id, "documents", {
             id,
             userId: reqUserId,
@@ -8660,26 +8614,6 @@ a:hover{transform:translateY(-2px)}
               SELECT * FROM document_files WHERE name = ? AND user_id = ? ORDER BY updated_at DESC
             `).bind(fileName, reqUserId).first();
           }
-          if (!file && fileId) {
-            const rawFile = await env.DB.prepare(`
-              SELECT * FROM files WHERE id = ? AND user_id = ?
-            `).bind(fileId, reqUserId).first();
-            if (rawFile) {
-              file = {
-                id: rawFile.id,
-                user_id: rawFile.user_id,
-                name: rawFile.name,
-                size: formatBytes(rawFile.size || 0),
-                size_bytes: rawFile.size || 0,
-                extension: rawFile.extension || "pdf",
-                document_category: "COURS",
-                page_count: 1,
-                date_formatted: rawFile.created_at ? new Date(rawFile.created_at).toLocaleDateString("fr-FR") : "",
-                r2_key: rawFile.r2_key || "",
-                file_url: rawFile.file_url || ""
-              };
-            }
-          }
           if (file) {
             const resolvedR2Key = file.r2_key && String(file.r2_key).trim() !== "" ? String(file.r2_key).trim() : extractR2Keys("", file.file_url || file.preview_url || "")[0] || "";
             await env.DB.prepare(`
@@ -8704,8 +8638,6 @@ a:hover{transform:translateY(-2px)}
           }
           const targetId = file ? file.id : fileId;
           if (targetId) {
-            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {
-            });
             await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {
             });
             await recordSyncItem(env.DB, reqUserId, targetId, "documents", { id: targetId }, 1);

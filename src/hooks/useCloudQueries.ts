@@ -215,6 +215,9 @@ export function useFilesMenuList(userId?: string) {
             const matName = matchedMat ? matchedMat.name : (mId || '');
             const matUniqueId = matchedMat ? matchedMat.id : (mId || undefined);
 
+            const thumbUrl = row.thumbnail_url || row.preview_url || localBlobUrl || '';
+            const previewUrl = row.preview_url || row.thumbnail_url || localBlobUrl || row.file_url || '';
+
             return {
               id: row.id,
               name: row.name,
@@ -222,6 +225,8 @@ export function useFilesMenuList(userId?: string) {
               type: row.type || 'Fichier',
               extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
               url: localBlobUrl || row.file_url || '',
+              thumbnailUrl: thumbUrl,
+              previewUrl: previewUrl,
               r2Key: row.r2_key,
               isFavorite: !!row.is_favorite,
               matiere: matName,
