@@ -8,13 +8,16 @@ interface HeaderMelodyControlProps {
   isDarkMode?: boolean;
   dashboardWallpaper?: string | null;
   viewMode?: string;
+  compact?: boolean;
 }
 
 export const HeaderMelodyControl: React.FC<HeaderMelodyControlProps> = ({
   isDarkMode = false,
   dashboardWallpaper = null,
-  viewMode = 'home'
+  viewMode = 'home',
+  compact = false
 }) => {
+  const isDark = isDarkMode || (typeof document !== 'undefined' && document.documentElement.classList.contains('dark'));
   const {
     currentTrack,
     isAudioPlaying,
@@ -63,22 +66,22 @@ export const HeaderMelodyControl: React.FC<HeaderMelodyControlProps> = ({
   }, [isDropdownOpen]);
 
   return (
-    <div className="hidden md:flex items-center gap-2 relative z-30 select-none">
+    <div className={`hidden md:flex items-center ${compact ? 'gap-1.5' : 'gap-2'} relative z-30 select-none`}>
       {/* ─── WIDGET MINI-LECTEUR DEVANT LE BOUTON MÉLODIE (SI UN SON EST SÉLECTIONNÉ) ─── */}
       {currentTrack && (
         <div
-          className={`flex items-center gap-2 px-2.5 py-1 rounded-2xl border-2 transition-all shadow-sm ${
-            isDarkMode
+          className={`flex items-center gap-1.5 sm:gap-2 ${compact ? 'px-2 py-0.5 rounded-xl border' : 'px-2.5 py-1 rounded-2xl border-2'} transition-all shadow-sm ${
+            isDark
               ? 'bg-[#1e293b]/95 border-amber-500/50 text-white'
-              : 'bg-[#FDFBF7] border-amber-500/60 text-stone-800 shadow-[1.5px_1.5px_0px_0px_#d97706]'
+              : 'bg-[#FDFBF7] border-amber-500/60 text-stone-800 shadow-[1px_1px_0px_0px_#d97706]'
           }`}
         >
           {/* Bloc Titre + Bâtons d'égaliseur animés */}
-          <div className="flex flex-col min-w-0 max-w-[125px] sm:max-w-[145px]">
-            <div className="flex items-center gap-1.5 min-w-0">
+          <div className={`flex flex-col min-w-0 ${compact ? 'max-w-[100px] sm:max-w-[125px]' : 'max-w-[125px] sm:max-w-[145px]'}`}>
+            <div className="flex items-center gap-1 min-w-0">
               {/* Les 4 bâtons qui bougent quand la chanson joue et se figent à l'arrêt */}
               <div
-                className="flex items-end gap-0.5 h-3.5 px-0.5 shrink-0"
+                className={`flex items-end gap-0.5 ${compact ? 'h-3' : 'h-3.5'} px-0.5 shrink-0`}
                 title={isAudioPlaying ? 'Lecture en cours' : 'En pause'}
               >
                 <span
@@ -201,18 +204,18 @@ export const HeaderMelodyControl: React.FC<HeaderMelodyControlProps> = ({
         <button
           type="button"
           onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-          className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer flex items-center justify-center active:scale-95 group relative ${
+          className={`${compact ? 'p-1 rounded-lg border-2' : 'p-1.5 sm:p-2 rounded-xl border-2'} transition-all cursor-pointer flex items-center justify-center active:scale-95 group relative ${
             isDropdownOpen
               ? 'bg-amber-500/20 text-amber-500 border-amber-500 shadow-sm ring-2 ring-amber-400/40'
-              : isDarkMode
+              : isDark
               ? 'bg-[#1e293b] hover:bg-[#283852] text-amber-400 border-amber-500/50 shadow-sm'
-              : 'bg-[#F5F1E9] hover:bg-amber-50 text-amber-600 border-amber-600 shadow-[1.5px_1.5px_0px_0px_#d97706]'
+              : 'bg-[#F5F1E9] hover:bg-amber-50 text-amber-600 border-amber-600 shadow-[1px_1px_0px_0px_#d97706]'
           }`}
           title="Musiques & sons de l'utilisateur"
         >
           {/* Logo mélodie bien dessiné orange */}
           <div className="relative flex items-center justify-center">
-            <Music className="w-4 h-4 text-amber-500 stroke-[2.4] drop-shadow-sm group-hover:scale-110 transition-transform" />
+            <Music className={`${compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-amber-500 stroke-[2.4] drop-shadow-sm group-hover:scale-110 transition-transform`} />
             {isAudioPlaying && (
               <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400 animate-ping" />
             )}
@@ -220,10 +223,10 @@ export const HeaderMelodyControl: React.FC<HeaderMelodyControlProps> = ({
         </button>
 
         <span
-          className={`text-[10px] font-extrabold leading-none mt-1 ${
+          className={`${compact ? 'text-[7.5px] sm:text-[8px] font-black' : 'text-[10px] font-extrabold'} leading-none mt-0.5 ${
             dashboardWallpaper && viewMode === 'home'
               ? 'text-white drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
-              : isDarkMode
+              : isDark
               ? 'text-white'
               : 'text-stone-700'
           }`}

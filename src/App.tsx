@@ -24,6 +24,7 @@ import { DnaLogo } from './components/DnaLogo';
 import { LeftMenu } from './components/LeftMenu';
 import { CenterMenu } from './components/CenterMenu';
 import { RightMenu } from './components/RightMenu';
+import { HeaderMelodyControl } from './components/HeaderMelodyControl';
 import { StudyTimerModal, formatTimerDisplay } from './components/StudyTimerModal';
 import { StudyCloudAPI, generateCleanShareCode, getWorkerApiUrl } from './services/api';
 import { getFileBlob, storeFileBlob } from './services/localFileStorage';
@@ -1971,6 +1972,9 @@ export default function App() {
             </div>
             
             <div className="flex items-center gap-2 shrink-0">
+              {/* Bouton Musique & Mini-lecteur audio connecté (Desktop) - placé devant le nombre de Mo */}
+              <HeaderMelodyControl compact={true} />
+
               {activePreviewItem?.size ? (
                 <span className="hidden sm:inline text-[9px] sm:text-[10px] text-stone-600 dark:text-slate-300 font-semibold px-1">
                   {(() => {
