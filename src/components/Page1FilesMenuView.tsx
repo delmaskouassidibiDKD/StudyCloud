@@ -11808,15 +11808,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => folderFileInputRef.current?.click()}
-                    className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-orange-400/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black"
-                    title="Importer des fichiers dans ce dossier"
-                  >
-                    <Plus className="w-4 h-4 text-orange-400 stroke-[2.5]" />
-                    <span className="hidden xs:inline">Importer</span>
-                  </button>
+                  <div className="flex flex-col items-center">
+                    <button
+                      type="button"
+                      onClick={() => folderFileInputRef.current?.click()}
+                      className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-orange-500/40 hover:border-orange-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                      title="Importer des fichiers dans ce dossier"
+                    >
+                      <Plus className="w-4 h-4 text-orange-400 stroke-[2.5]" />
+                    </button>
+                    <span className="text-[10px] font-extrabold text-orange-400 leading-tight mt-0.5">
+                      Importer
+                    </span>
+                  </div>
                 </div>
 
                 {/* MILIEU : Nom du dossier avec la couleur du dossier ouvert, et fil d'Ariane parent */}
@@ -11904,6 +11908,22 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     <FileEdit className="w-3.5 h-3.5 text-cyan-400" />
                     <span className="hidden sm:inline">Bloc-notes</span>
                   </button>
+
+                  {/* Bouton 3 : Importer un fichier dans ce dossier */}
+                  <div className="flex flex-col items-center">
+                    <button
+                      type="button"
+                      id="btn-import-opened-classeur-folder"
+                      onClick={() => folderFileInputRef.current?.click()}
+                      className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-orange-500/40 hover:border-orange-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                      title="Importer des fichiers dans ce dossier"
+                    >
+                      <Plus className="w-4 h-4 text-orange-400 stroke-[2.5]" />
+                    </button>
+                    <span className="text-[10px] font-extrabold text-orange-400 leading-tight mt-0.5">
+                      Importer
+                    </span>
+                  </div>
 
                   <div className="hidden sm:flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-blue-500/50 border border-white/10 rounded-full px-3 py-1.5 transition-all shadow-inner gap-1.5 max-w-[180px]">
                     <Search className="w-3.5 h-3.5 text-slate-300 shrink-0" />
@@ -12052,84 +12072,76 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </button>
                   )}
 
-                  {/* BOUTON IMPORTER UN FICHIER DANS CLASSEUR */}
-                  {(currentSubView?.type === 'classeur' || currentSubView?.id === 'studycloud-classeur-classeur' || (isCloudView && cloudActiveTab === 'classeur')) && (
-                    <button
-                      type="button"
-                      id="btn-import-menu-classeur"
-                      onClick={() => {
-                        if (opened3DFolder) {
-                          classeurFolderFileInputRef.current?.click();
-                        } else {
-                          handleTriggerImport();
-                        }
-                      }}
-                      className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-orange-400/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black animate-in fade-in duration-150"
-                      title="Importer un fichier dans le classeur"
-                    >
-                      <Plus className="w-4 h-4 text-orange-400 stroke-[2.5]" />
-                      <span className="hidden xs:inline">Importer</span>
-                    </button>
-                  )}
-
                   {/* 1. BOUTON DÉDIÉ : MENU VIDÉOS (si fallback) */}
                   {(currentSubView?.id === 'studycloud-category-videos' || (isCloudView && cloudActiveTab === 'videos')) && (
-                    <button
-                      type="button"
-                      id="btn-import-menu-videos"
-                      onClick={() => videoFileInputRef.current?.click()}
-                      className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-purple-500/40 hover:border-purple-400 text-purple-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black animate-in fade-in duration-150"
-                      title="Importer une vidéo dans le menu Vidéos"
-                    >
-                      <Plus className="w-4 h-4 text-purple-400 stroke-[2.5]" />
-                      <span className="hidden xs:inline">Importer une vidéo</span>
-                      <span className="xs:hidden">Importer</span>
-                    </button>
+                    <div className="flex flex-col items-center">
+                      <button
+                        type="button"
+                        id="btn-import-menu-videos"
+                        onClick={() => videoFileInputRef.current?.click()}
+                        className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-purple-400 border border-purple-500/40 hover:border-purple-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                        title="Importer une vidéo dans le menu Vidéos"
+                      >
+                        <Plus className="w-4 h-4 stroke-[2.5]" />
+                      </button>
+                      <span className="text-[10px] font-extrabold text-purple-400 leading-tight mt-0.5">
+                        Importer
+                      </span>
+                    </div>
                   )}
 
                   {/* 2. BOUTON DÉDIÉ : MENU AUDIO / MUSIQUE (si fallback) */}
                   {(currentSubView?.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio')) && (
-                    <button
-                      type="button"
-                      id="btn-import-menu-audio"
-                      onClick={() => audioFileInputRef.current?.click()}
-                      className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-amber-500/40 hover:border-amber-400 text-amber-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black animate-in fade-in duration-150"
-                      title="Importer un fichier audio ou musique"
-                    >
-                      <Plus className="w-4 h-4 text-amber-400 stroke-[2.5]" />
-                      <span className="hidden xs:inline">Importer un audio</span>
-                      <span className="xs:hidden">Importer</span>
-                    </button>
+                    <div className="flex flex-col items-center">
+                      <button
+                        type="button"
+                        id="btn-import-menu-audio"
+                        onClick={() => audioFileInputRef.current?.click()}
+                        className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-amber-400 border border-amber-500/40 hover:border-amber-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                        title="Importer un fichier audio ou musique"
+                      >
+                        <Plus className="w-4 h-4 stroke-[2.5]" />
+                      </button>
+                      <span className="text-[10px] font-extrabold text-amber-400 leading-tight mt-0.5">
+                        Importer
+                      </span>
+                    </div>
                   )}
 
                   {/* 3. BOUTON DÉDIÉ : MENU IMAGES (si fallback) */}
                   {(currentSubView?.id === 'studycloud-category-images' || (isCloudView && cloudActiveTab === 'images')) && (
-                    <button
-                      type="button"
-                      id="btn-import-menu-images"
-                      onClick={() => imageFileInputRef.current?.click()}
-                      className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-emerald-500/40 hover:border-emerald-400 text-emerald-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black animate-in fade-in duration-150"
-                      title="Importer une image dans Images"
-                    >
-                      <Plus className="w-4 h-4 text-emerald-400 stroke-[2.5]" />
-                      <span className="hidden xs:inline">Importer une image</span>
-                      <span className="xs:hidden">Importer</span>
-                    </button>
+                    <div className="flex flex-col items-center">
+                      <button
+                        type="button"
+                        id="btn-import-menu-images"
+                        onClick={() => imageFileInputRef.current?.click()}
+                        className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-emerald-400 border border-emerald-500/40 hover:border-emerald-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                        title="Importer une image dans Images"
+                      >
+                        <Plus className="w-4 h-4 stroke-[2.5]" />
+                      </button>
+                      <span className="text-[10px] font-extrabold text-emerald-400 leading-tight mt-0.5">
+                        Importer
+                      </span>
+                    </div>
                   )}
 
                   {/* 4. BOUTON DÉDIÉ : MENU DOCUMENTS (si fallback) */}
                   {(currentSubView?.id === 'studycloud-category-documents' || (isCloudView && cloudActiveTab === 'documents')) && (
-                    <button
-                      type="button"
-                      id="btn-import-menu-documents"
-                      onClick={() => documentFileInputRef.current?.click()}
-                      className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-blue-500/40 hover:border-blue-400 text-blue-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black animate-in fade-in duration-150"
-                      title="Importer un document dans Documents"
-                    >
-                      <Plus className="w-4 h-4 text-blue-400 stroke-[2.5]" />
-                      <span className="hidden xs:inline">Importer un document</span>
-                      <span className="xs:hidden">Importer</span>
-                    </button>
+                    <div className="flex flex-col items-center">
+                      <button
+                        type="button"
+                        id="btn-import-menu-documents"
+                        onClick={() => documentFileInputRef.current?.click()}
+                        className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-blue-400 border border-blue-500/40 hover:border-blue-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                        title="Importer un document dans Documents"
+                      >
+                        <Plus className="w-4 h-4 stroke-[2.5]" />
+                      </button>
+                      <span className="text-[10px] font-extrabold text-blue-400 leading-tight mt-0.5">
+                        Importer
+                      </span>
+                    </div>
                   )}
 
                   {/* Bouton Plein écran rond noir */}
