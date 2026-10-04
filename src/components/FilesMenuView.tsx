@@ -451,6 +451,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   const [newMatiereName, setNewMatiereName] = useState('');
   const [newMatiereCoef, setNewMatiereCoef] = useState('1');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  // Confirmation de suppression : liste des IDs en attente + mode (simple / multiple)
+  const [pendingDelete, setPendingDelete] = useState<{ ids: string[]; batch: boolean } | null>(null);
 
   // Selection mode states
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -901,7 +903,26 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     if (file?.matiere) invalidateCloudQueries.matiereFiles(file.matiere);
   };
 
+  // Demande de confirmation avant suppression d'un fichier
   const handleDelete = (id: string) => {
+    setOpenMenuId(null);
+    setPendingDelete({ ids: [id], batch: false });
+  };
+
+  // Demande de confirmation avant suppression multiple
+  const handleBatchDelete = () => {
+    if (selectedFileIds.length === 0) return;
+    setPendingDelete({ ids: [...selectedFileIds], batch: true });
+  };
+
+  const confirmPendingDelete = () => {
+    if (!pendingDelete) return;
+    if (pendingDelete.batch) performBatchDelete(pendingDelete.ids);
+    else performDelete(pendingDelete.ids[0]);
+    setPendingDelete(null);
+  };
+
+  const performDelete = (id: string) => {
     const fileToDelete = importedFiles.find(item => item.id === id);
     setImportedFiles(prev => prev.filter(item => item.id !== id));
     setOpenMenuId(null);
@@ -948,15 +969,15 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     invalidateCloudQueries.favorites();
 
     window.dispatchEvent(new Event('unifolder_files_updated'));
-    setSuccessMessage(`« ${fileToDelete?.name || 'Fichier'} » a été supprimé avec succès (D1 & R2).`);
+    setSuccessMessage('Fichier supprimé avec succès');
     setTimeout(() => {
       setSuccessMessage(null);
     }, 3000);
   };
 
-  const handleBatchDelete = () => {
-    if (selectedFileIds.length === 0) return;
-    const idsToDelete = [...selectedFileIds];
+  const performBatchDelete = (ids: string[]) => {
+    if (ids.length === 0) return;
+    const idsToDelete = [...ids];
     const filesToDelete = importedFiles.filter(item => idsToDelete.includes(item.id));
     setImportedFiles(prev => prev.filter(item => !idsToDelete.includes(item.id)));
 
@@ -1008,7 +1029,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     window.dispatchEvent(new Event('unifolder_files_updated'));
     setSelectedFileIds([]);
     setIsSelectionMode(false);
-    setSuccessMessage(`${idsToDelete.length} fichier(s) supprimé(s) avec succès (D1 & R2).`);
+    setSuccessMessage(idsToDelete.length > 1 ? 'Fichiers supprimés avec succès' : 'Fichier supprimé avec succès');
     setTimeout(() => {
       setSuccessMessage(null);
     }, 3000);
@@ -1787,6 +1808,13 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
             >
               <Globe className="w-3 h-3" />
               <span>Publier</span>
+            </button>
+            <button
+              onClick={handleBatchDelete}
+              disabled={selectedFileIds.length === 0}
+              className="px-1.5 py-1 bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white font-bold text-[9.5px] rounded-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-1"
+            >
+              <span>🗑️ Supprimer</span>
             </button>
             <button
               onClick={() => {
@@ -2607,9 +2635,45 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         onClose={() => setIncompatibleAlertInfo(null)} 
       />
 
+      {/* Modale de confirmation de suppression */}
+      {pendingDelete && (
+        <div
+          className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
+          onClick={() => setPendingDelete(null)}
+        >
+          <div
+            className="w-full max-w-sm bg-[#FDFBF7] dark:bg-[#111a2e] border-2 border-stone-800 dark:border-[#334155] rounded-2xl shadow-[4px_4px_0px_0px_#1c1917] p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-extrabold text-base text-stone-900 dark:text-white mb-2">Confirmer la suppression</h3>
+            <p className="text-sm text-stone-700 dark:text-stone-300 mb-5">
+              {pendingDelete.ids.length > 1
+                ? `Voulez-vous vraiment supprimer ces ${pendingDelete.ids.length} fichiers ? Cette action est irréversible.`
+                : `Voulez-vous vraiment supprimer « ${importedFiles.find(f => f.id === pendingDelete.ids[0])?.name || 'ce fichier'} » ? Cette action est irréversible.`}
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                id="files-delete-cancel"
+                onClick={() => setPendingDelete(null)}
+                className="flex-1 py-2.5 bg-stone-200 hover:bg-stone-300 text-stone-800 font-bold text-xs rounded-xl border-2 border-stone-800 transition-all shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                id="files-delete-confirm"
+                onClick={confirmPendingDelete}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl border-2 border-stone-800 transition-all shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer"
+              >
+                Confirmer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast Notification (Ajout / Classification / Suppression D1 & R2) */}
       {successMessage && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 bg-stone-900/95 dark:bg-stone-900/95 text-white border-2 border-stone-700/50 rounded-xl shadow-2xl text-xs sm:text-sm font-bold flex items-center gap-2.5 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-200 pointer-events-none">
+        <div className="fixed bottom-6 right-6 z-[100001] px-4 py-2.5 bg-stone-900/95 dark:bg-stone-900/95 text-white border-2 border-stone-700/50 rounded-xl shadow-2xl text-xs sm:text-sm font-bold flex items-center gap-2.5 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-200 pointer-events-none">
           <Check className="w-4 h-4 text-emerald-400 stroke-[3] shrink-0" />
           <span>{successMessage}</span>
         </div>
