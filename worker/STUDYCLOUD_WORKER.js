@@ -7012,13 +7012,11 @@ a:hover{transform:translateY(-2px)}
           trash: Number(trashStat?.count || 0)
         };
         const totalBytes = Number(cFilesStat?.totalBytes || 0) + Number(audioStat?.totalBytes || 0) + Number(imageStat?.totalBytes || 0) + Number(videoStat?.totalBytes || 0) + Number(docStat?.totalBytes || 0) + Number(downloadStat?.totalBytes || 0) + Number(secureStat?.totalBytes || 0);
-        const [recentDocs, recentImages, recentAudio, recentVideos, recentClasseur, recentDownloads] = await Promise.all([
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM document_files WHERE user_id = ? AND (name NOT LIKE "%.txt") ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all(),
+        const [recentDocs, recentImages, recentAudio, recentVideos] = await Promise.all([
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM document_files WHERE user_id = ? AND (name NOT LIKE "%.txt") AND (r2_key NOT LIKE "%/mes-fichiers/%" OR r2_key IS NULL) ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all(),
           env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, thumbnail_url as thumbnailUrl, "images" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM image_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all(),
           env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, cover_url as coverUrl, cover_url as previewUrl, artist, "audio" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM audio_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, thumbnail_url as thumbnailUrl, thumbnail_url as previewUrl, "videos" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM video_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, COALESCE(category, "documents") as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM classeur_files WHERE user_id = ? AND (is_notepad IS NULL OR is_notepad = 0) AND (name NOT LIKE "%.txt") ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, "" as date, file_url as previewUrl, "downloads" as category, COALESCE(downloaded_at, created_at, datetime("now")) as created_at FROM download_files WHERE user_id = ? ORDER BY COALESCE(downloaded_at, created_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all()
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, thumbnail_url as thumbnailUrl, thumbnail_url as previewUrl, "videos" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM video_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all()
         ]);
         const parseDateMs = (d) => {
           if (!d) return 0;
@@ -7035,7 +7033,8 @@ a:hover{transform:translateY(-2px)}
         const isEligibleRecent = (f) => {
           if (!f || !f.name) return false;
           if (f.is_notepad || f.isNotepad) return false;
-          if (f.category === "notes") return false;
+          const cat = String(f.category || "").toLowerCase().trim();
+          if (!["documents", "images", "videos", "audio"].includes(cat)) return false;
           if (typeof f.name === "string" && f.name.toLowerCase().endsWith(".txt")) return false;
           return true;
         };
@@ -7053,9 +7052,7 @@ a:hover{transform:translateY(-2px)}
           ...recentDocs?.results || [],
           ...recentImages?.results || [],
           ...recentAudio?.results || [],
-          ...recentVideos?.results || [],
-          ...recentClasseur?.results || [],
-          ...recentDownloads?.results || []
+          ...recentVideos?.results || []
         ].map(fixRecentCategory).filter(isEligibleRecent).filter((f) => !dismissedFileIdSet.has(String(f.id))).sort((a, b) => parseDateMs(b.created_at) - parseDateMs(a.created_at)).slice(0, 6);
         return jsonResponse({
           success: true,

@@ -143,13 +143,47 @@ async function idbSet(key: string, value: any): Promise<void> {
 }
 
 export const isRecentEligible = (file: any): boolean => {
-  if (!file) return false;
-  if (file.isNotepad) return false;
-  if (file.category === 'notes') return false;
+  if (!file || !file.name) return false;
+
+  // 1. Exclure formellement les dossiers (3D, classeur, etc.)
+  if (file.isFolder || file.is_folder || file.isClasseurFolder) return false;
+  if (file.size === 'Dossier 3D' || file.size === '1 dossier 3D') return false;
+  if (file.source === 'Dossier 3D' || file.source === 'Classeur') return false;
+  if (file.id && typeof file.id === 'string' && (file.id.startsWith('folder_') || file.id.startsWith('cf_folder_') || file.id.startsWith('cf-folder-'))) return false;
+
+  // 2. Exclure tout fichier appartenant à un dossier ou classeur
+  if (file.folderId && !['documents', 'images', 'videos', 'audio', 'default-folder', 'root'].includes(file.folderId)) return false;
+  if (file.folderName) return false;
+  if (file.originalFolderId) return false;
+
+  // 3. Exclure les matières et chemins R2 dédiés
+  if (file.matiere || file.matiereId) return false;
+  if (file.r2Key && (file.r2Key.includes('/mes-fichiers/') || file.r2Key.includes('/classeur/'))) return false;
+
+  // 4. Exclure notes, bloc-notes et fichiers textes
+  if (file.isNotepad || file.is_notepad) return false;
   const ext = (file.extension || (file.name ? file.name.split('.').pop() : '') || '').toLowerCase();
   if (ext === 'txt') return false;
   if (typeof file.name === 'string' && file.name.toLowerCase().endsWith('.txt')) return false;
   if (file.type === 'text/plain') return false;
+
+  // 5. Filtrage strict par catégorie : SEULEMENT images, vidéos, audio, documents
+  const cat = String(file.category || '').toLowerCase().trim();
+  const FORBIDDEN_CATS = ['classeur', 'folder', 'classeur_folder', 'dossier', 'notes', 'trash', 'corbeille', 'secure', 'apps', 'downloads', 'telechargements', 'mes-fichiers'];
+  if (FORBIDDEN_CATS.includes(cat)) return false;
+
+  const ALLOWED_CATS = new Set(['images', 'image', 'photos', 'videos', 'video', 'audio', 'musique', 'documents', 'document', 'docs']);
+  if (cat && !ALLOWED_CATS.has(cat)) return false;
+
+  // Si pas de catégorie renseignée explicitement, vérifier l'extension autorisée
+  if (!cat) {
+    const isDocExt = /^(pdf|docx?|xlsx?|pptx?|odt|rtf|csv)$/i.test(ext);
+    const isImgExt = /^(jpe?g|png|webp|gif|svg|avif)$/i.test(ext);
+    const isVidExt = /^(mp4|mov|avi|webm|mkv)$/i.test(ext);
+    const isAudExt = /^(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac)$/i.test(ext);
+    if (!isDocExt && !isImgExt && !isVidExt && !isAudExt) return false;
+  }
+
   return true;
 };
 
@@ -215,7 +249,7 @@ async function hydrateFromIndexedDB(): Promise<boolean> {
         favorites:       Array.isArray(parsed.favorites)       ? parsed.favorites       : [],
         favIdSet:        new Set(Array.isArray(parsed.favIds)  ? parsed.favIds          : []),
         pinIdSet:        new Set(Array.isArray(parsed.pinIds)  ? parsed.pinIds          : []),
-        recentFiles:     (Array.isArray(parsed.recentFiles)     ? parsed.recentFiles     : []).filter((f: any) => f && f.id && !dismissedRecentSet.has(f.id)),
+        recentFiles:     (Array.isArray(parsed.recentFiles)     ? parsed.recentFiles     : []).filter((f: any) => f && f.id && !dismissedRecentSet.has(f.id) && isRecentEligible(f)),
         isLoaded:        true,
         lastSyncTime:    Number(parsed.lastSyncTime) || 0,
       };
@@ -512,7 +546,10 @@ export const CloudDataStore = {
           const candidates = [
             ...(currentState.overview?.recentFiles || []),
             ...(currentState.recentFiles || []),
-            ...allCurrent
+            ...currentState.documents,
+            ...currentState.images,
+            ...currentState.videos,
+            ...currentState.audio
           ];
 
           const seenRecents = new Set<string>();
@@ -840,10 +877,12 @@ export const CloudDataStore = {
 
   addOptimisticFile(file: FileItem, folderId?: string) {
     const cat = file.category || 'documents';
-    const isEligible = isRecentEligible(file);
+    // STRICT: Seuls les fichiers des 4 menus (images, vidéos, audio, documents) et NON rattachés à un dossier peuvent aller dans les récents
+    const isEligible = !folderId && !file.folderId && isRecentEligible(file);
     const recent = isEligible
-      ? [file, ...currentState.recentFiles.filter(f => f.id !== file.id)].slice(0, 6)
-      : currentState.recentFiles;
+      ? [file, ...currentState.recentFiles.filter(f => f.id !== file.id && isRecentEligible(f))].slice(0, 6)
+      : currentState.recentFiles.filter(f => isRecentEligible(f));
+
     if (folderId) {
       const currentList = currentState.folderFilesMap[folderId] || [];
       currentState = {
@@ -873,15 +912,21 @@ export const CloudDataStore = {
         audio: [file, ...currentState.audio.filter(f => f.id !== file.id)]
       };
     } else if (cat === 'mes-fichiers') {
+      // mes-fichiers n'apparaît JAMAIS dans les récents
       currentState = {
         ...currentState,
         recentFiles: recent
       };
-    } else {
+    } else if (cat === 'documents' || !cat) {
       currentState = {
         ...currentState,
         recentFiles: recent,
         documents: [file, ...currentState.documents.filter(f => f.id !== file.id)]
+      };
+    } else {
+      currentState = {
+        ...currentState,
+        recentFiles: recent
       };
     }
     persistToIndexedDB().catch(() => {});
@@ -1635,7 +1680,7 @@ export const CloudDataStore = {
         ids.forEach(id => dismissedRecentSet.add(id));
         currentState = {
           ...currentState,
-          recentFiles: (currentState.recentFiles || []).filter(f => !dismissedRecentSet.has(f.id))
+          recentFiles: (currentState.recentFiles || []).filter(f => !dismissedRecentSet.has(f.id) && isRecentEligible(f))
         };
         notify();
       }

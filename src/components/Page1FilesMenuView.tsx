@@ -674,13 +674,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       });
       CloudStorageAPI.saveClasseurFile(f, folderId).catch(() => {});
     });
-    const eligibleRecent = newFiles.filter(isRecentEligible);
-    if (eligibleRecent.length > 0) {
-      setCloudRecentFiles(prev => {
-        const existingIds = new Set(eligibleRecent.map(f => f.id));
-        return [...eligibleRecent, ...prev.filter(f => !existingIds.has(f.id))].slice(0, 6);
-      });
-    }
+
 
     // Sauvegarde en arrière-plan via UploadQueue (max 2 parallèles, auto-retry, notifications)
     UploadQueue.enqueueExisting(
@@ -779,13 +773,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       });
       CloudStorageAPI.saveClasseurFile(f, folderId).catch(() => {});
     });
-    const eligibleRecent = newFiles.filter(isRecentEligible);
-    if (eligibleRecent.length > 0) {
-      setCloudRecentFiles(prev => {
-        const existingIds = new Set(eligibleRecent.map(f => f.id));
-        return [...eligibleRecent, ...prev.filter(f => !existingIds.has(f.id))].slice(0, 6);
-      });
-    }
+
 
     // Sauvegarde en arrière-plan via UploadQueue (max 2 parallèles, auto-retry, notifications)
     UploadQueue.enqueueExisting(
@@ -2154,9 +2142,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // FICHIERS RÉCENTS : STUDYCLOUD (Strictement fichiers réels de l'utilisateur, 6 éléments max)
   const DEFAULT_RECENT_FILES: FileItem[] = [];
 
-  // État des fichiers récents (en mémoire de session)
   const [cloudRecentFiles, setCloudRecentFiles] = useState<FileItem[]>(() => 
-    CloudDataStore.hasData() ? ((CloudDataStore.getState().recentFiles || []) as any[]).slice(0, 6) : DEFAULT_RECENT_FILES
+    CloudDataStore.hasData() ? ((CloudDataStore.getState().recentFiles || []) as any[]).filter(isRecentEligible).slice(0, 6) : DEFAULT_RECENT_FILES
   );
 
   // Helper pour vérifier strictement dans le compte de l'utilisateur si un fichier existe déjà dans son répertoire
@@ -2501,9 +2488,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         [folderId]: [...newItems, ...(prev[folderId] || []).filter(f => !fileIds.includes(f.id))]
       }));
     }
-    const eligibleRecent = newItems.filter(isRecentEligible);
-    if (eligibleRecent.length > 0) {
-      setCloudRecentFiles(prev => [...eligibleRecent, ...prev.filter(f => !fileIds.includes(f.id))].slice(0, 6));
+    const ALLOWED_RECENT_CATS = ['images', 'videos', 'audio', 'documents'];
+    if (ALLOWED_RECENT_CATS.includes(targetCategory) && !folderId) {
+      const eligibleRecent = newItems.filter(isRecentEligible);
+      if (eligibleRecent.length > 0) {
+        setCloudRecentFiles(prev => [...eligibleRecent, ...prev.filter(f => !fileIds.includes(f.id))].slice(0, 6));
+      }
     }
 
     startSavingAnimation(fileIds);
@@ -3219,12 +3209,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     });
 
     const fileItem = file as FileItem;
-    unmarkRecentLocallyDeleted(fileItem.id);
     unmarkFileLocallyDeleted(fileItem.id);
-    setCloudRecentFiles(prev => {
-      const filtered = prev.filter(f => f.id !== fileItem.id);
-      return [fileItem, ...filtered].slice(0, 6);
-    });
+    if (isRecentEligible(fileItem)) {
+      unmarkRecentLocallyDeleted(fileItem.id);
+      setCloudRecentFiles(prev => {
+        const filtered = prev.filter(f => f.id !== fileItem.id);
+        return [fileItem, ...filtered].slice(0, 6);
+      });
+    }
 
     showToast(`Téléchargement de "${file.name}" en cours...`);
   };
