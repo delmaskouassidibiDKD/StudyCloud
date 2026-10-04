@@ -776,9 +776,12 @@ export default function App() {
   const [previewLeftWidth, setPreviewLeftWidth] = useState(() => {
     try {
       const saved = localStorage.getItem('studycloud_preview_left_width');
-      if (saved) return Math.min(28, Math.max(18, parseFloat(saved)));
+      if (saved) {
+        const val = parseFloat(saved);
+        if (!isNaN(val)) return Math.min(38, Math.max(23.5, val));
+      }
     } catch (e) {}
-    return 22;
+    return 24;
   });
   const [previewRightWidth, setPreviewRightWidth] = useState(() => {
     try {
@@ -980,7 +983,7 @@ export default function App() {
       const x = clientX - rect.left;
       const percentage = (x / rect.width) * 100;
 
-      const minLeftPx = 260;
+      const minLeftPx = 320;
       const minLeft = (minLeftPx / rect.width) * 100;
       const minCenter = Math.max(28, (320 / rect.width) * 100);
       const maxLeft = Math.max(minLeft, 100 - previewRightWidth - minCenter);
@@ -2073,7 +2076,7 @@ export default function App() {
               style={{
                 gridTemplateColumns: isCenterFullscreen || isRightFullscreen 
                   ? '100%' 
-                  : (isMobileScreen ? '100%' : `minmax(260px, ${previewLeftWidth}%) ${100 - previewLeftWidth - previewRightWidth}% ${previewRightWidth}%`),
+                  : (isMobileScreen ? '100%' : `minmax(320px, ${previewLeftWidth}%) 1fr ${previewRightWidth}%`),
               }}
             >
               

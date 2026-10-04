@@ -929,7 +929,7 @@ export function LeftMenu({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`w-full min-w-[260px] h-full border-r-2 border-stone-800 relative pointer-events-auto bg-[#FDFBF7] ${
+      className={`w-full min-w-[320px] h-full border-r-2 border-stone-800 relative pointer-events-auto bg-[#FDFBF7] ${
         isCenterFullscreen || isRightFullscreen ? 'hidden' : (mobilePreviewTab === 0 ? 'flex' : 'hidden md:flex')
       } flex flex-col pt-[44px] overflow-hidden transition-colors ${
         isDraggingOver ? 'ring-4 ring-orange-500 ring-inset bg-orange-50/30' : ''
