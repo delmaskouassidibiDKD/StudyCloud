@@ -58,13 +58,17 @@ export function LeftMenu({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const detectedCategory = activePreviewItem?.isImage || activePreviewItem?.category === 'images' ? 'Images'
-    : (activePreviewItem?.videoUrl || activePreviewItem?.category === 'videos' ? 'Vidéos'
-    : (activePreviewItem?.audioUrl || activePreviewItem?.category === 'audio' ? 'Musique'
-    : (activePreviewItem?.category === 'documents' ? 'Documents' : null)));
+  // Déterminer précisément si on est dans "Mes fichiers" ou dans une matière spécifique
+  const rawMatiere = (activeFolderDetail?.title && activeFolderDetail.title !== 'Mes fichiers')
+    ? activeFolderDetail.title
+    : (activePreviewItem?.matiere && activePreviewItem.matiere !== 'Mes fichiers')
+      ? activePreviewItem.matiere
+      : (activePreviewItem?.folderName && activePreviewItem.folderName !== 'Mes fichiers' && !['Images', 'Vidéos', 'Musique', 'Documents'].includes(activePreviewItem.folderName))
+        ? activePreviewItem.folderName
+        : null;
 
-  const currentFolderName = activePreviewItem?.folderName || activePreviewItem?.matiere || activeFolderDetail?.title || detectedCategory;
-  const isMesFichiersMode = (!currentFolderName || currentFolderName === 'Mes fichiers') && !detectedCategory;
+  const isMesFichiersMode = !rawMatiere || rawMatiere === 'Mes fichiers';
+  const currentFolderName = isMesFichiersMode ? 'Mes fichiers' : rawMatiere;
   const [panelWidth, setPanelWidth] = useState(380);
 
   useEffect(() => {
@@ -1112,7 +1116,9 @@ export function LeftMenu({
                 <div className="flex items-center justify-between border-b border-stone-200 mb-2 pb-1 px-2 w-full shrink-0">
                   <div className="flex items-center gap-1.5">
                     <h4 className="text-[10px] font-bold text-stone-500 uppercase tracking-wider text-left m-0">
-                      {isMesFichiersMode ? 'Mes fichiers' : (currentFolderName ? `Fichiers de ${currentFolderName}` : 'Fichiers de la matière')}
+                      {isMesFichiersMode || !currentFolderName || currentFolderName === 'Mes fichiers'
+                        ? 'Mes fichiers'
+                        : `Fichiers de ${currentFolderName}`}
                     </h4>
                     {subjectFiles.length > 0 && (
                       <span className="text-[9px] font-bold text-stone-600 bg-stone-100 px-1.5 py-0.5 rounded-full">
@@ -1127,7 +1133,9 @@ export function LeftMenu({
                   </div>
                 ) : (
                   <p className="text-[11px] text-stone-400 italic py-4 text-center w-full">
-                    {isMesFichiersMode ? 'Aucun fichier dans Mes fichiers' : 'Aucun fichier dans cette matière'}
+                    {isMesFichiersMode || !currentFolderName || currentFolderName === 'Mes fichiers'
+                      ? 'Aucun fichier dans Mes fichiers'
+                      : 'Aucun fichier dans cette matière'}
                   </p>
                 )}
               </div>
