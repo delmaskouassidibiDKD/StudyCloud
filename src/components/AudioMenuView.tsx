@@ -1576,12 +1576,6 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
   // Rendu du lecteur indépendant (Image 2)
   const renderAudioPlayer = (track: FileItem) => {
-    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-    const fallbackStreamUrl = track.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(track.id)}` : '';
-    const rawDirect = track.audioUrl || (track as any).url || '';
-    const isDirectUsable = rawDirect && !rawDirect.startsWith('blob:');
-    const audioSrc = splitResolvedAudioUrl || (isDirectUsable ? rawDirect : '') || fallbackStreamUrl;
-
     return (
       <div className="relative w-full h-full flex-1 flex flex-col justify-between p-3 sm:p-6 md:p-8 bg-[#090D1A] text-white overflow-hidden select-none">
         {/* L'élément audio est maintenu actif de façon permanente par GlobalAudioProvider au niveau racine */}

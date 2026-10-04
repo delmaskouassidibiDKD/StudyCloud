@@ -228,7 +228,7 @@ export const HeaderMelodyControl: React.FC<HeaderMelodyControlProps> = ({
               : 'text-stone-700'
           }`}
         >
-          Mélodie
+          Musique
         </span>
 
         {/* ─── PETIT MENU DÉROULANT SOUS LE BOUTON MÉLODIE ─── */}
