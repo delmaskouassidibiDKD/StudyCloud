@@ -3,7 +3,7 @@ import { Edit3, ArrowLeft, Upload, File, MoreVertical, X, Search, Check, Copy, P
 import { ImportedItem, getFileTimestamp, getDocumentTheme } from './FilesMenuView';
 import { triggerDebouncedCloudBackup } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
-import { storeFileBlob, getFileBlobUrl, deleteFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
+import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { ImageCardPreview } from './ImageCardPreview';
 import { UploadQueue } from '../services/uploadQueue';
@@ -70,18 +70,41 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     localStorage.setItem('studycloud_matiere_preview_mode', String(isPreviewMode));
   }, [isPreviewMode]);
 
-  const handleDownload = async (fileUrl: string, fileName: string) => {
+  const handleDownload = async (fileUrl: string | undefined, fileName: string, fileId?: string) => {
     try {
-      const response = await fetch(fileUrl);
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      let targetBlob: Blob | null = null;
+      if (fileId) {
+        targetBlob = await getFileBlob(fileId).catch(() => null);
+      }
+      if (!targetBlob && fileUrl) {
+        const response = await fetch(fileUrl);
+        targetBlob = await response.blob();
+      }
+      if (!targetBlob && fileId) {
+        const blobUrl = await getFileBlobUrl(fileId);
+        if (blobUrl) {
+          const response = await fetch(blobUrl);
+          targetBlob = await response.blob();
+        }
+      }
+      if (targetBlob) {
+        const url = URL.createObjectURL(targetBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } else if (fileUrl) {
+        const a = document.createElement('a');
+        a.href = fileUrl;
+        a.download = fileName;
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
     } catch (err) {
       console.error("Erreur lors du téléchargement:", err);
     }
@@ -487,11 +510,21 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       localStorage.setItem('unifolder_last_imported_id', newId);
     } catch (e) {}
 
+    // Dupliquer le blob binaire dans IndexedDB pour que la copie soit 100% indépendante
+    getFileBlob(fileToDup.id).then(blob => {
+      if (blob) {
+        storeFileBlob(newId, blob).catch(() => {});
+      }
+    }).catch(() => {});
+
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    const targetMat = savedMatieres.find(m => m.name.toLowerCase() === matiereName.toLowerCase() || m.id === matiereName);
+    const resolvedMatiereId = targetMat?.id || duplicated.matiere || null;
+
     StudyCloudAPI.registerFileMetadata({
       id: newId,
       userId,
-      matiereId: duplicated.matiere || null,
+      matiereId: resolvedMatiereId,
       name: duplicated.name,
       size: duplicated.size,
       type: duplicated.type,
@@ -1256,7 +1289,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
 
                                     <button
                                       onClick={() => {
-                                        if (f.url) handleDownload(f.url, f.name);
+                                        handleDownload(f.url, f.name, f.id);
                                         setOpenMenuId(null);
                                       }}
                                       className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
@@ -1313,7 +1346,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                                     <button
                                       onClick={() => {
                                         setIsSelectionMode(true);
-                                        setSelectedFileIds(importedFiles.map(item => item.id));
+                                        setSelectedFileIds(filteredFiles.map(item => item.id));
                                         setOpenMenuId(null);
                                       }}
                                       className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
@@ -1501,7 +1534,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
 
                             <button
                               onClick={() => {
-                                if (f.url) handleDownload(f.url, f.name);
+                                handleDownload(f.url, f.name, f.id);
                                 setOpenMenuId(null);
                               }}
                               className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
@@ -1554,7 +1587,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                             <button
                               onClick={() => {
                                 setIsSelectionMode(true);
-                                setSelectedFileIds(importedFiles.map(item => item.id));
+                                setSelectedFileIds(filteredFiles.map(item => item.id));
                                 setOpenMenuId(null);
                               }}
                               className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
