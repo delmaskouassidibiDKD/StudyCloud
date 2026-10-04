@@ -458,6 +458,11 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const floatingSearchInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCloseSearch = () => {
+    setIsSearchOpen(false);
+    setSearchQuery('');
+  };
   const [showFilesMenuDropdown, setShowFilesMenuDropdown] = useState(false);
   const [sortBy, setSortBy] = useState<'recent' | 'oldest' | 'size'>('recent');
 
@@ -586,7 +591,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isSearchOpen) {
-        setIsSearchOpen(false);
+        handleCloseSearch();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -1412,70 +1417,130 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           </button>
         </div>
 
-        {/* MILIEU : Liste horizontale des matières (Mes fichiers en premier, puis toutes les matières créées) */}
-        <div className="flex-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-0.5 px-1 pointer-events-auto min-w-0">
-          {/* Bouton premier : Mes fichiers */}
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedTab('Mes fichiers');
-              setSearchQuery('');
-            }}
-            className={`px-3 py-1 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 select-none ${
-              selectedTab === 'Mes fichiers'
-                ? 'bg-amber-400 dark:bg-amber-500 text-stone-900 font-black border-2 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917] scale-[1.02]'
-                : 'bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-stone-300 font-bold border-2 border-stone-400/40 dark:border-stone-700 shadow-xs'
-            }`}
-            title="Mes fichiers (Tous les fichiers)"
-          >
-            <span>Mes fichiers</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded bg-black/10 dark:bg-black/30 font-mono font-bold">
-              {importedFiles.length}
-            </span>
-          </button>
+        {/* MILIEU : Barre de recherche compacte OU Liste horizontale des matières */}
+        {isSearchOpen ? (
+          <div className="flex-1 flex items-center gap-2 bg-[#FDFBF7] dark:bg-[#111a2e] border-2 border-stone-800 dark:border-stone-600 rounded-xl shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none px-2.5 py-1 pointer-events-auto min-w-0 h-9">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className="w-5 h-5 rounded-md bg-amber-400 text-stone-900 flex items-center justify-center border border-stone-800 shadow-xs">
+                <Search className="w-3 h-3 stroke-[2.8]" />
+              </div>
+              <span className="hidden sm:inline-block text-[11px] font-extrabold text-stone-700 dark:text-stone-300 whitespace-nowrap">
+                « {selectedTab} »
+              </span>
+            </div>
 
-          {/* Matières créées */}
-          {savedMatieres.map((m) => {
-            const isSelected = selectedTab === m.name;
-            const isHex = m.color && m.color.startsWith('#');
-            const colorClass = !isHex && m.color ? m.color : (!isHex ? 'bg-[#1f4e79] text-white' : '');
-            const count = importedFiles.filter(f => f.matiere === m.name || f.folderName === m.name).length;
-
-            return (
-              <button
-                key={m.id || m.name}
-                type="button"
-                onClick={() => {
-                  setSelectedTab(m.name);
-                  setSearchQuery('');
+            <div className="flex-1 relative flex items-center min-w-0">
+              <input
+                ref={floatingSearchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    handleCloseSearch();
+                  }
                 }}
-                style={isHex ? { backgroundColor: m.color, color: '#fff' } : undefined}
-                className={`px-3 py-1 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 select-none border-2 ${colorClass} ${
-                  isSelected
-                    ? 'ring-2 ring-amber-400 dark:ring-amber-400 ring-offset-2 ring-offset-[#C5B0A4] dark:ring-offset-[#0b0f19] border-stone-900 dark:border-white font-black scale-[1.04] shadow-md z-10'
-                    : 'border-stone-700/50 hover:border-stone-900 opacity-85 hover:opacity-100 font-bold hover:scale-[1.02]'
-                }`}
-                title={`${m.name} (Coeff: ${m.coefficient || 1})`}
-              >
-                <span>{m.name}</span>
-                {m.coefficient && (
-                  <span className="text-[9px] px-1 py-0.2 rounded bg-black/30 text-white font-mono">
-                    C:{m.coefficient}
+                placeholder={selectedTab === 'Mes fichiers' ? 'Tapez le nom d\'un fichier...' : `Rechercher dans ${selectedTab}...`}
+                className="w-full bg-transparent text-xs font-semibold text-stone-900 dark:text-white placeholder:text-stone-400 focus:outline-none pr-5"
+                autoFocus
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-0 text-stone-400 hover:text-stone-700 dark:hover:text-white p-0.5 cursor-pointer"
+                  title="Effacer le texte"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700/50 whitespace-nowrap shrink-0">
+              {filteredFiles.length} trouvé{filteredFiles.length > 1 ? 's' : ''}
+            </span>
+
+            <button
+              type="button"
+              onClick={handleCloseSearch}
+              className="flex items-center gap-1 px-2 py-0.5 bg-stone-800 hover:bg-stone-900 text-white dark:bg-stone-700 dark:hover:bg-stone-600 font-bold text-[11px] rounded-lg transition-colors cursor-pointer shrink-0 shadow-xs active:translate-x-0.5 active:translate-y-0.5"
+              title="Fermer la recherche et tout réafficher"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Fermer</span>
+            </button>
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-0.5 px-1 pointer-events-auto min-w-0">
+            {/* Bouton premier : Mes fichiers */}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedTab('Mes fichiers');
+                setSearchQuery('');
+              }}
+              className={`px-3 py-1 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 select-none ${
+                selectedTab === 'Mes fichiers'
+                  ? 'bg-amber-400 dark:bg-amber-500 text-stone-900 font-black border-2 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917] scale-[1.02]'
+                  : 'bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-stone-300 font-bold border-2 border-stone-400/40 dark:border-stone-700 shadow-xs'
+              }`}
+              title="Mes fichiers (Tous les fichiers)"
+            >
+              <span>Mes fichiers</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-black/10 dark:bg-black/30 font-mono font-bold">
+                {importedFiles.length}
+              </span>
+            </button>
+
+            {/* Matières créées */}
+            {savedMatieres.map((m) => {
+              const isSelected = selectedTab === m.name;
+              const isHex = m.color && m.color.startsWith('#');
+              const colorClass = !isHex && m.color ? m.color : (!isHex ? 'bg-[#1f4e79] text-white' : '');
+              const count = importedFiles.filter(f => f.matiere === m.name || f.folderName === m.name).length;
+
+              return (
+                <button
+                  key={m.id || m.name}
+                  type="button"
+                  onClick={() => {
+                    setSelectedTab(m.name);
+                    setSearchQuery('');
+                  }}
+                  style={isHex ? { backgroundColor: m.color, color: '#fff' } : undefined}
+                  className={`px-3 py-1 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 select-none border-2 ${colorClass} ${
+                    isSelected
+                      ? 'ring-2 ring-amber-400 dark:ring-amber-400 ring-offset-2 ring-offset-[#C5B0A4] dark:ring-offset-[#0b0f19] border-stone-900 dark:border-white font-black scale-[1.04] shadow-md z-10'
+                      : 'border-stone-700/50 hover:border-stone-900 opacity-85 hover:opacity-100 font-bold hover:scale-[1.02]'
+                  }`}
+                  title={`${m.name} (Coeff: ${m.coefficient || 1})`}
+                >
+                  <span>{m.name}</span>
+                  {m.coefficient && (
+                    <span className="text-[9px] px-1 py-0.2 rounded bg-black/30 text-white font-mono">
+                      C:{m.coefficient}
+                    </span>
+                  )}
+                  <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-white/20 text-white font-mono">
+                    {count}
                   </span>
-                )}
-                <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-white/20 text-white font-mono">
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         <div className="flex items-center gap-1.5 md:gap-2 pointer-events-auto shrink-0 pt-0.5">
           {/* Bouton loupe devant le bouton œil */}
           <button
             type="button"
-            onClick={() => setIsSearchOpen(prev => !prev)}
+            onClick={() => {
+              if (isSearchOpen) {
+                handleCloseSearch();
+              } else {
+                setIsSearchOpen(true);
+              }
+            }}
             className={`p-1.5 rounded-lg border-2 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center relative ${
               isSearchOpen || searchQuery
                 ? 'bg-amber-400 text-stone-900 border-stone-800 font-bold'
@@ -1690,89 +1755,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         </div>
       )}
 
-      {/* Recherche flottante affichée au-dessus de la page comme une notification */}
-      <AnimatePresence>
-        {isSearchOpen && (
-          <>
-            {/* Arrière-plan transparent pour fermer en cliquant en dehors */}
-            <div 
-              className="fixed inset-0 z-[80] bg-black/15 dark:bg-black/40 backdrop-blur-[1px]"
-              onClick={() => setIsSearchOpen(false)}
-            />
 
-            <motion.div
-              initial={{ opacity: 0, y: -25, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.95 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="fixed top-20 md:top-24 left-1/2 -translate-x-1/2 z-[90] w-[92%] sm:w-[480px] bg-[#F5F1E9] dark:bg-[#111a2e] border-2 border-stone-800 dark:border-stone-600 rounded-2xl shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-none p-3.5 pointer-events-auto"
-            >
-              <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-stone-300 dark:border-stone-700/60">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-5 h-5 rounded-md bg-amber-400 text-stone-900 flex items-center justify-center border border-stone-800 shadow-xs">
-                    <Search className="w-3 h-3 stroke-[2.8]" />
-                  </div>
-                  <span className="text-xs font-bold text-stone-800 dark:text-stone-200">
-                    Rechercher dans <span className="font-extrabold text-amber-600 dark:text-amber-400">« {selectedTab} »</span>
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsSearchOpen(false)}
-                  className="p-1 text-stone-500 hover:text-stone-900 dark:hover:text-white rounded-lg hover:bg-stone-200 dark:hover:bg-stone-800 transition-colors cursor-pointer"
-                  title="Fermer la recherche"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="relative flex items-center">
-                <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  ref={floatingSearchInputRef}
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={selectedTab === 'Mes fichiers' ? 'Tapez le nom d\'un fichier...' : `Rechercher dans ${selectedTab}...`}
-                  className="w-full pl-9 pr-8 py-2 text-xs font-semibold bg-white dark:bg-[#070a13] text-stone-900 dark:text-white border-2 border-stone-800 dark:border-stone-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 placeholder:text-stone-400 shadow-inner"
-                  autoFocus
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 dark:hover:text-white p-0.5 cursor-pointer"
-                    title="Effacer"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between mt-2 pt-1 text-[11px] text-stone-600 dark:text-stone-400 font-medium px-1">
-                <span>
-                  {searchQuery.trim() ? (
-                    <>
-                      <strong className="text-stone-900 dark:text-white">{filteredFiles.length}</strong> résultat{filteredFiles.length > 1 ? 's' : ''} trouvé{filteredFiles.length > 1 ? 's' : ''}
-                    </>
-                  ) : (
-                    <span>Entrez un mot-clé pour filtrer les fichiers</span>
-                  )}
-                </span>
-                {searchQuery.trim() && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="text-[10px] text-rose-500 hover:underline font-bold cursor-pointer"
-                  >
-                    Effacer
-                  </button>
-                )}
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
 
       <div className="w-full px-2 sm:px-4 pt-16 sm:pt-20">
         <div className="pt-1 pb-64 w-full max-w-7xl mx-auto">
