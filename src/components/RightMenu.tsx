@@ -1578,7 +1578,7 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
   };
 
   return (
-    <div className={`w-full h-full pointer-events-auto relative bg-[#1e2024] flex flex-col overflow-hidden ${isCenterFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 2 || isRightFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
+    <div className={`w-full h-full pointer-events-auto relative bg-[#1e2024] flex flex-col pt-[44px] overflow-hidden ${isCenterFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 2 || isRightFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
       {/* Poignée de redimensionnement entre CenterMenu et RightMenu */}
       {setIsResizingRight && (
         <div 
@@ -1594,70 +1594,64 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
         </div>
       )}
 
-      {/* Barre supérieure en haut dans le creux : Bouton Zoom (jaune) + Bouton + (Retour aux 12 boutons) + Bouton Historique (horloge) */}
-      <div className="w-full flex items-center justify-between px-3 py-2 bg-[#23252a] border-b border-zinc-700/60 shrink-0 z-50 shadow-sm">
+      {/* Barre d'outils de création sous la ligne horizontale : Bouton Zoom (jaune) + Bouton + | Bouton Historique (horloge) */}
+      <div className="w-full flex items-center justify-between px-3 py-1.5 bg-[#1a1c22] border-b border-zinc-700/60 shrink-0 z-20 shadow-xs">
         <div className="flex items-center gap-2">
           {/* Bouton Zoom jaune */}
           <button
             type="button"
             onClick={() => setIsRightFullscreen(!isRightFullscreen)}
-            className="p-1.5 bg-yellow-400 rounded-lg border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] hover:bg-yellow-300 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-stone-900 flex items-center justify-center"
+            className="p-1.5 bg-yellow-400 rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] hover:bg-yellow-300 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-stone-900 flex items-center justify-center shrink-0"
             title={isRightFullscreen ? "Réduire" : "Plein écran"}
           >
             {isRightFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
           </button>
 
-          {/* Bouton + placé derrière le bouton zoom jaune (retour à la sélection des 12 modules) */}
+          {/* Bouton + (retour à la sélection des 12 modules) */}
           <button
             type="button"
             onClick={() => {
               setActiveCreation(null);
               setIsGenerating(false);
             }}
-            className="p-1.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center"
+            className="p-1.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center shrink-0"
             title="Nouvelle création / Afficher les 12 modules"
           >
             <Plus className="w-4 h-4 text-orange-400 font-black" />
           </button>
         </div>
 
-        {/* Titre ou indicateur d'état */}
-        <div className="flex items-center gap-2 text-xs font-bold text-zinc-300 truncate px-2">
-          <Sparkles className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-          <span className="truncate">
-            {activeCreation ? activeCreation.title : 'Espace Création IA (12 Modules)'}
-          </span>
-        </div>
+        <div className="flex items-center gap-2">
+          {/* Bouton Aperçu Web Worker si disponible */}
+          {activeCreation?.htmlPreview && (
+            <button
+              type="button"
+              onClick={() => {
+                const win = window.open();
+                if (win) {
+                  win.document.open();
+                  win.document.write(activeCreation.htmlPreview!);
+                  win.document.close();
+                }
+              }}
+              className="p-1.5 bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-300 rounded-lg border-2 border-cyan-800/60 shadow-[1px_1px_0px_0px_#0e7490] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 text-[11px] font-bold shrink-0"
+              title="Ouvrir l'aperçu HTML standalone généré par le Worker"
+            >
+              <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline">Aperçu Web</span>
+            </button>
+          )}
 
-        {/* Bouton Aperçu Web Worker si disponible */}
-        {activeCreation?.htmlPreview && (
+          {/* Bouton Horloge (Historique des créations) */}
           <button
             type="button"
-            onClick={() => {
-              const win = window.open();
-              if (win) {
-                win.document.open();
-                win.document.write(activeCreation.htmlPreview!);
-                win.document.close();
-              }
-            }}
-            className="p-1.5 bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-300 rounded-lg border-2 border-cyan-800/60 shadow-[2px_2px_0px_0px_#0e7490] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 text-[11px] font-bold shrink-0"
-            title="Ouvrir l'aperçu HTML standalone généré par le Worker"
+            onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+            className="p-1.5 bg-white rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] hover:bg-stone-100 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-stone-900 flex items-center justify-center shrink-0"
+            title={isRightSidebarOpen ? "Fermer l'historique" : "Historique des créations"}
           >
-            <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">Aperçu Web</span>
+            {isRightSidebarOpen ? <X className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
           </button>
-        )}
-
-        {/* Bouton Horloge (Historique des créations) */}
-        <button
-          type="button"
-          onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
-          className="p-1.5 bg-white rounded-lg border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] hover:bg-stone-100 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-stone-900 flex items-center justify-center shrink-0"
-          title={isRightSidebarOpen ? "Fermer l'historique" : "Historique des créations"}
-        >
-          {isRightSidebarOpen ? <X className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
-        </button>
+        </div>
       </div>
 
       {/* Main Creation Area */}
