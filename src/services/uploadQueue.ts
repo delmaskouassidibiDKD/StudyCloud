@@ -497,6 +497,7 @@ class UploadQueueManager {
         else if (category === 'images') invalidateCloudQueries.images();
         else if (category === 'documents') invalidateCloudQueries.documents();
         else if (category === 'classeur') invalidateCloudQueries.classeurFiles(folderId);
+        else if (category === 'mes-fichiers') invalidateCloudQueries.filesMenu();
         invalidateCloudQueries.overview();
         invalidateCloudQueries.all();
       } catch {}

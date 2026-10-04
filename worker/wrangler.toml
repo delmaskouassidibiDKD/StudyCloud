@@ -36,6 +36,10 @@ bucket_name = "r2-studycloud"
 
 # Buckets dédiés par catégorie (Option B)
 [[r2_buckets]]
+binding = "BUCKET_MES_FICHIERS"
+bucket_name = "r2-studycloud-mes-fichiers"
+
+[[r2_buckets]]
 binding = "BUCKET_CLASSEUR"
 bucket_name = "r2-studycloud-classeur"
 

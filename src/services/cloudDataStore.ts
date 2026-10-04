@@ -21,8 +21,8 @@ export interface FileItem {
   date: string;
   timestamp?: number;
   type?: string;
-  category?: 'classeur' | 'downloads' | 'images' | 'videos' | 'audio' | 'documents' | 'trash' | 'secure' | 'folder' | 'classeur_folder' | 'apps' | string;
-  originalCategory?: 'classeur' | 'downloads' | 'images' | 'videos' | 'audio' | 'documents' | 'trash' | 'secure' | 'folder' | 'classeur_folder' | 'apps' | string;
+  category?: 'classeur' | 'downloads' | 'images' | 'videos' | 'audio' | 'documents' | 'trash' | 'secure' | 'folder' | 'classeur_folder' | 'apps' | 'mes-fichiers' | string;
+  originalCategory?: 'classeur' | 'downloads' | 'images' | 'videos' | 'audio' | 'documents' | 'trash' | 'secure' | 'folder' | 'classeur_folder' | 'apps' | 'mes-fichiers' | string;
   url?: string;
   previewUrl?: string;
   thumbnailUrl?: string;
@@ -870,6 +870,11 @@ export const CloudDataStore = {
         ...currentState,
         recentFiles: recent,
         audio: [file, ...currentState.audio.filter(f => f.id !== file.id)]
+      };
+    } else if (cat === 'mes-fichiers') {
+      currentState = {
+        ...currentState,
+        recentFiles: recent
       };
     } else {
       currentState = {

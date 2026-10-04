@@ -962,7 +962,7 @@ export const CloudStorageAPI = {
 
   async uploadFile(
     file: File | Blob,
-    category: 'auto' | 'classeur' | 'audio' | 'images' | 'videos' | 'documents',
+    category: 'auto' | 'classeur' | 'audio' | 'images' | 'videos' | 'documents' | 'mes-fichiers',
     fileName: string,
     folderId?: string,
     thumbnailDataUrl?: string,
@@ -1063,7 +1063,7 @@ export const CloudStorageAPI = {
 
   async uploadFileToCategoryR2(
     file: File | Blob,
-    category: 'classeur' | 'audio' | 'images' | 'videos' | 'documents' | 'downloads' | 'secure',
+    category: 'classeur' | 'audio' | 'images' | 'videos' | 'documents' | 'downloads' | 'secure' | 'mes-fichiers',
     fileName: string,
     folderId?: string,
     uploadSource?: string,

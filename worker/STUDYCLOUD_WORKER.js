@@ -2030,6 +2030,9 @@ function getBucketForCategory(rawEnv, category) {
     return rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
   }
   const cat = String(category).toLowerCase().trim();
+  if (cat === "mes-fichiers" || cat === "mes_fichiers") {
+    return rawEnv.BUCKET_MES_FICHIERS || rawEnv.MON_R2_MES_FICHIERS || rawEnv["MON_R2-MES_FICHIERS"] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
+  }
   if (cat === "classeur") {
     return rawEnv.BUCKET_CLASSEUR || rawEnv.MON_R2_CLASSEUR || rawEnv["MON_R2-CLASSEUR"] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
   }
@@ -2118,6 +2121,9 @@ function getAllBuckets(rawEnv) {
     rawEnv.BUCKET,
     rawEnv.MON_R2_STUDYCLOUD,
     rawEnv["MON_R2-STUDYCLOUD"],
+    rawEnv.BUCKET_MES_FICHIERS,
+    rawEnv.MON_R2_MES_FICHIERS,
+    rawEnv["MON_R2-MES_FICHIERS"],
     rawEnv.BUCKET_AUDIO,
     rawEnv.MON_R2_AUDIO,
     rawEnv["MON_R2-AUDIO"],
@@ -2209,6 +2215,7 @@ async function deleteR2ObjectAndThumbnails(rawEnv, reqUserId, itemId, itemR2Key,
     const normCategory = (category || "").toLowerCase().trim();
     const categoriesToScan = /* @__PURE__ */ new Set([
       normCategory,
+      "mes-fichiers",
       "audio",
       "images",
       "videos",
@@ -2223,6 +2230,8 @@ async function deleteR2ObjectAndThumbnails(rawEnv, reqUserId, itemId, itemR2Key,
     const prefixes = /* @__PURE__ */ new Set();
     prefixes.add(`${reqUserId}/thumbnails/${itemId}`);
     prefixes.add(`thumbnails/${itemId}`);
+    prefixes.add(`${reqUserId}/mes-fichiers/thumbnails/${itemId}`);
+    prefixes.add(`mes-fichiers/thumbnails/${itemId}`);
     prefixes.add(`${reqUserId}/${itemId}`);
     for (const cat of categoriesToScan) {
       if (!cat) continue;
@@ -6771,41 +6780,42 @@ a:hover{transform:translateY(-2px)}
                   updated_at = CURRENT_TIMESTAMP
               `).bind(fileId, reqUserId, folderId || "default-folder", fileName, sizeFormatted, sizeBytes, detectedNature, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
             }
-            const isMesFichiers = uploadSource === "mes-fichiers" || requestedCategory === "mes-fichiers";
-            const targetMatiereId = isMesFichiers ? null : finalCategory === "classeur" ? folderId || "Classeur" : `menu-${finalCategory}`;
-            await env.DB.prepare(`
-              INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-              ON CONFLICT(id) DO UPDATE SET
-                name = excluded.name,
-                size = excluded.size,
-                type = excluded.type,
-                matiere_id = CASE
-                  WHEN ? = 1 THEN NULL
-                  WHEN files.matiere_id IS NULL OR files.matiere_id = '' OR files.matiere_id = 'Mes fichiers' THEN files.matiere_id
-                  ELSE COALESCE(files.matiere_id, excluded.matiere_id)
-                END,
-                r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
-                file_url = CASE
-                  WHEN excluded.file_url IS NOT NULL AND excluded.file_url != '' AND excluded.file_url NOT LIKE 'blob:%'
-                  THEN excluded.file_url
-                  ELSE files.file_url
-                END,
-                last_imported = excluded.last_imported,
-                updated_at = CURRENT_TIMESTAMP
-            `).bind(
-              fileId,
-              reqUserId,
-              targetMatiereId,
-              fileName,
-              sizeBytes,
-              contentType || "application/octet-stream",
-              extUpper,
-              storageKey,
-              fileUrl,
-              Date.now(),
-              isMesFichiers ? 1 : 0
-            ).run();
+            const isMesFichiers = uploadSource === "mes-fichiers" || requestedCategory === "mes-fichiers" || finalCategory === "mes-fichiers";
+            if (isMesFichiers || folderId && !["documents", "images", "videos", "audio"].includes(folderId)) {
+              const targetMatiereId = folderId || (isMesFichiers ? "Mes fichiers" : null);
+              await env.DB.prepare(`
+                INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                  name = excluded.name,
+                  size = excluded.size,
+                  type = excluded.type,
+                  matiere_id = CASE
+                    WHEN excluded.matiere_id IS NOT NULL AND excluded.matiere_id != '' AND excluded.matiere_id != 'Mes fichiers' THEN excluded.matiere_id
+                    WHEN files.matiere_id IS NOT NULL AND files.matiere_id != '' THEN files.matiere_id
+                    ELSE excluded.matiere_id
+                  END,
+                  r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
+                  file_url = CASE
+                    WHEN excluded.file_url IS NOT NULL AND excluded.file_url != '' AND excluded.file_url NOT LIKE 'blob:%'
+                    THEN excluded.file_url
+                    ELSE files.file_url
+                  END,
+                  last_imported = excluded.last_imported,
+                  updated_at = CURRENT_TIMESTAMP
+              `).bind(
+                fileId,
+                reqUserId,
+                targetMatiereId,
+                fileName,
+                sizeBytes,
+                contentType || "application/octet-stream",
+                extUpper,
+                storageKey,
+                fileUrl,
+                Date.now()
+              ).run();
+            }
           } catch (d1Err) {
             console.warn("[CloudWorker] Erreur insertion D1 upload:", d1Err);
           }

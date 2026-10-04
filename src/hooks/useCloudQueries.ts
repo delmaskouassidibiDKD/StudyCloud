@@ -182,7 +182,12 @@ export function useFilesMenuList(userId?: string) {
       if (!currentUid || currentUid === 'default-user') return [];
       const res = await StudyCloudAPI.getFiles(currentUid, 'all', false);
       if (res && res.success && Array.isArray(res.data)) {
-        const nonStudyRows = res.data.filter((row: any) => !row.is_study_session && !row.isStudyImport);
+        const nonStudyRows = res.data.filter((row: any) => {
+          if (row.is_study_session || row.isStudyImport) return false;
+          if (row.matiere_id && (row.matiere_id.startsWith('menu-') || ['documents', 'images', 'videos', 'audio', 'downloads', 'secure'].includes(row.matiere_id))) return false;
+          if (row.category && ['documents', 'images', 'videos', 'audio', 'downloads', 'secure'].includes(row.category)) return false;
+          return true;
+        });
         let matieresList: any[] = [];
         const cachedMatieres = queryClient.getQueryData<any[]>(QUERY_KEYS.matieresList(currentUid));
         if (Array.isArray(cachedMatieres) && cachedMatieres.length > 0) {

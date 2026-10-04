@@ -948,6 +948,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     invalidateCloudQueries.favorites();
 
     window.dispatchEvent(new Event('unifolder_files_updated'));
+    setSuccessMessage(`« ${fileToDelete?.name || 'Fichier'} » a été supprimé avec succès (D1 & R2).`);
+    setTimeout(() => {
+      setSuccessMessage(null);
+    }, 3000);
   };
 
   const handleBatchDelete = () => {
@@ -1004,6 +1008,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     window.dispatchEvent(new Event('unifolder_files_updated'));
     setSelectedFileIds([]);
     setIsSelectionMode(false);
+    setSuccessMessage(`${idsToDelete.length} fichier(s) supprimé(s) avec succès (D1 & R2).`);
+    setTimeout(() => {
+      setSuccessMessage(null);
+    }, 3000);
   };
 
   const cleanupUnusedMatieres = () => {
@@ -1027,9 +1035,13 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     // Find all files being classified
     const filesToClassify = importedFiles.filter(item => classifyFileIds.includes(item.id));
 
-    setImportedFiles(prev => prev.map(item => classifyFileIds.includes(item.id) ? { ...item, matiere: matiereString, matiereId: resolvedMatiereId || item.matiereId } : item));
+    setImportedFiles(prev => {
+      const updated = prev.map(item => classifyFileIds.includes(item.id) ? { ...item, matiere: matiereString, matiereId: resolvedMatiereId || item.matiereId } : item);
+      safeLocalStorageSet('unifolder_files_menu_items', updated);
+      return updated;
+    });
 
-    // Also add a copy of each file to each selected matiere's independent storage
+    // Also add/update each file in each selected matiere's independent storage, keeping original ID
     filesToClassify.forEach(fileToClassify => {
       selectedMats.forEach(mat => {
         const matName = mat.name;
@@ -1037,13 +1049,18 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         try {
           const existing = localStorage.getItem(storageKey);
           let list: ImportedItem[] = existing ? JSON.parse(existing) : [];
+          const idx = list.findIndex(item => item.id === fileToClassify.id);
           const copiedFile: ImportedItem = {
             ...fileToClassify,
-            id: 'file-' + Math.random().toString(36).substring(2, 9),
+            id: fileToClassify.id,
             matiere: matName,
             matiereId: mat.id
           };
-          list.push(copiedFile);
+          if (idx >= 0) {
+            list[idx] = copiedFile;
+          } else {
+            list.push(copiedFile);
+          }
           safeLocalStorageSet(storageKey, list);
         } catch (e) {
           console.error(e);
@@ -1258,15 +1275,15 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
       // 5. CloudDataStore.addOptimisticFile — sync multi-appareils immédiate
       newItems.forEach(item => {
-        CloudDataStore.addOptimisticFile(item as any);
+        CloudDataStore.addOptimisticFile({ ...item, category: 'mes-fichiers' } as any);
       });
 
       const targetMatForQueue = selectedTab !== 'Mes fichiers' ? savedMatieres.find(m => m.name.toLowerCase() === selectedTab.toLowerCase() || m.id === selectedTab) : null;
       // 6. UploadQueue.enqueueExisting — R2 en arrière-plan avec retry automatique
       UploadQueue.enqueueExisting(itemsWithFiles, {
-        category: 'documents',
+        category: 'mes-fichiers',
         uploadSource: 'mes-fichiers',
-        folderId: targetMatForQueue?.id || undefined
+        folderId: targetMatForQueue?.id || (selectedTab !== 'Mes fichiers' ? selectedTab : 'Mes fichiers')
       });
 
       if (newItems.length > 0) {
@@ -2589,6 +2606,14 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         info={incompatibleAlertInfo} 
         onClose={() => setIncompatibleAlertInfo(null)} 
       />
+
+      {/* Toast Notification (Ajout / Classification / Suppression D1 & R2) */}
+      {successMessage && (
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 bg-stone-900/95 dark:bg-stone-900/95 text-white border-2 border-stone-700/50 rounded-xl shadow-2xl text-xs sm:text-sm font-bold flex items-center gap-2.5 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-200 pointer-events-none">
+          <Check className="w-4 h-4 text-emerald-400 stroke-[3] shrink-0" />
+          <span>{successMessage}</span>
+        </div>
+      )}
     </div>
   );
 };
