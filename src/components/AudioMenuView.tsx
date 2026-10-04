@@ -56,6 +56,7 @@ import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
 import { handleNativeShare } from '../utils/nativeShare';
 import { ensureFileExtension } from '../utils/fileExtensionHelper';
+import { useGlobalAudio } from '../context/GlobalAudioContext';
 
 interface AudioMenuViewProps {
   onBack: () => void;
@@ -122,13 +123,41 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   const [visibleCount, setVisibleCount] = useState<number>(BATCH_SIZE);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<SortOption>('recent');
-  const [selectedTrack, setSelectedTrack] = useState<FileItem | null>(null);
-  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [isAudioShuffle, setIsAudioShuffle] = useState(false);
-  const [isAudioRepeat, setIsAudioRepeat] = useState<'off' | 'all' | 'one'>('off');
-  const [splitResolvedAudioUrl, setSplitResolvedAudioUrl] = useState<string>('');
+  const {
+    currentTrack: globalCurrentTrack,
+    isAudioPlaying,
+    currentTime,
+    duration,
+    isAudioRepeat,
+    isAudioShuffle,
+    playTrack: globalPlayTrack,
+    togglePlayPause,
+    playAudio,
+    pauseAudio,
+    handleAudioNext,
+    handleAudioPrev,
+    toggleAudioRepeat,
+    toggleAudioShuffle,
+    seek: globalSeek,
+    seekDelta: handleSeekDelta,
+    stopAndClose: globalStopAndClose,
+  } = useGlobalAudio();
+
+  const selectedTrack = globalCurrentTrack;
+  const setSelectedTrack = (t: FileItem | null | ((prev: FileItem | null) => FileItem | null)) => {
+    if (typeof t === 'function') {
+      const next = t(globalCurrentTrack);
+      if (!next) {
+        globalStopAndClose();
+      } else {
+        globalPlayTrack(next, filteredAudio);
+      }
+    } else if (!t) {
+      globalStopAndClose();
+    } else {
+      globalPlayTrack(t, filteredAudio);
+    }
+  };
   const [isMobilePlayerOpen, setIsMobilePlayerOpen] = useState(false);
   const [isPlayerMenuOpen, setIsPlayerMenuOpen] = useState(false);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
@@ -157,10 +186,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   const pendingAudioItemsRef = useRef<Map<string, FileItem>>(new Map());
   const duplicatingIdsRef = useRef<Set<string>>(new Set());
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const isChangingTrackRef = useRef<boolean>(false);
-  const desiredPlaybackStateRef = useRef<boolean>(false);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -462,191 +488,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   }, [audioList.length]);
 
 
-  // Résolution propre de la source audio lors du changement de piste
-  useEffect(() => {
-    if (!selectedTrack) {
-      setSplitResolvedAudioUrl('');
-      desiredPlaybackStateRef.current = false;
-      setIsAudioPlaying(false);
-      return;
-    }
-
-    let isMounted = true;
-    const trackId = selectedTrack.id;
-    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-    const fallbackUrl = trackId ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(trackId)}` : '';
-    const rawDirect = selectedTrack.audioUrl || (selectedTrack as any).url || '';
-    const isDirectUsable = rawDirect && typeof rawDirect === 'string' && !rawDirect.startsWith('blob:');
-    const initialSrc = (isDirectUsable ? rawDirect : '') || fallbackUrl;
-
-    // Réinitialise immédiatement l'URL avec la source de base de CE son précis pour éviter d'utiliser l'ancien blob
-    setSplitResolvedAudioUrl(initialSrc);
-    setCurrentTime(0);
-
-    if (trackId) {
-      getFileBlobUrl(trackId)
-        .then((blobUrl) => {
-          if (isMounted && blobUrl) {
-            setSplitResolvedAudioUrl(blobUrl);
-          }
-        })
-        .catch(() => {});
-    }
-
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedTrack?.id]);
-
-  const playAudio = useCallback(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (audio.ended || (audio.duration && !isNaN(audio.duration) && audio.currentTime >= audio.duration)) {
-      audio.currentTime = 0;
-      setCurrentTime(0);
-    }
-    desiredPlaybackStateRef.current = true;
-    setIsAudioPlaying(true);
-    isChangingTrackRef.current = false;
-    const playPromise = audio.play();
-    if (playPromise !== undefined) {
-      playPromise.catch((err) => {
-        if (err.name !== 'AbortError') {
-          console.warn('[AudioPlayer] play() notice:', err);
-        }
-      });
-    }
-  }, []);
-
-  const pauseAudio = useCallback(() => {
-    const audio = audioRef.current;
-    desiredPlaybackStateRef.current = false;
-    isChangingTrackRef.current = false;
-    setIsAudioPlaying(false);
-    if (audio) {
-      audio.pause();
-    }
-  }, []);
-
-  // Déclenchement automatique garanti de la lecture dès que le son ou sa source change
-  useEffect(() => {
-    if (!selectedTrack || !audioRef.current) return;
-    if (desiredPlaybackStateRef.current) {
-      const audio = audioRef.current;
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            isChangingTrackRef.current = false;
-            setIsAudioPlaying(true);
-          })
-          .catch((err) => {
-            if (err.name !== 'AbortError') {
-              console.warn('[AudioPlayer] play notice on effect:', err);
-            }
-          });
-      }
-    }
-  }, [selectedTrack?.id, splitResolvedAudioUrl]);
-
-  // Contrôles de lecture
-  const togglePlayPause = () => {
-    if (!audioRef.current) return;
-    if (isAudioPlaying) {
-      pauseAudio();
-    } else {
-      playAudio();
-    }
-  };
-
-  const handleAudioNext = () => {
-    if (filteredAudio.length === 0) return;
-    const curIdx = selectedTrack ? filteredAudio.findIndex(t => t.id === selectedTrack.id) : -1;
-    // Si une seule piste ou dernière piste en mode sans répétition : arrêt propre et immédiat
-    if ((filteredAudio.length <= 1 || curIdx >= filteredAudio.length - 1) && isAudioRepeat === 'off') {
-      setIsAudioPlaying(false);
-      desiredPlaybackStateRef.current = false;
-      isChangingTrackRef.current = false;
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-      }
-      setCurrentTime(0);
-      return;
-    }
-    if (filteredAudio.length === 1) {
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-        playAudio();
-      }
-      setCurrentTime(0);
-      setIsAudioPlaying(true);
-      return;
-    }
-    isChangingTrackRef.current = true;
-    desiredPlaybackStateRef.current = true;
-    setIsAudioPlaying(true);
-    setCurrentTime(0);
-    if (isAudioShuffle) {
-      const randIdx = Math.floor(Math.random() * filteredAudio.length);
-      setSelectedTrack(filteredAudio[randIdx]);
-      return;
-    }
-    const nextIdx = (curIdx + 1) % filteredAudio.length;
-    if (curIdx === nextIdx) {
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-        playAudio();
-      }
-      return;
-    }
-    setSelectedTrack(filteredAudio[nextIdx]);
-  };
-
-  const handleAudioPrev = () => {
-    if (filteredAudio.length === 0) return;
-    if (filteredAudio.length === 1) {
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-        playAudio();
-      }
-      setCurrentTime(0);
-      setIsAudioPlaying(true);
-      return;
-    }
-    isChangingTrackRef.current = true;
-    desiredPlaybackStateRef.current = true;
-    setIsAudioPlaying(true);
-    setCurrentTime(0);
-    if (isAudioShuffle) {
-      const randIdx = Math.floor(Math.random() * filteredAudio.length);
-      setSelectedTrack(filteredAudio[randIdx]);
-      return;
-    }
-    const curIdx = selectedTrack ? filteredAudio.findIndex(t => t.id === selectedTrack.id) : 0;
-    const prevIdx = (curIdx - 1 + filteredAudio.length) % filteredAudio.length;
-    if (curIdx === prevIdx) {
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-        playAudio();
-      }
-      return;
-    }
-    setSelectedTrack(filteredAudio[prevIdx]);
-  };
-
-  const handleSeekDelta = (deltaSec: number) => {
-    if (!audioRef.current) return;
-    const newTime = Math.max(0, Math.min(duration || 1000, currentTime + deltaSec));
-    audioRef.current.currentTime = newTime;
-    setCurrentTime(newTime);
-  };
-
-  const toggleAudioRepeat = () => {
-    if (isAudioRepeat === 'off') setIsAudioRepeat('all');
-    else if (isAudioRepeat === 'all') setIsAudioRepeat('one');
-    else setIsAudioRepeat('off');
-  };
+  // Lecture et contrôles audio synchronisés universellement via GlobalAudioProvider
 
   // Import audio avec validation stricte par Magic Numbers (signature binaire infaillible)
   const handleImportAudio = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1742,135 +1584,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
     return (
       <div className="relative w-full h-full flex-1 flex flex-col justify-between p-3 sm:p-6 md:p-8 bg-[#090D1A] text-white overflow-hidden select-none">
-        <audio
-          ref={audioRef}
-          src={audioSrc}
-          preload="auto"
-          autoPlay={isAudioPlaying}
-          loop={isAudioRepeat === 'one'}
-          onLoadedMetadata={() => {
-            if (audioRef.current && audioRef.current.duration && !isNaN(audioRef.current.duration)) {
-              const dur = Math.floor(audioRef.current.duration);
-              setDuration(dur);
-              if (selectedTrack && (!selectedTrack.durationSec || selectedTrack.durationSec === 0)) {
-                setFilteredAudio(prev => prev.map(t => t.id === selectedTrack.id ? { ...t, durationSec: dur } : t));
-              }
-            }
-          }}
-          onCanPlay={() => {
-            if (desiredPlaybackStateRef.current && audioRef.current && audioRef.current.paused) {
-              playAudio();
-            }
-          }}
-          onLoadedData={() => {
-            if (desiredPlaybackStateRef.current && audioRef.current && audioRef.current.paused) {
-              playAudio();
-            }
-          }}
-          onPlay={() => {
-            isChangingTrackRef.current = false;
-            setIsAudioPlaying(true);
-          }}
-          onPause={() => {
-            if (audioRef.current?.ended) {
-              if (isAudioRepeat === 'off') {
-                const curIdx = selectedTrack ? filteredAudio.findIndex(t => t.id === selectedTrack.id) : -1;
-                if (curIdx === -1 || curIdx >= filteredAudio.length - 1) {
-                  setIsAudioPlaying(false);
-                  desiredPlaybackStateRef.current = false;
-                  isChangingTrackRef.current = false;
-                  return;
-                }
-              }
-            }
-            if (!isChangingTrackRef.current) {
-              setIsAudioPlaying(false);
-            }
-          }}
-          onError={async () => {
-            console.warn('[AudioPlayer] Erreur chargement audio pour', track.name);
-            if (track.id) {
-              try {
-                const freshBlob = await getFileBlobUrl(track.id);
-                if (freshBlob && freshBlob !== audioRef.current?.src) {
-                  setSplitResolvedAudioUrl(freshBlob);
-                  if (audioRef.current) {
-                    audioRef.current.src = freshBlob;
-                    audioRef.current.load();
-                    if (desiredPlaybackStateRef.current) {
-                      audioRef.current.play().catch(() => {});
-                    }
-                  }
-                  return;
-                }
-              } catch (e) {}
-
-              if (fallbackStreamUrl && audioRef.current?.src !== fallbackStreamUrl) {
-                setSplitResolvedAudioUrl(fallbackStreamUrl);
-                if (audioRef.current) {
-                  audioRef.current.src = fallbackStreamUrl;
-                  audioRef.current.load();
-                  if (desiredPlaybackStateRef.current) {
-                    audioRef.current.play().catch(() => {});
-                  }
-                }
-              }
-            }
-          }}
-          onEnded={() => {
-            if (isAudioRepeat === 'one') {
-              if (audioRef.current) {
-                audioRef.current.currentTime = 0;
-                playAudio();
-              }
-              setCurrentTime(0);
-            } else if (isAudioRepeat === 'all') {
-              if (filteredAudio.length <= 1) {
-                if (audioRef.current) {
-                  audioRef.current.currentTime = 0;
-                  playAudio();
-                }
-                setCurrentTime(0);
-              } else {
-                handleAudioNext();
-              }
-            } else {
-              // Répétition désactivée ('off') : passer au suivant s'il y en a un dans la liste, sinon arrêter net
-              const curIdx = selectedTrack ? filteredAudio.findIndex(t => t.id === selectedTrack.id) : -1;
-              if (curIdx >= 0 && curIdx < filteredAudio.length - 1) {
-                handleAudioNext();
-              } else {
-                setIsAudioPlaying(false);
-                desiredPlaybackStateRef.current = false;
-                isChangingTrackRef.current = false;
-                setCurrentTime(0);
-                if (audioRef.current) {
-                  audioRef.current.pause();
-                  audioRef.current.currentTime = 0;
-                }
-              }
-            }
-          }}
-          onTimeUpdate={() => {
-            if (audioRef.current) {
-              const cur = Math.floor(audioRef.current.currentTime);
-              setCurrentTime(cur);
-              if (audioRef.current.duration && !isNaN(audioRef.current.duration) && audioRef.current.duration > 0) {
-                const dur = Math.floor(audioRef.current.duration);
-                setDuration(dur);
-                // Si la chanson arrive à la fin et que la répétition est 'off' et qu'il n'y a pas de son suivant
-                if (cur >= dur && isAudioRepeat === 'off') {
-                  const curIdx = selectedTrack ? filteredAudio.findIndex(t => t.id === selectedTrack.id) : -1;
-                  if (curIdx === -1 || curIdx >= filteredAudio.length - 1) {
-                    setIsAudioPlaying(false);
-                    desiredPlaybackStateRef.current = false;
-                    isChangingTrackRef.current = false;
-                  }
-                }
-              }
-            }
-          }}
-        />
+        {/* L'élément audio est maintenu actif de façon permanente par GlobalAudioProvider au niveau racine */}
 
         {/* Halo ambré chaleureux */}
         <div
@@ -2064,8 +1778,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               value={currentTime}
               onChange={(e) => {
                 const val = Number(e.target.value);
-                setCurrentTime(val);
-                if (audioRef.current) audioRef.current.currentTime = val;
+                globalSeek(val);
               }}
               className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-white hover:accent-amber-400 transition-all"
             />
@@ -2358,11 +2071,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                         if (isSelected) {
                           togglePlayPause();
                         } else {
-                          isChangingTrackRef.current = true;
-                          desiredPlaybackStateRef.current = true;
-                          setCurrentTime(0);
-                          setSelectedTrack(track);
-                          setIsAudioPlaying(true);
+                          globalPlayTrack(track, filteredAudio);
                           setIsMobilePlayerOpen(true);
                         }
                       }}
@@ -2521,11 +2230,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                             if (isSelected) {
                               togglePlayPause();
                             } else {
-                              isChangingTrackRef.current = true;
-                              desiredPlaybackStateRef.current = true;
-                              setCurrentTime(0);
-                              setSelectedTrack(track);
-                              setIsAudioPlaying(true);
+                              globalPlayTrack(track, filteredAudio);
                               setIsMobilePlayerOpen(true);
                             }
                           }}

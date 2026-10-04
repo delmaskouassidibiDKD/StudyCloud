@@ -71,12 +71,16 @@ import { queryClient } from './services/queryClient';
 import { LocalSyncReplication } from './services/localSyncReplication';
 LocalSyncReplication.startAutoReplication();
 
+import { GlobalAudioProvider } from './context/GlobalAudioContext';
+
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <App />
+          <GlobalAudioProvider>
+            <App />
+          </GlobalAudioProvider>
         </AuthProvider>
       </QueryClientProvider>
     </ErrorBoundary>

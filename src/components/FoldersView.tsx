@@ -23,6 +23,7 @@ import { triggerDebouncedCloudBackup, getCurrentUserId } from '../services/userS
 import { StudyCloudAPI } from '../services/api';
 import { useDashboardWallpaper, useMatieresList } from '../hooks/useCloudQueries';
 import { getActiveWallpaperReliable } from '../utils/wallpaperHelper';
+import { HeaderMelodyControl } from './HeaderMelodyControl';
 
 interface FoldersViewProps {
   onOpenUpload: () => void;
@@ -1129,6 +1130,13 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2.5 md:gap-3">
+          {/* Bouton Mélodie & Mini-Lecteur Audio (Placé directement DEVANT Espace d'étude - Desktop uniquement) */}
+          <HeaderMelodyControl
+            isDarkMode={isDarkMode}
+            dashboardWallpaper={dashboardWallpaper}
+            viewMode={viewMode}
+          />
+
           {/* Espace d'étude Button (Placé directement DEVANT le bouton mode sombre) */}
           <div className="flex flex-col items-center">
             <button
