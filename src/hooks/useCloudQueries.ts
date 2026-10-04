@@ -10,6 +10,7 @@ import { getFileBlobUrl } from '../services/localFileStorage';
 import { ImportedItem } from '../components/FilesMenuView';
 import { SharedFolder } from '../types';
 import { sanitizeFoldersForStorage } from '../utils/sanitizeFolders';
+import { safeLocalStorageSet } from '../utils/safeStorage';
 
 // ─── HOOKS DE LECTURE (QUERIES) ────────────────────────────────────────────────
 
@@ -183,10 +184,23 @@ export function useFilesMenuList(userId?: string) {
       if (res && res.success && Array.isArray(res.data)) {
         const nonStudyRows = res.data.filter((row: any) => !row.is_study_session && !row.isStudyImport);
         let matieresList: any[] = [];
-        try {
-          const raw = localStorage.getItem('unifolder_saved_matieres');
-          if (raw) matieresList = JSON.parse(raw);
-        } catch (_) {}
+        const cachedMatieres = queryClient.getQueryData<any[]>(QUERY_KEYS.matieresList(currentUid));
+        if (Array.isArray(cachedMatieres) && cachedMatieres.length > 0) {
+          matieresList = cachedMatieres;
+        } else {
+          try {
+            const raw = localStorage.getItem('unifolder_saved_matieres');
+            if (raw) matieresList = JSON.parse(raw);
+          } catch (_) {}
+        }
+        if (matieresList.length === 0) {
+          try {
+            const mRes = await StudyCloudAPI.getMatieres(currentUid);
+            if (mRes && mRes.success && Array.isArray(mRes.data)) {
+              matieresList = mRes.data;
+            }
+          } catch (_) {}
+        }
 
         const filesWithUrls: ImportedItem[] = await Promise.all(
           nonStudyRows.map(async (row: any) => {
@@ -286,11 +300,30 @@ export function useMatieresList(userId?: string) {
       if (!currentUid || currentUid === 'default-user') return [];
       const res = await StudyCloudAPI.getMatieres(currentUid);
       if (res && res.success && Array.isArray(res.data)) {
-        return res.data;
+        const formatted = res.data.map((m: any, idx: number) => ({
+          id: m.id || ('mat-' + Date.now() + '-' + idx),
+          name: m.name,
+          coefficient: String(m.coefficient ?? '1'),
+          color: m.color || '#EA580C',
+          category: m.category || 'Général',
+          displayOrder: m.display_order ?? idx
+        }));
+        try {
+          safeLocalStorageSet('unifolder_saved_matieres', formatted);
+        } catch (_) {}
+        return formatted;
       }
       return [];
     },
+    initialData: () => {
+      try {
+        const saved = localStorage.getItem('unifolder_saved_matieres');
+        if (saved) return JSON.parse(saved);
+      } catch (_) {}
+      return undefined;
+    },
     staleTime: 1000 * 60 * 2,
+    gcTime: 1000 * 60 * 5,
     enabled: Boolean(currentUid && currentUid !== 'default-user'),
   });
 }

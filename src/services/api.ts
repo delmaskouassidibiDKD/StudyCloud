@@ -12,6 +12,18 @@ export const getWorkerApiUrl = (): string => {
   );
 };
 
+// Rafraîchit le cache TanStack Query APRÈS confirmation de l'écriture D1
+// (import dynamique pour éviter toute dépendance circulaire)
+const refreshMatieresCache = (includeFiles: boolean) => {
+  import('./queryClient').then(({ invalidateCloudQueries }) => {
+    invalidateCloudQueries.matieresList();
+    if (includeFiles) {
+      invalidateCloudQueries.filesMenu();
+      invalidateCloudQueries.matiereFiles();
+    }
+  }).catch(() => {});
+};
+
 export const setWorkerApiUrl = (url: string) => {
   localStorage.setItem('studycloud_worker_url', url.trim());
 };
@@ -1282,16 +1294,22 @@ export const StudyCloudAPI = {
 
   async createMatiere(matiere: { id: string; userId: string; name: string; coefficient?: number; color?: string; category?: string; displayOrder?: number; oldName?: string }) {
     if (!matiere.userId || matiere.userId === 'default-user') return { success: false, message: 'Non autorisé' };
-    return request('/api/matieres', { method: 'POST', body: JSON.stringify(matiere) });
+    const res = await request('/api/matieres', { method: 'POST', body: JSON.stringify(matiere) });
+    refreshMatieresCache(Boolean(matiere.oldName));
+    return res;
   },
 
   async updateMatiere(id: string, data: { userId: string; name?: string; coefficient?: number; color?: string; category?: string; displayOrder?: number; oldName?: string }) {
     if (!data.userId || data.userId === 'default-user') return { success: false, message: 'Non autorisé' };
-    return request(`/api/matieres/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) });
+    const res = await request(`/api/matieres/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) });
+    refreshMatieresCache(true);
+    return res;
   },
 
   async deleteMatiere(id: string) {
-    return request(`/api/matieres/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const res = await request(`/api/matieres/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    refreshMatieresCache(true);
+    return res;
   },
 
   // --------------------------------------------------------------------------

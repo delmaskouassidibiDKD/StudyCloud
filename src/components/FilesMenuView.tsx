@@ -9,7 +9,7 @@ import { CloudDataStore } from '../services/cloudDataStore';
 import { ImageCardPreview } from './ImageCardPreview';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { getCurrentUserId } from '../services/userSync';
-import { useFilesMenuList } from '../hooks/useCloudQueries';
+import { useFilesMenuList, useMatieresList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
 import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/safeStorage';
 import { validateFilesForMesFichiersAsync } from '../services/fileTypeValidator';
@@ -327,6 +327,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [incompatibleAlertInfo, setIncompatibleAlertInfo] = useState<IncompatibleAlertInfo | null>(null);
   const { data: serverFiles = [], isLoading: isFilesQueryLoading } = useFilesMenuList();
+  const { data: serverMatieres } = useMatieresList();
   const [importedFiles, setImportedFiles] = useState<ImportedItem[]>(() => loadAllUserFiles());
 
   const [savedMatieres, setSavedMatieres] = useState<{ id: string; name: string; coefficient: string; color?: string }[]>(() => {
@@ -353,60 +354,19 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     }
   }, [initialMatiere]);
 
+  // Synchronisation réactive continue des matières avec TanStack Query (@tanstack/react-query vers Hono/D1)
   useEffect(() => {
-    const loadMatieresFromCloud = () => {
-      const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
-      if (!userId || userId === 'default-user') {
-        const saved = localStorage.getItem('unifolder_saved_matieres');
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            setSavedMatieres(parsed.map((m: any, idx: number) => ({
-              id: m.id || ('mat-' + Math.random().toString(36).substring(2, 9) + '-' + idx),
-              name: m.name,
-              coefficient: m.coefficient,
-              color: m.color
-            })));
-          } catch (e) {}
-        }
-        return;
-      }
-
-      StudyCloudAPI.getMatieres(userId).then(res => {
-        if (res && res.success && Array.isArray(res.data)) {
-          const apiMatieres = res.data.map((m: any, idx: number) => ({
-            id: m.id || ('mat-' + Date.now() + '-' + idx),
-            name: m.name,
-            coefficient: String(m.coefficient ?? '1'),
-            color: m.color || '#EA580C'
-          }));
-          setSavedMatieres(apiMatieres);
-          safeLocalStorageSet('unifolder_saved_matieres', apiMatieres);
-        }
-      }).catch(() => {
-        const saved = localStorage.getItem('unifolder_saved_matieres');
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            setSavedMatieres(parsed.map((m: any, idx: number) => ({
-              id: m.id || ('mat-' + Math.random().toString(36).substring(2, 9) + '-' + idx),
-              name: m.name,
-              coefficient: m.coefficient,
-              color: m.color
-            })));
-          } catch (e) {}
-        }
-      });
-    };
-
-    loadMatieresFromCloud();
-    window.addEventListener('storage', loadMatieresFromCloud);
-    window.addEventListener('unifolder_matieres_updated', loadMatieresFromCloud);
-    return () => {
-      window.removeEventListener('storage', loadMatieresFromCloud);
-      window.removeEventListener('unifolder_matieres_updated', loadMatieresFromCloud);
-    };
-  }, []);
+    if (serverMatieres && Array.isArray(serverMatieres)) {
+      const mapped = serverMatieres.map((m: any, idx: number) => ({
+        id: m.id || ('mat-' + Date.now() + '-' + idx),
+        name: m.name,
+        coefficient: String(m.coefficient ?? '1'),
+        color: m.color || '#EA580C'
+      }));
+      setSavedMatieres(mapped);
+      safeLocalStorageSet('unifolder_saved_matieres', mapped);
+    }
+  }, [serverMatieres]);
 
   // Synchronisation réactive continue avec TanStack Query (Hono/D1)
   useEffect(() => {
@@ -709,7 +669,6 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         color: '#EA580C'
       }).catch(() => {});
     }
-    invalidateCloudQueries.matieresList();
     window.dispatchEvent(new Event('unifolder_matieres_updated'));
   };
 

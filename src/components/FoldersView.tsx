@@ -21,7 +21,7 @@ import { Page1FilesMenuView } from './Page1FilesMenuView';
 import { NavigationTab } from '../types';
 import { triggerDebouncedCloudBackup, getCurrentUserId } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
-import { useDashboardWallpaper } from '../hooks/useCloudQueries';
+import { useDashboardWallpaper, useMatieresList } from '../hooks/useCloudQueries';
 import { getActiveWallpaperReliable } from '../utils/wallpaperHelper';
 
 interface FoldersViewProps {
@@ -370,6 +370,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [matieresList, setMatieresList] = useState<{ name: string; coefficient: string }[]>([
     { name: '', coefficient: '' }
   ]);
+  const { data: serverMatieres } = useMatieresList();
   const [savedMatieres, setSavedMatieres] = useState<{ id?: string; name: string; coefficient: string; color?: string }[]>(() => {
     const saved = localStorage.getItem('unifolder_saved_matieres');
     if (saved) {
@@ -378,28 +379,19 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     return [];
   });
 
-  // Charger les vraies matières depuis Cloudflare D1
+  // Synchronisation continue réactive avec TanStack Query (@tanstack/react-query vers Hono/D1)
   useEffect(() => {
-    const userId = localStorage.getItem('unifolder_user_id');
-    if (!userId || userId === 'default-user') {
-      setSavedMatieres([]);
-      return;
+    if (serverMatieres && Array.isArray(serverMatieres)) {
+      const apiMatieres = serverMatieres.map((m: any) => ({
+        id: m.id,
+        name: m.name,
+        coefficient: String(m.coefficient ?? '1'),
+        color: m.color || '#EA580C',
+      }));
+      setSavedMatieres(apiMatieres);
+      localStorage.setItem('unifolder_saved_matieres', JSON.stringify(apiMatieres));
     }
-    StudyCloudAPI.getMatieres(userId)
-      .then((res) => {
-        if (res && res.success && Array.isArray(res.data)) {
-          const apiMatieres = res.data.map((m: any) => ({
-            id: m.id,
-            name: m.name,
-            coefficient: String(m.coefficient ?? '1'),
-            color: m.color || '#EA580C',
-          }));
-          setSavedMatieres(apiMatieres);
-          localStorage.setItem('unifolder_saved_matieres', JSON.stringify(apiMatieres));
-        }
-      })
-      .catch((err) => console.warn('Erreur chargement matières depuis D1:', err));
-  }, []);
+  }, [serverMatieres]);
 
   const isInitialMatieresMount = useRef(true);
   useEffect(() => {
@@ -447,8 +439,6 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     } else if (mat.name) {
       StudyCloudAPI.deleteMatiere(mat.name).catch(() => {});
     }
-    invalidateCloudQueries.matieresList();
-    invalidateCloudQueries.filesMenu();
     window.dispatchEvent(new Event('unifolder_matieres_updated'));
     window.dispatchEvent(new Event('unifolder_files_updated'));
     notify("Matière supprimée avec succès !");
@@ -481,7 +471,6 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       }).catch((err) => console.warn('Erreur mise à jour couleur matière D1:', err));
     }
 
-    invalidateCloudQueries.matieresList();
     window.dispatchEvent(new Event('unifolder_matieres_updated'));
   };
 
@@ -1479,7 +1468,6 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                     localStorage.setItem('unifolder_saved_matieres', JSON.stringify(updated));
                     return updated;
                   });
-                  invalidateCloudQueries.matieresList();
                   window.dispatchEvent(new Event('unifolder_matieres_updated'));
                   notify("Matières créées avec succès !");
                   setIsMatiereMenuOpen(false);
@@ -1586,7 +1574,6 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                       return updated;
                     });
 
-                    invalidateCloudQueries.matieresList();
                     invalidateCloudQueries.filesMenu();
                     window.dispatchEvent(new Event('unifolder_matieres_updated'));
                     window.dispatchEvent(new Event('unifolder_files_updated'));

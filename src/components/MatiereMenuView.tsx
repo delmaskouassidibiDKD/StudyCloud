@@ -9,7 +9,7 @@ import { ImageCardPreview } from './ImageCardPreview';
 import { UploadQueue } from '../services/uploadQueue';
 import { CloudDataStore } from '../services/cloudDataStore';
 import { compressFile } from '../utils/fileCompressor';
-import { useMatiereFilesList } from '../hooks/useCloudQueries';
+import { useMatiereFilesList, useMatieresList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
 import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/safeStorage';
 import { validateFilesForMesFichiersAsync } from '../services/fileTypeValidator';
@@ -28,6 +28,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
   const storageKey = `unifolder_matiere_files_${matiereName}`;
   const currentKeyRef = useRef(storageKey);
   const { data: serverMatiereFiles = [], isLoading: isMatiereQueryLoading } = useMatiereFilesList(matiereName);
+  const { data: serverMatieres } = useMatieresList();
   
   const loadFilesForMatiere = (name: string) => {
     const key = `unifolder_matiere_files_${name}`;
@@ -162,7 +163,6 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       }).catch(() => {});
     }
 
-    invalidateCloudQueries.matieresList();
     window.dispatchEvent(new Event('unifolder_matieres_updated'));
   };
 
@@ -176,48 +176,19 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     triggerDebouncedCloudBackup();
   }, [savedMatieres]);
 
+  // Synchronisation continue réactive des matières avec TanStack Query (@tanstack/react-query vers Hono/D1)
   useEffect(() => {
-    const handleDataRestored = () => {
-      const userId = localStorage.getItem('unifolder_user_id');
-      if (userId && userId !== 'default-user') {
-        StudyCloudAPI.getMatieres(userId).then(res => {
-          if (res && res.success && Array.isArray(res.data)) {
-            const apiMatieres = res.data.map((m: any, idx: number) => ({
-              id: m.id || ('mat-' + Date.now() + '-' + idx),
-              name: m.name,
-              coefficient: String(m.coefficient ?? '1'),
-              color: m.color || '#EA580C'
-            }));
-            setSavedMatieres(apiMatieres);
-            safeLocalStorageSet('unifolder_saved_matieres', apiMatieres);
-          }
-        }).catch(() => {});
-      } else {
-        const saved = localStorage.getItem('unifolder_saved_matieres');
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            setSavedMatieres(parsed.map((m: any, idx: number) => ({
-              id: m.id || ('mat-' + Math.random().toString(36).substring(2, 9) + '-' + idx),
-              name: m.name,
-              coefficient: m.coefficient,
-              color: m.color
-            })));
-          } catch (e) {}
-        } else {
-          setSavedMatieres([]);
-        }
-      }
-    };
-
-    handleDataRestored();
-    window.addEventListener('unifolder_data_restored', handleDataRestored);
-    window.addEventListener('unifolder_matieres_updated', handleDataRestored);
-    return () => {
-      window.removeEventListener('unifolder_data_restored', handleDataRestored);
-      window.removeEventListener('unifolder_matieres_updated', handleDataRestored);
-    };
-  }, []);
+    if (serverMatieres && Array.isArray(serverMatieres)) {
+      const apiMatieres = serverMatieres.map((m: any, idx: number) => ({
+        id: m.id || ('mat-' + Date.now() + '-' + idx),
+        name: m.name,
+        coefficient: String(m.coefficient ?? '1'),
+        color: m.color || '#EA580C'
+      }));
+      setSavedMatieres(apiMatieres);
+      safeLocalStorageSet('unifolder_saved_matieres', apiMatieres);
+    }
+  }, [serverMatieres]);
 
   const [selectedMatiereIds, setSelectedMatiereIds] = useState<string[]>([]);
 

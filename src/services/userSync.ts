@@ -261,8 +261,13 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
 
       // Notifier l'UI pour re-render immédiat
       window.dispatchEvent(new Event('unifolder_files_updated'));
+      window.dispatchEvent(new Event('unifolder_matieres_updated'));
       window.dispatchEvent(new Event('unifolder_data_restored'));
-      import('./queryClient').then(m => m.invalidateCloudQueries.shares()).catch(() => {});
+      import('./queryClient').then(m => {
+        m.invalidateCloudQueries.matieresList();
+        m.invalidateCloudQueries.filesMenu();
+        m.invalidateCloudQueries.shares();
+      }).catch(() => {});
       import('./cloudDataStore').then(m => m.CloudDataStore.sync(true)).catch(() => {});
       return true;
     }
