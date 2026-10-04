@@ -8,3 +8,4 @@ coverage/
 .wrangler/
 studycloud-agent/dist/
 workers agent ia/dist/
+scratch/
