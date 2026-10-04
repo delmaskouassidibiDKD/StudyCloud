@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
 import {
   ArrowLeft,
   Search,
@@ -330,18 +332,14 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     setIsViewerMaximized(false);
   }, [activeTab]);
 
-  // Fermer les menus 3 traits (fichiers ou dossiers) au clic en dehors
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('.studycloud-file-menu-panel') && !target.closest('.studycloud-menu-trigger')) {
-        setActiveMenuFileId(null);
-        setActiveMenuFolderId(null);
-      }
-    };
-    window.addEventListener('mousedown', handleOutsideClick);
-    return () => window.removeEventListener('mousedown', handleOutsideClick);
-  }, []);
+  // Fermeture intelligente des menus 3 traits (clic extérieur, défilement, Escape)
+  useSmartContextMenuClose(
+    Boolean(activeMenuFileId || activeMenuFolderId),
+    () => {
+      setActiveMenuFileId(null);
+      setActiveMenuFolderId(null);
+    }
+  );
 
   // Gestion du glisser / défiler du carrousel d'onglets
   const handleTabsMouseDown = (e: React.MouseEvent) => {
@@ -778,12 +776,16 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   // =========================================================================
   // MENU D'OPTIONS 3 TRAITS FLOTTANT POUR LES FICHIERS
   // =========================================================================
-  const renderOptionsMenu = (file: FileItem, _alignRight = true) => {
+  const renderOptionsMenu = (file: FileItem, triggerEl?: HTMLElement | null) => {
     if (activeMenuFileId !== file.id) return null;
+    const el = triggerEl || (typeof document !== 'undefined' ? (document.getElementById(`cloud-doc-trigger-${file.id}`) || document.getElementById(`cloud-doc2-trigger-${file.id}`) || document.getElementById(`cloud-doc3-trigger-${file.id}`) || document.getElementById(`cloud-img-trigger-${file.id}`) || document.getElementById(`cloud-vid-trigger-${file.id}`) || document.getElementById(`cloud-aud-trigger-${file.id}`)) : null);
+    const rect = el?.getBoundingClientRect();
+    const smartStyle = computeSmartMenuStyle(rect, 400, 240);
 
-    return (
+    return createPortal(
       <div
-        className="studycloud-file-menu-panel absolute right-0 top-9 z-[150] w-56 sm:w-60 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_20px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col p-0.5"
+        className="studycloud-file-menu-panel bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_20px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-y-auto flex flex-col p-0.5"
+        style={smartStyle.style}
         onClick={(e) => e.stopPropagation()}
       >
         {/* En-tête : Nom du fichier et bouton de fermeture */}
@@ -960,7 +962,8 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             )}
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   };
 
@@ -1066,12 +1069,16 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     }
   };
 
-  const renderFolder3DOptionsMenu = (folder: ClasseurCreatedFolder) => {
+  const renderFolder3DOptionsMenu = (folder: ClasseurCreatedFolder, triggerEl?: HTMLElement | null) => {
     if (activeMenuFolderId !== folder.id) return null;
+    const el = triggerEl || (typeof document !== 'undefined' ? document.getElementById(`cloud-folder-trigger-${folder.id}`) : null);
+    const rect = el?.getBoundingClientRect();
+    const smartStyle = computeSmartMenuStyle(rect, 380, 240);
 
-    return (
+    return createPortal(
       <div 
-        className="studycloud-file-menu-panel absolute right-0 top-9 z-50 w-60 bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col"
+        className="studycloud-file-menu-panel bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-y-auto flex flex-col"
+        style={smartStyle.style}
         onClick={(e) => e.stopPropagation()}
       >
         {/* En-tête de menu dédié */}
@@ -1167,7 +1174,8 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             </button>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   };
 
@@ -1211,6 +1219,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           >
             <button
               type="button"
+              id={`cloud-folder-trigger-${folder.id}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setActiveMenuFolderId(isFolderMenuOpen ? null : folder.id);
@@ -1224,7 +1233,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
-            {renderFolder3DOptionsMenu(folder)}
+            {renderFolder3DOptionsMenu(folder, document.getElementById(`cloud-folder-trigger-${folder.id}`))}
           </div>
         </div>
 
@@ -1285,6 +1294,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             >
               <button
                 type="button"
+                id={`cloud-doc-trigger-${doc.id}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   setActiveMenuFileId(isMenuOpen ? null : doc.id);
@@ -1298,7 +1308,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
-              {renderOptionsMenu(doc)}
+              {renderOptionsMenu(doc, document.getElementById(`cloud-doc-trigger-${doc.id}`))}
             </div>
           </div>
 
@@ -1395,6 +1405,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         >
           <button
             type="button"
+            id={`cloud-doc2-trigger-${doc.id}`}
             onClick={(e) => {
               e.stopPropagation();
               setActiveMenuFileId(isMenuOpen ? null : doc.id);
@@ -1409,7 +1420,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
           </button>
 
-          {renderOptionsMenu(doc)}
+          {renderOptionsMenu(doc, document.getElementById(`cloud-doc2-trigger-${doc.id}`))}
         </div>
 
         <div className="p-2 sm:p-2.5 flex flex-col justify-between bg-black/30 rounded-b-2xl">
@@ -1464,6 +1475,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           <div className={`relative studycloud-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
+              id={`cloud-doc3-trigger-${doc.id}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setActiveMenuFileId(prev => (prev === doc.id ? null : doc.id));
@@ -1473,7 +1485,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
-            {renderOptionsMenu(doc, alignRight)}
+            {renderOptionsMenu(doc, document.getElementById(`cloud-doc3-trigger-${doc.id}`))}
           </div>
           <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/50 text-white border border-white/20 px-1.5 py-0.5 rounded shadow-sm">
             {doc.size || 'Document'}
@@ -1541,6 +1553,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           <div className={`relative studycloud-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
+              id={`cloud-img-trigger-${img.id}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setActiveMenuFileId(prev => (prev === img.id ? null : img.id));
@@ -1550,7 +1563,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
-            {renderOptionsMenu(img, alignRight)}
+            {renderOptionsMenu(img, document.getElementById(`cloud-img-trigger-${img.id}`))}
           </div>
 
           <span className="text-[9px] font-bold bg-black/70 text-white px-2 py-0.5 rounded border border-white/20 shadow-sm">
@@ -1607,6 +1620,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           <div className={`relative studycloud-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
+              id={`cloud-vid-trigger-${vid.id}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setActiveMenuFileId(prev => (prev === vid.id ? null : vid.id));
@@ -1616,7 +1630,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
-            {renderOptionsMenu(vid, alignRight)}
+            {renderOptionsMenu(vid, document.getElementById(`cloud-vid-trigger-${vid.id}`))}
           </div>
 
           <span className="text-[9px] font-bold bg-black/70 text-white px-2 py-0.5 rounded border border-white/20 shadow-sm">
@@ -1681,6 +1695,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           <div className={`relative studycloud-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
+              id={`cloud-aud-trigger-${aud.id}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setActiveMenuFileId(prev => (prev === aud.id ? null : aud.id));
@@ -1690,7 +1705,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
-            {renderOptionsMenu(aud, alignRight)}
+            {renderOptionsMenu(aud, document.getElementById(`cloud-aud-trigger-${aud.id}`))}
           </div>
 
           <span className="text-[9px] font-bold bg-black/70 text-white px-2 py-0.5 rounded border border-white/20 shadow-sm">

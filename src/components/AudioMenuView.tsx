@@ -56,6 +56,7 @@ import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
 import { handleNativeShare } from '../utils/nativeShare';
 import { ensureFileExtension } from '../utils/fileExtensionHelper';
+import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
 import { useGlobalAudio } from '../context/GlobalAudioContext';
 
 interface AudioMenuViewProps {
@@ -220,21 +221,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     });
   };
 
-  // Fermer le menu 3 traits si on clique en dehors
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.closest('.studycloud-file-menu-panel') || target.closest('.studycloud-menu-trigger')) {
-        return;
-      }
-      setActiveMenuTrackId(null);
-    };
-
-    document.addEventListener('pointerdown', handleOutsideClick);
-    return () => {
-      document.removeEventListener('pointerdown', handleOutsideClick);
-    };
-  }, []);
+  // Fermeture intelligente du menu 3 traits (clic extérieur, défilement, Escape)
+  useSmartContextMenuClose(Boolean(activeMenuTrackId), () => setActiveMenuTrackId(null));
 
   // Animation et suivi en continu de la ligne de progression qui se remplit (comme dans Mes fichiers)
   const startSavingAnimation = (fileIds: string[]) => {
@@ -1428,12 +1416,18 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   };
 
   // Menu déroulant 3 traits avec les 12 options exactement conforme à la capture envoyée
-  const renderAudioOptionsMenu = (track: FileItem) => {
+  const renderAudioOptionsMenu = (track: FileItem, triggerEl?: HTMLElement | null) => {
     const isChecked = selectedItemIds.includes(track.id);
+    const isAllChecked = filteredAudio.length > 0 && selectedItemIds.length >= filteredAudio.length;
 
-    return (
+    const el = triggerEl || (typeof document !== 'undefined' ? document.getElementById(`audio-menu-trigger-${track.id}`) : null);
+    const rect = el?.getBoundingClientRect();
+    const smartStyle = computeSmartMenuStyle(rect, 420);
+
+    return createPortal(
       <div 
-        className="studycloud-file-menu-panel absolute right-0 top-9 z-[100] w-64 bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(245,158,11,0.25)] text-slate-200 rounded-xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
+        className="studycloud-file-menu-panel bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(245,158,11,0.25)] text-slate-200 rounded-xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
+        style={smartStyle.style}
         onClick={(e) => e.stopPropagation()}
       >
         {/* En-tête de menu dédié avec nom du fichier et bouton fermeture (Image de l'utilisateur) */}
@@ -1570,7 +1564,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
             </button>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   };
 
@@ -2274,6 +2269,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                         <div className="relative">
                           <button
                             type="button"
+                            id={`audio-menu-trigger-${track.id}`}
                             disabled={isSelectionMode || selectedItemIds.length > 0}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -2289,7 +2285,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                           >
                             <Menu className="w-4 h-4 stroke-[2]" />
                           </button>
-                          {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderAudioOptionsMenu(track)}
+                          {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderAudioOptionsMenu(track, document.getElementById(`audio-menu-trigger-${track.id}`))}
                         </div>
                       </div>
                     </div>

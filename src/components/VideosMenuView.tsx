@@ -50,6 +50,7 @@ import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes
 import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../services/fileTypeValidator';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
 import { handleNativeShare } from '../utils/nativeShare';
+import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
 import { ensureFileExtension } from '../utils/fileExtensionHelper';
 
 interface VideosMenuViewProps {
@@ -293,6 +294,9 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
 
   // État du menu 3 traits dédié à chaque vidéo (Image 2)
   const [activeMenuVideoId, setActiveMenuVideoId] = useState<string | null>(null);
+
+  // Fermeture intelligente du menu 3 traits (clic extérieur, défilement, Escape)
+  useSmartContextMenuClose(Boolean(activeMenuVideoId), () => setActiveMenuVideoId(null));
 
   // Mode sélection & éléments cochés
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -1335,19 +1339,18 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   // =========================================================================
   // RENDU DU MENU 3 TRAITS DÉDIÉ ET INDÉPENDANT POUR CHAQUE VIDÉO (IMAGE 2)
   // =========================================================================
-  const renderVideoOptionsMenu = (vid: FileItem, index?: number) => {
-    // Aligner à droite si colonne de droite pour éviter de déborder de l'écran
-    const isRightCol = typeof index === 'number' && (
-      (index % 2 === 1) || 
-      (Boolean(selectedVideo) && (index + 1) % 3 === 0) ||
-      ((index + 1) % (selectedVideo ? 3 : 5) === 0)
-    );
-    const align: 'left' | 'right' = isRightCol ? 'right' : 'left';
+  const renderVideoOptionsMenu = (vid: FileItem, triggerEl?: HTMLElement | null) => {
     const isChecked = selectedItemIds.includes(vid.id);
+    const isAllChecked = filteredVideos.length > 0 && selectedItemIds.length >= filteredVideos.length;
 
-    return (
+    const el = triggerEl || (typeof document !== 'undefined' ? document.getElementById(`vid-menu-trigger-${vid.id}`) : null);
+    const rect = el?.getBoundingClientRect();
+    const smartStyle = computeSmartMenuStyle(rect, 420);
+
+    return createPortal(
       <div 
-        className={`studycloud-file-menu-panel absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-[100] w-64 bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.25)] text-slate-200 rounded-xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150`}
+        className="studycloud-file-menu-panel bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.25)] text-slate-200 rounded-xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
+        style={smartStyle.style}
         onClick={(e) => e.stopPropagation()}
       >
         {/* En-tête de menu dédié avec nom du fichier et bouton fermeture (Image 2) */}
@@ -1484,7 +1487,8 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
             </button>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   };
 
@@ -1655,6 +1659,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
           <div className="relative studycloud-menu-trigger">
             <button
               type="button"
+              id={`vid-menu-trigger-${vid.id}`}
               disabled={isSelectionMode || selectedItemIds.length > 0}
               onClick={(e) => {
                 e.stopPropagation();
@@ -1671,7 +1676,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
 
-            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderVideoOptionsMenu(vid, index)}
+            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderVideoOptionsMenu(vid, document.getElementById(`vid-menu-trigger-${vid.id}`))}
           </div>
 
           {isSelectionMode && (

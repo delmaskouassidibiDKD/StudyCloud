@@ -150,6 +150,7 @@ import {
 import { handleNativeShare } from '../utils/nativeShare';
 import { ensureFileExtension } from '../utils/fileExtensionHelper';
 import { applyDashboardWallpaper } from '../utils/wallpaperHelper';
+import { computeSmartMenuStyle } from '../hooks/useContextMenuPosition';
 
 // Nettoyage immédiat de tout fichier figé en localStorage pour éviter le plantage QuotaExceededError
 if (typeof window !== 'undefined') {
@@ -5912,23 +5913,29 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Options : Cocher, Tout cocher, Télécharger, Supprimer, Partager, Créer un lien,
   // Transporter vers le dossier sécurisé, Le déplacer, Dupliquer, Favoris, Épingler, Modifier le nom
   // =========================================================================
-  const renderFileOptionsMenu = (file: FileItem, currentCategoryList: FileItem[], align: 'left' | 'right' = 'left') => {
+  const renderFileOptionsMenu = (file: FileItem, currentCategoryList: FileItem[], align: 'left' | 'right' = 'left', triggerEl?: HTMLElement | null) => {
     const isMenuOpen = activeMenuFileId === file.id || docMenuOpenId === file.id || audioMenuSongId === file.id;
     if (!isMenuOpen || isSelectionMode || selectedItemIds.length > 0) return null;
+
+    const el = triggerEl || (typeof document !== 'undefined' ? (document.getElementById(`p1-file-trigger-${file.id}`) || document.getElementById(`doc-menu-trigger-${file.id}`)) : null);
+    const rect = el?.getBoundingClientRect();
 
     const isTrash = currentSubView?.id === 'studycloud-collection-trash' || 
                     (isCloudView && cloudActiveTab === 'trash') || 
                     file.isTrash || 
                     trashFiles.some(t => t.id === file.id);
 
+    const smartStyle = computeSmartMenuStyle(rect, isTrash ? 380 : 440);
+
     if (isTrash) {
       const isChecked = selectedItemIds.includes(file.id);
       const isAllChecked = filteredTrashFiles.length > 0 && selectedItemIds.length >= filteredTrashFiles.length;
       const hasMultipleSelected = selectedItemIds.length > 1;
 
-      return (
+      return createPortal(
         <div 
-          className={`studycloud-file-menu-panel absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-[100] w-64 bg-[#0B101D] border-2 border-rose-500/80 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(244,63,94,0.35)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col`}
+          className="studycloud-file-menu-panel bg-[#0B101D] border-2 border-rose-500/80 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(244,63,94,0.35)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col"
+          style={smartStyle.style}
           onClick={(e) => e.stopPropagation()}
         >
           {/* En-tête du menu corbeille flottant */}
@@ -6035,13 +6042,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       );
     }
 
-    return (
+    return createPortal(
       <div 
-        className={`studycloud-file-menu-panel absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-[100] w-60 max-w-[calc(100vw-32px)] bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.25)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col`}
+        className="studycloud-file-menu-panel bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.25)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col"
+        style={smartStyle.style}
         onClick={(e) => e.stopPropagation()}
       >
           {/* En-tête de menu dédié avec nom du fichier et bouton fermeture */}
@@ -6205,16 +6214,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               )}
             </div>
           </div>
-        </div>
-    );
+        </div>,
+        document.body
+      );
   };
 
   // =========================================================================
   // MENU 3 TRAITS DÉDIÉ POUR LES ÉLÉMENTS DE LA CORBEILLE
   // Options requises : Cocher, Tout cocher, Restaurer / Tout restaurer, Supprimer définitivement / Tout supprimer
   // =========================================================================
-  const renderTrashOptionsMenu = (file: FileItem, align: 'left' | 'right' = 'left') => {
-    return renderFileOptionsMenu(file, filteredTrashFiles, align);
+  const renderTrashOptionsMenu = (file: FileItem, align: 'left' | 'right' = 'left', triggerEl?: HTMLElement | null) => {
+    return renderFileOptionsMenu(file, filteredTrashFiles, align, triggerEl);
   };
 
   // =========================================================================
@@ -6828,6 +6838,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   >
                     <button
                       type="button"
+                      id={`p1-folder-trigger-${subF.id}`}
                       disabled={isSelectionMode || selectedItemIds.length > 0}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -6845,7 +6856,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     >
                       <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
                     </button>
-                    {!isSelectionMode && selectedItemIds.length === 0 && renderFolder3DOptionsMenu(subF)}
+                    {!isSelectionMode && selectedItemIds.length === 0 && renderFolder3DOptionsMenu(subF, typeof document !== 'undefined' ? document.getElementById(`p1-folder-trigger-${subF.id}`) : null)}
                   </div>
 
                   <div className="pt-7 sm:pt-7.5 pb-1 w-full">
@@ -7023,6 +7034,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       >
                         <button
                           type="button"
+                          id={`p1-file-trigger-${file.id}`}
                           disabled={isSelectionMode || selectedItemIds.length > 0}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -7042,7 +7054,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         </button>
 
                         {/* Menu de propositions identique pour les fichiers */}
-                        {!isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(file, allOpenedFolderItems, 'right')}
+                        {!isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(file, allOpenedFolderItems, 'right', typeof document !== 'undefined' ? document.getElementById(`p1-file-trigger-${file.id}`) : null)}
                       </div>
                     </div>
 
@@ -7215,6 +7227,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     >
                       <button
                         type="button"
+                        id={`p1-file-trigger-${file.id}`}
                         disabled={isSelectionMode || selectedItemIds.length > 0}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -7234,7 +7247,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       </button>
 
                       {/* Menu de propositions identique pour les fichiers */}
-                      {!isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(file, allOpenedFolderItems, 'right')}
+                      {!isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(file, allOpenedFolderItems, 'right', typeof document !== 'undefined' ? document.getElementById(`p1-file-trigger-${file.id}`) : null)}
                     </div>
                   </div>
 
@@ -7260,12 +7273,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // MENU D'OPTIONS 3 TRAITS POUR LES DOSSIERS 3D DU CLASSEUR
   // Conforme à l'Image 2 (sans "Définir comme photo de profil" ni "Le déplacer")
   // =========================================================================
-  const renderFolder3DOptionsMenu = (folder: ClasseurCreatedFolder) => {
+  const renderFolder3DOptionsMenu = (folder: ClasseurCreatedFolder, triggerEl?: HTMLElement | null) => {
     if (activeFolderMenuId !== folder.id) return null;
 
-    return (
+    const el = triggerEl || (typeof document !== 'undefined' ? (document.getElementById(`p1-folder-trigger-${folder.id}`) || document.getElementById(`cloud-folder-trigger-${folder.id}`)) : null);
+    const rect = el?.getBoundingClientRect();
+    const smartStyle = computeSmartMenuStyle(rect, 380, 240);
+
+    return createPortal(
       <div 
-        className="studycloud-file-menu-panel absolute right-0 top-9 z-50 w-60 bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col"
+        className="studycloud-file-menu-panel bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col"
+        style={smartStyle.style}
         onClick={(e) => e.stopPropagation()}
       >
         {/* En-tête de menu dédié avec nom du dossier et bouton fermeture (Image 2) */}
@@ -7396,7 +7414,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             {/* OMITTED: 'Définir comme photo de profil' comme expressément demandé par l'utilisateur */}
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   };
 
@@ -7404,16 +7423,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // MENU D'EN-TÊTE À 3 TRAITS (OPTIONS DE TRI & BOUTON ŒIL)
   // Demandé : trié par plus récent, plus ancien, ce qui sont épinglez, et bouton œil
   // =========================================================================
-  const renderHeaderOptionsMenu = () => {
+  const renderHeaderOptionsMenu = (triggerEl?: HTMLElement | null) => {
     if (!isHeaderMenuOpen) return null;
+
+    const el = triggerEl || (typeof document !== 'undefined' ? document.getElementById('p1-header-menu-trigger') : null);
+    const rect = el?.getBoundingClientRect();
+    const smartStyle = computeSmartMenuStyle(rect, 380, 256);
 
     const isTrashView = currentSubView?.id === 'studycloud-collection-trash' || (isCloudView && cloudActiveTab === 'trash');
     const isAllTrashSelected = filteredTrashFiles.length > 0 && selectedItemIds.length >= filteredTrashFiles.length;
     const hasMultipleTrashSelected = selectedItemIds.length > 1;
 
-    return (
+    return createPortal(
       <div 
-        className="studycloud-file-menu-panel absolute right-0 top-11 sm:top-12 z-50 w-64 bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col"
+        className="studycloud-file-menu-panel bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col"
+        style={smartStyle.style}
         onClick={(e) => e.stopPropagation()}
       >
         {/* En-tête du menu */}
@@ -7674,7 +7698,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             </div>
           )}
         </div>
-      </div>
+      </div>,
+      document.body
     );
   };
 
@@ -7746,6 +7771,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <div className="relative studycloud-menu-trigger">
               <button
                 type="button"
+                id={`p1-file-trigger-${doc.id}`}
                 disabled={isSelectionMode || selectedItemIds.length > 0}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -7763,7 +7789,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
 
-              {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(doc, customList || filteredDocuments, menuAlign)}
+              {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(doc, customList || filteredDocuments, menuAlign, typeof document !== 'undefined' ? document.getElementById(`p1-file-trigger-${doc.id}`) : null)}
             </div>
 
             {/* Case à cocher visible en mode sélection */}
@@ -7863,6 +7889,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <div className="relative studycloud-menu-trigger">
               <button
                 type="button"
+                id={`p1-file-trigger-${file.id}`}
                 disabled={isSelectionMode || selectedItemIds.length > 0}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -7881,7 +7908,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
 
-              {!isSelectionMode && selectedItemIds.length === 0 && renderTrashOptionsMenu(file, menuAlign)}
+              {!isSelectionMode && selectedItemIds.length === 0 && renderTrashOptionsMenu(file, menuAlign, typeof document !== 'undefined' ? document.getElementById(`p1-file-trigger-${file.id}`) : null)}
             </div>
 
             {isSelectionMode && (
@@ -8054,6 +8081,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           <div className="relative studycloud-menu-trigger">
             <button
               type="button"
+              id={`p1-file-trigger-${img.id}`}
               disabled={isSelectionMode || selectedItemIds.length > 0}
               onClick={(e) => {
                 e.stopPropagation();
@@ -8070,7 +8098,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
 
-            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(img, filteredImages, menuAlign)}
+            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(img, filteredImages, menuAlign, typeof document !== 'undefined' ? document.getElementById(`p1-file-trigger-${img.id}`) : null)}
           </div>
 
           {isSelectionMode && (
@@ -8196,6 +8224,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           <div className="relative studycloud-menu-trigger">
             <button
               type="button"
+              id={`p1-file-trigger-${vid.id}`}
               disabled={isSelectionMode || selectedItemIds.length > 0}
               onClick={(e) => {
                 e.stopPropagation();
@@ -8212,7 +8241,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
 
-            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(vid, filteredVideos, menuAlign)}
+            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(vid, filteredVideos, menuAlign, typeof document !== 'undefined' ? document.getElementById(`p1-file-trigger-${vid.id}`) : null)}
           </div>
 
           {isSelectionMode && (
@@ -8356,6 +8385,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           <div className="relative studycloud-menu-trigger">
             <button
               type="button"
+              id={`p1-file-trigger-${aud.id}`}
               disabled={isSelectionMode || selectedItemIds.length > 0}
               onClick={(e) => {
                 e.stopPropagation();
@@ -8373,7 +8403,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
 
-            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(aud, customList || downloadAudio, menuAlign)}
+            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(aud, customList || downloadAudio, menuAlign, typeof document !== 'undefined' ? document.getElementById(`p1-file-trigger-${aud.id}`) : null)}
           </div>
 
           {isSelectionMode && (
@@ -8524,6 +8554,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           <div className="relative shrink-0 studycloud-menu-trigger">
             <button
               type="button"
+              id={`p1-file-trigger-${track.id}`}
               disabled={isSelectionMode || selectedItemIds.length > 0}
               onClick={(e) => {
                 e.stopPropagation();
@@ -8540,7 +8571,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             >
               <Menu className="w-4 h-4 stroke-[2.2]" />
             </button>
-            {!isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(track, filteredAudio, 'right')}
+            {!isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(track, filteredAudio, 'right', typeof document !== 'undefined' ? document.getElementById(`p1-file-trigger-${track.id}`) : null)}
           </div>
 
           <button
@@ -8628,6 +8659,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           <div className="relative studycloud-menu-trigger">
             <button
               type="button"
+              id={`p1-file-trigger-${item.id}`}
               disabled={isSelectionMode || selectedItemIds.length > 0}
               onClick={(e) => {
                 e.stopPropagation();
@@ -8643,7 +8675,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             >
               <Menu className="w-3.5 h-3.5" />
             </button>
-            {!isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(item, downloadOthers, 'right')}
+            {!isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(item, downloadOthers, 'right', typeof document !== 'undefined' ? document.getElementById(`p1-file-trigger-${item.id}`) : null)}
           </div>
 
           <button
@@ -11118,34 +11150,41 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <div className="relative studycloud-menu-trigger">
               <button
                 type="button"
+                id="p1-player-menu-trigger"
                 onClick={() => setIsPlayerMenuOpen(!isPlayerMenuOpen)}
                 className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center bg-black/60 hover:bg-white/20 text-white border border-white/15 transition-all cursor-pointer shadow-sm active:scale-95"
                 title="Options de lecture"
               >
                 <Menu className="w-4 h-4 stroke-[2.2]" />
               </button>
-              {isPlayerMenuOpen && (
-                <div 
-                  className="studycloud-file-menu-panel absolute right-0 top-9 z-50 w-52 bg-[#0D1527] border border-slate-700/80 rounded-xl shadow-2xl py-1 text-xs text-white divide-y divide-white/10 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button type="button" onClick={() => { handleDownloadFile(track); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer">
-                    <Download className="w-4 h-4 text-blue-400" /> Télécharger ce son
-                  </button>
-                  <button type="button" onClick={() => { handleShareFile(track); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer">
-                    <Share2 className="w-4 h-4 text-emerald-400" /> Partager
-                  </button>
-                  <button type="button" onClick={() => { toggleAudioRepeat(); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer">
-                    <Repeat className="w-4 h-4 text-amber-400" /> <span>{isAudioRepeat === 'one' ? "Désactiver la boucle" : "Lire en boucle"}</span>
-                  </button>
-                  <button type="button" onClick={() => { setIsAudioShuffle(!isAudioShuffle); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer">
-                    <Shuffle className="w-4 h-4 text-amber-400" /> <span>{isAudioShuffle ? "Désactiver mode aléatoire" : "Mode aléatoire"}</span>
-                  </button>
-                  <button type="button" onClick={() => { handleDeleteAudio(track); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-rose-950/40 text-rose-400 flex items-center gap-2.5 cursor-pointer">
-                    <Trash2 className="w-4 h-4 text-rose-500" /> Supprimer ce son
-                  </button>
-                </div>
-              )}
+              {isPlayerMenuOpen && (() => {
+                const el = typeof document !== 'undefined' ? document.getElementById('p1-player-menu-trigger') : null;
+                const smartStyle = computeSmartMenuStyle(el?.getBoundingClientRect(), 220, 208);
+                return createPortal(
+                  <div 
+                    className="studycloud-file-menu-panel bg-[#0D1527] border border-slate-700/80 rounded-xl shadow-2xl py-1 text-xs text-white divide-y divide-white/10 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100"
+                    style={smartStyle.style}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button type="button" onClick={() => { handleDownloadFile(track); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer">
+                      <Download className="w-4 h-4 text-blue-400" /> Télécharger ce son
+                    </button>
+                    <button type="button" onClick={() => { handleShareFile(track); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer">
+                      <Share2 className="w-4 h-4 text-emerald-400" /> Partager
+                    </button>
+                    <button type="button" onClick={() => { toggleAudioRepeat(); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer">
+                      <Repeat className="w-4 h-4 text-amber-400" /> <span>{isAudioRepeat === 'one' ? "Désactiver la boucle" : "Lire en boucle"}</span>
+                    </button>
+                    <button type="button" onClick={() => { setIsAudioShuffle(!isAudioShuffle); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer">
+                      <Shuffle className="w-4 h-4 text-amber-400" /> <span>{isAudioShuffle ? "Désactiver mode aléatoire" : "Mode aléatoire"}</span>
+                    </button>
+                    <button type="button" onClick={() => { handleDeleteAudio(track); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-rose-950/40 text-rose-400 flex items-center gap-2.5 cursor-pointer">
+                      <Trash2 className="w-4 h-4 text-rose-500" /> Supprimer ce son
+                    </button>
+                  </div>,
+                  document.body
+                );
+              })()}
             </div>
 
             {/* Bouton Fermer */}
@@ -11951,6 +11990,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   <div className="relative studycloud-menu-trigger">
                     <button
                       type="button"
+                      id="p1-header-menu-trigger"
                       onClick={(e) => {
                         e.stopPropagation();
                         setIsHeaderMenuOpen(!isHeaderMenuOpen);
@@ -11963,7 +12003,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       <Menu className="w-4 h-4 stroke-[2.2]" />
                     </button>
 
-                    {renderHeaderOptionsMenu()}
+                    {renderHeaderOptionsMenu(typeof document !== 'undefined' ? document.getElementById('p1-header-menu-trigger') : null)}
                   </div>
                 </div>
               </div>
@@ -12155,6 +12195,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   <div className="relative studycloud-menu-trigger">
                     <button
                       type="button"
+                      id="p1-header-menu-trigger"
                       onClick={(e) => {
                         e.stopPropagation();
                         setIsHeaderMenuOpen(!isHeaderMenuOpen);
@@ -12167,7 +12208,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       <Menu className="w-4 h-4 stroke-[2.2]" />
                     </button>
 
-                    {renderHeaderOptionsMenu()}
+                    {renderHeaderOptionsMenu(typeof document !== 'undefined' ? document.getElementById('p1-header-menu-trigger') : null)}
                   </div>
                 </div>
 
@@ -12610,6 +12651,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             <div className="relative shrink-0 studycloud-menu-trigger">
                               <button
                                 type="button"
+                                id={`p1-file-trigger-${track.id}`}
                                 disabled={isSelectionMode || selectedItemIds.length > 0}
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -12627,7 +12669,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                 <Menu className="w-4 h-4 stroke-[2.2]" />
                               </button>
 
-                              {!isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(track, filteredAudio, 'right')}
+                              {!isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(track, filteredAudio, 'right', typeof document !== 'undefined' ? document.getElementById(`p1-file-trigger-${track.id}`) : null)}
                             </div>
                           </div>
                         </div>
@@ -13136,6 +13178,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                 >
                                   <button
                                     type="button"
+                                    id={`p1-folder-trigger-${folder.id}`}
                                     disabled={isSelectionMode || selectedItemIds.length > 0}
                                     onClick={(e) => {
                                       e.stopPropagation();
@@ -13154,7 +13197,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                     <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
                                   </button>
 
-                                  {!isSelectionMode && selectedItemIds.length === 0 && renderFolder3DOptionsMenu(folder)}
+                                  {!isSelectionMode && selectedItemIds.length === 0 && renderFolder3DOptionsMenu(folder, typeof document !== 'undefined' ? document.getElementById(`p1-folder-trigger-${folder.id}`) : null)}
                                 </div>
 
                                 {/* Le dossier 3D lui-même glissé un peu vers le bas sur l'espace noir sans bouger l'espace noir pour que le bouton 3 traits ne chevauche plus la date */}

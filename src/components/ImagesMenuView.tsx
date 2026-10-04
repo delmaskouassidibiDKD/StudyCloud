@@ -51,6 +51,7 @@ import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFo
 import { handleNativeShare } from '../utils/nativeShare';
 import { ensureFileExtension } from '../utils/fileExtensionHelper';
 import { applyDashboardWallpaper } from '../utils/wallpaperHelper';
+import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
 
 interface ImagesMenuViewProps {
   onBack: () => void;
@@ -138,21 +139,8 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Fermer le menu 3 traits si on clique en dehors
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.closest('.studycloud-file-menu-panel') || target.closest('.studycloud-menu-trigger')) {
-        return;
-      }
-      setActiveMenuImageId(null);
-    };
-
-    document.addEventListener('pointerdown', handleOutsideClick);
-    return () => {
-      document.removeEventListener('pointerdown', handleOutsideClick);
-    };
-  }, []);
+  // Fermeture intelligente du menu 3 traits (clic extérieur, défilement, Escape)
+  useSmartContextMenuClose(Boolean(activeMenuImageId), () => setActiveMenuImageId(null));
 
   // Animation et suivi en continu de la ligne de progression qui se remplit
   const startSavingAnimation = (fileIds: string[]) => {
@@ -1336,19 +1324,18 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
   // =========================================================================
   // RENDU DU MENU 3 TRAITS DÉDIÉ ET INDÉPENDANT POUR CHAQUE IMAGE (IMAGE 2)
   // =========================================================================
-  const renderImageOptionsMenu = (img: FileItem, index?: number) => {
-    // Aligner à droite si colonne de droite pour éviter de déborder de l'écran
-    const isRightCol = typeof index === 'number' && (
-      (index % 2 === 1) || 
-      (Boolean(selectedImage) && (index + 1) % 3 === 0) ||
-      ((index + 1) % (selectedImage ? 3 : 5) === 0)
-    );
-    const align: 'left' | 'right' = isRightCol ? 'right' : 'left';
+  const renderImageOptionsMenu = (img: FileItem, triggerEl?: HTMLElement | null) => {
     const isChecked = selectedItemIds.includes(img.id);
 
-    return (
+    // Positionnement intelligent : évite tout chevauchement sidebar/viewport
+    const el = triggerEl || (typeof document !== 'undefined' ? document.getElementById(`img-menu-trigger-${img.id}`) : null);
+    const rect = el?.getBoundingClientRect();
+    const smartStyle = computeSmartMenuStyle(rect, 440);
+
+    return createPortal(
       <div 
-        className={`studycloud-file-menu-panel absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-[100] w-64 bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(16,185,129,0.25)] text-slate-200 rounded-xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150`}
+        className="studycloud-file-menu-panel bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(16,185,129,0.25)] text-slate-200 rounded-xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
+        style={smartStyle.style}
         onClick={(e) => e.stopPropagation()}
       >
         {/* En-tête de menu dédié avec nom du fichier et bouton fermeture (Image 2) */}
@@ -1496,7 +1483,8 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
             </button>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   };
 
@@ -1660,6 +1648,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
           <div className="relative studycloud-menu-trigger">
             <button
               type="button"
+              id={`img-menu-trigger-${img.id}`}
               disabled={isSelectionMode || selectedItemIds.length > 0}
               onClick={(e) => {
                 e.stopPropagation();
@@ -1676,7 +1665,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
 
-            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderImageOptionsMenu(img, index)}
+            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderImageOptionsMenu(img, document.getElementById(`img-menu-trigger-${img.id}`))}
           </div>
 
           {isSelectionMode && (

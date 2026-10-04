@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Edit3, ArrowLeft, Upload, File, MoreVertical, X, Search, Check, Copy, Plus, Download, Link as LinkIcon, Eye, EyeOff, Menu, Star } from 'lucide-react';
+import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
 import { ImportedItem, getFileTimestamp, getDocumentTheme } from './FilesMenuView';
 import { triggerDebouncedCloudBackup } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
@@ -69,6 +71,8 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
   useEffect(() => {
     localStorage.setItem('studycloud_matiere_preview_mode', String(isPreviewMode));
   }, [isPreviewMode]);
+
+  useSmartContextMenuClose(openMenuId !== null, () => setOpenMenuId(null));
 
   const handleDownload = async (fileUrl: string | undefined, fileName: string, fileId?: string) => {
     try {
@@ -964,6 +968,8 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
           </button>
 
           <button
+            type="button"
+            id="matiere-header-menu-trigger"
             onClick={(e) => {
               e.stopPropagation();
               setIsHeaderMenuOpen(!isHeaderMenuOpen);
@@ -974,13 +980,20 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
             <MoreVertical className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-white" />
           </button>
 
-          {isHeaderMenuOpen && (
-            <>
-              <div 
-                className="fixed inset-0 z-40 bg-transparent" 
-                onClick={() => setIsHeaderMenuOpen(false)} 
-              />
-              <div className="absolute top-10 right-0 z-50 w-52 bg-white dark:bg-[#111a2e] border-2 border-stone-800 dark:border-[#334155] rounded-xl shadow-xl py-2 text-left animate-in fade-in duration-150">
+          {isHeaderMenuOpen && (() => {
+            const el = typeof document !== 'undefined' ? document.getElementById('matiere-header-menu-trigger') : null;
+            const smartStyle = computeSmartMenuStyle(el?.getBoundingClientRect(), 260, 208);
+            return createPortal(
+              <>
+                <div 
+                  className="fixed inset-0 z-40 bg-transparent" 
+                  onClick={() => setIsHeaderMenuOpen(false)} 
+                />
+                <div 
+                  className="studycloud-file-menu-panel bg-white dark:bg-[#111a2e] border-2 border-stone-800 dark:border-[#334155] rounded-xl shadow-xl py-2 text-left animate-in fade-in duration-150 flex flex-col"
+                  style={smartStyle.style}
+                  onClick={(e) => e.stopPropagation()}
+                >
                 {/* Option bascule aperçu / compact dans le petit menu */}
                 <button
                   type="button"
@@ -1045,8 +1058,10 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                   {sortBy === 'size' && <span className="text-[#2D4A3E]">✓</span>}
                 </button>
               </div>
-            </>
-          )}
+            </>,
+            document.body
+          );
+        })()}
         </div>
       </div>
 
@@ -1236,6 +1251,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                               <div className="relative">
                                 <button
                                   type="button"
+                                  id={`matiere-file-trigger-${f.id}`}
                                   disabled={isSelectionMode || selectedFileIds.length > 0}
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -1252,11 +1268,15 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                                   <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
                                 </button>
 
-                                {isMenuOpen && !isSelectionMode && selectedFileIds.length === 0 && !isSaving && (
-                                  <div 
-                                    className="absolute top-8 left-0 z-50 bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
+                                {isMenuOpen && !isSelectionMode && selectedFileIds.length === 0 && !isSaving && (() => {
+                                  const el = typeof document !== 'undefined' ? document.getElementById(`matiere-file-trigger-${f.id}`) : null;
+                                  const smartStyle = computeSmartMenuStyle(el?.getBoundingClientRect(), 420, 200);
+                                  return createPortal(
+                                    <div 
+                                      className="studycloud-file-menu-panel bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn flex flex-col"
+                                      style={smartStyle.style}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
                                     <div className="flex items-center justify-between px-3 py-1.5 border-b border-stone-200 mb-1">
                                       <span className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Options</span>
                                       <button
@@ -1363,10 +1383,12 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                                     >
                                       <span>🗑️ Supprimer</span>
                                     </button>
-                                  </div>
-                                )}
-                              </div>
-                            )}
+                                  </div>,
+                                  document.body
+                                );
+                              })()}
+                                </div>
+                              )}
 
                             {f.isFavorite && (
                               <span className="p-0.5 rounded bg-black/60 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
@@ -1486,6 +1508,8 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                           </div>
                         ) : !isSaving && (
                           <button
+                            type="button"
+                            id={`matiere-compact-trigger-${f.id}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               setOpenMenuId(openMenuId === f.id ? null : f.id);
@@ -1497,11 +1521,15 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                           </button>
                         )}
 
-                        {openMenuId === f.id && !isSelectionMode && !isSaving && (
-                          <div 
-                            className="absolute top-9 left-0 z-50 bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn"
-                            onClick={(e) => e.stopPropagation()}
-                          >
+                        {openMenuId === f.id && !isSelectionMode && !isSaving && (() => {
+                          const el = typeof document !== 'undefined' ? document.getElementById(`matiere-compact-trigger-${f.id}`) : null;
+                          const smartStyle = computeSmartMenuStyle(el?.getBoundingClientRect(), 420, 200);
+                          return createPortal(
+                            <div 
+                              className="studycloud-file-menu-panel bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn flex flex-col"
+                              style={smartStyle.style}
+                              onClick={(e) => e.stopPropagation()}
+                            >
                             <div className="flex items-center justify-between px-3 py-1.5 border-b border-stone-200 mb-1">
                               <span className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Options</span>
                               <button
@@ -1603,8 +1631,10 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                             >
                               <span>🗑️ Supprimer</span>
                             </button>
-                          </div>
-                        )}
+                          </div>,
+                          document.body
+                        );
+                      })()}
 
                         <div className={`w-full aspect-[3/4] ${bgColor} rounded-xl shadow-[3px_3px_0px_0px_#1c1917] flex flex-col items-center justify-between p-3 text-white relative overflow-hidden transition-all ${
                           isSaving ? '' : 'group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917]'

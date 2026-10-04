@@ -612,4 +612,94 @@ p.brand-tagline,
   z-index: 0;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   STUDYCLOUD — POSITIONNEMENT INTELLIGENT DES MENUS CONTEXTUELS 3 TRAITS
+   Les panneaux .studycloud-file-menu-panel sont rendus en position fixed
+   via createPortal pour éviter tout débordement sur la sidebar,
+   en bas, en haut ou à droite du viewport.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.studycloud-file-menu-panel {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  isolation: isolate;
+  background-color: #0B101D;
+  border: 2px solid rgba(71, 85, 105, 0.9);
+  border-radius: 0.75rem;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.98), 0 0 25px rgba(59, 130, 246, 0.25);
+  color: #e2e8f0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.studycloud-file-menu-panel::-webkit-scrollbar {
+  display: none;
+}
+
+.studycloud-sec-menu-panel {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  isolation: isolate;
+  background-color: #0A0F1D;
+  border: 2px solid rgba(59, 130, 246, 0.9);
+  border-radius: 1rem;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.98), 0 0 25px rgba(59, 130, 246, 0.35);
+  color: #ffffff;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.studycloud-sec-menu-panel::-webkit-scrollbar {
+  display: none;
+}
+
+.studycloud-trash-menu-panel {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  isolation: isolate;
+  background-color: #0A0F1D;
+  border: 2px solid rgba(244, 63, 94, 0.9);
+  border-radius: 1rem;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.98), 0 0 25px rgba(244, 63, 94, 0.35);
+  color: #ffffff;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.studycloud-trash-menu-panel::-webkit-scrollbar {
+  display: none;
+}
+
+.studycloud-fav-menu-panel {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  isolation: isolate;
+  background-color: #0E1526;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.75rem;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.95);
+  color: #ffffff;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.studycloud-fav-menu-panel::-webkit-scrollbar {
+  display: none;
+}
+
+/* Le wrapper du bouton déclencheur doit être overflow-visible
+   pour que le bouton reste cliquable */
+.studycloud-menu-trigger,
+.studycloud-sec-menu-trigger,
+.studycloud-trash-menu-trigger,
+.studycloud-fav-menu-trigger {
+  position: relative;
+  overflow: visible !important;
+  z-index: 9990;
+}
+
 

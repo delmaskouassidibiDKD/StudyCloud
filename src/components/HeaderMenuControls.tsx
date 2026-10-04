@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
 import {
   Maximize2,
   Minimize2,
@@ -420,17 +422,9 @@ export const HeaderMenuControls: React.FC<HeaderMenuControlsProps> = ({
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!isMenuOpen) return;
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsMenuOpen(false);
-      }
-    };
-    document.addEventListener('pointerdown', handleOutsideClick);
-    return () => document.removeEventListener('pointerdown', handleOutsideClick);
-  }, [isMenuOpen]);
+  useSmartContextMenuClose(isMenuOpen, () => setIsMenuOpen(false));
 
   const handleSelectSort = (option: SortOption) => {
     onSortChange(option);
@@ -469,6 +463,7 @@ export const HeaderMenuControls: React.FC<HeaderMenuControlsProps> = ({
       {/* 2. BOUTON 3 TRAITS DERRIÈRE LUI (MENU D'OPTIONS & TRI) */}
       <div className="relative">
         <button
+          ref={buttonRef}
           type="button"
           onClick={(e) => {
             e.stopPropagation();
@@ -485,11 +480,14 @@ export const HeaderMenuControls: React.FC<HeaderMenuControlsProps> = ({
         </button>
 
         {/* 3. MENU DROPDOWN D'OPTIONS ET DE TRI */}
-        {isMenuOpen && (
-          <div
-            className="studycloud-file-menu-panel absolute right-0 top-11 sm:top-12 z-50 w-64 bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
+        {isMenuOpen && (() => {
+          const smartStyle = computeSmartMenuStyle(buttonRef.current?.getBoundingClientRect(), 380, 256);
+          return createPortal(
+            <div
+              className="studycloud-file-menu-panel bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col"
+              style={smartStyle.style}
+              onClick={(e) => e.stopPropagation()}
+            >
             {/* En-tête du menu */}
             <div className="px-3.5 py-2.5 bg-slate-900 border-b border-white/10 flex items-center justify-between gap-2 shrink-0">
               <div>
@@ -617,9 +615,11 @@ export const HeaderMenuControls: React.FC<HeaderMenuControlsProps> = ({
                 </div>
               )}
             </div>
-          </div>
-        )}
-      </div>
+          </div>,
+          document.body
+        );
+      })()}
     </div>
+  </div>
   );
 };

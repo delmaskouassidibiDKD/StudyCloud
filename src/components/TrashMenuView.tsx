@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
 import {
   ArrowLeft,
   Search,
@@ -131,20 +133,13 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Fermer le menu 3 traits si on clique en dehors
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent | PointerEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-      if (!target.closest('.studycloud-trash-menu-panel') && !target.closest('.studycloud-trash-menu-trigger')) {
-        setActiveMenuFileId(null);
-      }
-    };
-    window.addEventListener('pointerdown', handleOutsideClick);
-    return () => {
-      window.removeEventListener('pointerdown', handleOutsideClick);
-    };
-  }, []);
+  // Fermeture intelligente du menu 3 traits (clic extérieur, défilement, Escape)
+  useSmartContextMenuClose(
+    Boolean(activeMenuFileId),
+    () => setActiveMenuFileId(null),
+    '.studycloud-trash-menu-panel',
+    '.studycloud-trash-menu-trigger',
+  );
 
   // Écoute de la touche Échap pour fermer le lecteur ou réduire le plein écran
   useEffect(() => {
@@ -428,15 +423,17 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
   // =========================================================================
   // MENU DÉDIÉ 3 TRAITS FLOTTANT AU-DESSUS DE LA CARTE (SANS ÊTRE CONFONDU)
   // =========================================================================
-  const renderOptionsMenu = (file: FileItem, index?: number) => {
+  const renderOptionsMenu = (file: FileItem, triggerEl?: HTMLElement | null) => {
     if (activeMenuFileId !== file.id) return null;
     const isChecked = selectedIds.includes(file.id);
-    const isRightCol = typeof index === 'number' && ((index + 1) % 2 === 0 || (index + 1) % 3 === 0 || (index + 1) % 4 === 0);
-    const alignClass = isRightCol ? 'right-0' : 'left-0';
+    const el = triggerEl || (typeof document !== 'undefined' ? document.getElementById(`trash-menu-trigger-${file.id}`) : null);
+    const rect = el?.getBoundingClientRect();
+    const smartStyle = computeSmartMenuStyle(rect, 380);
 
-    return (
+    return createPortal(
       <div
-        className={`studycloud-trash-menu-panel absolute ${alignClass} top-9 z-[150] w-56 sm:w-64 bg-[#0A0F1D] border-2 border-rose-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(244,63,94,0.35)] text-white animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col p-0.5`}
+        className="studycloud-trash-menu-panel bg-[#0A0F1D] border-2 border-rose-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(244,63,94,0.35)] text-white animate-in fade-in zoom-in-95 duration-150 overflow-y-auto flex flex-col p-0.5"
+        style={smartStyle.style}
         onClick={(e) => e.stopPropagation()}
       >
         {/* En-tête : Titre du fichier, Sous-titre rouge CORBEILLE, et Croix de fermeture */}
@@ -536,7 +533,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             <span>Supprimer définitivement</span>
           </button>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   };
 
@@ -592,6 +590,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
           <div className={`relative studycloud-trash-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
+              id={`trash-menu-trigger-${file.id}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
@@ -605,7 +604,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             </button>
 
             {/* Menu indépendant qui flotte au-dessus sans être confondu */}
-            {isMenuOpen && renderOptionsMenu(file, index)}
+            {isMenuOpen && renderOptionsMenu(file, document.getElementById(`trash-menu-trigger-${file.id}`))}
           </div>
 
           <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
@@ -675,6 +674,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
           <div className={`relative studycloud-trash-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
+              id={`trash-menu-trigger-${file.id}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
@@ -688,7 +688,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             </button>
 
             {/* Menu indépendant qui flotte au-dessus sans être confondu */}
-            {isMenuOpen && renderOptionsMenu(file, index)}
+            {isMenuOpen && renderOptionsMenu(file, document.getElementById(`trash-menu-trigger-${file.id}`))}
           </div>
 
           <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/40 text-white border border-black/20 px-1.5 py-0.5 rounded shadow-sm">
@@ -776,6 +776,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
           <div className={`relative studycloud-trash-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
+              id={`trash-menu-trigger-${file.id}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
@@ -789,7 +790,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             </button>
 
             {/* Menu indépendant qui flotte au-dessus sans être confondu */}
-            {isMenuOpen && renderOptionsMenu(file, index)}
+            {isMenuOpen && renderOptionsMenu(file, document.getElementById(`trash-menu-trigger-${file.id}`))}
           </div>
 
           <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
@@ -879,6 +880,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
           <div className={`relative studycloud-trash-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
+              id={`trash-menu-trigger-${file.id}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
@@ -892,7 +894,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             </button>
 
             {/* Menu indépendant qui flotte au-dessus sans être confondu */}
-            {isMenuOpen && renderOptionsMenu(file, index)}
+            {isMenuOpen && renderOptionsMenu(file, document.getElementById(`trash-menu-trigger-${file.id}`))}
           </div>
 
           <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
@@ -978,6 +980,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             <div className={`relative studycloud-trash-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
               <button
                 type="button"
+                id={`trash-menu-trigger-${file.id}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   setActiveMenuFileId(prev => prev === file.id ? null : file.id);
@@ -989,7 +992,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
-              {isMenuOpen && renderOptionsMenu(file, index)}
+              {isMenuOpen && renderOptionsMenu(file, document.getElementById(`trash-menu-trigger-${file.id}`))}
             </div>
 
             <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/30">
@@ -1060,6 +1063,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             <div className={`relative studycloud-trash-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
               <button
                 type="button"
+                id={`trash-menu-trigger-${file.id}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   setActiveMenuFileId(prev => prev === file.id ? null : file.id);
@@ -1071,7 +1075,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
-              {isMenuOpen && renderOptionsMenu(file, index)}
+              {isMenuOpen && renderOptionsMenu(file, document.getElementById(`trash-menu-trigger-${file.id}`))}
             </div>
           </div>
 

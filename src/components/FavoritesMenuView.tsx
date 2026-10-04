@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
 import {
   ArrowLeft,
   Search,
@@ -175,20 +177,13 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Fermer le menu 3 traits au clic en dehors
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent | PointerEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-      if (!target.closest('.studycloud-fav-menu-panel') && !target.closest('.studycloud-fav-menu-trigger')) {
-        setActiveMenuFileId(null);
-      }
-    };
-    window.addEventListener('pointerdown', handleOutsideClick);
-    return () => {
-      window.removeEventListener('pointerdown', handleOutsideClick);
-    };
-  }, []);
+  // Fermeture intelligente du menu 3 traits (clic extérieur, défilement, Escape)
+  useSmartContextMenuClose(
+    Boolean(activeMenuFileId),
+    () => setActiveMenuFileId(null),
+    '.studycloud-fav-menu-panel',
+    '.studycloud-fav-menu-trigger',
+  );
 
   // Écoute de la touche Échap
   useEffect(() => {
@@ -343,10 +338,15 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
   // =========================================================================
   // MENU D'OPTIONS 3 TRAITS SUR CHAQUE CARTE
   // =========================================================================
-  const renderOptionsMenu = (file: FileItem) => {
-    return (
+  const renderOptionsMenu = (file: FileItem, triggerEl?: HTMLElement | null) => {
+    const el = triggerEl || (typeof document !== 'undefined' ? document.getElementById(`fav-menu-trigger-${file.id}`) : null);
+    const rect = el?.getBoundingClientRect();
+    const smartStyle = computeSmartMenuStyle(rect, 340, 220);
+
+    return createPortal(
       <div
-        className="studycloud-fav-menu-panel absolute top-8 left-0 z-[150] bg-[#0E1526] text-white rounded-xl shadow-2xl border border-white/20 py-1.5 w-48 text-xs font-semibold animate-in fade-in duration-150"
+        className="studycloud-fav-menu-panel bg-[#0E1526] text-white rounded-xl shadow-2xl border border-white/20 py-1.5 w-48 text-xs font-semibold animate-in fade-in duration-150 overflow-y-auto"
+        style={smartStyle.style}
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -409,7 +409,8 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           <Download className="w-3.5 h-3.5 text-purple-400" />
           <span>Télécharger</span>
         </button>
-      </div>
+      </div>,
+      document.body
     );
   };
 
@@ -456,6 +457,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           <div className={`relative studycloud-fav-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
+              id={`fav-menu-trigger-${file.id}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
@@ -467,7 +469,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
-            {isMenuOpen && renderOptionsMenu(file)}
+            {isMenuOpen && renderOptionsMenu(file, document.getElementById(`fav-menu-trigger-${file.id}`))}
           </div>
 
           <button
@@ -554,6 +556,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           <div className={`relative studycloud-fav-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
+              id={`fav-menu-trigger-${file.id}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
@@ -563,7 +566,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
-            {isMenuOpen && renderOptionsMenu(file)}
+            {isMenuOpen && renderOptionsMenu(file, document.getElementById(`fav-menu-trigger-${file.id}`))}
           </div>
         </div>
 
@@ -608,6 +611,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           <div className={`relative studycloud-fav-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
+              id={`fav-menu-trigger-${file.id}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
@@ -619,7 +623,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
-            {isMenuOpen && renderOptionsMenu(file)}
+            {isMenuOpen && renderOptionsMenu(file, document.getElementById(`fav-menu-trigger-${file.id}`))}
           </div>
 
           <div className="flex items-center gap-1">
@@ -702,6 +706,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           <div className={`relative studycloud-fav-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
+              id={`fav-menu-trigger-${file.id}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
@@ -713,7 +718,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
-            {isMenuOpen && renderOptionsMenu(file)}
+            {isMenuOpen && renderOptionsMenu(file, document.getElementById(`fav-menu-trigger-${file.id}`))}
           </div>
 
           <div className="flex items-center gap-1">
@@ -795,6 +800,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           <div className={`relative studycloud-fav-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
+              id={`fav-menu-trigger-${file.id}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
@@ -806,7 +812,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
-            {isMenuOpen && renderOptionsMenu(file)}
+            {isMenuOpen && renderOptionsMenu(file, document.getElementById(`fav-menu-trigger-${file.id}`))}
           </div>
 
           <div className="flex items-center gap-1">

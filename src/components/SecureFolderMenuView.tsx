@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
 import {
   ArrowLeft,
   Search,
@@ -149,19 +151,13 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
   // Filtre par catégorie
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'audio' | 'documents' | 'images' | 'videos'>('all');
 
-  // Fermeture du menu déroulant 3 traits lors d'un clic extérieur
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-      if (!target.closest('.studycloud-sec-menu-trigger') && !target.closest('.studycloud-sec-menu-panel')) {
-        setActiveMenuFileId(null);
-        setIsHeaderMenuOpen(false);
-      }
-    };
-    window.addEventListener('click', handleClickOutside);
-    return () => window.removeEventListener('click', handleClickOutside);
-  }, []);
+  // Fermeture intelligente du menu 3 traits (clic extérieur, défilement, Escape)
+  useSmartContextMenuClose(
+    Boolean(activeMenuFileId),
+    () => setActiveMenuFileId(null),
+    '.studycloud-sec-menu-panel',
+    '.studycloud-sec-menu-trigger',
+  );
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inactivityTimerRef = useRef<any>(null);
@@ -622,17 +618,19 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
   };
 
   // Menu d'options 3 traits
-  const renderOptionsMenu = (file: FileItem, index?: number) => {
+  const renderOptionsMenu = (file: FileItem, triggerEl?: HTMLElement | null) => {
     if (activeMenuFileId !== file.id) return null;
     const isChecked = selectedIds.has(file.id);
     const allChecked = displayedFiles.length > 0 && selectedIds.size === displayedFiles.length;
     const hasSelection = selectedIds.size > 0;
-    const isRightCol = typeof index === 'number' && ((index + 1) % 2 === 0 || (index + 1) % 3 === 0 || (index + 1) % 4 === 0);
-    const alignClass = isRightCol ? 'right-0' : 'left-0';
+    const el = triggerEl || (typeof document !== 'undefined' ? document.getElementById(`sec-menu-trigger-${file.id}`) : null);
+    const rect = el?.getBoundingClientRect();
+    const smartStyle = computeSmartMenuStyle(rect, 420);
 
-    return (
+    return createPortal(
       <div
-        className={`studycloud-sec-menu-panel absolute ${alignClass} top-9 z-[150] w-60 sm:w-64 bg-[#0A0F1D] border-2 border-blue-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.35)] text-white animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col p-0.5`}
+        className="studycloud-sec-menu-panel bg-[#0A0F1D] border-2 border-blue-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.35)] text-white animate-in fade-in zoom-in-95 duration-150 overflow-y-auto flex flex-col p-0.5"
+        style={smartStyle.style}
         onClick={(e) => e.stopPropagation()}
       >
         {/* En-tête : Titre du fichier et badge Dossier Sécurisé */}
@@ -813,7 +811,8 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
             <span>Télécharger</span>
           </button>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   };
 
@@ -1108,6 +1107,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
           <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
             <button
               type="button"
+              id={`sec-menu-trigger-${file.id}`}
               disabled={selectedIds.size > 0}
               onClick={(e) => {
                 e.stopPropagation();
@@ -1125,7 +1125,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
-            {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, index)}
+            {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, document.getElementById(`sec-menu-trigger-${file.id}`))}
           </div>
 
           <button
@@ -1201,6 +1201,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
             <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
               <button
                 type="button"
+                id={`sec-menu-trigger-${file.id}`}
                 disabled={selectedIds.size > 0}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1218,7 +1219,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
-              {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, index)}
+              {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, document.getElementById(`sec-menu-trigger-${file.id}`))}
             </div>
 
             <button
@@ -1307,6 +1308,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
             <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
               <button
                 type="button"
+                id={`sec-menu-trigger-${file.id}`}
                 disabled={selectedIds.size > 0}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1324,7 +1326,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
-              {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, index)}
+              {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, document.getElementById(`sec-menu-trigger-${file.id}`))}
             </div>
 
             <button
@@ -1396,6 +1398,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
             <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
               <button
                 type="button"
+                id={`sec-menu-trigger-${file.id}`}
                 disabled={selectedIds.size > 0}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1413,7 +1416,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
-              {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, index)}
+              {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, document.getElementById(`sec-menu-trigger-${file.id}`))}
             </div>
 
             <button
@@ -1521,6 +1524,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
             <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
               <button
                 type="button"
+                id={`sec-menu-trigger-${file.id}`}
                 disabled={selectedIds.size > 0}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1538,7 +1542,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
-              {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, index)}
+              {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, document.getElementById(`sec-menu-trigger-${file.id}`))}
             </div>
 
             <button

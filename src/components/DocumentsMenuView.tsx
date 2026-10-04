@@ -54,6 +54,7 @@ import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes
 import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../services/fileTypeValidator';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
 import { handleNativeShare } from '../utils/nativeShare';
+import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
 import { ensureFileExtension } from '../utils/fileExtensionHelper';
 
 interface DocumentsMenuViewProps {
@@ -210,21 +211,8 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Fermer le menu 3 traits si on clique en dehors
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.closest('.studycloud-file-menu-panel') || target.closest('.studycloud-menu-trigger')) {
-        return;
-      }
-      setActiveMenuDocId(null);
-    };
-
-    document.addEventListener('pointerdown', handleOutsideClick);
-    return () => {
-      document.removeEventListener('pointerdown', handleOutsideClick);
-    };
-  }, []);
+  // Fermeture intelligente du menu 3 traits (clic extérieur, défilement, Escape)
+  useSmartContextMenuClose(Boolean(activeMenuDocId), () => setActiveMenuDocId(null));
 
   // Animation de progression d'enregistrement optimiste
   const startSavingAnimation = (ids: string[]) => {
@@ -1390,19 +1378,19 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
   // =========================================================================
   // RENDU DU MENU 3 TRAITS DÉDIÉ ET INDÉPENDANT POUR CHAQUE DOCUMENT (IMAGE 2)
   // =========================================================================
-  const renderDocumentOptionsMenu = (doc: FileItem, index?: number) => {
-    const isRightCol = typeof index === 'number' && (
-      (index % 2 === 1) || 
-      (Boolean(selectedDoc) && (index + 1) % 3 === 0) ||
-      ((index + 1) % (selectedDoc ? 3 : 5) === 0)
-    );
-    const align: 'left' | 'right' = isRightCol ? 'right' : 'left';
+  const renderDocumentOptionsMenu = (doc: FileItem, triggerEl?: HTMLElement | null) => {
     const isChecked = selectedItemIds.includes(doc.id);
     const isAllChecked = filteredDocuments.length > 0 && selectedItemIds.length >= filteredDocuments.length;
 
-    return (
+    // Calcul intelligent de la position : évite tout chevauchement sidebar/viewport
+    const el = triggerEl || (typeof document !== 'undefined' ? document.getElementById(`doc-menu-trigger-${doc.id}`) : null);
+    const rect = el?.getBoundingClientRect();
+    const smartStyle = computeSmartMenuStyle(rect, 420);
+
+    return createPortal(
       <div 
-        className={`studycloud-file-menu-panel absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-[100] w-64 bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.25)] text-slate-200 rounded-xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150`}
+        className="studycloud-file-menu-panel bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.25)] text-slate-200 rounded-xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
+        style={smartStyle.style}
         onClick={(e) => e.stopPropagation()}
       >
         {/* En-tête de menu dédié avec nom du fichier et bouton fermeture (Image 2) */}
@@ -1540,7 +1528,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
           </div>
         </div>
       </div>
-    );
+    , document.body);
   };
 
   // =========================================================================
@@ -1690,6 +1678,8 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             <div className="relative studycloud-menu-trigger">
               <button
                 type="button"
+                ref={(el) => { if (isMenuOpen && el) (el as any)._menuTrigger = el; }}
+                id={`doc-menu-trigger-${doc.id}`}
                 disabled={isSelectionMode || selectedItemIds.length > 0}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1706,7 +1696,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
 
-              {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderDocumentOptionsMenu(doc, index)}
+              {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderDocumentOptionsMenu(doc, document.getElementById(`doc-menu-trigger-${doc.id}`))}
             </div>
 
             {/* Case à cocher visible en mode sélection */}
