@@ -979,7 +979,8 @@ export default function App() {
       const x = clientX - rect.left;
       const percentage = (x / rect.width) * 100;
 
-      const minLeft = Math.max(18, (220 / rect.width) * 100);
+      const minLeftPx = 260;
+      const minLeft = (minLeftPx / rect.width) * 100;
       const minCenter = Math.max(28, (320 / rect.width) * 100);
       const maxLeft = Math.max(minLeft, 100 - previewRightWidth - minCenter);
       const newWidth = Math.min(Math.max(minLeft, percentage), maxLeft);
@@ -2068,7 +2069,7 @@ export default function App() {
               style={{
                 gridTemplateColumns: isCenterFullscreen || isRightFullscreen 
                   ? '100%' 
-                  : (isMobileScreen ? '100%' : `${previewLeftWidth}% ${100 - previewLeftWidth - previewRightWidth}% ${previewRightWidth}%`),
+                  : (isMobileScreen ? '100%' : `minmax(260px, ${previewLeftWidth}%) ${100 - previewLeftWidth - previewRightWidth}% ${previewRightWidth}%`),
               }}
             >
               
