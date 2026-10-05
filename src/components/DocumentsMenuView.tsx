@@ -649,6 +649,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     if (!skipConfirm && !window.confirm(`Déplacer "${doc.name}" dans la corbeille ?`)) return;
 
     markItemDeleted(doc.id);
+    CloudDataStore.dismissRecent(doc.id);
     const fileWithSource: FileItem = {
       ...doc,
       isTrash: true,
@@ -2285,6 +2286,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
               }));
               toDelete.forEach(d => {
                 markItemDeleted(d.id);
+                CloudDataStore.dismissRecent(d.id);
                 LocalSyncReplication.recordLocalDeletion(d.id, 'documents');
                 CloudStorageAPI.deleteDocument(d.id, d.name).catch(() => {});
               });

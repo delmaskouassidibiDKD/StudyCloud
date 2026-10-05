@@ -547,6 +547,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     if (!skipConfirm && !window.confirm(`Déplacer "${vid.name}" dans la corbeille ?`)) return;
 
     markItemDeleted(vid.id);
+    CloudDataStore.dismissRecent(vid.id);
     const fileWithSource: FileItem = {
       ...vid,
       isTrash: true,
@@ -2169,6 +2170,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
               }));
               toDelete.forEach(v => {
                 markItemDeleted(v.id);
+                CloudDataStore.dismissRecent(v.id);
                 LocalSyncReplication.recordLocalDeletion(v.id, 'videos');
                 CloudStorageAPI.deleteVideo(v.id, v.name).catch(() => {});
               });

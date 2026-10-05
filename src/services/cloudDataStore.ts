@@ -222,6 +222,11 @@ export function getDeletedRecentIds(): Set<string> {
   return dismissedRecentSet;
 }
 
+export function isRecentDismissed(id: string): boolean {
+  if (!id) return false;
+  return dismissedRecentSet.has(id) || getDeletedRecentIds().has(id);
+}
+
 // Hydratation async depuis IndexedDB (Tier 2 avec isolation utilisateur)
 async function hydrateFromIndexedDB(): Promise<boolean> {
   try {
@@ -473,6 +478,10 @@ export const CloudDataStore = {
     return () => { deletionListeners.delete(listener); };
   },
 
+  isRecentDismissed(id: string): boolean {
+    return isRecentDismissed(id);
+  },
+
   hasData(): boolean {
     if (currentState.isLoaded) return true;
     if (currentState.documents.length > 0 || currentState.images.length > 0) return true;
@@ -581,6 +590,15 @@ export const CloudDataStore = {
             return 0;
           };
 
+          // Fichiers actifs qui existent RÉELLEMENT dans le compte de l'utilisateur (4 catégories autorisées)
+          const activeExistingIdSet = new Set<string>([
+            ...currentState.documents.map(f => f.id),
+            ...currentState.images.map(f => f.id),
+            ...currentState.videos.map(f => f.id),
+            ...currentState.audio.map(f => f.id),
+          ]);
+          const currentTrashIdSet = new Set<string>(currentState.trash.map(t => t.id));
+
           const candidates = [
             ...(currentState.overview?.recentFiles || []),
             ...(currentState.recentFiles || []),
@@ -597,7 +615,10 @@ export const CloudDataStore = {
             if (seenRecents.has(file.id)) continue;
             if (!isRecentEligible(file)) continue;
             if (isItemDeleted(file.id)) continue;
+            if (currentTrashIdSet.has(file.id)) continue;
             if (dismissedRecentSet.has(file.id) || getDeletedRecentIds().has(file.id)) continue;
+            // RÈGLE STRICTE : Un fichier qui n'existe pas ne doit JAMAIS apparaître dans les récents
+            if (activeExistingIdSet.size > 0 && !activeExistingIdSet.has(file.id)) continue;
             seenRecents.add(file.id);
             dedupedRecents.push(file);
           }
@@ -1103,6 +1124,8 @@ export const CloudDataStore = {
     if (!fileIds || fileIds.length === 0) return;
     fileIds.forEach(id => {
       markItemDeleted(id);
+      dismissedRecentSet.add(id);
+      CloudStorageAPI.dismissRecent(id).catch(() => {});
       notifyFavoriteChange(id, false, category);
       const cat = category ||
         (currentState.documents.some(d => d.id === id) ? 'documents' :
@@ -1113,6 +1136,9 @@ export const CloudDataStore = {
          'documents');
       deletionListeners.forEach(fn => { try { fn(id, cat); } catch {} });
     });
+    try {
+      localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(dismissedRecentSet).slice(-500)));
+    } catch {}
     const idSet = new Set(fileIds);
     const filterFn = (list: FileItem[]) => list.filter(f => !idSet.has(f.id));
     const updatedMap = { ...currentState.folderFilesMap };
@@ -1164,6 +1190,11 @@ export const CloudDataStore = {
 
   removeFileFromCategory(fileId: string, category?: string, folderId?: string) {
     notifyFavoriteChange(fileId, false, category);
+    dismissedRecentSet.add(fileId);
+    CloudStorageAPI.dismissRecent(fileId).catch(() => {});
+    try {
+      localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(dismissedRecentSet).slice(-500)));
+    } catch {}
     const filterFn = (list: FileItem[]) => list.filter(f => f.id !== fileId);
     const updatedMap = { ...currentState.folderFilesMap };
     if (folderId && updatedMap[folderId]) {
@@ -1192,6 +1223,8 @@ export const CloudDataStore = {
 
   permanentlyRemoveTrashFile(fileId: string) {
     markTrashItemPermanentlyDeleted(fileId);
+    dismissedRecentSet.add(fileId);
+    CloudStorageAPI.dismissRecent(fileId).catch(() => {});
     // Écrire un tombstone dans localStorage pour éviter la résurrection lors du prochain sync
     try {
       const raw = localStorage.getItem('studycloud_deleted_file_ids');
@@ -1200,6 +1233,7 @@ export const CloudDataStore = {
         arr.push(fileId);
         localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(arr.slice(-500)));
       }
+      localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(dismissedRecentSet).slice(-500)));
     } catch {}
     // Notifier le tombstoneChecker (localSyncReplication) si disponible
     if (tombstoneChecker) {
@@ -1209,6 +1243,7 @@ export const CloudDataStore = {
     currentState = {
       ...currentState,
       trash: currentState.trash.filter(f => f.id !== fileId),
+      recentFiles: (currentState.recentFiles || []).filter(f => f.id !== fileId),
     };
     persistToIndexedDB().catch(() => {});
     notify();
@@ -1229,14 +1264,25 @@ export const CloudDataStore = {
     const idSet = new Set(arr.map(f => f.id));
 
     // Supprimer définitivement et immédiatement tous les éléments mis en corbeille des Favoris
+    // ET effacer définitivement leur aperçu des récents (ne doit JAMAIS réapparaître même après restauration)
     arr.forEach(f => {
       unmarkTrashItemPermanentlyDeleted(f.id);
       notifyFavoriteChange(f.id, false, f.category);
+      dismissedRecentSet.add(f.id);
+      CloudStorageAPI.dismissRecent(f.id).catch(() => {});
       if (f.category === 'classeur_folder' || f.category === 'folder' || (f as any).model) {
         const childFiles = currentState.folderFilesMap[f.id] || [];
-        childFiles.forEach(cf => notifyFavoriteChange(cf.id, false, cf.category));
+        childFiles.forEach(cf => {
+          notifyFavoriteChange(cf.id, false, cf.category);
+          dismissedRecentSet.add(cf.id);
+          CloudStorageAPI.dismissRecent(cf.id).catch(() => {});
+        });
       }
     });
+
+    try {
+      localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(dismissedRecentSet).slice(-500)));
+    } catch {}
 
     const filterFn = (list: FileItem[]) => list.filter(f => !idSet.has(f.id));
     const clearFavFn = (list: FileItem[]) => list.map(f => idSet.has(f.id) ? { ...f, isFavorite: false } : f);

@@ -3095,6 +3095,12 @@ async function cleanUserFavoriteOnDelete(db, userId, itemId) {
     const favSyncId = `fav_${userId}_${itemId}`;
     await recordSyncItem(db, userId, favSyncId, "favorites", { itemId, isFavorite: false, is_favorite: 0 }, 1);
     await recordSyncItem(db, userId, itemId, "favorites", { itemId, isFavorite: false, is_favorite: 0 }, 1);
+    const recordId = `delrec-${userId}-${itemId}`;
+    await db.prepare(`
+      INSERT OR REPLACE INTO user_dismissed_recents (id, user_id, file_id, dismissed_at)
+      VALUES (?, ?, ?, datetime('now'))
+    `).bind(recordId, userId, itemId).run().catch(() => {
+    });
   } catch (e) {
     console.warn("[cleanUserFavoriteOnDelete Error]", e);
   }

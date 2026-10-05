@@ -697,9 +697,28 @@ p.brand-tagline,
 .studycloud-sec-menu-trigger,
 .studycloud-trash-menu-trigger,
 .studycloud-fav-menu-trigger {
-  position: relative;
   overflow: visible !important;
   z-index: 9990;
+}
+
+/* Si le déclencheur n'est pas positionné en absolute, appliquer position relative */
+.studycloud-menu-trigger:not(.absolute):not([class*="absolute"]),
+.studycloud-sec-menu-trigger:not(.absolute):not([class*="absolute"]),
+.studycloud-trash-menu-trigger:not(.absolute):not([class*="absolute"]),
+.studycloud-fav-menu-trigger:not(.absolute):not([class*="absolute"]) {
+  position: relative;
+}
+
+/* Si le déclencheur a la classe absolute, garantir position absolute */
+.studycloud-menu-trigger.absolute,
+.studycloud-sec-menu-trigger.absolute,
+.studycloud-trash-menu-trigger.absolute,
+.studycloud-fav-menu-trigger.absolute,
+.studycloud-menu-trigger[class*="absolute"],
+.studycloud-sec-menu-trigger[class*="absolute"],
+.studycloud-trash-menu-trigger[class*="absolute"],
+.studycloud-fav-menu-trigger[class*="absolute"] {
+  position: absolute !important;
 }
 
 

@@ -655,6 +655,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     if (!window.confirm(`Déplacer "${track.name}" dans la corbeille ?`)) return;
 
     markItemDeleted(track.id);
+    CloudDataStore.dismissRecent(track.id);
     const fileWithSource: FileItem = {
       ...track,
       isTrash: true,
@@ -2388,6 +2389,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               // 2. Persister les IDs pour éviter toute réapparition dans la liste active
               ids.forEach(id => {
                 markItemDeleted(id);
+                CloudDataStore.dismissRecent(id);
                 LocalSyncReplication.recordLocalDeletion(id, 'audio');
                 pendingAudioItemsRef.current.delete(id);
               });

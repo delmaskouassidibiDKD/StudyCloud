@@ -527,6 +527,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     if (!skipConfirm && !window.confirm(`Déplacer "${img.name}" dans la corbeille ?`)) return;
 
     markItemDeleted(img.id);
+    CloudDataStore.dismissRecent(img.id);
     const fileWithSource: FileItem = {
       ...img,
       isTrash: true,
@@ -2162,6 +2163,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
               }));
               toDelete.forEach(i => {
                 markItemDeleted(i.id);
+                CloudDataStore.dismissRecent(i.id);
                 LocalSyncReplication.recordLocalDeletion(i.id, 'images');
                 CloudStorageAPI.deleteImage(i.id, i.name).catch(() => {});
               });

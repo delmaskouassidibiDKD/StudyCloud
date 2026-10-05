@@ -615,10 +615,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     const newItemsWithFiles = await Promise.all(files.map(async (f: File, idx) => {
       const ext = f.name.includes('.') ? f.name.split('.').pop()?.toLowerCase() || '' : '';
+      const autoCat = detectFileCategory({ name: f.name, type: f.type });
       let category: FileItem['category'] = 'documents';
-      if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) category = 'images';
-      else if (['mp4', 'webm', 'mkv', 'avi', 'mov'].includes(ext)) category = 'videos';
-      else if (['mp3', 'wav', 'ogg', 'm4a', 'flac'].includes(ext)) category = 'audio';
+      if (autoCat === 'images' || autoCat === 'videos' || autoCat === 'audio') {
+        category = autoCat;
+      } else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'heic', 'heif', 'avif'].includes(ext)) {
+        category = 'images';
+      } else if (['mp4', 'webm', 'mkv', 'avi', 'mov', 'flv', 'wmv', 'm4v', '3gp', 'ts'].includes(ext)) {
+        category = 'videos';
+      } else if (['mp3', 'wav', 'ogg', 'm4a', 'flac', 'opus', 'aac', 'wma', 'amr', 'weba'].includes(ext)) {
+        category = 'audio';
+      }
 
       // Compression intelligente tout en préservant la vraie taille d'origine
       const compResult = await compressFile(f, category);
@@ -633,6 +640,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         id: fileId,
         name: f.name,
         category,
+        isImage: category === 'images',
+        isVideo: category === 'videos',
+        isAudio: category === 'audio',
         source: folderName,
         size: compResult.originalSizeFormatted,
         sizeBytes: compResult.originalSizeBytes,
@@ -640,6 +650,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         extension: ext.toUpperCase(),
         url: localBlobUrl,
         previewUrl: localBlobUrl,
+        thumbnailUrl: category === 'images' ? localBlobUrl : undefined,
         videoUrl: category === 'videos' ? localBlobUrl : undefined,
         audioUrl: category === 'audio' ? localBlobUrl : undefined,
         positionX: idx * 25,
@@ -714,10 +725,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     const newItemsWithFiles = await Promise.all(files.map(async (f: File, idx) => {
       const ext = f.name.includes('.') ? f.name.split('.').pop()?.toLowerCase() || '' : '';
+      const autoCat = detectFileCategory({ name: f.name, type: f.type });
       let category: FileItem['category'] = 'documents';
-      if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) category = 'images';
-      else if (['mp4', 'webm', 'mkv', 'avi', 'mov'].includes(ext)) category = 'videos';
-      else if (['mp3', 'wav', 'ogg', 'm4a', 'flac'].includes(ext)) category = 'audio';
+      if (autoCat === 'images' || autoCat === 'videos' || autoCat === 'audio') {
+        category = autoCat;
+      } else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'heic', 'heif', 'avif'].includes(ext)) {
+        category = 'images';
+      } else if (['mp4', 'webm', 'mkv', 'avi', 'mov', 'flv', 'wmv', 'm4v', '3gp', 'ts'].includes(ext)) {
+        category = 'videos';
+      } else if (['mp3', 'wav', 'ogg', 'm4a', 'flac', 'opus', 'aac', 'wma', 'amr', 'weba'].includes(ext)) {
+        category = 'audio';
+      }
 
       // Compression intelligente tout en préservant la vraie taille d'origine
       const compResult = await compressFile(f, category);
@@ -732,6 +750,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         id: fileId,
         name: f.name,
         category,
+        isImage: category === 'images',
+        isVideo: category === 'videos',
+        isAudio: category === 'audio',
         source: folderName,
         size: compResult.originalSizeFormatted,
         sizeBytes: compResult.originalSizeBytes,
@@ -739,6 +760,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         extension: ext.toUpperCase(),
         url: localBlobUrl,
         previewUrl: localBlobUrl,
+        thumbnailUrl: category === 'images' ? localBlobUrl : undefined,
         videoUrl: category === 'videos' ? localBlobUrl : undefined,
         audioUrl: category === 'audio' ? localBlobUrl : undefined,
         positionX: idx * 25,
@@ -1729,7 +1751,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const _delRecent = getDeletedRecentIds();
       const _isNotDeleted = (f: { id: string; isTrash?: boolean }) => 
         !_delIds.has(f.id) && !isItemDeleted(f.id) && !f.isTrash && !trashIdSet.has(f.id);
-      const _isNotDeletedRecent = (f: any) => _isNotDeleted(f) && !_delRecent.has(f.id) && isRecentEligible(f);
+
+      const activeStateFileIds = new Set([
+        ...(state.documents || []).map(d => d.id),
+        ...(state.images || []).map(i => i.id),
+        ...(state.videos || []).map(v => v.id),
+        ...(state.audio || []).map(a => a.id),
+      ]);
+
+      const _isNotDeletedRecent = (f: any) => 
+        _isNotDeleted(f) && 
+        !_delRecent.has(f.id) && 
+        !CloudDataStore.isRecentDismissed(f.id) && 
+        isRecentEligible(f) &&
+        (activeStateFileIds.size === 0 || activeStateFileIds.has(f.id));
+
       setDocumentsList(prev => {
         const stateIds = new Set(state.documents.map(d => d.id));
         const pending = prev.filter(p => !stateIds.has(p.id) && Boolean(p.isUploading) && _isNotDeleted(p));
@@ -1806,7 +1842,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       setVideosList(state.videos || []);
       setAudioList(state.audio || []);
       setDownloadedItems(state.downloads as any || []);
-      setCloudRecentFiles(state.recentFiles || []);
+      const activeRestoredIds = new Set([
+        ...(state.documents || []).map(d => d.id),
+        ...(state.images || []).map(i => i.id),
+        ...(state.videos || []).map(v => v.id),
+        ...(state.audio || []).map(a => a.id),
+      ]);
+      const restoredDelRecent = getDeletedRecentIds();
+      setCloudRecentFiles((state.recentFiles || []).filter(f => 
+        f && f.id && 
+        !restoredDelRecent.has(f.id) && 
+        !CloudDataStore.isRecentDismissed(f.id) && 
+        !isItemDeleted(f.id) && 
+        (activeRestoredIds.size === 0 || activeRestoredIds.has(f.id))
+      ).slice(0, 6));
       setSecureFolderFiles(state.secure || []);
       setTrashFiles(state.trash || []);
       setCloudOverview(state.overview || null);
@@ -3794,6 +3843,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (deletedItems.length > 0) {
       setTrashFiles(prev => [...deletedItems, ...prev.filter(t => !idsToDelete.includes(t.id))]);
       CloudDataStore.moveToTrash(deletedItems as any);
+      idsToDelete.forEach(id => {
+        markRecentLocallyDeleted(id);
+        markFileLocallyDeleted(id);
+        CloudDataStore.dismissRecent(id);
+      });
+      setCloudRecentFiles(prev => prev.filter(c => !idsToDelete.includes(c.id)));
     }
 
     setDocumentsList(prev => prev.filter(d => !idsToDelete.includes(d.id)));
@@ -4037,6 +4092,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             file.audioUrl = freshBlob;
             setSplitResolvedAudioUrl(freshBlob);
           }
+          if (isImg) {
+            file.previewUrl = freshBlob;
+            file.thumbnailUrl = freshBlob;
+          }
         }
       }).catch(() => {});
     }
@@ -4197,7 +4256,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const displayedFiles = useMemo(() => {
     const deletedRecentIds = getDeletedRecentIds();
     const locallyDeletedIds = getLocallyDeletedFileIds();
-    const trashIdSet = new Set(trashFiles.map(t => t.id));
+    const trashIdSet = new Set([
+      ...trashFiles.map(t => t.id),
+      ...(CloudDataStore.getState().trash || []).map(t => t.id)
+    ]);
+
+    // Ensemble de TOUS les fichiers qui existent RÉELLEMENT dans le compte de l'utilisateur
+    // (Règle absolue : un fichier qui n'existe pas ne doit JAMAIS avoir son aperçu affiché)
+    const storeState = CloudDataStore.getState();
+    const activeExistingFileIds = new Set<string>();
+
+    (documentsList || []).forEach(f => f?.id && activeExistingFileIds.add(f.id));
+    (imagesList || []).forEach(f => f?.id && activeExistingFileIds.add(f.id));
+    (videosList || []).forEach(f => f?.id && activeExistingFileIds.add(f.id));
+    (audioList || []).forEach(f => f?.id && activeExistingFileIds.add(f.id));
+
+    (storeState.documents || []).forEach(f => f?.id && activeExistingFileIds.add(f.id));
+    (storeState.images || []).forEach(f => f?.id && activeExistingFileIds.add(f.id));
+    (storeState.videos || []).forEach(f => f?.id && activeExistingFileIds.add(f.id));
+    (storeState.audio || []).forEach(f => f?.id && activeExistingFileIds.add(f.id));
 
     const sourceFiles = Array.isArray(cloudRecentFiles) ? cloudRecentFiles : [];
 
@@ -4205,9 +4282,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       if (!f || !f.id) return false;
       if (deletedRecentIds.has(f.id)) return false;
       if (locallyDeletedIds.has(f.id)) return false;
+      if (isItemDeleted(f.id)) return false;
+      if (CloudDataStore.isRecentDismissed(f.id)) return false;
       if (trashIdSet.has(f.id)) return false;
       if (isMockFile(f)) return false;
       if (!isRecentEligible(f)) return false;
+
+      // UN FICHIER QUI N'EXISTE PAS NE DOIT JAMAIS S'AFFICHER :
+      // Vérifier que le fichier existe réellement dans les listes actives si les données sont chargées
+      if (activeExistingFileIds.size > 0 && !activeExistingFileIds.has(f.id)) {
+        return false;
+      }
 
       const matchQuery = searchQuery.trim() === '' || 
         f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -4215,7 +4300,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       
       return matchQuery;
     }).slice(0, 6);
-  }, [cloudRecentFiles, searchQuery, trashFiles]);
+  }, [cloudRecentFiles, searchQuery, trashFiles, documentsList, imagesList, videosList, audioList]);
 
   // Ouverture d'un sous-menu indépendant
   const handleOpenSubMenu = (
@@ -5069,9 +5154,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // Navigation Audio (Suivant, Précédent avec support Aléatoire)
   const handleAudioNext = () => {
-    const list = filteredAudio;
+    const folderAudioList = opened3DFolder && selectedClasseurFile
+      ? (folderFilesMap[opened3DFolder.id] || []).filter(f => {
+          const ext = (f.name || '').split('.').pop()?.toLowerCase() || '';
+          return f.category === 'audio' || (f as any).isAudio || EXTENSION_MAP.audio.includes(ext) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(f.name);
+        })
+      : null;
+    const list = folderAudioList && folderAudioList.length > 0 ? folderAudioList : filteredAudio;
     if (list.length === 0) return;
-    const currentIdx = list.findIndex(a => a.id === splitSelectedFile?.id);
+    const currentAudio = (opened3DFolder && selectedClasseurFile) ? selectedClasseurFile : splitSelectedFile;
+    const currentIdx = list.findIndex(a => a.id === currentAudio?.id);
     if (isAudioShuffle && list.length > 1) {
       let randIdx = Math.floor(Math.random() * list.length);
       while (randIdx === currentIdx && list.length > 1) {
@@ -5098,9 +5190,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   const handleAudioPrev = () => {
-    const list = filteredAudio;
+    const folderAudioList = opened3DFolder && selectedClasseurFile
+      ? (folderFilesMap[opened3DFolder.id] || []).filter(f => {
+          const ext = (f.name || '').split('.').pop()?.toLowerCase() || '';
+          return f.category === 'audio' || (f as any).isAudio || EXTENSION_MAP.audio.includes(ext) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(f.name);
+        })
+      : null;
+    const list = folderAudioList && folderAudioList.length > 0 ? folderAudioList : filteredAudio;
     if (list.length === 0) return;
-    const currentIdx = list.findIndex(a => a.id === splitSelectedFile?.id);
+    const currentAudio = (opened3DFolder && selectedClasseurFile) ? selectedClasseurFile : splitSelectedFile;
+    const currentIdx = list.findIndex(a => a.id === currentAudio?.id);
     if (isAudioShuffle && list.length > 1) {
       let randIdx = Math.floor(Math.random() * list.length);
       while (randIdx === currentIdx && list.length > 1) {
@@ -6765,11 +6864,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             </div>
           </div>
         ) : (
-          /* Grille d'éléments à taille fixe 4 (minmax 177px, gap 16px) - sans contrôle de taille */
+          /* Grille d'éléments à taille adaptée (minmax 160-215px, ou 135px-1fr en mode lecteur scindé) */
           <div 
-            className="grid transition-all duration-200 w-full"
+            className="grid items-start transition-all duration-200 w-full"
             style={{
-              gridTemplateColumns: 'repeat(auto-fill, minmax(165px, 205px))',
+              gridTemplateColumns: selectedClasseurFile ? 'repeat(auto-fill, minmax(135px, 1fr))' : 'repeat(auto-fill, minmax(160px, 215px))',
               gap: '16px'
             }}
           >
@@ -6873,7 +6972,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               );
             })}
 
-            {sortedFiles.map((file) => {
+            {sortedFiles.map((file, idx) => {
               const isTxtNote = file.isNotepad || file.extension === 'txt' || file.name.toLowerCase().endsWith('.txt');
               const isSelected = splitSelectedFile?.id === file.id;
               const isChecked = selectedItemIds.includes(file.id);
@@ -7085,7 +7184,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 );
               }
 
-              // Autre fichier importé (images, vidéos, audio, pdfs, etc.)
+              // Autre fichier importé : rendu officiel selon le type (Images, Vidéos, Audio, Documents)
+              const ext = (file.name || '').includes('.') ? (file.name || '').split('.').pop()?.toLowerCase() || '' : '';
+              const detectedCat = detectFileCategory(file);
+              const cat = (file.category && file.category !== 'classeur' && file.category !== 'folder') ? file.category : detectedCat;
+
+              const isImg = cat === 'images' || (file as any).isImage || (file.type && file.type.startsWith('image/')) || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name);
+              const isVid = !isImg && (cat === 'videos' || (file as any).isVideo || Boolean(file.videoUrl) || (file.type && file.type.startsWith('video/')) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(file.name));
+              const isAud = !isImg && !isVid && (cat === 'audio' || (file as any).isAudio || Boolean(file.audioUrl) || (file.type && file.type.startsWith('audio/')) || isWhatsAppAudio(file.name, file.type) || EXTENSION_MAP.audio.includes(ext) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name));
+
               return (
                 <div
                   key={file.id}
@@ -7116,157 +7223,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     setDraggedFileId(null);
                     setDragOverFileId(null);
                   }}
-                  onClick={() => {
-                    if (isSaving) {
-                      showToast("Enregistrement du fichier en cours... Veuillez patienter.");
-                      return;
-                    }
-                    if (isSelectionMode) {
-                      toggleItemSelection(file.id);
-                      return;
-                    }
-                    handleSelectFile(file);
-                  }}
-                  className={`group relative bg-[#0E1526]/85 hover:bg-[#141E34] border rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col max-w-[215px] w-full ${
-                    isSaving ? 'cursor-wait' : 'cursor-pointer'
-                  } ${
+                  className={`relative w-full max-w-[215px] transition-all duration-200 ${
                     isBeingDragged
-                      ? 'opacity-30 scale-95 border-dashed border-orange-400 bg-orange-500/10 cursor-grabbing'
+                      ? 'opacity-30 scale-95 border-dashed border-2 border-orange-400 bg-orange-500/10 rounded-2xl cursor-grabbing'
                       : isDropTarget
-                      ? 'border-orange-400 ring-4 ring-orange-400/50 scale-[1.03]'
-                      : isChecked
-                      ? 'border-amber-400 ring-2 ring-amber-400/50 bg-[#192238]'
-                      : isSelected
-                      ? 'border-orange-400 ring-2 ring-orange-400/40 bg-[#192238]'
-                      : 'border-white/10 hover:border-orange-500/50 hover:-translate-y-1'
-                  } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
+                      ? 'border-orange-400 ring-4 ring-orange-400/50 scale-[1.03] rounded-2xl'
+                      : ''
+                  }`}
                 >
-                  {/* Petit trait en haut collé à la carte qui se remplit pendant l'enregistrement */}
-                  {isSaving && (
-                    <div className="absolute top-0 inset-x-0 h-1.5 bg-black/50 z-35 overflow-hidden pointer-events-none rounded-t-2xl">
-                      <div 
-                        className="h-full bg-emerald-400 transition-all duration-300 ease-out shadow-[0_0_8px_#34d399]"
-                        style={{ width: `${progressVal}%` }}
-                      />
-                    </div>
-                  )}
-
-                  {/* Overlay d'enregistrement */}
-                  {isSaving && (
-                    <div className="absolute inset-0 z-30 bg-black/75 backdrop-blur-[2px] flex flex-col items-center justify-center p-2 text-white pointer-events-none rounded-2xl animate-fadeIn">
-                      <div className="w-5 h-5 rounded-full border-2 border-white/20 border-t-emerald-400 animate-spin mb-1.5" />
-                      <span className="text-[10px] font-black text-emerald-300 tracking-wider">
-                        {progressVal}%
-                      </span>
-                      <span className="text-[8px] font-bold text-white/90 text-center leading-tight">
-                        Enregistrement...
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="w-full h-24 sm:h-28 bg-slate-900/90 relative rounded-t-2xl flex items-center justify-center overflow-hidden">
-                    {/* Case à cocher carrée quand le mode sélection est actif */}
-                    {isSelectionMode && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleItemSelection(file.id);
-                        }}
-                        className="absolute top-1.5 left-1.5 z-20 p-1 rounded-lg bg-black/75 hover:bg-black text-white border border-white/30 transition-all cursor-pointer shadow-lg backdrop-blur-sm"
-                        title={isChecked ? "Décocher" : "Cocher"}
-                      >
-                        {isChecked ? (
-                          <CheckSquare className="w-3.5 h-3.5 fill-amber-400 text-stone-950" />
-                        ) : (
-                          <Square className="w-3.5 h-3.5 text-white/90" />
-                        )}
-                      </button>
-                    )}
-
-                    {/* Badges Épinglé et Favori */}
-                    {(file.isPinned || file.isFavorite) && (
-                      <div className={`absolute top-1.5 ${isSelectionMode ? 'left-9 sm:left-10' : 'left-1.5'} z-20 flex items-center gap-1 pointer-events-none`}>
-                        {file.isPinned && (
-                          <span className="p-1 rounded-md bg-black/75 text-blue-400 border border-blue-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
-                            <Pin className="w-3 h-3 rotate-45" />
-                          </span>
-                        )}
-                        {file.isFavorite && (
-                          <span className="p-1 rounded-md bg-black/75 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
-                            <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                          </span>
-                        )}
-                      </div>
-                    )}
-
-                    {file.category === 'images' ? (
-                      <img 
-                        src={file.previewUrl || (file as any).url} 
-                        alt={file.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        loading="lazy"
-                      />
-                    ) : (file.category === 'videos' || Boolean(file.videoUrl)) ? (
-                      <VideoCardPreview vid={file} />
-                    ) : file.category === 'documents' ? (
-                      <DocumentCardPreview doc={file} />
-                    ) : ((file.category as string) === 'audio' || Boolean(file.audioUrl)) ? (
-                      <AudioCardPreview track={file} />
-                    ) : file.previewUrl ? (
-                      <img 
-                        src={file.previewUrl} 
-                        alt={file.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-3">
-                        {file.category === 'audio' && <Music className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400/85 stroke-[1.8]" />}
-                        {file.category === 'downloads' && <Download className="w-8 h-8 sm:w-10 sm:h-10 text-sky-400/85 stroke-[1.8]" />}
-                        {file.category === 'apps' && <LayoutGrid className="w-8 h-8 sm:w-10 sm:h-10 text-pink-400/85 stroke-[1.8]" />}
-                      </div>
-                    )}
-
-                    <div 
-                      className="relative studycloud-menu-trigger"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        type="button"
-                        id={`p1-file-trigger-${file.id}`}
-                        disabled={isSelectionMode || selectedItemIds.length > 0}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (isSelectionMode || selectedItemIds.length > 0) return;
-                          setActiveMenuFileId(isMenuOpen ? null : file.id);
-                        }}
-                        className={`absolute top-1.5 right-1.5 p-1 sm:p-1.5 rounded-lg bg-black/75 text-white border transition-all flex items-center justify-center shadow-lg backdrop-blur-sm z-20 ${
-                          isSelectionMode || selectedItemIds.length > 0
-                            ? 'opacity-20 cursor-not-allowed pointer-events-none'
-                            : isMenuOpen
-                            ? 'border-orange-400 ring-2 ring-orange-400/50 opacity-100 bg-black cursor-pointer active:scale-90'
-                            : 'border-white/30 opacity-90 group-hover:opacity-100 hover:bg-black cursor-pointer active:scale-90'
-                        }`}
-                        title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options du fichier (3 traits)"}
-                      >
-                        <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
-                      </button>
-
-                      {/* Menu de propositions identique pour les fichiers */}
-                      {!isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(file, allOpenedFolderItems, 'right', typeof document !== 'undefined' ? document.getElementById(`p1-file-trigger-${file.id}`) : null)}
-                    </div>
-                  </div>
-
-                  <div className="p-2 sm:p-2.5 flex flex-col justify-between bg-black/30 rounded-b-2xl">
-                    <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-orange-400 transition-colors" title={file.name}>
-                      {file.name}
-                    </p>
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
-                      <span className="truncate max-w-[85px]">{file.source}</span>
-                      <span className="shrink-0 font-medium">{file.size}</span>
-                    </div>
-                  </div>
+                  {isImg && renderImageCard(file, idx, allOpenedFolderItems)}
+                  {isVid && renderVideoCard(file, idx, allOpenedFolderItems)}
+                  {isAud && renderAudioSquareCard(file, idx, allOpenedFolderItems)}
+                  {!isImg && !isVid && !isAud && renderDocumentCard(file, idx, allOpenedFolderItems)}
                 </div>
               );
             })}
@@ -8010,7 +7978,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   // Rendu Carte Image (Image 3 : titre directement sur l'image avec dégradé comme les vidéos, bouton 3 traits & case à cocher)
-  const renderImageCard = (img: FileItem, index?: number) => {
+  const renderImageCard = (img: FileItem, index?: number, customList?: FileItem[]) => {
     const isSelected = splitSelectedFile?.id === img.id;
     const isMenuOpen = activeMenuFileId === img.id;
     const isChecked = selectedItemIds.includes(img.id);
@@ -8070,7 +8038,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         {/* Conteneur média interne avec overflow-hidden : arrondit l'image et ses dégradés sans couper le menu qui dépasse */}
         <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
           <img
-            src={img.previewUrl}
+            src={img.previewUrl || (img as any).thumbnailUrl || (img as any).url}
             alt={img.name}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             loading="lazy"
@@ -8105,7 +8073,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
 
-            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(img, filteredImages, menuAlign, typeof document !== 'undefined' ? document.getElementById(`p1-file-trigger-${img.id}`) : null)}
+            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(img, customList || filteredImages, menuAlign, typeof document !== 'undefined' ? document.getElementById(`p1-file-trigger-${img.id}`) : null)}
           </div>
 
           {isSelectionMode && (
@@ -8150,7 +8118,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   // Rendu Carte Vidéo (Bouton lecture central, taille en haut à droite, bouton 3 traits & case à cocher, titre en bas)
-  const renderVideoCard = (vid: FileItem, index?: number) => {
+  const renderVideoCard = (vid: FileItem, index?: number, customList?: FileItem[]) => {
     const isSelected = splitSelectedFile?.id === vid.id;
     const isMenuOpen = activeMenuFileId === vid.id;
     const isChecked = selectedItemIds.includes(vid.id);
@@ -8248,7 +8216,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
 
-            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(vid, filteredVideos, menuAlign, typeof document !== 'undefined' ? document.getElementById(`p1-file-trigger-${vid.id}`) : null)}
+            {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(vid, customList || filteredVideos, menuAlign, typeof document !== 'undefined' ? document.getElementById(`p1-file-trigger-${vid.id}`) : null)}
           </div>
 
           {isSelectionMode && (
@@ -8318,7 +8286,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             handleSelectFile(aud);
           }
         }}
-        className={`group relative aspect-[3/4] rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 ${
+        className={`group relative aspect-square rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 ${
           isSaving ? 'cursor-wait select-none' : 'cursor-pointer'
         } ${
           isChecked
@@ -10577,50 +10545,84 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   const handleNavigateDoc = (direction: 'prev' | 'next') => {
-    if (filteredDocuments.length === 0) return;
-    const currentIndex = selectedDocFile 
-      ? filteredDocuments.findIndex(d => d.id === selectedDocFile.id)
+    const folderDocList = opened3DFolder && selectedClasseurFile
+      ? (folderFilesMap[opened3DFolder.id] || []).filter(f => {
+          const ext = (f.name || '').split('.').pop()?.toLowerCase() || '';
+          return f.category === 'documents' || (!f.category && !/\.(mp3|wav|ogg|m4a|aac|mp4|webm|mkv|mov|avi|jpe?g|png|webp|gif)$/i.test(f.name));
+        })
+      : null;
+    const list = folderDocList && folderDocList.length > 0 ? folderDocList : filteredDocuments;
+    if (list.length === 0) return;
+    const currentDoc = (opened3DFolder && selectedClasseurFile) ? selectedClasseurFile : selectedDocFile;
+    const currentIndex = currentDoc 
+      ? list.findIndex(d => d.id === currentDoc.id)
       : 0;
     let newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
-    if (newIndex < 0) newIndex = filteredDocuments.length - 1;
-    if (newIndex >= filteredDocuments.length) newIndex = 0;
-    const nextDoc = filteredDocuments[newIndex];
+    if (newIndex < 0) newIndex = list.length - 1;
+    if (newIndex >= list.length) newIndex = 0;
+    const nextDoc = list[newIndex];
     if (nextDoc) {
-      setSelectedDocFile(nextDoc);
-      setSplitSelectedFile(nextDoc);
-      setViewerZoom(1);
-      setViewerRotation(0);
-      setDocCurrentPage(1);
+      if (opened3DFolder && selectedClasseurFile) {
+        handleSelectFile(nextDoc);
+      } else {
+        setSelectedDocFile(nextDoc);
+        setSplitSelectedFile(nextDoc);
+        setViewerZoom(1);
+        setViewerRotation(0);
+        setDocCurrentPage(1);
+      }
     }
   };
 
   const handleNavigateVideo = (direction: 'prev' | 'next') => {
-    if (filteredVideos.length === 0) return;
-    const currentIndex = selectedVideoFile 
-      ? filteredVideos.findIndex(v => v.id === selectedVideoFile.id)
+    const folderVideoList = opened3DFolder && selectedClasseurFile
+      ? (folderFilesMap[opened3DFolder.id] || []).filter(f => {
+          return f.category === 'videos' || Boolean(f.videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(f.name);
+        })
+      : null;
+    const list = folderVideoList && folderVideoList.length > 0 ? folderVideoList : filteredVideos;
+    if (list.length === 0) return;
+    const currentVid = (opened3DFolder && selectedClasseurFile) ? selectedClasseurFile : selectedVideoFile;
+    const currentIndex = currentVid 
+      ? list.findIndex(v => v.id === currentVid.id)
       : 0;
     let newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
-    if (newIndex < 0) newIndex = filteredVideos.length - 1;
-    if (newIndex >= filteredVideos.length) newIndex = 0;
-    const nextVideo = filteredVideos[newIndex];
+    if (newIndex < 0) newIndex = list.length - 1;
+    if (newIndex >= list.length) newIndex = 0;
+    const nextVideo = list[newIndex];
     if (nextVideo) {
-      setSelectedVideoFile(nextVideo);
-      setSplitSelectedFile(nextVideo);
+      if (opened3DFolder && selectedClasseurFile) {
+        handleSelectFile(nextVideo);
+      } else {
+        setSelectedVideoFile(nextVideo);
+        setSplitSelectedFile(nextVideo);
+      }
     }
   };
 
   const handleNavigateImage = (direction: 'prev' | 'next') => {
-    if (filteredImages.length === 0) return;
-    const currentIndex = selectedImageFile 
-      ? filteredImages.findIndex(img => img.id === selectedImageFile.id)
+    const folderImgList = opened3DFolder && selectedClasseurFile
+      ? (folderFilesMap[opened3DFolder.id] || []).filter(f => {
+          return f.category === 'images' || Boolean(f.previewUrl) || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(f.name);
+        })
+      : null;
+    const list = folderImgList && folderImgList.length > 0 ? folderImgList : filteredImages;
+    if (list.length === 0) return;
+    const currentImg = (opened3DFolder && selectedClasseurFile) ? selectedClasseurFile : selectedImageFile;
+    const currentIndex = currentImg 
+      ? list.findIndex(img => img.id === currentImg.id)
       : 0;
     let newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
-    if (newIndex < 0) newIndex = filteredImages.length - 1;
-    if (newIndex >= filteredImages.length) newIndex = 0;
-    const nextImage = filteredImages[newIndex];
+    if (newIndex < 0) newIndex = list.length - 1;
+    if (newIndex >= list.length) newIndex = 0;
+    const nextImage = list[newIndex];
     if (nextImage) {
-      setSelectedImageFile(nextImage);
-      setSplitSelectedFile(nextImage);
+      if (opened3DFolder && selectedClasseurFile) {
+        handleSelectFile(nextImage);
+      } else {
+        setSelectedImageFile(nextImage);
+        setSplitSelectedFile(nextImage);
+      }
     }
   };
 
@@ -11618,16 +11620,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // 6. LECTEUR CLASSEUR & COLLECTIONS DÉDIÉ
   const renderClasseurFileReader = (file: FileItem) => {
     const ext = (file.name || '').includes('.') ? (file.name || '').split('.').pop()?.toLowerCase() || '' : '';
+    const detectedCat = detectFileCategory(file);
+    const cat = (file.category && file.category !== 'classeur' && file.category !== 'folder') ? file.category : detectedCat;
+
     const isNotepad = Boolean(
       file.isNotepad ||
       ext === 'txt' ||
       file.name.toLowerCase().endsWith('.txt') ||
-      file.category === 'notes' ||
+      cat === 'notes' ||
       file.type === 'text/plain'
     );
-    const isVid = file.category === 'videos' || Boolean(file.videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(file.name);
-    const isAud = file.category === 'audio' || Boolean(file.audioUrl) || isWhatsAppAudio(file.name, file.type) || EXTENSION_MAP.audio.includes(ext) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name);
-    const isImg = file.category === 'images' || Boolean(file.isImage) || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name);
+    const isVid = cat === 'videos' || (file as any).isVideo || Boolean(file.videoUrl) || (file.type && file.type.startsWith('video/')) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(file.name);
+    const isAud = cat === 'audio' || (file as any).isAudio || Boolean(file.audioUrl) || (file.type && file.type.startsWith('audio/')) || isWhatsAppAudio(file.name, file.type) || EXTENSION_MAP.audio.includes(ext) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name);
+    const isImg = cat === 'images' || (file as any).isImage || (file.type && file.type.startsWith('image/')) || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name);
 
     if (isNotepad) return renderNoteWriterPage(file);
     if (isVid) return renderVideoPlayer(file);
@@ -13931,7 +13936,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                               if (isSelectionMode || selectedItemIds.length > 0) return;
                               setMenuOpenId(menuOpenId === file.id ? null : file.id);
                             }}
-                            className={`studycloud-menu-trigger absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/75 flex items-center justify-center text-white transition-colors shadow-md z-20 border border-white/20 ${
+                            style={{ position: 'absolute', top: '0.375rem', right: '0.375rem' }}
+                            className={`studycloud-menu-trigger !absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/75 flex items-center justify-center text-white transition-colors shadow-md z-20 border border-white/20 ${
                               isSelectionMode || selectedItemIds.length > 0
                                 ? 'opacity-20 cursor-not-allowed pointer-events-none'
                                 : 'hover:bg-black cursor-pointer'
@@ -13945,7 +13951,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           {menuOpenId === file.id && !isSelectionMode && selectedItemIds.length === 0 && (
                             <div 
                               onClick={(e) => e.stopPropagation()}
-                              className="studycloud-file-menu-panel absolute top-9 right-1.5 z-50 w-44 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.15)] py-1.5 text-xs font-semibold text-white animate-in fade-in zoom-in-95 overflow-hidden divide-y divide-white/10"
+                              style={{ position: 'absolute', top: '2.25rem', right: '0.375rem' }}
+                              className="studycloud-file-menu-panel !absolute top-9 right-1.5 z-50 w-44 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.15)] py-1.5 text-xs font-semibold text-white animate-in fade-in zoom-in-95 overflow-hidden divide-y divide-white/10"
                             >
                               <button
                                 type="button"

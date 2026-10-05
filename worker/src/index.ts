@@ -3608,6 +3608,14 @@ async function cleanUserFavoriteOnDelete(db: any, userId: string, itemId: string
     const favSyncId = `fav_${userId}_${itemId}`;
     await recordSyncItem(db, userId, favSyncId, 'favorites', { itemId, isFavorite: false, is_favorite: 0 }, 1);
     await recordSyncItem(db, userId, itemId, 'favorites', { itemId, isFavorite: false, is_favorite: 0 }, 1);
+
+    // 4. Supprime définitivement l'aperçu de la liste des récents (user_dismissed_recents)
+    // Même en cas de restauration ultérieure du fichier, il ne doit JAMAIS réapparaître dans les récents
+    const recordId = `delrec-${userId}-${itemId}`;
+    await db.prepare(`
+      INSERT OR REPLACE INTO user_dismissed_recents (id, user_id, file_id, dismissed_at)
+      VALUES (?, ?, ?, datetime('now'))
+    `).bind(recordId, userId, itemId).run().catch(() => {});
   } catch (e) {
     console.warn('[cleanUserFavoriteOnDelete Error]', e);
   }
