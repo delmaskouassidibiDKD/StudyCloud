@@ -5,12 +5,12 @@ import { StudyCloudAPI } from '../services/api';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob, getFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
 import { persistRawFile } from './PublishFileView';
 import { UploadQueue } from '../services/uploadQueue';
-import { CloudDataStore } from '../services/cloudDataStore';
+import { CloudDataStore, isItemDeleted, markItemDeleted } from '../services/cloudDataStore';
 import { ImageCardPreview } from './ImageCardPreview';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { getCurrentUserId } from '../services/userSync';
 import { useFilesMenuList, useMatieresList } from '../hooks/useCloudQueries';
-import { invalidateCloudQueries } from '../services/queryClient';
+import { invalidateCloudQueries, queryClient, QUERY_KEYS } from '../services/queryClient';
 import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/safeStorage';
 import { validateFilesForMesFichiersAsync } from '../services/fileTypeValidator';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
@@ -323,11 +323,12 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       }
     } catch (e) {}
 
-    return Array.from(allFilesMap.values());
+    return Array.from(allFilesMap.values()).filter(f => !deletedFileIdsRef.current.has(f.id) && !isItemDeleted(f.id));
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [incompatibleAlertInfo, setIncompatibleAlertInfo] = useState<IncompatibleAlertInfo | null>(null);
+  const deletedFileIdsRef = useRef<Set<string>>(new Set());
   const { data: serverFiles = [], isLoading: isFilesQueryLoading } = useFilesMenuList();
   const { data: serverMatieres } = useMatieresList();
   const [importedFiles, setImportedFiles] = useState<ImportedItem[]>(() => loadAllUserFiles());
@@ -374,12 +375,17 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   useEffect(() => {
     if (serverFiles && Array.isArray(serverFiles)) {
       setImportedFiles(prev => {
+        const cleanServerFiles = serverFiles.filter(f =>
+          !deletedFileIdsRef.current.has(f.id) && !isItemDeleted(f.id)
+        );
         const serverMap = new Map<string, ImportedItem>();
-        serverFiles.forEach(f => serverMap.set(f.id, f));
+        cleanServerFiles.forEach(f => serverMap.set(f.id, f));
 
-        // Conserver les fichiers en attente d'envoi ou locaux non encore consolidés sur D1
-        const pending = prev.filter(f => !serverMap.has(f.id));
-        const merged = [...pending, ...serverFiles];
+        // Conserver les fichiers en attente d'envoi ou locaux non encore consolidés sur D1 (en excluant les supprimés)
+        const pending = prev.filter(f =>
+          !serverMap.has(f.id) && !deletedFileIdsRef.current.has(f.id) && !isItemDeleted(f.id)
+        );
+        const merged = [...pending, ...cleanServerFiles];
 
         // Mettre à jour le cache local de manière sécurisée (protégé contre QuotaExceededError)
         safeLocalStorageSet('unifolder_files_menu_items', merged);
@@ -969,14 +975,18 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
   const performDelete = (id: string) => {
     const fileToDelete = importedFiles.find(item => item.id === id);
+
+    // 1. Bloquer immédiatement et définitivement toute résurrection
+    deletedFileIdsRef.current.add(id);
+    markItemDeleted(id);
+
+    // 2. Retirer instantanément de l'état local
     setImportedFiles(prev => prev.filter(item => item.id !== id));
     setOpenMenuId(null);
     setSelectedFileIds(prev => prev.filter(i => i !== id));
-    deleteFileBlob(id);
-    const currentUserId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
-    StudyCloudAPI.deleteFile(id, currentUserId).catch(() => {});
+    deleteFileBlob(id).catch(() => {});
 
-    // Supprimer du stockage direct
+    // 3. Supprimer du stockage direct
     try {
       const directSaved = localStorage.getItem('unifolder_files_menu_items');
       if (directSaved) {
@@ -1009,31 +1019,55 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       }
     } catch (e) {}
 
-    invalidateCloudQueries.filesMenu();
-    if (fileToDelete?.matiere) invalidateCloudQueries.matiereFiles(fileToDelete.matiere);
-    invalidateCloudQueries.overview();
-    invalidateCloudQueries.favorites();
+    // 4. Mettre à jour directement le cache TanStack Query
+    const currentUserId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+    queryClient.setQueryData(
+      QUERY_KEYS.filesMenu(currentUserId),
+      (old: any) => Array.isArray(old) ? old.filter((f: any) => f.id !== id) : []
+    );
+    if (fileToDelete?.matiere) {
+      queryClient.setQueryData(
+        QUERY_KEYS.matiereFiles(fileToDelete.matiere, currentUserId),
+        (old: any) => Array.isArray(old) ? old.filter((f: any) => f.id !== id) : []
+      );
+    }
 
     window.dispatchEvent(new Event('unifolder_files_updated'));
     setSuccessMessage('Fichier supprimé avec succès (supprimé de Cloudflare R2 & D1)');
     setTimeout(() => {
       setSuccessMessage(null);
     }, 3500);
+
+    // 5. Exécuter la suppression sur l'API avant d'invalider
+    StudyCloudAPI.deleteFile(id, currentUserId).then(() => {
+      invalidateCloudQueries.filesMenu();
+      if (fileToDelete?.matiere) invalidateCloudQueries.matiereFiles(fileToDelete.matiere);
+      invalidateCloudQueries.overview();
+      invalidateCloudQueries.favorites();
+    }).catch(() => {
+      invalidateCloudQueries.filesMenu();
+      if (fileToDelete?.matiere) invalidateCloudQueries.matiereFiles(fileToDelete.matiere);
+    });
   };
 
   const performBatchDelete = (ids: string[]) => {
     if (ids.length === 0) return;
     const idsToDelete = [...ids];
     const filesToDelete = importedFiles.filter(item => idsToDelete.includes(item.id));
+
+    // 1. Bloquer immédiatement et définitivement toute résurrection
+    idsToDelete.forEach(id => {
+      deletedFileIdsRef.current.add(id);
+      markItemDeleted(id);
+      deleteFileBlob(id).catch(() => {});
+    });
+
+    // 2. Retirer instantanément de l'état local
     setImportedFiles(prev => prev.filter(item => !idsToDelete.includes(item.id)));
 
     const currentUserId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
-    idsToDelete.forEach(id => {
-      deleteFileBlob(id);
-      StudyCloudAPI.deleteFile(id, currentUserId).catch(() => {});
-    });
 
-    // Supprimer du stockage direct
+    // 3. Supprimer du stockage direct
     try {
       const directSaved = localStorage.getItem('unifolder_files_menu_items');
       if (directSaved) {
@@ -1068,10 +1102,19 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       }
     } catch (e) {}
 
-    invalidateCloudQueries.filesMenu();
-    filesToDelete.forEach(f => { if (f.matiere) invalidateCloudQueries.matiereFiles(f.matiere); });
-    invalidateCloudQueries.overview();
-    invalidateCloudQueries.favorites();
+    // 4. Mettre à jour directement le cache TanStack Query
+    queryClient.setQueryData(
+      QUERY_KEYS.filesMenu(currentUserId),
+      (old: any) => Array.isArray(old) ? old.filter((f: any) => !idsToDelete.includes(f.id)) : []
+    );
+    filesToDelete.forEach(f => {
+      if (f.matiere) {
+        queryClient.setQueryData(
+          QUERY_KEYS.matiereFiles(f.matiere, currentUserId),
+          (old: any) => Array.isArray(old) ? old.filter((it: any) => !idsToDelete.includes(it.id)) : []
+        );
+      }
+    });
 
     window.dispatchEvent(new Event('unifolder_files_updated'));
     setSelectedFileIds([]);
@@ -1080,6 +1123,17 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     setTimeout(() => {
       setSuccessMessage(null);
     }, 3500);
+
+    // 5. Exécuter les suppressions sur l'API avant d'invalider
+    Promise.all(idsToDelete.map(id => StudyCloudAPI.deleteFile(id, currentUserId))).then(() => {
+      invalidateCloudQueries.filesMenu();
+      filesToDelete.forEach(f => { if (f.matiere) invalidateCloudQueries.matiereFiles(f.matiere); });
+      invalidateCloudQueries.overview();
+      invalidateCloudQueries.favorites();
+    }).catch(() => {
+      invalidateCloudQueries.filesMenu();
+      filesToDelete.forEach(f => { if (f.matiere) invalidateCloudQueries.matiereFiles(f.matiere); });
+    });
   };
 
   const cleanupUnusedMatieres = () => {

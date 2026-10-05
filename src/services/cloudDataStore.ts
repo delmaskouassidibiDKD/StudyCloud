@@ -319,7 +319,7 @@ function getLocallyDeletedFileIds(): Set<string> {
       const arr = JSON.parse(raw);
       if (Array.isArray(arr)) {
         arr.forEach(item => {
-          if (typeof item === 'string' && !/\.[a-z0-9]{2,5}$/i.test(item)) {
+          if (typeof item === 'string' && item.trim().length > 0) {
             result.add(item);
           }
         });
@@ -760,7 +760,7 @@ export const CloudDataStore = {
         tasks.push(
           CloudStorageAPI.getSecureFiles().then(sec => {
             if (sec !== null) {
-              currentState.secure = flag(sec);
+              currentState.secure = flag(sec).filter(isNotLocallyDeleted);
               notify();
             }
           }).catch(() => null)
@@ -769,7 +769,7 @@ export const CloudDataStore = {
         tasks.push(
           CloudStorageAPI.getTrashFiles().then(trash => {
             if (trash !== null) {
-              currentState.trash = flag(trash);
+              currentState.trash = flag(trash).filter(isNotLocallyDeleted);
               notify();
             }
           }).catch(() => null)

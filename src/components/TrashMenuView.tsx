@@ -27,10 +27,10 @@ import {
   Copy
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
-import { CloudDataStore, unmarkItemDeleted } from '../services/cloudDataStore';
+import { CloudDataStore, unmarkItemDeleted, isItemDeleted, markItemDeleted } from '../services/cloudDataStore';
 import { LocalSyncReplication } from '../services/localSyncReplication';
 import { useTrashFiles } from '../hooks/useCloudQueries';
-import { invalidateCloudQueries } from '../services/queryClient';
+import { invalidateCloudQueries, queryClient, QUERY_KEYS } from '../services/queryClient';
 import { deleteFileBlob } from '../services/localFileStorage';
 import { FileItem } from './Page1FilesMenuView';
 import { AudioCardPreview } from './AudioCardPreview';
@@ -120,6 +120,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
   // Mode sélection
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const deletedTrashIdsRef = useRef<Set<string>>(new Set());
 
   // Modale de confirmation "Vider la corbeille"
   const [isConfirmEmptyOpen, setIsConfirmEmptyOpen] = useState(false);
@@ -161,26 +162,44 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
   useEffect(() => {
     const initial = CloudDataStore.getState();
     if (initial.trash && initial.trash.length > 0) {
-      setTrashList(initial.trash);
-      setLoading(false);
+      const filtered = initial.trash.filter(f => !deletedTrashIdsRef.current.has(f.id) && !isItemDeleted(f.id));
+      if (filtered.length > 0) {
+        setTrashList(filtered);
+        setLoading(false);
+      }
     }
     const unsub = CloudDataStore.subscribe((state) => {
-      setTrashList(state.trash || []);
+      // Ne mettre à jour depuis le store que si des données réelles sont présentes
+      // Cela évite d'écraser la liste locale avec [] si le store n'est pas encore hydraté
+      if (state.trash && state.trash.length > 0) {
+        setTrashList(prev => {
+          const filtered = state.trash.filter(f => !deletedTrashIdsRef.current.has(f.id) && !isItemDeleted(f.id));
+          return filtered;
+        });
+      }
       if (state.isLoaded) setLoading(false);
     });
     return unsub;
   }, []);
 
   // ─── FUSION SÉCURISÉE AVEC LE SERVEUR (TanStack Query) ───────────────────────
-  // N'ajoute QUE les éléments NOUVEAUX (absents localement) pour éviter de
-  // ressusciter les fichiers déjà supprimés de façon optimiste par l'utilisateur.
+  // N'ajoute QUE les éléments NOUVEAUX (absents localement) et JAMAIS ceux supprimés
   useEffect(() => {
-    if (!serverTrash || !Array.isArray(serverTrash) || serverTrash.length === 0) return;
+    if (!serverTrash || !Array.isArray(serverTrash)) return;
+    const validServer = serverTrash.filter(f => !deletedTrashIdsRef.current.has(f.id) && !isItemDeleted(f.id));
     setTrashList(prev => {
       const localIds = new Set(prev.map(f => f.id));
-      const genuinelyNew = serverTrash.filter(f => !localIds.has(f.id));
-      if (genuinelyNew.length === 0) return prev; // Pas de changement → pas de re-render
-      return [...prev, ...genuinelyNew];
+      const genuinelyNew = validServer.filter(f => !localIds.has(f.id));
+      if (genuinelyNew.length === 0) {
+        // Garder le CloudDataStore en phase avec la liste locale
+        if (prev.length > 0 && CloudDataStore.getState().trash.length === 0) {
+          CloudDataStore.setTrashFiles(prev);
+        }
+        return prev;
+      }
+      const updated = [...prev, ...genuinelyNew];
+      CloudDataStore.setTrashFiles(updated);
+      return updated;
     });
     setLoading(false);
   }, [serverTrash]);
@@ -191,6 +210,9 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       setSelectedFile(null);
       setIsViewerMaximized(false);
     }
+    deletedTrashIdsRef.current.delete(file.id);
+    unmarkItemDeleted(file.id);
+
     const isFolder = file.category === 'folder' || file.category === 'classeur_folder' || (file as any).model;
     const restoredFolderId = isFolder ? file.id : null;
 
@@ -202,7 +224,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       return true;
     }));
 
-    unmarkItemDeleted(file.id);
+    queryClient.setQueryData<FileItem[]>(QUERY_KEYS.trash, (old) =>
+      Array.isArray(old) ? old.filter(f => f.id !== file.id) : []
+    );
+
     CloudDataStore.restoreFromTrash(file as any);
     await CloudStorageAPI.restoreTrashItem(file.id).catch(() => {});
     invalidateCloudQueries.trash().catch(() => {});
@@ -217,15 +242,35 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       setSelectedFile(null);
       setIsViewerMaximized(false);
     }
-    setTrashList(prev => prev.filter(f => f.id !== file.id));
-    // Écrire le tombstone AVANT removeFile pour éviter toute résurrection lors du prochain sync
+
+    // 1. Bloquer définitivement toute résurrection immédiate ou future
+    deletedTrashIdsRef.current.add(file.id);
+    markItemDeleted(file.id);
     LocalSyncReplication.recordLocalDeletion(file.id, 'trash');
+
+    // 2. Retirer instantanément de la vue sans impacter les autres fichiers
+    setTrashList(prev => prev.filter(f => f.id !== file.id));
+
+    // 3. Mettre à jour directement le cache TanStack Query
+    queryClient.setQueryData<FileItem[]>(QUERY_KEYS.trash, (old) =>
+      Array.isArray(old) ? old.filter(f => f.id !== file.id) : []
+    );
+
+    // 4. Supprimer de CloudDataStore et supprimer le blob local
     CloudDataStore.permanentlyRemoveTrashFile(file.id);
     deleteFileBlob(file.id).catch(() => {});
-    await CloudStorageAPI.deleteTrashPermanently([file.id]).catch(() => {});
+
+    showToast(`"${file.name}" a été supprimé définitivement`);
+
+    // 5. Envoyer la suppression permanente sur le serveur Cloudflare D1/R2
+    try {
+      await CloudStorageAPI.deleteTrashPermanently([file.id]);
+    } catch (e) {
+      console.warn('[Trash] deleteTrashPermanently error:', e);
+    }
+
     invalidateCloudQueries.trash().catch(() => {});
     invalidateCloudQueries.overview().catch(() => {});
-    showToast(`"${file.name}" a été supprimé définitivement`);
   };
 
   // Vider toute la corbeille
@@ -235,14 +280,25 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       setSelectedFile(null);
       setIsViewerMaximized(false);
       const allIds = trashList.map(f => f.id);
+      allIds.forEach(id => {
+        deletedTrashIdsRef.current.add(id);
+        markItemDeleted(id);
+      });
       setTrashList([]);
-      // Écrire tous les tombstones AVANT d'appeler emptyTrash()
+      queryClient.setQueryData<FileItem[]>(QUERY_KEYS.trash, []);
+
       if (allIds.length > 0) {
         LocalSyncReplication.recordLocalDeletions(allIds, 'trash');
       }
       CloudDataStore.emptyTrash();
       allIds.forEach(id => deleteFileBlob(id).catch(() => {}));
-      await CloudStorageAPI.deleteTrashPermanently(allIds).catch(() => {});
+
+      try {
+        await CloudStorageAPI.deleteTrashPermanently(allIds);
+      } catch (e) {
+        console.warn('[Trash] emptyTrash error:', e);
+      }
+
       invalidateCloudQueries.trash().catch(() => {});
       invalidateCloudQueries.overview().catch(() => {});
       showToast('La corbeille a été vidée avec succès');
@@ -262,6 +318,11 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
     }
     const toRestore = trashList.filter(f => selectedIds.includes(f.id));
     const idsToRestore = toRestore.map(f => f.id);
+    idsToRestore.forEach(id => {
+      deletedTrashIdsRef.current.delete(id);
+      unmarkItemDeleted(id);
+    });
+
     const restoredFolderIds = new Set(
       toRestore
         .filter(f => f.category === 'folder' || f.category === 'classeur_folder' || (f as any).model)
@@ -276,9 +337,14 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       return true;
     }));
 
-    idsToRestore.forEach(id => unmarkItemDeleted(id));
+    queryClient.setQueryData<FileItem[]>(QUERY_KEYS.trash, (old) =>
+      Array.isArray(old) ? old.filter(f => !idsToRestore.includes(f.id)) : []
+    );
+
     CloudDataStore.restoreFromTrash(toRestore as any);
     await CloudStorageAPI.restoreMultipleTrash(idsToRestore).catch(() => {});
+    invalidateCloudQueries.trash().catch(() => {});
+    invalidateCloudQueries.all().catch(() => {});
     window.dispatchEvent(new Event('unifolder_data_restored'));
     showToast(`${toRestore.length} élément(s) restauré(s) dans leur menu d'origine`);
     setSelectedIds([]);
@@ -291,12 +357,39 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       setSelectedFile(null);
       setIsViewerMaximized(false);
     }
-    const toDelete = trashList.filter(f => selectedIds.includes(f.id));
-    for (const f of toDelete) {
-      await handleDeletePermanently(f);
-    }
+    const idsToDelete = [...selectedIds];
+    const toDelete = trashList.filter(f => idsToDelete.includes(f.id));
+    if (toDelete.length === 0) return;
+
+    idsToDelete.forEach(id => {
+      deletedTrashIdsRef.current.add(id);
+      markItemDeleted(id);
+    });
+    LocalSyncReplication.recordLocalDeletions(idsToDelete, 'trash');
+
+    setTrashList(prev => prev.filter(f => !idsToDelete.includes(f.id)));
+
+    queryClient.setQueryData<FileItem[]>(QUERY_KEYS.trash, (old) =>
+      Array.isArray(old) ? old.filter(f => !idsToDelete.includes(f.id)) : []
+    );
+
+    idsToDelete.forEach(id => {
+      CloudDataStore.permanentlyRemoveTrashFile(id);
+      deleteFileBlob(id).catch(() => {});
+    });
+
     setSelectedIds([]);
     setIsSelectionMode(false);
+    showToast(`${toDelete.length} élément(s) supprimé(s) définitivement`);
+
+    try {
+      await CloudStorageAPI.deleteTrashPermanently(idsToDelete);
+    } catch (e) {
+      console.warn('[Trash] deleteTrashPermanently selected error:', e);
+    }
+
+    invalidateCloudQueries.trash().catch(() => {});
+    invalidateCloudQueries.overview().catch(() => {});
   };
 
   // Sélectionner / désélectionner un élément
