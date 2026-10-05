@@ -125,12 +125,14 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
     (!isPdf && !isWord && !isExcel);
 
   // États généraux
-  const [, setBlob] = useState<Blob | null>(null);
+  const [blob, setBlob] = useState<Blob | null>(null);
   const [resolvedUrl, setResolvedUrl] = useState<string>(url || '');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const objectUrlRef = useRef<string | null>(null);
   const pdfDocRef = useRef<any>(null);
+  const currentFileKeyRef = useRef<string>('');
+  const [reloadTrigger, setReloadTrigger] = useState<number>(0);
 
   // Mode d'affichage PDF : 'native' (Lecteur iframe navigateur comme dans la photo) ou 'continuous' (Défilement vertical continu PDF.js)
   const [pdfViewMode, setPdfViewMode] = useState<'native' | 'continuous'>('native');
@@ -171,156 +173,160 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
   const cleanPdfBase = effectivePdfUrl ? effectivePdfUrl.split('#')[0] : '';
   const nativePdfUrl = cleanPdfBase ? `${cleanPdfBase}#toolbar=1&navpanes=0&view=FitH` : '';
 
-  // 1. Récupération du Blob binaire (depuis IndexedDB ou fetch URL)
-  const fetchBinaryData = useCallback(async () => {
-    setIsLoading(true);
-    setErrorMessage('');
+  const handleRetry = useCallback(() => {
+    currentFileKeyRef.current = '';
+    setReloadTrigger(t => t + 1);
+  }, []);
 
-    let foundBlob: Blob | null = null;
-
-    // A. Essayer depuis IndexedDB par fileId
-    if (fileId) {
-      try {
-        foundBlob = await getFileBlob(fileId);
-      } catch (e) {
-        console.warn('[ModernDocumentViewer] Erreur IndexedDB:', e);
-      }
-    }
-
-    // B. Si pas trouvé et URL valide
-    if (!foundBlob && url && typeof url === 'string' && url.trim() && !url.startsWith('data:image/')) {
-      try {
-        const res = await fetch(url);
-        if (res.ok) {
-          foundBlob = await res.blob();
-        }
-      } catch (err) {
-        console.warn('[ModernDocumentViewer] Erreur fetch distant:', err);
-      }
-    }
-
-    if (foundBlob) {
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-      }
-      setBlob(foundBlob);
-      const bUrl = URL.createObjectURL(foundBlob);
-      objectUrlRef.current = bUrl;
-      setResolvedUrl(bUrl);
-      return foundBlob;
-    }
-
-    // C. Si URL directe existante
-    if (url && typeof url === 'string' && url.trim()) {
-      setResolvedUrl(url);
-      setIsLoading(false);
-      return null;
-    }
-
-    // D. Si rien trouvé mais textContent existe
-    if (textContent) {
-      setRawText(textContent);
-      setIsLoading(false);
-      return null;
-    }
-
-    setIsLoading(false);
-    setErrorMessage("Impossible d'accéder au contenu du document.");
-    return null;
-  }, [fileId, url, textContent]);
-
+  // 1. Chargement principal du document (exécuté de façon stable sans boucle de rafraîchissement)
   useEffect(() => {
     let isCancelled = false;
+    const fileKey = `${fileId || ''}__${url || ''}__${textContent ? 'hasText' : 'noText'}__${reloadTrigger}`;
 
-    fetchBinaryData().then(async (loadedBlob) => {
+    if (currentFileKeyRef.current === fileKey && resolvedUrl) {
+      return;
+    }
+    currentFileKeyRef.current = fileKey;
+
+    setIsLoading(true);
+    setErrorMessage('');
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    setBlob(null);
+    setPdfDoc(null);
+    setWordHtml('');
+    setWorkbook(null);
+    setSheetData([]);
+    if (textContent) setRawText(textContent);
+
+    const loadData = async () => {
+      let foundBlob: Blob | null = null;
+      const directUrl = (url && typeof url === 'string' && url.trim()) ? url : '';
+
+      // A. Essayer depuis IndexedDB par fileId
+      if (fileId) {
+        try {
+          foundBlob = await getFileBlob(fileId);
+        } catch (e) {
+          console.warn('[ModernDocumentViewer] Erreur IndexedDB:', e);
+        }
+      }
+
+      // B. Si pas trouvé et URL valide distante
+      if (!foundBlob && directUrl && !directUrl.startsWith('data:image/')) {
+        try {
+          const res = await fetch(directUrl);
+          if (res.ok) {
+            foundBlob = await res.blob();
+          }
+        } catch (err) {
+          console.warn('[ModernDocumentViewer] Erreur fetch distant:', err);
+        }
+      }
+
       if (isCancelled) return;
 
-      if (!loadedBlob) {
-        if (url && isPdf) {
-          // Si on a l'URL directe du PDF, on arrête le chargement pour laisser l'iframe natif s'afficher
+      let effectiveUrl = directUrl;
+      if (foundBlob) {
+        setBlob(foundBlob);
+        const bUrl = URL.createObjectURL(foundBlob);
+        objectUrlRef.current = bUrl;
+        effectiveUrl = bUrl;
+        setResolvedUrl(bUrl);
+      } else if (directUrl) {
+        setResolvedUrl(directUrl);
+      }
+
+      // 1. Document PDF
+      if (isPdf) {
+        if (effectiveUrl) {
           setIsLoading(false);
+        } else {
+          setIsLoading(false);
+          setErrorMessage("Impossible d'accéder au fichier PDF.");
         }
         return;
       }
 
-      // Traitement selon le format :
-      try {
-        if (isPdf) {
-          // Mode natif par défaut : ne pas charger pdfjsLib ni dupliquer le PDF dans la mémoire vive JS
-          if (pdfViewMode === 'continuous' || !nativePdfUrl) {
-            const arrayBuffer = await loadedBlob.arrayBuffer();
-            const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
-            const doc = await loadingTask.promise;
+      // 2. Traitement des autres formats
+      if (foundBlob) {
+        try {
+          if (isWord) {
+            const arrayBuffer = await foundBlob.arrayBuffer();
+            const res = await mammoth.convertToHtml({ arrayBuffer });
             if (!isCancelled) {
-              pdfDocRef.current = doc;
-              setPdfDoc(doc);
-              setPdfTotalPages(doc.numPages);
+              setWordHtml(res.value || '<p>Document Word vide.</p>');
+              setIsLoading(false);
+            }
+          } else if (isExcel) {
+            const arrayBuffer = await foundBlob.arrayBuffer();
+            const wb = XLSX.read(arrayBuffer, { type: 'array' });
+            if (!isCancelled) {
+              setWorkbook(wb);
+              if (wb.SheetNames.length > 0) {
+                const firstSheet = wb.SheetNames[0];
+                setActiveSheetName(firstSheet);
+                const rawData = XLSX.utils.sheet_to_json(wb.Sheets[firstSheet], { header: 1 }) as any[][];
+                setSheetData(rawData);
+              }
               setIsLoading(false);
             }
           } else {
-            setIsLoading(false);
-          }
-        } else if (isWord) {
-          // Convertir DOCX en HTML avec mammoth
-          const arrayBuffer = await loadedBlob.arrayBuffer();
-          const res = await mammoth.convertToHtml({ arrayBuffer });
-          if (!isCancelled) {
-            setWordHtml(res.value || '<p>Document Word vide.</p>');
-            setIsLoading(false);
-          }
-        } else if (isExcel) {
-          // Lire le classeur Excel avec XLSX
-          const arrayBuffer = await loadedBlob.arrayBuffer();
-          const wb = XLSX.read(arrayBuffer, { type: 'array' });
-          if (!isCancelled) {
-            setWorkbook(wb);
-            if (wb.SheetNames.length > 0) {
-              const firstSheet = wb.SheetNames[0];
-              setActiveSheetName(firstSheet);
-              const rawData = XLSX.utils.sheet_to_json(wb.Sheets[firstSheet], { header: 1 }) as any[][];
-              setSheetData(rawData);
+            const text = await foundBlob.text();
+            if (!isCancelled) {
+              setRawText(text);
+              setIsLoading(false);
             }
-            setIsLoading(false);
           }
-        } else {
-          // Lecture texte / code
-          const text = await loadedBlob.text();
+        } catch (err: any) {
+          console.error('[ModernDocumentViewer] Erreur format:', err);
           if (!isCancelled) {
-            setRawText(text);
-            setIsLoading(false);
-          }
-        }
-      } catch (err: any) {
-        console.error('[ModernDocumentViewer] Erreur rendu format:', err);
-        if (!isCancelled) {
-          // Pour les PDFs, même si PDF.js échoue, l'iframe natif peut encore fonctionner
-          if (isPdf && (resolvedUrl || url)) {
-            setIsLoading(false);
-          } else {
             setErrorMessage(`Erreur lors du traitement du document (${err.message || 'Format corrompu'})`);
             setIsLoading(false);
           }
         }
+      } else if (textContent) {
+        setRawText(textContent);
+        setIsLoading(false);
+      } else if (directUrl) {
+        setIsLoading(false);
+      } else {
+        setIsLoading(false);
+        setErrorMessage("Impossible d'accéder au contenu du document.");
       }
-    });
+    };
+
+    loadData();
 
     return () => {
       isCancelled = true;
     };
-  }, [fetchBinaryData, isPdf, isWord, isExcel, url, resolvedUrl]);
+  }, [fileId, url, isPdf, isWord, isExcel, textContent, reloadTrigger]);
 
   // Charger PDF.js à la demande uniquement si l'utilisateur bascule en mode continu
   useEffect(() => {
     let isCancelled = false;
     if (isPdf && pdfViewMode === 'continuous' && !pdfDoc) {
       setIsLoading(true);
-      fetchBinaryData().then(async (blob) => {
-        if (isCancelled || !blob) {
+      const loadPdfContinuous = async () => {
+        let b = blob;
+        if (!b && fileId) {
+          try { b = await getFileBlob(fileId); } catch {}
+        }
+        if (!b && (resolvedUrl || url)) {
+          try {
+            const res = await fetch(resolvedUrl || url!);
+            if (res.ok) b = await res.blob();
+          } catch {}
+        }
+        if (isCancelled || !b) {
           setIsLoading(false);
           return;
         }
         try {
-          const arrayBuffer = await blob.arrayBuffer();
+          const arrayBuffer = await b.arrayBuffer();
           const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
           const doc = await loadingTask.promise;
           if (!isCancelled) {
@@ -332,12 +338,13 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
         } catch {
           if (!isCancelled) setIsLoading(false);
         }
-      });
+      };
+      loadPdfContinuous();
     }
     return () => {
       isCancelled = true;
     };
-  }, [isPdf, pdfViewMode, pdfDoc, fetchBinaryData]);
+  }, [isPdf, pdfViewMode, pdfDoc, blob, fileId, resolvedUrl, url]);
 
   // Gestion du changement de feuille Excel
   const selectExcelSheet = (name: string) => {
@@ -472,7 +479,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
             <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-sm mb-4 leading-relaxed">{errorMessage}</p>
             <button
               type="button"
-              onClick={fetchBinaryData}
+              onClick={handleRetry}
               className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow"
             >
               <RefreshCw className="w-3.5 h-3.5" />
@@ -484,21 +491,13 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
         {/* A. RENDU PDF (1. Mode Lecteur Navigateur Natif avec défilement vertical et barre d'outils complète) */}
         {isPdf && !errorMessage && pdfViewMode === 'native' && nativePdfUrl && (
           <div className="w-full h-full flex-1 flex flex-col items-center overflow-hidden bg-stone-100 dark:bg-stone-900">
-            <object
-              key={`pdf-native-${fileId || cleanPdfBase}`}
-              data={nativePdfUrl}
-              type="application/pdf"
-              className="w-full h-full border-0 block flex-1"
+            <iframe
+              key={`pdf-native-${fileId || 'direct'}`}
+              src={nativePdfUrl}
+              title={fileName || 'Document PDF'}
+              className="w-full h-full border-0 block flex-1 bg-white"
               style={{ width: '100%', height: '100%', minHeight: '100%' }}
-            >
-              <iframe
-                key={`iframe-pdf-native-${fileId || cleanPdfBase}`}
-                src={nativePdfUrl}
-                title={fileName || 'Document PDF'}
-                className="w-full h-full border-0 block flex-1"
-                style={{ width: '100%', height: '100%', minHeight: '100%' }}
-              />
-            </object>
+            />
           </div>
         )}
 

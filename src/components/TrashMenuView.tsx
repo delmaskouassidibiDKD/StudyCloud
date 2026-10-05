@@ -170,10 +170,16 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
     }
     const unsub = CloudDataStore.subscribe((state) => {
       // Ne mettre à jour depuis le store que si des données réelles sont présentes
-      // Cela évite d'écraser la liste locale avec [] si le store n'est pas encore hydraté
-      if (state.trash && state.trash.length > 0) {
+      // et que les éléments ont réellement changé pour préserver la stabilité référentielle
+      if (state.trash) {
         setTrashList(prev => {
           const filtered = state.trash.filter(f => !deletedTrashIdsRef.current.has(f.id) && !isItemDeleted(f.id));
+          if (
+            prev.length === filtered.length &&
+            prev.every((item, i) => item.id === filtered[i]?.id && item.name === filtered[i]?.name)
+          ) {
+            return prev;
+          }
           return filtered;
         });
       }
@@ -191,14 +197,13 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       const localIds = new Set(prev.map(f => f.id));
       const genuinelyNew = validServer.filter(f => !localIds.has(f.id));
       if (genuinelyNew.length === 0) {
-        // Garder le CloudDataStore en phase avec la liste locale
         if (prev.length > 0 && CloudDataStore.getState().trash.length === 0) {
-          CloudDataStore.setTrashFiles(prev);
+          queueMicrotask(() => CloudDataStore.setTrashFiles(prev));
         }
         return prev;
       }
       const updated = [...prev, ...genuinelyNew];
-      CloudDataStore.setTrashFiles(updated);
+      queueMicrotask(() => CloudDataStore.setTrashFiles(updated));
       return updated;
     });
     setLoading(false);
@@ -1762,7 +1767,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
         {/* PANNEAU DE DROITE : LECTEUR / APERÇU DÉDIÉ PAR TYPE DE FICHIER */}
         {selectedFile && (
           <aside
-            className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 ${
+            className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl ${
               isViewerMaximized
                 ? 'fixed inset-0 z-50 w-full h-full'
                 : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-200 md:border-stone-800'
