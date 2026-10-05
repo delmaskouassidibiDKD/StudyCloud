@@ -81,6 +81,20 @@ const computeDuplicateName = (originalName: string, existingNames: string[]): st
   return candidate;
 };
 
+const isExcludedFromImages = (d: any): boolean => {
+  if (!d) return true;
+  if (d.category === 'classeur' || d.category === 'classeur_folder' || d.category === 'mes-fichiers' || d.category === 'trash' || d.category === 'secure') return true;
+  const fId = d.folderId || d.folder_id || d.originalFolderId;
+  if (fId && !['images', 'root', 'default-folder'].includes(fId)) return true;
+  if (typeof d.id === 'string' && (d.id.startsWith('cf-') || d.id.startsWith('cf_') || d.id.startsWith('folder_') || d.id.startsWith('cf_folder_'))) return true;
+  if (d.r2Key && (d.r2Key.includes('/classeur/') || d.r2Key.includes('/mes-fichiers/'))) return true;
+  if ((d as any).uploadSource === 'mes-fichiers' || d.source === 'mes-fichiers' || d.source === 'Mes fichiers' || d.source === 'Classeur' || d.source === 'Dossier 3D') return true;
+  if (d.matiere || (d as any).matiereId) return true;
+  if (d.folderName && d.folderName !== 'Images' && d.folderName !== 'root' && d.folderName !== 'default-folder') return true;
+  if (d.isFolder || d.is_folder || d.isClasseurFolder) return true;
+  return false;
+};
+
 export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
   onBack,
   onOpenStudySpace,
@@ -90,7 +104,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
 }) => {
   const { data: serverImages = [], isLoading: isImagesQueryLoading } = useImagesList();
   const [imagesList, setImagesList] = useState<FileItem[]>(() => {
-    return CloudDataStore.getState().images || [];
+    return (CloudDataStore.getState().images || []).filter(i => !isExcludedFromImages(i));
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -344,9 +358,9 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
   useEffect(() => {
     if (serverImages && Array.isArray(serverImages)) {
       setImagesList(prev => {
-        const cleanServer = serverImages.filter(i => !isItemDeleted(i.id));
+        const cleanServer = serverImages.filter(i => !isItemDeleted(i.id) && !isExcludedFromImages(i));
         const serverIds = new Set(cleanServer.map(i => i.id));
-        const pending = prev.filter(i => !serverIds.has(i.id) && Boolean(i.isUploading) && !isItemDeleted(i.id));
+        const pending = prev.filter(i => !serverIds.has(i.id) && Boolean(i.isUploading) && !isItemDeleted(i.id) && !isExcludedFromImages(i));
         const merged = [...pending, ...cleanServer];
         const seenIds = new Set<string>();
         const seenSigs = new Set<string>();

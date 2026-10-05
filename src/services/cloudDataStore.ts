@@ -187,6 +187,19 @@ export const isRecentEligible = (file: any): boolean => {
   return true;
 };
 
+export const isFolderBoundItem = (item: any): boolean => {
+  if (!item) return false;
+  if (item.category === 'classeur' || item.category === 'classeur_folder') return true;
+  const fId = item.folderId || item.folder_id || item.originalFolderId;
+  if (fId && !['documents', 'images', 'videos', 'audio', 'default-folder', 'root'].includes(fId)) return true;
+  if (typeof item.id === 'string' && (item.id.startsWith('cf-') || item.id.startsWith('cf_'))) return true;
+  if (item.r2Key && item.r2Key.includes('/classeur/')) return true;
+  if (item.source === 'Classeur' || item.source === 'Dossier 3D') return true;
+  if (item.folderName && !['Documents', 'Images', 'Vidéos', 'Audio', 'root', 'default-folder'].includes(item.folderName)) return true;
+  if (item.isFolder || item.is_folder || item.isClasseurFolder) return true;
+  return false;
+};
+
 // Etat en memoire (Tier 1 - synchrone 0ms)
 const defaultState: CloudDataState = {
   overview: null, classeurFolders: [], folderFilesMap: {},
@@ -859,30 +872,34 @@ export const CloudDataStore = {
   },
 
   setDocuments(docs: FileItem[]) {
-    const serverIds = new Set(docs.map(s => s.id));
-    const pending = (currentState.documents || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading));
-    currentState = { ...currentState, documents: [...pending, ...docs] };
+    const cleanDocs = docs.filter(d => !isFolderBoundItem(d));
+    const serverIds = new Set(cleanDocs.map(s => s.id));
+    const pending = (currentState.documents || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading) && !isFolderBoundItem(c));
+    currentState = { ...currentState, documents: [...pending, ...cleanDocs] };
     persistToIndexedDB().catch(() => {});
     notify();
   },
   setVideos(videos: FileItem[]) {
-    const serverIds = new Set(videos.map(s => s.id));
-    const pending = (currentState.videos || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading));
-    currentState = { ...currentState, videos: [...pending, ...videos] };
+    const cleanVideos = videos.filter(v => !isFolderBoundItem(v));
+    const serverIds = new Set(cleanVideos.map(s => s.id));
+    const pending = (currentState.videos || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading) && !isFolderBoundItem(c));
+    currentState = { ...currentState, videos: [...pending, ...cleanVideos] };
     persistToIndexedDB().catch(() => {});
     notify();
   },
   setImages(images: FileItem[]) {
-    const serverIds = new Set(images.map(s => s.id));
-    const pending = (currentState.images || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading));
-    currentState = { ...currentState, images: [...pending, ...images] };
+    const cleanImages = images.filter(i => !isFolderBoundItem(i));
+    const serverIds = new Set(cleanImages.map(s => s.id));
+    const pending = (currentState.images || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading) && !isFolderBoundItem(c));
+    currentState = { ...currentState, images: [...pending, ...cleanImages] };
     persistToIndexedDB().catch(() => {});
     notify();
   },
   setAudio(audio: FileItem[]) {
-    const serverIds = new Set(audio.map(s => s.id));
-    const pending = (currentState.audio || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading));
-    currentState = { ...currentState, audio: [...pending, ...audio] };
+    const cleanAudio = audio.filter(a => !isFolderBoundItem(a));
+    const serverIds = new Set(cleanAudio.map(s => s.id));
+    const pending = (currentState.audio || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading) && !isFolderBoundItem(c));
+    currentState = { ...currentState, audio: [...pending, ...cleanAudio] };
     persistToIndexedDB().catch(() => {});
     notify();
   },
@@ -935,21 +952,29 @@ export const CloudDataStore = {
   },
 
   addOptimisticFile(file: FileItem, folderId?: string) {
-    const cat = file.category || 'documents';
+    const targetFolder = folderId || file.folderId || (file as any).folder_id || (file as any).originalFolderId;
+    const isFolder = Boolean(targetFolder && !['documents', 'images', 'videos', 'audio', 'default-folder', 'root'].includes(targetFolder));
+    const cat = isFolder ? 'classeur' : (file.category || 'documents');
     // STRICT: Seuls les fichiers des 4 menus (images, vidéos, audio, documents) et NON rattachés à un dossier peuvent aller dans les récents
-    const isEligible = !folderId && !file.folderId && isRecentEligible(file);
+    const isEligible = !isFolder && !targetFolder && isRecentEligible(file);
     const recent = isEligible
       ? [file, ...currentState.recentFiles.filter(f => f.id !== file.id && isRecentEligible(f))].slice(0, 6)
       : currentState.recentFiles.filter(f => isRecentEligible(f));
 
-    if (folderId) {
-      const currentList = currentState.folderFilesMap[folderId] || [];
+    if (isFolder && targetFolder) {
+      const currentList = currentState.folderFilesMap[targetFolder] || [];
+      const itemWithFolder = {
+        ...file,
+        category: 'classeur' as const,
+        folderId: targetFolder,
+        originalFolderId: targetFolder
+      };
       currentState = {
         ...currentState,
         recentFiles: recent,
         folderFilesMap: {
           ...currentState.folderFilesMap,
-          [folderId]: [file, ...currentList.filter(f => f.id !== file.id)]
+          [targetFolder]: [itemWithFolder, ...currentList.filter(f => f.id !== file.id)]
         }
       };
     } else if (cat === 'images') {
@@ -1066,17 +1091,26 @@ export const CloudDataStore = {
       ...Object.values(updatedMap).flat()
     ];
 
+    const isTargetFolder = Boolean(targetFolderId && !['documents', 'images', 'videos', 'audio', 'default-folder', 'root'].includes(targetFolderId));
+    const cleanFilter = (list: FileItem[]) => {
+      const updated = updateFn(list);
+      return updated.filter(f => {
+        if (isTargetFolder && (f.id === targetId || (patch.id && f.id === patch.id))) return false;
+        return !isFolderBoundItem(f);
+      });
+    };
+
     currentState = {
       ...currentState,
       folderFilesMap: updatedMap,
-      documents: updateFn(currentState.documents),
-      images: updateFn(currentState.images),
-      videos: updateFn(currentState.videos),
-      audio: updateFn(currentState.audio),
+      documents: cleanFilter(currentState.documents),
+      images: cleanFilter(currentState.images),
+      videos: cleanFilter(currentState.videos),
+      audio: cleanFilter(currentState.audio),
       secure: updateFn(currentState.secure),
       trash: updateFn(currentState.trash),
       favorites: allCurrentCandidates.filter(f => currentState.favIdSet.has(f.id) || Boolean(f.isFavorite)),
-      recentFiles: updateFn(currentState.recentFiles),
+      recentFiles: updateFn(currentState.recentFiles).filter(f => !isFolderBoundItem(f)),
     };
     persistToIndexedDB().catch(() => {});
     notify();

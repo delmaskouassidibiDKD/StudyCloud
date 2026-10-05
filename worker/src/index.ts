@@ -7734,15 +7734,16 @@ a:hover{transform:translateY(-2px)}
         // 2. Routage et validation stricte
         let finalCategory: 'images' | 'videos' | 'audio' | 'documents' | 'classeur' | 'mes-fichiers';
 
+        const hasSpecificFolder = Boolean(folderId && !['default-folder', 'root', 'documents', 'images', 'videos', 'audio'].includes(folderId));
         if (requestedCategory === 'mes-fichiers' || requestedCategory === 'mes_fichiers' || uploadSource === 'mes-fichiers') {
           // Menu "Mes fichiers" : espace dédié, indépendant et isolé de tous les autres menus
           finalCategory = 'mes-fichiers';
+        } else if (requestedCategory === 'classeur' || hasSpecificFolder) {
+          // Classeur : accepte tout type de fichier à l'intérieur des dossiers créés, isolé à 100%
+          finalCategory = 'classeur';
         } else if (requestedCategory === 'auto' || requestedCategory === '' || requestedCategory === 'all') {
           // Accueil : routage automatique dans son menu respectif (JAMAIS dans le classeur !)
           finalCategory = detectedNature;
-        } else if (requestedCategory === 'classeur') {
-          // Classeur : accepte tout type de fichier à l'intérieur des dossiers créés
-          finalCategory = 'classeur';
         } else if (requestedCategory === 'images' || requestedCategory === 'photos') {
           if (detectedNature !== 'images') {
             return errorResponse("Ce fichier ne correspond pas au menu Images. Veuillez importer une image (PNG, JPG, SVG, WebP...).", 400, origin);
@@ -8888,15 +8889,30 @@ a:hover{transform:translateY(-2px)}
         if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
 
         if (method === 'GET') {
+          await env.DB.prepare(`
+            DELETE FROM audio_files WHERE user_id = ? AND (r2_key LIKE '%/classeur/%' OR id LIKE 'cf-%' OR id LIKE 'cf_%')
+          `).bind(reqUserId).run().catch(() => {});
+
           const { results: auds } = await env.DB.prepare(`
-            SELECT * FROM audio_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
+            SELECT * FROM audio_files 
+            WHERE user_id = ? 
+              AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
+              AND id NOT LIKE 'cf-%'
+              AND id NOT LIKE 'cf_%'
+            ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId).all<any>();
 
           let extraAuds: any[] = [];
           try {
             const { results: extra } = await env.DB.prepare(`
               SELECT * FROM files 
-              WHERE user_id = ? AND (type LIKE 'audio/%' OR LOWER(extension) IN ('mp3','wav','ogg','m4a','aac','flac','wma','opus','alac','aiff') OR matiere_id = 'menu-audio')
+              WHERE user_id = ? 
+                AND (matiere_id IS NULL OR matiere_id = 'menu-audio')
+                AND (type LIKE 'audio/%' OR LOWER(extension) IN ('mp3','wav','ogg','m4a','aac','flac','wma','opus','alac','aiff') OR matiere_id = 'menu-audio')
+                AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
+                AND (r2_key NOT LIKE '%/mes-fichiers/%' OR r2_key IS NULL)
+                AND id NOT LIKE 'cf-%'
+                AND id NOT LIKE 'cf_%'
               ORDER BY last_imported DESC, created_at DESC
             `).bind(reqUserId).all<any>();
             extraAuds = extra || [];
@@ -9165,15 +9181,30 @@ a:hover{transform:translateY(-2px)}
         if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
 
         if (method === 'GET') {
+          await env.DB.prepare(`
+            DELETE FROM image_files WHERE user_id = ? AND (r2_key LIKE '%/classeur/%' OR id LIKE 'cf-%' OR id LIKE 'cf_%')
+          `).bind(reqUserId).run().catch(() => {});
+
           const { results: imgs } = await env.DB.prepare(`
-            SELECT * FROM image_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
+            SELECT * FROM image_files 
+            WHERE user_id = ? 
+              AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
+              AND id NOT LIKE 'cf-%'
+              AND id NOT LIKE 'cf_%'
+            ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId).all<any>();
 
           let extraImgs: any[] = [];
           try {
             const { results: extra } = await env.DB.prepare(`
               SELECT * FROM files 
-              WHERE user_id = ? AND (type LIKE 'image/%' OR LOWER(extension) IN ('jpg','jpeg','png','webp','gif','svg','bmp','ico','tiff','tif','heic','avif'))
+              WHERE user_id = ? 
+                AND (matiere_id IS NULL OR matiere_id = 'menu-images')
+                AND (type LIKE 'image/%' OR LOWER(extension) IN ('jpg','jpeg','png','webp','gif','svg','bmp','ico','tiff','tif','heic','avif'))
+                AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
+                AND (r2_key NOT LIKE '%/mes-fichiers/%' OR r2_key IS NULL)
+                AND id NOT LIKE 'cf-%'
+                AND id NOT LIKE 'cf_%'
               ORDER BY last_imported DESC, created_at DESC
             `).bind(reqUserId).all<any>();
             extraImgs = extra || [];
@@ -9414,15 +9445,30 @@ a:hover{transform:translateY(-2px)}
         if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
 
         if (method === 'GET') {
+          await env.DB.prepare(`
+            DELETE FROM video_files WHERE user_id = ? AND (r2_key LIKE '%/classeur/%' OR id LIKE 'cf-%' OR id LIKE 'cf_%')
+          `).bind(reqUserId).run().catch(() => {});
+
           const { results: vids } = await env.DB.prepare(`
-            SELECT * FROM video_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
+            SELECT * FROM video_files 
+            WHERE user_id = ? 
+              AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
+              AND id NOT LIKE 'cf-%'
+              AND id NOT LIKE 'cf_%'
+            ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId).all<any>();
 
           let extraVids: any[] = [];
           try {
             const { results: extra } = await env.DB.prepare(`
               SELECT * FROM files 
-              WHERE user_id = ? AND (type LIKE 'video/%' OR LOWER(extension) IN ('mp4','mov','mkv','webm','avi','3gp','m4v','ts'))
+              WHERE user_id = ? 
+                AND (matiere_id IS NULL OR matiere_id = 'menu-videos')
+                AND (type LIKE 'video/%' OR LOWER(extension) IN ('mp4','mov','mkv','webm','avi','3gp','m4v','ts'))
+                AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
+                AND (r2_key NOT LIKE '%/mes-fichiers/%' OR r2_key IS NULL)
+                AND id NOT LIKE 'cf-%'
+                AND id NOT LIKE 'cf_%'
               ORDER BY last_imported DESC, created_at DESC
             `).bind(reqUserId).all<any>();
             extraVids = extra || [];
@@ -9657,18 +9703,23 @@ a:hover{transform:translateY(-2px)}
         if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
 
         if (method === 'GET') {
-          // Nettoyage proactif de tout fichier mes-fichiers qui aurait pu être inséré par erreur
+          // Nettoyage proactif de tout fichier mes-fichiers ou classeur qui aurait pu être inséré par erreur
           await env.DB.prepare(`
-            DELETE FROM document_files WHERE user_id = ? AND r2_key LIKE '%/mes-fichiers/%'
+            DELETE FROM document_files 
+            WHERE user_id = ? AND (r2_key LIKE '%/mes-fichiers/%' OR r2_key LIKE '%/classeur/%' OR id LIKE 'cf-%' OR id LIKE 'cf_%')
           `).bind(reqUserId).run().catch(() => {});
 
           const { results: docs } = await env.DB.prepare(`
             SELECT * FROM document_files 
-            WHERE user_id = ? AND (r2_key NOT LIKE '%/mes-fichiers/%' OR r2_key IS NULL)
+            WHERE user_id = ? 
+              AND (r2_key NOT LIKE '%/mes-fichiers/%' OR r2_key IS NULL)
+              AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
+              AND id NOT LIKE 'cf-%'
+              AND id NOT LIKE 'cf_%'
             ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId).all<any>();
 
-          // ISOLATION TOTALE : Le menu Documents ne contient JAMAIS les fichiers du menu Mes fichiers ni des matières
+          // ISOLATION TOTALE : Le menu Documents ne contient JAMAIS les fichiers du menu Mes fichiers ni des matières ni du classeur
           let extraDocs: any[] = [];
 
           let trashedDocIdSet = new Set<string>();
@@ -9696,6 +9747,10 @@ a:hover{transform:translateY(-2px)}
           const addDoc = (d: any) => {
             const id = d.id;
             if (trashedDocIdSet.has(id)) return;
+            if (typeof id === 'string' && (id.startsWith('cf-') || id.startsWith('cf_'))) return;
+            if (d.r2_key && (d.r2_key.includes('/classeur/') || d.r2_key.includes('/mes-fichiers/'))) return;
+            if (d.folder_id && !['documents', 'root', 'default-folder'].includes(d.folder_id)) return;
+            if (d.category === 'classeur' || d.category === 'mes-fichiers') return;
             const name = d.name || 'Document';
             const normKey = `${name.trim().toLowerCase()}_${d.size_bytes || d.size || 0}`;
             if (seen.has(id) || seenNames.has(normKey)) return;

@@ -206,6 +206,7 @@ export interface FileItem {
   metadata?: any;
   type?: string;
   folderId?: string;
+  folderName?: string;
   artist?: string;
   album?: string;
   lyricsSnippet?: string;
@@ -639,7 +640,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const item: FileItem = {
         id: fileId,
         name: f.name,
-        category,
+        category: 'classeur',
+        originalCategory: category,
+        folderId: folderId,
+        originalFolderId: folderId,
+        folderName: folderName,
         isImage: category === 'images',
         isVideo: category === 'videos',
         isAudio: category === 'audio',
@@ -682,7 +687,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       CloudDataStore.addOptimisticFile(f, folderId);
       LocalSyncReplication.recordLocalUpsert(f.id, 'classeur', {
         ...f,
-        folderId
+        folderId,
+        folderName,
+        category: 'classeur'
       });
       CloudStorageAPI.saveClasseurFile(f, folderId).catch(() => {});
     });
@@ -749,7 +756,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const item: FileItem = {
         id: fileId,
         name: f.name,
-        category,
+        category: 'classeur',
+        originalCategory: category,
+        folderId: folderId,
+        originalFolderId: folderId,
+        folderName: folderName,
         isImage: category === 'images',
         isVideo: category === 'videos',
         isAudio: category === 'audio',
@@ -792,7 +803,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       CloudDataStore.addOptimisticFile(f, folderId);
       LocalSyncReplication.recordLocalUpsert(f.id, 'classeur', {
         ...f,
-        folderId
+        folderId,
+        folderName,
+        category: 'classeur'
       });
       CloudStorageAPI.saveClasseurFile(f, folderId).catch(() => {});
     });
@@ -3496,18 +3509,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         setSecureFolderFiles(prev => prev.filter(f => f.id !== file.id));
         CloudDataStore.restoreFromSecure(restoredFile as any);
 
-        if (origCat === 'documents') setDocumentsList(prev => [restoredFile, ...prev]);
-        else if (origCat === 'images') setImagesList(prev => [restoredFile, ...prev]);
+        const restoredFolderId = (file as any).originalFolderId || (file as any).folderId;
+        if ((origCat === 'classeur' || restoredFolderId) && restoredFolderId) {
+          setFolderFilesMap(prev => ({
+            ...prev,
+            [restoredFolderId]: [restoredFile, ...(prev[restoredFolderId] || [])]
+          }));
+        } else if (origCat === 'images') setImagesList(prev => [restoredFile, ...prev]);
         else if (origCat === 'videos') setVideosList(prev => [restoredFile, ...prev]);
         else if (origCat === 'audio') setAudioList(prev => [restoredFile, ...prev]);
         else if (origCat === 'downloads') setDownloadedItems(prev => [restoredFile, ...prev]);
-        else if (origCat === 'classeur' && (file as any).originalFolderId) {
-          const fId = (file as any).originalFolderId;
-          setFolderFilesMap(prev => ({
-            ...prev,
-            [fId]: [restoredFile, ...(prev[fId] || [])]
-          }));
-        } else {
+        else {
           setDocumentsList(prev => [restoredFile, ...prev]);
         }
 
@@ -3544,7 +3556,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         unmarkFileLocallyDeleted(newFileId);
         unmarkItemDeleted(newFileId);
 
-        if (file.category === 'documents') {
+        if (opened3DFolder) {
+          setFolderFilesMap(prev => ({
+            ...prev,
+            [opened3DFolder.id]: [newFile, ...(prev[opened3DFolder.id] || []).filter(f => f.id !== newFileId)]
+          }));
+        } else if (file.category === 'documents') {
           setDocumentsList(prev => [newFile, ...prev.filter(f => f.id !== newFileId)]);
         } else if (file.category === 'images') {
           setImagesList(prev => [newFile, ...prev.filter(f => f.id !== newFileId)]);
@@ -3554,12 +3571,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           setAudioList(prev => [newFile, ...prev.filter(f => f.id !== newFileId)]);
         } else if (file.category === 'downloads') {
           setDownloadedItems(prev => [newFile as any, ...prev.filter(f => f.id !== newFileId)]);
-        }
-        if (opened3DFolder) {
-          setFolderFilesMap(prev => ({
-            ...prev,
-            [opened3DFolder.id]: [newFile, ...(prev[opened3DFolder.id] || []).filter(f => f.id !== newFileId)]
-          }));
         }
         CloudDataStore.addOptimisticFile(newFile, opened3DFolder?.id);
         const targetCategory = (opened3DFolder || file.originalFolderId || (file as any).folderId) ? 'classeur' : (file.category || 'documents');
@@ -3577,16 +3588,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             unmarkFileLocallyDeleted(realId);
             unmarkItemDeleted(realId);
             CloudDataStore.reconcileFileId(newFileId, realId, opened3DFolder?.id);
-            setDocumentsList(prev => prev.map(f => f.id === newFileId ? { ...f, id: realId } : f));
-            setImagesList(prev => prev.map(f => f.id === newFileId ? { ...f, id: realId } : f));
-            setVideosList(prev => prev.map(f => f.id === newFileId ? { ...f, id: realId } : f));
-            setAudioList(prev => prev.map(f => f.id === newFileId ? { ...f, id: realId } : f));
-            setDownloadedItems(prev => prev.map(f => f.id === newFileId ? { ...f, id: realId } : f));
             if (opened3DFolder) {
               setFolderFilesMap(prev => ({
                 ...prev,
                 [opened3DFolder.id]: (prev[opened3DFolder.id] || []).map(f => f.id === newFileId ? { ...f, id: realId } : f)
               }));
+            } else {
+              setDocumentsList(prev => prev.map(f => f.id === newFileId ? { ...f, id: realId } : f));
+              setImagesList(prev => prev.map(f => f.id === newFileId ? { ...f, id: realId } : f));
+              setVideosList(prev => prev.map(f => f.id === newFileId ? { ...f, id: realId } : f));
+              setAudioList(prev => prev.map(f => f.id === newFileId ? { ...f, id: realId } : f));
+              setDownloadedItems(prev => prev.map(f => f.id === newFileId ? { ...f, id: realId } : f));
             }
             getFileBlob(newFileId).then(blob => {
               if (blob) {

@@ -209,19 +209,33 @@ class UploadQueueManager {
   ): void {
     const now = Date.now();
     itemsWithFiles.forEach(({ file, item, originalSizeBytes, originalSizeFormatted }) => {
+      const effectiveFolderId = options.folderId || item.folderId || (item as any).folder_id;
+      const effectiveFolderName = options.folderName || item.folderName || item.source;
+      const isFolderTarget = Boolean(effectiveFolderId && !['documents', 'images', 'videos', 'audio', 'default-folder', 'root'].includes(effectiveFolderId));
+      const effectiveCategory = (isFolderTarget || options.category === 'classeur') ? 'classeur' : (options.category || item.category || 'documents');
+
+      item.category = effectiveCategory;
+      if (effectiveFolderId) {
+        item.folderId = effectiveFolderId;
+        item.originalFolderId = effectiveFolderId;
+      }
+      if (effectiveFolderName) {
+        item.folderName = effectiveFolderName;
+      }
+
       // 1. Sauvegarde binaire IndexedDB (accès 0ms)
       storeFileBlob(item.id, file as any).catch(() => {});
       // 2. Ajout optimiste immédiat dans CloudDataStore pour que tous les stores et vues le conservent
-      CloudDataStore.addOptimisticFile(item, options.folderId || item.folderId);
+      CloudDataStore.addOptimisticFile(item, effectiveFolderId);
 
       const task: UploadTask = {
         id: item.id,
         file: file as any,
         fileName: item.name || (file as any).name || 'fichier',
-        category: (item.category || options.category || 'documents') as any,
-        folderId: options.folderId || item.folderId,
-        folderName: options.folderName || item.source,
-        uploadSource: options.uploadSource || (item as any).uploadSource || `btn-${options.category || 'auto'}`,
+        category: effectiveCategory as any,
+        folderId: effectiveFolderId,
+        folderName: effectiveFolderName,
+        uploadSource: options.uploadSource || (item as any).uploadSource || `btn-${effectiveCategory || 'auto'}`,
         status: 'pending',
         progress: 10,
         retries: 0,
@@ -341,12 +355,18 @@ class UploadQueueManager {
       let r2Key = '';
       let serverFileId: string | undefined = undefined;
 
-      if (category === 'classeur' && folderId) {
+      const resolvedFolderId = folderId || task.folderId || (task.fileItem as any)?.folderId || (task.fileItem as any)?.folder_id;
+      const isFolderUpload = Boolean(
+        category === 'classeur' || 
+        (resolvedFolderId && !['documents', 'images', 'videos', 'audio', 'default-folder', 'root'].includes(resolvedFolderId))
+      );
+
+      if (isFolderUpload && resolvedFolderId) {
         const uploadRes = await CloudStorageAPI.uploadFileToCategoryR2(
           file,
           'classeur',
           fileName,
-          folderId,
+          resolvedFolderId,
           task.uploadSource,
           task.originalSizeBytes,
           task.originalSizeFormatted,
@@ -367,12 +387,16 @@ class UploadQueueManager {
 
         const fileToSave = {
           ...task.fileItem,
+          category: 'classeur',
+          folderId: resolvedFolderId,
+          originalFolderId: resolvedFolderId,
+          folderName: task.folderName || task.fileItem?.source,
           url: uploadUrl,
           r2Key: r2Key,
           previewUrl: previewDataUrl || uploadUrl,
           isUploading: false,
         };
-        await CloudStorageAPI.saveClasseurFile(fileToSave as any, folderId);
+        await CloudStorageAPI.saveClasseurFile(fileToSave as any, resolvedFolderId);
       } else {
         const uploadCat = (category === 'classeur' || category === 'downloads' || category === 'secure' || category === 'trash' ? 'documents' : category) as any;
         const res = await CloudStorageAPI.uploadFile(
@@ -502,11 +526,11 @@ class UploadQueueManager {
         else if (category === 'videos') invalidateCloudQueries.videos();
         else if (category === 'images') invalidateCloudQueries.images();
         else if (category === 'documents') invalidateCloudQueries.documents();
-        else if (category === 'classeur') invalidateCloudQueries.classeurFiles(folderId);
+        else if (category === 'classeur' || isFolderUpload) invalidateCloudQueries.classeurFiles(resolvedFolderId || folderId);
         else if (category === 'mes-fichiers') invalidateCloudQueries.filesMenu();
         
         invalidateCloudQueries.overview();
-        if (category !== 'mes-fichiers' && category !== 'documents') {
+        if (category !== 'mes-fichiers' && category !== 'documents' && category !== 'classeur' && !isFolderUpload) {
           invalidateCloudQueries.all();
         }
       } catch {}
