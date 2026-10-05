@@ -522,23 +522,32 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     showToast(nextState ? `"${img.name}" ajoutée aux favoris ⭐` : `"${img.name}" retirée des favoris`);
   };
 
-  // Suppression
+  // Déplacer vers la corbeille
   const handleDeleteImage = async (img: FileItem, skipConfirm: boolean = false) => {
-    if (!skipConfirm && !window.confirm(`Supprimer définitivement "${img.name}" ?`)) return;
+    if (!skipConfirm && !window.confirm(`Déplacer "${img.name}" dans la corbeille ?`)) return;
 
     markItemDeleted(img.id);
+    const fileWithSource: FileItem = {
+      ...img,
+      isTrash: true,
+      category: 'images',
+      sourceCategory: 'images',
+      source: 'Images'
+    };
+
     setImagesList(prev => prev.filter(i => i.id !== img.id));
     if (selectedImage?.id === img.id) {
       setSelectedImage(null);
     }
     setSelectedItemIds(prev => prev.filter(id => id !== img.id));
-    CloudDataStore.removeFile(img.id, undefined, 'images');
+
+    CloudDataStore.moveToTrash(fileWithSource);
     LocalSyncReplication.recordLocalDeletion(img.id, 'images');
-    deleteFileBlob(img.id).catch(() => {});
     await CloudStorageAPI.deleteImage(img.id, img.name).catch(() => {});
     invalidateCloudQueries.images().catch(() => {});
+    invalidateCloudQueries.trash().catch(() => {});
     invalidateCloudQueries.overview().catch(() => {});
-    showToast(`"${img.name}" supprimée`);
+    showToast(`"${img.name}" déplacée dans la corbeille 🗑️`);
   };
 
   // Téléchargement
@@ -2142,16 +2151,34 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
           <button
             type="button"
             onClick={() => {
-              if (!window.confirm(`Supprimer les ${selectedItemIds.length} image(s) sélectionnée(s) ?`)) return;
+              if (!window.confirm(`Déplacer les ${selectedItemIds.length} image(s) sélectionnée(s) dans la corbeille ?`)) return;
               const toDelete = filteredImages.filter(i => selectedItemIds.includes(i.id));
+              const trashedItems: FileItem[] = toDelete.map(img => ({
+                ...img,
+                isTrash: true,
+                category: 'images',
+                sourceCategory: 'images',
+                source: 'Images'
+              }));
               toDelete.forEach(i => {
-                handleDeleteImage(i, true);
+                markItemDeleted(i.id);
+                LocalSyncReplication.recordLocalDeletion(i.id, 'images');
+                CloudStorageAPI.deleteImage(i.id, i.name).catch(() => {});
               });
+              setImagesList(prev => prev.filter(i => !selectedItemIds.includes(i.id)));
+              if (selectedImage && selectedItemIds.includes(selectedImage.id)) {
+                setSelectedImage(null);
+              }
               setSelectedItemIds([]);
               setIsSelectionMode(false);
+              CloudDataStore.moveToTrash(trashedItems);
+              invalidateCloudQueries.images().catch(() => {});
+              invalidateCloudQueries.trash().catch(() => {});
+              invalidateCloudQueries.overview().catch(() => {});
+              showToast(`${toDelete.length} image(s) déplacée(s) dans la corbeille 🗑️`);
             }}
             className="flex items-center gap-1.5 hover:text-rose-400 font-semibold cursor-pointer transition-colors"
-            title="Supprimer la sélection"
+            title="Déplacer la sélection dans la corbeille"
           >
             <Trash2 className="w-4 h-4 text-rose-400" />
             <span className="hidden sm:inline">Supprimer</span>

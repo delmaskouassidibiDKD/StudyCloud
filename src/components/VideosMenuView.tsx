@@ -542,15 +542,17 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     showToast(nextState ? 'Ajouté aux favoris ⭐' : 'Retiré des favoris');
   };
 
-  // Suppression
+  // Déplacer vers la corbeille
   const handleDeleteVideo = async (vid: FileItem, skipConfirm: boolean = false) => {
-    if (!skipConfirm && !window.confirm(`Supprimer définitivement "${vid.name}" ?`)) return;
+    if (!skipConfirm && !window.confirm(`Déplacer "${vid.name}" dans la corbeille ?`)) return;
 
     markItemDeleted(vid.id);
     const fileWithSource: FileItem = {
       ...vid,
       isTrash: true,
-      category: 'videos'
+      category: 'videos',
+      sourceCategory: 'videos',
+      source: 'Vidéos'
     };
 
     setVideosList(prev => prev.filter(v => v.id !== vid.id));
@@ -559,14 +561,14 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       setIsViewerMaximized(false);
     }
     setSelectedItemIds(prev => prev.filter(id => id !== vid.id));
-    CloudDataStore.removeFile(vid.id, undefined, 'videos');
+
     LocalSyncReplication.recordLocalDeletion(vid.id, 'videos');
     CloudDataStore.moveToTrash(fileWithSource as any);
-    deleteFileBlob(vid.id).catch(() => {});
     await CloudStorageAPI.deleteVideo(vid.id, vid.name).catch(() => {});
     invalidateCloudQueries.videos().catch(() => {});
+    invalidateCloudQueries.trash().catch(() => {});
     invalidateCloudQueries.overview().catch(() => {});
-    showToast(`"${vid.name}" supprimé`);
+    showToast(`"${vid.name}" déplacée dans la corbeille 🗑️`);
   };
 
   // Téléchargement
@@ -2156,16 +2158,35 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
           <button
             type="button"
             onClick={() => {
-              if (!window.confirm(`Supprimer les ${selectedItemIds.length} vidéo(s) sélectionnée(s) ?`)) return;
+              if (!window.confirm(`Déplacer les ${selectedItemIds.length} vidéo(s) sélectionnée(s) dans la corbeille ?`)) return;
               const toDelete = filteredVideos.filter(v => selectedItemIds.includes(v.id));
+              const trashedItems: FileItem[] = toDelete.map(vid => ({
+                ...vid,
+                isTrash: true,
+                category: 'videos',
+                sourceCategory: 'videos',
+                source: 'Vidéos'
+              }));
               toDelete.forEach(v => {
-                handleDeleteVideo(v, true);
+                markItemDeleted(v.id);
+                LocalSyncReplication.recordLocalDeletion(v.id, 'videos');
+                CloudStorageAPI.deleteVideo(v.id, v.name).catch(() => {});
               });
+              setVideosList(prev => prev.filter(v => !selectedItemIds.includes(v.id)));
+              if (selectedVideo && selectedItemIds.includes(selectedVideo.id)) {
+                setSelectedVideo(null);
+                setIsViewerMaximized(false);
+              }
               setSelectedItemIds([]);
               setIsSelectionMode(false);
+              CloudDataStore.moveToTrash(trashedItems);
+              invalidateCloudQueries.videos().catch(() => {});
+              invalidateCloudQueries.trash().catch(() => {});
+              invalidateCloudQueries.overview().catch(() => {});
+              showToast(`${toDelete.length} vidéo(s) déplacée(s) dans la corbeille 🗑️`);
             }}
             className="flex items-center gap-1.5 hover:text-rose-400 font-semibold cursor-pointer transition-colors"
-            title="Supprimer la sélection"
+            title="Déplacer la sélection dans la corbeille"
           >
             <Trash2 className="w-4 h-4 text-rose-400" />
             <span className="hidden sm:inline">Supprimer</span>

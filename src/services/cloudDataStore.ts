@@ -407,6 +407,44 @@ export function unmarkItemDeleted(id: string) {
   }
 }
 
+export function markTrashItemPermanentlyDeleted(id: string) {
+  if (!id) return;
+  try {
+    const raw = localStorage.getItem('studycloud_permanently_deleted_trash_ids');
+    const arr = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(arr) && !arr.includes(id)) {
+      arr.push(id);
+      localStorage.setItem('studycloud_permanently_deleted_trash_ids', JSON.stringify(arr.slice(-500)));
+    }
+  } catch {}
+}
+
+export function unmarkTrashItemPermanentlyDeleted(id: string) {
+  if (!id) return;
+  try {
+    const raw = localStorage.getItem('studycloud_permanently_deleted_trash_ids');
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        const next = arr.filter((x: any) => x !== id);
+        localStorage.setItem('studycloud_permanently_deleted_trash_ids', JSON.stringify(next));
+      }
+    }
+  } catch {}
+}
+
+export function isTrashItemPermanentlyDeleted(id: string): boolean {
+  if (!id) return false;
+  try {
+    const raw = localStorage.getItem('studycloud_permanently_deleted_trash_ids');
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr) && arr.includes(id)) return true;
+    }
+  } catch {}
+  return false;
+}
+
 export function isItemDeleted(id: string): boolean {
   if (!id) return false;
   if (tombstoneChecker && tombstoneChecker(id)) return true;
@@ -769,7 +807,7 @@ export const CloudDataStore = {
         tasks.push(
           CloudStorageAPI.getTrashFiles().then(trash => {
             if (trash !== null) {
-              currentState.trash = flag(trash).filter(isNotLocallyDeleted);
+              currentState.trash = flag(trash).filter(f => !isTrashItemPermanentlyDeleted(f.id));
               notify();
             }
           }).catch(() => null)
@@ -1153,6 +1191,7 @@ export const CloudDataStore = {
   },
 
   permanentlyRemoveTrashFile(fileId: string) {
+    markTrashItemPermanentlyDeleted(fileId);
     // Écrire un tombstone dans localStorage pour éviter la résurrection lors du prochain sync
     try {
       const raw = localStorage.getItem('studycloud_deleted_file_ids');
@@ -1191,6 +1230,7 @@ export const CloudDataStore = {
 
     // Supprimer définitivement et immédiatement tous les éléments mis en corbeille des Favoris
     arr.forEach(f => {
+      unmarkTrashItemPermanentlyDeleted(f.id);
       notifyFavoriteChange(f.id, false, f.category);
       if (f.category === 'classeur_folder' || f.category === 'folder' || (f as any).model) {
         const childFiles = currentState.folderFilesMap[f.id] || [];
@@ -1215,7 +1255,7 @@ export const CloudDataStore = {
       videos: filterFn(clearFavFn(currentState.videos)),
       audio: filterFn(clearFavFn(currentState.audio)),
       downloads: (currentState.downloads || []).filter(d => !idSet.has(d.id)) as any,
-      classeurFolders: currentState.classeurFolders.map(cf => idSet.has(cf.id) ? { ...cf, isFavorite: false } : cf),
+      classeurFolders: (currentState.classeurFolders || []).filter(cf => !idSet.has(cf.id)),
       secure: filterFn(currentState.secure),
       recentFiles: filterFn(currentState.recentFiles),
       favorites: currentState.favorites.filter(f => !idSet.has(f.id)),
@@ -1245,6 +1285,7 @@ export const CloudDataStore = {
     // 2. Dégager activement les tombstones et marques de suppression locale
     allToRestore.forEach(file => {
       unmarkItemDeleted(file.id);
+      unmarkTrashItemPermanentlyDeleted(file.id);
     });
 
     const newTrash = currentState.trash.filter(t => !allIdSet.has(t.id));
@@ -1372,7 +1413,10 @@ export const CloudDataStore = {
       const raw = localStorage.getItem('studycloud_deleted_file_ids');
       const existing: string[] = raw ? JSON.parse(raw) : [];
       const existingSet = new Set(existing);
-      currentState.trash.forEach(t => existingSet.add(t.id));
+      currentState.trash.forEach(t => {
+        existingSet.add(t.id);
+        markTrashItemPermanentlyDeleted(t.id);
+      });
       localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(Array.from(existingSet).slice(-500)));
     } catch {}
     // Notifier deletionListeners (dont localSyncReplication) pour chaque élément

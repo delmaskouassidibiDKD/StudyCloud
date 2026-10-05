@@ -788,7 +788,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const handleDeleteFileFromFolder = (folderId: string, fileId: string) => {
     const fileToDelete = (folderFilesMap[folderId] || []).find(f => f.id === fileId);
     if (fileToDelete) {
-      const trashed = { ...fileToDelete, originalFolderId: folderId, isTrash: true };
+      const trashed = { ...fileToDelete, originalFolderId: folderId, isTrash: true, sourceCategory: 'classeur', source: 'Classeur' };
       setTrashFiles(prev => [trashed, ...prev.filter(f => f.id !== fileId)]);
       CloudDataStore.moveToTrash(trashed as any);
       markFileLocallyDeleted(fileId);
@@ -804,9 +804,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }));
     setCloudRecentFiles(prev => prev.filter(f => f.id !== fileId));
     removeDownloadedFile(fileId);
-    deleteFileBlob(fileId).catch(() => {});
     CloudStorageAPI.deleteClasseurFile(fileId).catch(() => {});
-    showToast('Fichier déplacé dans la corbeille');
+    invalidateCloudQueries.trash().catch(() => {});
+    invalidateCloudQueries.overview().catch(() => {});
+    showToast('Fichier déplacé dans la corbeille 🗑️');
   };
 
   const handleRenameFileInFolder = (folderId: string, file: FileItem) => {
@@ -1257,7 +1258,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         const deletedFolderFiles: FileItem[] = [];
         toDeleteIds.forEach(id => {
           if (next[id] && next[id].length > 0) {
-            deletedFolderFiles.push(...next[id].map(f => ({ ...f, originalFolderId: id, isTrash: true })));
+            deletedFolderFiles.push(...next[id].map(f => ({ ...f, originalFolderId: id, isTrash: true, sourceCategory: 'classeur', source: 'Classeur' })));
             delete next[id];
           }
         });
@@ -1282,11 +1283,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           CloudDataStore.removeFolder(id);
         });
         CloudDataStore.moveToTrash([...folderTrashItems, ...deletedFolderFiles] as any);
+        invalidateCloudQueries.trash().catch(() => {});
+        invalidateCloudQueries.overview().catch(() => {});
         return next;
       });
       return prev.filter(f => !toDeleteIds.includes(f.id));
     });
-    showToast(targetFolder ? `Dossier "${targetFolder.name}" déplacé dans la corbeille` : 'Dossier déplacé dans la corbeille');
+    showToast(targetFolder ? `Dossier "${targetFolder.name}" déplacé dans la corbeille 🗑️` : 'Dossier déplacé dans la corbeille 🗑️');
   };
 
   // Lecteur Vidéo
@@ -3282,6 +3285,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         const fileWithSource: FileItem = {
           ...file,
           originalFolderId: opened3DFolder?.id || file.originalFolderId,
+          sourceCategory: (opened3DFolder || file.originalFolderId || (file as any).folderId) ? 'classeur' : (file.category || 'documents'),
+          source: (opened3DFolder || file.originalFolderId || (file as any).folderId) ? 'Classeur' : (file.category || 'Documents'),
           isTrash: true
         };
         setTrashFiles(prev => [fileWithSource, ...prev.filter(f => f.id !== file.id)]);
@@ -3296,7 +3301,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         CloudDataStore.moveToTrash(fileWithSource as any);
         const delCategory = (opened3DFolder || file.originalFolderId || (file as any).folderId) ? 'classeur' : (file.category || 'documents');
         LocalSyncReplication.recordLocalDeletion(file.id, delCategory);
-        deleteFileBlob(file.id).catch(() => {});
         removeDownloadedFile(file.id);
         setFolderFilesMap(prev => {
           const next = { ...prev };
@@ -3324,7 +3328,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           CloudStorageAPI.deleteDocument(file.id, file.name).catch(console.error);
         }
 
-        showToast(`"${file.name}" déplacé dans la corbeille !`);
+        invalidateCloudQueries.trash().catch(() => {});
+        invalidateCloudQueries.overview().catch(() => {});
+
+        showToast(`"${file.name}" déplacé dans la corbeille 🗑️`);
         break;
       }
 

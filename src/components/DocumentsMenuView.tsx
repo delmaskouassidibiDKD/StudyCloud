@@ -644,24 +644,33 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     setActiveMenuDocId(null);
   };
 
-  // Suppression
-  const handleDeleteDocument = async (doc: FileItem) => {
-    if (!window.confirm(`Supprimer définitivement "${doc.name}" ?`)) return;
+  // Déplacer vers la corbeille
+  const handleDeleteDocument = async (doc: FileItem, skipConfirm: boolean = false) => {
+    if (!skipConfirm && !window.confirm(`Déplacer "${doc.name}" dans la corbeille ?`)) return;
 
     markItemDeleted(doc.id);
+    const fileWithSource: FileItem = {
+      ...doc,
+      isTrash: true,
+      category: 'documents',
+      sourceCategory: 'documents',
+      source: 'Documents'
+    };
+
     setDocumentsList(prev => prev.filter(d => d.id !== doc.id));
     if (selectedDoc?.id === doc.id) {
       setSelectedDoc(null);
       setIsViewerMaximized(false);
     }
     setSelectedItemIds(prev => prev.filter(id => id !== doc.id));
-    CloudDataStore.removeFile(doc.id, undefined, 'documents');
+
+    CloudDataStore.moveToTrash(fileWithSource);
     LocalSyncReplication.recordLocalDeletion(doc.id, 'documents');
-    deleteFileBlob(doc.id).catch(() => {});
     await CloudStorageAPI.deleteDocument(doc.id, doc.name).catch(() => {});
     invalidateCloudQueries.documents().catch(() => {});
+    invalidateCloudQueries.trash().catch(() => {});
     invalidateCloudQueries.overview().catch(() => {});
-    showToast(`"${doc.name}" supprimé`);
+    showToast(`"${doc.name}" déplacé dans la corbeille 🗑️`);
     setActiveMenuDocId(null);
   };
 
@@ -2265,16 +2274,35 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
           <button
             type="button"
             onClick={() => {
-              if (!window.confirm(`Supprimer les ${selectedItemIds.length} document(s) sélectionné(s) ?`)) return;
+              if (!window.confirm(`Déplacer les ${selectedItemIds.length} document(s) sélectionné(s) dans la corbeille ?`)) return;
               const toDelete = filteredDocuments.filter(d => selectedItemIds.includes(d.id));
+              const trashedItems: FileItem[] = toDelete.map(doc => ({
+                ...doc,
+                isTrash: true,
+                category: 'documents',
+                sourceCategory: 'documents',
+                source: 'Documents'
+              }));
               toDelete.forEach(d => {
-                handleMenuAction('delete', d);
+                markItemDeleted(d.id);
+                LocalSyncReplication.recordLocalDeletion(d.id, 'documents');
+                CloudStorageAPI.deleteDocument(d.id, d.name).catch(() => {});
               });
+              setDocumentsList(prev => prev.filter(d => !selectedItemIds.includes(d.id)));
+              if (selectedDoc && selectedItemIds.includes(selectedDoc.id)) {
+                setSelectedDoc(null);
+                setIsViewerMaximized(false);
+              }
               setSelectedItemIds([]);
               setIsSelectionMode(false);
+              CloudDataStore.moveToTrash(trashedItems);
+              invalidateCloudQueries.documents().catch(() => {});
+              invalidateCloudQueries.trash().catch(() => {});
+              invalidateCloudQueries.overview().catch(() => {});
+              showToast(`${toDelete.length} document(s) déplacé(s) dans la corbeille 🗑️`);
             }}
             className="flex items-center gap-1.5 hover:text-rose-400 font-semibold cursor-pointer transition-colors"
-            title="Supprimer la sélection"
+            title="Déplacer la sélection dans la corbeille"
           >
             <Trash2 className="w-4 h-4 text-rose-400" />
             <span className="hidden sm:inline">Supprimer</span>

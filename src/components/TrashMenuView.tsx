@@ -27,7 +27,14 @@ import {
   Copy
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
-import { CloudDataStore, unmarkItemDeleted, isItemDeleted, markItemDeleted } from '../services/cloudDataStore';
+import {
+  CloudDataStore,
+  unmarkItemDeleted,
+  markItemDeleted,
+  isTrashItemPermanentlyDeleted,
+  markTrashItemPermanentlyDeleted,
+  unmarkTrashItemPermanentlyDeleted
+} from '../services/cloudDataStore';
 import { LocalSyncReplication } from '../services/localSyncReplication';
 import { useTrashFiles } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries, queryClient, QUERY_KEYS } from '../services/queryClient';
@@ -162,7 +169,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
   useEffect(() => {
     const initial = CloudDataStore.getState();
     if (initial.trash && initial.trash.length > 0) {
-      const filtered = initial.trash.filter(f => !deletedTrashIdsRef.current.has(f.id) && !isItemDeleted(f.id));
+      const filtered = initial.trash.filter(f => !deletedTrashIdsRef.current.has(f.id) && !isTrashItemPermanentlyDeleted(f.id));
       if (filtered.length > 0) {
         setTrashList(filtered);
         setLoading(false);
@@ -173,7 +180,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       // et que les éléments ont réellement changé pour préserver la stabilité référentielle
       if (state.trash) {
         setTrashList(prev => {
-          const filtered = state.trash.filter(f => !deletedTrashIdsRef.current.has(f.id) && !isItemDeleted(f.id));
+          const filtered = state.trash.filter(f => !deletedTrashIdsRef.current.has(f.id) && !isTrashItemPermanentlyDeleted(f.id));
           if (
             prev.length === filtered.length &&
             prev.every((item, i) => item.id === filtered[i]?.id && item.name === filtered[i]?.name)
@@ -189,10 +196,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
   }, []);
 
   // ─── FUSION SÉCURISÉE AVEC LE SERVEUR (TanStack Query) ───────────────────────
-  // N'ajoute QUE les éléments NOUVEAUX (absents localement) et JAMAIS ceux supprimés
+  // N'ajoute QUE les éléments NOUVEAUX (absents localement) et JAMAIS ceux supprimés définitivement
   useEffect(() => {
     if (!serverTrash || !Array.isArray(serverTrash)) return;
-    const validServer = serverTrash.filter(f => !deletedTrashIdsRef.current.has(f.id) && !isItemDeleted(f.id));
+    const validServer = serverTrash.filter(f => !deletedTrashIdsRef.current.has(f.id) && !isTrashItemPermanentlyDeleted(f.id));
     setTrashList(prev => {
       const localIds = new Set(prev.map(f => f.id));
       const genuinelyNew = validServer.filter(f => !localIds.has(f.id));
@@ -216,6 +223,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       setIsViewerMaximized(false);
     }
     deletedTrashIdsRef.current.delete(file.id);
+    unmarkTrashItemPermanentlyDeleted(file.id);
     unmarkItemDeleted(file.id);
 
     const isFolder = file.category === 'folder' || file.category === 'classeur_folder' || (file as any).model;
@@ -250,6 +258,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
 
     // 1. Bloquer définitivement toute résurrection immédiate ou future
     deletedTrashIdsRef.current.add(file.id);
+    markTrashItemPermanentlyDeleted(file.id);
     markItemDeleted(file.id);
     LocalSyncReplication.recordLocalDeletion(file.id, 'trash');
 
@@ -287,6 +296,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       const allIds = trashList.map(f => f.id);
       allIds.forEach(id => {
         deletedTrashIdsRef.current.add(id);
+        markTrashItemPermanentlyDeleted(id);
         markItemDeleted(id);
       });
       setTrashList([]);
@@ -325,6 +335,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
     const idsToRestore = toRestore.map(f => f.id);
     idsToRestore.forEach(id => {
       deletedTrashIdsRef.current.delete(id);
+      unmarkTrashItemPermanentlyDeleted(id);
       unmarkItemDeleted(id);
     });
 
@@ -368,6 +379,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
 
     idsToDelete.forEach(id => {
       deletedTrashIdsRef.current.add(id);
+      markTrashItemPermanentlyDeleted(id);
       markItemDeleted(id);
     });
     LocalSyncReplication.recordLocalDeletions(idsToDelete, 'trash');

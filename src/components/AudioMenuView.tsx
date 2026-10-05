@@ -650,15 +650,17 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     setActiveMenuTrackId(null);
   };
 
-  // Suppression (identique au menu Vidéos : moveToTrash + persistance localStorage pour sync multi-appareils)
+  // Déplacer vers la corbeille
   const handleDeleteAudio = async (track: FileItem) => {
-    if (!window.confirm(`Supprimer définitivement "${track.name}" ?`)) return;
+    if (!window.confirm(`Déplacer "${track.name}" dans la corbeille ?`)) return;
 
     markItemDeleted(track.id);
     const fileWithSource: FileItem = {
       ...track,
       isTrash: true,
-      category: 'audio'
+      category: 'audio',
+      sourceCategory: 'audio',
+      source: 'Audio'
     };
 
     pendingAudioItemsRef.current.delete(track.id);
@@ -669,24 +671,13 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     }
     setSelectedItemIds(prev => prev.filter(id => id !== track.id));
 
-    // Persister l'ID supprimé dans localStorage pour bloquer la resync (multi-appareils)
-    try {
-      const raw = localStorage.getItem('studycloud_deleted_file_ids');
-      const existing: string[] = raw ? JSON.parse(raw) : [];
-      if (!existing.includes(track.id)) {
-        existing.push(track.id);
-        localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(existing));
-      }
-    } catch {}
-
-    CloudDataStore.removeFile(track.id, undefined, 'audio');
     LocalSyncReplication.recordLocalDeletion(track.id, 'audio');
     CloudDataStore.moveToTrash(fileWithSource as any);
-    deleteFileBlob(track.id).catch(() => {});
     await CloudStorageAPI.deleteAudio(track.id, track.name).catch(() => {});
     invalidateCloudQueries.audio().catch(() => {});
+    invalidateCloudQueries.trash().catch(() => {});
     invalidateCloudQueries.overview().catch(() => {});
-    showToast(`"${track.name}" supprimé`);
+    showToast(`"${track.name}" déplacé dans la corbeille 🗑️`);
     setActiveMenuTrackId(null);
   };
 
@@ -2381,7 +2372,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           <button
             type="button"
             onClick={async () => {
-              if (!window.confirm(`Supprimer les ${selectedItemIds.length} son(s) sélectionné(s) ?`)) return;
+              if (!window.confirm(`Déplacer les ${selectedItemIds.length} son(s) sélectionné(s) dans la corbeille ?`)) return;
               const toDelete = filteredAudio.filter(t => selectedItemIds.includes(t.id));
               const ids = toDelete.map(t => t.id);
 
@@ -2394,32 +2385,25 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               setSelectedItemIds([]);
               setIsSelectionMode(false);
 
-              // 2. Persister les IDs dans localStorage pour bloquer la resync multi-appareils
-              try {
-                const raw = localStorage.getItem('studycloud_deleted_file_ids');
-                const existing: string[] = raw ? JSON.parse(raw) : [];
-                ids.forEach(id => {
-                  markItemDeleted(id);
-                  CloudDataStore.removeFile(id, undefined, 'audio');
-                  LocalSyncReplication.recordLocalDeletion(id, 'audio');
-                  pendingAudioItemsRef.current.delete(id);
-                  if (!existing.includes(id)) existing.push(id);
-                });
-                localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(existing));
-              } catch {}
+              // 2. Persister les IDs pour éviter toute réapparition dans la liste active
+              ids.forEach(id => {
+                markItemDeleted(id);
+                LocalSyncReplication.recordLocalDeletion(id, 'audio');
+                pendingAudioItemsRef.current.delete(id);
+              });
 
               // 3. Déplacer vers la corbeille dans CloudDataStore
-              const trashedFiles = toDelete.map(t => ({ ...t, isTrash: true, category: 'audio' }));
+              const trashedFiles = toDelete.map(t => ({ ...t, isTrash: true, category: 'audio', sourceCategory: 'audio', source: 'Audio' }));
               CloudDataStore.moveToTrash(trashedFiles as any);
 
-              // 4. Supprimer du stockage local et du Cloud
+              // 4. Synchroniser avec le serveur
               for (const t of toDelete) {
-                deleteFileBlob(t.id).catch(() => {});
                 CloudStorageAPI.deleteAudio(t.id, t.name).catch(() => {});
               }
               invalidateCloudQueries.audio().catch(() => {});
+              invalidateCloudQueries.trash().catch(() => {});
               invalidateCloudQueries.overview().catch(() => {});
-              showToast(`${toDelete.length} son(s) supprimé(s)`);
+              showToast(`${toDelete.length} son(s) déplacé(s) dans la corbeille 🗑️`);
             }}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 font-semibold cursor-pointer"
           >
