@@ -373,7 +373,8 @@ class UploadQueueManager {
           (pct) => {
             task.progress = Math.max(10, Math.min(99, pct));
             this.notify();
-          }
+          },
+          id
         );
         if (!uploadRes || uploadRes.success === false) {
           const err: any = new Error((uploadRes as any)?.message || (uploadRes as any)?.error || "Échec de l'envoi du classeur");
@@ -383,10 +384,11 @@ class UploadQueueManager {
         }
         uploadUrl = uploadRes.url;
         r2Key = uploadRes.key;
-        serverFileId = uploadRes.id;
+        serverFileId = uploadRes.id || id;
 
         const fileToSave = {
           ...task.fileItem,
+          id: serverFileId || id,
           category: 'classeur',
           folderId: resolvedFolderId,
           originalFolderId: resolvedFolderId,

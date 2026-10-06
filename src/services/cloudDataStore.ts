@@ -531,12 +531,25 @@ export const CloudDataStore = {
         const mergeOptimistic = (serverList: FileItem[] | null, currentList: FileItem[]) => {
           if (serverList === null) return (currentList || []).filter(c => !isItemDeleted(c.id));
           const serverIds = new Set(serverList.map(s => s.id));
+          const serverNames = new Set(serverList.map(s => (s.name || '').trim().toLowerCase()));
           const pending = (currentList || []).filter(c => 
             !serverIds.has(c.id) && 
+            !serverNames.has((c.name || '').trim().toLowerCase()) &&
             Boolean(c.isUploading) &&
             !isItemDeleted(c.id)
           );
-          return [...pending, ...serverList.filter(s => !isItemDeleted(s.id))];
+          const combined = [...pending, ...serverList.filter(s => !isItemDeleted(s.id))];
+          const seenIds = new Set<string>();
+          const seenNames = new Set<string>();
+          return combined.filter(item => {
+            if (!item || !item.id) return false;
+            if (seenIds.has(item.id)) return false;
+            seenIds.add(item.id);
+            const norm = (item.name || '').trim().toLowerCase();
+            if (norm && seenNames.has(norm)) return false;
+            if (norm) seenNames.add(norm);
+            return true;
+          });
         };
 
         const sortDesc = (a: any, b: any) => {
@@ -918,7 +931,25 @@ export const CloudDataStore = {
     persistToIndexedDB().catch(() => {});
     notify();
   },
-  setFolderFilesMap(map: Record<string, FileItem[]>)   { currentState = { ...currentState, folderFilesMap: map };      persistToIndexedDB().catch(() => {}); notify(); },
+  setFolderFilesMap(map: Record<string, FileItem[]>) {
+    const cleanedMap: Record<string, FileItem[]> = {};
+    for (const [fId, list] of Object.entries(map || {})) {
+      const seenIds = new Set<string>();
+      const seenNames = new Set<string>();
+      cleanedMap[fId] = (list || []).filter(item => {
+        if (!item || !item.id) return false;
+        if (seenIds.has(item.id)) return false;
+        seenIds.add(item.id);
+        const normName = (item.name || '').trim().toLowerCase();
+        if (normName && seenNames.has(normName)) return false;
+        if (normName) seenNames.add(normName);
+        return true;
+      });
+    }
+    currentState = { ...currentState, folderFilesMap: cleanedMap };
+    persistToIndexedDB().catch(() => {});
+    notify();
+  },
   setTrashFiles(trash: FileItem[])          { currentState = { ...currentState, trash: trash || [] };                      persistToIndexedDB().catch(() => {}); notify(); },
   setSecureFiles(secure: FileItem[])        { currentState = { ...currentState, secure };                   persistToIndexedDB().catch(() => {}); notify(); },
   setRecentFiles(recent: FileItem[])        { currentState = { ...currentState, recentFiles: recent };      persistToIndexedDB().catch(() => {}); notify(); },
@@ -974,7 +1005,7 @@ export const CloudDataStore = {
         recentFiles: recent,
         folderFilesMap: {
           ...currentState.folderFilesMap,
-          [targetFolder]: [itemWithFolder, ...currentList.filter(f => f.id !== file.id)]
+          [targetFolder]: [itemWithFolder, ...currentList.filter(f => f.id !== file.id && f.name !== file.name)]
         }
       };
     } else if (cat === 'images') {

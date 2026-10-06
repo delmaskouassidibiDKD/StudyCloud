@@ -1069,15 +1069,16 @@ export const CloudStorageAPI = {
     uploadSource?: string,
     originalSizeBytes?: number,
     originalSizeFormatted?: string,
-    onProgress?: (percent: number) => void
+    onProgress?: (percent: number) => void,
+    fileId?: string
   ): Promise<{ success: boolean; id?: string; key?: string; url?: string; error?: string }> {
-    const res = await this.uploadFile(file, category as any, fileName, folderId, undefined, uploadSource, originalSizeBytes, originalSizeFormatted, undefined, onProgress);
+    const res = await this.uploadFile(file, category as any, fileName, folderId, undefined, uploadSource, originalSizeBytes, originalSizeFormatted, fileId, onProgress);
     if (!res.success) {
       return { success: false, error: res.error };
     }
     return {
       success: true,
-      id: res.file?.id,
+      id: res.file?.id || fileId,
       key: (res.file as any)?.r2Key || res.file?.id,
       url: res.file?.url,
     };

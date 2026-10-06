@@ -6749,6 +6749,13 @@ a:hover{transform:translateY(-2px)}
                   updated_at = CURRENT_TIMESTAMP
               `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
             } else if (finalCategory === "classeur") {
+              try {
+                await env.DB.prepare(`
+                  DELETE FROM classeur_files 
+                  WHERE user_id = ? AND folder_id = ? AND name = ? AND id != ?
+                `).bind(reqUserId, folderId || "default-folder", fileName, fileId).run();
+              } catch (delDupErr) {
+              }
               await env.DB.prepare(`
                 INSERT INTO classeur_files (id, user_id, folder_id, name, size, size_bytes, category, extension, source, date_formatted, r2_key, file_url, preview_url, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Classeur', ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -7354,7 +7361,34 @@ a:hover{transform:translateY(-2px)}
           }
           query += " ORDER BY display_order ASC, created_at DESC";
           const { results } = await env.DB.prepare(query).bind(...params).all();
-          const formatted = (results || []).map((f) => ({
+          const seenFilesByName = /* @__PURE__ */ new Map();
+          const duplicateIdsToDelete = [];
+          for (const row of results || []) {
+            const fileKey = `${row.folder_id || ""}::${(row.name || "").trim().toLowerCase()}`;
+            if (!seenFilesByName.has(fileKey)) {
+              seenFilesByName.set(fileKey, row);
+            } else {
+              const existing = seenFilesByName.get(fileKey);
+              const rowHasRealUrl = Boolean(row.r2_key || row.file_url && !row.file_url.startsWith("blob:"));
+              const existingHasRealUrl = Boolean(existing.r2_key || existing.file_url && !existing.file_url.startsWith("blob:"));
+              if (rowHasRealUrl && !existingHasRealUrl) {
+                duplicateIdsToDelete.push(existing.id);
+                seenFilesByName.set(fileKey, row);
+              } else {
+                duplicateIdsToDelete.push(row.id);
+              }
+            }
+          }
+          if (duplicateIdsToDelete.length > 0) {
+            try {
+              for (const dupId of duplicateIdsToDelete) {
+                await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(dupId, reqUserId).run();
+              }
+            } catch (cleanupErr) {
+            }
+          }
+          const uniqueList = Array.from(seenFilesByName.values());
+          const formatted = uniqueList.map((f) => ({
             id: f.id,
             userId: f.user_id,
             folderId: f.folder_id,
@@ -7400,6 +7434,13 @@ a:hover{transform:translateY(-2px)}
           const previewUrl = body.previewUrl || "";
           let fileUrl = body.fileUrl || body.url || "";
           const r2Key = body.r2Key || (fileUrl ? extractR2Keys("", fileUrl)[0] || "" : "");
+          try {
+            await env.DB.prepare(`
+              DELETE FROM classeur_files 
+              WHERE user_id = ? AND folder_id = ? AND name = ? AND id != ?
+            `).bind(reqUserId, folderId, name, id).run();
+          } catch (delDupErr) {
+          }
           await env.DB.prepare(`
             INSERT INTO classeur_files (
               id, user_id, folder_id, name, size, size_bytes, category, extension,

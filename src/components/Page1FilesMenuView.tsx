@@ -673,10 +673,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     const newFiles = newItemsWithFiles.map(x => x.item);
 
-    setFolderFilesMap(prev => ({
-      ...prev,
-      [folderId]: [...newFiles, ...(prev[folderId] || [])]
-    }));
+    setFolderFilesMap(prev => {
+      const existing = (prev[folderId] || []).filter(f => !newFiles.some(n => n.id === f.id || n.name.trim().toLowerCase() === f.name.trim().toLowerCase()));
+      return {
+        ...prev,
+        [folderId]: [...newFiles, ...existing]
+      };
+    });
 
     startSavingAnimation(newFiles.map(f => f.id));
 
@@ -789,10 +792,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     const newFiles = newItemsWithFiles.map(x => x.item);
 
-    setFolderFilesMap(prev => ({
-      ...prev,
-      [folderId]: [...newFiles, ...(prev[folderId] || [])]
-    }));
+    setFolderFilesMap(prev => {
+      const existing = (prev[folderId] || []).filter(f => !newFiles.some(n => n.id === f.id || n.name.trim().toLowerCase() === f.name.trim().toLowerCase()));
+      return {
+        ...prev,
+        [folderId]: [...newFiles, ...existing]
+      };
+    });
 
     startSavingAnimation(newFiles.map(f => f.id));
 
@@ -2467,7 +2473,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const item: FileItem = {
         id: fileId,
         name: file.name,
-        category: actualCat,
+        category: targetCategory === 'classeur' ? 'classeur' : actualCat,
+        originalCategory: actualCat,
+        folderId: targetCategory === 'classeur' ? folderId : undefined,
+        originalFolderId: folderId,
+        folderName: targetCategory === 'classeur' ? folderName : undefined,
         source: targetCategory === 'classeur' && folderName ? folderName : (
           targetCategory === 'videos' ? 'Menu Vidéos' :
           targetCategory === 'audio' ? 'Menu Audio' :
@@ -2482,7 +2492,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         previewUrl: isAud ? undefined : localBlobUrl,
         videoUrl: isVid ? localBlobUrl : undefined,
         audioUrl: isAud ? localBlobUrl : undefined,
-        originalFolderId: folderId,
         isUploading: true,
       };
       return {
@@ -2549,10 +2558,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     } else if (targetCategory === 'documents') {
       setDocumentsList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
     } else if (targetCategory === 'classeur' && folderId) {
-      setFolderFilesMap(prev => ({
-        ...prev,
-        [folderId]: [...newItems, ...(prev[folderId] || []).filter(f => !fileIds.includes(f.id))]
-      }));
+      setFolderFilesMap(prev => {
+        const existing = (prev[folderId] || []).filter(f => !fileIds.includes(f.id) && !newItems.some(n => n.name.trim().toLowerCase() === f.name.trim().toLowerCase()));
+        return {
+          ...prev,
+          [folderId]: [...newItems, ...existing]
+        };
+      });
     }
     const ALLOWED_RECENT_CATS = ['images', 'videos', 'audio', 'documents'];
     if (ALLOWED_RECENT_CATS.includes(targetCategory) && !folderId) {
@@ -4477,14 +4489,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     CloudStorageAPI.getClasseurFiles(opened3DFolder.id)
       .then(files => {
         if (files && Array.isArray(files)) {
+          const seenIds = new Set<string>();
+          const seenNames = new Set<string>();
+          const deduped = files.filter(f => {
+            if (!f || !f.id) return false;
+            if (seenIds.has(f.id)) return false;
+            seenIds.add(f.id);
+            const normName = (f.name || '').trim().toLowerCase();
+            if (normName && seenNames.has(normName)) return false;
+            if (normName) seenNames.add(normName);
+            return true;
+          });
           setFolderFilesMap(prev => ({
             ...prev,
-            [opened3DFolder.id]: files
+            [opened3DFolder.id]: deduped
           }));
           const currentMap = CloudDataStore.getState().folderFilesMap;
           CloudDataStore.setFolderFilesMap({
             ...currentMap,
-            [opened3DFolder.id]: files
+            [opened3DFolder.id]: deduped
           });
         }
       })
@@ -5467,7 +5490,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Liste exacte des éléments du menu / dossier actuellement ouvert
   const currentSplitList = useMemo((): FileItem[] => {
     if (opened3DFolder) {
-      return folderFilesMap[opened3DFolder.id] || [];
+      const raw = folderFilesMap[opened3DFolder.id] || [];
+      const seenIds = new Set<string>();
+      const seenNames = new Set<string>();
+      return raw.filter(f => {
+        if (!f || !f.id) return false;
+        if (seenIds.has(f.id)) return false;
+        seenIds.add(f.id);
+        const normName = (f.name || '').trim().toLowerCase();
+        if (normName && seenNames.has(normName)) return false;
+        if (normName) seenNames.add(normName);
+        return true;
+      });
     }
     if (currentSubView?.id === 'studycloud-category-images') return filteredImages;
     if (currentSubView?.id === 'studycloud-category-videos') return filteredVideos;
@@ -5483,7 +5517,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       return [...trashDocs, ...trashImages, ...trashVideos, ...trashAudio];
     }
     if (isCloudView) {
-      if (cloudActiveTab === 'classeur') return opened3DFolder ? (folderFilesMap[opened3DFolder.id] || []) : [];
+      if (cloudActiveTab === 'classeur') {
+        if (!opened3DFolder) return [];
+        const raw = folderFilesMap[opened3DFolder.id] || [];
+        const seenIds = new Set<string>();
+        const seenNames = new Set<string>();
+        return raw.filter(f => {
+          if (!f || !f.id) return false;
+          if (seenIds.has(f.id)) return false;
+          seenIds.add(f.id);
+          const normName = (f.name || '').trim().toLowerCase();
+          if (normName && seenNames.has(normName)) return false;
+          if (normName) seenNames.add(normName);
+          return true;
+        });
+      }
       if (cloudActiveTab === 'documents') return filteredDocuments;
       if (cloudActiveTab === 'images') return filteredImages;
       if (cloudActiveTab === 'videos') return filteredVideos;
@@ -6605,9 +6653,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       f.parentId === folder.id && 
       (!subSearchQuery.trim() || f.name.toLowerCase().includes(subSearchQuery.toLowerCase().trim()))
     );
-    const files = (folderFilesMap[folder.id] || []).filter(f =>
+    const rawFiles = (folderFilesMap[folder.id] || []).filter(f =>
       !subSearchQuery.trim() || f.name.toLowerCase().includes(subSearchQuery.toLowerCase().trim())
     );
+    const seenIds = new Set<string>();
+    const seenNames = new Set<string>();
+    const files = rawFiles.filter(f => {
+      if (!f || !f.id) return false;
+      if (seenIds.has(f.id)) return false;
+      seenIds.add(f.id);
+      const normName = (f.name || '').trim().toLowerCase();
+      if (normName && seenNames.has(normName)) return false;
+      if (normName) seenNames.add(normName);
+      return true;
+    });
 
     const sortedSubFolders = (() => {
       let list = [...subFolders];
