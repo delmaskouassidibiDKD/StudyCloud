@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Edit3, ArrowLeft, Upload, File, Folder, Check, MoreVertical, X, Search, Copy, Plus, Download, Link as LinkIcon, Globe, Eye, EyeOff, Menu, Star, Maximize2, Minimize2, Music, Film, Image as ImageIcon, FileEdit, FileText, BookOpen, Share2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Edit3, ArrowLeft, Upload, File, Folder, Check, MoreVertical, X, Search, Copy, Plus, Download, Link as LinkIcon, Globe, Eye, EyeOff, Menu, Star, Maximize2, Minimize2, Music, Film, Image as ImageIcon, FileEdit, FileText, BookOpen, Share2, ChevronLeft, ChevronRight, SlidersHorizontal, Mic, Pause, Play, Square, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import * as pdfjsLib from 'pdfjs-dist';
+import mammoth from 'mammoth';
+import { smartSentenceSplit } from './CenterMenu';
 import { StudyCloudAPI } from '../services/api';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob, getFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
 import { persistRawFile } from './PublishFileView';
@@ -483,6 +486,216 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   const [selectedFile, setSelectedFile] = useState<ImportedItem | null>(null);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
 
+  // États du lecteur dédié (Lecteur Intégré, Zoom, Lecture Vocale Automatique)
+  const [readerPdfViewMode, setReaderPdfViewMode] = useState<'native' | 'continuous'>('native');
+  const [readerPdfScale, setReaderPdfScale] = useState<number>(1.25);
+  const [speechState, setSpeechState] = useState<'stopped' | 'loading' | 'playing' | 'paused'>('stopped');
+  const [isAudioMenuOpen, setIsAudioMenuOpen] = useState<boolean>(false);
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState<boolean>(true);
+  const [currentSentenceIdx, setCurrentSentenceIdx] = useState<number>(0);
+  const [activeSpeechPage, setActiveSpeechPage] = useState<number>(1);
+  const [docExtractedText, setDocExtractedText] = useState<string>('');
+  const speechSegmentsRef = useRef<{ text: string; page?: number }[]>([]);
+  const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setSpeechState('stopped');
+    setIsAudioMenuOpen(false);
+    setCurrentSentenceIdx(0);
+    setActiveSpeechPage(1);
+    speechSegmentsRef.current = [];
+    setDocExtractedText('');
+    setReaderPdfViewMode('native');
+    setReaderPdfScale(1.25);
+  }, [selectedFile?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  const speakSentence = (index: number) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      alert("La synthèse vocale n'est pas prise en charge sur ce navigateur.");
+      setSpeechState('stopped');
+      return;
+    }
+    const segments = speechSegmentsRef.current;
+    if (!segments || segments.length === 0 || index >= segments.length) {
+      setSpeechState('stopped');
+      setCurrentSentenceIdx(0);
+      activeUtteranceRef.current = null;
+      return;
+    }
+    const segment = segments[index];
+    const sentence = segment?.text?.trim();
+    if (!sentence || sentence.replace(/[^\w\d\u00C0-\u017F]/g, '').length === 0) {
+      if (index < segments.length - 1) {
+        speakSentence(index + 1);
+      } else {
+        setSpeechState('stopped');
+      }
+      return;
+    }
+
+    setCurrentSentenceIdx(index);
+    if (segment.page) {
+      setActiveSpeechPage(segment.page);
+    }
+
+    const utterance = new SpeechSynthesisUtterance(sentence);
+    utterance.lang = 'fr-FR';
+    utterance.rate = 1.12;
+    utterance.pitch = 1.0;
+
+    const voices = window.speechSynthesis.getVoices();
+    const frVoice = voices.find(v => v.lang.startsWith('fr') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Online')))
+      || voices.find(v => v.lang.startsWith('fr') || v.lang.includes('fr'));
+    if (frVoice) {
+      utterance.voice = frVoice;
+    }
+
+    activeUtteranceRef.current = utterance;
+
+    utterance.onend = () => {
+      activeUtteranceRef.current = null;
+      if (index < speechSegmentsRef.current.length - 1) {
+        speakSentence(index + 1);
+      } else {
+        setSpeechState('stopped');
+        setCurrentSentenceIdx(0);
+      }
+    };
+
+    utterance.onerror = (e) => {
+      activeUtteranceRef.current = null;
+      if (e.error !== 'canceled' && e.error !== 'interrupted') {
+        if (index < speechSegmentsRef.current.length - 1) {
+          speakSentence(index + 1);
+        } else {
+          setSpeechState('stopped');
+        }
+      }
+    };
+
+    setSpeechState('playing');
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const handleStartSpeech = async () => {
+    setIsAudioMenuOpen(true);
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    if (speechSegmentsRef.current.length === 0) {
+      setSpeechState('loading');
+      let textToRead = docExtractedText || '';
+
+      const isPdf = selectedFile?.name?.toLowerCase().endsWith('.pdf') || selectedFile?.type?.includes('pdf');
+      if (isPdf && (!textToRead || textToRead.length < 10)) {
+        try {
+          let b = null;
+          if (selectedFile?.id) {
+            try { b = await getFileBlob(selectedFile.id); } catch {}
+          }
+          if (!b && selectedFile?.url) {
+            try {
+              const resp = await fetch(selectedFile.url);
+              if (resp.ok) b = await resp.blob();
+            } catch {}
+          }
+          if (b) {
+            const ab = await b.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(ab) }).promise;
+            const allSegs: { text: string; page?: number }[] = [];
+            for (let p = 1; p <= pdf.numPages; p++) {
+              const page = await pdf.getPage(p);
+              const tc = await page.getTextContent();
+              const pageText = (tc.items as any[]).map((it: any) => it.str).join(' ').trim();
+              if (pageText) {
+                const sentences = smartSentenceSplit(pageText);
+                sentences.forEach(s => allSegs.push({ text: s, page: p }));
+              }
+            }
+            if (allSegs.length > 0) {
+              speechSegmentsRef.current = allSegs;
+              speakSentence(0);
+              return;
+            }
+          }
+        } catch (err) {
+          console.warn('Erreur extraction audio PDF:', err);
+        }
+      }
+
+      if (!textToRead && selectedFile) {
+        if ((selectedFile as any).content) {
+          textToRead = (selectedFile as any).content;
+        } else if (selectedFile.id) {
+          try {
+            const b = await getFileBlob(selectedFile.id);
+            if (b) {
+              if (selectedFile.name.endsWith('.docx') || selectedFile.name.endsWith('.doc')) {
+                const ab = await b.arrayBuffer();
+                const raw = await mammoth.extractRawText({ arrayBuffer: ab });
+                textToRead = raw.value;
+              } else {
+                textToRead = await b.text();
+              }
+            }
+          } catch {}
+        }
+      }
+
+      if (textToRead && textToRead.trim()) {
+        const sents = smartSentenceSplit(textToRead);
+        speechSegmentsRef.current = sents.map(s => ({ text: s }));
+      } else {
+        const title = selectedFile?.name?.replace(/\.[^/.]+$/, '').replace(/_/g, ' ') || 'Document';
+        speechSegmentsRef.current = [{ text: `Lecture du document ${title}.` }];
+      }
+    }
+
+    speakSentence(currentSentenceIdx || 0);
+  };
+
+  const handleTogglePause = () => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    if (speechState === 'playing') {
+      window.speechSynthesis.pause();
+      setSpeechState('paused');
+    } else if (speechState === 'paused') {
+      window.speechSynthesis.resume();
+      setSpeechState('playing');
+    } else {
+      handleStartSpeech();
+    }
+  };
+
+  const handleStopSpeech = () => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setSpeechState('stopped');
+    setCurrentSentenceIdx(0);
+    activeUtteranceRef.current = null;
+  };
+
+  const handleRestartSpeech = () => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setCurrentSentenceIdx(0);
+    speakSentence(0);
+  };
+
   // Détection du type de fichier pour le lecteur dédié (audio, video, image, note, document)
   const getFileType = (f: ImportedItem): 'audio' | 'video' | 'image' | 'note' | 'document' => {
     const ext = (f.extension || (f.name?.includes('.') ? f.name.split('.').pop() : '') || '').toLowerCase();
@@ -749,6 +962,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     const currentIndex = filteredFiles.findIndex(item => item.id === file.id);
     const canGoPrev = currentIndex > 0;
     const canGoNext = currentIndex >= 0 && currentIndex < filteredFiles.length - 1;
+    const isPdf = file.name?.toLowerCase().endsWith('.pdf') || file.type?.includes('pdf') || file.extension?.toLowerCase() === 'pdf';
+    const showSpeechControls = (!isPdf || readerPdfViewMode === 'continuous') && (fileType === 'document' || fileType === 'note');
 
     return (
       <div className="w-full h-full flex flex-col bg-[#04060A] text-white">
@@ -807,6 +1022,148 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                 {formattedSize} • {file.matiere || selectedTab} • <span className="text-amber-400 font-semibold uppercase">{file.extension || fileType}</span>
               </p>
             </div>
+          </div>
+
+          {/* MILIEU : BOUTON LECTEUR INTÉGRÉ & LECTEUR AUTOMATIQUE (VOCAL) (Trace rouge de l'utilisateur) */}
+          <div className="flex items-center gap-1.5 shrink-0 mx-auto">
+            {/* Bouton Lecteur Intégré / Visionneuse PDF pour les PDF */}
+            {isPdf && (
+              <button
+                type="button"
+                onClick={() => {
+                  const next = readerPdfViewMode === 'native' ? 'continuous' : 'native';
+                  setReaderPdfViewMode(next);
+                  if (next === 'native' && speechState === 'playing') {
+                    handleStopSpeech();
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer shadow-sm ${
+                  readerPdfViewMode === 'native'
+                    ? 'bg-blue-600/20 text-blue-400 border-blue-500/40 hover:bg-blue-600/30'
+                    : 'bg-stone-800 text-stone-200 border-stone-700 hover:bg-stone-700'
+                }`}
+                title={readerPdfViewMode === 'native' ? "Passer au lecteur intégré avec défilement vertical continu et lecture vocale" : "Revenir à la visionneuse PDF native du navigateur"}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span className="font-bold">
+                  {readerPdfViewMode === 'native' ? 'Lecteur Intégré' : 'Visionneuse PDF'}
+                </span>
+              </button>
+            )}
+
+            {/* Lecteur automatique (Synthèse vocale de l'espace d'étude) - apparaît en Lecteur Intégré ou sur document Word/texte */}
+            {showSpeechControls && (
+              <div className="flex items-center gap-1 shrink-0 animate-fadeIn">
+                {isAudioMenuOpen && (
+                  <div className="flex items-center gap-1 bg-[#111625] px-2 py-0.5 rounded-lg border border-stone-700 text-white shadow-sm shrink-0">
+                    {speechState === 'playing' && (
+                      <div className="flex items-center gap-0.5 mr-1 text-orange-500">
+                        <span className="w-0.5 h-2.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-0.5 h-3.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-0.5 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleTogglePause}
+                      className="p-1 hover:bg-white/10 rounded text-xs transition-colors cursor-pointer"
+                      title={speechState === 'playing' ? "Pause" : "Reprendre"}
+                    >
+                      {speechState === 'playing' ? (
+                        <Pause className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                      ) : (
+                        <Play className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleStopSpeech}
+                      className="p-1 hover:bg-red-950/40 rounded text-red-500 transition-colors cursor-pointer"
+                      title="Arrêter"
+                    >
+                      <Square className="w-3 h-3 fill-red-500" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleRestartSpeech}
+                      className="p-1 hover:bg-blue-950/40 rounded text-blue-400 transition-colors cursor-pointer"
+                      title="Recommencer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* Auto-scroll */}
+                    <button
+                      type="button"
+                      onClick={() => setAutoScrollEnabled(prev => !prev)}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 border ${
+                        autoScrollEnabled
+                          ? 'bg-emerald-950/60 text-emerald-300 border-emerald-600'
+                          : 'bg-stone-800 text-stone-400 border-stone-700'
+                      }`}
+                      title={autoScrollEnabled ? "Défilement auto actif (cliquer pour désactiver)" : "Défilement auto désactivé"}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${autoScrollEnabled ? 'bg-emerald-400 animate-ping' : 'bg-stone-500'}`} />
+                      <span className="hidden sm:inline">{autoScrollEnabled ? "Auto-scroll" : "Libre"}</span>
+                    </button>
+
+                    {/* Zoom si PDF continu */}
+                    {isPdf && readerPdfViewMode === 'continuous' && (
+                      <div className="flex items-center gap-0.5 border-l border-stone-700 pl-1 ml-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setReaderPdfScale(s => Math.max(0.6, s - 0.15))}
+                          className="p-0.5 hover:text-orange-400 text-stone-300 cursor-pointer"
+                          title="Zoom arrière"
+                        >
+                          <ZoomOut className="w-3 h-3" />
+                        </button>
+                        <span className="font-mono text-[10px] px-1 font-bold text-stone-300">{Math.round(readerPdfScale * 100)}%</span>
+                        <button
+                          type="button"
+                          onClick={() => setReaderPdfScale(s => Math.min(2.5, s + 0.15))}
+                          className="p-0.5 hover:text-orange-400 text-stone-300 cursor-pointer"
+                          title="Zoom avant"
+                        >
+                          <ZoomIn className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setIsAudioMenuOpen(false)}
+                      className="p-0.5 hover:bg-white/10 rounded-full text-stone-400 hover:text-white ml-0.5 cursor-pointer"
+                      title="Fermer la barre de contrôle"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Bouton Vocal */}
+                <button
+                  type="button"
+                  onClick={handleStartSpeech}
+                  className={`px-2.5 py-1 rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm shrink-0 ${
+                    speechState === 'playing'
+                      ? 'bg-orange-500 text-white animate-pulse ring-2 ring-orange-300 border-orange-400'
+                      : speechState === 'paused'
+                      ? 'bg-amber-500 text-stone-950 font-bold border-amber-400'
+                      : isAudioMenuOpen
+                      ? 'bg-orange-950/60 text-orange-400 border-orange-700'
+                      : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border-stone-700'
+                  }`}
+                  title="Lire automatiquement le document (Synthèse vocale)"
+                >
+                  <Mic className="w-3.5 h-3.5 text-orange-500" />
+                  <span className="text-xs font-bold">Vocal</span>
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
@@ -935,6 +1292,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                 fileName={file.name.endsWith('.txt') ? file.name : `${file.name}.txt`}
                 fileSize={formattedSize}
                 textContent={(file as any).content || (file as any).notepadContent || ''}
+                hideHeader={true}
+                onExtractedText={setDocExtractedText}
+                activeSpeechPage={activeSpeechPage}
+                autoScrollEnabled={autoScrollEnabled}
                 className="w-full h-full border-0 rounded-none shadow-none"
               />
             </div>
@@ -947,6 +1308,14 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                 url={file.url}
                 fileName={file.name}
                 fileSize={formattedSize}
+                hideHeader={true}
+                pdfViewMode={readerPdfViewMode}
+                onPdfViewModeChange={setReaderPdfViewMode}
+                pdfScale={readerPdfScale}
+                onPdfScaleChange={setReaderPdfScale}
+                onExtractedText={setDocExtractedText}
+                activeSpeechPage={activeSpeechPage}
+                autoScrollEnabled={autoScrollEnabled}
                 className="w-full h-full border-0 rounded-none shadow-none"
               />
             </div>
@@ -1785,7 +2154,9 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={`absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#C5B0A4] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 ${
-        isViewerMaximized && selectedFile ? 'px-2 sm:px-4 pb-2 pt-0 overflow-hidden flex flex-col' : 'px-4 pb-8 pt-0 overflow-y-auto'
+        selectedFile
+          ? 'px-2 sm:px-4 pb-2 pt-0 overflow-hidden flex flex-col h-[calc(100vh-62px)] md:h-[calc(100vh-66px)]'
+          : 'px-4 pb-8 pt-0 overflow-y-auto'
       } transition-colors duration-300 ${
         isDraggingOver ? 'ring-4 ring-emerald-500 ring-inset bg-emerald-50/20' : ''
       }`}
@@ -2189,14 +2560,14 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
 
       <div className={`w-full ${
-        isViewerMaximized && selectedFile ? 'pt-1 pb-1' : 'pt-16 sm:pt-20'
-      } flex-1 flex flex-col md:flex-row overflow-hidden relative min-h-[calc(100vh-80px)]`}>
+        isViewerMaximized && selectedFile ? 'pt-1 pb-1' : 'pt-14 sm:pt-16'
+      } flex-1 flex flex-col md:flex-row overflow-hidden relative min-h-0 h-full`}>
         {/* PANNEAU DE GAUCHE : LISTE DES FICHIERS */}
-        <div className={`overflow-y-auto px-2 sm:px-4 pt-1 pb-64 transition-all duration-200 ${
+        <div className={`overflow-y-auto px-2 sm:px-4 pt-1 pb-24 transition-all duration-200 ${
           isViewerMaximized && selectedFile
             ? 'hidden'
             : selectedFile
-            ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-400/40 dark:border-slate-800'
+            ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 h-full min-h-0 border-b md:border-b-0 md:border-r border-stone-400/40 dark:border-slate-800'
             : 'w-full max-w-7xl mx-auto'
         }`}>
           {filteredFiles.length === 0 ? (
@@ -2867,10 +3238,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         {/* PANNEAU DE DROITE : LECTEUR DÉDIÉ SELON LE TYPE DE FICHIER (COMME DANS FAVORIS ET DOCUMENTS) */}
         {selectedFile && (
           <aside
-            className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 ${
+            className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 h-full min-h-0 ${
               isViewerMaximized
-                ? 'w-full flex-1 h-full min-h-[calc(100vh-80px)] rounded-xl border border-white/10'
-                : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] lg:min-h-[calc(100vh-160px)] border-t md:border-t-0 md:border-l border-stone-400/40 dark:border-slate-800 rounded-xl'
+                ? 'w-full flex-1 rounded-xl border border-white/10'
+                : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-stone-400/40 dark:border-slate-800 rounded-xl'
             }`}
           >
             {renderDedicatedReader(selectedFile)}

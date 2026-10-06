@@ -100,6 +100,14 @@ interface ModernDocumentViewerProps {
   fileSize?: string | number;
   textContent?: string;
   className?: string;
+  hideHeader?: boolean;
+  pdfViewMode?: 'native' | 'continuous';
+  onPdfViewModeChange?: (mode: 'native' | 'continuous') => void;
+  pdfScale?: number;
+  onPdfScaleChange?: (scale: number) => void;
+  onExtractedText?: (text: string) => void;
+  activeSpeechPage?: number;
+  autoScrollEnabled?: boolean;
 }
 
 export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
@@ -108,7 +116,15 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
   fileName = 'Document',
   fileSize,
   textContent,
-  className = ''
+  className = '',
+  hideHeader = false,
+  pdfViewMode: propsPdfViewMode,
+  onPdfViewModeChange,
+  pdfScale: propsPdfScale,
+  onPdfScaleChange,
+  onExtractedText,
+  activeSpeechPage,
+  autoScrollEnabled = true,
 }) => {
   const normName = fileName.toLowerCase();
   const ext = normName.includes('.') ? (normName.split('.').pop() || '') : '';
@@ -135,12 +151,34 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
   const [reloadTrigger, setReloadTrigger] = useState<number>(0);
 
   // Mode d'affichage PDF : 'native' (Lecteur iframe navigateur comme dans la photo) ou 'continuous' (Défilement vertical continu PDF.js)
-  const [pdfViewMode, setPdfViewMode] = useState<'native' | 'continuous'>('native');
+  const [internalPdfViewMode, setInternalPdfViewMode] = useState<'native' | 'continuous'>('native');
+  const activePdfViewMode = propsPdfViewMode !== undefined ? propsPdfViewMode : internalPdfViewMode;
+  const setPdfViewMode = (updater: any) => {
+    const nextVal = typeof updater === 'function' ? updater(activePdfViewMode) : updater;
+    setInternalPdfViewMode(nextVal);
+    onPdfViewModeChange?.(nextVal);
+  };
 
   // États PDF
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [pdfTotalPages, setPdfTotalPages] = useState<number>(1);
-  const [pdfScale, setPdfScale] = useState<number>(1.25);
+  const [internalPdfScale, setInternalPdfScale] = useState<number>(1.25);
+  const activePdfScale = propsPdfScale !== undefined ? propsPdfScale : internalPdfScale;
+  const setPdfScale = (updater: any) => {
+    const nextVal = typeof updater === 'function' ? updater(activePdfScale) : updater;
+    setInternalPdfScale(nextVal);
+    onPdfScaleChange?.(nextVal);
+  };
+
+  // Défilement automatique vers la page lue par la synthèse vocale
+  useEffect(() => {
+    if (autoScrollEnabled && activeSpeechPage && activePdfViewMode === 'continuous') {
+      const pageEl = document.getElementById(`modern-doc-page-${activeSpeechPage}`);
+      if (pageEl) {
+        pageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [activeSpeechPage, autoScrollEnabled, activePdfViewMode]);
 
   // Nettoyage rigoureux de la mémoire vive à la fermeture du viewer
   useEffect(() => {
@@ -308,7 +346,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
   // Charger PDF.js à la demande uniquement si l'utilisateur bascule en mode continu
   useEffect(() => {
     let isCancelled = false;
-    if (isPdf && pdfViewMode === 'continuous' && !pdfDoc) {
+    if (isPdf && activePdfViewMode === 'continuous' && !pdfDoc) {
       setIsLoading(true);
       const loadPdfContinuous = async () => {
         let b = blob;
@@ -334,6 +372,22 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
             setPdfDoc(doc);
             setPdfTotalPages(doc.numPages);
             setIsLoading(false);
+
+            // Extraire le texte de toutes les pages pour la synthèse vocale
+            if (onExtractedText) {
+              const pagesText: string[] = [];
+              for (let p = 1; p <= doc.numPages; p++) {
+                try {
+                  const page = await doc.getPage(p);
+                  const tc = await page.getTextContent();
+                  const pt = (tc.items as any[]).map((it: any) => it.str).join(' ').trim();
+                  if (pt) pagesText.push(pt);
+                } catch {}
+              }
+              if (pagesText.length > 0) {
+                onExtractedText(pagesText.join('\n'));
+              }
+            }
           }
         } catch {
           if (!isCancelled) setIsLoading(false);
@@ -344,7 +398,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [isPdf, pdfViewMode, pdfDoc, blob, fileId, resolvedUrl, url]);
+  }, [isPdf, activePdfViewMode, pdfDoc, blob, fileId, resolvedUrl, url, onExtractedText]);
 
   // Gestion du changement de feuille Excel
   const selectExcelSheet = (name: string) => {
@@ -362,104 +416,106 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
 
   return (
     <div className={`w-full h-full flex flex-col bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 overflow-hidden ${className}`}>
-      {/* 1. EN-TÊTE DU DOCUMENT AVEC ACTIONS & CONTRÔLES */}
-      <div className="flex items-center justify-between px-3 sm:px-4 py-2 bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shrink-0 z-10 shadow-xs">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-500 shrink-0">
-            {isPdf ? (
-              <FileText className="w-4 h-4 text-red-500" />
-            ) : isWord ? (
-              <FileText className="w-4 h-4 text-blue-500" />
-            ) : isExcel ? (
-              <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
-            ) : (
-              <FileCode className="w-4 h-4 text-purple-500" />
+      {/* 1. EN-TÊTE DU DOCUMENT AVEC ACTIONS & CONTRÔLES (Masqué quand hideHeader={true}) */}
+      {!hideHeader && (
+        <div className="flex items-center justify-between px-3 sm:px-4 py-2 bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shrink-0 z-10 shadow-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-500 shrink-0">
+              {isPdf ? (
+                <FileText className="w-4 h-4 text-red-500" />
+              ) : isWord ? (
+                <FileText className="w-4 h-4 text-blue-500" />
+              ) : isExcel ? (
+                <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+              ) : (
+                <FileCode className="w-4 h-4 text-purple-500" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <h4 className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-white truncate max-w-[180px] sm:max-w-xs md:max-w-md" title={fileName}>
+                {fileName}
+              </h4>
+              <div className="flex items-center gap-2 text-[10px] text-zinc-500 dark:text-zinc-400">
+                <span className="uppercase font-semibold">{ext || 'DOC'}</span>
+                {fileSize && <span>• {fileSize}</span>}
+                {isPdf && pdfTotalPages > 1 && <span>• {pdfTotalPages} pages (Défilement vertical)</span>}
+              </div>
+            </div>
+          </div>
+
+          {/* Barre d'outils droite */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Bascule mode Lecteur Navigateur / Défilement continu pour PDF */}
+            {isPdf && nativePdfUrl && (
+              <button
+                type="button"
+                onClick={() => setPdfViewMode((m: any) => m === 'native' ? 'continuous' : 'native')}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                  activePdfViewMode === 'native'
+                    ? 'bg-blue-600/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
+                    : 'bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-200'
+                }`}
+                title={activePdfViewMode === 'native' ? "Passer au défilement vertical continu PDF.js" : "Passer au lecteur navigateur intégré"}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">
+                  {activePdfViewMode === 'native' ? 'Lecteur Intégré' : 'Défilement Continu'}
+                </span>
+              </button>
+            )}
+
+            {/* Zoom pour mode défilement continu PDF */}
+            {isPdf && activePdfViewMode === 'continuous' && (
+              <div className="flex items-center gap-1 bg-white dark:bg-zinc-800 px-2 py-1 rounded-lg border border-zinc-300 dark:border-zinc-700 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setPdfScale((prev: number) => Math.max(0.6, prev - 0.15))}
+                  className="p-0.5 hover:text-orange-500 cursor-pointer text-zinc-600 dark:text-zinc-300"
+                  title="Zoom arrière"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <span className="font-mono text-[11px] px-1 font-bold">{Math.round(activePdfScale * 100)}%</span>
+                <button
+                  type="button"
+                  onClick={() => setPdfScale((prev: number) => Math.min(2.5, prev + 0.15))}
+                  className="p-0.5 hover:text-orange-500 cursor-pointer text-zinc-600 dark:text-zinc-300"
+                  title="Zoom avant"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Copier pour texte / code */}
+            {isTextOrCode && rawText && (
+              <button
+                type="button"
+                onClick={copyText}
+                className="px-2.5 py-1 bg-white dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer border border-zinc-300 dark:border-zinc-700 transition-colors"
+                title="Copier tout le texte"
+              >
+                {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">{isCopied ? 'Copié' : 'Copier'}</span>
+              </button>
+            )}
+
+            {/* Télécharger le fichier original */}
+            {(resolvedUrl || url) && (
+              <a
+                href={resolvedUrl || url}
+                download={fileName}
+                className="p-1.5 bg-white dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg text-zinc-700 dark:text-zinc-200 cursor-pointer border border-zinc-300 dark:border-zinc-700 transition-colors"
+                title="Télécharger le fichier"
+              >
+                <Download className="w-4 h-4" />
+              </a>
             )}
           </div>
-          <div className="min-w-0">
-            <h4 className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-white truncate max-w-[180px] sm:max-w-xs md:max-w-md" title={fileName}>
-              {fileName}
-            </h4>
-            <div className="flex items-center gap-2 text-[10px] text-zinc-500 dark:text-zinc-400">
-              <span className="uppercase font-semibold">{ext || 'DOC'}</span>
-              {fileSize && <span>• {fileSize}</span>}
-              {isPdf && pdfTotalPages > 1 && <span>• {pdfTotalPages} pages (Défilement vertical)</span>}
-            </div>
-          </div>
         </div>
+      )}
 
-        {/* Barre d'outils droite */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {/* Bascule mode Lecteur Navigateur / Défilement continu pour PDF */}
-          {isPdf && nativePdfUrl && (
-            <button
-              type="button"
-              onClick={() => setPdfViewMode(m => m === 'native' ? 'continuous' : 'native')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
-                pdfViewMode === 'native'
-                  ? 'bg-blue-600/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
-                  : 'bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-200'
-              }`}
-              title={pdfViewMode === 'native' ? "Passer au défilement vertical continu PDF.js" : "Passer au lecteur navigateur intégré"}
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">
-                {pdfViewMode === 'native' ? 'Lecteur Intégré' : 'Défilement Continu'}
-              </span>
-            </button>
-          )}
-
-          {/* Zoom pour mode défilement continu PDF */}
-          {isPdf && pdfViewMode === 'continuous' && (
-            <div className="flex items-center gap-1 bg-white dark:bg-zinc-800 px-2 py-1 rounded-lg border border-zinc-300 dark:border-zinc-700 text-xs">
-              <button
-                type="button"
-                onClick={() => setPdfScale(prev => Math.max(0.6, prev - 0.15))}
-                className="p-0.5 hover:text-orange-500 cursor-pointer text-zinc-600 dark:text-zinc-300"
-                title="Zoom arrière"
-              >
-                <ZoomOut className="w-3.5 h-3.5" />
-              </button>
-              <span className="font-mono text-[11px] px-1 font-bold">{Math.round(pdfScale * 100)}%</span>
-              <button
-                type="button"
-                onClick={() => setPdfScale(prev => Math.min(2.5, prev + 0.15))}
-                className="p-0.5 hover:text-orange-500 cursor-pointer text-zinc-600 dark:text-zinc-300"
-                title="Zoom avant"
-              >
-                <ZoomIn className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-
-          {/* Copier pour texte / code */}
-          {isTextOrCode && rawText && (
-            <button
-              type="button"
-              onClick={copyText}
-              className="px-2.5 py-1 bg-white dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer border border-zinc-300 dark:border-zinc-700 transition-colors"
-              title="Copier tout le texte"
-            >
-              {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-              <span className="hidden sm:inline">{isCopied ? 'Copié' : 'Copier'}</span>
-            </button>
-          )}
-
-          {/* Télécharger le fichier original */}
-          {(resolvedUrl || url) && (
-            <a
-              href={resolvedUrl || url}
-              download={fileName}
-              className="p-1.5 bg-white dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg text-zinc-700 dark:text-zinc-200 cursor-pointer border border-zinc-300 dark:border-zinc-700 transition-colors"
-              title="Télécharger le fichier"
-            >
-              <Download className="w-4 h-4" />
-            </a>
-          )}
-        </div>
-      </div>
-
-      {/* 2. ZONE DE CONTENU PRINCIPALE AVEC DÉFILEMENT VERTICAL FLUIDE */}
+      {/* 2. ZONE DE CONTENU PRINCIPALE AVEC DÉFILEMENT VERTICAL FLUIDE & CONFINÉ */}
       <div className="flex-1 w-full h-full overflow-hidden relative flex flex-col">
         {/* Chargement */}
         {isLoading && !nativePdfUrl && (
@@ -489,7 +545,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
         )}
 
         {/* A. RENDU PDF (1. Mode Lecteur Navigateur Natif avec défilement vertical et barre d'outils complète) */}
-        {isPdf && !errorMessage && pdfViewMode === 'native' && nativePdfUrl && (
+        {isPdf && !errorMessage && activePdfViewMode === 'native' && nativePdfUrl && (
           <div className="w-full h-full flex-1 flex flex-col items-center overflow-hidden bg-stone-100 dark:bg-stone-900">
             <iframe
               key={`pdf-native-${fileId || 'direct'}`}
@@ -501,16 +557,20 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
           </div>
         )}
 
-        {/* A. RENDU PDF (2. Mode Défilement Continu Multi-Pages avec PDF.js) */}
-        {isPdf && !errorMessage && (pdfViewMode === 'continuous' || !nativePdfUrl) && (
-          <div className="w-full h-full flex-1 overflow-y-auto flex flex-col items-center gap-6 p-4 sm:p-6 bg-stone-100 dark:bg-zinc-900 select-text">
+        {/* A. RENDU PDF (2. Mode Défilement Continu Multi-Pages avec PDF.js et confinement strict du défilement) */}
+        {isPdf && !errorMessage && (activePdfViewMode === 'continuous' || !nativePdfUrl) && (
+          <div 
+            className="w-full h-full flex-1 overflow-y-auto flex flex-col items-center gap-6 p-4 sm:p-6 bg-stone-100 dark:bg-zinc-900 select-text overscroll-contain"
+            style={{ overscrollBehavior: 'contain', touchAction: 'pan-y' }}
+          >
             {pdfDoc ? (
               Array.from({ length: pdfTotalPages }, (_, i) => i + 1).map((pageNum) => (
                 <div
                   key={pageNum}
+                  id={`modern-doc-page-${pageNum}`}
                   className="flex flex-col items-center rounded-lg overflow-hidden border border-zinc-300 dark:border-zinc-700 bg-white shadow-xl max-w-full"
                 >
-                  <PdfPageCanvas pdfDoc={pdfDoc} pageNumber={pageNum} scale={pdfScale} />
+                  <PdfPageCanvas pdfDoc={pdfDoc} pageNumber={pageNum} scale={activePdfScale} />
                   <div className="w-full py-1 text-center text-[10px] font-bold text-zinc-500 bg-zinc-50 dark:bg-zinc-800 border-t border-zinc-200 dark:border-zinc-700 select-none">
                     Page {pageNum} sur {pdfTotalPages}
                   </div>
@@ -525,9 +585,12 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
           </div>
         )}
 
-        {/* B. RENDU WORD (.docx via Mammoth avec défilement vertical) */}
+        {/* B. RENDU WORD (.docx via Mammoth avec défilement vertical et confinement) */}
         {isWord && !errorMessage && (
-          <div className="w-full h-full flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center bg-stone-100 dark:bg-zinc-900 select-text">
+          <div 
+            className="w-full h-full flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center bg-stone-100 dark:bg-zinc-900 select-text overscroll-contain"
+            style={{ overscrollBehavior: 'contain', touchAction: 'pan-y' }}
+          >
             <div className="w-full max-w-3xl bg-white text-zinc-900 p-8 sm:p-12 rounded-xl shadow-lg border border-zinc-200 my-auto prose prose-sm max-w-none">
               <div dangerouslySetInnerHTML={{ __html: wordHtml }} />
             </div>
@@ -557,8 +620,11 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
               </div>
             )}
 
-            {/* Tableau de données interactif avec défilement fluide */}
-            <div className="w-full flex-1 overflow-auto rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm">
+            {/* Tableau de données interactif avec défilement fluide et confinement */}
+            <div 
+              className="w-full flex-1 overflow-auto rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm overscroll-contain"
+              style={{ overscrollBehavior: 'contain', touchAction: 'pan-y' }}
+            >
               <table className="w-full border-collapse text-xs text-left">
                 <tbody>
                   {sheetData.slice(0, 150).map((row, rIdx) => (
@@ -587,10 +653,13 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
           </div>
         )}
 
-        {/* D. RENDU CODE & TEXTE BRUT avec défilement vertical complet */}
+        {/* D. RENDU CODE & TEXTE BRUT avec défilement vertical complet et confinement */}
         {isTextOrCode && !errorMessage && (
           <div className="w-full h-full flex-1 flex flex-col font-mono text-xs overflow-hidden bg-[#1e1e1e] text-zinc-100 p-2 sm:p-4">
-            <div className="flex-1 overflow-y-auto overflow-x-auto p-4 leading-relaxed select-text rounded-xl bg-[#181818] border border-zinc-800 shadow-inner">
+            <div 
+              className="flex-1 overflow-y-auto overflow-x-auto p-4 leading-relaxed select-text rounded-xl bg-[#181818] border border-zinc-800 shadow-inner overscroll-contain"
+              style={{ overscrollBehavior: 'contain', touchAction: 'pan-y' }}
+            >
               <pre className="whitespace-pre-wrap font-mono">
                 {rawText || 'Fichier texte vide.'}
               </pre>
