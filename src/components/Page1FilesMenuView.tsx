@@ -401,10 +401,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const [activeMenuFileId, setActiveMenuFileId] = useState<string | null>(null);
   const [audioMenuSongId, setAudioMenuSongId] = useState<string | null>(null);
   const [isPlayerMenuOpen, setIsPlayerMenuOpen] = useState(false);
-  // État du menu 3 traits supérieur (Tri et bouton œil)
+  // État du menu 3 traits supérieur (Tri)
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   const [sortOption, setSortOption] = useState<SortOption>('recent');
-  const [isEyeViewActive, setIsEyeViewActive] = useState(false);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   // Aliases de compatibilité pour la sélection audio existante
@@ -6662,22 +6661,62 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       if (!f || !f.id) return false;
       if (seenIds.has(f.id)) return false;
       seenIds.add(f.id);
-      const normName = (f.name || '').trim().toLowerCase();
-      if (normName && seenNames.has(normName)) return false;
-      if (normName) seenNames.add(normName);
+      if (sortOption !== 'duplicates') {
+        const normName = (f.name || '').trim().toLowerCase();
+        if (normName && seenNames.has(normName)) return false;
+        if (normName) seenNames.add(normName);
+      }
       return true;
     });
 
     const sortedSubFolders = (() => {
       let list = [...subFolders];
       if (sortOption === 'pinned') {
+        list = list.filter(sf => sf.isPinned);
+        list.sort((a, b) => {
+          const timeA = a.createdAt || (a.dateText ? new Date(a.dateText).getTime() : 0);
+          const timeB = b.createdAt || (b.dateText ? new Date(b.dateText).getTime() : 0);
+          return timeB - timeA;
+        });
+      } else if (sortOption === 'duplicates') {
+        const nameCount = new Map<string, number>();
+        subFolders.forEach(sf => {
+          const k = (sf.name || '').trim().toLowerCase();
+          nameCount.set(k, (nameCount.get(k) || 0) + 1);
+        });
+        list = list.filter(sf => (nameCount.get((sf.name || '').trim().toLowerCase()) || 0) > 1);
+      } else if (sortOption === 'size-desc') {
+        const getSubFolderSize = (sfId: string) => {
+          const sFiles = folderFilesMap[sfId] || [];
+          return sFiles.reduce((acc, file) => acc + (parseSizeToBytes(file.size, file.sizeBytes) || 0), 0);
+        };
         list.sort((a, b) => {
           if (a.isPinned && !b.isPinned) return -1;
           if (!a.isPinned && b.isPinned) return 1;
-          return 0;
+          const sizeA = getSubFolderSize(a.id);
+          const sizeB = getSubFolderSize(b.id);
+          if (sizeB !== sizeA) return sizeB - sizeA;
+          const countA = (folderFilesMap[a.id] || []).length;
+          const countB = (folderFilesMap[b.id] || []).length;
+          return countB - countA;
         });
       } else if (sortOption === 'oldest') {
-        list.reverse();
+        list.sort((a, b) => {
+          if (a.isPinned && !b.isPinned) return -1;
+          if (!a.isPinned && b.isPinned) return 1;
+          const timeA = a.createdAt || (a.dateText ? new Date(a.dateText).getTime() : 0);
+          const timeB = b.createdAt || (b.dateText ? new Date(b.dateText).getTime() : 0);
+          return timeA - timeB;
+        });
+      } else {
+        // 'recent'
+        list.sort((a, b) => {
+          if (a.isPinned && !b.isPinned) return -1;
+          if (!a.isPinned && b.isPinned) return 1;
+          const timeA = a.createdAt || (a.dateText ? new Date(a.dateText).getTime() : 0);
+          const timeB = b.createdAt || (b.dateText ? new Date(b.dateText).getTime() : 0);
+          return timeB - timeA;
+        });
       }
       return list;
     })();
@@ -6866,7 +6905,26 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         {renderSelectionBanner(allOpenedFolderItems)}
 
         {/* Fichiers et sous-dossiers du dossier OU État vide */}
-        {sortOption === 'duplicates' && sortedFiles.length === 0 ? (
+        {sortOption === 'pinned' && sortedFiles.length === 0 && sortedSubFolders.length === 0 ? (
+          <div className="py-20 sm:py-28 flex flex-col items-center justify-center text-center text-stone-500 dark:text-slate-400 rounded-3xl border-2 border-dashed border-white/10 p-6 bg-black/20">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mb-4 shadow-sm">
+              <Pin className="w-8 h-8 sm:w-10 sm:h-10 stroke-[1.8]" />
+            </div>
+            <h3 className="text-base sm:text-lg font-bold text-amber-400">
+              Aucun élément épinglé dans ce dossier
+            </h3>
+            <p className="text-xs text-stone-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
+              Vous n'avez pas encore d'éléments épinglés dans ce dossier. Utilisez le menu à 3 traits pour en épingler.
+            </p>
+            <button
+              type="button"
+              onClick={() => setSortOption('recent')}
+              className="mt-4 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 cursor-pointer"
+            >
+              Afficher tous les fichiers
+            </button>
+          </div>
+        ) : sortOption === 'duplicates' && sortedFiles.length === 0 && sortedSubFolders.length === 0 ? (
           <div className="py-20 sm:py-28 flex flex-col items-center justify-center text-center text-stone-500 dark:text-slate-400 rounded-3xl border-2 border-dashed border-white/10 p-6 bg-black/20">
             <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mb-4 shadow-sm">
               <Copy className="w-8 h-8 sm:w-10 sm:h-10 stroke-[1.8]" />
@@ -6935,13 +6993,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             </div>
           </div>
         ) : (
-          /* Grille d'éléments à taille adaptée (minmax 160-215px, ou 135px-1fr en mode lecteur scindé) */
+          /* Grille d'éléments à taille identique au menu Documents */
           <div 
-            className="grid items-start transition-all duration-200 w-full"
-            style={{
-              gridTemplateColumns: selectedClasseurFile ? 'repeat(auto-fill, minmax(135px, 1fr))' : 'repeat(auto-fill, minmax(160px, 215px))',
-              gap: '16px'
-            }}
+            className={`grid gap-2.5 sm:gap-3.5 items-start transition-all duration-200 w-full ${
+              selectedClasseurFile
+                ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3'
+                : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+            }`}
           >
             {/* 1. Sous-dossiers créés dans ce dossier (dossier dans dossier - taille fixe 4) */}
             {sortedSubFolders.map((subF) => {
@@ -7134,7 +7192,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       }
                       handleSelectFile(file);
                     }}
-                    className={`group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col justify-between select-none max-w-[215px] w-full ${
+                    className={`group relative aspect-[3/4] p-2 sm:p-2.5 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col justify-between select-none w-full ${
                       isSaving ? 'cursor-wait' : 'cursor-pointer'
                     } ${
                       isBeingDragged
@@ -7235,19 +7293,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       </div>
                     </div>
 
-                    {/* Illustration TXT Conforme strictement à l'Image 2 */}
-                    <div className="w-full flex-1 flex items-center justify-center py-2 min-h-[110px]">
-                      <div className="w-24 sm:w-28 aspect-[160/215] drop-shadow-md group-hover:scale-105 transition-transform duration-200">
+                    {/* Illustration TXT Conforme au format compact Documents */}
+                    <div className="w-full flex-1 flex items-center justify-center py-1 min-h-0">
+                      <div className="w-14 sm:w-16 aspect-[160/215] drop-shadow-md group-hover:scale-105 transition-transform duration-200">
                         <TxtDocumentSVG />
                       </div>
                     </div>
 
                     {/* Bas de carte : Titre et détails */}
-                    <div className="p-1.5 flex flex-col justify-between bg-black/30 rounded-xl mt-1.5">
-                      <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-cyan-300 transition-colors" title={file.name}>
+                    <div className="p-1 sm:p-1.5 flex flex-col justify-between bg-black/30 rounded-xl mt-1">
+                      <p className="text-[10px] sm:text-[11px] font-bold text-white truncate group-hover:text-cyan-300 transition-colors" title={file.name}>
                         {file.name}
                       </p>
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                      <div className="flex items-center justify-between text-[9px] text-slate-400 mt-0.5">
                         <span className="truncate">{file.size || '0 o'}</span>
                       </div>
                     </div>
@@ -7294,7 +7352,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     setDraggedFileId(null);
                     setDragOverFileId(null);
                   }}
-                  className={`relative w-full max-w-[215px] transition-all duration-200 ${
+                  className={`relative w-full transition-all duration-200 ${
                     isBeingDragged
                       ? 'opacity-30 scale-95 border-dashed border-2 border-orange-400 bg-orange-500/10 rounded-2xl cursor-grabbing'
                       : isDropTarget
@@ -7680,28 +7738,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <span>Trier par plus lourd au moyen</span>
               </div>
               {sortOption === 'size-desc' && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
-            </button>
-          </div>
-
-          {/* Bouton œil */}
-          <div className="py-1">
-            <button
-              type="button"
-              onClick={() => {
-                setIsEyeViewActive(!isEyeViewActive);
-                setIsHeaderMenuOpen(false);
-              }}
-              className={`w-full px-3 py-2 flex items-center justify-between text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer text-left ${
-                isEyeViewActive
-                  ? 'bg-emerald-600/20 text-emerald-400'
-                  : 'text-slate-100 hover:bg-white/10'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <Eye className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-                <span>{isEyeViewActive ? "Bouton œil (Activé)" : "Bouton œil"}</span>
-              </div>
-              {isEyeViewActive && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
             </button>
           </div>
 
@@ -13162,27 +13198,111 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         return renderSelectionBanner(rootFoldersAsFiles);
                       })()}
 
-                      {/* Grille progressive ligne par ligne : auto-fill qui s'adapte à la réduction de taille pour occuper tout l'espace libre */}
-                      <div 
-                        className="grid transition-all duration-300 w-full"
-                        style={{
-                          gridTemplateColumns: `repeat(auto-fill, minmax(${folderCardMinWidth}px, 1fr))`,
-                          gap: `${folderGridGap}px`
-                        }}
-                      >
-                        {(() => {
-                          let list = classeur3DFolders.filter(f => !f.parentId && (!subSearchQuery.trim() || f.name.toLowerCase().includes(subSearchQuery.toLowerCase().trim())));
-                          if (sortOption === 'pinned') {
-                            list = [...list].sort((a, b) => {
-                              if (a.isPinned && !b.isPinned) return -1;
-                              if (!a.isPinned && b.isPinned) return 1;
-                              return 0;
-                            });
-                          } else if (sortOption === 'oldest') {
-                            list = [...list].reverse();
-                          }
-                          return list;
-                        })().map((folder) => {
+                      {(() => {
+                        let list = classeur3DFolders.filter(f => !f.parentId && (!subSearchQuery.trim() || f.name.toLowerCase().includes(subSearchQuery.toLowerCase().trim())));
+                        if (sortOption === 'pinned') {
+                          list = list.filter(f => f.isPinned);
+                          list.sort((a, b) => {
+                            const timeA = a.createdAt || (a.dateText ? new Date(a.dateText).getTime() : 0);
+                            const timeB = b.createdAt || (b.dateText ? new Date(b.dateText).getTime() : 0);
+                            return timeB - timeA;
+                          });
+                        } else if (sortOption === 'duplicates') {
+                          const nameCount = new Map<string, number>();
+                          classeur3DFolders.filter(f => !f.parentId).forEach(f => {
+                            const k = (f.name || '').trim().toLowerCase();
+                            nameCount.set(k, (nameCount.get(k) || 0) + 1);
+                          });
+                          list = list.filter(f => (nameCount.get((f.name || '').trim().toLowerCase()) || 0) > 1);
+                        } else if (sortOption === 'size-desc') {
+                          const getFolderSize = (folderId: string) => {
+                            const fList = folderFilesMap[folderId] || [];
+                            return fList.reduce((acc, file) => acc + (parseSizeToBytes(file.size, file.sizeBytes) || 0), 0);
+                          };
+                          list = [...list].sort((a, b) => {
+                            if (a.isPinned && !b.isPinned) return -1;
+                            if (!a.isPinned && b.isPinned) return 1;
+                            const sizeA = getFolderSize(a.id);
+                            const sizeB = getFolderSize(b.id);
+                            if (sizeB !== sizeA) return sizeB - sizeA;
+                            const countA = (folderFilesMap[a.id] || []).length;
+                            const countB = (folderFilesMap[b.id] || []).length;
+                            return countB - countA;
+                          });
+                        } else if (sortOption === 'oldest') {
+                          list = [...list].sort((a, b) => {
+                            if (a.isPinned && !b.isPinned) return -1;
+                            if (!a.isPinned && b.isPinned) return 1;
+                            const timeA = a.createdAt || (a.dateText ? new Date(a.dateText).getTime() : 0);
+                            const timeB = b.createdAt || (b.dateText ? new Date(b.dateText).getTime() : 0);
+                            return timeA - timeB;
+                          });
+                        } else {
+                          // 'recent'
+                          list = [...list].sort((a, b) => {
+                            if (a.isPinned && !b.isPinned) return -1;
+                            if (!a.isPinned && b.isPinned) return 1;
+                            const timeA = a.createdAt || (a.dateText ? new Date(a.dateText).getTime() : 0);
+                            const timeB = b.createdAt || (b.dateText ? new Date(b.dateText).getTime() : 0);
+                            return timeB - timeA;
+                          });
+                        }
+
+                        if (sortOption === 'pinned' && list.length === 0) {
+                          return (
+                            <div className="py-20 sm:py-28 flex flex-col items-center justify-center text-center text-stone-500 dark:text-slate-400 rounded-3xl border-2 border-dashed border-white/10 p-6 bg-black/20 w-full">
+                              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mb-4 shadow-sm">
+                                <Pin className="w-8 h-8 sm:w-10 sm:h-10 stroke-[1.8]" />
+                              </div>
+                              <h3 className="text-base sm:text-lg font-bold text-amber-400">
+                                Aucun dossier épinglé
+                              </h3>
+                              <p className="text-xs text-stone-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
+                                Vous n'avez pas encore de dossiers épinglés. Utilisez l'option "Épinglez" dans le menu à 3 traits d'un dossier pour l'épingler.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => setSortOption('recent')}
+                                className="mt-4 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 cursor-pointer"
+                              >
+                                Afficher tous les dossiers
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        if (sortOption === 'duplicates' && list.length === 0) {
+                          return (
+                            <div className="py-20 sm:py-28 flex flex-col items-center justify-center text-center text-stone-500 dark:text-slate-400 rounded-3xl border-2 border-dashed border-white/10 p-6 bg-black/20 w-full">
+                              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mb-4 shadow-sm">
+                                <Copy className="w-8 h-8 sm:w-10 sm:h-10 stroke-[1.8]" />
+                              </div>
+                              <h3 className="text-base sm:text-lg font-bold text-rose-400">
+                                Aucun doublon de dossier
+                              </h3>
+                              <p className="text-xs text-stone-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
+                                Tous vos dossiers du classeur sont uniques. Aucun doublon détecté.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => setSortOption('recent')}
+                                className="mt-4 px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs shadow-md transition-all active:scale-95 cursor-pointer"
+                              >
+                                Afficher tous les dossiers
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div 
+                            className="grid transition-all duration-300 w-full"
+                            style={{
+                              gridTemplateColumns: `repeat(auto-fill, minmax(${folderCardMinWidth}px, 1fr))`,
+                              gap: `${folderGridGap}px`
+                            }}
+                          >
+                            {list.map((folder) => {
                             const isBeingDragged = folderDragState?.folder.id === folder.id;
                             const isBeingHeld = holdingFolderId === folder.id;
                             const isFolderSelected = selectedItemIds.includes(folder.id);
@@ -13290,9 +13410,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                               </motion.div>
                             );
                           })}
-                      </div>
-                    </div>
-                  )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
                 </div>
               </div>
 
