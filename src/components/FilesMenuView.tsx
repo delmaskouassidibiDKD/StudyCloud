@@ -755,6 +755,18 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         {/* Barre d'en-tête du lecteur */}
         <div className="px-3 sm:px-4 py-2 bg-[#0A0E1A] border-b border-stone-800 flex items-center justify-between gap-2 sm:gap-3 shrink-0">
           <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            {isViewerMaximized && (
+              <button
+                type="button"
+                onClick={() => setIsViewerMaximized(false)}
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs rounded-lg transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 mr-1"
+                title="Réduire pour réafficher la liste des fichiers"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 stroke-[2.8]" />
+                <span className="hidden sm:inline">Réduire</span>
+              </button>
+            )}
+
             {/* Boutons précédent / suivant si plusieurs fichiers */}
             {filteredFiles.length > 1 && (
               <div className="flex items-center gap-1 shrink-0 mr-1">
@@ -1772,7 +1784,9 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#C5B0A4] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-4 pb-8 pt-0 overflow-y-auto transition-colors duration-300 ${
+      className={`absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#C5B0A4] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 ${
+        isViewerMaximized && selectedFile ? 'px-2 sm:px-4 pb-2 pt-0 overflow-hidden flex flex-col' : 'px-4 pb-8 pt-0 overflow-y-auto'
+      } transition-colors duration-300 ${
         isDraggingOver ? 'ring-4 ring-emerald-500 ring-inset bg-emerald-50/20' : ''
       }`}
     >
@@ -1793,7 +1807,9 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         multiple 
         onChange={handleFileChange} 
       />
-      <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-start justify-between z-40 pointer-events-none gap-2">
+      <div className={`fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-start justify-between z-40 pointer-events-none gap-2 ${
+        isViewerMaximized && selectedFile ? 'hidden' : ''
+      }`}>
         {/* GAUCHE : Bouton Retour + Bouton Importer en bas prenant la couleur du menu/matière active */}
         <div className="flex flex-col items-start gap-1 pointer-events-auto shrink-0">
           <button
@@ -2172,7 +2188,9 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
 
 
-      <div className="w-full pt-16 sm:pt-20 flex-1 flex flex-col md:flex-row overflow-hidden relative min-h-[calc(100vh-80px)]">
+      <div className={`w-full ${
+        isViewerMaximized && selectedFile ? 'pt-1 pb-1' : 'pt-16 sm:pt-20'
+      } flex-1 flex flex-col md:flex-row overflow-hidden relative min-h-[calc(100vh-80px)]`}>
         {/* PANNEAU DE GAUCHE : LISTE DES FICHIERS */}
         <div className={`overflow-y-auto px-2 sm:px-4 pt-1 pb-64 transition-all duration-200 ${
           isViewerMaximized && selectedFile
@@ -2851,8 +2869,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           <aside
             className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 ${
               isViewerMaximized
-                ? 'fixed inset-0 z-[100] w-full h-full'
-                : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-400/40 dark:border-slate-800'
+                ? 'w-full flex-1 h-full min-h-[calc(100vh-80px)] rounded-xl border border-white/10'
+                : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] lg:min-h-[calc(100vh-160px)] border-t md:border-t-0 md:border-l border-stone-400/40 dark:border-slate-800 rounded-xl'
             }`}
           >
             {renderDedicatedReader(selectedFile)}
