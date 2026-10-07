@@ -1,10 +1,16 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Upload, File as FileIcon, MoreVertical, Trash2, CheckSquare, Square, Check, X, Plus, Search, ArrowLeftRight, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { 
+  Upload, File as FileIcon, MoreVertical, Trash2, CheckSquare, Square, 
+  Check, X, Plus, Search, ArrowLeftRight, RotateCcw, ChevronLeft, ChevronRight,
+  ChevronDown, LayoutGrid, FileText, Image, Video, Music, BookOpen, FolderTree, Folder, FolderOpen
+} from 'lucide-react';
 import { DelmasRobot } from './DelmasRobot';
 import { AssistantChat } from './AssistantChat';
 import { FileIconBadge } from './FileIconBadge';
 import { StudyCloudAPI } from '../services/api';
+import { CloudStorageAPI } from '../services/cloudStorageService';
+import { ClasseurCreatedFolder } from './Folder3DModels';
 import { storeFileBlob, deleteFileBlob, getFileBlobUrl, MAX_FILE_SIZE_BYTES, formatFileSize, storeThumbnailData } from '../services/localFileStorage';
 import { UploadQueue } from '../services/uploadQueue';
 import { CloudDataStore } from '../services/cloudDataStore';
@@ -60,6 +66,178 @@ export function LeftMenu({
   const [attachedResources, setAttachedResources] = useState<any[]>([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Source / Menu actuellement sélectionné dans le sélecteur
+  const [selectedSource, setSelectedSource] = useState<{
+    type: 'mes_fichiers' | 'documents' | 'images' | 'videos' | 'audio' | 'matiere' | 'classeur';
+    title: string;
+    matiereName?: string;
+    classeurFolderId?: string;
+  } | null>(null);
+
+  const [isSourceMenuOpen, setIsSourceMenuOpen] = useState(false);
+  const [sourceMenuCoords, setSourceMenuCoords] = useState<{ top: number; left: number } | null>(null);
+  const [expandedSourceGroup, setExpandedSourceGroup] = useState<'matiere' | 'classeur' | null>(null);
+  const [expandedClasseurFolderIds, setExpandedClasseurFolderIds] = useState<Set<string>>(new Set());
+  const sourceButtonRef = useRef<HTMLButtonElement>(null);
+  const sourceMenuRef = useRef<HTMLDivElement>(null);
+
+  const [savedMatieres, setSavedMatieres] = useState<{ id: string; name: string; coefficient?: string; color?: string }[]>(() => {
+    try {
+      const raw = localStorage.getItem('unifolder_saved_matieres');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [classeurFolders, setClasseurFolders] = useState<ClasseurCreatedFolder[]>(() => {
+    return CloudDataStore.getState().classeurFolders || [];
+  });
+
+  const [categoryFilesCache, setCategoryFilesCache] = useState<{
+    documents?: any[];
+    images?: any[];
+    videos?: any[];
+    audio?: any[];
+  }>({});
+
+  const [classeurFilesCache, setClasseurFilesCache] = useState<Record<string, any[]>>({});
+
+  useEffect(() => {
+    const handleMatieres = () => {
+      try {
+        const raw = localStorage.getItem('unifolder_saved_matieres');
+        if (raw) setSavedMatieres(JSON.parse(raw));
+      } catch {}
+    };
+    window.addEventListener('unifolder_matieres_updated', handleMatieres);
+    return () => window.removeEventListener('unifolder_matieres_updated', handleMatieres);
+  }, []);
+
+  useEffect(() => {
+    const unsub = CloudDataStore.subscribe((state) => {
+      if (state.classeurFolders && state.classeurFolders.length > 0) {
+        setClasseurFolders(state.classeurFolders);
+      }
+      setCategoryFilesCache(prev => ({
+        ...prev,
+        documents: state.documents?.length ? state.documents : prev.documents,
+        images: state.images?.length ? state.images : prev.images,
+        videos: state.videos?.length ? state.videos : prev.videos,
+        audio: state.audio?.length ? state.audio : prev.audio,
+      }));
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (isSourceMenuOpen) {
+      const state = CloudDataStore.getState();
+      if (!state.documents || state.documents.length === 0) {
+        CloudStorageAPI.getDocumentsList().then(docs => {
+          if (docs && docs.length > 0) setCategoryFilesCache(p => ({ ...p, documents: docs }));
+        }).catch(() => {});
+      }
+      if (!state.images || state.images.length === 0) {
+        CloudStorageAPI.getImagesList().then(imgs => {
+          if (imgs && imgs.length > 0) setCategoryFilesCache(p => ({ ...p, images: imgs }));
+        }).catch(() => {});
+      }
+      if (!state.videos || state.videos.length === 0) {
+        CloudStorageAPI.getVideosList().then(vids => {
+          if (vids && vids.length > 0) setCategoryFilesCache(p => ({ ...p, videos: vids }));
+        }).catch(() => {});
+      }
+      if (!state.audio || state.audio.length === 0) {
+        CloudStorageAPI.getAudioList().then(aud => {
+          if (aud && aud.length > 0) setCategoryFilesCache(p => ({ ...p, audio: aud }));
+        }).catch(() => {});
+      }
+      if (!state.classeurFolders || state.classeurFolders.length === 0) {
+        CloudStorageAPI.getClasseurFolders().then(f => {
+          if (f && f.length > 0) {
+            CloudDataStore.setClasseurFolders(f);
+            setClasseurFolders(f);
+          }
+        }).catch(() => {});
+      }
+    }
+  }, [isSourceMenuOpen]);
+
+  useEffect(() => {
+    if (selectedSource?.type === 'classeur' && selectedSource.classeurFolderId) {
+      const folderId = selectedSource.classeurFolderId;
+      const inStore = CloudDataStore.getState().folderFilesMap[folderId];
+      if (inStore && inStore.length > 0) {
+        setClasseurFilesCache(prev => ({ ...prev, [folderId]: inStore }));
+      }
+      CloudStorageAPI.getClasseurFiles(folderId).then(remoteFiles => {
+        if (remoteFiles && Array.isArray(remoteFiles)) {
+          setClasseurFilesCache(prev => ({ ...prev, [folderId]: remoteFiles }));
+        }
+      }).catch(() => {});
+    }
+  }, [selectedSource]);
+
+  const renderClasseurFolderItem = (folder: ClasseurCreatedFolder, depth: number = 0) => {
+    const subfolders = classeurFolders.filter(s => s.parentId === folder.id);
+    const hasSub = subfolders.length > 0;
+    const isExpanded = expandedClasseurFolderIds.has(folder.id);
+    const isSelected = selectedSource?.type === 'classeur' && selectedSource.classeurFolderId === folder.id;
+
+    return (
+      <div key={folder.id} className="w-full flex flex-col">
+        <div 
+          className={`w-full flex items-center justify-between py-1.5 px-2 rounded-lg text-xs transition-colors ${
+            isSelected
+              ? 'bg-indigo-600 text-white font-black shadow-xs'
+              : 'hover:bg-stone-200/70 dark:hover:bg-stone-800 text-stone-800 dark:text-stone-300 font-medium'
+          }`}
+          style={{ paddingLeft: `${8 + depth * 14}px` }}
+        >
+          <div 
+            onClick={() => {
+              setSelectedSource({ type: 'classeur', title: folder.name, classeurFolderId: folder.id });
+              setIsSourceMenuOpen(false);
+            }}
+            className="flex-1 flex items-center gap-2 min-w-0 cursor-pointer"
+          >
+            <Folder 
+              className="w-3.5 h-3.5 shrink-0" 
+              style={{ color: folder.primaryColor || '#6366F1' }} 
+            />
+            <span className="truncate">{folder.name}</span>
+          </div>
+
+          {hasSub && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpandedClasseurFolderIds(prev => {
+                  const next = new Set(prev);
+                  if (next.has(folder.id)) next.delete(folder.id);
+                  else next.add(folder.id);
+                  return next;
+                });
+              }}
+              className="p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded transition-colors text-stone-500 hover:text-stone-800 dark:text-stone-400 cursor-pointer ml-1"
+              title={isExpanded ? "Masquer les sous-dossiers" : "Afficher les sous-dossiers"}
+            >
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+            </button>
+          )}
+        </div>
+
+        {hasSub && isExpanded && (
+          <div className="flex flex-col space-y-0.5 mt-0.5">
+            {subfolders.map(sub => renderClasseurFolderItem(sub, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // Déterminer précisément si on est dans "Mes fichiers" ou dans une matière spécifique
   const rawMatiere = (activeFolderDetail?.title && activeFolderDetail.title !== 'Mes fichiers')
@@ -601,7 +779,7 @@ export function LeftMenu({
             if (setActivePreviewItem) {
                const nextFolder = isImportedSection 
                  ? (currentFolderName || 'Mes fichiers') 
-                 : (f.matiere || f.folderName || currentFolderName || 'Mes fichiers');
+                 : (f.matiere || f.folderName || (selectedSource ? selectedSource.title : currentFolderName) || 'Mes fichiers');
                setActivePreviewItem({ ...f, folderName: nextFolder });
                setViewHistory(prev => [f.id, ...prev.filter(id => id !== f.id)]);
             }
@@ -736,7 +914,193 @@ export function LeftMenu({
     // -------------------------------------------------------------
     let baseFiles: any[] = [];
 
-    if (folder && !isMesFichiersMode) {
+    if (selectedSource) {
+      if (selectedSource.type === 'documents') {
+        const docList = categoryFilesCache.documents || CloudDataStore.getState().documents || [];
+        const localDocs = getGalleryFilesForCategory('Documents') || [];
+        const map = new Map<string, any>();
+        docList.forEach(f => {
+          if (f && f.id && !importedIds.includes(f.id)) {
+            map.set(f.id, {
+              ...f,
+              matiere: 'Documents',
+              folderName: 'Documents',
+              extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'PDF' : 'PDF')
+            });
+          }
+        });
+        localDocs.forEach(f => {
+          if (f && f.id && !importedIds.includes(f.id) && !map.has(f.id)) {
+            map.set(f.id, {
+              ...f,
+              matiere: 'Documents',
+              folderName: 'Documents',
+              extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'PDF' : 'PDF')
+            });
+          }
+        });
+        baseFiles = Array.from(map.values());
+      } else if (selectedSource.type === 'images') {
+        const imgList = categoryFilesCache.images || CloudDataStore.getState().images || [];
+        const localImgs = getGalleryFilesForCategory('Images') || [];
+        const map = new Map<string, any>();
+        imgList.forEach(f => {
+          if (f && f.id && !importedIds.includes(f.id)) {
+            map.set(f.id, {
+              ...f,
+              isImage: true,
+              matiere: 'Images',
+              folderName: 'Images',
+              extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'IMG' : 'IMG')
+            });
+          }
+        });
+        localImgs.forEach(f => {
+          if (f && f.id && !importedIds.includes(f.id) && !map.has(f.id)) {
+            map.set(f.id, {
+              ...f,
+              isImage: true,
+              matiere: 'Images',
+              folderName: 'Images',
+              extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'IMG' : 'IMG')
+            });
+          }
+        });
+        baseFiles = Array.from(map.values());
+      } else if (selectedSource.type === 'videos') {
+        const vidList = categoryFilesCache.videos || CloudDataStore.getState().videos || [];
+        const localVids = getGalleryFilesForCategory('Vidéos') || [];
+        const map = new Map<string, any>();
+        vidList.forEach(f => {
+          if (f && f.id && !importedIds.includes(f.id)) {
+            map.set(f.id, {
+              ...f,
+              matiere: 'Vidéos',
+              folderName: 'Vidéos',
+              extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'MP4' : 'MP4')
+            });
+          }
+        });
+        localVids.forEach(f => {
+          if (f && f.id && !importedIds.includes(f.id) && !map.has(f.id)) {
+            map.set(f.id, {
+              ...f,
+              matiere: 'Vidéos',
+              folderName: 'Vidéos',
+              extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'MP4' : 'MP4')
+            });
+          }
+        });
+        baseFiles = Array.from(map.values());
+      } else if (selectedSource.type === 'audio') {
+        const audList = categoryFilesCache.audio || CloudDataStore.getState().audio || [];
+        const localAud = getGalleryFilesForCategory('Musique') || [];
+        const map = new Map<string, any>();
+        audList.forEach(f => {
+          if (f && f.id && !importedIds.includes(f.id)) {
+            map.set(f.id, {
+              ...f,
+              isAudio: true,
+              matiere: 'Son',
+              folderName: 'Son',
+              extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'MP3' : 'MP3')
+            });
+          }
+        });
+        localAud.forEach(f => {
+          if (f && f.id && !importedIds.includes(f.id) && !map.has(f.id)) {
+            map.set(f.id, {
+              ...f,
+              isAudio: true,
+              matiere: 'Son',
+              folderName: 'Son',
+              extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'MP3' : 'MP3')
+            });
+          }
+        });
+        baseFiles = Array.from(map.values());
+      } else if (selectedSource.type === 'matiere' && selectedSource.matiereName) {
+        const targetMat = selectedSource.matiereName;
+        const matiereMap = new Map<string, any>();
+        const matiereRaw = localStorage.getItem(`unifolder_matiere_files_${targetMat}`);
+        if (matiereRaw) {
+          try {
+            const parsed = JSON.parse(matiereRaw);
+            if (Array.isArray(parsed)) {
+              parsed.forEach((f: any) => {
+                if (f && f.id && !f.isLeftMenuImport && !f.isStudyImport && !importedIds.includes(f.id)) {
+                  matiereMap.set(f.id, {
+                    ...f,
+                    matiere: targetMat,
+                    folderName: targetMat,
+                    extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
+                  });
+                }
+              });
+            }
+          } catch (e) {}
+        }
+        const allItemsRaw = localStorage.getItem('unifolder_files_menu_items');
+        if (allItemsRaw) {
+          try {
+            const parsed = JSON.parse(allItemsRaw);
+            if (Array.isArray(parsed)) {
+              parsed.forEach((f: any) => {
+                if (f && f.id && f.matiere === targetMat && !importedIds.includes(f.id) && !matiereMap.has(f.id)) {
+                  matiereMap.set(f.id, {
+                    ...f,
+                    matiere: targetMat,
+                    folderName: targetMat,
+                    extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
+                  });
+                }
+              });
+            }
+          } catch (e) {}
+        }
+        baseFiles = Array.from(matiereMap.values());
+      } else if (selectedSource.type === 'classeur' && selectedSource.classeurFolderId) {
+        const folderId = selectedSource.classeurFolderId;
+        const cached = classeurFilesCache[folderId] || CloudDataStore.getState().folderFilesMap[folderId] || [];
+        const map = new Map<string, any>();
+        cached.forEach((f: any) => {
+          // Filtrer rigoureusement : uniquement des fichiers réels, pas de dossiers
+          if (f && f.id && !f.model && !importedIds.includes(f.id)) {
+            map.set(f.id, {
+              ...f,
+              matiere: selectedSource.title,
+              folderName: selectedSource.title,
+              extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
+            });
+          }
+        });
+        baseFiles = Array.from(map.values());
+      } else {
+        // 'mes_fichiers'
+        const directMap = new Map<string, any>();
+        const addDirectFiles = (raw: string | null) => {
+          if (!raw) return;
+          try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              parsed.forEach((f: any) => {
+                if (f && f.id && !f.isLeftMenuImport && !f.isStudyImport && !importedIds.includes(f.id) && !isGalleryOrDemoFile(f)) {
+                  directMap.set(f.id, {
+                    ...f,
+                    matiere: f.matiere || 'Mes fichiers',
+                    extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
+                  });
+                }
+              });
+            }
+          } catch (e) {}
+        };
+        addDirectFiles(localStorage.getItem('unifolder_files_menu_items'));
+        addDirectFiles(localStorage.getItem('unifolder_imported_files'));
+        addDirectFiles(localStorage.getItem('unifolder_matiere_files'));
+        baseFiles = Array.from(directMap.values());
+      }
+    } else if (folder && !isMesFichiersMode) {
       // CAS DANS UNE MATIÈRE OU GALERIE (ex: Images, Vidéos, Musique, Documents)
       const matiereMap = new Map<string, any>();
 
@@ -846,7 +1210,23 @@ export function LeftMenu({
 
     setMenuFiles([...importedFilesList, ...baseFiles]);
     setSessionImportedIds(importedIds);
-  }, [activeFolderDetail, activePreviewItem, isMesFichiersMode, currentFolderName, syncTick]);
+  }, [activeFolderDetail, activePreviewItem, isMesFichiersMode, currentFolderName, syncTick, selectedSource, categoryFilesCache, classeurFilesCache]);
+
+  const displayTitle = selectedSource
+    ? (selectedSource.type === 'documents' ? 'Documents'
+        : selectedSource.type === 'images' ? 'Images'
+        : selectedSource.type === 'videos' ? 'Vidéos'
+        : selectedSource.type === 'audio' ? 'Son'
+        : selectedSource.type === 'classeur' ? `Classeur : ${selectedSource.title}`
+        : selectedSource.title)
+    : (isMesFichiersMode || !currentFolderName || currentFolderName === 'Mes fichiers'
+        ? 'Mes fichiers'
+        : `Fichiers de ${currentFolderName}`);
+
+  const docsCount = (categoryFilesCache.documents?.length) || (CloudDataStore.getState().documents?.length) || 0;
+  const imgsCount = (categoryFilesCache.images?.length) || (CloudDataStore.getState().images?.length) || 0;
+  const vidsCount = (categoryFilesCache.videos?.length) || (CloudDataStore.getState().videos?.length) || 0;
+  const audCount = (categoryFilesCache.audio?.length) || (CloudDataStore.getState().audio?.length) || 0;
 
   // Filtered files according to search query
   const query = searchQuery.toLowerCase().trim();
@@ -1077,17 +1457,41 @@ export function LeftMenu({
               {/* Context Files Section - expands vertically to fill all space up to the horizontal divider */}
               <div className="w-full flex flex-col flex-1 overflow-hidden min-h-0 pt-1">
                 <div className="flex items-center justify-between border-b border-stone-200 mb-2 pb-1 px-1 w-full shrink-0">
-                  <div className="flex items-center gap-1.5">
-                    <h4 className="text-[10px] font-bold text-stone-500 uppercase tracking-wider text-left m-0">
-                      {isMesFichiersMode || !currentFolderName || currentFolderName === 'Mes fichiers'
-                        ? 'Mes fichiers'
-                        : `Fichiers de ${currentFolderName}`}
+                  <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                    <h4 className="text-[10px] font-bold text-stone-500 uppercase tracking-wider text-left m-0 truncate" title={displayTitle}>
+                      {displayTitle}
                     </h4>
                     {subjectFiles.length > 0 && (
-                      <span className="text-[9px] font-bold text-stone-600 bg-stone-100 px-1.5 py-0.5 rounded-full">
+                      <span className="text-[9px] font-bold text-stone-600 bg-stone-100 px-1.5 py-0.5 rounded-full shrink-0">
                         {subjectFiles.length}
                       </span>
                     )}
+                  </div>
+
+                  {/* Bouton pour changer de menu / base de données (tracé en rouge) */}
+                  <div className="relative shrink-0">
+                    <button
+                      ref={sourceButtonRef}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isSourceMenuOpen) {
+                          setIsSourceMenuOpen(false);
+                        } else {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const menuWidth = Math.min(320, window.innerWidth - 16);
+                          const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
+                          setSourceMenuCoords({ top: rect.bottom + 4, left });
+                          setIsSourceMenuOpen(true);
+                        }
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg border-2 border-stone-800 dark:border-stone-600 bg-amber-400 hover:bg-amber-300 text-stone-900 font-black text-[10px] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer select-none"
+                      title="Changer de menu / base de données"
+                    >
+                      <LayoutGrid className="w-3 h-3 stroke-[2.5]" />
+                      <span>Menu</span>
+                      <ChevronDown className={`w-3 h-3 stroke-[2.5] transition-transform duration-200 ${isSourceMenuOpen ? 'rotate-180' : ''}`} />
+                    </button>
                   </div>
                 </div>
                 {subjectFiles.length > 0 ? (
@@ -1096,9 +1500,11 @@ export function LeftMenu({
                   </div>
                 ) : (
                   <p className="text-[11px] text-stone-400 italic py-4 text-center w-full">
-                    {isMesFichiersMode || !currentFolderName || currentFolderName === 'Mes fichiers'
-                      ? 'Aucun fichier dans Mes fichiers'
-                      : 'Aucun fichier dans cette matière'}
+                    {selectedSource 
+                      ? `Aucun fichier disponible dans ${displayTitle}`
+                      : (isMesFichiersMode || !currentFolderName || currentFolderName === 'Mes fichiers'
+                          ? 'Aucun fichier dans Mes fichiers'
+                          : 'Aucun fichier dans cette matière')}
                   </p>
                 )}
               </div>
@@ -1254,6 +1660,275 @@ export function LeftMenu({
             </div>
           </div>
         </div>
+      )}
+      {/* Popover / Menu déroulant grand format pour choisir la source / base de données */}
+      {isSourceMenuOpen && sourceMenuCoords && createPortal(
+        <>
+          <div
+            className="fixed inset-0 z-[99998] bg-black/20 backdrop-blur-[1px]"
+            onClick={() => setIsSourceMenuOpen(false)}
+          />
+          <div
+            ref={sourceMenuRef}
+            className="fixed z-[99999] w-[310px] max-h-[85vh] bg-[#FDFBF7] dark:bg-[#111a2e] border-2 border-stone-800 dark:border-stone-600 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
+            style={{
+              top: `${Math.min(sourceMenuCoords.top, window.innerHeight - 380)}px`,
+              left: `${sourceMenuCoords.left}px`
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header du popup */}
+            <div className="flex items-center justify-between px-3 py-2 bg-stone-100 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700 shrink-0">
+              <div className="flex items-center gap-1.5">
+                <LayoutGrid className="w-4 h-4 text-orange-600 dark:text-orange-400 stroke-[2.5]" />
+                <span className="text-xs font-black text-stone-800 dark:text-stone-100 uppercase tracking-wide">
+                  Choisir un menu
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSourceMenuOpen(false)}
+                className="p-1 hover:bg-stone-200 dark:hover:bg-stone-700 rounded-lg text-stone-500 transition-colors cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Corps du menu déroulant */}
+            <div className="overflow-y-auto p-2 space-y-1 max-h-[calc(85vh-45px)] hide-scrollbar">
+              {/* 1. DOCUMENT */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSource({ type: 'documents', title: 'Documents' });
+                  setIsSourceMenuOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                  selectedSource?.type === 'documents'
+                    ? 'bg-amber-100 dark:bg-amber-950/60 text-stone-900 dark:text-amber-200 font-black border border-amber-300'
+                    : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 text-stone-700 dark:text-stone-200 font-bold'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-200 dark:border-blue-800">
+                    <FileText className="w-4 h-4 stroke-[2.2]" />
+                  </div>
+                  <span className="text-xs truncate">Document</span>
+                </div>
+                {docsCount > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 font-mono font-bold">
+                    {docsCount}
+                  </span>
+                )}
+              </button>
+
+              {/* 2. IMAGES */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSource({ type: 'images', title: 'Images' });
+                  setIsSourceMenuOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                  selectedSource?.type === 'images'
+                    ? 'bg-amber-100 dark:bg-amber-950/60 text-stone-900 dark:text-amber-200 font-black border border-amber-300'
+                    : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 text-stone-700 dark:text-stone-200 font-bold'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-200 dark:border-emerald-800">
+                    <Image className="w-4 h-4 stroke-[2.2]" />
+                  </div>
+                  <span className="text-xs truncate">Images</span>
+                </div>
+                {imgsCount > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 font-mono font-bold">
+                    {imgsCount}
+                  </span>
+                )}
+              </button>
+
+              {/* 3. VIDÉO */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSource({ type: 'videos', title: 'Vidéos' });
+                  setIsSourceMenuOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                  selectedSource?.type === 'videos'
+                    ? 'bg-amber-100 dark:bg-amber-950/60 text-stone-900 dark:text-amber-200 font-black border border-amber-300'
+                    : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 text-stone-700 dark:text-stone-200 font-bold'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 border border-purple-200 dark:border-purple-800">
+                    <Video className="w-4 h-4 stroke-[2.2]" />
+                  </div>
+                  <span className="text-xs truncate">Vidéo</span>
+                </div>
+                {vidsCount > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 font-mono font-bold">
+                    {vidsCount}
+                  </span>
+                )}
+              </button>
+
+              {/* 4. SON */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSource({ type: 'audio', title: 'Son' });
+                  setIsSourceMenuOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                  selectedSource?.type === 'audio'
+                    ? 'bg-amber-100 dark:bg-amber-950/60 text-stone-900 dark:text-amber-200 font-black border border-amber-300'
+                    : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 text-stone-700 dark:text-stone-200 font-bold'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 border border-rose-200 dark:border-rose-800">
+                    <Music className="w-4 h-4 stroke-[2.2]" />
+                  </div>
+                  <span className="text-xs truncate">Son</span>
+                </div>
+                {audCount > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 font-mono font-bold">
+                    {audCount}
+                  </span>
+                )}
+              </button>
+
+              {/* 5. MENU MATIÈRE */}
+              <div className="border-t border-stone-200 dark:border-stone-700 pt-1 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setExpandedSourceGroup(prev => prev === 'matiere' ? null : 'matiere')}
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                    selectedSource?.type === 'matiere' || selectedSource?.type === 'mes_fichiers'
+                      ? 'bg-amber-50 dark:bg-amber-950/30 text-stone-900 dark:text-amber-200 font-black'
+                      : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 text-stone-700 dark:text-stone-200 font-bold'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-200 dark:border-amber-800">
+                      <BookOpen className="w-4 h-4 stroke-[2.2]" />
+                    </div>
+                    <span className="text-xs truncate">Menu matière</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 font-mono font-bold">
+                      {1 + savedMatieres.length}
+                    </span>
+                    <ChevronDown className={`w-3.5 h-3.5 text-stone-400 transition-transform duration-200 ${
+                      expandedSourceGroup === 'matiere' ? 'rotate-180' : ''
+                    }`} />
+                  </div>
+                </button>
+
+                {/* Sous-menu des matières avec Mes fichiers tout en haut */}
+                {expandedSourceGroup === 'matiere' && (
+                  <div className="pl-6 pr-1 py-1 space-y-1 animate-in fade-in duration-150">
+                    {/* PREMIÈRE PLACE : Mes fichiers */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedSource({ type: 'mes_fichiers', title: 'Mes fichiers' });
+                        setIsSourceMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                        selectedSource?.type === 'mes_fichiers' || (!selectedSource && isMesFichiersMode)
+                          ? 'bg-amber-300 text-stone-950 font-black shadow-xs'
+                          : 'hover:bg-stone-200/70 text-stone-800 dark:text-stone-300 font-bold'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Folder className="w-3.5 h-3.5 text-amber-600 fill-amber-500 shrink-0" />
+                        <span className="truncate">Mes fichiers</span>
+                      </div>
+                      <span className="text-[9px] font-mono px-1 rounded bg-black/10 dark:bg-white/10 font-bold">1er</span>
+                    </button>
+
+                    {/* Matières créées */}
+                    {savedMatieres.map((m) => {
+                      const isSelected = selectedSource?.type === 'matiere' && selectedSource.matiereName === m.name;
+                      const isHex = m.color && m.color.startsWith('#');
+                      return (
+                        <button
+                          key={m.id || m.name}
+                          type="button"
+                          onClick={() => {
+                            setSelectedSource({ type: 'matiere', title: m.name, matiereName: m.name });
+                            setIsSourceMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-orange-500 text-white font-black shadow-xs'
+                              : 'hover:bg-stone-200/70 text-stone-800 dark:text-stone-300 font-medium'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full shrink-0 border border-stone-800/40"
+                              style={{ backgroundColor: isHex ? m.color : '#EA580C' }}
+                            />
+                            <span className="truncate">{m.name}</span>
+                          </div>
+                          {m.coefficient && (
+                            <span className="text-[9px] font-mono opacity-70">C:{m.coefficient}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* 6. CLASSEUR */}
+              <div className="border-t border-stone-200 dark:border-stone-700 pt-1 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setExpandedSourceGroup(prev => prev === 'classeur' ? null : 'classeur')}
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                    selectedSource?.type === 'classeur'
+                      ? 'bg-amber-50 dark:bg-amber-950/30 text-stone-900 dark:text-amber-200 font-black'
+                      : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 text-stone-700 dark:text-stone-200 font-bold'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-200 dark:border-indigo-800">
+                      <FolderTree className="w-4 h-4 stroke-[2.2]" />
+                    </div>
+                    <span className="text-xs truncate">Classeur</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 font-mono font-bold">
+                      {classeurFolders.length}
+                    </span>
+                    <ChevronDown className={`w-3.5 h-3.5 text-stone-400 transition-transform duration-200 ${
+                      expandedSourceGroup === 'classeur' ? 'rotate-180' : ''
+                    }`} />
+                  </div>
+                </button>
+
+                {/* Sous-dossiers du Classeur avec arborescence hiérarchique */}
+                {expandedSourceGroup === 'classeur' && (
+                  <div className="pl-4 pr-1 py-1 space-y-1 animate-in fade-in duration-150">
+                    {classeurFolders.length === 0 ? (
+                      <p className="text-[11px] text-stone-400 italic py-2 text-center">
+                        Aucun dossier créé dans Classeur
+                      </p>
+                    ) : (
+                      classeurFolders.filter(f => !f.parentId).map(rootFolder => renderClasseurFolderItem(rootFolder, 0))
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>,
+        document.body
       )}
     </div>
   );
