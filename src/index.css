@@ -125,6 +125,31 @@ rect,
   scrollbar-width: none;
 }
 
+.menu-custom-scrollbar::-webkit-scrollbar {
+  display: block !important;
+  width: 6px !important;
+}
+
+.menu-custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05) !important;
+  border-radius: 9999px !important;
+}
+
+.menu-custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(234, 88, 12, 0.45) !important;
+  border-radius: 9999px !important;
+}
+
+.menu-custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(234, 88, 12, 0.75) !important;
+}
+
+.menu-custom-scrollbar {
+  -ms-overflow-style: auto !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(234, 88, 12, 0.45) rgba(0, 0, 0, 0.05) !important;
+}
+
 /* ==========================================================================
    MODERN DARK MODE DESIGN SYSTEM (Inspire de la page de connexion)
    ========================================================================== */

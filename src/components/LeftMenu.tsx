@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { 
   Upload, File as FileIcon, MoreVertical, Trash2, CheckSquare, Square, 
   Check, X, Plus, Search, ArrowLeftRight, RotateCcw, ChevronLeft, ChevronRight,
-  ChevronDown, LayoutGrid, FileText, Image, Video, Music, BookOpen, FolderTree, Folder, FolderOpen
+  ChevronDown, LayoutGrid, FileText, Image, Video, Music, BookOpen, FolderTree, Folder, FolderOpen,
+  ArrowLeft
 } from 'lucide-react';
 import { DelmasRobot } from './DelmasRobot';
 import { AssistantChat } from './AssistantChat';
@@ -77,10 +78,11 @@ export function LeftMenu({
 
   const [isSourceMenuOpen, setIsSourceMenuOpen] = useState(false);
   const [sourceMenuCoords, setSourceMenuCoords] = useState<{ top: number; left: number } | null>(null);
-  const [expandedSourceGroup, setExpandedSourceGroup] = useState<'matiere' | 'classeur' | null>(null);
+  const [activeSubmenu, setActiveSubmenu] = useState<'matiere' | 'classeur' | null>(null);
   const [expandedClasseurFolderIds, setExpandedClasseurFolderIds] = useState<Set<string>>(new Set());
   const sourceButtonRef = useRef<HTMLButtonElement>(null);
   const sourceMenuRef = useRef<HTMLDivElement>(null);
+  const submenuRef = useRef<HTMLDivElement>(null);
 
   const [savedMatieres, setSavedMatieres] = useState<{ id: string; name: string; coefficient?: string; color?: string }[]>(() => {
     try {
@@ -200,6 +202,7 @@ export function LeftMenu({
             onClick={() => {
               setSelectedSource({ type: 'classeur', title: folder.name, classeurFolderId: folder.id });
               setIsSourceMenuOpen(false);
+              setActiveSubmenu(null);
             }}
             className="flex-1 flex items-center gap-2 min-w-0 cursor-pointer"
           >
@@ -1064,8 +1067,9 @@ export function LeftMenu({
         const cached = classeurFilesCache[folderId] || CloudDataStore.getState().folderFilesMap[folderId] || [];
         const map = new Map<string, any>();
         cached.forEach((f: any) => {
-          // Filtrer rigoureusement : uniquement des fichiers réels, pas de dossiers
-          if (f && f.id && !f.model && !importedIds.includes(f.id)) {
+          // Filtrer rigoureusement : uniquement des fichiers réels, pas de dossiers ni sous-dossiers
+          const isActuallyFolder = f.isFolder === true || f.type === 'folder' || !!f.model;
+          if (f && f.id && !isActuallyFolder && !importedIds.includes(f.id)) {
             map.set(f.id, {
               ...f,
               matiere: selectedSource.title,
@@ -1477,12 +1481,25 @@ export function LeftMenu({
                         e.stopPropagation();
                         if (isSourceMenuOpen) {
                           setIsSourceMenuOpen(false);
+                          setActiveSubmenu(null);
                         } else {
                           const rect = e.currentTarget.getBoundingClientRect();
-                          const menuWidth = Math.min(320, window.innerWidth - 16);
-                          const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
-                          setSourceMenuCoords({ top: rect.bottom + 4, left });
+                          const menuWidth = 270;
+                          const menuHeight = 280;
+                          const windowHeight = window.innerHeight;
+                          const windowWidth = window.innerWidth;
+                          
+                          // Anti-débordement vers le bas : si l'espace sous le bouton est trop restreint, ouvrir vers le haut
+                          const spaceBelow = windowHeight - rect.bottom;
+                          const openUpward = spaceBelow < menuHeight && rect.top > menuHeight;
+                          const top = openUpward
+                            ? Math.max(16, rect.top - menuHeight)
+                            : Math.min(rect.bottom + 4, windowHeight - menuHeight - 16);
+                          const left = Math.max(12, Math.min(rect.left, windowWidth - menuWidth - 16));
+                          
+                          setSourceMenuCoords({ top, left });
                           setIsSourceMenuOpen(true);
+                          setActiveSubmenu(null);
                         }
                       }}
                       className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg border-2 border-stone-800 dark:border-stone-600 bg-amber-400 hover:bg-amber-300 text-stone-900 font-black text-[10px] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer select-none"
@@ -1661,263 +1678,378 @@ export function LeftMenu({
           </div>
         </div>
       )}
-      {/* Popover / Menu déroulant grand format pour choisir la source / base de données */}
-      {isSourceMenuOpen && sourceMenuCoords && createPortal(
-        <>
-          <div
-            className="fixed inset-0 z-[99998] bg-black/20 backdrop-blur-[1px]"
-            onClick={() => setIsSourceMenuOpen(false)}
-          />
-          <div
-            ref={sourceMenuRef}
-            className="fixed z-[99999] w-[310px] max-h-[85vh] bg-[#FDFBF7] dark:bg-[#111a2e] border-2 border-stone-800 dark:border-stone-600 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
-            style={{
-              top: `${Math.min(sourceMenuCoords.top, window.innerHeight - 380)}px`,
-              left: `${sourceMenuCoords.left}px`
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header du popup */}
-            <div className="flex items-center justify-between px-3 py-2 bg-stone-100 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700 shrink-0">
-              <div className="flex items-center gap-1.5">
-                <LayoutGrid className="w-4 h-4 text-orange-600 dark:text-orange-400 stroke-[2.5]" />
-                <span className="text-xs font-black text-stone-800 dark:text-stone-100 uppercase tracking-wide">
-                  Choisir un menu
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsSourceMenuOpen(false)}
-                className="p-1 hover:bg-stone-200 dark:hover:bg-stone-700 rounded-lg text-stone-500 transition-colors cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
+      {/* Popover / Menus déroulants pour choisir la source / base de données */}
+      {isSourceMenuOpen && sourceMenuCoords && (() => {
+        const submenuWidth = 280;
+        let subLeft = sourceMenuCoords.left + 270 + 8;
+        let subTop = sourceMenuCoords.top;
 
-            {/* Corps du menu déroulant */}
-            <div className="overflow-y-auto p-2 space-y-1 max-h-[calc(85vh-45px)] hide-scrollbar">
-              {/* 1. DOCUMENT */}
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedSource({ type: 'documents', title: 'Documents' });
-                  setIsSourceMenuOpen(false);
-                }}
-                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
-                  selectedSource?.type === 'documents'
-                    ? 'bg-amber-100 dark:bg-amber-950/60 text-stone-900 dark:text-amber-200 font-black border border-amber-300'
-                    : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 text-stone-700 dark:text-stone-200 font-bold'
-                }`}
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-200 dark:border-blue-800">
-                    <FileText className="w-4 h-4 stroke-[2.2]" />
-                  </div>
-                  <span className="text-xs truncate">Document</span>
-                </div>
-                {docsCount > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 font-mono font-bold">
-                    {docsCount}
+        if (typeof window !== 'undefined') {
+          // Si le sous-menu dépasse à droite de l'écran, le placer à gauche du 1er menu
+          if (subLeft + submenuWidth > window.innerWidth - 12) {
+            subLeft = sourceMenuCoords.left - submenuWidth - 8;
+          }
+          // Si l'écran est très étroit (mobile ou petite fenêtre < 580px),
+          // superposer directement par-dessus le 1er menu
+          if (subLeft < 12) {
+            subLeft = sourceMenuCoords.left;
+          }
+          // S'assurer que le sous-menu ne dépasse pas le bas de l'écran
+          const maxSubHeight = 360;
+          if (subTop + maxSubHeight > window.innerHeight - 12) {
+            subTop = Math.max(12, window.innerHeight - maxSubHeight - 12);
+          }
+        }
+
+        return createPortal(
+          <>
+            {/* Backdrop avec flou léger fermant les menus au clic extérieur */}
+            <div
+              className="fixed inset-0 z-[99998] bg-black/25 backdrop-blur-[1px]"
+              onClick={() => {
+                setIsSourceMenuOpen(false);
+                setActiveSubmenu(null);
+              }}
+            />
+
+            {/* PREMIER MENU : Choisir un menu */}
+            <div
+              ref={sourceMenuRef}
+              className="fixed z-[99999] w-[270px] bg-[#FDFBF7] dark:bg-[#111a2e] border-2 border-stone-800 dark:border-stone-600 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
+              style={{
+                top: `${sourceMenuCoords.top}px`,
+                left: `${sourceMenuCoords.left}px`,
+                maxHeight: `${Math.min(360, window.innerHeight - sourceMenuCoords.top - 16)}px`
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header du 1er menu */}
+              <div className="flex items-center justify-between px-3 py-2 bg-stone-100 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700 shrink-0">
+                <div className="flex items-center gap-1.5">
+                  <LayoutGrid className="w-4 h-4 text-orange-600 dark:text-orange-400 stroke-[2.5]" />
+                  <span className="text-xs font-black text-stone-800 dark:text-stone-100 uppercase tracking-wide">
+                    Choisir un menu
                   </span>
-                )}
-              </button>
-
-              {/* 2. IMAGES */}
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedSource({ type: 'images', title: 'Images' });
-                  setIsSourceMenuOpen(false);
-                }}
-                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
-                  selectedSource?.type === 'images'
-                    ? 'bg-amber-100 dark:bg-amber-950/60 text-stone-900 dark:text-amber-200 font-black border border-amber-300'
-                    : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 text-stone-700 dark:text-stone-200 font-bold'
-                }`}
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-200 dark:border-emerald-800">
-                    <Image className="w-4 h-4 stroke-[2.2]" />
-                  </div>
-                  <span className="text-xs truncate">Images</span>
                 </div>
-                {imgsCount > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 font-mono font-bold">
-                    {imgsCount}
-                  </span>
-                )}
-              </button>
-
-              {/* 3. VIDÉO */}
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedSource({ type: 'videos', title: 'Vidéos' });
-                  setIsSourceMenuOpen(false);
-                }}
-                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
-                  selectedSource?.type === 'videos'
-                    ? 'bg-amber-100 dark:bg-amber-950/60 text-stone-900 dark:text-amber-200 font-black border border-amber-300'
-                    : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 text-stone-700 dark:text-stone-200 font-bold'
-                }`}
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-7 h-7 rounded-lg bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 border border-purple-200 dark:border-purple-800">
-                    <Video className="w-4 h-4 stroke-[2.2]" />
-                  </div>
-                  <span className="text-xs truncate">Vidéo</span>
-                </div>
-                {vidsCount > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 font-mono font-bold">
-                    {vidsCount}
-                  </span>
-                )}
-              </button>
-
-              {/* 4. SON */}
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedSource({ type: 'audio', title: 'Son' });
-                  setIsSourceMenuOpen(false);
-                }}
-                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
-                  selectedSource?.type === 'audio'
-                    ? 'bg-amber-100 dark:bg-amber-950/60 text-stone-900 dark:text-amber-200 font-black border border-amber-300'
-                    : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 text-stone-700 dark:text-stone-200 font-bold'
-                }`}
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-7 h-7 rounded-lg bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 border border-rose-200 dark:border-rose-800">
-                    <Music className="w-4 h-4 stroke-[2.2]" />
-                  </div>
-                  <span className="text-xs truncate">Son</span>
-                </div>
-                {audCount > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 font-mono font-bold">
-                    {audCount}
-                  </span>
-                )}
-              </button>
-
-              {/* 5. MENU MATIÈRE */}
-              <div className="border-t border-stone-200 dark:border-stone-700 pt-1 mt-1">
                 <button
                   type="button"
-                  onClick={() => setExpandedSourceGroup(prev => prev === 'matiere' ? null : 'matiere')}
+                  onClick={() => {
+                    setIsSourceMenuOpen(false);
+                    setActiveSubmenu(null);
+                  }}
+                  className="p-1 hover:bg-stone-200 dark:hover:bg-stone-700 rounded-lg text-stone-500 transition-colors cursor-pointer"
+                  title="Fermer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Corps du 1er menu : 6 éléments compacts avec scrollbar custom si besoin */}
+              <div className="overflow-y-auto p-2 space-y-1 menu-custom-scrollbar flex-1">
+                {/* 1. DOCUMENT */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedSource({ type: 'documents', title: 'Documents' });
+                    setIsSourceMenuOpen(false);
+                    setActiveSubmenu(null);
+                  }}
                   className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
-                    selectedSource?.type === 'matiere' || selectedSource?.type === 'mes_fichiers'
-                      ? 'bg-amber-50 dark:bg-amber-950/30 text-stone-900 dark:text-amber-200 font-black'
+                    selectedSource?.type === 'documents'
+                      ? 'bg-amber-100 dark:bg-amber-950/60 text-stone-900 dark:text-amber-200 font-black border border-amber-300'
                       : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 text-stone-700 dark:text-stone-200 font-bold'
                   }`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-200 dark:border-amber-800">
-                      <BookOpen className="w-4 h-4 stroke-[2.2]" />
+                    <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-200 dark:border-blue-800">
+                      <FileText className="w-4 h-4 stroke-[2.2]" />
                     </div>
-                    <span className="text-xs truncate">Menu matière</span>
+                    <span className="text-xs truncate">Document</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  {docsCount > 0 && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 font-mono font-bold">
-                      {1 + savedMatieres.length}
+                      {docsCount}
                     </span>
-                    <ChevronDown className={`w-3.5 h-3.5 text-stone-400 transition-transform duration-200 ${
-                      expandedSourceGroup === 'matiere' ? 'rotate-180' : ''
-                    }`} />
-                  </div>
+                  )}
                 </button>
 
-                {/* Sous-menu des matières avec Mes fichiers tout en haut */}
-                {expandedSourceGroup === 'matiere' && (
-                  <div className="pl-6 pr-1 py-1 space-y-1 animate-in fade-in duration-150">
-                    {/* PREMIÈRE PLACE : Mes fichiers */}
+                {/* 2. IMAGES */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedSource({ type: 'images', title: 'Images' });
+                    setIsSourceMenuOpen(false);
+                    setActiveSubmenu(null);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                    selectedSource?.type === 'images'
+                      ? 'bg-amber-100 dark:bg-amber-950/60 text-stone-900 dark:text-amber-200 font-black border border-amber-300'
+                      : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 text-stone-700 dark:text-stone-200 font-bold'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-200 dark:border-emerald-800">
+                      <Image className="w-4 h-4 stroke-[2.2]" />
+                    </div>
+                    <span className="text-xs truncate">Images</span>
+                  </div>
+                  {imgsCount > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 font-mono font-bold">
+                      {imgsCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* 3. VIDÉO */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedSource({ type: 'videos', title: 'Vidéos' });
+                    setIsSourceMenuOpen(false);
+                    setActiveSubmenu(null);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                    selectedSource?.type === 'videos'
+                      ? 'bg-amber-100 dark:bg-amber-950/60 text-stone-900 dark:text-amber-200 font-black border border-amber-300'
+                      : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 text-stone-700 dark:text-stone-200 font-bold'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 border border-purple-200 dark:border-purple-800">
+                      <Video className="w-4 h-4 stroke-[2.2]" />
+                    </div>
+                    <span className="text-xs truncate">Vidéo</span>
+                  </div>
+                  {vidsCount > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 font-mono font-bold">
+                      {vidsCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* 4. SON */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedSource({ type: 'audio', title: 'Son' });
+                    setIsSourceMenuOpen(false);
+                    setActiveSubmenu(null);
+                  }}
+                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                    selectedSource?.type === 'audio'
+                      ? 'bg-amber-100 dark:bg-amber-950/60 text-stone-900 dark:text-amber-200 font-black border border-amber-300'
+                      : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 text-stone-700 dark:text-stone-200 font-bold'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 border border-rose-200 dark:border-rose-800">
+                      <Music className="w-4 h-4 stroke-[2.2]" />
+                    </div>
+                    <span className="text-xs truncate">Son</span>
+                  </div>
+                  {audCount > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 font-mono font-bold">
+                      {audCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* 5. MENU MATIÈRE (Bouton qui ouvre le 2ème petit menu des matières) */}
+                <div className="border-t border-stone-200 dark:border-stone-700 pt-1 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubmenu(prev => prev === 'matiere' ? null : 'matiere')}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                      activeSubmenu === 'matiere' || selectedSource?.type === 'matiere' || selectedSource?.type === 'mes_fichiers'
+                        ? 'bg-amber-200 dark:bg-amber-900/60 text-stone-950 dark:text-amber-100 font-black border border-amber-400 shadow-xs'
+                        : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 text-stone-700 dark:text-stone-200 font-bold'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-200 dark:border-amber-800">
+                        <BookOpen className="w-4 h-4 stroke-[2.2]" />
+                      </div>
+                      <span className="text-xs truncate">Menu matière</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 font-mono font-bold">
+                        {1 + savedMatieres.length}
+                      </span>
+                      <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                        activeSubmenu === 'matiere' ? 'text-amber-700 translate-x-0.5' : 'text-stone-400'
+                      }`} />
+                    </div>
+                  </button>
+                </div>
+
+                {/* 6. CLASSEUR (Bouton qui ouvre le 2ème petit menu du classeur) */}
+                <div className="pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubmenu(prev => prev === 'classeur' ? null : 'classeur')}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
+                      activeSubmenu === 'classeur' || selectedSource?.type === 'classeur'
+                        ? 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-950 dark:text-indigo-200 font-black border border-indigo-400 shadow-xs'
+                        : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 text-stone-700 dark:text-stone-200 font-bold'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-200 dark:border-indigo-800">
+                        <FolderTree className="w-4 h-4 stroke-[2.2]" />
+                      </div>
+                      <span className="text-xs truncate">Classeur</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 font-mono font-bold">
+                        {classeurFolders.length}
+                      </span>
+                      <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                        activeSubmenu === 'classeur' ? 'text-indigo-700 translate-x-0.5' : 'text-stone-400'
+                      }`} />
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* DEUXIÈME PETIT MENU : Pour MENU MATIÈRE ou CLASSEUR */}
+            {activeSubmenu && (
+              <div
+                ref={submenuRef}
+                className="fixed z-[99999] w-[280px] bg-[#FDFBF7] dark:bg-[#111a2e] border-2 border-stone-800 dark:border-stone-600 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in slide-in-from-left-2 duration-150"
+                style={{
+                  top: `${subTop}px`,
+                  left: `${subLeft}px`,
+                  maxHeight: `${Math.min(360, window.innerHeight - subTop - 16)}px`
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* En-tête du 2ème menu */}
+                <div className="flex items-center justify-between px-3 py-2 bg-stone-100 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700 shrink-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => setActiveSubmenu(null)}
+                      className="p-1 hover:bg-stone-200 dark:hover:bg-stone-700 rounded-lg text-stone-600 dark:text-stone-300 transition-colors cursor-pointer shrink-0"
+                      title="Retour au menu principal"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <div className="flex items-center gap-1.5 min-w-0 truncate">
+                      {activeSubmenu === 'matiere' ? (
+                        <>
+                          <BookOpen className="w-4 h-4 text-amber-600 dark:text-amber-400 stroke-[2.2] shrink-0" />
+                          <span className="text-xs font-black text-stone-800 dark:text-stone-100 uppercase tracking-wide truncate">
+                            Menu matière
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <FolderTree className="w-4 h-4 text-indigo-600 dark:text-indigo-400 stroke-[2.2] shrink-0" />
+                          <span className="text-xs font-black text-stone-800 dark:text-stone-100 uppercase tracking-wide truncate">
+                            Classeur
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSourceMenuOpen(false);
+                      setActiveSubmenu(null);
+                    }}
+                    className="p-1 hover:bg-stone-200 dark:hover:bg-stone-700 rounded-lg text-stone-500 transition-colors cursor-pointer shrink-0 ml-1"
+                    title="Fermer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Contenu du 2ème menu - Cas Matières */}
+                {activeSubmenu === 'matiere' && (
+                  <div className="overflow-y-auto p-2 space-y-1 menu-custom-scrollbar flex-1">
+                    {/* PREMIÈRE PLACE TOUT EN HAUT : Mes fichiers */}
                     <button
                       type="button"
                       onClick={() => {
                         setSelectedSource({ type: 'mes_fichiers', title: 'Mes fichiers' });
                         setIsSourceMenuOpen(false);
+                        setActiveSubmenu(null);
                       }}
-                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left text-xs transition-colors cursor-pointer border ${
                         selectedSource?.type === 'mes_fichiers' || (!selectedSource && isMesFichiersMode)
-                          ? 'bg-amber-300 text-stone-950 font-black shadow-xs'
-                          : 'hover:bg-stone-200/70 text-stone-800 dark:text-stone-300 font-bold'
+                          ? 'bg-amber-300 border-amber-500 text-stone-950 font-black shadow-xs'
+                          : 'bg-amber-50/80 dark:bg-amber-950/30 border-amber-200/80 dark:border-amber-900/60 hover:bg-amber-100 text-stone-900 dark:text-stone-200 font-black'
                       }`}
                     >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Folder className="w-3.5 h-3.5 text-amber-600 fill-amber-500 shrink-0" />
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Folder className="w-4 h-4 text-amber-600 fill-amber-500 shrink-0" />
                         <span className="truncate">Mes fichiers</span>
                       </div>
-                      <span className="text-[9px] font-mono px-1 rounded bg-black/10 dark:bg-white/10 font-bold">1er</span>
+                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-amber-400/90 text-stone-900 border border-stone-800/30">
+                        1er
+                      </span>
                     </button>
 
-                    {/* Matières créées */}
-                    {savedMatieres.map((m) => {
-                      const isSelected = selectedSource?.type === 'matiere' && selectedSource.matiereName === m.name;
-                      const isHex = m.color && m.color.startsWith('#');
-                      return (
-                        <button
-                          key={m.id || m.name}
-                          type="button"
-                          onClick={() => {
-                            setSelectedSource({ type: 'matiere', title: m.name, matiereName: m.name });
-                            setIsSourceMenuOpen(false);
-                          }}
-                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
-                            isSelected
-                              ? 'bg-orange-500 text-white font-black shadow-xs'
-                              : 'hover:bg-stone-200/70 text-stone-800 dark:text-stone-300 font-medium'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span
-                              className="w-2.5 h-2.5 rounded-full shrink-0 border border-stone-800/40"
-                              style={{ backgroundColor: isHex ? m.color : '#EA580C' }}
-                            />
-                            <span className="truncate">{m.name}</span>
-                          </div>
-                          {m.coefficient && (
-                            <span className="text-[9px] font-mono opacity-70">C:{m.coefficient}</span>
-                          )}
-                        </button>
-                      );
-                    })}
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500 px-2 pt-1 pb-0.5">
+                      Matières créées ({savedMatieres.length})
+                    </div>
+
+                    {/* Liste des matières créées */}
+                    {savedMatieres.length === 0 ? (
+                      <p className="text-[11px] text-stone-400 italic py-3 text-center">
+                        Aucune matière créée pour le moment
+                      </p>
+                    ) : (
+                      savedMatieres.map((m) => {
+                        const isSelected = selectedSource?.type === 'matiere' && selectedSource.matiereName === m.name;
+                        const isHex = m.color && m.color.startsWith('#');
+                        return (
+                          <button
+                            key={m.id || m.name}
+                            type="button"
+                            onClick={() => {
+                              setSelectedSource({ type: 'matiere', title: m.name, matiereName: m.name });
+                              setIsSourceMenuOpen(false);
+                              setActiveSubmenu(null);
+                            }}
+                            className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left text-xs transition-colors cursor-pointer ${
+                              isSelected
+                                ? 'bg-orange-500 text-white font-black shadow-xs'
+                                : 'hover:bg-stone-200/70 dark:hover:bg-stone-800 text-stone-800 dark:text-stone-300 font-bold'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span
+                                className="w-3 h-3 rounded-full shrink-0 border border-stone-800/40"
+                                style={{ backgroundColor: isHex ? m.color : '#EA580C' }}
+                              />
+                              <span className="truncate">{m.name}</span>
+                            </div>
+                            {m.coefficient && (
+                              <span className="text-[9px] font-mono opacity-80 bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded">
+                                C:{m.coefficient}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })
+                    )}
                   </div>
                 )}
-              </div>
 
-              {/* 6. CLASSEUR */}
-              <div className="border-t border-stone-200 dark:border-stone-700 pt-1 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setExpandedSourceGroup(prev => prev === 'classeur' ? null : 'classeur')}
-                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
-                    selectedSource?.type === 'classeur'
-                      ? 'bg-amber-50 dark:bg-amber-950/30 text-stone-900 dark:text-amber-200 font-black'
-                      : 'hover:bg-stone-100 dark:hover:bg-stone-800/60 text-stone-700 dark:text-stone-200 font-bold'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-200 dark:border-indigo-800">
-                      <FolderTree className="w-4 h-4 stroke-[2.2]" />
+                {/* Contenu du 2ème menu - Cas Classeur */}
+                {activeSubmenu === 'classeur' && (
+                  <div className="overflow-y-auto p-2 space-y-1 menu-custom-scrollbar flex-1">
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-stone-400 dark:text-stone-500 px-2 pb-0.5">
+                      Dossiers du classeur ({classeurFolders.length})
                     </div>
-                    <span className="text-xs truncate">Classeur</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-300 font-mono font-bold">
-                      {classeurFolders.length}
-                    </span>
-                    <ChevronDown className={`w-3.5 h-3.5 text-stone-400 transition-transform duration-200 ${
-                      expandedSourceGroup === 'classeur' ? 'rotate-180' : ''
-                    }`} />
-                  </div>
-                </button>
 
-                {/* Sous-dossiers du Classeur avec arborescence hiérarchique */}
-                {expandedSourceGroup === 'classeur' && (
-                  <div className="pl-4 pr-1 py-1 space-y-1 animate-in fade-in duration-150">
                     {classeurFolders.length === 0 ? (
-                      <p className="text-[11px] text-stone-400 italic py-2 text-center">
-                        Aucun dossier créé dans Classeur
+                      <p className="text-[11px] text-stone-400 italic py-4 text-center">
+                        Aucun dossier créé dans le Classeur
                       </p>
                     ) : (
                       classeurFolders.filter(f => !f.parentId).map(rootFolder => renderClasseurFolderItem(rootFolder, 0))
@@ -1925,11 +2057,11 @@ export function LeftMenu({
                   </div>
                 )}
               </div>
-            </div>
-          </div>
-        </>,
-        document.body
-      )}
+            )}
+          </>,
+          document.body
+        );
+      })()}
     </div>
   );
 }
