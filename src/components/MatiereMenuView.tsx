@@ -548,7 +548,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     const showSpeechControls = (!isPdf || readerPdfViewMode === 'continuous') && (fileType === 'document' || fileType === 'note');
 
     return (
-      <div className="w-full h-full flex flex-col bg-[#04060A] text-white">
+      <div className="w-full h-full min-h-0 flex flex-col bg-[#04060A] text-white">
         {/* Barre d'en-tête du lecteur */}
         <div className="px-3 sm:px-4 py-2 bg-[#0A0E1A] border-b border-stone-800 flex items-center justify-between gap-2 sm:gap-3 shrink-0">
           <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
@@ -825,7 +825,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         </div>
 
         {/* Corps du lecteur selon le type */}
-        <div className="flex-1 w-full h-full overflow-hidden flex flex-col relative bg-[#04060A]">
+        <div className="flex-1 w-full h-full min-h-0 overflow-hidden flex flex-col relative bg-[#04060A]">
           {fileType === 'audio' && (
             <div className="w-full h-full flex flex-col justify-center bg-[#070B14]">
               <ModernAudioPlayer
@@ -866,7 +866,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
           )}
 
           {fileType === 'note' && (
-            <div className="w-full h-full flex flex-col bg-[#070B14] select-text">
+            <div className="w-full h-full min-h-0 flex-1 flex flex-col bg-[#070B14] select-text">
               <ModernDocumentViewer
                 fileId={file.id}
                 url={file.url}
@@ -883,7 +883,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
           )}
 
           {fileType === 'document' && (
-            <div className="w-full h-full flex flex-col bg-[#070B14] select-text">
+            <div className="w-full h-full min-h-0 flex-1 flex flex-col bg-[#070B14] select-text">
               <ModernDocumentViewer
                 fileId={file.id}
                 url={file.url}

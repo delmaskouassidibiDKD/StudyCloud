@@ -33,11 +33,31 @@ interface PdfPageCanvasProps {
 const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({ pdfDoc, pageNumber, scale }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isVisible, setIsVisible] = useState(false);
+  const [isVisible, setIsVisible] = useState(pageNumber <= 2);
   const [rendered, setRendered] = useState(false);
+  const [pageDims, setPageDims] = useState<{ width: number; height: number }>({ width: 595, height: 842 });
+  const [aspectRatio, setAspectRatio] = useState<number>(595 / 842);
 
-  // N'initialiser le rendu Canvas que lorsque la page s'approche de la zone visible
+  // 1. Découverte immédiate des dimensions exactes de la page pour réserver l'espace exact sans saut d'affichage
   useEffect(() => {
+    if (!pdfDoc) return;
+    let isMounted = true;
+    pdfDoc.getPage(pageNumber).then((page: any) => {
+      if (!isMounted) return;
+      try {
+        const unscaled = page.getViewport({ scale: 1.0 });
+        const w = unscaled.width || 595;
+        const h = unscaled.height || 842;
+        setPageDims({ width: w, height: h });
+        setAspectRatio(w / h);
+      } catch {}
+    }).catch(() => {});
+    return () => { isMounted = false; };
+  }, [pdfDoc, pageNumber]);
+
+  // 2. Observer d'intersection pour différer le rendu des pages éloignées
+  useEffect(() => {
+    if (isVisible) return;
     const el = containerRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
@@ -45,50 +65,98 @@ const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({ pdfDoc, pageNumber, scale
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
             setIsVisible(true);
+            observer.disconnect();
           }
         });
       },
-      { rootMargin: '350px 0px 350px 0px' }
+      { rootMargin: '600px 0px 600px 0px' }
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [isVisible]);
 
+  // 3. Rendu haute fidélité du canvas avec gestion propre de l'annulation
   useEffect(() => {
     if (!isVisible || !pdfDoc || !canvasRef.current) return;
+    let isMounted = true;
     let renderTask: any = null;
 
     pdfDoc.getPage(pageNumber).then((page: any) => {
+      if (!isMounted || !canvasRef.current) return;
       const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext('2d', { alpha: false });
       if (!ctx) return;
 
-      const viewport = page.getViewport({ scale });
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
+      const unscaled = page.getViewport({ scale: 1.0 });
+      const w = unscaled.width || 595;
+      const h = unscaled.height || 842;
+      if (isMounted) {
+        setPageDims({ width: w, height: h });
+        setAspectRatio(w / h);
+      }
 
-      renderTask = page.render({ canvasContext: ctx, viewport });
-      renderTask.promise
-        .then(() => setRendered(true))
-        .catch(() => {});
-    });
+      // Rendu Retina HD haute définition pour une netteté de lecture absolue
+      const dpr = Math.min(typeof window !== 'undefined' ? (window.devicePixelRatio || 1.5) : 1.5, 2.5);
+      const renderScale = scale * dpr;
+      const renderViewport = page.getViewport({ scale: renderScale });
+
+      canvas.width = Math.round(renderViewport.width);
+      canvas.height = Math.round(renderViewport.height);
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const task = page.render({ canvasContext: ctx, viewport: renderViewport });
+      renderTask = task;
+
+      task.promise
+        .then(() => {
+          if (isMounted) setRendered(true);
+        })
+        .catch((err: any) => {
+          if (err?.name !== 'RenderingCancelledException') {
+            console.warn(`[PdfPageCanvas] Erreur rendu page ${pageNumber}:`, err);
+          }
+        });
+    }).catch(() => {});
 
     return () => {
-      if (renderTask) {
+      isMounted = false;
+      if (renderTask && typeof renderTask.cancel === 'function') {
         try { renderTask.cancel(); } catch {}
       }
     };
   }, [isVisible, pdfDoc, pageNumber, scale]);
 
+  const targetWidth = Math.round(pageDims.width * scale);
+  const targetHeight = Math.round(targetWidth / (aspectRatio || 0.707));
+
   return (
-    <div ref={containerRef} className="relative flex justify-center bg-white min-h-[300px] w-full">
+    <div
+      ref={containerRef}
+      className="relative flex items-center justify-center bg-white shrink-0 overflow-hidden"
+      style={{
+        width: `${targetWidth}px`,
+        maxWidth: '100%',
+        aspectRatio: `${pageDims.width} / ${pageDims.height}`,
+        minHeight: `${Math.min(targetHeight, 200)}px`,
+      }}
+    >
+      <canvas
+        ref={canvasRef}
+        className="block"
+        style={{
+          width: '100%',
+          height: '100%',
+          display: rendered ? 'block' : 'none',
+        }}
+      />
       {!rendered && (
-        <div className="flex items-center justify-center p-8 bg-stone-100 dark:bg-zinc-800 animate-pulse min-h-[300px] w-full">
-          <span className="text-xs text-zinc-400 font-semibold">Page {pageNumber}...</span>
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-stone-50 dark:bg-zinc-800 text-zinc-400 p-4 animate-pulse">
+          <div className="w-7 h-7 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mb-2" />
+          <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">Page {pageNumber}...</span>
         </div>
       )}
-      {isVisible && <canvas ref={canvasRef} className="max-w-full block" />}
     </div>
   );
 };
@@ -415,7 +483,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
   };
 
   return (
-    <div className={`w-full h-full flex flex-col bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 overflow-hidden ${className}`}>
+    <div className={`w-full h-full min-h-0 flex flex-col bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 overflow-hidden ${className}`}>
       {/* 1. EN-TÊTE DU DOCUMENT AVEC ACTIONS & CONTRÔLES (Masqué quand hideHeader={true}) */}
       {!hideHeader && (
         <div className="flex items-center justify-between px-3 sm:px-4 py-2 bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shrink-0 z-10 shadow-xs">
@@ -516,7 +584,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
       )}
 
       {/* 2. ZONE DE CONTENU PRINCIPALE AVEC DÉFILEMENT VERTICAL FLUIDE & CONFINÉ */}
-      <div className="flex-1 w-full h-full overflow-hidden relative flex flex-col">
+      <div className="flex-1 w-full h-full min-h-0 overflow-hidden relative flex flex-col">
         {/* Chargement */}
         {isLoading && !nativePdfUrl && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/70 dark:bg-zinc-950/70 backdrop-blur-xs z-20">
@@ -546,7 +614,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
 
         {/* A. RENDU PDF (1. Mode Lecteur Navigateur Natif avec défilement vertical et barre d'outils complète) */}
         {isPdf && !errorMessage && activePdfViewMode === 'native' && nativePdfUrl && (
-          <div className="w-full h-full flex-1 flex flex-col items-center overflow-hidden bg-stone-100 dark:bg-stone-900">
+          <div className="w-full h-full flex-1 min-h-0 flex flex-col items-center overflow-hidden bg-stone-100 dark:bg-stone-900">
             <iframe
               key={`pdf-native-${fileId || 'direct'}`}
               src={nativePdfUrl}
@@ -560,18 +628,18 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
         {/* A. RENDU PDF (2. Mode Défilement Continu Multi-Pages avec PDF.js et confinement strict du défilement) */}
         {isPdf && !errorMessage && (activePdfViewMode === 'continuous' || !nativePdfUrl) && (
           <div 
-            className="w-full h-full flex-1 overflow-y-auto flex flex-col items-center gap-6 p-4 sm:p-6 bg-stone-100 dark:bg-zinc-900 select-text overscroll-contain"
-            style={{ overscrollBehavior: 'contain', touchAction: 'pan-y' }}
+            className="w-full h-full flex-1 min-h-0 overflow-y-auto flex flex-col items-center gap-6 p-4 sm:p-6 bg-stone-100 dark:bg-zinc-900 select-text"
+            style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
           >
             {pdfDoc ? (
               Array.from({ length: pdfTotalPages }, (_, i) => i + 1).map((pageNum) => (
                 <div
                   key={pageNum}
                   id={`modern-doc-page-${pageNum}`}
-                  className="flex flex-col items-center rounded-lg overflow-hidden border border-zinc-300 dark:border-zinc-700 bg-white shadow-xl max-w-full"
+                  className="flex flex-col items-center shrink-0 rounded-xl overflow-hidden border border-zinc-300 dark:border-zinc-700 bg-white shadow-xl max-w-full my-2"
                 >
                   <PdfPageCanvas pdfDoc={pdfDoc} pageNumber={pageNum} scale={activePdfScale} />
-                  <div className="w-full py-1 text-center text-[10px] font-bold text-zinc-500 bg-zinc-50 dark:bg-zinc-800 border-t border-zinc-200 dark:border-zinc-700 select-none">
+                  <div className="w-full py-1 text-center text-[10px] font-bold text-zinc-500 bg-zinc-50 dark:bg-zinc-800 border-t border-zinc-200 dark:border-zinc-700 select-none shrink-0">
                     Page {pageNum} sur {pdfTotalPages}
                   </div>
                 </div>
