@@ -13,6 +13,7 @@ import { DocumentCardPreview } from './DocumentCardPreview';
 import { ImageCardPreview } from './ImageCardPreview';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
+import { PdfHorizontalViewer, extractPageLines } from './PdfHorizontalViewer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { handleNativeShare } from '../utils/nativeShare';
@@ -84,8 +85,9 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
   const [autoScrollEnabled, setAutoScrollEnabled] = useState<boolean>(true);
   const [currentSentenceIdx, setCurrentSentenceIdx] = useState<number>(0);
   const [activeSpeechPage, setActiveSpeechPage] = useState<number>(1);
+  const [activeSpeechLineIndex, setActiveSpeechLineIndex] = useState<number>(-1);
   const [docExtractedText, setDocExtractedText] = useState<string>('');
-  const speechSegmentsRef = useRef<{ text: string; page?: number }[]>([]);
+  const speechSegmentsRef = useRef<{ text: string; page?: number; lineIndex?: number }[]>([]);
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => {
@@ -96,6 +98,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     setIsAudioMenuOpen(false);
     setCurrentSentenceIdx(0);
     setActiveSpeechPage(1);
+    setActiveSpeechLineIndex(-1);
     speechSegmentsRef.current = [];
     setDocExtractedText('');
     setReaderPdfViewMode('native');
@@ -110,6 +113,42 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     };
   }, []);
 
+  const extractPdfSegments = async (fileId?: string, url?: string): Promise<{ text: string; page: number; lineIndex: number }[]> => {
+    try {
+      let arrayBuffer: ArrayBuffer | null = null;
+      if (fileId) {
+        try {
+          const blob = await getFileBlob(fileId);
+          if (blob) arrayBuffer = await blob.arrayBuffer();
+        } catch (e) {}
+      }
+      if (!arrayBuffer && url) {
+        try {
+          const resp = await fetch(url);
+          if (resp.ok) arrayBuffer = await resp.arrayBuffer();
+        } catch (e) {}
+      }
+      if (!arrayBuffer) return [];
+
+      const typedarray = new Uint8Array(arrayBuffer);
+      const loadingTask = pdfjsLib.getDocument({ data: typedarray, cMapPacked: true });
+      const pdf = await loadingTask.promise;
+      const result: { text: string; page: number; lineIndex: number }[] = [];
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const pageLines = await extractPageLines(page, pageNum);
+        for (const l of pageLines) {
+          result.push({ text: l.text, page: pageNum, lineIndex: l.lineIndex });
+        }
+      }
+      return result;
+    } catch (e) {
+      console.warn('[MatiereMenuView] Erreur extraction segments PDF:', e);
+      return [];
+    }
+  };
+
   const speakSentence = (index: number) => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
       alert("La synthèse vocale n'est pas prise en charge sur ce navigateur.");
@@ -120,6 +159,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     if (!segments || segments.length === 0 || index >= segments.length) {
       setSpeechState('stopped');
       setCurrentSentenceIdx(0);
+      setActiveSpeechLineIndex(-1);
       activeUtteranceRef.current = null;
       return;
     }
@@ -130,6 +170,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         speakSentence(index + 1);
       } else {
         setSpeechState('stopped');
+        setActiveSpeechLineIndex(-1);
       }
       return;
     }
@@ -137,6 +178,11 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     setCurrentSentenceIdx(index);
     if (segment.page) {
       setActiveSpeechPage(segment.page);
+    }
+    if (typeof segment.lineIndex === 'number') {
+      setActiveSpeechLineIndex(segment.lineIndex);
+    } else {
+      setActiveSpeechLineIndex(-1);
     }
 
     const utterance = new SpeechSynthesisUtterance(sentence);
@@ -152,6 +198,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     }
 
     activeUtteranceRef.current = utterance;
+    (window as any).__studyCloudUtterance = utterance;
 
     utterance.onend = () => {
       activeUtteranceRef.current = null;
@@ -160,6 +207,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       } else {
         setSpeechState('stopped');
         setCurrentSentenceIdx(0);
+        setActiveSpeechLineIndex(-1);
       }
     };
 
@@ -170,6 +218,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
           speakSentence(index + 1);
         } else {
           setSpeechState('stopped');
+          setActiveSpeechLineIndex(-1);
         }
       }
     };
@@ -184,47 +233,26 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       window.speechSynthesis.cancel();
     }
 
+    const isPdf = selectedFile?.name?.toLowerCase().endsWith('.pdf') || selectedFile?.type?.includes('pdf') || selectedFile?.extension?.toLowerCase() === 'pdf';
+
+    // Passer automatiquement au lecteur intégré pour afficher le surlignage Stabilo
+    if (isPdf && readerPdfViewMode !== 'continuous') {
+      setReaderPdfViewMode('continuous');
+    }
+
     if (speechSegmentsRef.current.length === 0) {
       setSpeechState('loading');
-      let textToRead = docExtractedText || '';
 
-      const isPdf = selectedFile?.name?.toLowerCase().endsWith('.pdf') || selectedFile?.type?.includes('pdf');
-      if (isPdf && (!textToRead || textToRead.length < 10)) {
-        try {
-          let b = null;
-          if (selectedFile?.id) {
-            try { b = await getFileBlob(selectedFile.id); } catch {}
-          }
-          if (!b && selectedFile?.url) {
-            try {
-              const resp = await fetch(selectedFile.url);
-              if (resp.ok) b = await resp.blob();
-            } catch {}
-          }
-          if (b) {
-            const ab = await b.arrayBuffer();
-            const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(ab) }).promise;
-            const allSegs: { text: string; page?: number }[] = [];
-            for (let p = 1; p <= pdf.numPages; p++) {
-              const page = await pdf.getPage(p);
-              const tc = await page.getTextContent();
-              const pageText = (tc.items as any[]).map((it: any) => it.str).join(' ').trim();
-              if (pageText) {
-                const sentences = smartSentenceSplit(pageText);
-                sentences.forEach(s => allSegs.push({ text: s, page: p }));
-              }
-            }
-            if (allSegs.length > 0) {
-              speechSegmentsRef.current = allSegs;
-              speakSentence(0);
-              return;
-            }
-          }
-        } catch (err) {
-          console.warn('Erreur extraction audio PDF:', err);
+      if (isPdf) {
+        const segs = await extractPdfSegments(selectedFile?.id, selectedFile?.url);
+        if (segs.length > 0) {
+          speechSegmentsRef.current = segs;
+          speakSentence(0);
+          return;
         }
       }
 
+      let textToRead = docExtractedText || '';
       if (!textToRead && selectedFile) {
         if ((selectedFile as any).content) {
           textToRead = (selectedFile as any).content;
@@ -246,14 +274,14 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
 
       if (textToRead && textToRead.trim()) {
         const sents = smartSentenceSplit(textToRead);
-        speechSegmentsRef.current = sents.map(s => ({ text: s }));
+        speechSegmentsRef.current = sents.map((s, idx) => ({ text: s, lineIndex: idx }));
+        speakSentence(0);
       } else {
-        const title = selectedFile?.name?.replace(/\.[^/.]+$/, '').replace(/_/g, ' ') || 'Document';
-        speechSegmentsRef.current = [{ text: `Lecture du document ${title}.` }];
+        setSpeechState('stopped');
       }
+    } else {
+      speakSentence(currentSentenceIdx || 0);
     }
-
-    speakSentence(currentSentenceIdx || 0);
   };
 
   const handleTogglePause = () => {
@@ -275,6 +303,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     }
     setSpeechState('stopped');
     setCurrentSentenceIdx(0);
+    setActiveSpeechLineIndex(-1);
     activeUtteranceRef.current = null;
   };
 
@@ -283,6 +312,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       window.speechSynthesis.cancel();
     }
     setCurrentSentenceIdx(0);
+    setActiveSpeechLineIndex(-1);
     speakSentence(0);
   };
 
@@ -545,7 +575,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     const canGoPrev = currentIndex > 0;
     const canGoNext = currentIndex >= 0 && currentIndex < filteredFiles.length - 1;
     const isPdf = file.name?.toLowerCase().endsWith('.pdf') || file.type?.includes('pdf') || file.extension?.toLowerCase() === 'pdf';
-    const showSpeechControls = (!isPdf || readerPdfViewMode === 'continuous') && (fileType === 'document' || fileType === 'note');
+    const showSpeechControls = fileType === 'document' || fileType === 'note';
 
     return (
       <div className="w-full h-full min-h-0 flex flex-col bg-[#04060A] text-white">
@@ -884,21 +914,54 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
 
           {fileType === 'document' && (
             <div className="w-full h-full min-h-0 flex-1 flex flex-col bg-[#070B14] select-text">
-              <ModernDocumentViewer
-                fileId={file.id}
-                url={file.url}
-                fileName={file.name}
-                fileSize={formattedSize}
-                hideHeader={true}
-                pdfViewMode={readerPdfViewMode}
-                onPdfViewModeChange={setReaderPdfViewMode}
-                pdfScale={readerPdfScale}
-                onPdfScaleChange={setReaderPdfScale}
-                onExtractedText={setDocExtractedText}
-                activeSpeechPage={activeSpeechPage}
-                autoScrollEnabled={autoScrollEnabled}
-                className="w-full h-full border-0 rounded-none shadow-none"
-              />
+              {isPdf && readerPdfViewMode === 'continuous' ? (
+                <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
+                  <PdfHorizontalViewer
+                    fileId={file.id}
+                    file={file}
+                    url={file.url}
+                    docZoom={Math.round(readerPdfScale * 100)}
+                    layoutMode="vertical"
+                    activeSpeechPage={activeSpeechPage}
+                    activeSpeechLineIndex={activeSpeechLineIndex}
+                    currentSpokenText={speechSegmentsRef.current[currentSentenceIdx]?.text}
+                    autoScrollEnabled={autoScrollEnabled}
+                    isSpeaking={speechState === 'playing'}
+                    onSegmentsExtracted={(segs) => {
+                      if (speechSegmentsRef.current.length === 0) {
+                        speechSegmentsRef.current = segs;
+                      }
+                    }}
+                    isFullscreen={isViewerMaximized}
+                  />
+                </div>
+              ) : isPdf && readerPdfViewMode === 'native' ? (
+                <div className="w-full h-full flex-1 flex flex-col items-center overflow-hidden bg-stone-100 dark:bg-stone-900">
+                  <iframe
+                    key={`pdf-native-${file.id || 'direct'}`}
+                    src={`${(file.url || '').split('#')[0]}#toolbar=1&navpanes=0&view=FitH`}
+                    title={file.name || 'Document PDF'}
+                    className="w-full h-full border-0 block flex-1 bg-white"
+                    style={{ width: '100%', height: '100%', minHeight: '100%' }}
+                  />
+                </div>
+              ) : (
+                <ModernDocumentViewer
+                  fileId={file.id}
+                  url={file.url}
+                  fileName={file.name}
+                  fileSize={formattedSize}
+                  hideHeader={true}
+                  pdfViewMode={readerPdfViewMode}
+                  onPdfViewModeChange={setReaderPdfViewMode}
+                  pdfScale={readerPdfScale}
+                  onPdfScaleChange={setReaderPdfScale}
+                  onExtractedText={setDocExtractedText}
+                  activeSpeechPage={activeSpeechPage}
+                  autoScrollEnabled={autoScrollEnabled}
+                  className="w-full h-full border-0 rounded-none shadow-none"
+                />
+              )}
             </div>
           )}
         </div>
