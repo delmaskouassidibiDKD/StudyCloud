@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Maximize, Minimize, ArrowLeftRight } from 'lucide-react';
+import { UniversalContentRenderer } from './universal-render/UniversalContentRenderer';
 
 interface RightMenuProps {
   isRightFullscreen: boolean;
@@ -20,6 +21,38 @@ export function RightMenu({
   isMobileScreen,
   setIsResizingRight
 }: RightMenuProps) {
+  const [activeCreation, setActiveCreation] = useState<any>(null);
+
+  useEffect(() => {
+    const handleCreationReady = (e: any) => {
+      const creation = e.detail?.creation || e.detail;
+      if (creation) {
+        setActiveCreation(creation);
+      }
+    };
+
+    const handleOpenCreation = (e: any) => {
+      const creation = e.detail?.creation || e.detail?.item || e.detail;
+      if (creation) {
+        setActiveCreation(creation);
+      }
+    };
+
+    const handleClearCreation = () => {
+      setActiveCreation(null);
+    };
+
+    window.addEventListener('ai-creation-ready', handleCreationReady as any);
+    window.addEventListener('studycloud-open-creation', handleOpenCreation as any);
+    window.addEventListener('studycloud-clear-creation', handleClearCreation as any);
+
+    return () => {
+      window.removeEventListener('ai-creation-ready', handleCreationReady as any);
+      window.removeEventListener('studycloud-open-creation', handleOpenCreation as any);
+      window.removeEventListener('studycloud-clear-creation', handleClearCreation as any);
+    };
+  }, []);
+
   return (
     <div
       className={`w-full h-full pointer-events-auto relative bg-[#1e2024] flex flex-col pt-[44px] overflow-hidden ${
@@ -69,10 +102,19 @@ export function RightMenu({
         </div>
       </div>
 
-      {/* Zone principale : Menu vide prêt pour les nouvelles fonctionnalités */}
-      <div className="flex-1 w-full overflow-y-auto flex flex-col items-center justify-center min-h-0 bg-[#16181f] text-zinc-100">
-        {/* Menu vide */}
-      </div>
+      {/* Zone principale : Reste totalement vide si aucune création, ou affiche la création polymorphe */}
+      {activeCreation ? (
+        <div className="flex-1 w-full min-h-0 overflow-hidden relative">
+          <UniversalContentRenderer
+            item={activeCreation}
+            onClose={() => setActiveCreation(null)}
+            isFullscreen={isRightFullscreen}
+          />
+        </div>
+      ) : (
+        <div className="flex-1 w-full min-h-0 bg-[#16181f]" />
+      )}
     </div>
   );
 }
+
