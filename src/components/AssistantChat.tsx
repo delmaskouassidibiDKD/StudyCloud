@@ -916,10 +916,10 @@ RÈGLES D'EXCELLENCE :
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-bold transition-all cursor-pointer border border-zinc-700 active:scale-95 shrink-0"
             title="Historique des discussions"
           >
-            <Clock className="w-3.5 h-3.5 text-orange-400" />
+            <Clock className="w-3.5 h-3.5 text-zinc-300" />
             <span>Historique</span>
             {conversations.length > 0 && (
-              <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-orange-500/25 text-orange-400 text-[10px] font-black">
+              <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-zinc-700 text-zinc-200 text-[10px] font-black">
                 {conversations.length}
               </span>
             )}
@@ -932,7 +932,7 @@ RÈGLES D'EXCELLENCE :
             className="p-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-all cursor-pointer border border-zinc-700 active:scale-95 shrink-0 flex items-center justify-center"
             title="Nouvelle discussion"
           >
-            <Plus className="w-4 h-4 text-orange-400" />
+            <Plus className="w-4 h-4 text-zinc-300" />
           </button>
 
           {/* Bouton Puissant / Moyen placé près du bouton + (sans clignotement) */}
@@ -957,10 +957,10 @@ RÈGLES D'EXCELLENCE :
             <button
               type="button"
               onClick={onClose}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-orange-500/20 border border-orange-500/50 text-orange-400 text-[10px] font-black cursor-pointer hover:bg-orange-500/30 transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 hover:text-white text-[10px] font-bold cursor-pointer transition-colors"
               title="Fermer l'Assistante DKD"
             >
-              <DelmasRobot size={20} />
+              <DelmasRobot size={18} />
               <span>Fermer</span>
             </button>
           )}
@@ -1065,15 +1065,15 @@ RÈGLES D'EXCELLENCE :
         className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-6 flex flex-col"
       >
         {messages.length === 0 && !isTyping && !isWaitingServer ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center max-h-full my-auto pb-10">
+          <div className="flex-1 flex flex-col items-center justify-center text-center max-h-full my-auto pb-10 animate-fadeIn">
             <div className="mb-4">
-              <DnaLogo className="w-12 h-12 drop-shadow-[0_0_8px_rgba(249,115,22,0.8)] text-orange-500" glow={true} />
+              <DnaLogo className="w-12 h-12 text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.35)]" glow={false} />
             </div>
-            <h2 className="text-lg font-bold text-orange-500 mb-2">
-              Bonjour ! Je suis votre assistante DKD.
+            <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 tracking-tight">
+              On fait quoi aujourd'hui ?
             </h2>
-            <p className="text-sm font-medium text-orange-400/80 max-w-xs leading-relaxed">
-              Posez-moi vos questions ou demandez-moi de créer un résumé, un quiz, une carte mentale ou une infographie dans l'espace à droite !
+            <p className="text-xs sm:text-sm font-medium text-zinc-300 max-w-xs leading-relaxed">
+              Posez une question, analysez vos cours ou demandez des explications.
             </p>
           </div>
         ) : (
@@ -1187,66 +1187,8 @@ RÈGLES D'EXCELLENCE :
         )}
       </div>
 
-      {/* ZONE BASSE : PROPOSITIONS COLLÉES AU BORD DU CLAVIER + FORMULAIRE */}
+      {/* ZONE BASSE : FORMULAIRE */}
       <div className="px-3 sm:px-5 pt-2 pb-6 sm:pb-8 shrink-0">
-        
-        {showProposalBar && (
-          <div className="mx-2 md:mx-4 mb-2 p-2 bg-[#23252a] border border-orange-500/30 rounded-2xl shadow-lg animate-fadeIn flex flex-col gap-1.5">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-[11px] font-bold text-orange-400 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" />
-                Actions rapides recommandées en 1 tap :
-              </span>
-              <button 
-                type="button"
-                onClick={() => setShowProposalBar(false)} 
-                className="text-zinc-500 hover:text-zinc-300 p-0.5 cursor-pointer"
-                title="Masquer les suggestions"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1">
-              <button
-                type="button"
-                onClick={() => handleQuickAction('quiz')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-xs font-bold shrink-0 transition-all cursor-pointer active:scale-95"
-              >
-                🎯 Quiz QCM
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickAction('summary')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 text-blue-300 text-xs font-bold shrink-0 transition-all cursor-pointer active:scale-95"
-              >
-                📋 Fiche de Résumé
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickAction('mindmap')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/40 text-violet-300 text-xs font-bold shrink-0 transition-all cursor-pointer active:scale-95"
-              >
-                🧠 Carte Mentale
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickAction('infographic')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-xs font-bold shrink-0 transition-all cursor-pointer active:scale-95"
-              >
-                📊 Infographie
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickAction('document')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/40 text-orange-300 text-xs font-bold shrink-0 transition-all cursor-pointer active:scale-95"
-              >
-                📄 Fiche PDF
-              </button>
-            </div>
-          </div>
-        )}
-
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -1267,18 +1209,18 @@ RÈGLES D'EXCELLENCE :
           <div className="flex items-center justify-between pt-0.5">
             <div className="flex items-center gap-2 overflow-x-auto flex-1 mr-2 custom-scrollbar pb-1">
                {activePreviewItem?.name && (
-                 <div className="flex items-center gap-1.5 px-2.5 py-1 bg-orange-500/10 border border-orange-500/40 rounded-lg max-w-[160px] sm:max-w-[210px] shrink-0" title="Document ouvert à l'écran (sélectionné en orange)">
+                 <div className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800 border border-zinc-600 rounded-lg max-w-[160px] sm:max-w-[210px] shrink-0" title="Document ouvert à l'écran">
                    <div className="shrink-0 flex items-center justify-center">
                      <FileIconBadge fileName={activePreviewItem.name} size={16} />
                    </div>
-                   <span className="text-[10px] sm:text-[11px] font-bold text-orange-300 truncate">
+                   <span className="text-[10px] sm:text-[11px] font-bold text-zinc-200 truncate">
                      {activePreviewItem.name}
                    </span>
-                   <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-orange-500/25 text-orange-400 shrink-0">
+                   <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-zinc-700 text-zinc-300 shrink-0">
                      Actif
                    </span>
                    {activePreviewItem.isExtracting && (
-                     <Loader2 className="w-3 h-3 animate-spin text-orange-400 ml-1 shrink-0" />
+                     <Loader2 className="w-3 h-3 animate-spin text-zinc-400 ml-1 shrink-0" />
                    )}
                  </div>
                )}
