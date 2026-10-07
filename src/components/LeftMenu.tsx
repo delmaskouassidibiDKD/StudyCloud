@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { Upload, File as FileIcon, MoreVertical, Trash2, CheckSquare, Square, Check, X, Plus, Search, ArrowLeftRight, RotateCcw } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { Upload, File as FileIcon, MoreVertical, Trash2, CheckSquare, Square, Check, X, Plus, Search, ArrowLeftRight, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { DelmasRobot } from './DelmasRobot';
 import { AssistantChat } from './AssistantChat';
 import { FileIconBadge } from './FileIconBadge';
@@ -48,10 +49,12 @@ export function LeftMenu({
   const [sessionImportedIds, setSessionImportedIds] = useState<string[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const importedScrollRef = React.useRef<HTMLDivElement>(null);
   const [itemsPerRow, setItemsPerRow] = useState(2);
   const [chatKey, setChatKey] = useState(0);
   const [hasChatMessages, setHasChatMessages] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuCoords, setMenuCoords] = useState<{ top: number; left: number; file: any; isImportedSection: boolean } | null>(null);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [attachedResources, setAttachedResources] = useState<any[]>([]);
@@ -215,9 +218,16 @@ export function LeftMenu({
   }, []);
 
   useEffect(() => {
-    const handleClickOutside = () => setOpenMenuId(null);
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
+    const handleCloseMenu = () => {
+      setOpenMenuId(null);
+      setMenuCoords(null);
+    };
+    document.addEventListener('click', handleCloseMenu);
+    window.addEventListener('scroll', handleCloseMenu, true);
+    return () => {
+      document.removeEventListener('click', handleCloseMenu);
+      window.removeEventListener('scroll', handleCloseMenu, true);
+    };
   }, []);
 
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -539,21 +549,6 @@ export function LeftMenu({
     return 0;
   };
 
-  const reorderForHorizontalGrid = (files: any[]) => {
-    const result = [];
-    const cols = itemsPerRow;
-    const chunkSize = cols * 2;
-    for (let i = 0; i < files.length; i += chunkSize) {
-      const chunk = files.slice(i, i + chunkSize);
-      
-      for (let col = 0; col < cols; col++) {
-         result.push(chunk[col] || { id: `dummy-${i}-row1-${col}`, isDummy: true }); // Row 1
-         result.push(chunk[col + cols] || { id: `dummy-${i}-row2-${col}`, isDummy: true }); // Row 2
-      }
-    }
-    return result;
-  };
-
   const renderFileGroup = (files: any[], isHorizontal: boolean = false, isImportedSection: boolean = false) => {
     const sortedFiles = [...files].sort((a, b) => {
       const aIsActive = activePreviewItem?.id === a.id;
@@ -570,23 +565,14 @@ export function LeftMenu({
       return 0;
     });
 
-    const itemsToRender = isHorizontal ? reorderForHorizontalGrid(sortedFiles) : sortedFiles;
-    return itemsToRender.map((f) => {
-      if (f.isDummy) {
-        return <div key={f.id} className="w-[105px] h-[1px] pointer-events-none opacity-0 shrink-0"></div>;
-      }
+    return sortedFiles.map((f) => {
       const ext = f.extension || (f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
-      const isPdf = ext === 'PDF';
-      const isWord = ext === 'DOC' || ext === 'DOCX';
-      const isExcel = ext === 'XLS' || ext === 'XLSX';
-      const isImage = ['JPG', 'JPEG', 'PNG', 'WEBP'].includes(ext);
       const isActive = activePreviewItem?.id === f.id;
       const isSelected = selectedIds.includes(f.id);
       const isAttached = attachedResources.some(res => res.id === f.id);
       
       const totalContextCount = (activePreviewItem ? 1 : 0) + attachedResources.filter(res => res.id !== activePreviewItem?.id).length;
       const isLimitReached = totalContextCount >= 3;
-      // Le bouton trois traits disparaît sur les fichiers non attachés quand la limite de 3 est atteinte
       const showMenuButton = !isSelectionMode && !isActive && (isAttached || !isLimitReached);
       
       let containerClass = "border-2 border-transparent bg-transparent";
@@ -620,97 +606,45 @@ export function LeftMenu({
                setViewHistory(prev => [f.id, ...prev.filter(id => id !== f.id)]);
             }
           }} 
-          className={`group flex flex-col items-center cursor-pointer transition-all ${isHorizontal ? 'w-[100px] shrink-0' : 'w-full min-w-0'} relative ${isActive || isAttached ? 'scale-[1.03]' : 'hover:scale-105'} ${openMenuId === f.id ? 'z-[200]' : 'z-10'} p-1`}
+          className={`group flex flex-col items-center cursor-pointer transition-all ${
+            isHorizontal ? 'w-[92px] min-w-[92px] max-w-[92px] shrink-0' : 'w-full min-w-0'
+          } relative ${isActive || isAttached ? 'scale-[1.03]' : 'hover:scale-105'} p-1 select-none`}
         >
-          <div className={`relative p-2.5 rounded-xl transition-all ${containerClass}`}>
+          <div className={`relative p-2 rounded-xl transition-all ${containerClass}`}>
             <FileIconBadge 
               fileName={f.name} 
-              size={48} 
+              size={isHorizontal ? 44 : 48} 
               isAudio={f.category === 'audio' || !!f.audioUrl || f.type?.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'].includes((f.extension || f.name.split('.').pop() || '').toLowerCase())} 
             />
             
             {showMenuButton && (
-              <div className={`absolute top-1 right-1 transition-opacity z-50 ${openMenuId === f.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+              <div className={`absolute top-1 right-1 transition-opacity z-20 ${openMenuId === f.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                 <button 
                   onClick={(e) => {
                     e.stopPropagation();
-                    setOpenMenuId(openMenuId === f.id ? null : f.id);
+                    if (openMenuId === f.id) {
+                      setOpenMenuId(null);
+                      setMenuCoords(null);
+                    } else {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const dropdownWidth = 125;
+                      const left = Math.max(8, Math.min(rect.right - dropdownWidth, window.innerWidth - dropdownWidth - 8));
+                      setMenuCoords({
+                        top: rect.bottom + 4,
+                        left,
+                        file: f,
+                        isImportedSection
+                      });
+                      setOpenMenuId(f.id);
+                    }
                   }}
                   className="p-1 bg-white/90 shadow-sm rounded-full hover:bg-orange-50 text-stone-500 hover:text-orange-600 transition-colors cursor-pointer"
+                  title="Options du fichier"
                 >
                   <MoreVertical className="w-3.5 h-3.5" />
                 </button>
               </div>
             )}
-            
-            {openMenuId === f.id && (
-              <div className="absolute top-[85%] left-1/2 -translate-x-1/2 mt-1 w-[110px] bg-white rounded-xl shadow-xl border border-stone-200 py-1 z-[100] overflow-hidden animate-fadeIn">
-                    
-                    {isAttached ? (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setAttachedResources(prev => prev.filter(res => res.id !== f.id));
-                          setOpenMenuId(null);
-                        }}
-                        className="w-full px-2 py-2 text-left text-xs font-semibold text-stone-700 hover:bg-stone-50 hover:text-orange-600 flex items-center gap-2 transition-colors cursor-pointer"
-                      >
-                        <X className="w-3.5 h-3.5 shrink-0" />
-                        Retirer du contexte
-                      </button>
-                    ) : (
-                      isActive ? (
-                        <button
-                          disabled
-                          className="w-full px-2 py-2 text-left text-xs font-semibold text-stone-400 flex items-center gap-2 cursor-not-allowed"
-                        >
-                          <Plus className="w-3.5 h-3.5 shrink-0 opacity-50" />
-                          Déjà ouvert
-                        </button>
-                      ) : (!isLimitReached) && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setAttachedResources(prev => [...prev, f]);
-                            setOpenMenuId(null);
-                          }}
-                          className="w-full px-2 py-2 text-left text-xs font-semibold text-stone-700 hover:bg-stone-50 hover:text-orange-600 flex items-center gap-2 transition-colors cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5 shrink-0" />
-                          Ajouter au contexte
-                        </button>
-                      )
-                    )}
-
-                    {isImportedSection && (
-                      <>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setOpenMenuId(null);
-                            setIsSelectionMode(true);
-                            setSelectedIds(files.map(file => file.id));
-                          }}
-                          className="w-full px-2 py-2 text-left text-xs font-semibold text-stone-700 hover:bg-stone-50 hover:text-orange-600 flex items-center gap-2 transition-colors"
-                        >
-                          <CheckSquare className="w-3.5 h-3.5 shrink-0" />
-                          Tout cocher
-                        </button>
-                        <div className="w-full h-px bg-stone-100 my-1"></div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteImportedFile(f.id);
-                          }}
-                          className="w-full px-2 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 shrink-0" />
-                          Supprimer
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )}
             
             {isImportedSection && isSelectionMode && (
               <div className="absolute top-1 right-1 z-10 bg-white rounded-md shadow-sm">
@@ -722,8 +656,7 @@ export function LeftMenu({
               </div>
             )}
           </div>
-          <span className={`text-[10px] md:text-[11px] font-bold text-center mt-2 px-1 line-clamp-2 w-full break-all overflow-hidden
-            ${textClass}`}>
+          <span className={`text-[10px] ${isHorizontal ? 'line-clamp-2 mt-1 leading-tight' : 'md:text-[11px] mt-2 line-clamp-2'} font-bold text-center px-1 w-full break-all overflow-hidden ${textClass}`}>
             {f.name}
           </span>
         </div>
@@ -1074,13 +1007,13 @@ export function LeftMenu({
 
       {/* Main Content: Files List OR Assistant Chat in natural flex flow */}
       {!isAssistantOpen ? (
-        <div className="flex-1 w-full overflow-hidden flex flex-col px-3 sm:px-4 py-2 min-h-0">
+        <div className="flex-1 w-full overflow-hidden flex flex-col px-2.5 sm:px-3 py-1.5 min-h-0">
           {menuFiles.length > 0 ? (
-            <div className="w-full flex flex-col gap-4 h-full overflow-hidden">
-              {/* Imported Files Section - fixed at top */}
+            <div className="w-full flex flex-col gap-1.5 h-full overflow-hidden">
+              {/* Imported Files Section - fixed at top, single horizontal row with horizontal scrolling */}
               {sessionImportedIds.length > 0 && (
-                <div className="w-full relative shrink-0">
-                  <div className="flex items-center justify-between border-b-2 border-orange-200 mb-2 pb-1 px-2 w-full">
+                <div className="w-full relative shrink-0 border-b-2 border-stone-200/80 pb-2">
+                  <div className="flex items-center justify-between border-b border-orange-200 mb-1 pb-1 px-1 w-full">
                     <div className="flex items-center gap-1.5">
                       <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wider text-left m-0">Fichiers Importés</h4>
                       <span className="text-[9px] font-bold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded-full">
@@ -1100,20 +1033,50 @@ export function LeftMenu({
                     )}
                   </div>
                   {importedFiles.length > 0 ? (
-                    <div className="w-full grid grid-rows-2 grid-flow-col auto-cols-[100px] overflow-x-auto gap-3 pt-2 pb-3 px-2 justify-start hide-scrollbar">
-                      {renderFileGroup(importedFiles, true, true)}
+                    <div className="relative w-full group/imported">
+                      <div 
+                        ref={importedScrollRef}
+                        onWheel={(e) => {
+                          if (e.deltaY !== 0) {
+                            e.currentTarget.scrollLeft += e.deltaY;
+                          }
+                        }}
+                        className="w-full flex flex-row items-start overflow-x-auto gap-2.5 pt-0.5 pb-1 px-1 justify-start hide-scrollbar select-none scroll-smooth"
+                      >
+                        {renderFileGroup(importedFiles, true, true)}
+                      </div>
+                      {importedFiles.length > 2 && (
+                        <>
+                          <button 
+                            type="button"
+                            onClick={() => importedScrollRef.current?.scrollBy({ left: -140, behavior: 'smooth' })}
+                            className="absolute left-0 top-1/2 -translate-y-1/2 -ml-1 w-6 h-6 rounded-full bg-white/95 border border-stone-300 shadow-md flex items-center justify-center text-stone-600 hover:text-orange-600 opacity-0 group-hover/imported:opacity-100 transition-opacity z-20 cursor-pointer"
+                            title="Défiler vers la gauche"
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => importedScrollRef.current?.scrollBy({ left: 140, behavior: 'smooth' })}
+                            className="absolute right-0 top-1/2 -translate-y-1/2 -mr-1 w-6 h-6 rounded-full bg-white/95 border border-stone-300 shadow-md flex items-center justify-center text-stone-600 hover:text-orange-600 opacity-0 group-hover/imported:opacity-100 transition-opacity z-20 cursor-pointer"
+                            title="Défiler vers la droite"
+                          >
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   ) : (
-                    <p className="text-[11px] text-stone-400 italic py-3 text-center w-full">
+                    <p className="text-[11px] text-stone-400 italic py-2 text-center w-full">
                       Aucun fichier importé correspondant
                     </p>
                   )}
                 </div>
               )}
               
-              {/* Context Files Section - scrolls independently */}
-              <div className="w-full flex flex-col flex-1 overflow-hidden min-h-0">
-                <div className="flex items-center justify-between border-b border-stone-200 mb-2 pb-1 px-2 w-full shrink-0">
+              {/* Context Files Section - expands vertically to fill all space up to the horizontal divider */}
+              <div className="w-full flex flex-col flex-1 overflow-hidden min-h-0 pt-1">
+                <div className="flex items-center justify-between border-b border-stone-200 mb-2 pb-1 px-1 w-full shrink-0">
                   <div className="flex items-center gap-1.5">
                     <h4 className="text-[10px] font-bold text-stone-500 uppercase tracking-wider text-left m-0">
                       {isMesFichiersMode || !currentFolderName || currentFolderName === 'Mes fichiers'
@@ -1128,7 +1091,7 @@ export function LeftMenu({
                   </div>
                 </div>
                 {subjectFiles.length > 0 ? (
-                  <div className="w-full grid grid-cols-[repeat(auto-fit,minmax(100px,1fr))] content-start auto-rows-max gap-3 pt-2 pb-6 px-2 justify-items-center justify-start overflow-y-auto flex-1">
+                  <div className="w-full grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] content-start auto-rows-max gap-3 pt-1 pb-6 px-1 justify-items-center justify-start overflow-y-auto flex-1 hide-scrollbar">
                     {renderFileGroup(subjectFiles, false)}
                   </div>
                 ) : (
@@ -1165,6 +1128,85 @@ export function LeftMenu({
           <ArrowLeftRight className="w-2.5 h-2.5 text-stone-600 dark:text-stone-300" />
         </div>
       </div>
+
+      {/* File Action Context Menu via Portal (immune to overflow clipping) */}
+      {openMenuId && menuCoords && createPortal(
+        <div 
+          onClick={(e) => e.stopPropagation()}
+          style={{ top: `${menuCoords.top}px`, left: `${menuCoords.left}px` }}
+          className="fixed w-[130px] bg-white rounded-xl shadow-2xl border border-stone-200 py-1 z-[99999] overflow-hidden animate-fadeIn text-stone-700"
+        >
+          {attachedResources.some(res => res.id === menuCoords.file.id) ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setAttachedResources(prev => prev.filter(res => res.id !== menuCoords.file.id));
+                setOpenMenuId(null);
+                setMenuCoords(null);
+              }}
+              className="w-full px-2.5 py-1.5 text-left text-xs font-semibold text-stone-700 hover:bg-stone-50 hover:text-orange-600 flex items-center gap-2 transition-colors cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5 shrink-0" />
+              Retirer du contexte
+            </button>
+          ) : (
+            activePreviewItem?.id === menuCoords.file.id ? (
+              <button
+                disabled
+                className="w-full px-2.5 py-1.5 text-left text-xs font-semibold text-stone-400 flex items-center gap-2 cursor-not-allowed"
+              >
+                <Plus className="w-3.5 h-3.5 shrink-0 opacity-50" />
+                Déjà ouvert
+              </button>
+            ) : (!attachedResources.filter(res => res.id !== activePreviewItem?.id).length || ((activePreviewItem ? 1 : 0) + attachedResources.filter(res => res.id !== activePreviewItem?.id).length < 3)) && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setAttachedResources(prev => [...prev, menuCoords.file]);
+                  setOpenMenuId(null);
+                  setMenuCoords(null);
+                }}
+                className="w-full px-2.5 py-1.5 text-left text-xs font-semibold text-stone-700 hover:bg-stone-50 hover:text-orange-600 flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5 shrink-0" />
+                Ajouter au contexte
+              </button>
+            )
+          )}
+
+          {menuCoords.isImportedSection && (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpenMenuId(null);
+                  setMenuCoords(null);
+                  setIsSelectionMode(true);
+                  setSelectedIds(importedFiles.map(file => file.id));
+                }}
+                className="w-full px-2.5 py-1.5 text-left text-xs font-semibold text-stone-700 hover:bg-stone-50 hover:text-orange-600 flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                <CheckSquare className="w-3.5 h-3.5 shrink-0" />
+                Tout cocher
+              </button>
+              <div className="w-full h-px bg-stone-100 my-0.5" />
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteImportedFile(menuCoords.file.id);
+                  setOpenMenuId(null);
+                  setMenuCoords(null);
+                }}
+                className="w-full px-2.5 py-1.5 text-left text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                Supprimer
+              </button>
+            </>
+          )}
+        </div>,
+        document.body
+      )}
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
