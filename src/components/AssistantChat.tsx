@@ -1084,8 +1084,8 @@ RÈGLES D'EXCELLENCE :
             <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 tracking-tight">
               On fait quoi aujourd'hui ?
             </h2>
-            <p className="text-xs sm:text-sm font-medium text-zinc-300 max-w-xs leading-relaxed">
-              Posez une question, analysez vos cours ou demandez des explications.
+            <p className="text-xs sm:text-sm font-medium text-white/85 max-w-xs leading-relaxed">
+              Posez votre question, analysez vos cours ou explorez vos documents.
             </p>
           </div>
         ) : (
