@@ -1102,6 +1102,21 @@ export function LeftMenu({
         addDirectFiles(localStorage.getItem('unifolder_files_menu_items'));
         addDirectFiles(localStorage.getItem('unifolder_imported_files'));
         addDirectFiles(localStorage.getItem('unifolder_matiere_files'));
+
+        // S'assurer que le fichier actif sélectionné est inclus
+        if (activePreviewItem && activePreviewItem.id && !importedIds.includes(activePreviewItem.id)) {
+          const itemFolder = activePreviewItem.folderName || activePreviewItem.matiere;
+          if (!itemFolder || itemFolder === 'Mes fichiers') {
+            if (!directMap.has(activePreviewItem.id)) {
+              directMap.set(activePreviewItem.id, {
+                ...activePreviewItem,
+                matiere: 'Mes fichiers',
+                extension: activePreviewItem.extension || (activePreviewItem.name && activePreviewItem.name.includes('.') ? activePreviewItem.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
+              });
+            }
+          }
+        }
+
         baseFiles = Array.from(directMap.values());
       }
     } else if (folder && !isMesFichiersMode) {
