@@ -836,6 +836,11 @@ export async function sendDelmasChatMessage(params: {
   response: string;
   success: boolean;
   model?: string;
+  tool_call?: any;
+  creation_type?: string;
+  creation_data?: any;
+  creation_title?: string;
+  hasDrawing?: boolean;
 }> {
   const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
   const userGeminiApiKey = (params.geminiApiKey || getGeminiApiKey()).trim();

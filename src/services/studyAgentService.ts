@@ -131,6 +131,11 @@ export async function sendAgentChatMessage(params: {
   success: boolean;
   response: string;
   model?: string;
+  tool_call?: any;
+  creation_type?: string;
+  creation_data?: any;
+  creation_title?: string;
+  hasDrawing?: boolean;
 }> {
   const agentUrl = getStudyAgentUrl();
 
@@ -154,5 +159,10 @@ export async function sendAgentChatMessage(params: {
     success: true,
     response: data.response || data.chat_response || '',
     model: data.model || 'Delmas IA (Cloudflare Agent)',
+    tool_call: data.tool_call || null,
+    creation_type: data.creation_type,
+    creation_data: data.creation_data,
+    creation_title: data.creation_title,
+    hasDrawing: Boolean(data.hasDrawing),
   };
 }
