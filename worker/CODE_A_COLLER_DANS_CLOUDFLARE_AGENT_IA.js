@@ -48,42 +48,21 @@ export default {
       const pathname = url.pathname.replace(/\/+$/, "") || "/";
 
       // ------------------------------------------------------------------------
-      // 1. SANTÉ & STATUT MULTI-AGENTS
+      // 1. RACINE DE L'AGENT : AUCUNE INFORMATION TECHNIQUE DÉVOILÉE
+      // Si quelqu'un tape le lien dans son navigateur, affiche la page 404 StudyCloud
       // ------------------------------------------------------------------------
-      if (
-        pathname === "" ||
-        pathname === "/" ||
-        pathname === "/health" ||
-        pathname === "/api/health" ||
-        pathname === "/api/ai/health"
-      ) {
+      if (pathname === "" || pathname === "/" || pathname === "/index.html") {
+        return renderNotFoundHtmlPage(corsHeaders);
+      }
+
+      // ------------------------------------------------------------------------
+      // SANTÉ & STATUT POUR L'APPLICATION (DISCRET)
+      // ------------------------------------------------------------------------
+      if (pathname === "/health" || pathname === "/api/health" || pathname === "/api/ai/health") {
         return jsonResponse({
+          success: true,
           online: true,
-          status: "ok",
-          service: "StudyCloud Multi-Agent Autonomous Hub",
-          version: "4.0.0",
-          architecture: "Edge Parallel Micro-Agents",
-          primary_model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-          fallback_model: "google/gemini-2.0-flash",
-          available_subagents: [
-            "SupervisorRouterAgent",
-            "QuizAssessmentAgent",
-            "WebApp3DEngineerAgent",
-            "DrawingVectorAgent",
-            "ChartMindmapAgent",
-            "MultimodalVisionAudioAgent",
-            "PedagogicalTutorAgent"
-          ],
-          routes: [
-            "/api/ai/chat",
-            "/api/ai/creation",
-            "/api/ai/analyze",
-            "/api/ai/transcribe",
-            "/api/ai/vision",
-            "/api/grade-devoir",
-            "/api/ai/health"
-          ],
-          timestamp: new Date().toISOString()
+          status: "online"
         }, 200, corsHeaders);
       }
 
@@ -141,12 +120,14 @@ export default {
       }
 
       // ------------------------------------------------------------------------
-      // ROUTE NON TROUVÉE
+      // ROUTE NON TROUVÉE (PROTÉGÉE SANS AUCUN DÉVOILEMENT TECHNIQUE)
       // ------------------------------------------------------------------------
+      if (request.headers.get("accept")?.includes("text/html")) {
+        return renderNotFoundHtmlPage(corsHeaders);
+      }
       return jsonResponse({
-        error: "Route introuvable sur le Hub Multi-Agents",
-        path: pathname,
-        method: request.method
+        error: "Page introuvable",
+        success: false
       }, 404, corsHeaders);
 
     } catch (err) {
@@ -1196,6 +1177,38 @@ async function parseJsonBody(request) {
   } catch (e) {
     return null;
   }
+}
+
+/**
+ * Page HTML 404 discrète de StudyCloud (masque toute l'architecture interne aux visiteurs)
+ */
+function renderNotFoundHtmlPage(corsHeaders = {}) {
+  const html = `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow"><title>404 • Page introuvable</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:radial-gradient(circle at 30% 20%,#1e293b,#0f172a 70%);color:#e2e8f0;padding:24px}
+.card{max-width:440px;width:100%;text-align:center;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:40px 28px;backdrop-filter:blur(12px);box-shadow:0 20px 50px rgba(0,0,0,.4)}
+.code{font-size:72px;font-weight:900;background:linear-gradient(135deg,#f97316,#3b82f6);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1}
+h1{font-size:20px;margin:14px 0 8px;color:#fff}
+p{font-size:14px;color:#94a3b8;line-height:1.6;margin-bottom:24px}
+a{display:inline-block;padding:12px 22px;border-radius:14px;background:linear-gradient(135deg,#f97316,#ea580c);color:#fff;font-weight:700;font-size:14px;text-decoration:none;transition:transform .2s}
+a:hover{transform:translateY(-2px)}
+</style></head><body><main class="card">
+<div class="code">404</div><h1>Page introuvable</h1>
+<p>Cette adresse n'est pas accessible. Si vous avez reçu un lien de téléchargement, utilisez le lien complet qui vous a été envoyé.</p>
+<a href="https://studycloud.dkd-technologies.com">Accéder à StudyCloud</a>
+</main></body></html>`;
+  return new Response(html, {
+    status: 404,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+      "X-Robots-Tag": "noindex, nofollow"
+    }
+  });
 }
 
 function jsonResponse(data, status = 200, corsHeaders = {}) {
