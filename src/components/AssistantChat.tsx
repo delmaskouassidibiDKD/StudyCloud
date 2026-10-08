@@ -595,6 +595,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       const attachedFileId = docIds.join(',');
       const attachedFileR2Key = docR2Keys.join(',');
       const mainDocName = docNames[0] || activePreviewItem?.name || 'Document d\'étude';
+      const attachedImageBase64 = targetDocs.find(d => d.imageBase64)?.imageBase64 || activePreviewItem?.imageBase64 || '';
+      const attachedAudioBase64 = targetDocs.find(d => d.audioBase64)?.audioBase64 || activePreviewItem?.audioBase64 || '';
 
       // 2. ANALYSE D'HÉSITATION ÉTUDIANTE (Suggestions d'aide douce)
       const isHesitating = /(je ne sais pas|que (peux|doit|puis)-tu|propose|id[eé]es|aide-moi à (choisir|r[eé]viser)|quelles options|que me conseilles-tu|conseille-moi|que faire)/i.test(userText);
@@ -700,6 +702,8 @@ RÈGLES D'EXCELLENCE :
         documentText: attachedFileContent,
         file_name: attachedFileName,
         fileName: attachedFileName,
+        imageBase64: attachedImageBase64 || undefined,
+        audioBase64: attachedAudioBase64 || undefined,
         powerMode: isPowerMode,
         engine: isPowerMode ? 'gemini' : 'standard',
         geminiApiKey: getGeminiApiKey() || undefined,

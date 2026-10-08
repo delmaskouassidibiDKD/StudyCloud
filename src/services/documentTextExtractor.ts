@@ -174,6 +174,94 @@ export async function extractDocumentText(item: any): Promise<string> {
       if (typeof item === 'object') item.textContent = decoded;
       return decoded;
     }
+
+    // Cas 4 : Images et Schémas (PNG, JPG, JPEG, WEBP, GIF, SVG, BMP) -> Encodage Base64 pour Vision
+    if (
+      fileName.endsWith('.png') ||
+      fileName.endsWith('.jpg') ||
+      fileName.endsWith('.jpeg') ||
+      fileName.endsWith('.webp') ||
+      fileName.endsWith('.gif') ||
+      fileName.endsWith('.bmp') ||
+      fileName.endsWith('.svg') ||
+      item.type?.includes('image')
+    ) {
+      let b64 = '';
+      try {
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = '';
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        b64 = window.btoa(binary);
+      } catch (bErr) {
+        console.warn('[Extractor] Erreur conversion base64 image:', bErr);
+      }
+
+      if (b64) {
+        const mime = fileName.endsWith('.png')
+          ? 'image/png'
+          : fileName.endsWith('.webp')
+          ? 'image/webp'
+          : fileName.endsWith('.svg')
+          ? 'image/svg+xml'
+          : 'image/jpeg';
+        const dataUrl = `data:${mime};base64,${b64}`;
+        if (typeof item === 'object') {
+          item.imageBase64 = dataUrl;
+        }
+      }
+
+      const imgDesc = `[Image haute résolution : "${item.name || 'Image'}" (transmise avec perception visuelle complète)]`;
+      if (cacheKey) textCache.set(cacheKey, imgDesc);
+      if (typeof item === 'object') item.textContent = imgDesc;
+      return imgDesc;
+    }
+
+    // Cas 5 : Fichiers Audio (MP3, WAV, M4A, OGG) -> Encodage Base64 pour Whisper
+    if (
+      fileName.endsWith('.mp3') ||
+      fileName.endsWith('.wav') ||
+      fileName.endsWith('.m4a') ||
+      fileName.endsWith('.ogg') ||
+      item.type?.includes('audio')
+    ) {
+      let b64 = '';
+      try {
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = '';
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        b64 = window.btoa(binary);
+      } catch (bErr) {
+        console.warn('[Extractor] Erreur conversion base64 audio:', bErr);
+      }
+
+      if (b64 && typeof item === 'object') {
+        item.audioBase64 = b64;
+      }
+
+      const audioDesc = `[Fichier Audio / Cours oral joint : "${item.name || 'Audio'}" (indexé pour transcription Whisper)]`;
+      if (cacheKey) textCache.set(cacheKey, audioDesc);
+      if (typeof item === 'object') item.textContent = audioDesc;
+      return audioDesc;
+    }
+
+    // Cas 6 : Fichiers Vidéo
+    if (
+      fileName.endsWith('.mp4') ||
+      fileName.endsWith('.webm') ||
+      fileName.endsWith('.mov') ||
+      item.type?.includes('video')
+    ) {
+      const vidDesc = `[Fichier Vidéo d'apprentissage joint : "${item.name || 'Vidéo'}"]`;
+      if (cacheKey) textCache.set(cacheKey, vidDesc);
+      if (typeof item === 'object') item.textContent = vidDesc;
+      return vidDesc;
+    }
   } catch (extractErr) {
     console.warn('[Extractor] Erreur décodage document:', extractErr);
   }

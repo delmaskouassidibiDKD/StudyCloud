@@ -49,9 +49,13 @@ export default {
 
       // ------------------------------------------------------------------------
       // 1. RACINE DE L'AGENT : AUCUNE INFORMATION TECHNIQUE DÉVOILÉE
-      // Si quelqu'un tape le lien dans son navigateur, affiche la page 404 StudyCloud
+      // Si quelqu'un tape le lien dans son navigateur (GET), affiche la page 404 StudyCloud
+      // Si une requête POST arrive sur la racine, elle est traitée directement par le Chat
       // ------------------------------------------------------------------------
       if (pathname === "" || pathname === "/" || pathname === "/index.html") {
+        if (request.method === "POST") {
+          return await handleParallelChat(request, env, corsHeaders);
+        }
         return renderNotFoundHtmlPage(corsHeaders);
       }
 
@@ -150,46 +154,216 @@ async function handleParallelChat(request, env, corsHeaders) {
   if (!body) return errorResponse("Corps JSON invalide", 400, corsHeaders);
 
   const message = body.message || body.prompt || "";
-  const attachedFileContent = body.attachedFileContent || body.docContent || "";
-  const attachedFileName = body.attachedFileName || body.docName || "";
-  const history = Array.isArray(body.history) ? body.history : [];
+  const attachedFileContent = body.attachedFileContent || body.file_content || body.fileContent || body.documentContent || body.documentText || body.docContent || body.text || "";
+  const attachedFileName = body.attachedFileName || body.file_name || body.fileName || body.docName || body.title || "";
+  const imageBase64 = body.imageBase64 || body.image || body.mediaBase64 || "";
+  const audioBase64 = body.audioBase64 || body.audio || "";
+  const audioTranscript = body.audioTranscript || body.audioText || "";
+  const history = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
   const wantStream = Boolean(body.stream || request.headers.get("accept")?.includes("text/event-stream"));
+  const requestedType = body.requested_type || body.requestedType || body.toolType || body.type || "";
+  const geminiApiKey = body.geminiApiKey || (env && env.GEMINI_API_KEY) || "";
 
-  if (!message.trim() && !attachedFileContent.trim()) {
-    return errorResponse("Veuillez fournir un message ou un document à analyser.", 400, corsHeaders);
+  if (!message.trim() && !attachedFileContent.trim() && !imageBase64.trim() && !audioBase64.trim()) {
+    return errorResponse("Veuillez fournir un message, un document ou une image à analyser.", 400, corsHeaders);
   }
 
-  // 1. Détection d'intention par le Superviseur
-  const intent = detectUserIntent(message);
+  // ==========================================================================
+  // 1. PERCEPTION MULTIMODALE 1 : ANALYSE VISUELLE (VISION)
+  // ==========================================================================
+  let visionAnalysisText = "";
+  if (imageBase64.trim()) {
+    const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+    // A. Workers AI Llama 3.2 Vision
+    if (env && env.AI) {
+      try {
+        const binary = Uint8Array.from(atob(cleanBase64), c => c.charCodeAt(0));
+        const vRes = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+          image: [...binary],
+          prompt: "Analyse très précisément cette image scientifique, exercice, figure, schéma ou texte manuscrit en extrayant toutes les données et formules."
+        });
+        if (vRes && vRes.response) {
+          visionAnalysisText = vRes.response;
+        }
+      } catch (vErr) {
+        console.warn("[Workers AI Vision Fail in Chat]", vErr.message);
+      }
+    }
+    // B. Fallback Gemini 2.0 Flash Vision
+    if (!visionAnalysisText && geminiApiKey) {
+      try {
+        const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{
+              role: "user",
+              parts: [
+                { inline_data: { mime_type: "image/jpeg", data: cleanBase64 } },
+                { text: "Analyse cette image d'exercice ou de cours pour l'étudiant avec rigueur pédagogique." }
+              ]
+            }]
+          })
+        });
+        if (gRes.ok) {
+          const gData = await gRes.json();
+          visionAnalysisText = gData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        }
+      } catch (gErr) {
+        console.warn("[Gemini Vision Fail in Chat]", gErr.message);
+      }
+    }
+  }
 
-  // 2. Prompt Système Expert (Tuteur avec capacité de dessin vectoriel SVG / tracés)
+  // ==========================================================================
+  // 2. PERCEPTION MULTIMODALE 2 : TRANSCRIPTION AUDIO (WHISPER)
+  // ==========================================================================
+  let audioTranscriptionText = audioTranscript || "";
+  if (!audioTranscriptionText && audioBase64.trim() && env && env.AI) {
+    try {
+      const cleanAudioB64 = audioBase64.replace(/^data:audio\/\w+;base64,/, "");
+      const audioBinary = Uint8Array.from(atob(cleanAudioB64), c => c.charCodeAt(0));
+      const wRes = await env.AI.run("@cf/openai/whisper", {
+        audio: [...audioBinary]
+      });
+      if (wRes && wRes.text) {
+        audioTranscriptionText = wRes.text;
+      }
+    } catch (aErr) {
+      console.warn("[Whisper Fail in Chat]", aErr.message);
+    }
+  }
+
+  // ==========================================================================
+  // 3. ASSEMBLAGE DU PROMPT UTILISATEUR ENRICHI SANS PERTE
+  // ==========================================================================
+  let userPrompt = message || "Analyse les éléments fournis et réponds à ma demande.";
+  let contextualPrefix = "";
+
+  if (visionAnalysisText.trim()) {
+    contextualPrefix += `[IMAGE FOURNIE PAR L'ÉTUDIANT : "${attachedFileName || "Image"}" (Analyse visuelle haute définition)] :\n${visionAnalysisText}\n\n`;
+  }
+  if (audioTranscriptionText.trim()) {
+    contextualPrefix += `[ENREGISTREMENT AUDIO TRANSCRIT PAR WHISPER ("${attachedFileName || "Audio"}")] :\n${audioTranscriptionText}\n\n`;
+  }
+  if (attachedFileContent.trim()) {
+    contextualPrefix += `[DOCUMENT D'ÉTUDE ACADÉMIQUE JOINT ("${attachedFileName || "Document source"}")] :\n${attachedFileContent.slice(0, 30000)}\n\n`;
+  }
+
+  if (contextualPrefix) {
+    userPrompt = `${contextualPrefix}Consigne / Demande de l'étudiant : ${message || "Analyse ce document et explique-moi les notions clés."}`;
+  }
+
+  // ==========================================================================
+  // 4. CLASSIFICATION INTELLIGENTE : MODE CRÉATION VS MODE DISCUSSION
+  // ==========================================================================
+  const creationClassification = classifyCreationIntent(message, requestedType);
+  const isCreation = Boolean(body.isDirectCreation || creationClassification.isCreation);
+
+  // ==========================================================================
+  // BRANCHE A : L'UTILISATEUR DEMANDE DE CRÉER UN MODULE D'ÉTUDE
+  // -> On génère les données complètes pour le volet de droite (Canvas/Création)
+  // -> ET ON NE MET QU'UNE SEULE PHRASE AMICALE DANS LA BULLE DE DISCUSSION DU CHAT !
+  // ==========================================================================
+  if (isCreation) {
+    const rawType = creationClassification.type || requestedType || "questionnaire";
+    const normalizedType = normalizeCreationType(rawType);
+    const docTitle = attachedFileName || "Étude Académique";
+    const subAgentConfig = getSubAgentCreationConfig(normalizedType, docTitle);
+
+    const fullCreationPrompt = `DOCUMENT DE RÉFÉRENCE : "${docTitle}"
+CONTENU SOURCE :
+${(attachedFileContent || visionAnalysisText || audioTranscriptionText || message).slice(0, 25000)}
+
+CONSIGNE EXPLICITE DE L'ÉTUDIANT :
+${message || "Génère un module d'excellence complet respectant le schéma JSON demandé."}`;
+
+    const aiResult = await executeMultiEngineInference({
+      env,
+      messages: [
+        { role: "system", content: subAgentConfig.systemPrompt },
+        { role: "user", content: fullCreationPrompt }
+      ],
+      systemPrompt: subAgentConfig.systemPrompt,
+      userPrompt: fullCreationPrompt,
+      geminiApiKey,
+      mode: "json"
+    });
+
+    let structuredData = safeJsonParse(aiResult.text);
+    if (!structuredData || typeof structuredData !== "object") {
+      structuredData = buildSafeLocalCreation(normalizedType, docTitle, attachedFileContent || userPrompt);
+    }
+
+    const typeLabels = {
+      "questionnaire": "votre questionnaire interactif (Quiz / QCM)",
+      "carte-mentale": "votre carte mentale arborescente",
+      "carte-memoire": "vos cartes mémoire (Flashcards)",
+      "resume": "votre fiche de synthèse structurée",
+      "pdf": "votre polycopié officiel d'étude",
+      "vrai-ou-faux": "votre test Vrai ou Faux",
+      "exercices-ecrits": "vos exercices d'application avec corrigés détaillés",
+      "devoir-complet": "votre sujet d'examen complet avec barème",
+      "infographie": "votre infographie synthétique",
+      "webapp": "votre simulation interactive",
+      "drawing": "votre figure explicative vectorielle",
+      "chart": "votre analyse graphique interactive"
+    };
+
+    const label = typeLabels[normalizedType] || `votre module ${normalizedType}`;
+    const creationTitle = structuredData.title || `${normalizedType.toUpperCase()} : ${docTitle}`;
+    const companionMessage = `✨ J'ai créé ${label} directement dans votre espace **Création** à droite ! Vous pouvez le consulter et le tester dès maintenant.`;
+
+    return jsonResponse({
+      success: true,
+      decision: "creation",
+      mode: "creation",
+      creation_type: normalizedType,
+      creation_title: creationTitle,
+      creation_data: structuredData,
+      chat_response: companionMessage,
+      response: companionMessage, // <-- JAMAIS LE QUIZ NI DU JSON DANS LE CHAT ! UNIQUEMENT LE MESSAGE AMICAL
+      model: aiResult.model,
+      agent: subAgentConfig.agentName
+    }, 200, corsHeaders);
+  }
+
+  // ==========================================================================
+  // BRANCHE B : MODE DISCUSSION SIMPLE DANS LE CHAT
+  // -> Réponses claires, pédagogiques, formules KaTeX, tracés SVG si pertinent
+  // -> ZÉRO JSON !
+  // ==========================================================================
   const systemPrompt = `Tu es Delmas IA, l'assistante pédagogique et scientifique d'élite de la plateforme StudyCloud.
 Tu es dotée d'un moteur autonome capable d'expliquer, de modéliser et de dessiner.
 
-RÈGLES D'EXCELLENCE PÉDAGOGIQUE :
-1. CLARTÉ & RIGUEUR : Explique avec bienveillance, précision académique et méthode pas-à-pas.
-2. FORMULES MATHÉMATIQUES : Utilise TOUJOURS LaTeX avec KaTeX :
+RÈGLE MULTIMODALE ABSOLUE (STRICTE & NON NÉGOCIABLE) :
+- Tu disposes d'un système de perception multimodal universel (Vision haute définition pour schémas et images, transcription audio Whisper pour mémos et cours oraux, lecteur universel de documents PDF, Word, Code et cours numérisés).
+- IL T'EST FORMELLEMENT ET STRICTEMENT INTERDIT de prétendre que tu ne peux pas voir d'images, analyser de fichiers, traiter d'audio ou de vidéo, ou de prétendre être "uniquement un modèle textuel".
+- Tu traites et décortiques TOUJOURS tous les fichiers, images ou sons transmis avec une immense rigueur pédagogique et bienveillance.
+
+RÈGLES D'EXCELLENCE PÉDAGOGIQUE EN DISCUSSION :
+1. MODE DISCUSSION DANS LE CHAT :
+   - Réponds DIRECTEMENT ET NATURELLEMENT DANS LE CHAT en texte Markdown fluide et structuré.
+   - NE PRODUIS STRICTEMENT AUCUN OBJET JSON, PAS D'ACCOLADES {} NI DE BALISES JSON DANS CETTE RÉPONSE.
+2. CLARTÉ & RIGUEUR : Explique avec bienveillance, précision académique et méthode pas-à-pas.
+3. FORMULES SCIENTIFIQUES & MATHÉMATIQUES : Utilise TOUJOURS LaTeX avec KaTeX :
    - Formules en ligne : $E = mc^2$ ou $\\lim_{x \\to 0} \\frac{\\sin x}{x} = 1$
    - Formules en bloc : $$\\int_{a}^{b} f(x) \\, dx$$
-3. CAPACITÉ DE DESSIN & TRACÉS (CRUCIAL) :
+4. CAPACITÉ DE DESSIN VECTORIEL & SCHÉMAS EN DIRECT :
    - Si la notion s'explique mieux avec un schéma, une géométrie, une figure ou un tracé (forces physiques, coupes, circuits, graphiques, géométrie, anatomie, organigrammes) :
      Dessine directement un bloc SVG autonome avec \`\`\`xml ou \`\`\`svg valide, avec viewBox, couleurs soignées, styles et légendes explicites.
    - Tu peux aussi utiliser du code Mermaid (\`\`\`mermaid) pour les flux, algorithmes et chronologies.
-4. STRUCTURE : Utilise des titres clairs, listes à puces et tableaux comparatifs lorsque c'est pertinent.`;
+5. STRUCTURE : Utilise des titres clairs, listes à puces et tableaux comparatifs lorsque c'est pertinent.`;
 
   const messages = [{ role: "system", content: systemPrompt }];
 
   // Historique récent
   for (const h of history.slice(-6)) {
-    if (h.role && h.content) {
+    if (h.role && h.content && h.role !== "system") {
       messages.push({ role: h.role === "assistant" ? "assistant" : "user", content: String(h.content) });
     }
   }
 
-  let userPrompt = message;
-  if (attachedFileContent.trim()) {
-    userPrompt = `[Document académique joint : "${attachedFileName || "Document source"}"]\n${attachedFileContent.slice(0, 15000)}\n\nQuestion de l'étudiant : ${message || "Analyse ce document et explique-moi les notions clés."}`;
-  }
   messages.push({ role: "user", content: userPrompt });
 
   // Mode Streaming SSE
@@ -197,35 +371,51 @@ RÈGLES D'EXCELLENCE PÉDAGOGIQUE :
     return handleStreamingChatResponse(messages, env, corsHeaders);
   }
 
-  // Mode Réponse JSON Standard avec Tool Calling autonome (Function Calling)
   const aiResult = await executeMultiEngineInference({
     env,
     messages,
     systemPrompt,
     userPrompt,
-    geminiApiKey: body.geminiApiKey || "",
+    geminiApiKey,
     mode: "chat",
-    enableTools: true
+    enableTools: false
   });
 
-  const responsePayload = {
-    success: true,
-    response: aiResult.text,
-    model: aiResult.model,
-    intent: intent,
-    hasDrawing: aiResult.text.includes("<svg") || aiResult.text.includes("```mermaid"),
-    tool_call: aiResult.tool_call || null
-  };
-
-  // Si un outil a été déclenché, injecter directement la création pour le grand écran universel
-  if (aiResult.tool_call) {
-    const toolName = aiResult.tool_call.name || "";
-    responsePayload.creation_type = toolName.replace(/^generate_/, "");
-    responsePayload.creation_data = aiResult.tool_call.arguments || {};
-    responsePayload.creation_title = aiResult.tool_call.arguments?.title || `${responsePayload.creation_type.toUpperCase()} généré`;
+  let chatText = aiResult.text || "";
+  // Protection supplémentaire contre tout résidu JSON accidentel
+  if (chatText.trim().startsWith("{") && (chatText.includes('"creation_data"') || chatText.includes('"decision"'))) {
+    const parsed = safeJsonParse(chatText);
+    if (parsed) {
+      if (parsed.creation_data) {
+        const normType = normalizeCreationType(parsed.creation_type || "questionnaire");
+        const compMsg = parsed.chat_response || parsed.chat_message || `✨ J'ai créé votre module dans l'espace Création à droite !`;
+        return jsonResponse({
+          success: true,
+          decision: "creation",
+          mode: "creation",
+          creation_type: normType,
+          creation_title: parsed.creation_title || `${normType.toUpperCase()}`,
+          creation_data: parsed.creation_data,
+          chat_response: compMsg,
+          response: compMsg,
+          model: aiResult.model
+        }, 200, corsHeaders);
+      }
+      chatText = parsed.chat_response || parsed.chat_message || chatText;
+    }
   }
 
-  return jsonResponse(responsePayload, 200, corsHeaders);
+  return jsonResponse({
+    success: true,
+    decision: "chat",
+    mode: "chat",
+    creation_type: null,
+    creation_data: null,
+    response: chatText,
+    chat_response: chatText,
+    model: aiResult.model,
+    hasDrawing: chatText.includes("<svg") || chatText.includes("```mermaid")
+  }, 200, corsHeaders);
 }
 
 /**
@@ -918,31 +1108,174 @@ function safeJsonParse(rawString) {
  * ============================================================================
  */
 function getSubAgentCreationConfig(moduleType, docTitle) {
-  switch (moduleType) {
-    case "quiz":
-    case "qcm":
+  const norm = normalizeCreationType(moduleType);
+  switch (norm) {
+    case "questionnaire":
       return {
         agentName: "QuizAssessmentAgent",
         systemPrompt: `Tu es l'Agent Spécialiste des Évaluations de StudyCloud. Génère un QCM pédagogique interactif d'excellence.
 Réponds STRICTEMENT avec cet objet JSON :
 {
-  "type": "quiz",
-  "title": "QCM Interactif : ${docTitle}",
+  "type": "questionnaire",
+  "title": "Quiz Interactif : ${docTitle}",
   "questions": [
     {
       "id": 1,
       "question": "Énoncé précis de la question avec KaTeX si mathématique ($...$)",
       "options": ["Option A", "Option B", "Option C", "Option D"],
       "correct_index": 0,
-      "feedback": "Explication pédagogique détaillée de la bonne réponse."
+      "explanation": "Explication pédagogique détaillée de la bonne réponse."
     }
   ]
 }`
       };
 
+    case "carte-mentale":
+      return {
+        agentName: "ChartMindmapAgent",
+        systemPrompt: `Tu es l'Agent Cartographe Conceptuel de StudyCloud. Génère un arbre hiérarchique clair des notions.
+Réponds STRICTEMENT avec cet objet JSON :
+{
+  "type": "carte-mentale",
+  "title": "Carte Mentale : ${docTitle}",
+  "root": {
+    "id": "root",
+    "label": "${docTitle}",
+    "children": [
+      {
+        "id": "concept_1",
+        "label": "Notion Majeure 1",
+        "description": "Détail de la notion",
+        "children": [
+          { "id": "sub_1", "label": "Sous-notion A" }
+        ]
+      }
+    ]
+  }
+}`
+      };
+
+    case "carte-memoire":
+      return {
+        agentName: "QuizAssessmentAgent",
+        systemPrompt: `Tu es l'Agent Mémorisation Active de StudyCloud. Conçois des cartes mémoires efficaces (recto/verso).
+Réponds STRICTEMENT avec cet objet JSON :
+{
+  "type": "carte-memoire",
+  "title": "Cartes Mémoire : ${docTitle}",
+  "cards": [
+    {
+      "id": 1,
+      "front": "Question ou formule clé à deviner (recto)",
+      "back": "Réponse complète avec explication essentielle (verso)",
+      "category": "Définition / Formule"
+    }
+  ]
+}`
+      };
+
+    case "vrai-ou-faux":
+      return {
+        agentName: "TrueFalseAssessmentAgent",
+        systemPrompt: `Tu es l'Agent Évaluateur Vrai ou Faux de StudyCloud. Génère une série d'affirmations stimulantes avec justifications approfondies.
+Réponds STRICTEMENT avec cet objet JSON :
+{
+  "type": "vrai-ou-faux",
+  "title": "Vrai ou Faux : ${docTitle}",
+  "affirmations": [
+    {
+      "id": 1,
+      "statement": "Affirmation scientifique ou conceptuelle précise",
+      "is_true": true,
+      "explanation": "Justification rigoureuse et méthode de raisonnement."
+    }
+  ]
+}`
+      };
+
+    case "exercices-ecrits":
+      return {
+        agentName: "ExerciseMasterAgent",
+        systemPrompt: `Tu es l'Agent Méthodologique d'Exercices de StudyCloud. Conçois des exercices d'application guidés avec corrigés complets étape par étape.
+Réponds STRICTEMENT avec cet objet JSON :
+{
+  "type": "exercices-ecrits",
+  "title": "Exercices d'Application : ${docTitle}",
+  "exercises": [
+    {
+      "id": 1,
+      "title": "Exercice 1 : Application directe des théorèmes",
+      "enonce": "Énoncé complet du problème avec formules KaTeX ($...$)",
+      "correction": "Correction détaillée pas à pas avec explications méthodologiques",
+      "bareme": 5
+    }
+  ]
+}`
+      };
+
+    case "devoir-complet":
+      return {
+        agentName: "OfficialExaminerAgent",
+        systemPrompt: `Tu es l'Examinateur Officiel de StudyCloud. Conçois un sujet d'examen complet et structuré noté sur 20 points.
+Réponds STRICTEMENT avec cet objet JSON :
+{
+  "type": "devoir-complet",
+  "title": "Sujet d'Examen : ${docTitle}",
+  "duree": "2 heures",
+  "bareme_total": 20,
+  "parties": [
+    {
+      "titre": "Partie I : Restitution organisée des connaissances",
+      "bareme": 6,
+      "exercices": [
+        {
+          "enonce": "Énoncé de la question ou problème",
+          "correction": "Corrigé officiel de l'épreuve",
+          "points": 6
+        }
+      ]
+    }
+  ]
+}`
+      };
+
+    case "pdf":
+      return {
+        agentName: "AcademicPublisherAgent",
+        systemPrompt: `Tu es l'Agent d'Édition Académique de StudyCloud. Rédige un polycopié d'étude complet et élégant.
+Réponds STRICTEMENT avec cet objet JSON :
+{
+  "type": "pdf",
+  "title": "Document d'Étude : ${docTitle}",
+  "subtitle": "Polycopié de référence",
+  "sections": [
+    {
+      "title": "1. Introduction et Définitions Clés",
+      "content": "Développement pédagogique approfondi avec formules KaTeX..."
+    }
+  ]
+}`
+      };
+
+    case "infographie":
+      return {
+        agentName: "InfographicDesignAgent",
+        systemPrompt: `Tu es l'Agent Infographiste Visuel de StudyCloud. Génère des métriques clés, chronologies et repères de synthèse visuelle.
+Réponds STRICTEMENT avec cet objet JSON :
+{
+  "type": "infographie",
+  "title": "Infographie Synthétique : ${docTitle}",
+  "metrics": [
+    { "label": "Grandeur fondamentale", "value": "100%", "detail": "Explication clé" }
+  ],
+  "key_points": ["Repère essentiel 1", "Repère essentiel 2"],
+  "timeline": [
+    { "etape": "Phase 1", "description": "Description de l'étape" }
+  ]
+}`
+      };
+
     case "webapp":
-    case "simulation_3d":
-    case "code_sandbox":
       return {
         agentName: "WebApp3DEngineerAgent",
         systemPrompt: `Tu es l'Agent Ingénieur Web & 3D de StudyCloud (type Replit Agent). Tu conçois des mini-applications, simulations scientifiques ou composants 3D (Three.js) entièrement fonctionnels et interactifs.
@@ -960,7 +1293,6 @@ Réponds STRICTEMENT avec cet objet JSON :
       };
 
     case "drawing":
-    case "schema_svg":
       return {
         agentName: "DrawingVectorAgent",
         systemPrompt: `Tu es l'Agent Dessinateur Vectoriel et Graphique de StudyCloud. Tu produis des schémas explicatifs scientifiques, figures géométriques, tracés ou diagrammes de très haute qualité.
@@ -985,7 +1317,7 @@ Réponds STRICTEMENT avec cet objet JSON :
 {
   "type": "chart",
   "title": "Analyse Graphique : ${docTitle}",
-  "chart_type": "line", // 'line' | 'bar' | 'pie' | 'radar'
+  "chart_type": "line",
   "labels": ["Jan", "Fév", "Mar", "Avr"],
   "datasets": [
     {
@@ -997,58 +1329,16 @@ Réponds STRICTEMENT avec cet objet JSON :
 }`
       };
 
-    case "mindmap":
-      return {
-        agentName: "ChartMindmapAgent",
-        systemPrompt: `Tu es l'Agent Cartographe Conceptuel de StudyCloud. Génère un arbre hiérarchique clair des notions.
-Réponds STRICTEMENT avec cet objet JSON :
-{
-  "type": "mindmap",
-  "title": "Carte Mentale : ${docTitle}",
-  "root": {
-    "id": "root",
-    "label": "${docTitle}",
-    "children": [
-      {
-        "id": "concept_1",
-        "label": "Notion Majeure 1",
-        "description": "Détail de la notion",
-        "children": [
-          { "id": "sub_1", "label": "Sous-notion A" }
-        ]
-      }
-    ]
-  }
-}`
-      };
-
-    case "flashcards":
-      return {
-        agentName: "QuizAssessmentAgent",
-        systemPrompt: `Tu es l'Agent Mémorisation Active de StudyCloud. Conçois des cartes mémoires efficaces (recto/verso).
-Réponds STRICTEMENT avec cet objet JSON :
-{
-  "type": "flashcards",
-  "title": "Cartes Mémoire : ${docTitle}",
-  "cards": [
-    {
-      "id": 1,
-      "front": "Question ou formule à deviner",
-      "back": "Réponse complète avec explication clé",
-      "category": "Définition / Formule"
-    }
-  ]
-}`
-      };
-
-    default: // Résumé / Fiche de synthèse
+    default: // resume / summary
       return {
         agentName: "PedagogicalTutorAgent",
         systemPrompt: `Tu es l'Agent de Synthèse Académique de StudyCloud. Conçois une fiche de révision complète et structurée.
 Réponds STRICTEMENT avec cet objet JSON :
 {
-  "type": "summary",
+  "type": "resume",
   "title": "Fiche de Synthèse : ${docTitle}",
+  "overview": "Synthèse globale du sujet...",
+  "key_points": ["Point clé essentiel 1", "Point clé 2"],
   "sections": [
     {
       "heading": "I. Notions Fondamentales",
@@ -1065,43 +1355,121 @@ Réponds STRICTEMENT avec cet objet JSON :
  * Normalisation du type de création demandé
  */
 function normalizeCreationType(raw) {
-  const map = {
-    "qcm": "quiz",
-    "questionnaire": "quiz",
-    "qcm_interactif": "quiz",
-    "test-qcm": "quiz",
-    "webapp": "webapp",
-    "mini-site": "webapp",
-    "3d": "webapp",
-    "simulation": "webapp",
-    "sandpack": "webapp",
-    "drawing": "drawing",
-    "dessin": "drawing",
-    "schema": "drawing",
-    "trace": "drawing",
-    "svg": "drawing",
-    "chart": "chart",
-    "graphique": "chart",
-    "mindmap": "mindmap",
-    "carte-mentale": "mindmap",
-    "flashcards": "flashcards",
-    "carte-memoire": "flashcards",
-    "resume": "summary",
-    "fiche": "summary"
-  };
-  return map[String(raw).toLowerCase()] || "quiz";
+  const s = String(raw || "").trim().toLowerCase();
+  if (s === "qcm" || s === "quiz" || s === "questionnaire" || s === "questionnaire-test") return "questionnaire";
+  if (s === "mindmap" || s === "carte-mentale" || s === "carte_mentale") return "carte-mentale";
+  if (s === "flashcards" || s === "carte-memoire" || s === "carte_memoire" || s === "flashcard") return "carte-memoire";
+  if (s === "summary" || s === "resume" || s === "fiche") return "resume";
+  if (s === "pdf" || s === "polycopie") return "pdf";
+  if (s === "vrai-ou-faux" || s === "vrai_ou_faux" || s === "vrai-ou-faux-test") return "vrai-ou-faux";
+  if (s === "exercices-ecrits" || s === "exercices" || s === "exercices_ecrits") return "exercices-ecrits";
+  if (s === "devoir-complet" || s === "devoir" || s === "exam" || s === "examen") return "devoir-complet";
+  if (s === "infographie" || s === "infographic") return "infographie";
+  if (s === "webapp" || s === "simulation" || s === "3d" || s === "mini-site" || s === "code_sandbox") return "webapp";
+  if (s === "drawing" || s === "dessin" || s === "schema" || s === "svg") return "drawing";
+  if (s === "chart" || s === "graphique") return "chart";
+  return "questionnaire";
 }
 
 /**
- * Détection autonome de l'intention de l'utilisateur
+ * Classification intelligente : Distingue création de module vs discussion simple
+ */
+function classifyCreationIntent(text, requestedType) {
+  if (requestedType && typeof requestedType === "string" && requestedType.trim()) {
+    return { isCreation: true, type: normalizeCreationType(requestedType) };
+  }
+
+  const raw = String(text || "").trim();
+  const lower = raw.toLowerCase();
+
+  // 1. Exclusions : questions purement conversationnelles (ex: "comment créer...", "quelles questions...", "peux-tu m'expliquer...")
+  const isAskingHow = /^comment (créer|faire|concevoir|fabriquer|résoudre|calculer)/i.test(lower);
+  const isHypotheticalQuestions = /quelles? questions (penses|aurons|va|vont)/i.test(lower);
+  const isGeneralExplain = /^(explique|peux[- ]tu m'expliquer|aide[- ]moi [aà] comprendre|que penses[- ]tu|c'est quoi|qu'est[- ]ce que|pourquoi|définis|démontre|calcule|résous)/i.test(lower);
+
+  if ((isAskingHow || isHypotheticalQuestions || isGeneralExplain) && !/(fais[- ]moi (un|une|des)|génère[- ]moi|crée[- ]moi|donne[- ]moi (un|une|des) (quiz|qcm|carte|fiche|résumé))/i.test(lower)) {
+    return { isCreation: false, type: null };
+  }
+
+  // 2. Mots d'action de fabrication / génération
+  const hasCreationAction = /(crée|créer|cree|creer|génère|générer|genere|generer|fais[- ]moi|fais un|fais une|fais des|conçois|concevoir|concois|produis|produire|élabore|elaborer|prépare|preparer|peux[- ]tu (me faire|créer|générer|concevoir)|donne[- ]moi (un|une|des)|construis|fabrique|teste[- ]moi|évalue[- ]moi)/i.test(lower);
+
+  // 3. Détection par type de module
+  if (/(quiz|qcm|questionnaire|test de connaissances|questions? [aà] choix multiples|interro)/i.test(lower)) {
+    if (hasCreationAction || lower.startsWith("quiz") || lower.startsWith("qcm") || lower.startsWith("questionnaire")) {
+      return { isCreation: true, type: "questionnaire" };
+    }
+  }
+
+  if (/(carte[- ]mentale|mindmap|arbre conceptuel|carte heuristique)/i.test(lower)) {
+    if (hasCreationAction || lower.startsWith("carte mentale") || lower.startsWith("mindmap")) {
+      return { isCreation: true, type: "carte-mentale" };
+    }
+  }
+
+  if (/(carte[- ]m[eé]moire|cartes? m[eé]moires?|flashcard|flashcards|cartes? de r[eé]vision|cartes? de m[eé]morisation)/i.test(lower)) {
+    if (hasCreationAction || lower.startsWith("flashcard") || lower.startsWith("carte memoire")) {
+      return { isCreation: true, type: "carte-memoire" };
+    }
+  }
+
+  if (/(r[eé]sum[eé]|fiche de r[eé]vision|fiche de synth[eè]se|synth[eè]se de cours|fiche m[eé]mo)/i.test(lower)) {
+    if (hasCreationAction || lower.startsWith("résumé") || lower.startsWith("resume") || lower.startsWith("fiche")) {
+      return { isCreation: true, type: "resume" };
+    }
+  }
+
+  if (/(vrai ou faux|vrai\/faux|vrai-ou-faux)/i.test(lower)) {
+    if (hasCreationAction || lower.startsWith("vrai ou faux") || lower.startsWith("vrai/faux")) {
+      return { isCreation: true, type: "vrai-ou-faux" };
+    }
+  }
+
+  if (/(exercices? [eé]crits?|exercices? d'application|s[eé]rie d'exercices|exercices? corrig[eé]s)/i.test(lower)) {
+    if (hasCreationAction || lower.startsWith("exercices")) {
+      return { isCreation: true, type: "exercices-ecrits" };
+    }
+  }
+
+  if (/(devoir complet|sujet d'examen|partiel blanc|examen complet|contr[oô]le complet|sujet blanc)/i.test(lower)) {
+    if (hasCreationAction || lower.startsWith("devoir") || lower.startsWith("examen")) {
+      return { isCreation: true, type: "devoir-complet" };
+    }
+  }
+
+  if (/(polycopi[eé]|document d'[eé]tude|cours complet en pdf|fichier pdf)/i.test(lower)) {
+    if (hasCreationAction) {
+      return { isCreation: true, type: "pdf" };
+    }
+  }
+
+  if (/(infographie|fiche visuelle|synth[eè]se visuelle)/i.test(lower)) {
+    if (hasCreationAction || lower.startsWith("infographie")) {
+      return { isCreation: true, type: "infographie" };
+    }
+  }
+
+  if (/(simulation 3d|simulation|mini[- ]site|mini[- ]application|webapp|jeu interactif)/i.test(lower)) {
+    if (hasCreationAction) {
+      return { isCreation: true, type: "webapp" };
+    }
+  }
+
+  if (/(dessin svg|sch[eé]ma svg|figure svg|trac[eé] svg|dessine[- ]moi)/i.test(lower)) {
+    if (hasCreationAction) {
+      return { isCreation: true, type: "drawing" };
+    }
+  }
+
+  return { isCreation: false, type: null };
+}
+
+/**
+ * Détection de secours d'intention pour le routeur
  */
 function detectUserIntent(text) {
-  const lower = String(text).toLowerCase();
-  if (lower.match(/\b(dessine|trac[eé]|sch[eé]ma|figure|diagramme|croquis)\b/)) return "drawing";
-  if (lower.match(/\b(site|webapp|3d|simulation|code|jeu|animation|mini-app)\b/)) return "webapp";
-  if (lower.match(/\b(quiz|qcm|questionnaire|teste-moi|vrai ou faux)\b/)) return "quiz";
-  if (lower.match(/\b(graphe|graphique|courbe|statistiques)\b/)) return "chart";
-  if (lower.match(/\b(carte mentale|mindmap|arbre conceptuel)\b/)) return "mindmap";
+  const c = classifyCreationIntent(text);
+  if (c.isCreation) return c.type;
   return "conversation";
 }
 
@@ -1109,13 +1477,14 @@ function detectUserIntent(text) {
  * Fallback local d'urgence 100% garanti si panne externe
  */
 function buildSafeLocalCreation(type, title, text) {
+  const norm = normalizeCreationType(type);
   const words = text.split(/\s+/).filter(Boolean);
   const sample = words.slice(0, 30).join(" ") || "Étude approfondie des concepts clés.";
 
-  if (type === "quiz") {
+  if (norm === "questionnaire") {
     return {
-      type: "quiz",
-      title: `QCM : ${title}`,
+      type: "questionnaire",
+      title: `Quiz : ${title}`,
       questions: [
         {
           id: 1,
@@ -1127,13 +1496,100 @@ function buildSafeLocalCreation(type, title, text) {
             "Une notion purement introductive"
           ],
           correct_index: 0,
-          feedback: "Cette réponse correspond aux concepts fondamentaux développés dans le document source."
+          explanation: "Cette réponse correspond aux concepts fondamentaux développés dans le document source."
         }
       ]
     };
   }
 
-  if (type === "webapp") {
+  if (norm === "carte-mentale") {
+    return {
+      type: "carte-mentale",
+      title: `Carte Mentale : ${title}`,
+      root: {
+        id: "root",
+        label: title,
+        children: [
+          {
+            id: "c1",
+            label: "Notion Principale",
+            description: sample.slice(0, 50) + "...",
+            children: [{ id: "s1", label: "Application pratique" }]
+          }
+        ]
+      }
+    };
+  }
+
+  if (norm === "carte-memoire") {
+    return {
+      type: "carte-memoire",
+      title: `Cartes Mémoire : ${title}`,
+      cards: [
+        {
+          id: 1,
+          front: `Quel est le concept clé de ${title} ?`,
+          back: sample,
+          category: "Définition"
+        }
+      ]
+    };
+  }
+
+  if (norm === "vrai-ou-faux") {
+    return {
+      type: "vrai-ou-faux",
+      title: `Vrai ou Faux : ${title}`,
+      affirmations: [
+        {
+          id: 1,
+          statement: `Le document ${title} traite principalement de concepts fondamentaux.`,
+          is_true: true,
+          explanation: "Confirmé par l'analyse approfondie du document source."
+        }
+      ]
+    };
+  }
+
+  if (norm === "exercices-ecrits") {
+    return {
+      type: "exercices-ecrits",
+      title: `Exercices : ${title}`,
+      exercises: [
+        {
+          id: 1,
+          title: "Exercice d'application",
+          enonce: `Démontrez et explicitez les propriétés fondamentales abordées dans ${title}.`,
+          correction: "Appliquez les définitions étape par étape pour conclure.",
+          bareme: 10
+        }
+      ]
+    };
+  }
+
+  if (norm === "devoir-complet") {
+    return {
+      type: "devoir-complet",
+      title: `Examen : ${title}`,
+      duree: "2h",
+      bareme_total: 20,
+      parties: [
+        {
+          titre: "Partie 1 : Questions de cours",
+          bareme: 20,
+          exercices: [
+            {
+              enonce: `Synthétisez les éléments essentiels de ${title}.`,
+              correction: sample,
+              points: 20
+            }
+          ]
+        }
+      ]
+    };
+  }
+
+  if (norm === "webapp") {
     return {
       type: "webapp",
       title: `Visualisation : ${title}`,
@@ -1145,7 +1601,7 @@ function buildSafeLocalCreation(type, title, text) {
     };
   }
 
-  if (type === "drawing") {
+  if (norm === "drawing") {
     return {
       type: "drawing",
       title: `Schéma : ${title}`,
@@ -1156,13 +1612,15 @@ function buildSafeLocalCreation(type, title, text) {
   }
 
   return {
-    type: "summary",
+    type: "resume",
     title: `Fiche : ${title}`,
+    overview: sample,
+    key_points: ["Maîtriser les notions de base", "Appliquer la méthodologie"],
     sections: [
       {
         heading: "I. Synthèse Principale",
         content: sample,
-        key_takeaways: ["Maîtriser les notions de base", "Appliquer la méthodologie"]
+        key_takeaways: ["Point clé 1", "Point clé 2"]
       }
     ]
   };
