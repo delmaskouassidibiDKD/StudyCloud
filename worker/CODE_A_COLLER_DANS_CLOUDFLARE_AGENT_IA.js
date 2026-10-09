@@ -20,11 +20,18 @@
  * - STREAMING SSE NATIF (text/event-stream) & MODE JSON INDESTRUCTIBLE (anti-crash LaTeX)
  * 
  * ============================================================================
- * DÉPLOIEMENT DANS CLOUDFLARE :
- * 1. Tableau de bord Cloudflare > Workers & Pages > Votre Worker IA.
- * 2. Cliquez sur "Edit code" (Quick Edit).
- * 3. Faites Ctrl+A, puis Collez tout ce code (Ctrl+V).
- * 4. Cliquez sur "Save and Deploy".
+ * ⚠️ RÈGLE DE DÉPLOIEMENT DANS CLOUDFLARE (NE PAS CONFONDRE LES 2 WORKERS) :
+ * 
+ * StudyCloud utilise 2 Workers Cloudflare complémentaires :
+ * 1. WORKER PRINCIPAL (worker/STUDYCLOUD_WORKER.js - 700 Ko) :
+ *    -> Gère la base de données D1, le stockage R2, les comptes et les fichiers.
+ *    -> ⚠️ NE SURTOUT PAS COLLER CE CODE DANS VOTRE WORKER PRINCIPAL D1/R2 !
+ * 
+ * 2. WORKER AGENT IA DÉDIÉ (ce fichier-ci : CODE_A_COLLER_DANS_CLOUDFLARE_AGENT_IA.js) :
+ *    -> Gère les modèles d'IA (Llama 3.3 70B, Gemini 2.0 Flash, Vision, Whisper).
+ *    -> Déployez-le dans votre Worker IA dédié (ex: studycloud-agent ou studycloud-ai).
+ *    -> Tableau de bord Cloudflare > Workers & Pages > Votre Worker IA > Quick Edit.
+ *    -> Faites Ctrl+A puis collez ce fichier, et cliquez sur "Save and Deploy".
  * ============================================================================
  */
 
@@ -162,7 +169,7 @@ async function handleParallelChat(request, env, corsHeaders) {
   const history = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
   const wantStream = Boolean(body.stream || request.headers.get("accept")?.includes("text/event-stream"));
   const requestedType = body.requested_type || body.requestedType || body.toolType || body.type || "";
-  const geminiApiKey = body.geminiApiKey || (env && env.GEMINI_API_KEY) || "";
+  const geminiApiKey = body.geminiApiKey || request.headers.get("x-gemini-api-key") || (env && env.GEMINI_API_KEY) || "";
 
   if (!message.trim() && !attachedFileContent.trim() && !imageBase64.trim() && !audioBase64.trim()) {
     return errorResponse("Veuillez fournir un message, un document ou une image à analyser.", 400, corsHeaders);
@@ -457,7 +464,7 @@ ${userPrompt || "Génère un module d'excellence complet respectant le schéma J
     ],
     systemPrompt: subAgentConfig.systemPrompt,
     userPrompt: fullPrompt,
-    geminiApiKey: body.geminiApiKey || "",
+    geminiApiKey: body.geminiApiKey || request.headers.get("x-gemini-api-key") || (env && env.GEMINI_API_KEY) || "",
     mode: "json"
   });
 
@@ -517,7 +524,7 @@ async function handleDocumentAnalysis(request, env, corsHeaders) {
     ],
     systemPrompt,
     userPrompt,
-    geminiApiKey: body.geminiApiKey || "",
+    geminiApiKey: body.geminiApiKey || request.headers.get("x-gemini-api-key") || (env && env.GEMINI_API_KEY) || "",
     mode: "json"
   });
 
@@ -633,7 +640,7 @@ async function handleVisionAnalysis(request, env, corsHeaders) {
     }
 
     // 2. Fallback Google Gemini 2.0 Flash Multimodal
-    const geminiKey = (env && env.GEMINI_API_KEY) || body.geminiApiKey || "";
+    const geminiKey = (env && env.GEMINI_API_KEY) || body.geminiApiKey || request.headers.get("x-gemini-api-key") || "";
     if (geminiKey) {
       try {
         const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
