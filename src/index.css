@@ -746,4 +746,25 @@ p.brand-tagline,
   position: absolute !important;
 }
 
+/* Animation flottante fluide pour le robot animé */
+@keyframes robotFloatMove {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-5px) rotate(1.2deg);
+  }
+  50% {
+    transform: translateY(-9px) rotate(0deg);
+  }
+  75% {
+    transform: translateY(-4px) rotate(-1.2deg);
+  }
+}
+
+.animate-robot-float {
+  animation: robotFloatMove 3.2s ease-in-out infinite;
+}
+
+
 

@@ -18,6 +18,7 @@ import { CalculatorMenuView } from './CalculatorMenuView';
 import { MatiereMenuView } from './MatiereMenuView';
 import { StorageMenuView } from './StorageMenuView';
 import { Page1FilesMenuView } from './Page1FilesMenuView';
+import { RedRobotMenuView } from './RedRobotMenuView';
 import { NavigationTab } from '../types';
 import { triggerDebouncedCloudBackup, getCurrentUserId } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
@@ -131,7 +132,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [pricingInitialTab, setPricingInitialTab] = useState<'storage' | 'ai' | 'renewal'>('storage');
   const [previousViewMode, setPreviousViewMode] = useState<string>('home');
   // viewMode ne doit JAMAIS être restauré depuis localStorage - toujours démarrer à 'home'
-  const [viewMode, setViewMode] = useState<'home' | 'abondamment' | 'files-menu' | 'storage-menu' | 'schedule-menu' | 'notes-menu' | 'grades-menu' | 'calendar-menu' | 'favorites-menu' | 'clock-menu' | 'level-menu' | 'calculator-menu' | string>('home');
+  const [viewMode, setViewMode] = useState<'home' | 'abondamment' | 'files-menu' | 'storage-menu' | 'schedule-menu' | 'notes-menu' | 'grades-menu' | 'calendar-menu' | 'favorites-menu' | 'clock-menu' | 'level-menu' | 'calculator-menu' | 'red-robot-menu' | string>('home');
 
   useEffect(() => {
     // Nettoyage : effacer toute ancienne valeur de viewMode dans localStorage
@@ -1904,6 +1905,14 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           onOpenCreateShareLink={onOpenCreateShareLink}
         />
       )}
+      {viewMode === 'red-robot-menu' && (
+        <RedRobotMenuView 
+          onBack={() => {
+            setActivePageIndex(0);
+            setViewMode('home');
+          }} 
+        />
+      )}
 
       {viewMode === 'home' && (
         <div className="w-full max-w-[1400px] mx-auto px-1 sm:px-4 py-2 relative z-10">
@@ -1939,7 +1948,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             >
               {/* PAGE 0 : Page 1 à gauche avec l'application Fichiers 3D (sans bloc noir, poussée à gauche) */}
               <div className="w-1/2 shrink-0 px-2 sm:px-4 py-2">
-                <div className="flex items-start justify-start w-full pt-1 pl-1 sm:pl-3 md:pl-5">
+                <div className="flex items-start justify-start w-full pt-1 pl-1 sm:pl-3 md:pl-5 gap-6 sm:gap-10 md:gap-12 flex-wrap">
                   {/* Application Fichiers 3D - Poussée à gauche où se trouvait la marque rouge */}
                   <div 
                     onClick={(e) => {
@@ -2089,6 +2098,34 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                         : 'text-stone-900 dark:text-stone-100'
                     }`}>
                       Espace Cloud
+                    </span>
+                  </div>
+
+                  {/* Nouvelle Application : Grand Robot Rouge qui bouge */}
+                  <div 
+                    onClick={(e) => {
+                      if (hasMovedRef.current) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                      }
+                      setActivePageIndex(0);
+                      setViewMode('red-robot-menu');
+                    }}
+                    className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-150 hover:scale-105 active:scale-[0.98]"
+                    title="Ouvrir l'application"
+                  >
+                    {/* Conteneur avec taille équivalente au dossier 3D Espace Cloud */}
+                    <div className="w-24 h-21 sm:w-28 sm:h-24 md:w-32 md:h-28 flex items-center justify-center overflow-visible filter drop-shadow-[0_8px_18px_rgba(220,38,38,0.3)] dark:drop-shadow-[0_12px_26px_rgba(239,68,68,0.45)] group-hover:drop-shadow-[0_16px_30px_rgba(239,68,68,0.6)] group-hover:scale-108 active:scale-95 transition-all duration-300">
+                      <DelmasRobot size={96} variant="red" floating />
+                    </div>
+
+                    <span className={`text-xs sm:text-sm font-black mt-2 text-center tracking-tight transition-colors ${
+                      dashboardWallpaper 
+                        ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-2.5 py-0.5 rounded-full border border-white/10' 
+                        : 'text-stone-900 dark:text-stone-100'
+                    }`}>
+                      Robot Rouge
                     </span>
                   </div>
                 </div>
