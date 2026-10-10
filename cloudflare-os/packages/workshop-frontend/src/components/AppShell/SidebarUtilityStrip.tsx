@@ -85,11 +85,6 @@ export default function SidebarUtilityStrip({ collapsed = false }: { collapsed?:
       <StripLink to="/gatekeepers" label="Gardiens d'accès">
         <Plug size={15} />
       </StripLink>
-      {isAdmin && (
-        <StripLink to="/admin" label="Tableau de bord (Modèles d'IA & Paramètres)">
-          <Gear size={15} />
-        </StripLink>
-      )}
       <div className={collapsed ? 'flex flex-col items-center gap-2' : 'ml-auto flex items-center gap-1'}>
         <ThemeModeButton />
         <UserMenu />
