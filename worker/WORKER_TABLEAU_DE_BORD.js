@@ -281,6 +281,48 @@ async function ensureStorageTables(db) {
       )
     `).run().catch(() => {});
 
+    // Table D1 des Modèles IA configurés (Cloudflare OS & Robot Rouge)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS robot_rouge_models (
+        id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        name TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        api_token TEXT DEFAULT '',
+        account_id TEXT DEFAULT '',
+        api_url TEXT DEFAULT '',
+        context_window INTEGER DEFAULT 0,
+        output_limit INTEGER DEFAULT 0,
+        is_default INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    // Initialisation automatique des modèles si la table est vide
+    try {
+      const existingCount = await db.prepare("SELECT COUNT(*) as cnt FROM robot_rouge_models").first();
+      if (!existingCount || Number(existingCount.cnt) === 0) {
+        await db.batch([
+          db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
+            VALUES ('@cf/meta/llama-3.3-70b-instruct', 'cloudflare', 'Llama 3.3 70B Instruct (Workers AI)', '@cf/meta/llama-3.3-70b-instruct', 1, 1, 131072)`),
+          db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
+            VALUES ('@cf/moonshotai/kimi-k2.7-code', 'cloudflare', 'Kimi K2.7 Code (Workers AI)', '@cf/moonshotai/kimi-k2.7-code', 0, 1, 262144)`),
+          db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
+            VALUES ('@cf/zai-org/glm-5.3-flash', 'cloudflare', 'GLM 5.3 Flash (Workers AI)', '@cf/zai-org/glm-5.3-flash', 0, 1, 1048576)`),
+          db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
+            VALUES ('@cf/deepseek-ai/deepseek-v4-pro-0813', 'cloudflare', 'DeepSeek V4 Pro 0813 (Workers AI)', '@cf/deepseek-ai/deepseek-v4-pro-0813', 0, 1, 1048576)`),
+          db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
+            VALUES ('gemini-2.0-flash', 'google', 'Google Gemini 2.0 Flash', 'gemini-2.0-flash', 0, 1, 1048576)`),
+          db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
+            VALUES ('claude-3-5-sonnet-20241022', 'anthropic', 'Claude 3.5 Sonnet', 'claude-3-5-sonnet-20241022', 0, 1, 200000)`),
+          db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
+            VALUES ('gpt-4o-mini', 'openai', 'OpenAI GPT-4o Mini', 'gpt-4o-mini', 0, 1, 128000)`)
+        ]).catch(() => {});
+      }
+    } catch (eInitModels) {}
+
     // 1. Colonnes indispensables sur 'users' (garantit qu'aucun SELECT ne plantera)
     const userAlterCols = [
       "ALTER TABLE users ADD COLUMN phone TEXT DEFAULT ''",
@@ -2623,6 +2665,7 @@ function renderDashboardHtml(data) {
   const alertRulesJson = JSON.stringify(data.alertRules || []).replace(/</g, '\\u003c');
   const alertLogsJson = JSON.stringify(data.alertLogs || []).replace(/</g, '\\u003c');
   const robotRougeConfigJson = JSON.stringify(data.robotRougeConfig || {}).replace(/</g, '\\u003c');
+  const robotRougeModelsJson = JSON.stringify(data.robotRougeModels || []).replace(/</g, '\\u003c');
   const rc = data.robotRougeConfig || {};
   const cp = data.companyProfile || {};
   const safeAttr = (val, fallback = '') => {
@@ -4813,6 +4856,15 @@ function renderDashboardHtml(data) {
         <div class="flex items-center gap-2.5 shrink-0 flex-wrap">
           <button 
             type="button" 
+            onclick="openAddAiModelModal()" 
+            id="btn-open-add-model"
+            class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 hover:from-amber-400 hover:to-orange-400 text-stone-900 font-black text-xs shadow-lg shadow-orange-500/30 flex items-center gap-2 active:scale-95 transition-all cursor-pointer"
+          >
+            <span>✨</span>
+            <span>+ Ajouter un modèle d'IA</span>
+          </button>
+          <button 
+            type="button" 
             onclick="saveRobotRougeConfig()" 
             id="btn-save-robot-rouge"
             class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-600 via-orange-600 to-red-600 hover:from-red-500 hover:to-orange-500 text-white font-extrabold text-xs shadow-lg shadow-red-600/30 flex items-center gap-2 active:scale-95 transition-all cursor-pointer"
@@ -4869,6 +4921,41 @@ function renderDashboardHtml(data) {
             <div class="text-[10px] text-slate-400 font-bold uppercase">Crédits Bienvenue</div>
             <div id="stat-robot-welcome" class="text-xs font-black text-blue-400 font-mono">${rc.welcome_credits !== undefined ? rc.welcome_credits : 50} Crédits</div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- SECTION 1 : MODÈLES D'IA CONFIGURÉS DANS D1 (ACTIFS ÉTUDIANTS)     -->
+    <!-- ================================================================== -->
+    <div class="neo-card p-4 sm:p-5 space-y-4 border-l-4 border-l-amber-500 shrink-0">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div>
+          <div class="flex items-center gap-2 text-white font-extrabold text-sm sm:text-base">
+            <span>🧠</span>
+            <span>Modèles d'IA Connectés dans la Base D1</span>
+            <span id="badge-models-count" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+              0 modèle
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Vos clés API sont stockées ici de manière sécurisée. L'application StudyCloud et les élèves s'y connectent sans jamais voir vos clés.
+          </p>
+        </div>
+        <button 
+          type="button" 
+          onclick="openAddAiModelModal()" 
+          class="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-stone-900 font-extrabold text-xs flex items-center gap-1.5 shadow-md shadow-orange-500/20 active:scale-95 transition-all cursor-pointer shrink-0"
+        >
+          <span>➕</span>
+          <span>Ajouter un Modèle d'IA</span>
+        </button>
+      </div>
+
+      <!-- Grille Dynamique des Modèles D1 -->
+      <div id="robot-models-list-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1">
+        <div class="p-6 rounded-2xl bg-slate-950/60 border border-slate-800 text-center text-xs text-slate-400 col-span-full">
+          Chargement des modèles depuis la base D1...
         </div>
       </div>
     </div>
@@ -5162,6 +5249,202 @@ function renderDashboardHtml(data) {
   </div>
 
 </main>
+
+  <!-- ================================================================== -->
+  <!-- MODALE INTERACTIVE : AJOUTER OU CONFIGURER UN MODÈLE D'IA (D1)    -->
+  <!-- ================================================================== -->
+  <div id="modal-add-robot-model" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm hidden" style="display: none;">
+    <div class="relative max-w-xl w-full bg-[#0e1628] border-2 border-slate-700 p-6 rounded-3xl shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto">
+      
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3.5">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">🤖</span>
+          <div>
+            <h3 class="text-base sm:text-lg font-extrabold text-white">Ajouter un modèle d'IA</h3>
+            <p class="text-xs text-slate-400">Configurez le modèle d'IA et ses clés d'accès dans votre base D1.</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeAddAiModelModal()" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer text-sm">✕</button>
+      </div>
+
+      <!-- Étape 1 : Sélectionner un modèle (Identique à la Photo 2 de l'utilisateur) -->
+      <div class="space-y-1.5">
+        <label class="text-xs font-bold text-slate-200 block">Sélectionner un modèle *</label>
+        <select 
+          id="modal-select-ai-catalog" 
+          onchange="onCatalogModelSelected(this.value)"
+          class="w-full bg-slate-900 text-white text-xs sm:text-sm rounded-xl px-4 py-3 border border-slate-700 hover:border-orange-500 focus:border-orange-500 outline-none transition cursor-pointer"
+        >
+          <option value="">Choisir un modèle d'IA...</option>
+          
+          <optgroup label="Cloudflare Workers AI">
+            <option value="@cf/moonshotai/kimi-k2.7-code">Kimi K2.7 Code (Workers AI)</option>
+            <option value="@cf/zai-org/glm-5.2">GLM 5.2 (Workers AI)</option>
+            <option value="@cf/zai-org/glm-5.3-flash">GLM 5.3 Flash (Workers AI)</option>
+            <option value="@cf/deepseek-ai/deepseek-v4-pro-0813">DeepSeek V4 Pro 0813 (Workers AI)</option>
+            <option value="@cf/meta/llama-3.3-70b-instruct">Llama 3.3 70B Instruct (Workers AI)</option>
+            <option value="other-cloudflare">Autre Cloudflare Workers AI...</option>
+          </optgroup>
+
+          <optgroup label="Anthropic">
+            <option value="claude-opus-5-5">Claude Opus 5.5</option>
+            <option value="claude-sonnet-5-5">Claude Sonnet 5.5</option>
+            <option value="claude-fable-5-1">Claude Fable 5.1</option>
+            <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
+            <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+            <option value="other-anthropic">Autre Anthropic...</option>
+          </optgroup>
+
+          <optgroup label="OpenAI">
+            <option value="gpt-6.1-sol">GPT-6.1 Sol</option>
+            <option value="gpt-6-luna">GPT-6 Luna</option>
+            <option value="gpt-6-astra">GPT-6 Astra</option>
+            <option value="gpt-4o">GPT-4o</option>
+            <option value="gpt-4o-mini">GPT-4o Mini</option>
+            <option value="other-openai">Autre OpenAI...</option>
+          </optgroup>
+
+          <optgroup label="Google">
+            <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
+            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+            <option value="other-google">Autre Google...</option>
+          </optgroup>
+
+          <optgroup label="Personnalisé">
+            <option value="custom-model">Autre modèle d'IA (Custom / Ollama)...</option>
+          </optgroup>
+        </select>
+        <p class="text-[10px] text-slate-400">Dès que vous choisissez un modèle, les champs de configuration et de clés apparaissent ci-dessous.</p>
+      </div>
+
+      <!-- Étape 2 : Formulaire dynamique qui apparaît dès qu'un modèle est choisi -->
+      <div id="modal-model-form-zone" class="space-y-4 pt-3 border-t border-slate-800/80 hidden" style="display: none;">
+        
+        <!-- En-tête dynamique du fournisseur -->
+        <div class="flex items-center justify-between p-3 rounded-2xl bg-slate-950/80 border border-slate-800">
+          <div class="flex items-center gap-2.5">
+            <span id="form-provider-icon" class="text-xl">☁️</span>
+            <div>
+              <div id="form-provider-name" class="text-xs font-black text-white uppercase tracking-wider">Cloudflare Workers AI</div>
+              <div id="form-provider-desc" class="text-[10px] text-slate-400">Modèle hébergé sur le réseau Cloudflare</div>
+            </div>
+          </div>
+          <span id="form-provider-badge" class="text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30">
+            Workers AI
+          </span>
+        </div>
+
+        <!-- Nom affiché -->
+        <div class="space-y-1">
+          <label class="text-[11px] font-bold text-slate-300 block">Nom affiché dans StudyCloud *</label>
+          <input 
+            type="text" 
+            id="form-model-name" 
+            placeholder="Ex: Kimi K2.7 Code (Workers AI)" 
+            class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500 focus:border-orange-500 outline-none transition"
+          >
+        </div>
+
+        <!-- Model ID -->
+        <div class="space-y-1">
+          <label class="text-[11px] font-bold text-slate-300 block">Identifiant Technique (Model ID) *</label>
+          <input 
+            type="text" 
+            id="form-model-id" 
+            placeholder="Ex: @cf/moonshotai/kimi-k2.7-code" 
+            class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500 focus:border-orange-500 outline-none transition font-mono"
+          >
+        </div>
+
+        <!-- Clé API / Jeton d'accès -->
+        <div class="space-y-1">
+          <div class="flex items-center justify-between">
+            <label id="form-token-label" class="text-[11px] font-bold text-slate-300">Clé API / Jeton d'accès *</label>
+            <span id="form-token-opt" class="text-[9px] text-slate-500 uppercase">Obligatoire</span>
+          </div>
+          <div class="relative">
+            <input 
+              type="password" 
+              id="form-model-token" 
+              placeholder="sk-..." 
+              class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-10 border border-slate-700 hover:border-orange-500 focus:border-orange-500 outline-none transition font-mono"
+            >
+            <button type="button" onclick="toggleSecretVisibility('form-model-token')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer text-xs">👁️</button>
+          </div>
+          <p id="form-token-desc" class="text-[10px] text-slate-400 leading-tight">Clé maîtresse enregistrée dans D1 pour que vos élèves puissent utiliser ce modèle sans clé.</p>
+        </div>
+
+        <!-- Cloudflare Account ID (si Workers AI) -->
+        <div id="form-cf-account-group" class="space-y-1 hidden">
+          <label class="text-[11px] font-bold text-slate-300 block">Cloudflare Account ID (Optionnel)</label>
+          <input 
+            type="text" 
+            id="form-model-account-id" 
+            placeholder="Ex: c80164ed977e6535efd1b67a54741ed6" 
+            class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500 focus:border-orange-500 outline-none transition font-mono"
+          >
+        </div>
+
+        <!-- Limite de contexte -->
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1">
+            <label class="text-[11px] font-bold text-slate-300 block">Fenêtre de contexte (Tokens)</label>
+            <input 
+              type="number" 
+              id="form-model-context" 
+              placeholder="262144" 
+              class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 outline-none transition font-mono"
+            >
+          </div>
+          <div class="space-y-1">
+            <label class="text-[11px] font-bold text-slate-300 block">Limite de sortie (Tokens)</label>
+            <input 
+              type="number" 
+              id="form-model-output" 
+              placeholder="8192" 
+              class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 outline-none transition font-mono"
+            >
+          </div>
+        </div>
+
+        <!-- Définir par défaut -->
+        <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between">
+          <div>
+            <div class="text-xs font-bold text-white">Définir comme Modèle Actif par Défaut</div>
+            <div class="text-[10px] text-slate-400">Ce modèle sera activé directement pour tous les élèves dans StudyCloud.</div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="form-model-is-default" class="sr-only peer">
+            <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+          </label>
+        </div>
+
+        <!-- Boutons d'action -->
+        <div class="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
+          <button 
+            type="button" 
+            onclick="closeAddAiModelModal()" 
+            class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition cursor-pointer"
+          >
+            Annuler
+          </button>
+          <button 
+            type="button" 
+            onclick="submitSaveAiModelForm()" 
+            id="btn-submit-ai-model"
+            class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-stone-900 font-extrabold text-xs shadow-lg shadow-orange-500/30 transition flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>💾</span>
+            <span>Enregistrer dans la base D1</span>
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
 
   <!-- MODALE D'ÉDITION DE CHAMP INDIVIDUEL (INFORMATIONS PROFESSIONNELLES) -->
   <div id="field-edit-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex flex-col items-center justify-center p-4" onclick="closeFieldEditModal(event)">
@@ -5737,6 +6020,9 @@ function renderDashboardHtml(data) {
         try {
           if (typeof loadRobotRougeConfig === 'function') {
             loadRobotRougeConfig();
+          }
+          if (typeof loadRobotRougeModels === 'function') {
+            loadRobotRougeModels();
           }
         } catch(e) {
           console.warn('Erreur chargement Robot Rouge:', e);
@@ -12162,6 +12448,7 @@ function renderDashboardHtml(data) {
       } catch (err) {
         showToast('⚠️ Erreur de connexion D1 : ' + err.message);
       }
+      loadRobotRougeModels();
     }
 
     async function saveRobotRougeConfig() {
@@ -12303,12 +12590,433 @@ function renderDashboardHtml(data) {
       }
     }
 
+    // =========================================================================
+    // GESTION DES MODÈLES D'IA DANS D1 (CATALOGUE & CLÉS MAÎTRES)
+    // =========================================================================
+
+    let robotRougeModelsList = ${robotRougeModelsJson};
+
+    function openAddAiModelModal(modelData) {
+      const modal = document.getElementById('modal-add-robot-model');
+      if (!modal) return;
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+
+      const select = document.getElementById('modal-select-ai-catalog');
+      const formZone = document.getElementById('modal-model-form-zone');
+
+      if (modelData) {
+        if (select) select.value = modelData.model_id || '';
+        if (formZone) { formZone.classList.remove('hidden'); formZone.style.display = 'block'; }
+        
+        const nInput = document.getElementById('form-model-name');
+        if (nInput) nInput.value = modelData.name || '';
+
+        const idInput = document.getElementById('form-model-id');
+        if (idInput) idInput.value = modelData.model_id || modelData.id || '';
+
+        const tokInput = document.getElementById('form-model-token');
+        if (tokInput) tokInput.value = modelData.api_token || '';
+
+        const accInput = document.getElementById('form-model-account-id');
+        if (accInput) accInput.value = modelData.account_id || '';
+
+        const ctxInput = document.getElementById('form-model-context');
+        if (ctxInput) ctxInput.value = modelData.context_window || '';
+
+        const outInput = document.getElementById('form-model-output');
+        if (outInput) outInput.value = modelData.output_limit || '';
+
+        const defInput = document.getElementById('form-model-is-default');
+        if (defInput) defInput.checked = !!modelData.is_default;
+        
+        updateProviderDisplay(modelData.provider || detectProviderFromId(modelData.model_id));
+      } else {
+        if (select) select.value = '';
+        if (formZone) { formZone.classList.add('hidden'); formZone.style.display = 'none'; }
+        const nInput = document.getElementById('form-model-name');
+        if (nInput) nInput.value = '';
+        const idInput = document.getElementById('form-model-id');
+        if (idInput) idInput.value = '';
+        const tokInput = document.getElementById('form-model-token');
+        if (tokInput) tokInput.value = '';
+        const accInput = document.getElementById('form-model-account-id');
+        if (accInput) accInput.value = '';
+        const ctxInput = document.getElementById('form-model-context');
+        if (ctxInput) ctxInput.value = '';
+        const outInput = document.getElementById('form-model-output');
+        if (outInput) outInput.value = '';
+        const defInput = document.getElementById('form-model-is-default');
+        if (defInput) defInput.checked = false;
+      }
+    }
+
+    function closeAddAiModelModal() {
+      const modal = document.getElementById('modal-add-robot-model');
+      if (!modal) return;
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    }
+
+    function detectProviderFromId(val) {
+      if (!val) return 'custom';
+      if (val.startsWith('@cf/') || val.includes('cloudflare')) return 'cloudflare';
+      if (val.includes('claude') || val.includes('anthropic')) return 'anthropic';
+      if (val.includes('gpt') || val.includes('openai')) return 'openai';
+      if (val.includes('gemini') || val.includes('google')) return 'google';
+      return 'custom';
+    }
+
+    function updateProviderDisplay(prov) {
+      const icon = document.getElementById('form-provider-icon');
+      const name = document.getElementById('form-provider-name');
+      const desc = document.getElementById('form-provider-desc');
+      const badge = document.getElementById('form-provider-badge');
+      const cfGroup = document.getElementById('form-cf-account-group');
+      const tokLabel = document.getElementById('form-token-label');
+      const tokInput = document.getElementById('form-model-token');
+
+      if (cfGroup) cfGroup.classList.toggle('hidden', prov !== 'cloudflare');
+
+      if (prov === 'cloudflare') {
+        if (icon) icon.textContent = '☁️';
+        if (name) name.textContent = 'Cloudflare Workers AI';
+        if (desc) desc.textContent = 'Réseau Edge Mondial Cloudflare (Inférence ultra-rapide)';
+        if (badge) { badge.textContent = 'Workers AI'; badge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30'; }
+        if (tokLabel) tokLabel.textContent = 'Cloudflare API Token (Workers AI)';
+        if (tokInput) tokInput.placeholder = 'cf_ai_... ou jeton API Cloudflare';
+      } else if (prov === 'anthropic') {
+        if (icon) icon.textContent = '🧠';
+        if (name) name.textContent = 'Anthropic Claude';
+        if (desc) desc.textContent = 'Raisonnement supérieur, code complexe et pédagogie';
+        if (badge) { badge.textContent = 'Anthropic'; badge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30'; }
+        if (tokLabel) tokLabel.textContent = 'Clé API Anthropic (sk-ant-...)';
+        if (tokInput) tokInput.placeholder = 'sk-ant-api03-...';
+      } else if (prov === 'openai') {
+        if (icon) icon.textContent = '⚡';
+        if (name) name.textContent = 'OpenAI';
+        if (desc) desc.textContent = 'Modèles GPT-4o, Sol, Luna et Astra';
+        if (badge) { badge.textContent = 'OpenAI'; badge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'; }
+        if (tokLabel) tokLabel.textContent = 'Clé API OpenAI (sk-...)';
+        if (tokInput) tokInput.placeholder = 'sk-proj-...';
+      } else if (prov === 'google') {
+        if (icon) icon.textContent = '💎';
+        if (name) name.textContent = 'Google Gemini';
+        if (desc) desc.textContent = 'Gemini Flash & Pro (Haute vitesse & Multimodal)';
+        if (badge) { badge.textContent = 'Google AI'; badge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30'; }
+        if (tokLabel) tokLabel.textContent = 'Clé API Google Gemini (AIzaSy...)';
+        if (tokInput) tokInput.placeholder = 'AIzaSy...';
+      } else {
+        if (icon) icon.textContent = '⚙️';
+        if (name) name.textContent = 'Modèle Personnalisé';
+        if (desc) desc.textContent = 'Point de terminaison API ou Fournisseur Custom';
+        if (badge) { badge.textContent = 'Custom'; badge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30'; }
+        if (tokLabel) tokLabel.textContent = 'Clé d\'authentification / Bearer Token';
+        if (tokInput) tokInput.placeholder = 'Clé API ou jeton Bearer';
+      }
+    }
+
+    function onCatalogModelSelected(val) {
+      const formZone = document.getElementById('modal-model-form-zone');
+      if (!val) {
+        if (formZone) { formZone.classList.add('hidden'); formZone.style.display = 'none'; }
+        return;
+      }
+      if (formZone) { formZone.classList.remove('hidden'); formZone.style.display = 'block'; }
+
+      const nameInput = document.getElementById('form-model-name');
+      const idInput = document.getElementById('form-model-id');
+      const ctxInput = document.getElementById('form-model-context');
+      const outInput = document.getElementById('form-model-output');
+
+      const presetMap = {
+        '@cf/moonshotai/kimi-k2.7-code': { name: 'Kimi K2.7 Code (Workers AI)', id: '@cf/moonshotai/kimi-k2.7-code', prov: 'cloudflare', ctx: 262144, out: 8192 },
+        '@cf/zai-org/glm-5.2': { name: 'GLM 5.2 (Workers AI)', id: '@cf/zai-org/glm-5.2', prov: 'cloudflare', ctx: 131072, out: 4096 },
+        '@cf/zai-org/glm-5.3-flash': { name: 'GLM 5.3 Flash (Workers AI)', id: '@cf/zai-org/glm-5.3-flash', prov: 'cloudflare', ctx: 131072, out: 4096 },
+        '@cf/deepseek-ai/deepseek-v4-pro-0813': { name: 'DeepSeek V4 Pro (Workers AI)', id: '@cf/deepseek-ai/deepseek-v4-pro-0813', prov: 'cloudflare', ctx: 131072, out: 8192 },
+        '@cf/meta/llama-3.3-70b-instruct': { name: 'Llama 3.3 70B Instruct (Workers AI)', id: '@cf/meta/llama-3.3-70b-instruct', prov: 'cloudflare', ctx: 131072, out: 8192 },
+        'other-cloudflare': { name: 'Cloudflare Workers AI Modèle', id: '@cf/', prov: 'cloudflare', ctx: 131072, out: 4096 },
+        'claude-opus-5-5': { name: 'Claude Opus 5.5', id: 'claude-opus-5-5', prov: 'anthropic', ctx: 200000, out: 8192 },
+        'claude-sonnet-5-5': { name: 'Claude Sonnet 5.5', id: 'claude-sonnet-5-5', prov: 'anthropic', ctx: 200000, out: 8192 },
+        'claude-fable-5-1': { name: 'Claude Fable 5.1', id: 'claude-fable-5-1', prov: 'anthropic', ctx: 200000, out: 8192 },
+        'claude-haiku-4-5': { name: 'Claude Haiku 4.5', id: 'claude-haiku-4-5', prov: 'anthropic', ctx: 200000, out: 4096 },
+        'claude-3-5-sonnet-20241022': { name: 'Claude 3.5 Sonnet', id: 'claude-3-5-sonnet-20241022', prov: 'anthropic', ctx: 200000, out: 8192 },
+        'other-anthropic': { name: 'Modèle Anthropic', id: 'claude-', prov: 'anthropic', ctx: 200000, out: 8192 },
+        'gpt-6.1-sol': { name: 'GPT-6.1 Sol', id: 'gpt-6.1-sol', prov: 'openai', ctx: 128000, out: 8192 },
+        'gpt-6-luna': { name: 'GPT-6 Luna', id: 'gpt-6-luna', prov: 'openai', ctx: 128000, out: 8192 },
+        'gpt-6-astra': { name: 'GPT-6 Astra', id: 'gpt-6-astra', prov: 'openai', ctx: 128000, out: 8192 },
+        'gpt-4o': { name: 'GPT-4o (Omni)', id: 'gpt-4o', prov: 'openai', ctx: 128000, out: 4096 },
+        'gpt-4o-mini': { name: 'GPT-4o Mini', id: 'gpt-4o-mini', prov: 'openai', ctx: 128000, out: 4096 },
+        'other-openai': { name: 'Modèle OpenAI', id: 'gpt-', prov: 'openai', ctx: 128000, out: 4096 },
+        'gemini-3.6-flash': { name: 'Gemini 3.6 Flash', id: 'gemini-3.6-flash', prov: 'google', ctx: 1000000, out: 8192 },
+        'gemini-2.0-flash': { name: 'Gemini 2.0 Flash', id: 'gemini-2.0-flash', prov: 'google', ctx: 1000000, out: 8192 },
+        'gemini-1.5-pro': { name: 'Gemini 1.5 Pro', id: 'gemini-1.5-pro', prov: 'google', ctx: 2000000, out: 8192 },
+        'other-google': { name: 'Modèle Google Gemini', id: 'gemini-', prov: 'google', ctx: 1000000, out: 8192 },
+        'custom-model': { name: 'Modèle Personnalisé', id: '', prov: 'custom', ctx: 32768, out: 4096 }
+      };
+
+      const preset = presetMap[val] || { name: val, id: val, prov: detectProviderFromId(val), ctx: 131072, out: 4096 };
+
+      if (nameInput) nameInput.value = preset.name;
+      if (idInput) idInput.value = preset.id;
+      if (ctxInput) ctxInput.value = preset.ctx;
+      if (outInput) outInput.value = preset.out;
+
+      updateProviderDisplay(preset.prov);
+    }
+
+    async function submitSaveAiModelForm() {
+      const btn = document.getElementById('btn-submit-ai-model');
+      const name = document.getElementById('form-model-name')?.value?.trim();
+      const modelId = document.getElementById('form-model-id')?.value?.trim();
+      const token = document.getElementById('form-model-token')?.value?.trim();
+      const accountId = document.getElementById('form-model-account-id')?.value?.trim();
+      const contextWindow = document.getElementById('form-model-context')?.value;
+      const outputLimit = document.getElementById('form-model-output')?.value;
+      const isDefault = document.getElementById('form-model-is-default')?.checked;
+
+      if (!name || !modelId) {
+        showToast('Veuillez renseigner le nom et l\'identifiant du modèle');
+        return;
+      }
+
+      const provider = detectProviderFromId(modelId);
+
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span><span>Enregistrement dans D1...</span>';
+      }
+
+      try {
+        const payload = {
+          id: modelId,
+          provider: provider,
+          name: name,
+          model_id: modelId,
+          api_token: token,
+          account_id: accountId,
+          context_window: contextWindow ? Number(contextWindow) : 0,
+          output_limit: outputLimit ? Number(outputLimit) : 0,
+          is_default: isDefault,
+          is_active: 1
+        };
+
+        const res = await fetch('/api/admin/robot-rouge-models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (data && data.success) {
+          showToast('✓ Modèle ' + name + ' enregistré avec succès dans D1 !');
+          closeAddAiModelModal();
+          renderRobotRougeModelsList(data.models || []);
+          loadRobotRougeConfig();
+        } else {
+          showToast('⚠️ Erreur D1 : ' + (data.error || 'Échec de sauvegarde'));
+        }
+      } catch (err) {
+        showToast('❌ Erreur : ' + err.message);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>💾</span><span>Enregistrer dans la base D1</span>';
+        }
+      }
+    }
+
+    async function loadRobotRougeModels() {
+      try {
+        const res = await fetch('/api/admin/robot-rouge-models');
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.models)) {
+          robotRougeModelsList = data.models;
+          renderRobotRougeModelsList(data.models);
+        }
+      } catch (err) {
+        console.error('Erreur chargement modèles D1:', err);
+      }
+    }
+
+    function renderRobotRougeModelsList(models) {
+      const grid = document.getElementById('robot-models-list-grid');
+      const badgeCount = document.getElementById('badge-models-count');
+      if (badgeCount) badgeCount.textContent = (models ? models.length : 0) + ' modèle(s)';
+      if (!grid) return;
+
+      if (!models || models.length === 0) {
+        grid.innerHTML = '<div class="col-span-full p-8 rounded-2xl bg-slate-950/60 border border-slate-800 text-center space-y-3">' +
+          '<span class="text-3xl">🤖</span>' +
+          '<div class="text-sm font-bold text-white">Aucun modèle personnalisé configuré</div>' +
+          '<p class="text-xs text-slate-400 max-w-md mx-auto">' +
+            'Cliquez sur le bouton ci-dessous pour ajouter un modèle d\'IA (Workers AI, Claude, GPT, Gemini). Il sera immédiatement connecté et accessible à vos élèves.' +
+          '</p>' +
+          '<button type="button" onclick="openAddAiModelModal()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-stone-900 font-extrabold text-xs shadow-md shadow-orange-500/20 cursor-pointer inline-flex items-center gap-1.5">' +
+            '<span>✨</span><span>Ajouter un Modèle Maintenant</span>' +
+          '</button>' +
+        '</div>';
+        return;
+      }
+
+      let html = '';
+      models.forEach(function(m) {
+        const isDef = !!m.is_default;
+        const provIcons = {
+          cloudflare: '☁️',
+          anthropic: '🧠',
+          openai: '⚡',
+          google: '💎',
+          custom: '⚙️'
+        };
+        const provNames = {
+          cloudflare: 'Workers AI',
+          anthropic: 'Anthropic',
+          openai: 'OpenAI',
+          google: 'Google Gemini',
+          custom: 'Personnalisé'
+        };
+        const provBadgeColors = {
+          cloudflare: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
+          anthropic: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+          openai: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+          google: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+          custom: 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+        };
+
+        const icon = provIcons[m.provider] || '🤖';
+        const pName = provNames[m.provider] || m.provider;
+        const bCol = provBadgeColors[m.provider] || 'bg-slate-700 text-slate-300 border-slate-600';
+        const hasKey = m.api_token && m.api_token.length > 5;
+        const keySnippet = hasKey ? '••••••••' + m.api_token.slice(-4) : (m.provider === 'cloudflare' ? 'Binding Edge natif' : 'Non renseignée');
+        const mSafeName = (m.name || m.id || '').replace(/'/g, "\\'");
+
+        html += '<div class="p-4 rounded-2xl bg-slate-900/90 border ' + (isDef ? 'border-amber-500/70 shadow-lg shadow-amber-500/10' : 'border-slate-800 hover:border-slate-700') + ' flex flex-col justify-between gap-3 transition">' +
+          '<div class="space-y-2">' +
+            '<div class="flex items-start justify-between gap-2">' +
+              '<div class="flex items-center gap-2">' +
+                '<span class="text-xl">' + icon + '</span>' +
+                '<div>' +
+                  '<div class="text-xs font-black text-white leading-tight">' + (m.name || m.id) + '</div>' +
+                  '<div class="text-[10px] text-slate-400 font-mono truncate max-w-[180px]">' + (m.model_id || m.id) + '</div>' +
+                '</div>' +
+              '</div>' +
+              '<span class="text-[9px] px-2 py-0.5 rounded-full font-bold border ' + bCol + '">' +
+                pName +
+              '</span>' +
+            '</div>';
+
+        if (isDef) {
+          html += '<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-black">' +
+            '<span>⭐</span><span>MODÈLE ACTIF PAR DÉFAUT (TOUS LES ÉLÈVES)</span>' +
+          '</div>';
+        }
+
+        html += '<div class="space-y-1 pt-1 text-[11px] text-slate-400">' +
+            '<div class="flex items-center justify-between">' +
+              '<span class="text-[10px] text-slate-500">Clé d\'authentification :</span>' +
+              '<span class="font-mono text-[10px] ' + (hasKey ? 'text-emerald-400' : 'text-slate-400') + '">' + (hasKey ? '🔐 ' + keySnippet : keySnippet) + '</span>' +
+            '</div>';
+
+        if (m.context_window) {
+          html += '<div class="flex items-center justify-between">' +
+            '<span class="text-[10px] text-slate-500">Contexte :</span>' +
+            '<span class="font-mono text-[10px] text-slate-300">' + Number(m.context_window).toLocaleString() + ' tokens</span>' +
+          '</div>';
+        }
+
+        html += '</div></div>' +
+          '<div class="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">';
+
+        if (!isDef) {
+          html += '<button type="button" onclick="setDefaultAiModel(\'' + m.id + '\')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 text-slate-300 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer" title="Définir comme modèle par défaut">' +
+            '<span>⭐</span><span>Activer par défaut</span>' +
+          '</button>';
+        } else {
+          html += '<span class="text-[10px] text-amber-400 font-bold flex items-center gap-1"><span>✓</span> Actif pour tous</span>';
+        }
+
+        html += '<div class="flex items-center gap-1 ml-auto">' +
+            '<button type="button" onclick="editAiModelById(\'' + m.id + '\')" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs transition cursor-pointer" title="Modifier">✏️</button>' +
+            '<button type="button" onclick="deleteAiModel(\'' + m.id + '\', \'' + mSafeName + '\')" class="p-1.5 rounded-lg bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 text-xs transition cursor-pointer" title="Supprimer">🗑️</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+      });
+
+      grid.innerHTML = html;
+    }
+
+    try {
+      if (Array.isArray(robotRougeModelsList) && robotRougeModelsList.length > 0) {
+        renderRobotRougeModelsList(robotRougeModelsList);
+      }
+    } catch (_) {}
+
+    async function setDefaultAiModel(id) {
+      try {
+        const res = await fetch('/api/admin/robot-rouge-models/set-default', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: id })
+        });
+        const data = await res.json();
+        if (data && data.success) {
+          showToast('✓ Modèle défini comme actif par défaut pour tous les élèves');
+          renderRobotRougeModelsList(data.models || []);
+          loadRobotRougeConfig();
+        } else {
+          showToast('⚠️ Erreur : ' + (data.error || 'Échec'));
+        }
+      } catch (err) {
+        showToast('❌ Erreur : ' + err.message);
+      }
+    }
+
+    async function deleteAiModel(id, name) {
+      if (!confirm('Voulez-vous vraiment supprimer le modèle "' + name + '" de la base D1 ?')) {
+        return;
+      }
+      try {
+        const res = await fetch('/api/admin/robot-rouge-models/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: id })
+        });
+        const data = await res.json();
+        if (data && data.success) {
+          showToast('✓ Modèle supprimé de la base D1');
+          renderRobotRougeModelsList(data.models || []);
+          loadRobotRougeConfig();
+        } else {
+          showToast('⚠️ Erreur : ' + (data.error || 'Échec'));
+        }
+      } catch (err) {
+        showToast('❌ Erreur : ' + err.message);
+      }
+    }
+
+    function editAiModelById(id) {
+      const found = robotRougeModelsList.find(m => m.id === id);
+      if (found) {
+        openAddAiModelModal(found);
+      }
+    }
+
     window.toggleSecretVisibility = toggleSecretVisibility;
     window.syncRobotRougeForm = syncRobotRougeForm;
     window.loadRobotRougeConfig = loadRobotRougeConfig;
     window.saveRobotRougeConfig = saveRobotRougeConfig;
     window.testRobotRougeEdgeConnection = testRobotRougeEdgeConnection;
     window.runRobotRougeLiveTest = runRobotRougeLiveTest;
+    window.openAddAiModelModal = openAddAiModelModal;
+    window.closeAddAiModelModal = closeAddAiModelModal;
+    window.onCatalogModelSelected = onCatalogModelSelected;
+    window.submitSaveAiModelForm = submitSaveAiModelForm;
+    window.loadRobotRougeModels = loadRobotRougeModels;
+    window.setDefaultAiModel = setDefaultAiModel;
+    window.deleteAiModel = deleteAiModel;
+    window.editAiModelById = editAiModelById;
 
     window.addEventListener('focus', () => {
       smartAutoRefresh();
@@ -14056,6 +14764,11 @@ export default {
         };
       }
 
+      let robotRougeModelsRes = null;
+      try {
+        robotRougeModelsRes = await db.prepare("SELECT * FROM robot_rouge_models ORDER BY is_default DESC, created_at ASC").all();
+      } catch (e) {}
+
       // ----------------------------------------------------------------------
       // ROUTES ROBOT ROUGE (STUDIO IA - CLOUDFLARE OS)
       // ----------------------------------------------------------------------
@@ -14138,6 +14851,162 @@ export default {
           });
         } catch (errSave) {
           return new Response(JSON.stringify({ success: false, error: errSave.message }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTES MODÈLES IA (D1 : robot_rouge_models)
+      // ----------------------------------------------------------------------
+      if (request.method === 'GET' && path === '/api/admin/robot-rouge-models') {
+        try {
+          const res = await db.prepare("SELECT * FROM robot_rouge_models ORDER BY is_default DESC, created_at ASC").all();
+          return new Response(JSON.stringify({ success: true, models: res?.results || [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ success: false, error: e.message, models: [] }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+      }
+
+      if (request.method === 'POST' && path === '/api/admin/robot-rouge-models') {
+        try {
+          const b = await request.json().catch(() => ({}));
+          const id = (b.id || b.model_id || '').trim();
+          const provider = (b.provider || 'cloudflare').trim();
+          const name = (b.name || id).trim();
+          const modelId = (b.model_id || id).trim();
+          const apiToken = (b.api_token || '').trim();
+          const accountId = (b.account_id || '').trim();
+          const apiUrl = (b.api_url || '').trim();
+          const contextWindow = Number(b.context_window) || 0;
+          const outputLimit = Number(b.output_limit) || 0;
+          const isDefault = b.is_default ? 1 : 0;
+          const isActive = b.is_active !== undefined ? (b.is_active ? 1 : 0) : 1;
+
+          if (!id || !name) {
+            return new Response(JSON.stringify({ success: false, error: "Identifiant et nom de modèle requis" }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+            });
+          }
+
+          if (isDefault === 1) {
+            await db.prepare("UPDATE robot_rouge_models SET is_default = 0").run().catch(() => {});
+            await db.prepare("UPDATE robot_rouge_global_config SET default_model = ?, default_provider = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'default'")
+              .bind(modelId, provider).run().catch(() => {});
+          }
+
+          await db.prepare(`
+            INSERT INTO robot_rouge_models (
+              id, provider, name, model_id, api_token, account_id, api_url,
+              context_window, output_limit, is_default, is_active, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              provider = excluded.provider,
+              name = excluded.name,
+              model_id = excluded.model_id,
+              api_token = CASE WHEN excluded.api_token != '' THEN excluded.api_token ELSE robot_rouge_models.api_token END,
+              account_id = excluded.account_id,
+              api_url = excluded.api_url,
+              context_window = excluded.context_window,
+              output_limit = excluded.output_limit,
+              is_default = excluded.is_default,
+              is_active = excluded.is_active,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(id, provider, name, modelId, apiToken, accountId, apiUrl, contextWindow, outputLimit, isDefault, isActive).run();
+
+          const allModels = await db.prepare("SELECT * FROM robot_rouge_models ORDER BY is_default DESC, created_at ASC").all();
+          return new Response(JSON.stringify({ success: true, message: "Modèle enregistré dans D1", models: allModels?.results || [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ success: false, error: e.message }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+      }
+
+      if (request.method === 'POST' && path === '/api/admin/robot-rouge-models/set-default') {
+        try {
+          const b = await request.json().catch(() => ({}));
+          const id = (b.id || '').trim();
+          if (!id) {
+            return new Response(JSON.stringify({ success: false, error: "ID du modèle manquant" }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+            });
+          }
+
+          await db.prepare("UPDATE robot_rouge_models SET is_default = CASE WHEN id = ? THEN 1 ELSE 0 END").bind(id).run();
+          const target = await db.prepare("SELECT * FROM robot_rouge_models WHERE id = ?").bind(id).first();
+          if (target) {
+            await db.prepare("UPDATE robot_rouge_global_config SET default_model = ?, default_provider = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'default'")
+              .bind(target.model_id, target.provider).run().catch(() => {});
+          }
+
+          const allModels = await db.prepare("SELECT * FROM robot_rouge_models ORDER BY is_default DESC, created_at ASC").all();
+          return new Response(JSON.stringify({ success: true, message: "Modèle défini par défaut", models: allModels?.results || [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ success: false, error: e.message }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+      }
+
+      if ((request.method === 'POST' && path === '/api/admin/robot-rouge-models/delete') || (request.method === 'DELETE' && path.startsWith('/api/admin/robot-rouge-models'))) {
+        try {
+          let id = '';
+          if (request.method === 'POST') {
+            const b = await request.json().catch(() => ({}));
+            id = (b.id || '').trim();
+          } else {
+            const parts = path.split('/');
+            id = decodeURIComponent(parts[parts.length - 1] || '');
+          }
+          if (id) {
+            await db.prepare("DELETE FROM robot_rouge_models WHERE id = ?").bind(id).run();
+          }
+          const allModels = await db.prepare("SELECT * FROM robot_rouge_models ORDER BY is_default DESC, created_at ASC").all();
+          return new Response(JSON.stringify({ success: true, message: "Modèle supprimé de D1", models: allModels?.results || [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ success: false, error: e.message }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+      }
+
+      // Route Publique pour l'Application & Cloudflare OS (sans exposer les tokens en clair)
+      if (request.method === 'GET' && (path === '/api/public/robot-rouge-models' || path === '/api/robot-rouge/models')) {
+        try {
+          const res = await db.prepare("SELECT id, provider, name, model_id, context_window, output_limit, is_default FROM robot_rouge_models WHERE is_active = 1 ORDER BY is_default DESC, created_at ASC").all();
+          const cfg = await db.prepare("SELECT default_model, is_maintenance, system_instructions, cost_per_request, welcome_credits, edge_router_url FROM robot_rouge_global_config WHERE id = 'default'").first();
+          return new Response(JSON.stringify({ 
+            success: true, 
+            models: res?.results || [],
+            config: cfg || {}
+          }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ success: false, error: e.message, models: [] }), {
             status: 500,
             headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
           });
@@ -14450,7 +15319,8 @@ export default {
         aiPlans: (aiPlansRes && aiPlansRes.results) ? aiPlansRes.results : [],
         alertRules: (alertRulesRes && alertRulesRes.results) ? alertRulesRes.results : [],
         alertLogs: (alertLogsRes && alertLogsRes.results) ? alertLogsRes.results : [],
-        robotRougeConfig: robotRougeConfigRes
+        robotRougeConfig: robotRougeConfigRes,
+        robotRougeModels: (robotRougeModelsRes && robotRougeModelsRes.results) ? robotRougeModelsRes.results : []
       });
 
       return new Response(htmlContent, {
