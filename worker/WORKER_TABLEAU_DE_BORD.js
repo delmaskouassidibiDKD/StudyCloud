@@ -12776,7 +12776,7 @@ function renderDashboardHtml(data) {
       const isDefault = document.getElementById('form-model-is-default')?.checked;
 
       if (!name || !modelId) {
-        showToast('Veuillez renseigner le nom et l\'identifiant du modèle');
+        showToast("Veuillez renseigner le nom et l'identifiant du modèle");
         return;
       }
 
@@ -12848,10 +12848,9 @@ function renderDashboardHtml(data) {
       if (!models || models.length === 0) {
         grid.innerHTML = '<div class="col-span-full p-8 rounded-2xl bg-slate-950/60 border border-slate-800 text-center space-y-3">' +
           '<span class="text-3xl">🤖</span>' +
-          '<div class="text-sm font-bold text-white">Aucun modèle personnalisé configuré</div>' +
-          "<p class=\"text-xs text-slate-400 max-w-md mx-auto\">" +
-          "Cliquez sur le bouton ci-dessous pour ajouter un modèle d'IA (Workers AI, Claude, GPT, Gemini). Il sera immédiatement connecté et accessible à vos élèves." +
-          "</p>" +
+          '<p class="text-xs text-slate-400 max-w-md mx-auto">' +
+          'Cliquez sur le bouton ci-dessous pour ajouter un modèle d&#39;IA (Workers AI, Claude, GPT, Gemini). Il sera immédiatement connecté et accessible à vos élèves.' +
+          '</p>' +
           '<button type="button" onclick="openAddAiModelModal()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-stone-900 font-extrabold text-xs shadow-md shadow-orange-500/20 cursor-pointer inline-flex items-center gap-1.5">' +
             '<span>✨</span><span>Ajouter un Modèle Maintenant</span>' +
           '</button>' +
@@ -12914,7 +12913,7 @@ function renderDashboardHtml(data) {
 
         html += '<div class="space-y-1 pt-1 text-[11px] text-slate-400">' +
             '<div class="flex items-center justify-between">' +
-              '<span class="text-[10px] text-slate-500">Clé d\'authentification :</span>' +
+              '<span class="text-[10px] text-slate-500">Clé d&#39;authentification :</span>' +
               '<span class="font-mono text-[10px] ' + (hasKey ? 'text-emerald-400' : 'text-slate-400') + '">' + (hasKey ? '🔐 ' + keySnippet : keySnippet) + '</span>' +
             '</div>';
 
@@ -12929,7 +12928,7 @@ function renderDashboardHtml(data) {
           '<div class="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">';
 
         if (!isDef) {
-          html += '<button type="button" onclick="setDefaultAiModel(\'' + m.id + '\')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 text-slate-300 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer" title="Définir comme modèle par défaut">' +
+          html += '<button type="button" data-model-id="' + m.id + '" onclick="setDefaultAiModel(this.dataset.modelId)" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 text-slate-300 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer" title="Définir comme modèle par défaut">' +
             '<span>⭐</span><span>Activer par défaut</span>' +
           '</button>';
         } else {
@@ -12937,8 +12936,8 @@ function renderDashboardHtml(data) {
         }
 
         html += '<div class="flex items-center gap-1 ml-auto">' +
-            '<button type="button" onclick="editAiModelById(\'' + m.id + '\')" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs transition cursor-pointer" title="Modifier">✏️</button>' +
-            '<button type="button" onclick="deleteAiModel(\'' + m.id + '\', \'' + mSafeName + '\')" class="p-1.5 rounded-lg bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 text-xs transition cursor-pointer" title="Supprimer">🗑️</button>' +
+            '<button type="button" data-model-id="' + m.id + '" onclick="editAiModelById(this.dataset.modelId)" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs transition cursor-pointer" title="Modifier">✏️</button>' +
+            '<button type="button" data-model-id="' + m.id + '" onclick="deleteAiModel(this.dataset.modelId)" class="p-1.5 rounded-lg bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 text-xs transition cursor-pointer" title="Supprimer">🗑️</button>' +
           '</div>' +
         '</div>' +
       '</div>';
@@ -12973,8 +12972,8 @@ function renderDashboardHtml(data) {
       }
     }
 
-    async function deleteAiModel(id, name) {
-      if (!confirm('Voulez-vous vraiment supprimer le modèle "' + name + '" de la base D1 ?')) {
+    async function deleteAiModel(id) {
+      if (!confirm("Voulez-vous vraiment supprimer ce modèle d'IA de la base D1 ?")) {
         return;
       }
       try {
