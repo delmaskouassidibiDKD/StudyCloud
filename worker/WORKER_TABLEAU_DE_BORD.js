@@ -236,6 +236,51 @@ async function ensureStorageTables(db) {
       )
     `).run();
 
+    // Configuration globale du Robot Rouge & Studio IA (Cloudflare OS)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS robot_rouge_global_config (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        default_model TEXT DEFAULT '@cf/meta/llama-3.3-70b-instruct',
+        fallback_model TEXT DEFAULT 'gemini-2.0-flash',
+        default_provider TEXT DEFAULT 'workers-ai',
+        openai_api_key TEXT DEFAULT '',
+        anthropic_api_key TEXT DEFAULT '',
+        gemini_api_key TEXT DEFAULT '',
+        cf_ai_token TEXT DEFAULT '',
+        system_instructions TEXT DEFAULT 'Tu es l''assistant d''étude IA officiel de StudyCloud (Robot Rouge). Sois pédagogique, précis, encourageant et clair. Utilise le format Markdown et LaTeX pour les formules mathématiques.',
+        cost_per_request INTEGER DEFAULT 1,
+        welcome_credits INTEGER DEFAULT 50,
+        is_maintenance INTEGER DEFAULT 0,
+        edge_router_url TEXT DEFAULT 'https://router.delmaskouassidibi.workers.dev',
+        allowed_models_json TEXT DEFAULT '["@cf/meta/llama-3.3-70b-instruct","gemini-2.0-flash","gpt-4o-mini","claude-3-5-sonnet-20241022"]',
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN default_model TEXT DEFAULT '@cf/meta/llama-3.3-70b-instruct'").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN fallback_model TEXT DEFAULT 'gemini-2.0-flash'").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN default_provider TEXT DEFAULT 'workers-ai'").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN openai_api_key TEXT DEFAULT ''").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN anthropic_api_key TEXT DEFAULT ''").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN gemini_api_key TEXT DEFAULT ''").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN cf_ai_token TEXT DEFAULT ''").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN system_instructions TEXT DEFAULT 'Tu es l''assistant d''étude IA officiel de StudyCloud (Robot Rouge). Sois pédagogique, précis, encourageant et clair. Utilise le format Markdown et LaTeX pour les formules mathématiques.'").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN cost_per_request INTEGER DEFAULT 1").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN welcome_credits INTEGER DEFAULT 50").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN is_maintenance INTEGER DEFAULT 0").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN edge_router_url TEXT DEFAULT 'https://router.delmaskouassidibi.workers.dev'").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN allowed_models_json TEXT DEFAULT '[]'").run(); } catch (e) {}
+
+    await db.prepare(`
+      INSERT OR IGNORE INTO robot_rouge_global_config (
+        id, default_model, fallback_model, default_provider, system_instructions, cost_per_request, welcome_credits, is_maintenance, edge_router_url
+      ) VALUES (
+        'default', '@cf/meta/llama-3.3-70b-instruct', 'gemini-2.0-flash', 'workers-ai',
+        'Tu es l''assistant d''étude IA officiel de StudyCloud (Robot Rouge). Sois pédagogique, précis, encourageant et clair. Utilise le format Markdown et LaTeX pour les formules mathématiques.',
+        1, 50, 0, 'https://router.delmaskouassidibi.workers.dev'
+      )
+    `).run().catch(() => {});
+
     // 1. Colonnes indispensables sur 'users' (garantit qu'aucun SELECT ne plantera)
     const userAlterCols = [
       "ALTER TABLE users ADD COLUMN phone TEXT DEFAULT ''",
@@ -2577,6 +2622,8 @@ function renderDashboardHtml(data) {
   const aiPlansJson = JSON.stringify(data.aiPlans || []).replace(/</g, '\\u003c');
   const alertRulesJson = JSON.stringify(data.alertRules || []).replace(/</g, '\\u003c');
   const alertLogsJson = JSON.stringify(data.alertLogs || []).replace(/</g, '\\u003c');
+  const robotRougeConfigJson = JSON.stringify(data.robotRougeConfig || {}).replace(/</g, '\\u003c');
+  const rc = data.robotRougeConfig || {};
   const cp = data.companyProfile || {};
   const safeAttr = (val, fallback = '') => {
     const s = (val !== null && val !== undefined && String(val).trim() !== '') ? String(val) : fallback;
@@ -2791,6 +2838,21 @@ function renderDashboardHtml(data) {
       >
         <span class="text-base">🤖</span>
         <span>Demandes de crédits IA</span>
+      </button>
+
+      <button 
+        onclick="switchView('robot-rouge')" 
+        id="nav-btn-robot-rouge"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
+      >
+        <span class="text-base text-red-500 group-hover:scale-110 transition-transform">🤖</span>
+        <div class="flex-1 overflow-hidden">
+          <div class="text-xs font-bold text-white flex items-center gap-1.5">
+            <span>Robot Rouge (Studio IA)</span>
+            <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 font-mono">Cloudflare OS</span>
+          </div>
+          <div class="text-[10px] text-slate-400 font-normal truncate">Gestion modèles, clés API & quotas</div>
+        </div>
       </button>
 
       <button 
@@ -4721,7 +4783,380 @@ function renderDashboardHtml(data) {
         >
           <span>Valider et Enregistrer</span>
         </button>
+    </div>
+  </div>
+
+  <!-- ================================================================== -->
+  <!-- VUE 12 : ROBOT ROUGE & STUDIO IA (GESTION CLOUDFLARE OS & CLÉS API) -->
+  <!-- ================================================================== -->
+  <div id="view-robot-rouge" class="hidden w-full h-full overflow-y-auto space-y-5 pb-24 pr-1 overscroll-contain" style="display: none;">
+    
+    <!-- En-tête / Bannière Principale Robot Rouge -->
+    <div class="neo-card p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-[#1f1224] to-slate-900 border-l-4 border-l-red-500 shrink-0">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2.5">
+            <span class="text-2xl">🤖</span>
+            <h3 class="text-base sm:text-lg font-extrabold text-white">
+              Robot Rouge & Studio IA • Contrôle à Distance Cloudflare OS
+            </h3>
+            <span class="text-[10px] px-2.5 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 font-bold font-mono">
+              Pilotage Centralisé
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 mt-1 max-w-4xl leading-relaxed">
+            Gérez ici l'ensemble des <strong>modèles d'IA</strong>, les <strong>clés API maîtres</strong> et les <strong>directives pédagogiques</strong> du Robot Rouge. Vos étudiants accèdent directement au studio sans aucune configuration ni clé API requise de leur part.
+          </p>
+        </div>
+
+        <div class="flex items-center gap-2.5 shrink-0 flex-wrap">
+          <button 
+            type="button" 
+            onclick="saveRobotRougeConfig()" 
+            id="btn-save-robot-rouge"
+            class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-600 via-orange-600 to-red-600 hover:from-red-500 hover:to-orange-500 text-white font-extrabold text-xs shadow-lg shadow-red-600/30 flex items-center gap-2 active:scale-95 transition-all cursor-pointer"
+          >
+            <span>💾</span>
+            <span>Enregistrer dans D1</span>
+          </button>
+          <button 
+            type="button" 
+            onclick="testRobotRougeEdgeConnection()" 
+            id="btn-test-robot-rouge-edge"
+            class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+          >
+            <span>⚡</span>
+            <span>Tester Connexion Edge</span>
+          </button>
+          <button 
+            type="button" 
+            onclick="loadRobotRougeConfig()" 
+            class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <span>🔄</span>
+            <span>Actualiser</span>
+          </button>
+        </div>
       </div>
+
+      <!-- 4 Badges Récapitulatifs -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-slate-800/80 text-xs">
+        <div class="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center gap-3">
+          <span class="text-xl">🚀</span>
+          <div class="overflow-hidden">
+            <div class="text-[10px] text-slate-400 font-bold uppercase">Moteur Principal</div>
+            <div id="stat-robot-model" class="text-xs font-black text-white font-mono truncate">${safeHtml(rc.default_model, 'Llama 3.3 70B')}</div>
+          </div>
+        </div>
+        <div class="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center gap-3">
+          <span class="text-xl">📡</span>
+          <div>
+            <div class="text-[10px] text-slate-400 font-bold uppercase">Statut Edge</div>
+            <div id="stat-robot-status" class="text-xs font-black text-emerald-400 font-mono">${rc.is_maintenance ? '🟠 En Maintenance' : '🟢 En ligne (Actif)'}</div>
+          </div>
+        </div>
+        <div class="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center gap-3">
+          <span class="text-xl">🪙</span>
+          <div>
+            <div class="text-[10px] text-slate-400 font-bold uppercase">Coût Requête</div>
+            <div id="stat-robot-cost" class="text-xs font-black text-amber-400 font-mono">${rc.cost_per_request !== undefined ? rc.cost_per_request : 1} Crédit(s)</div>
+          </div>
+        </div>
+        <div class="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center gap-3">
+          <span class="text-xl">🎁</span>
+          <div>
+            <div class="text-[10px] text-slate-400 font-bold uppercase">Crédits Bienvenue</div>
+            <div id="stat-robot-welcome" class="text-xs font-black text-blue-400 font-mono">${rc.welcome_credits !== undefined ? rc.welcome_credits : 50} Crédits</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Conteneur 2 Colonnes -->
+    <div class="space-y-5">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        
+        <!-- BLOC 1 : CHOIX DU MOTEUR & FOURNISSEUR -->
+        <div class="neo-card p-4 sm:p-5 space-y-4">
+          <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-white font-bold text-xs sm:text-sm">
+              <span class="text-base">🧠</span>
+              <span>Modèle d'IA Actif & Fournisseur</span>
+            </div>
+            <span class="text-[10px] px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 border border-red-500/20 font-bold">
+              Imposé à tous les élèves
+            </span>
+          </div>
+
+          <!-- Modèle Principal -->
+          <div class="space-y-1.5">
+            <label class="text-[11px] font-bold text-slate-300 block">Modèle d'IA Principal par Défaut *</label>
+            <select 
+              id="robot-default-model" 
+              class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition cursor-pointer"
+            >
+              <option value="@cf/meta/llama-3.3-70b-instruct" ${rc.default_model === '@cf/meta/llama-3.3-70b-instruct' ? 'selected' : ''}>🚀 Cloudflare Workers AI - Llama 3.3 70B Instruct (Recommandé • Gratuit & Rapide)</option>
+              <option value="gemini-2.0-flash" ${rc.default_model === 'gemini-2.0-flash' ? 'selected' : ''}>⚡ Google Gemini 2.0 Flash (Ultra-rapide • Multimodal)</option>
+              <option value="claude-3-5-sonnet-20241022" ${rc.default_model === 'claude-3-5-sonnet-20241022' ? 'selected' : ''}>🧠 Anthropic Claude 3.5 Sonnet (Raisonnement avancé & Code)</option>
+              <option value="gpt-4o" ${rc.default_model === 'gpt-4o' ? 'selected' : ''}>💎 OpenAI GPT-4o (Référence mondiale)</option>
+              <option value="gpt-4o-mini" ${rc.default_model === 'gpt-4o-mini' ? 'selected' : ''}>✨ OpenAI GPT-4o Mini (Économique & Réactif)</option>
+              <option value="@cf/mistral/mistral-7b-instruct-v0.1" ${rc.default_model === '@cf/mistral/mistral-7b-instruct-v0.1' ? 'selected' : ''}>🔬 Mistral 7B Instruct (Léger & Direct)</option>
+            </select>
+            <p class="text-[10px] text-slate-400">Ce modèle sera utilisé automatiquement dès qu'un étudiant utilise le Robot Rouge.</p>
+          </div>
+
+          <!-- Modèle de Secours -->
+          <div class="space-y-1.5">
+            <label class="text-[11px] font-bold text-slate-300 block">Modèle de Secours Automatique (Anti-Panne / Anti-Quota) *</label>
+            <select 
+              id="robot-fallback-model" 
+              class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition cursor-pointer"
+            >
+              <option value="gemini-2.0-flash" ${rc.fallback_model === 'gemini-2.0-flash' ? 'selected' : ''}>⚡ Google Gemini 2.0 Flash (Haut quota & zéro coupure)</option>
+              <option value="@cf/meta/llama-3.3-70b-instruct" ${rc.fallback_model === '@cf/meta/llama-3.3-70b-instruct' ? 'selected' : ''}>🚀 Cloudflare Workers AI - Llama 3.3 70B</option>
+              <option value="gpt-4o-mini" ${rc.fallback_model === 'gpt-4o-mini' ? 'selected' : ''}>✨ OpenAI GPT-4o Mini</option>
+              <option value="@cf/mistral/mistral-7b-instruct-v0.1" ${rc.fallback_model === '@cf/mistral/mistral-7b-instruct-v0.1' ? 'selected' : ''}>🔬 Mistral 7B Instruct</option>
+            </select>
+            <p class="text-[10px] text-slate-400">Si le fournisseur principal est temporairement indisponible, le Robot bascule instantanément sur ce secours.</p>
+          </div>
+
+          <!-- URL du Déploiement Edge Router -->
+          <div class="space-y-1.5">
+            <label class="text-[11px] font-bold text-slate-300 block">URL du Service Cloudflare Edge (Router / Backend)</label>
+            <input 
+              type="text" 
+              id="robot-edge-url" 
+              value="${safeAttr(rc.edge_router_url, 'https://router.delmaskouassidibi.workers.dev')}"
+              class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition font-mono"
+            >
+            <p class="text-[10px] text-slate-400">Adresse du Worker Cloudflare OS déployé sur le réseau Edge.</p>
+          </div>
+
+          <!-- Bascule Mode Maintenance -->
+          <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between">
+            <div>
+              <div class="text-xs font-bold text-white">Mode Maintenance du Robot Rouge</div>
+              <div class="text-[10px] text-slate-400">Suspend temporairement les requêtes étudiantes avec message amical.</div>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="robot-is-maintenance" class="sr-only peer" ${rc.is_maintenance ? 'checked' : ''}>
+              <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
+            </label>
+          </div>
+
+        </div>
+
+        <!-- BLOC 2 : COFFRE-FORT DES CLÉS API (ADMIN SEULEMENT) -->
+        <div class="neo-card p-4 sm:p-5 space-y-4">
+          <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-white font-bold text-xs sm:text-sm">
+              <span class="text-base">🔐</span>
+              <span>Coffre-Fort des Clés API (Réservé à l'Administrateur)</span>
+            </div>
+            <span class="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+              100% Invisible pour les étudiants
+            </span>
+          </div>
+
+          <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 leading-relaxed">
+            💡 <strong>Protection totale :</strong> Vos clés sont enregistrées de façon privée dans votre base Cloudflare D1. Les étudiants utilisent le Robot Rouge sans rien savoir ni configurer.
+          </div>
+
+          <!-- Clé Google Gemini -->
+          <div class="space-y-1">
+            <div class="flex items-center justify-between">
+              <label class="text-[11px] font-bold text-slate-300">Clé API Google Gemini (Pour Gemini 2.0 Flash)</label>
+              <span id="badge-key-gemini" class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">${rc.gemini_api_key ? '✓ Configurée' : 'Non renseignée'}</span>
+            </div>
+            <div class="relative">
+              <input 
+                type="password" 
+                id="robot-gemini-key" 
+                value="${safeAttr(rc.gemini_api_key, '')}"
+                placeholder="AIzaSy..." 
+                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-10 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition font-mono"
+              >
+              <button type="button" onclick="toggleSecretVisibility('robot-gemini-key')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer text-xs">👁️</button>
+            </div>
+          </div>
+
+          <!-- Clé OpenAI -->
+          <div class="space-y-1">
+            <div class="flex items-center justify-between">
+              <label class="text-[11px] font-bold text-slate-300">Clé API OpenAI (Pour GPT-4o / GPT-4o-mini)</label>
+              <span id="badge-key-openai" class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">${rc.openai_api_key ? '✓ Configurée' : 'Non renseignée'}</span>
+            </div>
+            <div class="relative">
+              <input 
+                type="password" 
+                id="robot-openai-key" 
+                value="${safeAttr(rc.openai_api_key, '')}"
+                placeholder="sk-proj-..." 
+                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-10 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition font-mono"
+              >
+              <button type="button" onclick="toggleSecretVisibility('robot-openai-key')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer text-xs">👁️</button>
+            </div>
+          </div>
+
+          <!-- Clé Anthropic -->
+          <div class="space-y-1">
+            <div class="flex items-center justify-between">
+              <label class="text-[11px] font-bold text-slate-300">Clé API Anthropic (Pour Claude 3.5 Sonnet)</label>
+              <span id="badge-key-anthropic" class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">${rc.anthropic_api_key ? '✓ Configurée' : 'Non renseignée'}</span>
+            </div>
+            <div class="relative">
+              <input 
+                type="password" 
+                id="robot-anthropic-key" 
+                value="${safeAttr(rc.anthropic_api_key, '')}"
+                placeholder="sk-ant-api03-..." 
+                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-10 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition font-mono"
+              >
+              <button type="button" onclick="toggleSecretVisibility('robot-anthropic-key')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer text-xs">👁️</button>
+            </div>
+          </div>
+
+          <!-- Token Cloudflare AI -->
+          <div class="space-y-1">
+            <div class="flex items-center justify-between">
+              <label class="text-[11px] font-bold text-slate-300">Token API Cloudflare (Workers AI - Optionnel)</label>
+              <span id="badge-key-cf" class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">${rc.cf_ai_token ? '✓ Configuré' : 'Utilise Binding natif'}</span>
+            </div>
+            <div class="relative">
+              <input 
+                type="password" 
+                id="robot-cf-token" 
+                value="${safeAttr(rc.cf_ai_token, '')}"
+                placeholder="cfut_... ou laisser vide pour le binding AI natif" 
+                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-10 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition font-mono"
+              >
+              <button type="button" onclick="toggleSecretVisibility('robot-cf-token')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer text-xs">👁️</button>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- BLOC 3 : DIRECTIVES SYSTÈME & TARIFICATION ÉTUDIANTS -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        
+        <!-- Instructions Système / Prompt du Robot -->
+        <div class="neo-card p-4 sm:p-5 space-y-3">
+          <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-white font-bold text-xs sm:text-sm">
+              <span class="text-base">📜</span>
+              <span>Instructions Système Pédagogiques (Prompt Maître)</span>
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-400">
+            Ces directives définissent la personnalité, le comportement et la méthodologie de réponse du Robot Rouge pour tous vos élèves.
+          </p>
+          <textarea 
+            id="robot-system-instructions" 
+            rows="5"
+            class="w-full bg-slate-900 text-white text-xs rounded-xl p-3.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition leading-relaxed resize-y font-sans"
+            placeholder="Tu es l'assistant d'étude officiel de StudyCloud..."
+          >${safeHtml(rc.system_instructions, "Tu es l'assistant d'étude IA officiel de StudyCloud (Robot Rouge). Sois pédagogique, précis, encourageant et clair. Utilise le format Markdown et LaTeX pour les formules mathématiques.")}</textarea>
+        </div>
+
+        <!-- Tarification Crédits & Quotas -->
+        <div class="neo-card p-4 sm:p-5 space-y-3 flex flex-col justify-between">
+          <div>
+            <div class="border-b border-slate-800 pb-3 flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2 text-white font-bold text-xs sm:text-sm">
+                <span class="text-base">🪙</span>
+                <span>Crédits Étudiants & Quotas d'Utilisation</span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <div class="space-y-1">
+                <label class="text-[11px] font-bold text-slate-300">Coût par message (Crédits)</label>
+                <input 
+                  type="number" 
+                  id="robot-cost-per-request" 
+                  value="${rc.cost_per_request !== undefined ? rc.cost_per_request : 1}" 
+                  min="0" 
+                  max="100"
+                  class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition"
+                >
+              </div>
+              <div class="space-y-1">
+                <label class="text-[11px] font-bold text-slate-300">Crédits offerts à l'inscription</label>
+                <input 
+                  type="number" 
+                  id="robot-welcome-credits" 
+                  value="${rc.welcome_credits !== undefined ? rc.welcome_credits : 50}" 
+                  min="0" 
+                  max="10000"
+                  class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition"
+                >
+              </div>
+            </div>
+
+            <div class="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+              <label class="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" id="robot-apply-welcome-all" class="mt-0.5 rounded border-slate-700 text-orange-600 focus:ring-0">
+                <div class="text-[11px] text-slate-300 leading-tight">
+                  <strong>Appliquer à tous :</strong> Mettre à niveau les comptes étudiants existants qui ont moins que ce montant de bienvenue.
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="pt-3 border-t border-slate-800 flex items-center justify-end">
+            <button 
+              type="button" 
+              onclick="saveRobotRougeConfig()" 
+              class="w-full py-2.5 rounded-xl bg-gradient-to-r from-red-600 via-orange-600 to-red-600 hover:from-red-500 hover:to-orange-500 text-white font-black text-xs shadow-lg shadow-red-600/30 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer"
+            >
+              <span>💾</span>
+              <span>Enregistrer et Appliquer Immédiatement</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- BLOC 4 : CONSOLE DE TEST EN DIRECT DU ROBOT ROUGE -->
+      <div class="neo-card p-4 sm:p-5 space-y-3">
+        <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+          <div class="flex items-center gap-2 text-white font-bold text-xs sm:text-sm">
+            <span class="text-base">🧪</span>
+            <span>Console de Test en Direct (Vérifiez la réponse du Robot Rouge)</span>
+          </div>
+          <span class="text-[10px] text-slate-400">Test en direct sans consommer de crédits étudiant</span>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-2">
+          <input 
+            type="text" 
+            id="robot-test-prompt" 
+            placeholder="Ex: Explique le théorème de Pythagore en 2 phrases simples." 
+            class="flex-1 bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition"
+          >
+          <button 
+            type="button" 
+            onclick="runRobotRougeLiveTest()" 
+            id="btn-run-robot-test"
+            class="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer border border-slate-700"
+          >
+            <span>🚀</span>
+            <span>Envoyer le Test</span>
+          </button>
+        </div>
+
+        <!-- Résultat du test -->
+        <div id="robot-test-result" class="hidden p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 font-mono space-y-2">
+          <div class="flex items-center justify-between text-[10px] text-slate-400 pb-2 border-b border-slate-800">
+            <span id="robot-test-engine-badge">Moteur : En attente</span>
+            <span id="robot-test-latency">0 ms</span>
+          </div>
+          <div id="robot-test-output" class="whitespace-pre-wrap font-sans text-xs text-slate-200 leading-relaxed"></div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -5056,6 +5491,7 @@ function renderDashboardHtml(data) {
     let companyProfileGlobal = ${companyProfileJson};
     let allStoragePlans = ${storagePlansJson};
     let allAiPlans = ${aiPlansJson};
+    let robotRougeConfig = ${robotRougeConfigJson};
     const defaultStorageAlertRules = [
       {
         threshold_percent: 50,
@@ -5216,7 +5652,7 @@ function renderDashboardHtml(data) {
     function switchView(viewName) {
       currentView = viewName;
       const flexViews = ['users', 'demandes', 'demandes-ia', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques'];
-      ['global', 'users', 'demandes', 'demandes-ia', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'profil-pro', 'alertes-stockage'].forEach(v => {
+      ['global', 'users', 'demandes', 'demandes-ia', 'robot-rouge', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'profil-pro', 'alertes-stockage'].forEach(v => {
         const el = document.getElementById('view-' + v);
         const navBtn = document.getElementById('nav-btn-' + v);
         if (!el) return;
@@ -5242,6 +5678,7 @@ function renderDashboardHtml(data) {
           users: 'Tous les Utilisateurs',
           demandes: 'Demandes de Stockage',
           'demandes-ia': 'Demandes de Crédits IA',
+          'robot-rouge': 'Robot Rouge (Studio IA Cloudflare OS)',
           distribution: 'Distribution de Stockage',
           messages: 'Messages',
           signalements: 'Signalements & Retours',
@@ -11627,6 +12064,241 @@ function renderDashboardHtml(data) {
       }
     });
 
+    // =========================================================================
+    // ROBOT ROUGE (STUDIO IA - CLOUDFLARE OS) : FONCTIONS D'ADMINISTRATION
+    // =========================================================================
+
+    function toggleSecretVisibility(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.type = el.type === 'password' ? 'text' : 'password';
+    }
+
+    function syncRobotRougeForm(cfg) {
+      if (!cfg) return;
+      robotRougeConfig = { ...robotRougeConfig, ...cfg };
+
+      const defModel = document.getElementById('robot-default-model');
+      if (defModel && cfg.default_model) defModel.value = cfg.default_model;
+
+      const fbModel = document.getElementById('robot-fallback-model');
+      if (fbModel && cfg.fallback_model) fbModel.value = cfg.fallback_model;
+
+      const edgeUrl = document.getElementById('robot-edge-url');
+      if (edgeUrl && cfg.edge_router_url) edgeUrl.value = cfg.edge_router_url;
+
+      const isMaint = document.getElementById('robot-is-maintenance');
+      if (isMaint && cfg.is_maintenance !== undefined) isMaint.checked = !!cfg.is_maintenance;
+
+      const gKey = document.getElementById('robot-gemini-key');
+      if (gKey && cfg.gemini_api_key !== undefined) gKey.value = cfg.gemini_api_key || '';
+
+      const oKey = document.getElementById('robot-openai-key');
+      if (oKey && cfg.openai_api_key !== undefined) oKey.value = cfg.openai_api_key || '';
+
+      const aKey = document.getElementById('robot-anthropic-key');
+      if (aKey && cfg.anthropic_api_key !== undefined) aKey.value = cfg.anthropic_api_key || '';
+
+      const cfToken = document.getElementById('robot-cf-token');
+      if (cfToken && cfg.cf_ai_token !== undefined) cfToken.value = cfg.cf_ai_token || '';
+
+      const sysInst = document.getElementById('robot-system-instructions');
+      if (sysInst && cfg.system_instructions !== undefined) sysInst.value = cfg.system_instructions;
+
+      const costReq = document.getElementById('robot-cost-per-request');
+      if (costReq && cfg.cost_per_request !== undefined) costReq.value = cfg.cost_per_request;
+
+      const welCred = document.getElementById('robot-welcome-credits');
+      if (welCred && cfg.welcome_credits !== undefined) welCred.value = cfg.welcome_credits;
+
+      // Update badges & stats
+      const statModel = document.getElementById('stat-robot-model');
+      if (statModel) statModel.textContent = cfg.default_model || 'Non défini';
+
+      const statStatus = document.getElementById('stat-robot-status');
+      if (statStatus) {
+        statStatus.textContent = cfg.is_maintenance ? '🟠 En Maintenance' : '🟢 En ligne (Actif)';
+        statStatus.className = cfg.is_maintenance ? 'text-xs font-black text-amber-400 font-mono' : 'text-xs font-black text-emerald-400 font-mono';
+      }
+
+      const statCost = document.getElementById('stat-robot-cost');
+      if (statCost) statCost.textContent = (cfg.cost_per_request !== undefined ? cfg.cost_per_request : 1) + ' Crédit(s)';
+
+      const statWel = document.getElementById('stat-robot-welcome');
+      if (statWel) statWel.textContent = (cfg.welcome_credits !== undefined ? cfg.welcome_credits : 50) + ' Crédits';
+
+      const bGemini = document.getElementById('badge-key-gemini');
+      if (bGemini) bGemini.textContent = cfg.gemini_api_key ? '✓ Configurée' : 'Non renseignée';
+
+      const bOpenai = document.getElementById('badge-key-openai');
+      if (bOpenai) bOpenai.textContent = cfg.openai_api_key ? '✓ Configurée' : 'Non renseignée';
+
+      const bAnthropic = document.getElementById('badge-key-anthropic');
+      if (bAnthropic) bAnthropic.textContent = cfg.anthropic_api_key ? '✓ Configurée' : 'Non renseignée';
+
+      const bCf = document.getElementById('badge-key-cf');
+      if (bCf) bCf.textContent = cfg.cf_ai_token ? '✓ Configuré' : 'Utilise Binding natif';
+    }
+
+    async function loadRobotRougeConfig() {
+      try {
+        const res = await fetch('/api/admin/robot-rouge-config');
+        const data = await res.json();
+        if (data && data.success && data.config) {
+          syncRobotRougeForm(data.config);
+          showToast('✓ Configuration Robot Rouge synchronisée depuis D1');
+        } else {
+          showToast('⚠️ Impossible de récupérer la configuration');
+        }
+      } catch (err) {
+        showToast('⚠️ Erreur de connexion D1 : ' + err.message);
+      }
+    }
+
+    async function saveRobotRougeConfig() {
+      const btn = document.getElementById('btn-save-robot-rouge');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span><span>Enregistrement...</span>';
+      }
+
+      try {
+        const payload = {
+          default_model: document.getElementById('robot-default-model')?.value || '@cf/meta/llama-3.3-70b-instruct',
+          fallback_model: document.getElementById('robot-fallback-model')?.value || 'gemini-2.0-flash',
+          edge_router_url: document.getElementById('robot-edge-url')?.value || 'https://router.delmaskouassidibi.workers.dev',
+          is_maintenance: document.getElementById('robot-is-maintenance')?.checked ? 1 : 0,
+          gemini_api_key: document.getElementById('robot-gemini-key')?.value || '',
+          openai_api_key: document.getElementById('robot-openai-key')?.value || '',
+          anthropic_api_key: document.getElementById('robot-anthropic-key')?.value || '',
+          cf_ai_token: document.getElementById('robot-cf-token')?.value || '',
+          system_instructions: document.getElementById('robot-system-instructions')?.value || '',
+          cost_per_request: parseInt(document.getElementById('robot-cost-per-request')?.value, 10) || 1,
+          welcome_credits: parseInt(document.getElementById('robot-welcome-credits')?.value, 10) || 50,
+          apply_welcome_to_all: document.getElementById('robot-apply-welcome-all')?.checked || false
+        };
+
+        const res = await fetch('/api/admin/robot-rouge-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (data && data.success) {
+          syncRobotRougeForm(data.config);
+          showToast('✓ Configuration enregistrée dans D1 et appliquée au Robot Rouge !');
+        } else {
+          showToast('⚠️ Erreur D1 : ' + (data.error || 'Échec'));
+        }
+      } catch (err) {
+        showToast('❌ Erreur de sauvegarde : ' + err.message);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>💾</span><span>Enregistrer dans D1</span>';
+        }
+      }
+    }
+
+    async function testRobotRougeEdgeConnection() {
+      const btn = document.getElementById('btn-test-robot-rouge-edge');
+      const edgeUrl = document.getElementById('robot-edge-url')?.value || 'https://router.delmaskouassidibi.workers.dev';
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span><span>Test en cours...</span>';
+      }
+
+      try {
+        const start = Date.now();
+        const res = await fetch(edgeUrl.replace(/\/+$/, '') + '/health', {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' }
+        });
+        const elapsed = Date.now() - start;
+        if (res.ok) {
+          showToast('✓ Edge Router en ligne (' + elapsed + 'ms) • Robot Rouge opérationnel');
+        } else {
+          showToast('⚠️ Edge Router répond avec statut ' + res.status);
+        }
+      } catch (err) {
+        showToast('⚠️ Impossible de joindre Edge Router : ' + err.message);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>⚡</span><span>Tester Connexion Edge</span>';
+        }
+      }
+    }
+
+    async function runRobotRougeLiveTest() {
+      const promptInput = document.getElementById('robot-test-prompt');
+      const prompt = promptInput?.value?.trim();
+      if (!prompt) {
+        showToast('Veuillez entrer une question pour tester le robot');
+        return;
+      }
+
+      const btn = document.getElementById('btn-run-robot-test');
+      const resContainer = document.getElementById('robot-test-result');
+      const resBadge = document.getElementById('robot-test-engine-badge');
+      const resLatency = document.getElementById('robot-test-latency');
+      const resOutput = document.getElementById('robot-test-output');
+
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span><span>Génération...</span>';
+      }
+      if (resContainer) resContainer.classList.remove('hidden');
+      if (resBadge) resBadge.textContent = 'Moteur : ' + (document.getElementById('robot-default-model')?.value || 'Llama 3.3 70B');
+      if (resOutput) resOutput.textContent = 'Le Robot Rouge réfléchit...';
+
+      const start = Date.now();
+      try {
+        const edgeUrl = document.getElementById('robot-edge-url')?.value || 'https://router.delmaskouassidibi.workers.dev';
+        const res = await fetch(edgeUrl.replace(/\/+$/, '') + '/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: prompt,
+            model: document.getElementById('robot-default-model')?.value,
+            system_instructions: document.getElementById('robot-system-instructions')?.value
+          })
+        });
+
+        const elapsed = Date.now() - start;
+        if (resLatency) resLatency.textContent = elapsed + ' ms';
+
+        if (res.ok) {
+          const data = await res.json();
+          const answer = data.text || data.response || data.content || JSON.stringify(data);
+          if (resOutput) resOutput.textContent = answer;
+          showToast('✓ Réponse générée en ' + elapsed + 'ms');
+        } else {
+          const errText = await res.text();
+          if (resOutput) resOutput.textContent = 'Erreur ' + res.status + ' : ' + errText;
+          showToast('⚠️ Erreur de réponse du robot (' + res.status + ')');
+        }
+      } catch (err) {
+        const elapsed = Date.now() - start;
+        if (resLatency) resLatency.textContent = elapsed + ' ms';
+        if (resOutput) resOutput.textContent = 'Erreur réseau : ' + err.message;
+        showToast('❌ Échec du test : ' + err.message);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>🚀</span><span>Envoyer le Test</span>';
+        }
+      }
+    }
+
+    window.toggleSecretVisibility = toggleSecretVisibility;
+    window.syncRobotRougeForm = syncRobotRougeForm;
+    window.loadRobotRougeConfig = loadRobotRougeConfig;
+    window.saveRobotRougeConfig = saveRobotRougeConfig;
+    window.testRobotRougeEdgeConnection = testRobotRougeEdgeConnection;
+    window.runRobotRougeLiveTest = runRobotRougeLiveTest;
+
     window.addEventListener('focus', () => {
       smartAutoRefresh();
     });
@@ -13353,8 +14025,113 @@ export default {
         alertLogsRes = await db.prepare("SELECT rowid, * FROM storage_alert_logs ORDER BY sent_at DESC LIMIT 100").all();
       } catch (e) {}
 
-      
+      let robotRougeConfigRes = null;
+      try {
+        robotRougeConfigRes = await db.prepare("SELECT * FROM robot_rouge_global_config WHERE id = 'default'").first();
+      } catch (e) {}
+      if (!robotRougeConfigRes) {
+        robotRougeConfigRes = {
+          default_model: '@cf/meta/llama-3.3-70b-instruct',
+          fallback_model: 'gemini-2.0-flash',
+          edge_router_url: 'https://router.delmaskouassidibi.workers.dev',
+          is_maintenance: 0,
+          gemini_api_key: '',
+          openai_api_key: '',
+          anthropic_api_key: '',
+          cf_ai_token: '',
+          system_instructions: 'Tu es l\'assistant d\'étude IA officiel de StudyCloud (Robot Rouge). Sois pédagogique, précis, encourageant et clair. Utilise le format Markdown et LaTeX pour les formules mathématiques.',
+          cost_per_request: 1,
+          welcome_credits: 50
+        };
+      }
 
+      // ----------------------------------------------------------------------
+      // ROUTES ROBOT ROUGE (STUDIO IA - CLOUDFLARE OS)
+      // ----------------------------------------------------------------------
+      if (request.method === 'GET' && (path === '/api/admin/robot-rouge-config' || path === '/api/public/robot-rouge-config')) {
+        let cfg = null;
+        try {
+          cfg = await db.prepare("SELECT * FROM robot_rouge_global_config WHERE id = 'default'").first();
+        } catch (e) {}
+        if (!cfg) {
+          cfg = robotRougeConfigRes;
+        }
+        const isPublic = path.includes('/public');
+        const resConfig = isPublic ? {
+          default_model: cfg.default_model,
+          fallback_model: cfg.fallback_model,
+          is_maintenance: cfg.is_maintenance,
+          system_instructions: cfg.system_instructions,
+          cost_per_request: cfg.cost_per_request,
+          welcome_credits: cfg.welcome_credits,
+          edge_router_url: cfg.edge_router_url
+        } : cfg;
+
+        return new Response(JSON.stringify({ success: true, config: resConfig }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      if (request.method === 'POST' && path === '/api/admin/robot-rouge-config') {
+        const b = await request.json().catch(() => ({}));
+        try {
+          await db.prepare(`
+            INSERT INTO robot_rouge_global_config (
+              id, default_model, fallback_model, edge_router_url, is_maintenance,
+              gemini_api_key, openai_api_key, anthropic_api_key, cf_ai_token,
+              system_instructions, cost_per_request, welcome_credits, updated_at
+            ) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              default_model = excluded.default_model,
+              fallback_model = excluded.fallback_model,
+              edge_router_url = excluded.edge_router_url,
+              is_maintenance = excluded.is_maintenance,
+              gemini_api_key = excluded.gemini_api_key,
+              openai_api_key = excluded.openai_api_key,
+              anthropic_api_key = excluded.anthropic_api_key,
+              cf_ai_token = excluded.cf_ai_token,
+              system_instructions = excluded.system_instructions,
+              cost_per_request = excluded.cost_per_request,
+              welcome_credits = excluded.welcome_credits,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            b.default_model || '@cf/meta/llama-3.3-70b-instruct',
+            b.fallback_model || 'gemini-2.0-flash',
+            b.edge_router_url || 'https://router.delmaskouassidibi.workers.dev',
+            b.is_maintenance ? 1 : 0,
+            b.gemini_api_key || '',
+            b.openai_api_key || '',
+            b.anthropic_api_key || '',
+            b.cf_ai_token || '',
+            b.system_instructions || '',
+            b.cost_per_request !== undefined ? Number(b.cost_per_request) : 1,
+            b.welcome_credits !== undefined ? Number(b.welcome_credits) : 50
+          ).run();
+
+          if (b.apply_welcome_to_all && Number(b.welcome_credits) > 0) {
+            try {
+              await db.prepare(`
+                UPDATE user_ai_credits 
+                SET remaining_credits = remaining_credits + ?,
+                    total_credits = total_credits + ?,
+                    updated_at = CURRENT_TIMESTAMP
+              `).bind(Number(b.welcome_credits), Number(b.welcome_credits)).run();
+            } catch (errCredit) {}
+          }
+
+          const updatedCfg = await db.prepare("SELECT * FROM robot_rouge_global_config WHERE id = 'default'").first();
+          return new Response(JSON.stringify({ success: true, message: "Configuration enregistrée", config: updatedCfg }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        } catch (errSave) {
+          return new Response(JSON.stringify({ success: false, error: errSave.message }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+      }
 
       // ----------------------------------------------------------------------
       // ROUTES GESTION DES RÈGLES D'ALERTE DE STOCKAGE (D1 & RESEND)
@@ -13661,7 +14438,8 @@ export default {
         storagePlans: (storagePlansRes && storagePlansRes.results) ? storagePlansRes.results : [],
         aiPlans: (aiPlansRes && aiPlansRes.results) ? aiPlansRes.results : [],
         alertRules: (alertRulesRes && alertRulesRes.results) ? alertRulesRes.results : [],
-        alertLogs: (alertLogsRes && alertLogsRes.results) ? alertLogsRes.results : []
+        alertLogs: (alertLogsRes && alertLogsRes.results) ? alertLogsRes.results : [],
+        robotRougeConfig: robotRougeConfigRes
       });
 
       return new Response(htmlContent, {
