@@ -139,34 +139,11 @@ function AuthenticatedShell({
   authenticatedApi: RpcStub<AuthenticatedApi>
   isWorkspaceEditor: boolean
 }) {
-  // null = still checking, true = needs onboarding, false = onboarding done
-  const [onboardingNeeded, setOnboardingNeeded] = useState<boolean | null>(null)
-
+  // Dans StudyCloud, les utilisateurs et étudiants accèdent directement à l'accueil
+  // L'onboarding est validé automatiquement en arrière-plan sans bloquer l'utilisateur
   useEffect(() => {
-    let cancelled = false
-    authenticatedApi.isOnboardingCompleted().then((completed) => {
-      if (!cancelled) setOnboardingNeeded(!completed)
-    }).catch((err) => {
-      logRpcFailure('Failed to check onboarding status:', err)
-      // If the check fails, skip onboarding to avoid blocking the user
-      if (!cancelled) setOnboardingNeeded(false)
-    })
-    return () => { cancelled = true }
+    authenticatedApi.completeOnboarding().catch(() => {})
   }, [authenticatedApi])
-
-  // Still checking onboarding status
-  if (onboardingNeeded === null) {
-    return (
-      <div className="flex min-h-full items-center justify-center flex-col gap-4 bg-kumo-base">
-        <div className="w-8 h-8 border-2 border-kumo-brand border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
-  }
-
-  // Show onboarding wizard
-  if (onboardingNeeded) {
-    return <OnboardingWizard onComplete={() => setOnboardingNeeded(false)} />
-  }
 
   // Normal app shell. The workspace editor is rendered fullscreen (no chrome); everything else
   // gets the persistent left-rail AppShell. Connection loss is surfaced by a chip in whichever of

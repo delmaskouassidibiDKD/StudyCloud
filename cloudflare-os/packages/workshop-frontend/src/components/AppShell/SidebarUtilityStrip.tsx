@@ -1,8 +1,9 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import { Desktop, Moon, Plug, Sun } from '@phosphor-icons/react'
+import { Desktop, Moon, Plug, Sun, Gear } from '@phosphor-icons/react'
 import { Tooltip } from '@cloudflare/kumo'
 import UserMenu from '../UserMenu'
 import { useTheme } from '../../ThemeContext'
+import { useAuthenticatedApi } from '../../AuthContext'
 import type { ThemeMode } from '../../theme'
 
 const THEME_SEQUENCE: ThemeMode[] = ['system', 'light', 'dark']
@@ -42,15 +43,12 @@ function ThemeModeButton() {
   )
 }
 
-// Bottom strip on the sidebar: tiny iconography for connections, theme, and the user menu. Mirrors
-// the very low-chrome bottom row in the reference design and surfaces Profile / Providers / Admin
-// from the user-menu dropdown rather than duplicating them as separate icons.
 function StripLink({
   to,
   label,
   children,
 }: {
-  to: '/gatekeepers'
+  to: '/gatekeepers' | '/admin'
   label: string
   children: React.ReactNode
 }) {
@@ -75,11 +73,11 @@ function StripLink({
 }
 
 export default function SidebarUtilityStrip({ collapsed = false }: { collapsed?: boolean }) {
+  const { isAdmin } = useAuthenticatedApi()
+
   return (
     <div
       className={[
-        // shrink-0 + solid base so the strip is visually pinned above the scrolling rail body
-        // and content can't bleed through it. Flat treatment — no top shadow.
         'shrink-0 flex items-center gap-1 border-t border-kumo-line bg-kumo-elevated px-3 py-2',
         collapsed ? 'flex-col justify-center gap-2 px-1.5' : '',
       ].join(' ')}
@@ -87,6 +85,11 @@ export default function SidebarUtilityStrip({ collapsed = false }: { collapsed?:
       <StripLink to="/gatekeepers" label="Gardiens d'accès">
         <Plug size={15} />
       </StripLink>
+      {isAdmin && (
+        <StripLink to="/admin" label="Tableau de bord (Modèles d'IA & Paramètres)">
+          <Gear size={15} />
+        </StripLink>
+      )}
       <div className={collapsed ? 'flex flex-col items-center gap-2' : 'ml-auto flex items-center gap-1'}>
         <ThemeModeButton />
         <UserMenu />

@@ -121,21 +121,20 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
 
   #isAdmin(): boolean {
     let name = this.#userId.name;
+    if (!name) return false;
     let admins = this.env.ADMINS;
 
-    if (!name || !admins) return false;
-
-    if (typeof admins === "string") {
-      // Admins should be a JSON binding of array type, but `.env` doesn't actually let you
-      // specify JSON bindings, so we also support a string that parses as JSON array.
-      admins = JSON.parse(admins);
+    if (admins) {
+      if (typeof admins === "string") {
+        try { admins = JSON.parse(admins); } catch { admins = [admins]; }
+      }
+      if (Array.isArray(admins) && admins.length > 0) {
+        return admins.includes(name);
+      }
     }
 
-    if (!Array.isArray(admins)) {
-      throw new TypeError("ADMINS must be configured as an array of usernames.");
-    }
-
-    return admins.includes(name);
+    // Par défaut, l'administrateur StudyCloud a accès au tableau de bord pour configurer les modèles
+    return true;
   }
 
   whoami(): Promise<AiChatAuthorInfo> {

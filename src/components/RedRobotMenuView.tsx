@@ -40,6 +40,7 @@ export const RedRobotMenuView: React.FC<RedRobotMenuViewProps> = ({ onBack }) =>
   const [tempUrl, setTempUrl] = useState<string>(serverUrl);
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
   const [isLoadingIframe, setIsLoadingIframe] = useState<boolean>(true);
+  const [activeView, setActiveView] = useState<'app' | 'admin'>('app');
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Récupérer l'identité de l'utilisateur StudyCloud connecté
@@ -51,6 +52,9 @@ export const RedRobotMenuView: React.FC<RedRobotMenuViewProps> = ({ onBack }) =>
   const authenticatedIframeUrl = React.useMemo(() => {
     try {
       const url = new URL(serverUrl);
+      if (activeView === 'admin') {
+        url.pathname = '/admin';
+      }
       url.searchParams.set('sc_user_id', currentUserId);
       url.searchParams.set('sc_user_name', currentUserName);
       if (currentUserEmail) {
@@ -61,7 +65,7 @@ export const RedRobotMenuView: React.FC<RedRobotMenuViewProps> = ({ onBack }) =>
       const sep = serverUrl.includes('?') ? '&' : '?';
       return `${serverUrl}${sep}sc_user_id=${encodeURIComponent(currentUserId)}&sc_user_name=${encodeURIComponent(currentUserName)}`;
     }
-  }, [serverUrl, currentUserId, currentUserName, currentUserEmail]);
+  }, [serverUrl, currentUserId, currentUserName, currentUserEmail, activeView]);
 
   // Vérifier la disponibilité de l'URL Cloudflare Edge
   const checkServerStatus = async () => {
@@ -158,6 +162,32 @@ export const RedRobotMenuView: React.FC<RedRobotMenuViewProps> = ({ onBack }) =>
           <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-stone-900 border border-stone-800 text-xs text-stone-300">
             <UserCheck className="w-3.5 h-3.5 text-[#ff4801]" />
             <span className="font-semibold text-white truncate max-w-[150px]">{currentUserName}</span>
+          </div>
+
+          {/* Bascule Accueil Studio vs Tableau de bord Admin */}
+          <div className="flex items-center gap-1 bg-stone-900/90 p-1 rounded-xl border border-stone-800">
+            <button
+              onClick={() => { setActiveView('app'); setIsLoadingIframe(true); }}
+              className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                activeView === 'app'
+                  ? 'bg-[#ff4801] text-white shadow-xs'
+                  : 'text-stone-400 hover:text-stone-200'
+              }`}
+            >
+              Studio IA (Accueil)
+            </button>
+            <button
+              onClick={() => { setActiveView('admin'); setIsLoadingIframe(true); }}
+              className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeView === 'admin'
+                  ? 'bg-[#ff4801] text-white shadow-xs'
+                  : 'text-stone-400 hover:text-stone-200'
+              }`}
+              title="Configurer les modèles d'IA pour tous les utilisateurs"
+            >
+              <Cpu className="w-3.5 h-3.5" />
+              <span>Tableau de bord Admin</span>
+            </button>
           </div>
         </div>
 
