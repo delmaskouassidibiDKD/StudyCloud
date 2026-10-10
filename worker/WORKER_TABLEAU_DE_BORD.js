@@ -4783,6 +4783,7 @@ function renderDashboardHtml(data) {
         >
           <span>Valider et Enregistrer</span>
         </button>
+      </div>
     </div>
   </div>
 
@@ -5732,6 +5733,14 @@ function renderDashboardHtml(data) {
       } else if (viewName === 'alertes-stockage') {
         renderAlertRules();
         renderAlertLogs();
+      } else if (viewName === 'robot-rouge') {
+        try {
+          if (typeof loadRobotRougeConfig === 'function') {
+            loadRobotRougeConfig();
+          }
+        } catch(e) {
+          console.warn('Erreur chargement Robot Rouge:', e);
+        }
       }
     }
 
