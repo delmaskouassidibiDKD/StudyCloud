@@ -9,4 +9,15 @@ coverage/
 studycloud-agent/dist/
 workers agent ia/dist/
 scratch/
-cloudflare-os/
+cloudflare-os/node_modules/
+cloudflare-os/**/node_modules/
+cloudflare-os/.wrangler/
+cloudflare-os/**/.wrangler/
+cloudflare-os/.run-local-stamp
+cloudflare-os/*.tsbuildinfo
+cloudflare-os/**/.tsbuildinfo
+cloudflare-os/.dev.vars*
+cloudflare-os/**/.dev.vars*
+cloudflare-os/output/
+cloudflare-os/dist/
+cloudflare-os/**/dist/

@@ -1,0 +1,510 @@
+import { useState, useEffect } from 'react'
+import { Dialog, Button, Input, Select, Collapsible, useKumoToastManager } from '@cloudflare/kumo'
+import { AiChatAuthorInfo, AiModelProvider, AiGatewayInfo, RedactedAiModelConfig, SUGGESTED_MODELS } from '@gadgets/workshop-shared/api'
+import { RpcStub } from 'capnweb'
+import { AuthenticatedApi } from '@gadgets/workshop-shared/api'
+import { ExtraHeadersEditor } from './features/ai-models/ExtraHeadersEditor'
+import { StoredSecretInput } from './features/ai-models/StoredSecretInput'
+import {
+  headerRowsFromRecord, headerRowsToRecord, validateHeaderRows, type HeaderRow,
+} from './features/ai-models/extraHeaders'
+import { PROVIDER_LABELS, parseTokenLimit } from './features/ai-models/modelForm'
+
+/**
+ * Whether the modal adds a model from scratch, edits a stored one, or adds a model based on a
+ * stored one, with the stored model's withheld secrets carried over.
+ */
+export type ModelModalMode =
+  | { type: 'add' }
+  | { type: 'edit' | 'clone', source: { profile: AiChatAuthorInfo, config: RedactedAiModelConfig } }
+
+interface AddModelModalProps {
+  visible: boolean
+  onCancel: () => void
+  onSuccess: () => void
+  authenticatedApi: RpcStub<AuthenticatedApi>
+  aiConfig: AiGatewayInfo | null
+  mode?: ModelModalMode
+}
+
+type SelectionType =
+  | { type: 'suggested', provider: AiModelProvider, modelId: string, displayName: string }
+  | { type: 'custom', provider: AiModelProvider }
+
+// Placeholder hinting at the shape of each provider's API token.
+const API_TOKEN_PLACEHOLDERS: Record<AiModelProvider, string> = {
+  anthropic: 'sk-ant-...',
+  openai: 'sk-...',
+  google: 'AIza...',
+  cloudflare: 'Cloudflare API token',
+  ollama: '(optional)',
+}
+
+// Providers whose client can send no API key at all, so a proxy that extra headers authenticate
+// can supply its own (AI Gateway only injects a stored key into requests that carry none). Google's
+// SDK always sends a key, and the Workers AI endpoint can't be redirected to a proxy.
+const TOKEN_OPTIONAL_WITH_HEADERS: ReadonlySet<AiModelProvider> = new Set(['anthropic', 'openai'])
+
+const isTokenRequired = (provider: AiModelProvider, headerRows: readonly HeaderRow[]) =>
+  provider !== 'ollama' &&
+  !(TOKEN_OPTIONAL_WITH_HEADERS.has(provider) && headerRowsToRecord(headerRows) !== undefined)
+
+// Example used in the custom-model placeholders for providers that have no suggested models
+// (currently Ollama, which serves whatever the user has pulled locally).
+const FALLBACK_EXAMPLE_MODEL = { modelId: 'gemma4:31b', name: 'Gemma 4 31B' }
+
+// Pick an example model to show in the custom-model placeholders for the given provider.
+function exampleModel(provider: AiModelProvider): { modelId: string, name: string } {
+  const first = Object.entries(SUGGESTED_MODELS[provider])[0]
+  return first ? { modelId: first[0], name: first[1].name } : FALLBACK_EXAMPLE_MODEL
+}
+
+// Encode a selection into a string value for the Select component.
+function encodeSelection(provider: AiModelProvider, modelId?: string): string {
+  return modelId ? `${provider}:${modelId}` : `other-${provider}`
+}
+
+// Decode a Select value back into a SelectionType.
+function decodeSelection(value: string): SelectionType {
+  if (value.startsWith('other-')) {
+    return { type: 'custom', provider: value.substring(6) as AiModelProvider }
+  }
+  const colonIndex = value.indexOf(':')
+  const provider = value.substring(0, colonIndex) as AiModelProvider
+  const modelId = value.substring(colonIndex + 1)
+  const displayName = SUGGESTED_MODELS[provider][modelId].name
+  return { type: 'suggested', provider, modelId, displayName }
+}
+
+// Build the flat list of options for the Select dropdown.
+function buildOptions(gatewayMode: boolean, enabledProviders: Set<string> | null) {
+  const options: { value: string; label: string; provider: string }[] = []
+  const providerOrder = Object.keys(SUGGESTED_MODELS) as AiModelProvider[]
+
+  for (const provider of providerOrder) {
+    if (enabledProviders && !enabledProviders.has(provider)) continue
+
+    // In gateway mode, suggested models are already built-in, so don't list them.
+    if (!gatewayMode) {
+      for (const [modelId, model] of Object.entries(SUGGESTED_MODELS[provider])) {
+        if (model.hidden) continue
+        options.push({
+          value: encodeSelection(provider, modelId),
+          label: model.name,
+          provider,
+        })
+      }
+    }
+
+    options.push({
+      value: encodeSelection(provider),
+      label: `Other ${PROVIDER_LABELS[provider] || provider}...`,
+      provider,
+    })
+  }
+
+  return options
+}
+
+export default function AddModelModal({ visible, onCancel, onSuccess, authenticatedApi, aiConfig, mode = { type: 'add' } }: AddModelModalProps) {
+  const toasts = useKumoToastManager()
+
+  // Edit and clone modes take their initial state from the source model, so the caller remounts
+  // the modal (with a `key`) to switch source.
+  const source = mode.type === 'add' ? null : mode.source
+  const editing = mode.type === 'edit'
+
+  const [loading, setLoading] = useState(false)
+  const [selection, setSelection] = useState<SelectionType | null>(
+    source && { type: 'custom', provider: source.config.provider })
+  const [selectValue, setSelectValue] = useState<string | undefined>(undefined)
+
+  // Form fields (used for custom models). A null secret keeps the source's withheld value.
+  const [modelId, setModelId] = useState(editing ? source!.config.model : '')
+  const [displayName, setDisplayName] = useState(editing ? source!.profile.name : '')
+  const [apiToken, setApiToken] = useState<string | null>(source ? source.config.apiToken : '')
+  const [accountId, setAccountId] = useState(source?.config.accountId ?? '')
+  const [apiUrl, setApiUrl] = useState(source?.config.apiUrl ?? '')
+  const [headerRows, setHeaderRows] = useState<HeaderRow[]>(() => headerRowsFromRecord(source?.config.extraHeaders))
+  // Token limits are specific to a model, so a clone doesn't inherit them.
+  const [contextWindow, setContextWindow] = useState(editing ? String(source!.config.contextWindow ?? '') : '')
+  const [outputLimit, setOutputLimit] = useState(editing ? String(source!.config.outputLimit ?? '') : '')
+
+  // Validation errors
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [headerErrors, setHeaderErrors] = useState<Record<number, string>>({})
+
+  // Advanced settings collapsible state
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+
+  const gatewayMode = aiConfig?.enabled === true
+  const enabledProviders: Set<string> | null = gatewayMode
+    ? new Set(aiConfig.enabledProviders)
+    : null
+
+  // The server keeps withheld secrets only for the endpoint they were configured for. Once the URL
+  // changes, withheld values are shown (and sent) as blank, and header values must be re-entered.
+  const storedSecretsUsable = source !== null && apiUrl.trim() === (source.config.apiUrl ?? '')
+  const effectiveApiToken = apiToken === null && !storedSecretsUsable ? '' : apiToken
+
+  // Reset all state when dialog closes
+  useEffect(() => {
+    if (!visible) {
+      setSelection(null)
+      setSelectValue(undefined)
+      setModelId('')
+      setDisplayName('')
+      setApiToken('')
+      setAccountId('')
+      setApiUrl('')
+      setHeaderRows([])
+      setContextWindow('')
+      setOutputLimit('')
+      setErrors({})
+      setHeaderErrors({})
+      setAdvancedOpen(false)
+    }
+  }, [visible])
+
+  const handleModelSelect = (value: string) => {
+    setSelectValue(value)
+    setErrors({})
+    setHeaderErrors({})
+    const sel = decodeSelection(value)
+    setSelection(sel)
+
+    if (sel.type === 'custom') {
+      setModelId('')
+      setDisplayName('')
+    } else {
+      setModelId(sel.modelId)
+      setDisplayName(sel.displayName)
+    }
+    setApiToken('')
+    setAccountId('')
+    setApiUrl(sel.provider === 'ollama' ? 'http://localhost:11434' : '')
+    setHeaderRows([])
+    setContextWindow('')
+    setOutputLimit('')
+  }
+
+  const validate = (): boolean => {
+    const newErrors: Record<string, string> = {}
+
+    if (!selection) {
+      newErrors.selection = gatewayMode ? 'Please select a provider' : 'Please select a model'
+    }
+
+    if (selection?.type === 'custom') {
+      if (!modelId.trim()) newErrors.modelId = 'Please enter the model ID'
+      if (!displayName.trim()) newErrors.displayName = 'Veuillez saisir un nom d\'affichage'
+    }
+
+    const isOllama = selection?.provider === 'ollama'
+    const isCloudflare = selection?.provider === 'cloudflare'
+    const showCredentials = !gatewayMode
+
+    if (showCredentials && selection && isTokenRequired(selection.provider, headerRows) && effectiveApiToken?.trim() === '') {
+      newErrors.apiToken = apiToken === null
+        ? 'Veuillez ressaisir votre jeton API, car l\'URL de l\'API a changé'
+        : 'Veuillez saisir votre jeton API'
+    }
+
+    if (showCredentials && isCloudflare && !accountId.trim()) {
+      newErrors.accountId = 'Veuillez saisir votre ID de compte Cloudflare'
+    }
+
+    if (showCredentials && isOllama && !apiUrl.trim()) {
+      newErrors.apiUrl = 'Veuillez saisir l\'URL de l\'API Ollama'
+    }
+
+    if (parseTokenLimit(contextWindow) === null) {
+      newErrors.contextWindow = 'Veuillez saisir un nombre entier positif de jetons'
+    }
+    if (parseTokenLimit(outputLimit) === null) {
+      newErrors.outputLimit = 'Veuillez saisir un nombre entier positif de jetons'
+    }
+
+    const newHeaderErrors = showCredentials ? validateHeaderRows(headerRows) : {}
+    if (showCredentials && !storedSecretsUsable) {
+      for (const row of headerRows) {
+        if (row.value === null && !newHeaderErrors[row.id]) {
+          newHeaderErrors[row.id] = "Veuillez ressaisir cette valeur d'en-tête, car l'URL de l'API a changé"
+        }
+      }
+    }
+    // These fields live in the collapsible, so reveal their errors if it was closed.
+    if (Object.keys(newHeaderErrors).length > 0 || newErrors.contextWindow || newErrors.outputLimit) {
+      setAdvancedOpen(true)
+    }
+
+    setErrors(newErrors)
+    setHeaderErrors(newHeaderErrors)
+    return Object.keys(newErrors).length === 0 && Object.keys(newHeaderErrors).length === 0
+  }
+
+  const handleSubmit = async () => {
+    if (!validate()) return
+
+    setLoading(true)
+    try {
+      const isSuggested = selection!.type === 'suggested'
+      const finalModelId = isSuggested ? selection!.modelId : modelId.trim()
+      const finalDisplayName = isSuggested ? selection!.displayName : displayName.trim()
+
+      const profile: AiChatAuthorInfo = {
+        type: 'agent',
+        // A model's ID is its identity to chats and settings, so editing never changes it.
+        id: editing ? source!.profile.id : finalModelId,
+        name: finalDisplayName,
+      }
+
+      const extraHeaders = gatewayMode ? undefined : headerRowsToRecord(headerRows)
+      const contextWindowTokens = parseTokenLimit(contextWindow)
+      const outputLimitTokens = parseTokenLimit(outputLimit)
+      const config: RedactedAiModelConfig = {
+        provider: selection!.provider,
+        model: finalModelId,
+        apiToken: gatewayMode ? '' : effectiveApiToken?.trim() ?? null,
+        ...(!gatewayMode && accountId.trim() && { accountId: accountId.trim() }),
+        ...(!gatewayMode && apiUrl.trim() && { apiUrl: apiUrl.trim() }),
+        ...(extraHeaders && { extraHeaders }),
+        ...(contextWindowTokens && { contextWindow: contextWindowTokens }),
+        ...(outputLimitTokens && { outputLimit: outputLimitTokens }),
+      }
+
+      if (editing) {
+        await authenticatedApi.updateModel(profile, config)
+      } else {
+        await authenticatedApi.addModel(profile, config, source?.profile.id)
+      }
+      toasts.add({ title: editing ? 'Modèle d\'IA mis à jour avec succès' : 'Modèle d\'IA ajouté avec succès', variant: 'success' })
+      onSuccess()
+    } catch (error: any) {
+      console.error('Failed to save model:', error)
+      toasts.add({
+        title: editing ? 'Échec de la mise à jour du modèle' : 'Échec de l\'ajout du modèle',
+        description: error?.message,
+        variant: 'error',
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const options = buildOptions(gatewayMode, enabledProviders)
+  const showCustomFields = selection?.type === 'custom'
+  const example = selection ? exampleModel(selection.provider) : null
+  const isOllama = selection?.provider === 'ollama'
+  const isCloudflare = selection?.provider === 'cloudflare'
+  const showCredentials = !gatewayMode
+  const tokenRequired = selection !== null && isTokenRequired(selection.provider, headerRows)
+  const title = { add: 'Ajouter un modèle d\'IA', edit: 'Modifier le modèle d\'IA', clone: 'Dupliquer le modèle d\'IA' }[mode.type]
+
+  // Group options by provider for rendering with visual separators.
+  const groupedOptions: { provider: string; items: typeof options }[] = []
+  for (const opt of options) {
+    const last = groupedOptions[groupedOptions.length - 1]
+    if (last && last.provider === opt.provider) {
+      last.items.push(opt)
+    } else {
+      groupedOptions.push({ provider: opt.provider, items: [opt] })
+    }
+  }
+
+  return (
+    <Dialog.Root open={visible} onOpenChange={(open) => { if (!open) onCancel() }}>
+      <Dialog className="responsive-dialog overflow-y-auto p-6" size="lg">
+        <Dialog.Title className="text-lg font-semibold mb-4">
+          {title}
+        </Dialog.Title>
+
+        <div className="space-y-4">
+          {/* Model / Provider selection */}
+          {source ? (
+            <Input
+              label="Fournisseur"
+              value={PROVIDER_LABELS[source.config.provider] || source.config.provider}
+              disabled
+            />
+          ) : (
+          <Select
+            label={gatewayMode ? 'Sélectionner un fournisseur' : 'Sélectionner un modèle'}
+            className="w-full text-sm"
+            placeholder={gatewayMode ? 'Choisir un fournisseur...' : 'Choisir un modèle d\'IA...'}
+            value={selectValue}
+            onValueChange={(v) => handleModelSelect(v as string)}
+            error={errors.selection}
+            renderValue={(v) => {
+              const opt = options.find(o => o.value === v)
+              return opt?.label ?? String(v)
+            }}
+          >
+            {groupedOptions.map((group, groupIndex) => (
+              <div key={group.provider}>
+                {groupIndex > 0 && (
+                  <div className="h-px bg-kumo-line my-1 mx-2" />
+                )}
+                <div className="px-3 py-1.5 text-xs font-medium text-kumo-subtle select-none">
+                  {PROVIDER_LABELS[group.provider as AiModelProvider] || group.provider}
+                </div>
+                {group.items.map(opt => (
+                  <Select.Option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </Select.Option>
+                ))}
+              </div>
+            ))}
+          </Select>
+          )}
+
+          {/* Custom model fields */}
+          {showCustomFields && (
+            <>
+              <Input
+                label="Identifiant du modèle (Model ID)"
+                placeholder={`ex : ${example!.modelId}`}
+                description={`L'identifiant du modèle tel que spécifié par le fournisseur (ex : '${example!.modelId}')`}
+                value={modelId}
+                disabled={editing}
+                onChange={(e) => { setModelId(e.target.value); setErrors(prev => ({ ...prev, modelId: '' })) }}
+                error={errors.modelId}
+                variant={errors.modelId ? 'error' : 'default'}
+              />
+
+              <Input
+                label="Nom affiché"
+                placeholder={`ex : ${example!.name}`}
+                description="Nom lisible affiché dans l'interface"
+                value={displayName}
+                onChange={(e) => { setDisplayName(e.target.value); setErrors(prev => ({ ...prev, displayName: '' })) }}
+                error={errors.displayName}
+                variant={errors.displayName ? 'error' : 'default'}
+              />
+            </>
+          )}
+
+          {/* Cloudflare account ID (the Workers AI REST endpoint is account-scoped) */}
+          {showCredentials && isCloudflare && (
+            <Input
+              label="ID de compte Cloudflare"
+              placeholder="ex : 0123456789abcdef0123456789abcdef"
+              description="Le compte Cloudflare à facturer pour l'utilisation de Workers AI"
+              value={accountId}
+              onChange={(e) => { setAccountId(e.target.value); setErrors(prev => ({ ...prev, accountId: '' })) }}
+              error={errors.accountId}
+              variant={errors.accountId ? 'error' : 'default'}
+            />
+          )}
+
+          {/* API Token */}
+          {showCredentials && selection && (
+            <StoredSecretInput
+              label="Jeton API"
+              stored={storedSecretsUsable && source!.config.apiToken === null}
+              placeholder={tokenRequired ? API_TOKEN_PLACEHOLDERS[selection.provider] : '(facultatif)'}
+              description={
+                isOllama
+                  ? 'Facultatif pour l\'accès local à Ollama'
+                  : isCloudflare
+                  ? 'Un jeton API avec autorisations Workers AI Lecture + Modification (dashboard : Workers AI > Use REST API > Create a Workers AI API Token)'
+                  : TOKEN_OPTIONAL_WITH_HEADERS.has(selection.provider)
+                  ? `Votre jeton API ${PROVIDER_LABELS[selection.provider]} pour la facturation. Laissez vide si les en-têtes avancés vous authentifient auprès d'un proxy.`
+                  : `Votre jeton API ${PROVIDER_LABELS[selection.provider]} pour la facturation`
+              }
+              value={effectiveApiToken}
+              onValueChange={(v) => { setApiToken(v); setErrors(prev => ({ ...prev, apiToken: '' })) }}
+              error={errors.apiToken}
+            />
+          )}
+
+          {/* Ollama API URL (always visible for Ollama) */}
+          {showCredentials && isOllama && (
+            <Input
+              label="URL de l'API"
+              placeholder="http://localhost:11434"
+              description="URL de votre serveur Ollama"
+              value={apiUrl}
+              onChange={(e) => { setApiUrl(e.target.value); setErrors(prev => ({ ...prev, apiUrl: '' })) }}
+              error={errors.apiUrl}
+              variant={errors.apiUrl ? 'error' : 'default'}
+            />
+          )}
+
+          {selection && (
+            <Collapsible.Root
+              open={advancedOpen}
+              onOpenChange={setAdvancedOpen}
+            >
+              <Collapsible.DefaultTrigger>Paramètres avancés</Collapsible.DefaultTrigger>
+              <Collapsible.DefaultPanel>
+                <div className="space-y-4">
+                  {/* Ollama shows its API URL above; Workers AI's endpoint is derived from the account ID. */}
+                  {showCredentials && !isOllama && !isCloudflare && (
+                    <Input
+                      label="URL de l'API"
+                      placeholder="https://..."
+                      description="Remplacer l'URL d'API par défaut (utile pour les proxys comme Cloudflare AI Gateway)"
+                      value={apiUrl}
+                      onChange={(e) => setApiUrl(e.target.value)}
+                    />
+                  )}
+                  {showCredentials && (
+                    <ExtraHeadersEditor
+                      rows={headerRows}
+                      storedValuesUsable={storedSecretsUsable}
+                      errors={headerErrors}
+                      onRowsChange={(rows) => {
+                        setHeaderRows(rows)
+                        setHeaderErrors({})
+                        // Adding a header can make the token optional.
+                        setErrors(prev => ({ ...prev, apiToken: '' }))
+                      }}
+                    />
+                  )}
+                  <Input
+                    label="Fenêtre de contexte"
+                    inputMode="numeric"
+                    placeholder="(par défaut)"
+                    description="Nombre maximal de jetons qu'une requête peut totaliser. Laisser vide pour utiliser la valeur par défaut."
+                    value={contextWindow}
+                    onChange={(e) => { setContextWindow(e.target.value); setErrors(prev => ({ ...prev, contextWindow: '' })) }}
+                    error={errors.contextWindow}
+                    variant={errors.contextWindow ? 'error' : 'default'}
+                  />
+                  <Input
+                    label="Limite de sortie"
+                    inputMode="numeric"
+                    placeholder="(par défaut)"
+                    description="Nombre maximal de jetons par réponse. Laisser vide pour utiliser la valeur par défaut."
+                    value={outputLimit}
+                    onChange={(e) => { setOutputLimit(e.target.value); setErrors(prev => ({ ...prev, outputLimit: '' })) }}
+                    error={errors.outputLimit}
+                    variant={errors.outputLimit ? 'error' : 'default'}
+                  />
+                </div>
+              </Collapsible.DefaultPanel>
+            </Collapsible.Root>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="mt-6 flex justify-end gap-2">
+          <Dialog.Close render={(props) => (
+            <Button variant="secondary" {...props} disabled={loading}>
+              Annuler
+            </Button>
+          )} />
+          <Button
+            variant="primary"
+            onClick={handleSubmit}
+            loading={loading}
+            disabled={!selection}
+          >
+            {editing ? 'Enregistrer les modifications' : 'Ajouter le modèle'}
+          </Button>
+        </div>
+      </Dialog>
+    </Dialog.Root>
+  )
+}
