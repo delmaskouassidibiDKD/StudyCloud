@@ -15,6 +15,17 @@ interface AuthState {
 
 export { CF_ACCESS_MODE }
 
+/**
+ * Nettoie un identifiant pour respecter la contrainte Cloudflare DO :
+ * Regex serveur : /^[a-z][a-z0-9_]*$/
+ */
+export function sanitizeUsername(rawId: string): string {
+  let clean = (rawId || 'etudiant').toLowerCase().replace(/[^a-z0-9]/g, '_')
+  clean = clean.replace(/^[^a-z]+/, '') // commence obligatoirement par une lettre minuscule
+  if (!clean) clean = 'etudiant'
+  return `sc_${clean.slice(0, 20)}`
+}
+
 export function useAuth(publicApi: RpcStub<PublicApi>) {
   const [authState, setAuthState] = useState<AuthState>({
     token: null,
@@ -23,50 +34,68 @@ export function useAuth(publicApi: RpcStub<PublicApi>) {
     error: null
   })
 
-  // Track current authenticated API stub for cleanup on unmount.
-  // State closures go stale in cleanup functions, so we use a ref.
   const authenticatedApiRef = useRef<RpcStub<AuthenticatedApi> | null>(null)
   authenticatedApiRef.current = authState.authenticatedApi
 
-  /**
-   * Names the signed-in user on error reports, for as long as this stub is the current one.
-   *
-   * Keyed on the stub rather than called from each authenticate path, so it covers however the
-   * session was established — stored token, inline login, or CF Access. This is why the claim lives
-   * in the hook and not in `AuthProvider`: the public blueprint page renders outside that provider
-   * and logs in inline, so reports from the rest of its session would otherwise name nobody.
-   *
-   * `whoami` is pipelined rather than awaited, so its answer can outlive the session that asked.
-   * The cleanup drops it when the stub is replaced or cleared, which is what stops a logout or a
-   * newer login from being overwritten by the previous user. Disposal would not be enough on its
-   * own: capnweb does not guarantee that disposing a stub rejects calls already in flight.
-   *
-   * Nothing is cleared here. Cleanup also runs on unmount, and two instances of this hook can be
-   * mounted at once — the blueprint page runs its own inside the root's — so an inner one going
-   * away must not blank an identity the outer still holds. `logout` is the only thing that clears.
-   */
   useEffect(() => {
     const authenticatedApi = authState.authenticatedApi
     if (!authenticatedApi) return
     let cancelled = false
     authenticatedApi.whoami().then((info) => {
-      // Only a real user account names a person: for a gadget author `id` is its owner's id.
       if (!cancelled && info.type === 'user') setReportedUserId(info.id)
     }).catch(() => {})
     return () => { cancelled = true }
   }, [authState.authenticatedApi])
+
+  const authenticateWithToken = (token: string) => {
+    setAuthState(prev => {
+      if (prev.authenticatedApi) {
+        prev.authenticatedApi[Symbol.dispose]()
+      }
+      return {
+        ...prev,
+        authenticatedApi: null,
+        isLoading: true,
+        error: null
+      }
+    })
+
+    const authenticatedApi = publicApi.authenticate(token)
+    setAuthState({
+      token,
+      authenticatedApi,
+      isLoading: false,
+      error: null
+    })
+  }
+
+  const authenticateWithCfAccess = () => {
+    setAuthState(prev => {
+      if (prev.authenticatedApi) {
+        prev.authenticatedApi[Symbol.dispose]()
+      }
+      return { ...prev, authenticatedApi: null, isLoading: true, error: null }
+    })
+    const authenticatedApi = publicApi.authenticateFromCfAccess()
+    setAuthState({
+      token: null,
+      authenticatedApi,
+      isLoading: false,
+      error: null
+    })
+  }
 
   useEffect(() => {
     let unmounted = false
 
     const authenticateWithStudyCloud = async (userId: string, displayName?: string) => {
       try {
-        const cleanId = userId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase().slice(0, 30)
-        const username = `sc_${cleanId}`
-        const userPass = `sc_studycloud_${cleanId}_2026`
+        const username = sanitizeUsername(userId)
+        const userPass = `sc_studycloud_pass_${username}_2026`
         const lastScId = localStorage.getItem('last_studycloud_user_id')
         const storedToken = localStorage.getItem('authToken')
 
+        // Si même utilisateur et jeton valide déjà en cache
         if (lastScId === userId && storedToken) {
           authenticateWithToken(storedToken)
           return
@@ -77,9 +106,31 @@ export function useAuth(publicApi: RpcStub<PublicApi>) {
         }
 
         const passwordHash = await hashPassword(username, userPass)
-        let token = await publicApi.login(username, passwordHash)
+        let token: string | null = null
+
+        // 1. Tenter la connexion
+        try {
+          token = await publicApi.login(username, passwordHash)
+        } catch {
+          token = null
+        }
+
+        // 2. Si le compte n'existe pas, le créer automatiquement
         if (!token) {
-          token = await publicApi.createAccount(username, displayName || `Étudiant ${userId}`, passwordHash)
+          try {
+            token = await publicApi.createAccount(
+              username, 
+              displayName || `Étudiant StudyCloud`, 
+              passwordHash
+            )
+          } catch {
+            // Si le compte a été créé en parallèle, réessayer le login
+            try {
+              token = await publicApi.login(username, passwordHash)
+            } catch {
+              token = null
+            }
+          }
         }
 
         if (token && !unmounted) {
@@ -87,7 +138,10 @@ export function useAuth(publicApi: RpcStub<PublicApi>) {
           localStorage.setItem('last_studycloud_user_id', userId)
           authenticateWithToken(token)
         } else if (!unmounted) {
-          setAuthState(prev => ({ ...prev, isLoading: false }))
+          // Relance automatique en arrière-plan sans jamais afficher d'écran de connexion
+          setTimeout(() => {
+            if (!unmounted) authenticateWithStudyCloud(userId, displayName)
+          }, 1200)
         }
       } catch (err) {
         console.warn('[StudyCloud SSO AutoAuth]', err)
@@ -96,7 +150,9 @@ export function useAuth(publicApi: RpcStub<PublicApi>) {
           if (storedToken) {
             authenticateWithToken(storedToken)
           } else {
-            setAuthState(prev => ({ ...prev, isLoading: false }))
+            setTimeout(() => {
+              if (!unmounted) authenticateWithStudyCloud(userId, displayName)
+            }, 1800)
           }
         }
       }
@@ -106,19 +162,20 @@ export function useAuth(publicApi: RpcStub<PublicApi>) {
       authenticateWithCfAccess()
     } else {
       const urlParams = new URLSearchParams(window.location.search)
-      const scUserId = urlParams.get('sc_user_id') || urlParams.get('userId')
+      let scUserId = urlParams.get('sc_user_id') || urlParams.get('userId')
       const scUserName = urlParams.get('sc_user_name') || urlParams.get('userName') || urlParams.get('studentName')
 
-      if (scUserId) {
-        authenticateWithStudyCloud(scUserId, scUserName ?? undefined)
-      } else {
-        const storedToken = localStorage.getItem('authToken')
-        if (storedToken) {
-          authenticateWithToken(storedToken)
-        } else {
-          setAuthState(prev => ({ ...prev, isLoading: false }))
+      // S'il n'y a pas d'ID d'utilisateur dans l'URL, récupérer le cache ou créer une session persistante
+      if (!scUserId) {
+        scUserId = localStorage.getItem('last_studycloud_user_id') || localStorage.getItem('sc_studycloud_user_id')
+        if (!scUserId) {
+          scUserId = `studycloud_${Math.random().toString(36).substring(2, 8)}`
+          localStorage.setItem('sc_studycloud_user_id', scUserId)
         }
       }
+
+      const decodedName = scUserName ? decodeURIComponent(scUserName) : undefined
+      authenticateWithStudyCloud(scUserId, decodedName)
     }
 
     const handleMessage = (e: MessageEvent) => {
@@ -135,64 +192,16 @@ export function useAuth(publicApi: RpcStub<PublicApi>) {
     }
   }, [publicApi])
 
-  const authenticateWithCfAccess = () => {
-    setAuthState(prev => {
-      if (prev.authenticatedApi) {
-        prev.authenticatedApi[Symbol.dispose]()
-      }
-      return { ...prev, authenticatedApi: null, isLoading: true, error: null }
-    })
-
-    // Use promise pipelining - no need to await. The CF Access JWT is already attached
-    // to the request by the browser (injected by the Access service worker/cookie), so
-    // the server validates it and returns an authenticated stub immediately.
-    const authenticatedApi = publicApi.authenticateFromCfAccess()
-    setAuthState({
-      token: null,
-      authenticatedApi,
-      isLoading: false,
-      error: null
-    })
-  }
-
-  const authenticateWithToken = (token: string) => {
-    setAuthState(prev => {
-      // Dispose the previous authenticated API stub if it exists
-      if (prev.authenticatedApi) {
-        prev.authenticatedApi[Symbol.dispose]()
-      }
-      return {
-        ...prev,
-        authenticatedApi: null, // Clear the disposed stub
-        isLoading: true,
-        error: null
-      }
-    })
-
-    // Use promise pipelining - we can use the returned promise as a stub immediately
-    // without awaiting. Authentication errors will be handled when the stub is actually used.
-    const authenticatedApi = publicApi.authenticate(token)
-    setAuthState({
-      token,
-      authenticatedApi,
-      isLoading: false,
-      error: null
-    })
-  }
-
   const login = (token: string) => {
     authenticateWithToken(token)
   }
 
   const logout = () => {
     setReportedUserId(undefined)
-
     if (CF_ACCESS_MODE) {
       window.location.assign('/cdn-cgi/access/logout')
       return
     }
-
-    // Use functional updater to read current state (avoids stale closure).
     setAuthState(prev => {
       if (prev.authenticatedApi) {
         prev.authenticatedApi[Symbol.dispose]()
@@ -204,8 +213,8 @@ export function useAuth(publicApi: RpcStub<PublicApi>) {
         error: null
       }
     })
-
     localStorage.removeItem('authToken')
+    window.location.reload()
   }
 
   return {

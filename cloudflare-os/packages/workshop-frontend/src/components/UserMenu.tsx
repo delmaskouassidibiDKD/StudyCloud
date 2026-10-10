@@ -54,11 +54,10 @@ export default function UserMenu() {
         )}
         <DropdownMenu.Separator />
         <DropdownMenu.Item
-          variant="danger"
-          onClick={logout}
-          className={MENU_ITEM_DANGER}
+          onClick={() => window.location.reload()}
+          className={MENU_ITEM}
         >
-          Se déconnecter
+          Synchroniser la session
         </DropdownMenu.Item>
       </DropdownMenu.Content>
     </DropdownMenu>

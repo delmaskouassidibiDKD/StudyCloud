@@ -52,9 +52,9 @@ function RootComponent() {
   // Loading state
   if (isLoading && !standalone) {
     return (
-      <div className="flex min-h-full items-center justify-center flex-col gap-4 bg-kumo-base">
-        <div className="w-8 h-8 border-2 border-kumo-brand border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm text-kumo-subtle">{connectionLost ? 'Waiting for server…' : 'Loading...'}</p>
+      <div className="flex min-h-full items-center justify-center flex-col gap-4 bg-[#070b14] text-white">
+        <div className="w-8 h-8 border-2 border-[#ff4801] border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-stone-300">Connexion à votre espace StudyCloud…</p>
       </div>
     )
   }

@@ -26,7 +26,11 @@ const DEFAULT_CLOUDFLARE_URL = 'https://router.delmaskouassidibi.workers.dev';
 
 export const RedRobotMenuView: React.FC<RedRobotMenuViewProps> = ({ onBack }) => {
   const [serverUrl, setServerUrl] = useState<string>(() => {
-    return localStorage.getItem('studycloud_cloudflare_os_url') || DEFAULT_CLOUDFLARE_URL;
+    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('studycloud_cloudflare_os_url') : null;
+    if (!saved || saved.includes('localhost') || saved.includes('127.0.0.1')) {
+      return DEFAULT_CLOUDFLARE_URL;
+    }
+    return saved;
   });
   const [isOnline, setIsOnline] = useState<boolean>(true);
   const [isChecking, setIsChecking] = useState<boolean>(false);
@@ -39,13 +43,25 @@ export const RedRobotMenuView: React.FC<RedRobotMenuViewProps> = ({ onBack }) =>
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Récupérer l'identité de l'utilisateur StudyCloud connecté
-  const currentUserId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || 'guest_user';
+  const currentUserId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || 'etudiant';
   const currentUserName = (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_name') : '') || 'Étudiant StudyCloud';
   const currentUserEmail = (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_email') : '') || '';
 
-  // URL enrichie avec les identifiants StudyCloud pour Single Sign-On (SSO)
-  const separator = serverUrl.includes('?') ? '&' : '?';
-  const authenticatedIframeUrl = `${serverUrl}${separator}sc_user_id=${encodeURIComponent(currentUserId)}&sc_user_name=${encodeURIComponent(currentUserName)}&sc_user_email=${encodeURIComponent(currentUserEmail)}`;
+  // URL enrichie avec les identifiants StudyCloud pour Single Sign-On (SSO) transparent
+  const authenticatedIframeUrl = React.useMemo(() => {
+    try {
+      const url = new URL(serverUrl);
+      url.searchParams.set('sc_user_id', currentUserId);
+      url.searchParams.set('sc_user_name', currentUserName);
+      if (currentUserEmail) {
+        url.searchParams.set('sc_user_email', currentUserEmail);
+      }
+      return url.toString();
+    } catch {
+      const sep = serverUrl.includes('?') ? '&' : '?';
+      return `${serverUrl}${sep}sc_user_id=${encodeURIComponent(currentUserId)}&sc_user_name=${encodeURIComponent(currentUserName)}`;
+    }
+  }, [serverUrl, currentUserId, currentUserName, currentUserEmail]);
 
   // Vérifier la disponibilité de l'URL Cloudflare Edge
   const checkServerStatus = async () => {
@@ -130,11 +146,11 @@ export const RedRobotMenuView: React.FC<RedRobotMenuViewProps> = ({ onBack }) =>
           <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-stone-900 border border-stone-800 shadow-2xs">
             <DelmasRobot size={22} variant="red" floating={true} />
             <span className="text-xs font-bold text-stone-200">
-              Cloudflare OS <span className="text-[#ff4801] font-black">v2</span>
+              Studio IA <span className="text-[#ff4801] font-black">StudyCloud</span>
             </span>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/25 flex items-center gap-1">
               <Globe className="w-3 h-3" />
-              Cloudflare Edge
+              Connecté
             </span>
           </div>
 
