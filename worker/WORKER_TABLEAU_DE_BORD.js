@@ -12711,8 +12711,8 @@ function renderDashboardHtml(data) {
         if (name) name.textContent = 'Modèle Personnalisé';
         if (desc) desc.textContent = 'Point de terminaison API ou Fournisseur Custom';
         if (badge) { badge.textContent = 'Custom'; badge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30'; }
-        if (tokLabel) tokLabel.textContent = 'Clé d\'authentification / Bearer Token';
-        if (tokInput) tokInput.placeholder = 'Clé API ou jeton Bearer';
+        if (tokLabel) tokLabel.textContent = "Clé d'authentification / Bearer Token";
+        if (tokInput) tokInput.placeholder = "Clé API ou jeton Bearer";
       }
     }
 
@@ -12849,9 +12849,9 @@ function renderDashboardHtml(data) {
         grid.innerHTML = '<div class="col-span-full p-8 rounded-2xl bg-slate-950/60 border border-slate-800 text-center space-y-3">' +
           '<span class="text-3xl">🤖</span>' +
           '<div class="text-sm font-bold text-white">Aucun modèle personnalisé configuré</div>' +
-          '<p class="text-xs text-slate-400 max-w-md mx-auto">' +
-            'Cliquez sur le bouton ci-dessous pour ajouter un modèle d\'IA (Workers AI, Claude, GPT, Gemini). Il sera immédiatement connecté et accessible à vos élèves.' +
-          '</p>' +
+          "<p class=\"text-xs text-slate-400 max-w-md mx-auto\">" +
+          "Cliquez sur le bouton ci-dessous pour ajouter un modèle d'IA (Workers AI, Claude, GPT, Gemini). Il sera immédiatement connecté et accessible à vos élèves." +
+          "</p>" +
           '<button type="button" onclick="openAddAiModelModal()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-stone-900 font-extrabold text-xs shadow-md shadow-orange-500/20 cursor-pointer inline-flex items-center gap-1.5">' +
             '<span>✨</span><span>Ajouter un Modèle Maintenant</span>' +
           '</button>' +

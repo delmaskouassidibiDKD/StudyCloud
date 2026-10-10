@@ -6,7 +6,6 @@ import {
   Maximize2, 
   Minimize2, 
   Check, 
-  Settings,
   Radio, 
   Cpu, 
   ShieldCheck, 
@@ -25,7 +24,7 @@ interface RedRobotMenuViewProps {
 const DEFAULT_CLOUDFLARE_URL = 'https://router.delmaskouassidibi.workers.dev';
 
 export const RedRobotMenuView: React.FC<RedRobotMenuViewProps> = ({ onBack }) => {
-  const [serverUrl, setServerUrl] = useState<string>(() => {
+  const [serverUrl] = useState<string>(() => {
     const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('studycloud_cloudflare_os_url') : null;
     if (!saved || saved.includes('localhost') || saved.includes('127.0.0.1')) {
       return DEFAULT_CLOUDFLARE_URL;
@@ -36,9 +35,6 @@ export const RedRobotMenuView: React.FC<RedRobotMenuViewProps> = ({ onBack }) =>
   const [isChecking, setIsChecking] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [iframeKey, setIframeKey] = useState<number>(0);
-  const [showSettings, setShowSettings] = useState<boolean>(false);
-  const [tempUrl, setTempUrl] = useState<string>(serverUrl);
-  const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
   const [isLoadingIframe, setIsLoadingIframe] = useState<boolean>(true);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -98,33 +94,6 @@ export const RedRobotMenuView: React.FC<RedRobotMenuViewProps> = ({ onBack }) =>
     setIsLoadingIframe(true);
     setIframeKey(prev => prev + 1);
     checkServerStatus();
-  };
-
-  const handleSaveUrl = (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanUrl = tempUrl.trim().replace(/\/+$/, '') || DEFAULT_CLOUDFLARE_URL;
-    setServerUrl(cleanUrl);
-    localStorage.setItem('studycloud_cloudflare_os_url', cleanUrl);
-    setSavedSuccess(true);
-    setTimeout(() => {
-      setSavedSuccess(false);
-      setShowSettings(false);
-    }, 1500);
-    setIsLoadingIframe(true);
-    setIframeKey(prev => prev + 1);
-  };
-
-  const handleResetDefaultUrl = () => {
-    setTempUrl(DEFAULT_CLOUDFLARE_URL);
-    setServerUrl(DEFAULT_CLOUDFLARE_URL);
-    localStorage.removeItem('studycloud_cloudflare_os_url');
-    setSavedSuccess(true);
-    setTimeout(() => {
-      setSavedSuccess(false);
-      setShowSettings(false);
-    }, 1500);
-    setIsLoadingIframe(true);
-    setIframeKey(prev => prev + 1);
   };
 
   return (
@@ -190,19 +159,6 @@ export const RedRobotMenuView: React.FC<RedRobotMenuViewProps> = ({ onBack }) =>
             </span>
           </div>
 
-          {/* Bouton paramètres d'URL */}
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
-              showSettings 
-                ? 'bg-[#ff4801]/20 text-[#ff7a45] border-[#ff4801]/40' 
-                : 'bg-stone-800 hover:bg-stone-700 text-stone-300 border-stone-700'
-            }`}
-            title="Configurer l'URL du service Cloudflare"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-
           {/* Bouton rafraîchir */}
           <button
             onClick={handleRefreshIframe}
@@ -233,56 +189,6 @@ export const RedRobotMenuView: React.FC<RedRobotMenuViewProps> = ({ onBack }) =>
           </button>
         </div>
       </div>
-
-      {/* Popover / Panneau des Paramètres d'URL Cloudflare */}
-      {showSettings && (
-        <div className="w-full bg-[#0d1424] border-b border-stone-800 p-4 shrink-0 z-40 animate-in fade-in slide-in-from-top-2 duration-200">
-          <form onSubmit={handleSaveUrl} className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center gap-3">
-            <div className="flex-1 w-full">
-              <label className="block text-xs font-semibold text-stone-300 mb-1">
-                URL du service Cloudflare Edge :
-              </label>
-              <input
-                type="url"
-                value={tempUrl}
-                onChange={(e) => setTempUrl(e.target.value)}
-                placeholder="https://router.delmaskouassidibi.workers.dev"
-                className="w-full px-3 py-2 bg-stone-900 border border-stone-700 rounded-xl text-stone-200 font-mono text-xs focus:outline-hidden focus:border-[#ff4801]"
-              />
-            </div>
-            <div className="flex items-center gap-2 mt-auto w-full sm:w-auto">
-              <button
-                type="submit"
-                className="flex-1 sm:flex-none px-4 py-2 bg-[#ff4801] hover:bg-[#ff5714] text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
-              >
-                {savedSuccess ? (
-                  <>
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Enregistré !</span>
-                  </>
-                ) : (
-                  <span>Valider</span>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={handleResetDefaultUrl}
-                className="px-3 py-2 bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs rounded-xl border border-stone-700 transition-colors cursor-pointer"
-                title="Rétablir l'URL officielle déployée"
-              >
-                Par défaut
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowSettings(false)}
-                className="px-3 py-2 bg-stone-800 hover:bg-stone-700 text-stone-400 text-xs rounded-xl border border-stone-700 transition-colors cursor-pointer"
-              >
-                Fermer
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
 
       {/* Zone principale : Affichage de Cloudflare OS en direct */}
       <div className="flex-1 w-full overflow-hidden flex flex-col relative bg-[#060a12]">
