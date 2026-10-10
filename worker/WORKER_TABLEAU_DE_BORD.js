@@ -12211,7 +12211,8 @@ function renderDashboardHtml(data) {
 
       try {
         const start = Date.now();
-        const res = await fetch(edgeUrl.replace(/\/+$/, '') + '/health', {
+        const cleanEdgeUrl = edgeUrl.endsWith('/') ? edgeUrl.slice(0, -1) : edgeUrl;
+        const res = await fetch(cleanEdgeUrl + '/health', {
           method: 'GET',
           headers: { 'Accept': 'application/json' }
         });
@@ -12256,7 +12257,8 @@ function renderDashboardHtml(data) {
       const start = Date.now();
       try {
         const edgeUrl = document.getElementById('robot-edge-url')?.value || 'https://router.delmaskouassidibi.workers.dev';
-        const res = await fetch(edgeUrl.replace(/\/+$/, '') + '/api/generate', {
+        const cleanEdgeUrl = edgeUrl.endsWith('/') ? edgeUrl.slice(0, -1) : edgeUrl;
+        const res = await fetch(cleanEdgeUrl + '/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
