@@ -283,14 +283,89 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   // Création active suivie pour modification et itération continue
   const [activeCreation, setActiveCreation] = useState<AiCreation | null>(null);
 
-  // Mode Puissant
-  const [isPowerMode, setIsPowerMode] = useState<boolean>(() => {
-    return localStorage.getItem('studycloud_ai_power_mode') === 'true';
+  // Modèles IA configurés dans le Tableau de Bord
+  const [availableModels, setAvailableModels] = useState<Array<{ id: string; name: string; provider: string; model_id?: string }>>([
+    { id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name: 'Llama 3.3 70B (Fast)', provider: 'cloudflare' },
+    { id: 'gemini-3.8-flash', name: 'Google Gemini 3.8 Flash', provider: 'google' },
+    { id: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', name: 'DeepSeek R1 32B', provider: 'cloudflare' },
+    { id: '@cf/moonshotai/kimi-k2.7-code', name: 'Kimi K2.7 Code', provider: 'cloudflare' },
+    { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'anthropic' },
+    { id: 'gpt-4o-mini', name: 'OpenAI GPT-4o Mini', provider: 'openai' },
+  ]);
+
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    return localStorage.getItem('studycloud_selected_ai_model') || '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
   });
 
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    localStorage.setItem('studycloud_ai_power_mode', String(isPowerMode));
-  }, [isPowerMode]);
+    localStorage.setItem('studycloud_selected_ai_model', selectedModel);
+  }, [selectedModel]);
+
+  // Fermer le dropdown des modèles au clic en dehors
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
+        setIsModelDropdownOpen(false);
+      }
+    };
+    if (isModelDropdownOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [isModelDropdownOpen]);
+
+  // Chargement dynamique des modèles configurés dans le Tableau de Bord
+  useEffect(() => {
+    StudyCloudAPI.getRobotRougeConfig()
+      .then((res: any) => {
+        if (res && res.success && Array.isArray(res.models) && res.models.length > 0) {
+          const active = res.models.filter((m: any) => m.is_active === 1 || m.is_active === true || m.enabled === 1 || m.enabled === true);
+          if (active.length > 0) {
+            const cleaned = active.map((m: any) => {
+              let id = m.id || m.model_id;
+              if (id === '@cf/meta/llama-3.3-70b-instruct') id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+              if (id === 'gemini-2.0-flash' || id === 'gemini-2.5-flash') id = 'gemini-3.8-flash';
+              return {
+                id,
+                name: m.name || id,
+                provider: m.provider || 'cloudflare',
+                model_id: id,
+              };
+            });
+            setAvailableModels(cleaned);
+            const currentExists = cleaned.some((m: any) => m.id === selectedModel);
+            if (!currentExists && res.config?.default_model) {
+              let def = res.config.default_model;
+              if (def === '@cf/meta/llama-3.3-70b-instruct') def = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+              if (def === 'gemini-2.0-flash' || def === 'gemini-2.5-flash') def = 'gemini-3.8-flash';
+              setSelectedModel(def);
+            }
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('[AssistantChat] Erreur chargement modèles du Tableau de Bord:', err);
+      });
+  }, []);
+
+  const currentModelDisplay = useMemo(() => {
+    const found = availableModels.find(m => m.id === selectedModel || m.model_id === selectedModel);
+    if (found) {
+      return found.name.replace(/ \(Workers AI\)/i, '').replace(/Instruct/i, '').replace(/Google /i, '').trim();
+    }
+    if (selectedModel.includes('llama')) return 'Llama 3.3 70B';
+    if (selectedModel.includes('gemini')) return 'Gemini Flash';
+    if (selectedModel.includes('deepseek')) return 'DeepSeek R1';
+    if (selectedModel.includes('kimi')) return 'Kimi K2.7';
+    if (selectedModel.includes('claude')) return 'Claude 3.5';
+    if (selectedModel.includes('gpt')) return 'GPT-4o Mini';
+    return selectedModel;
+  }, [availableModels, selectedModel]);
   
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -683,7 +758,7 @@ RÈGLES D'EXCELLENCE :
         })),
       ];
 
-      // 5. Appel à l'IA Cloudflare Workers AI avec session persistante & Neurone (ou Gemini en Mode Puissance)
+      // 5. Appel au moteur d'IA officiel StudyCloud (Workshop Backend / Robot Rouge)
       const aiResult = await sendChatMessageToAi({
         messages: chatHistory,
         prompt: userText,
@@ -691,6 +766,8 @@ RÈGLES D'EXCELLENCE :
         userId: currentUserId,
         sessionId: currentConversationId,
         conversationId: currentConversationId,
+        model: selectedModel,
+        selectedModel: selectedModel,
         requested_type: explicitToolType || undefined,
         attachedFileId,
         attachedFileName,
@@ -704,8 +781,6 @@ RÈGLES D'EXCELLENCE :
         fileName: attachedFileName,
         imageBase64: attachedImageBase64 || undefined,
         audioBase64: attachedAudioBase64 || undefined,
-        powerMode: isPowerMode,
-        engine: isPowerMode ? 'gemini' : 'standard',
         geminiApiKey: getGeminiApiKey() || undefined,
       });
 
@@ -951,20 +1026,56 @@ RÈGLES D'EXCELLENCE :
             <Plus className="w-4 h-4 text-orange-400" />
           </button>
 
-          {/* Bouton Puissant / Moyen placé près du bouton + (sans clignotement) */}
-          <button
-            type="button"
-            onClick={() => setIsPowerMode(prev => !prev)}
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border active:scale-95 shrink-0 ${
-              isPowerMode
-                ? 'bg-black hover:bg-zinc-950 text-white border-zinc-600 shadow-sm'
-                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border-zinc-700'
-            }`}
-            title={isPowerMode ? "Mode Puissant actif - Cliquez pour passer en mode Moyen" : "Mode Moyen actif - Cliquez pour passer en mode Puissant"}
-          >
-            <Zap className={`w-3.5 h-3.5 ${isPowerMode ? 'text-amber-400 fill-amber-400' : 'text-zinc-400'}`} />
-            <span>{isPowerMode ? 'Puissant' : 'Moyen'}</span>
-          </button>
+          {/* Sélecteur de Modèle IA (Configurés dans le Tableau de Bord) */}
+          <div className="relative shrink-0" ref={modelDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setIsModelDropdownOpen(prev => !prev)}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white active:scale-95 shrink-0 shadow-xs"
+              title="Changer de modèle IA (Configurés depuis le Tableau de Bord)"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="max-w-[110px] sm:max-w-[140px] truncate">{currentModelDisplay}</span>
+              <ChevronDown className={`w-3 h-3 text-zinc-400 transition-transform ${isModelDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isModelDropdownOpen && (
+              <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-60 sm:w-68 bg-[#181a20] border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-50 animate-fadeIn backdrop-blur-md">
+                <div className="px-3 py-1.5 border-b border-zinc-800/80 text-[10px] font-black text-zinc-400 uppercase tracking-wider flex items-center justify-between">
+                  <span>Modèles IA du Tableau de Bord</span>
+                  <span className="text-[9px] text-zinc-500 font-normal">{availableModels.length} actifs</span>
+                </div>
+                <div className="max-h-64 overflow-y-auto py-1">
+                  {availableModels.map((m) => {
+                    const isSelected = selectedModel === m.id || selectedModel === m.model_id;
+                    const providerColor =
+                      m.provider === 'google' ? 'bg-blue-400' :
+                      m.provider === 'cloudflare' ? 'bg-orange-400' :
+                      m.provider === 'anthropic' ? 'bg-amber-400' : 'bg-emerald-400';
+                    return (
+                      <button
+                        key={m.id || m.model_id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedModel(m.id || m.model_id);
+                          setIsModelDropdownOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2 text-left text-xs transition-colors cursor-pointer ${
+                          isSelected ? 'bg-orange-500/15 text-orange-400 font-bold' : 'text-zinc-300 hover:bg-zinc-800/80 hover:text-white'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate pr-2">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${providerColor}`} />
+                          <span className="truncate">{m.name || m.model_id || m.id}</span>
+                        </div>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">

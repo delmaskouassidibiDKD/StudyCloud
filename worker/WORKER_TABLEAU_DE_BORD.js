@@ -14792,10 +14792,23 @@ export default {
         if (!cfg) {
           cfg = robotRougeConfigRes;
         }
+
+        // Auto-synchronisation des clés API depuis robot_rouge_models si vides dans la config globale
+        try {
+          if (!cfg.gemini_api_key || cfg.gemini_api_key.trim() === '') {
+            const gToken = await db.prepare("SELECT api_token FROM robot_rouge_models WHERE provider = 'google' AND api_token IS NOT NULL AND api_token != '' LIMIT 1").first();
+            if (gToken && gToken.api_token) cfg.gemini_api_key = gToken.api_token;
+          }
+          if (!cfg.cf_ai_token || cfg.cf_ai_token.trim() === '') {
+            const cfToken = await db.prepare("SELECT api_token FROM robot_rouge_models WHERE provider = 'cloudflare' AND api_token IS NOT NULL AND api_token != '' LIMIT 1").first();
+            if (cfToken && cfToken.api_token) cfg.cf_ai_token = cfToken.api_token;
+          }
+        } catch (errSync) {}
+
         const isPublic = path.includes('/public');
         const resConfig = isPublic ? {
-          default_model: cfg.default_model,
-          fallback_model: cfg.fallback_model,
+          default_model: cfg.default_model || '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+          fallback_model: cfg.fallback_model || 'gemini-3.8-flash',
           is_maintenance: cfg.is_maintenance,
           system_instructions: cfg.system_instructions,
           cost_per_request: cfg.cost_per_request,
@@ -14807,6 +14820,16 @@ export default {
         try {
           const mRes = await db.prepare("SELECT * FROM robot_rouge_models WHERE is_active = 1 ORDER BY is_default DESC, created_at ASC").all();
           modelsList = (mRes && mRes.results) ? mRes.results : [];
+          // Normaliser les modèles pour éviter les erreurs 5007 et 404
+          modelsList = modelsList.map(m => {
+            if (m.model_id === '@cf/meta/llama-3.3-70b-instruct') {
+              return { ...m, model_id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name: 'Llama 3.3 70B (Fast)' };
+            }
+            if (m.model_id === 'gemini-2.0-flash' || m.model_id === 'gemini-2.5-flash') {
+              return { ...m, model_id: 'gemini-3.8-flash', id: 'gemini-3.8-flash', name: 'Google Gemini 3.8 Flash' };
+            }
+            return m;
+          });
         } catch (e) {}
 
         return new Response(JSON.stringify({ 
@@ -14842,8 +14865,8 @@ export default {
               welcome_credits = excluded.welcome_credits,
               updated_at = CURRENT_TIMESTAMP
           `).bind(
-            b.default_model || '@cf/meta/llama-3.3-70b-instruct',
-            b.fallback_model || 'gemini-2.0-flash',
+            (b.default_model === '@cf/meta/llama-3.3-70b-instruct' ? '@cf/meta/llama-3.3-70b-instruct-fp8-fast' : (b.default_model || '@cf/meta/llama-3.3-70b-instruct-fp8-fast')),
+            (b.fallback_model === 'gemini-2.0-flash' || b.fallback_model === 'gemini-2.5-flash' ? 'gemini-3.8-flash' : (b.fallback_model || 'gemini-3.8-flash')),
             b.edge_router_url || 'https://router.delmaskouassidibi.workers.dev',
             b.is_maintenance ? 1 : 0,
             b.gemini_api_key || '',
@@ -14854,6 +14877,22 @@ export default {
             b.cost_per_request !== undefined ? Number(b.cost_per_request) : 1,
             b.welcome_credits !== undefined ? Number(b.welcome_credits) : 50
           ).run();
+
+          // Synchroniser les clés dans robot_rouge_models
+          try {
+            if (b.gemini_api_key && b.gemini_api_key.trim() !== '') {
+              await db.prepare("UPDATE robot_rouge_models SET api_token = ? WHERE provider = 'google'").bind(b.gemini_api_key.trim()).run().catch(() => {});
+            }
+            if (b.cf_ai_token && b.cf_ai_token.trim() !== '') {
+              await db.prepare("UPDATE robot_rouge_models SET api_token = ? WHERE provider = 'cloudflare'").bind(b.cf_ai_token.trim()).run().catch(() => {});
+            }
+            if (b.anthropic_api_key && b.anthropic_api_key.trim() !== '') {
+              await db.prepare("UPDATE robot_rouge_models SET api_token = ? WHERE provider = 'anthropic'").bind(b.anthropic_api_key.trim()).run().catch(() => {});
+            }
+            if (b.openai_api_key && b.openai_api_key.trim() !== '') {
+              await db.prepare("UPDATE robot_rouge_models SET api_token = ? WHERE provider = 'openai'").bind(b.openai_api_key.trim()).run().catch(() => {});
+            }
+          } catch (errSyncModels) {}
 
           if (b.apply_welcome_to_all && Number(b.welcome_credits) > 0) {
             try {

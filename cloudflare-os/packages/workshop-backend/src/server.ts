@@ -15,7 +15,8 @@ import { deploymentOutputForBlueprint, listFormatOffers, readAdminConfig } from 
 // Re-export the optional-feature Durable Objects + entrypoints so they can be bound in wrangler.
 export { PendingLogin, LoginConnectCallbackImpl };
 import { GatekeeperUiFrame } from "@gadgets/workshop-shared/gatekeeper";
-import { LanguageModelGatekeeper } from "./ai-models";
+import { LanguageModelGatekeeper, getModelDirect } from "./ai-models";
+import { completeText } from "./ai-invoke.js";
 import { getGatewayModels } from "./ai-gateway.js";
 import { AdminSettings, AdminApiImpl } from "./admin-settings.js";
 import { blueprintContentKey, buildBlueprintArchiveStream, sanitizeBlueprintOutput, parseBlueprintArchive, randomBlueprintId } from "./blueprint-archive.js";
@@ -853,6 +854,126 @@ class PublicApiImpl extends RpcTarget implements PublicApi {
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext) {
     let url = new URL(req.url);
+
+    // Support CORS pour les appels de l'espace d'étude StudyCloud
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, x-user-id",
+    };
+
+    if (req.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders });
+    }
+
+    // Endpoint officiel de discussion IA pour l'espace d'étude StudyCloud (Robot Rouge)
+    if (url.pathname === "/api/ai/chat" && req.method === "POST") {
+      try {
+        const body: any = await req.json().catch(() => ({}));
+        const userPrompt = String(body.message || body.prompt || "").trim();
+        let targetModel = String(body.model || body.requested_model || "gemini-3.8-flash").trim();
+        const history = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
+        const docContent = String(body.attachedFileContent || body.file_content || body.documentContent || "").trim();
+        const docName = String(body.attachedFileName || body.file_name || "").trim();
+
+        if (targetModel.includes("llama-3.3") && !targetModel.includes("fp8-fast")) {
+          targetModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+        } else if (targetModel.includes("gemini") && !targetModel.includes("3.8")) {
+          targetModel = "gemini-3.8-flash";
+        } else if (targetModel.includes("claude-3-5")) {
+          targetModel = "claude-sonnet-4-5";
+        }
+
+        let provider: "google" | "cloudflare" | "anthropic" | "openai" = "google";
+        if (targetModel.startsWith("@cf/")) {
+          provider = "cloudflare";
+        } else if (targetModel.includes("claude") || targetModel.includes("anthropic")) {
+          provider = "anthropic";
+        } else if (targetModel.includes("gpt")) {
+          provider = "openai";
+        }
+
+        const modelHandle = getModelDirect({
+          provider,
+          model: targetModel,
+          apiToken: body.apiKey || undefined,
+        });
+
+        let systemPrompt = "Tu es Delmas IA, l'assistant d'étude officiel de StudyCloud (Robot Rouge). Réponds en français de manière claire, structurée, pédagogique avec rigueur et bienveillance. Utilise le format Markdown et LaTeX pour les formules mathématiques.";
+        if (docContent) {
+          systemPrompt += `\n\n[DOCUMENT DE COURS ASSOCIÉ: ${docName || "Document d'étude"}]\n${docContent.slice(0, 30000)}`;
+        }
+        if (body.requested_type) {
+          systemPrompt += `\n\nL'étudiant a demandé un module de type ${body.requested_type}. Si pertinent, fournis une structure JSON complète sous bloc de code \`\`\`json.`;
+        }
+
+        const messages: any[] = [];
+        for (const h of history.slice(-8)) {
+          if (h && (h.content || h.text)) {
+            messages.push({
+              role: (h.role === "assistant" || h.sender === "ai") ? "assistant" : "user",
+              content: String(h.content || h.text),
+              timestamp: Date.now(),
+            });
+          }
+        }
+        messages.push({
+          role: "user",
+          content: userPrompt || "Bonjour !",
+          timestamp: Date.now(),
+        });
+
+        let answerText: string;
+        try {
+          answerText = await completeText(modelHandle, {
+            systemPrompt,
+            messages,
+            maxTokens: 4096,
+          });
+        } catch (callErr: any) {
+          logger.warn("Primary model failed, falling back to Llama 3.3 70B fast", { error: callErr });
+          if (targetModel !== "@cf/meta/llama-3.3-70b-instruct-fp8-fast") {
+            const fallbackHandle = getModelDirect({
+              provider: "cloudflare",
+              model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+            });
+            answerText = await completeText(fallbackHandle, {
+              systemPrompt,
+              messages,
+              maxTokens: 4096,
+            });
+            targetModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast (Secours)";
+          } else {
+            throw callErr;
+          }
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          response: answerText,
+          chat_response: answerText,
+          model: targetModel,
+        }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+        });
+      } catch (err: any) {
+        logger.error("Erreur appel /api/ai/chat", { error: err });
+        return new Response(JSON.stringify({
+          success: false,
+          error: err?.message || "Erreur lors de la génération de réponse IA",
+        }), {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+        });
+      }
+    }
 
     if (url.pathname === SITE_LOGO_PATH) {
       return serveSiteLogo(req, env.BLUEPRINT_CONTENT);

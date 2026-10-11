@@ -51,12 +51,12 @@ import {
 export { getStudyAgentUrl, setStudyAgentUrl };
 import { parseOrBuildAiCreation } from './aiCreationGenerator';
 
-// URL du Worker Cloudflare Agent Neuronal dédié à l'assistante IA StudyCloud
+// URL du Worker Cloudflare Workshop Backend (Moteur IA déployé pour StudyCloud)
 export const getAiWorkerUrl = (): string => {
   return (
     (import.meta as any).env?.VITE_AI_WORKER_URL ||
     localStorage.getItem('studycloud_ai_worker_url') ||
-    getStudyAgentUrl()
+    'https://workshop-backend.delmaskouassidibi.workers.dev'
   );
 };
 
@@ -271,6 +271,7 @@ export async function sendChatMessageToAi(params: {
   const payload = {
     ...params,
     userId: currentUserId,
+    model: params.model || params.selectedModel || 'gemini-3.8-flash',
     powerMode: isPowerMode,
     isPowerMode: isPowerMode,
     engine: isPowerMode ? 'gemini' : (params.engine || 'standard'),
@@ -327,7 +328,7 @@ export async function sendChatMessageToAi(params: {
         try {
           const geminiPrompt = `${params.prompt || params.message || 'Bonjour'}${extractedDoc ? `\n\nContenu document support ("${extractedDocName}") :\n${extractedDoc.slice(0, 35000)}` : ''}`;
           const geminiResp = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${userGeminiApiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${userGeminiApiKey}`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -1910,6 +1911,18 @@ export const StudyCloudAPI = {
       method: 'PUT',
       body: JSON.stringify({ isPinned }),
     });
+  },
+
+  // --------------------------------------------------------------------------
+  // Configuration et Modèles Robot Rouge (Depuis le Tableau de Bord)
+  // --------------------------------------------------------------------------
+  async getRobotRougeConfig() {
+    try {
+      const res = await fetch('https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev/api/public/robot-rouge-config');
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Erreur réseau', models: [] };
+    }
   },
 
   // --------------------------------------------------------------------------

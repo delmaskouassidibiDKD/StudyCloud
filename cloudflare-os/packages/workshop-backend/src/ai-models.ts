@@ -742,7 +742,7 @@ function directAuth(config: AiModelConfig, keyHeader: string): Pick<HandleArgs, 
 }
 
 // Direct provider access using the credentials in the model config itself (no AI Gateway).
-function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelHandle {
+export function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelHandle {
   let effectiveModel = config.model;
   if (config.provider === "google" && (effectiveModel.includes("gemini-2.0") || effectiveModel.includes("gemini-2.5") || effectiveModel.includes("gemini-1.5") || effectiveModel === "gemini-2.0-flash")) {
     effectiveModel = "gemini-3.8-flash";
