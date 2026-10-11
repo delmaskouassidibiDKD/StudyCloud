@@ -732,18 +732,40 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
              resetAt: nextUtcMidnightIso() };
   }
 
+  #remoteConfigCache: { data: any; expiry: number } | null = null;
+
+  async #getRemoteAiConfig(): Promise<{ config: any; models: any[] } | null> {
+    const now = Date.now();
+    if (this.#remoteConfigCache && this.#remoteConfigCache.expiry > now) {
+      return this.#remoteConfigCache.data;
+    }
+    try {
+      const res = await fetch("https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev/api/admin/robot-rouge-config");
+      if (res.ok) {
+        const data: any = await res.json();
+        if (data && data.success) {
+          this.#remoteConfigCache = { data, expiry: now + 30000 };
+          return data;
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
   /** DO NOT MAKE PUBLIC -- returns API keys. Pure read: call sites replay it across DO resets
    * via retryOnDoReset, so it must stay free of writes and side effects. */
   async getChatContext(modelId: string | null): Promise<UserChatContext> {
-    return this.#getChatContext(modelId, await getGatewayModels(this.env));
+    const gateway = await getGatewayModels(this.env);
+    const remoteData = await this.#getRemoteAiConfig();
+    return this.#getChatContext(modelId, gateway, remoteData);
   }
 
-  #getChatContext(modelId: string | null, models: GatewayModels | null): UserChatContext {
+  #getChatContext(modelId: string | null, models: GatewayModels | null, remoteData?: any): UserChatContext {
     let result: UserChatContext = {
       profile: this.storage.profile.get()
     };
     if (modelId) {
-      result.aiModel = this.#resolveModel(modelId, models);
+      result.aiModel = this.#resolveModel(modelId, models, remoteData);
       if (!result.aiModel) {
         models?.refuseDisabled(modelId);
         // No gateway model has the ID, so a stored model with it is one the deployment keeps
@@ -775,14 +797,15 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     // conversation takes the user's preferred model only while it is still offered, as the web
     // composer does with its stored choice, and otherwise the first available model.
     let models = await getGatewayModels(this.env);
+    const remoteData = await this.#getRemoteAiConfig();
     let selectedModelId = existingChatModelId;
-    if (selectedModelId === null || !this.#resolveModel(selectedModelId, models)) {
+    if (selectedModelId === null || !this.#resolveModel(selectedModelId, models, remoteData)) {
       let offered = this.#listModels(models);
       let preferredModel = this.storage.preferredModel.get();
       selectedModelId = (offered.find(model => model.id === preferredModel) ?? offered[0])?.id ?? null;
     }
 
-    return this.#getChatContext(selectedModelId, models);
+    return this.#getChatContext(selectedModelId, models, remoteData);
   }
 
   /**
@@ -790,7 +813,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
    * whatever its mode, so a disabled one resolves to nothing rather than to the stored model. No
    * stored model resolves on a gateway deployment whose users may not add their own.
    */
-  #resolveModel(id: string, models: GatewayModels | null): UserAiModelRecord | undefined {
+  #resolveModel(id: string, models: GatewayModels | null, remoteData?: any): UserAiModelRecord | undefined {
     if (models?.get(id)) return models.resolve(id);
     let stored = models && !models.userModels ? undefined : this.storage.aiModels.get(id);
     if (stored) return stored;
@@ -800,9 +823,37 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     else if (id.includes("claude") || id.includes("anthropic")) provider = "anthropic";
     else if (id.includes("gpt") || id.includes("openai")) provider = "openai";
 
+    let apiToken = "";
+    let accountId = "c80164ed977e6535efd1b67a54741ed6";
+    let displayName = id;
+
+    const matchedModel = remoteData?.models?.find((m: any) => m.id === id || m.model_id === id);
+    if (matchedModel) {
+      if (matchedModel.name) displayName = matchedModel.name;
+      if (matchedModel.api_token) apiToken = matchedModel.api_token;
+      if (matchedModel.account_id) accountId = matchedModel.account_id;
+    }
+
+    if (!apiToken && remoteData?.config) {
+      if (provider === "cloudflare") {
+        apiToken = remoteData.config.cf_ai_token || "";
+      } else if (provider === "google") {
+        apiToken = remoteData.config.gemini_api_key || "";
+      } else if (provider === "openai") {
+        apiToken = remoteData.config.openai_api_key || "";
+      } else if (provider === "anthropic") {
+        apiToken = remoteData.config.anthropic_api_key || "";
+      }
+    }
+
     return {
-      profile: { id, name: id, type: "agent" },
-      config: { provider, model: id, apiToken: "" }
+      profile: { id, name: displayName, type: "agent" },
+      config: {
+        provider,
+        model: matchedModel?.model_id || id,
+        apiToken,
+        accountId: provider === "cloudflare" ? accountId : undefined
+      }
     };
   }
 

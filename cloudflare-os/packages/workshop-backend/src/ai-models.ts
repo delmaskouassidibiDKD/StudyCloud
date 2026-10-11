@@ -730,6 +730,10 @@ function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelH
   const window = modelTokenWindow(config, catalog);
   switch (config.provider) {
     case "anthropic":
+      if (!config.apiToken) {
+        throw new Error(
+            "Ce modèle Claude (Anthropic) n'a pas encore de clé API configurée. Veuillez ajouter votre clé Anthropic dans votre Tableau de Bord StudyCloud (Onglet Robot Rouge - Studio IA).");
+      }
       return makeHandle({
         model: {
           id: config.model,
@@ -754,8 +758,7 @@ function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelH
       // model config. (The REST endpoint is account-scoped, hence the extra accountId field.)
       if (!config.accountId || !config.apiToken) {
         throw new Error(
-            "This Workers AI model has no Cloudflare credentials. Re-add it with your " +
-            "Cloudflare account ID and an API token that permits Workers AI.");
+            "Ce modèle Cloudflare Workers AI n'a pas encore de clé configurée. Veuillez ajouter un API Token Cloudflare (avec la permission Workers AI) dans votre Tableau de Bord StudyCloud (Onglet Robot Rouge - Studio IA).");
       }
       return makeHandle({
         model: {
@@ -776,6 +779,10 @@ function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelH
       });
     }
     case "google":
+      if (!config.apiToken) {
+        throw new Error(
+            "Ce modèle Google Gemini n'a pas encore de clé API configurée. Veuillez ajouter votre clé API Gemini dans votre Tableau de Bord StudyCloud (Onglet Robot Rouge - Studio IA).");
+      }
       return makeHandle({
         model: {
           id: config.model,
@@ -842,6 +849,10 @@ function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelH
         sessionAffinity,
       });
     case "openai":
+      if (!config.apiToken) {
+        throw new Error(
+            "Ce modèle OpenAI n'a pas encore de clé API configurée. Veuillez ajouter votre clé OpenAI dans votre Tableau de Bord StudyCloud (Onglet Robot Rouge - Studio IA).");
+      }
       return makeHandle({
         model: {
           id: config.model,
