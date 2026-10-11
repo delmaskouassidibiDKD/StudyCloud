@@ -41,11 +41,55 @@ const VOLATILE_PURGEABLE_KEYS = [
  */
 export function purgeVolatileStorage(): void {
   if (typeof window === 'undefined' || !window.localStorage) return;
-  VOLATILE_PURGEABLE_KEYS.forEach(key => {
-    try {
-      localStorage.removeItem(key);
-    } catch {}
-  });
+  try {
+    // 1. Suppression des clés volatiles identifiées
+    VOLATILE_PURGEABLE_KEYS.forEach(key => {
+      try { localStorage.removeItem(key); } catch {}
+    });
+
+    // 2. Scan dynamique de toutes les clés pour détecter les données volumineuses ou orphelines
+    const keysToRemove: string[] = [];
+    const convMsgKeys: Array<{ key: string; len: number }> = [];
+
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+
+      if (k.startsWith('studycloud_conv_msgs_')) {
+        const val = localStorage.getItem(k);
+        convMsgKeys.push({ key: k, len: val ? val.length : 0 });
+      } else if (k.startsWith('sc_fallback_') || k.startsWith('unifolder_cache_') || k.startsWith('pdfjs_')) {
+        keysToRemove.push(k);
+      } else if (k !== 'unifolder_user_id' && k !== 'studycloud_user_id' && k !== 'studycloud_auth_token') {
+        try {
+          const val = localStorage.getItem(k);
+          if (val && (val.includes('data:image') || val.includes('data:application/pdf') || val.length > 200000)) {
+            keysToRemove.push(k);
+          }
+        } catch {}
+      }
+    }
+
+    keysToRemove.forEach(k => {
+      try { localStorage.removeItem(k); } catch {}
+    });
+
+    // Réduire les caches de conversations chat en ne conservant que les 3 plus récentes
+    if (convMsgKeys.length > 3) {
+      convMsgKeys.sort((a, b) => b.len - a.len); // Supprimer les plus lourdes d'abord
+      convMsgKeys.slice(0, convMsgKeys.length - 3).forEach(item => {
+        try { localStorage.removeItem(item.key); } catch {}
+      });
+    }
+
+    // Réduire active_preview_item si trop lourd
+    const preview = localStorage.getItem('studycloud_active_preview_item');
+    if (preview && preview.length > 25000) {
+      localStorage.removeItem('studycloud_active_preview_item');
+    }
+  } catch (err) {
+    console.warn('[safeStorage] Erreur durant purge:', err);
+  }
 }
 
 /**
@@ -152,3 +196,38 @@ export function safeLocalStorageRemove(key: string): void {
     localStorage.removeItem(key);
   } catch {}
 }
+
+/**
+ * Enregistrement sécurisé d'une chaîne brute avec auto-purge en cas de quota plein
+ */
+export function safeSetItem(key: string, value: string): boolean {
+  if (typeof window === 'undefined' || !window.localStorage) return false;
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (firstErr: any) {
+    console.warn(`[safeStorage] Quota de stockage atteint sur '${key}'. Purge de sécurité...`, firstErr?.message);
+    purgeVolatileStorage();
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch (_secondErr) {
+      console.warn(`[safeStorage] Échec persistant pour '${key}' (Stockage plein). Continuation sans interruption.`);
+      return false;
+    }
+  }
+}
+
+/**
+ * Lecture sécurisée d'une chaîne brute sans risque de crash
+ */
+export function safeGetItem(key: string, fallback: string = ''): string {
+  if (typeof window === 'undefined' || !window.localStorage) return fallback;
+  try {
+    const val = localStorage.getItem(key);
+    return val !== null && val !== undefined ? val : fallback;
+  } catch {
+    return fallback;
+  }
+}
+

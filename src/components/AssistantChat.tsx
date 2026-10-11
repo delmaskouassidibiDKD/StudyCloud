@@ -5,6 +5,7 @@ import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
 import { MathText } from './MathText';
 import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey, safeJsonParse } from '../services/api';
+import { safeSetItem, safeGetItem, safeLocalStorageRemove } from '../utils/safeStorage';
 import { extractDocumentText } from '../services/documentTextExtractor';
 import { parseOrBuildAiCreation } from '../services/aiCreationGenerator';
 import { AiCreation, AiCreationType, ModuleId } from './ai-creations/types';
@@ -254,12 +255,12 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const resolvedActiveName = resolvedActiveItem?.name || resolvedActiveItem?.title || resolvedActiveItem?.fileName;
 
   const currentUserId = typeof window !== 'undefined'
-    ? (localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id') || 'default-user')
+    ? (safeGetItem('unifolder_user_id') || safeGetItem('studycloud_user_id') || 'default-user')
     : 'default-user';
 
   // Session courante (Style Gemini)
   const [currentConversationId, setCurrentConversationId] = useState<string>(() => {
-    const saved = localStorage.getItem('studycloud_current_conversation_id');
+    const saved = safeGetItem('studycloud_current_conversation_id');
     if (saved && !saved.startsWith('creation-')) return saved;
     return 'conv-' + Date.now();
   });
@@ -294,14 +295,14 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   ]);
 
   const [selectedModel, setSelectedModel] = useState<string>(() => {
-    return localStorage.getItem('studycloud_selected_ai_model') || '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+    return safeGetItem('studycloud_selected_ai_model', '@cf/meta/llama-3.3-70b-instruct-fp8-fast');
   });
 
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    localStorage.setItem('studycloud_selected_ai_model', selectedModel);
+    safeSetItem('studycloud_selected_ai_model', selectedModel);
   }, [selectedModel]);
 
   // Fermer le dropdown des modèles au clic en dehors
@@ -375,7 +376,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   // Sauvegarde ID de session courante (uniquement si ce n'est pas une création directe)
   useEffect(() => {
     if (!currentConversationId.startsWith('creation-')) {
-      localStorage.setItem('studycloud_current_conversation_id', currentConversationId);
+      safeSetItem('studycloud_current_conversation_id', currentConversationId);
     }
   }, [currentConversationId]);
 
@@ -552,7 +553,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     try {
       await StudyCloudAPI.deleteAiConversation(convId);
       setConversations(prev => prev.filter(c => c.id !== convId));
-      localStorage.removeItem(`studycloud_conv_msgs_${convId}`);
+      safeLocalStorageRemove(`studycloud_conv_msgs_${convId}`);
       if (currentConversationId === convId) {
         handleStartNewConversation();
       }
@@ -906,7 +907,7 @@ RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
 
       // Sauvegarde locale du fil de discussion
       try {
-        localStorage.setItem(`studycloud_conv_msgs_${currentConversationId}`, JSON.stringify([...updatedMessages, { ...initialAiMsg, text: fullResponseText, isStreaming: false, model: effectiveModelName }]));
+        safeSetItem(`studycloud_conv_msgs_${currentConversationId}`, JSON.stringify([...updatedMessages, { ...initialAiMsg, text: fullResponseText, isStreaming: false, model: effectiveModelName }]));
       } catch {}
 
       // 8. Animation machine à écrire

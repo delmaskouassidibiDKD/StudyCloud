@@ -5,6 +5,8 @@ import './index.css';
 import 'katex/dist/katex.min.css';
 import { AuthProvider } from './context/AuthContext';
 
+import { purgeVolatileStorage } from './utils/safeStorage';
+
 class ErrorBoundary extends React.Component {
   props!: { children?: React.ReactNode };
   state = { hasError: false, error: null };
@@ -13,6 +15,12 @@ class ErrorBoundary extends React.Component {
   }
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("ErrorBoundary caught an error", error, errorInfo);
+    // Purge de secours immédiate si l'erreur vient d'un quota de stockage
+    if (error?.message?.toLowerCase().includes('quota') || error?.message?.toLowerCase().includes('storage')) {
+      try {
+        purgeVolatileStorage();
+      } catch {}
+    }
   }
   render() {
     if (this.state.hasError) {
@@ -30,6 +38,7 @@ class ErrorBoundary extends React.Component {
               <button
                 onClick={() => {
                   try {
+                    purgeVolatileStorage();
                     const heavyKeys = ['unifolder_shares', 'published_selected_files', 'unifolder_uploaded_items'];
                     heavyKeys.forEach((k) => {
                       const val = localStorage.getItem(k);
@@ -46,7 +55,10 @@ class ErrorBoundary extends React.Component {
               </button>
               <button
                 onClick={() => {
-                  localStorage.clear();
+                  try {
+                    purgeVolatileStorage();
+                    localStorage.clear();
+                  } catch {}
                   window.location.reload();
                 }}
                 className="w-full py-2.5 bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 font-bold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer"
