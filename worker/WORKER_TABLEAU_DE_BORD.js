@@ -4996,12 +4996,12 @@ function renderDashboardHtml(data) {
               id="robot-default-model" 
               class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition cursor-pointer"
             >
-              <option value="@cf/meta/llama-3.3-70b-instruct" ${rc.default_model === '@cf/meta/llama-3.3-70b-instruct' ? 'selected' : ''}>🚀 Cloudflare Workers AI - Llama 3.3 70B Instruct (Recommandé • Gratuit & Rapide)</option>
-              <option value="gemini-3.8-flash" ${rc.default_model === 'gemini-3.8-flash' || rc.default_model === 'gemini-2.0-flash' ? 'selected' : ''}>⚡ Google Gemini 3.8 Flash (Ultra-rapide • Officiel Google)</option>
+              <option value="gemini-3.8-flash" ${rc.default_model === 'gemini-3.8-flash' || rc.default_model === 'gemini-2.0-flash' || !rc.default_model || rc.default_model === '@cf/meta/llama-3.3-70b-instruct' ? 'selected' : ''}>⚡ Google Gemini 3.8 Flash (Recommandé • Ultra-rapide & Fiable)</option>
+              <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast" ${rc.default_model === '@cf/meta/llama-3.3-70b-instruct-fp8-fast' ? 'selected' : ''}>🚀 Cloudflare Workers AI - Llama 3.3 70B Instruct Fast</option>
               <option value="claude-3-5-sonnet-20241022" ${rc.default_model === 'claude-3-5-sonnet-20241022' ? 'selected' : ''}>🧠 Anthropic Claude 3.5 Sonnet (Raisonnement avancé & Code)</option>
               <option value="gpt-4o" ${rc.default_model === 'gpt-4o' ? 'selected' : ''}>💎 OpenAI GPT-4o (Référence mondiale)</option>
               <option value="gpt-4o-mini" ${rc.default_model === 'gpt-4o-mini' ? 'selected' : ''}>✨ OpenAI GPT-4o Mini (Économique & Réactif)</option>
-              <option value="@cf/mistral/mistral-7b-instruct-v0.1" ${rc.default_model === '@cf/mistral/mistral-7b-instruct-v0.1' ? 'selected' : ''}>🔬 Mistral 7B Instruct (Léger & Direct)</option>
+              <option value="@cf/moonshotai/kimi-k2.7-code" ${rc.default_model === '@cf/moonshotai/kimi-k2.7-code' ? 'selected' : ''}>🔬 Kimi K2.7 Code (Workers AI)</option>
             </select>
             <p class="text-[10px] text-slate-400">Ce modèle sera utilisé automatiquement dès qu'un étudiant utilise le Robot Rouge.</p>
           </div>
@@ -5013,10 +5013,10 @@ function renderDashboardHtml(data) {
               id="robot-fallback-model" 
               class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition cursor-pointer"
             >
-              <option value="gemini-3.8-flash" ${rc.fallback_model === 'gemini-3.8-flash' || rc.fallback_model === 'gemini-2.0-flash' ? 'selected' : ''}>⚡ Google Gemini 3.8 Flash (Haut quota & zéro coupure)</option>
-              <option value="@cf/meta/llama-3.3-70b-instruct" ${rc.fallback_model === '@cf/meta/llama-3.3-70b-instruct' ? 'selected' : ''}>🚀 Cloudflare Workers AI - Llama 3.3 70B</option>
+              <option value="gemini-3.8-flash" ${rc.fallback_model === 'gemini-3.8-flash' || rc.fallback_model === 'gemini-2.0-flash' || !rc.fallback_model ? 'selected' : ''}>⚡ Google Gemini 3.8 Flash (Haut quota & zéro coupure)</option>
+              <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast" ${rc.fallback_model === '@cf/meta/llama-3.3-70b-instruct-fp8-fast' || rc.fallback_model === '@cf/meta/llama-3.3-70b-instruct' ? 'selected' : ''}>🚀 Cloudflare Workers AI - Llama 3.3 70B Fast</option>
               <option value="gpt-4o-mini" ${rc.fallback_model === 'gpt-4o-mini' ? 'selected' : ''}>✨ OpenAI GPT-4o Mini</option>
-              <option value="@cf/mistral/mistral-7b-instruct-v0.1" ${rc.fallback_model === '@cf/mistral/mistral-7b-instruct-v0.1' ? 'selected' : ''}>🔬 Mistral 7B Instruct</option>
+              <option value="@cf/moonshotai/kimi-k2.7-code" ${rc.fallback_model === '@cf/moonshotai/kimi-k2.7-code' ? 'selected' : ''}>🔬 Kimi K2.7 Code (Workers AI)</option>
             </select>
             <p class="text-[10px] text-slate-400">Si le fournisseur principal est temporairement indisponible, le Robot bascule instantanément sur ce secours.</p>
           </div>
@@ -12472,7 +12472,7 @@ function renderDashboardHtml(data) {
 
       try {
         const payload = {
-          default_model: document.getElementById('robot-default-model')?.value || '@cf/meta/llama-3.3-70b-instruct',
+          default_model: document.getElementById('robot-default-model')?.value || 'gemini-3.8-flash',
           fallback_model: document.getElementById('robot-fallback-model')?.value || 'gemini-3.8-flash',
           edge_router_url: document.getElementById('robot-edge-url')?.value || 'https://router.delmaskouassidibi.workers.dev',
           is_maintenance: document.getElementById('robot-is-maintenance')?.checked ? 1 : 0,

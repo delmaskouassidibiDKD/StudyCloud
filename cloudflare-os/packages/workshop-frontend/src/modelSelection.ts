@@ -8,10 +8,18 @@ export const NO_AGENT_OPTION_VALUE = "__gadgets_no_agent__";
 export function getStoredSelectedModel(
   models: AiChatAuthorInfo[],
 ): string | null {
-  const storedModel = localStorage.getItem(LAST_SELECTED_MODEL_KEY);
+  let storedModel = localStorage.getItem(LAST_SELECTED_MODEL_KEY);
 
   if (storedModel === NO_AGENT_OPTION_VALUE) {
     return null;
+  }
+
+  if (storedModel === "@cf/meta/llama-3.3-70b-instruct") {
+    storedModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+  } else if (storedModel === "gemini-2.0-flash" || storedModel === "gemini-2.5-flash") {
+    storedModel = "gemini-3.8-flash";
+  } else if (storedModel && storedModel.includes("claude-3-5")) {
+    storedModel = "claude-sonnet-4-5";
   }
 
   if (storedModel && models.some((model) => model.id === storedModel)) {
