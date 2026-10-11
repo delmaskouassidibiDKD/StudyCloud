@@ -48,6 +48,8 @@ export function HomePageContent({ prompt }: HomeSearch) {
 
   const [models, setModels] = useState<AiChatAuthorInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [isMaintenance, setIsMaintenance] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState("");
   // Bumped each time a task suggestion is picked; the composer re-seeds its text off the nonce.
   const [seed, setSeed] = useState<{ text: string; nonce: number } | null>(null);
 
@@ -59,20 +61,86 @@ export function HomePageContent({ prompt }: HomeSearch) {
 
   useEffect(() => {
     let cancelled = false;
-    authenticatedApi.listModels()
-      .then((list) => {
-        if (cancelled) return;
-        setModels(list);
-        setSelectedModel(getStoredSelectedModel(list));
-      })
-      .catch((err) => {
-        logRpcFailure("Failed to fetch models:", err);
-        // Toast unless it's a connection error (reconnect refetches); a do-reset here already
-        // survived the Worker's same-colo retry, so the user should hear about it.
-        if (classifyRpcError(err) !== "connection") {
-          toasts.add({ title: "Impossible de charger les modèles IA", variant: "error" });
+
+    async function loadModelsAndConfig() {
+      let finalModels: AiChatAuthorInfo[] = [];
+      let defaultModelId: string | null = null;
+
+      try {
+        // 1. Interroger le Tableau de Bord StudyCloud
+        const res = await fetch("https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev/api/public/robot-rouge-config")
+          .catch(() => null);
+
+        if (res && res.ok) {
+          const data: any = await res.json().catch(() => null);
+          if (data && data.success) {
+            const cfg = data.config || {};
+            const inMaint = cfg.is_maintenance === 1 || cfg.is_maintenance === true || cfg.status === "maintenance";
+            if (!cancelled) {
+              setIsMaintenance(inMaint);
+              if (inMaint) {
+                setMaintenanceMessage(cfg.system_instructions ? "Le Studio IA est actuellement en maintenance pour optimisation." : "Service temporairement en maintenance.");
+              }
+            }
+
+            if (Array.isArray(data.models) && data.models.length > 0) {
+              finalModels = data.models.map((m: any) => ({
+                id: m.id || m.model_id,
+                name: m.name || m.id,
+                type: "agent" as const,
+              }));
+            }
+            if (cfg.default_model) {
+              defaultModelId = cfg.default_model;
+            }
+          }
         }
-      });
+      } catch (e) {
+        // Ignorer l'erreur réseau distante
+      }
+
+      // 2. Si pas de modèles distants, interroger le backend RPC
+      if (finalModels.length === 0) {
+        try {
+          const backendList = await authenticatedApi.listModels();
+          if (backendList && backendList.length > 0) {
+            finalModels = backendList;
+          }
+        } catch (err) {
+          logRpcFailure("Failed to fetch backend models:", err);
+        }
+      }
+
+      // 3. Catalogue de secours officiel (garantit qu'aucun étudiant ne voit jamais 'No agent' par erreur)
+      if (finalModels.length === 0) {
+        finalModels = [
+          { id: "@cf/meta/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct (Workers AI)", type: "agent" },
+          { id: "gemini-2.0-flash", name: "Google Gemini 2.0 Flash", type: "agent" },
+          { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet (Anthropic)", type: "agent" },
+          { id: "gpt-4o-mini", name: "OpenAI GPT-4o Mini", type: "agent" },
+          { id: "@cf/moonshotai/kimi-k2.7-code", name: "Kimi K2.7 Code (Workers AI)", type: "agent" },
+          { id: "@cf/deepseek-ai/deepseek-v4-pro-0813", name: "DeepSeek V4 Pro (Workers AI)", type: "agent" },
+        ];
+      }
+
+      if (cancelled) return;
+
+      setModels(finalModels);
+
+      // Déterminer le modèle sélectionné
+      if (defaultModelId && finalModels.some(m => m.id === defaultModelId)) {
+        setSelectedModel(defaultModelId);
+        persistSelectedModel(defaultModelId);
+      } else {
+        const stored = getStoredSelectedModel(finalModels);
+        const chosen = stored || finalModels[0]?.id || null;
+        setSelectedModel(chosen);
+        if (chosen) persistSelectedModel(chosen);
+      }
+    }
+
+    loadModelsAndConfig();
+
     return () => {
       cancelled = true;
     };
@@ -109,6 +177,14 @@ export function HomePageContent({ prompt }: HomeSearch) {
       attachments?: ChatAttachmentHandle[],
       formats?: MessageFormatRef[],
     ) => {
+      if (isMaintenance) {
+        toasts.add({ 
+          title: "Service en maintenance", 
+          description: maintenanceMessage || "Le Studio IA est temporairement en maintenance par l'administrateur.",
+          variant: "warning" 
+        });
+        return;
+      }
       try {
         ensureProvisionalGadget();
         const overseer = provisionalOverseerRef.current!.stub;
@@ -183,6 +259,19 @@ export function HomePageContent({ prompt }: HomeSearch) {
             Posez une question, générez un document ou créez une application connectée à vos outils et données.
           </p>
         </header>
+
+        {/* Bannière Maintenance Pilotée depuis le Tableau de Bord */}
+        {isMaintenance && (
+          <div className="w-full rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 p-4 text-amber-200 flex items-center gap-3.5 backdrop-blur-sm animate-pulse">
+            <span className="text-2xl">🛠️</span>
+            <div>
+              <h3 className="font-bold text-amber-300 text-sm">Mode Maintenance Actif</h3>
+              <p className="text-xs text-amber-200/80 mt-0.5">
+                {maintenanceMessage || "Le Studio IA Robot Rouge est temporairement en maintenance pour optimisation par l'administrateur."}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Composer */}
         <ChatComposer

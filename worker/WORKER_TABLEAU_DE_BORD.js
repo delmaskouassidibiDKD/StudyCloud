@@ -14790,7 +14790,17 @@ export default {
           edge_router_url: cfg.edge_router_url
         } : cfg;
 
-        return new Response(JSON.stringify({ success: true, config: resConfig }), {
+        let modelsList = [];
+        try {
+          const mRes = await db.prepare("SELECT * FROM robot_rouge_models WHERE is_active = 1 ORDER BY is_default DESC, created_at ASC").all();
+          modelsList = (mRes && mRes.results) ? mRes.results : [];
+        } catch (e) {}
+
+        return new Response(JSON.stringify({ 
+          success: true, 
+          config: resConfig,
+          models: modelsList 
+        }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         });

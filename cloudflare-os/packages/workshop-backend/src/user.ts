@@ -501,7 +501,32 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
   }
 
   async listModels(): Promise<AiChatAuthorInfo[]> {
-    return this.#listModels(await getGatewayModels(this.env));
+    let gateway = await getGatewayModels(this.env);
+    let result = this.#listModels(gateway);
+    if (result.length > 0) return result;
+
+    try {
+      const res = await fetch("https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev/api/public/robot-rouge-config");
+      if (res.ok) {
+        const data: any = await res.json();
+        if (data && data.success && Array.isArray(data.models) && data.models.length > 0) {
+          return data.models.map((m: any) => ({
+            id: m.id || m.model_id,
+            name: m.name || m.id,
+            type: "agent" as const,
+          }));
+        }
+      }
+    } catch (e) {}
+
+    return [
+      { id: "@cf/meta/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct (Workers AI)", type: "agent" },
+      { id: "gemini-2.0-flash", name: "Google Gemini 2.0 Flash", type: "agent" },
+      { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet (Anthropic)", type: "agent" },
+      { id: "gpt-4o-mini", name: "OpenAI GPT-4o Mini", type: "agent" },
+      { id: "@cf/moonshotai/kimi-k2.7-code", name: "Kimi K2.7 Code (Workers AI)", type: "agent" },
+      { id: "@cf/deepseek-ai/deepseek-v4-pro-0813", name: "DeepSeek V4 Pro (Workers AI)", type: "agent" }
+    ];
   }
 
   #listModels(models: GatewayModels | null): AiChatAuthorInfo[] {
@@ -767,7 +792,18 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
    */
   #resolveModel(id: string, models: GatewayModels | null): UserAiModelRecord | undefined {
     if (models?.get(id)) return models.resolve(id);
-    return models && !models.userModels ? undefined : this.storage.aiModels.get(id);
+    let stored = models && !models.userModels ? undefined : this.storage.aiModels.get(id);
+    if (stored) return stored;
+
+    let provider: AiModelProvider = "cloudflare";
+    if (id.includes("gemini") || id.includes("google")) provider = "google";
+    else if (id.includes("claude") || id.includes("anthropic")) provider = "anthropic";
+    else if (id.includes("gpt") || id.includes("openai")) provider = "openai";
+
+    return {
+      profile: { id, name: id, type: "agent" },
+      config: { provider, model: id, apiToken: "" }
+    };
   }
 
   async listGadgets(): Promise<GadgetMetadataWithTimestamps[]> {
