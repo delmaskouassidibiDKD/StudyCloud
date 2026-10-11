@@ -432,10 +432,12 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
         const loaded: Message[] = res.data.map((row: any) => {
           let attachedFileName = undefined;
+          let modelName = undefined;
           if (row.metadata) {
             try {
               const meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
               attachedFileName = meta?.attachedFileName;
+              modelName = meta?.model;
             } catch {}
           }
           return {
@@ -443,6 +445,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             text: row.content,
             sender: row.role === 'user' ? 'user' : 'ai',
             attachedFileName,
+            model: modelName || row.model,
             createdAt: row.created_at,
           };
         });
@@ -886,6 +889,8 @@ RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
         fullResponseText = cleaned || "✨ Votre demande a été traitée avec succès.";
       }
 
+      const effectiveModelName = aiResult.model || currentModelDisplay;
+
       // 7. Initialisation du message IA avec écriture fluide
       const aiMsgId = (Date.now() + 1).toString();
       const initialAiMsg: Message = {
@@ -894,14 +899,14 @@ RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
         sender: 'ai',
         isStreaming: true,
         attachedFileName: attachedFileName || undefined,
-        model: aiResult.model,
+        model: effectiveModelName,
         isPowerMode: false,
       };
       setMessages(prev => [...prev, initialAiMsg]);
 
       // Sauvegarde locale du fil de discussion
       try {
-        localStorage.setItem(`studycloud_conv_msgs_${currentConversationId}`, JSON.stringify([...updatedMessages, { ...initialAiMsg, text: fullResponseText, isStreaming: false }]));
+        localStorage.setItem(`studycloud_conv_msgs_${currentConversationId}`, JSON.stringify([...updatedMessages, { ...initialAiMsg, text: fullResponseText, isStreaming: false, model: effectiveModelName }]));
       } catch {}
 
       // 8. Animation machine à écrire
@@ -917,7 +922,7 @@ RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
           if (typingTimerRef.current) clearInterval(typingTimerRef.current);
           setMessages(prev =>
             prev.map(m =>
-              m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false } : m
+              m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName } : m
             )
           );
           setIsTyping(false);
@@ -925,7 +930,7 @@ RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
           const partial = fullResponseText.slice(0, index);
           setMessages(prev =>
             prev.map(m =>
-              m.id === aiMsgId ? { ...m, text: partial } : m
+              m.id === aiMsgId ? { ...m, text: partial, model: effectiveModelName } : m
             )
           );
         }
@@ -1226,6 +1231,15 @@ RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
                     <div className="flex items-center gap-2">
                       <DnaLogo className="w-5 h-5 drop-shadow-[0_0_2px_rgba(0,0,0,1)] text-orange-500" glow={true} />
                       <span className="text-xs font-bold text-orange-500/90 tracking-wide uppercase">Assistant StudyCloud</span>
+                      {(msg.model || currentModelDisplay) && (
+                        <span 
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800/95 border border-zinc-700 text-[10px] font-bold text-orange-400 shadow-xs"
+                          title={`Modèle ayant généré cette réponse : ${msg.model || currentModelDisplay}`}
+                        >
+                          <Sparkles className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+                          <span>{msg.model || currentModelDisplay}</span>
+                        </span>
+                      )}
                       {msg.isPowerMode && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700 text-[10px] font-bold text-zinc-300 shadow-xs">
                           <Zap className="w-3 h-3 text-amber-400" />

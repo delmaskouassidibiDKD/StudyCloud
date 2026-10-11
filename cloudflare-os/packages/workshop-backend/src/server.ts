@@ -941,9 +941,10 @@ RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
         }
 
         const friendlyNameMap: Record<string, string> = {
-          "@cf/moonshotai/kimi-k2.7-code": "Kimi K2.7 Code (Workers AI)",
-          "@cf/zai-org/glm-5.3-flash": "GLM 5.3 Flash (Workers AI)",
-          "@cf/deepseek-ai/deepseek-v4-pro-0813": "DeepSeek V4 Pro 0813 (Workers AI)",
+          "@cf/moonshotai/kimi-k2.7-code": "Kimi K2.7 Code",
+          "@cf/zai-org/glm-5.3-flash": "GLM 5.3 Flash",
+          "@cf/deepseek-ai/deepseek-v4-pro-0813": "DeepSeek V4 Pro",
+          "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b": "DeepSeek R1 32B",
           "@cf/meta/llama-3.3-70b-instruct-fp8-fast": "Llama 3.3 70B (Fast)",
           "@cf/meta/llama-3.3-70b-instruct": "Llama 3.3 70B (Fast)",
           "gemini-3.8-flash": "Google Gemini 3.8 Flash",
@@ -1038,7 +1039,35 @@ RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
           }
         }
 
-        // 3. Modèles OpenAI demandés (avec clé API OpenAI)
+        // 3. Modèles Anthropic Claude demandés (avec clé API sk-ant-)
+        if (!answerText && (targetModel.includes("claude") || targetModel.includes("anthropic")) && rawApiKey.startsWith("sk-ant-")) {
+          try {
+            const antMessages = simpleMessages.map(m => ({ role: m.role, content: m.content }));
+            const antRes = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: {
+                "x-api-key": rawApiKey,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: targetModel.includes("3-5") ? "claude-3-5-sonnet-20241022" : "claude-3-5-haiku-20241022",
+                max_tokens: 4096,
+                system: systemPrompt,
+                messages: antMessages,
+              }),
+            });
+            if (antRes.ok) {
+              const antData: any = await antRes.json();
+              answerText = antData?.content?.[0]?.text || "";
+              effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
+            }
+          } catch (antErr) {
+            logger.warn("Anthropic call exception, falling back", { error: antErr });
+          }
+        }
+
+        // 4. Modèles OpenAI demandés (avec clé API OpenAI)
         if (!answerText && (targetModel.includes("gpt") || targetModel.includes("openai")) && rawApiKey.startsWith("sk-")) {
           try {
             const oaiMessages: any[] = [];
@@ -1067,7 +1096,7 @@ RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
           }
         }
 
-        // 4. Secours automatique universel sur Cloudflare Workers AI (Llama 3.3 70B Fast)
+        // 5. Secours automatique universel sur Cloudflare Workers AI (Llama 3.3 70B Fast)
         if (!answerText) {
           try {
             const cfMessages: any[] = [];
@@ -1091,7 +1120,9 @@ RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
               const cfData: any = await cfRes.json();
               const msg = cfData?.choices?.[0]?.message;
               answerText = msg?.content || msg?.reasoning_content || "";
-              effectiveModelUsed = targetModel.startsWith("@cf/") ? (friendlyNameMap[targetModel] || targetModel) : "Llama 3.3 70B (Cloudflare Workers AI)";
+              effectiveModelUsed = targetModel.startsWith("@cf/")
+                ? (friendlyNameMap[targetModel] || targetModel)
+                : `${friendlyNameMap[targetModel] || targetModel} (Secours Llama 3.3)`;
             } else {
               const cfErrTxt = await cfRes.text();
               logger.error("Cloudflare Workers AI returned error", { status: cfRes.status, err: cfErrTxt });
