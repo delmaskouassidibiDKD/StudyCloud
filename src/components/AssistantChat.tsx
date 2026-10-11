@@ -831,9 +831,15 @@ RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
    - Encadre systématiquement le résultat final de chaque question avec \\boxed{...} dans un bloc centré $$ \\boxed{...} $$.
    - Souligne les concepts essentiels avec **gras** ou \\underline{...}.
 
-3. RÉPONSE INTÉGRALE JUSQU'AU BOUT (ZÉRO COUPURE) :
-   - Tu dois MENER TA DÉMONSTRATION JUSQU'AU BOUT ET NE JAMAIS T'ARRÊTER AU MILIEU.
-   - Conclus chaque question ou calcul de manière définitive avec la formule finale encadrée.
+3. GESTION DES EXERCICES LONGS ET DÉCOUPAGE PÉDAGOGIQUE INTELLIGENT (ZÉRO COUPURE BRUTALE) :
+   - Tu dois TOUT FAIRE et résoudre le sujet avec une rigueur absolue.
+   - SI L'EXERCICE OU LA DÉMONSTRATION EST PARTICULIÈREMENT LONGUE OU DENSE (plusieurs questions successives, gros calculs) :
+     * Résous méthodiquement les étapes ou questions en cours jusqu'au bout, avec leurs résultats intermédiaires encadrés dans \\boxed{...}.
+     * NE TE COUPE JAMAIS EN PLEIN MILIEU d'une équation ou d'une phrase !
+     * Si une étape/question importante est achevée et que la suite risque d'être trop lourde ou volumineuse pour un seul message, ARRÊTE-TOI AU BON MOMENT à la fin de cette étape propre.
+     * Demande alors clairement à l'étudiant : "Voulez-vous que je poursuive avec la question suivante / la suite de la démonstration ?"
+   - SI L'ÉTUDIANT RÉPOND "OUI", "CONTINUE", OU DEMANDE LA SUITE :
+     * Enchaîne IMMÉDIATEMENT avec la suite exacte (les questions suivantes ou la seconde partie de la démonstration), sans répéter ce qui a déjà été expliqué.
 - DANS LES CRÉATIONS (Questionnaires, QCM, Cartes, Exercices) : Toute formule dans l'énoncé et dans CHAQUE option de réponse DOIT impérativement être entourée de dollars, par exemple : "$T(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$".`;
 
       if (docNames.length > 0) {
@@ -1351,6 +1357,24 @@ RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
                   <div className="text-[13px] sm:text-sm leading-relaxed font-medium text-zinc-200 pl-1">
                     <ChatMessageText text={msg.text} isUser={false} isStreaming={msg.isStreaming} />
                   </div>
+
+                  {!msg.isStreaming && msg.text && (() => {
+                    const isLastAssistant = msg.id === messages[messages.length - 1]?.id;
+                    const offersContinuation = isLastAssistant && /(voulez-vous|souhaitez-vous|veux-tu|on continue|continuer\s*\?|la suite\s*\?|je poursuis|dois-je continuer|on passe à la suite|continuer\s*:\s*oui)/i.test(msg.text);
+                    return offersContinuation ? (
+                      <div className="mt-3.5 mb-1 pl-1 flex items-center gap-2 flex-wrap animate-fadeIn">
+                        <button
+                          type="button"
+                          onClick={() => sendMessage("Oui, continue s'il te plaît avec la suite détaillée !")}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs sm:text-sm font-bold shadow-md shadow-orange-500/25 active:scale-95 transition-all cursor-pointer border border-orange-400/40 group"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-yellow-200 animate-pulse" />
+                          <span>Oui, continuer la suite</span>
+                          <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                        </button>
+                      </div>
+                    ) : null;
+                  })()}
 
                   {!msg.isStreaming && msg.text && (
                     <div className="flex items-center mt-3 pl-1">

@@ -949,9 +949,15 @@ RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
    - Encadre systématiquement le résultat final de chaque question avec \\boxed{...} dans un bloc centré $$ \\boxed{...} $$.
    - Souligne les concepts essentiels avec \\underline{...} ou du gras **...**.
 
-3. RÉPONSE INTÉGRALE JUSQU'AU BOUT (ZÉRO COUPURE) :
-   - Tu dois MENER TA DÉMONSTRATION JUSQU'AU BOUT ET NE JAMAIS T'ARRÊTER AU MILIEU.
-   - Conclus chaque question ou calcul de manière définitive avec la formule finale encadrée.
+3. GESTION DES EXERCICES LONGS ET DÉCOUPAGE PÉDAGOGIQUE INTELLIGENT (ZÉRO COUPURE BRUTALE) :
+   - Tu dois TOUT FAIRE et résoudre le sujet avec une rigueur absolue.
+   - SI L'EXERCICE OU LA DÉMONSTRATION EST PARTICULIÈREMENT LONGUE OU DENSE (plusieurs questions successives, gros calculs) :
+     * Résous méthodiquement les étapes ou questions en cours jusqu'au bout, avec leurs résultats intermédiaires encadrés dans \\boxed{...}.
+     * NE TE COUPE JAMAIS EN PLEIN MILIEU d'une équation ou d'une phrase !
+     * Si une étape/question importante est achevée et que la suite risque d'être trop lourde ou volumineuse pour un seul message, ARRÊTE-TOI AU BON MOMENT à la fin de cette étape propre.
+     * Demande alors clairement à l'étudiant : "Voulez-vous que je poursuive avec la question suivante / la suite de la démonstration ?"
+   - SI L'ÉTUDIANT RÉPOND "OUI", "CONTINUE", OU DEMANDE LA SUITE :
+     * Enchaîne IMMÉDIATEMENT avec la suite exacte (les questions suivantes ou la seconde partie de la démonstration), sans répéter ce qui a déjà été expliqué.
 - DANS LES CRÉATIONS (Questionnaires, QCM, Cartes, Exercices) : Toute formule dans l'énoncé et dans CHAQUE option de réponse DOIT impérativement être entourée de dollars, par exemple : "$T(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$".`;
 
         if (docContent) {
