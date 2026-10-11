@@ -778,15 +778,19 @@ function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelH
         sessionAffinity,
       });
     }
-    case "google":
+    case "google": {
       if (!config.apiToken) {
         throw new Error(
             "Ce modèle Google Gemini n'a pas encore de clé API configurée. Veuillez ajouter votre clé API Gemini dans votre Tableau de Bord StudyCloud (Onglet Robot Rouge - Studio IA).");
       }
+      let targetModel = config.model;
+      if (targetModel === "gemini-2.0-flash" || targetModel === "gemini-2.5-flash" || targetModel === "gemini-2.0-flash-exp") {
+        targetModel = "gemini-3.8-flash";
+      }
       return makeHandle({
         model: {
-          id: config.model,
-          name: catalog?.name ?? config.model,
+          id: targetModel,
+          name: catalog?.name ?? targetModel,
           api: "google-generative-ai",
           provider: "google",
           baseUrl: config.apiUrl ?? "https://generativelanguage.googleapis.com/v1beta",
@@ -796,12 +800,11 @@ function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelH
           ...window,
           thinkingLevelMap: catalog?.thinkingLevelMap,
         },
-        // Not directAuth: pi's Google API requires a key, and @google/genai adds `x-goog-api-key`
-        // with no way to suppress it (an extra header of that name replaces it, though).
         apiKey: config.apiToken,
         headers: config.extraHeaders,
         sessionAffinity,
       });
+    }
     case "ollama":
       // `apiUrl` is the Ollama server base; its OpenAI-compat endpoint lives under /v1. Accept
       // (and strip) a trailing `/api` or `/v1` path: configs saved before the pi migration store

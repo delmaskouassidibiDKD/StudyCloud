@@ -314,13 +314,20 @@ async function ensureStorageTables(db) {
           db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
             VALUES ('@cf/deepseek-ai/deepseek-v4-pro-0813', 'cloudflare', 'DeepSeek V4 Pro 0813 (Workers AI)', '@cf/deepseek-ai/deepseek-v4-pro-0813', 0, 1, 1048576)`),
           db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
-            VALUES ('gemini-2.0-flash', 'google', 'Google Gemini 2.0 Flash', 'gemini-2.0-flash', 0, 1, 1048576)`),
+            VALUES ('gemini-3.8-flash', 'google', 'Google Gemini 3.8 Flash', 'gemini-3.8-flash', 0, 1, 1048576)`),
+          db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
+            VALUES ('gemini-2.0-flash', 'google', 'Google Gemini 3.8 Flash (Auto-migré)', 'gemini-3.8-flash', 0, 1, 1048576)`),
           db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
             VALUES ('claude-3-5-sonnet-20241022', 'anthropic', 'Claude 3.5 Sonnet', 'claude-3-5-sonnet-20241022', 0, 1, 200000)`),
           db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
             VALUES ('gpt-4o-mini', 'openai', 'OpenAI GPT-4o Mini', 'gpt-4o-mini', 0, 1, 128000)`)
         ]).catch(() => {});
       }
+      try {
+        await db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
+          VALUES ('gemini-3.8-flash', 'google', 'Google Gemini 3.8 Flash', 'gemini-3.8-flash', 0, 1, 1048576)`).run();
+        await db.prepare(`UPDATE robot_rouge_models SET api_token = (SELECT api_token FROM robot_rouge_models WHERE id = 'gemini-2.0-flash') WHERE id = 'gemini-3.8-flash' AND (api_token IS NULL OR api_token = '')`).run();
+      } catch (eG38) {}
     } catch (eInitModels) {}
 
     // 1. Colonnes indispensables sur 'users' (garantit qu'aucun SELECT ne plantera)
@@ -4984,7 +4991,7 @@ function renderDashboardHtml(data) {
               class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition cursor-pointer"
             >
               <option value="@cf/meta/llama-3.3-70b-instruct" ${rc.default_model === '@cf/meta/llama-3.3-70b-instruct' ? 'selected' : ''}>🚀 Cloudflare Workers AI - Llama 3.3 70B Instruct (Recommandé • Gratuit & Rapide)</option>
-              <option value="gemini-2.0-flash" ${rc.default_model === 'gemini-2.0-flash' ? 'selected' : ''}>⚡ Google Gemini 2.0 Flash (Ultra-rapide • Multimodal)</option>
+              <option value="gemini-3.8-flash" ${rc.default_model === 'gemini-3.8-flash' || rc.default_model === 'gemini-2.0-flash' ? 'selected' : ''}>⚡ Google Gemini 3.8 Flash (Ultra-rapide • Officiel Google)</option>
               <option value="claude-3-5-sonnet-20241022" ${rc.default_model === 'claude-3-5-sonnet-20241022' ? 'selected' : ''}>🧠 Anthropic Claude 3.5 Sonnet (Raisonnement avancé & Code)</option>
               <option value="gpt-4o" ${rc.default_model === 'gpt-4o' ? 'selected' : ''}>💎 OpenAI GPT-4o (Référence mondiale)</option>
               <option value="gpt-4o-mini" ${rc.default_model === 'gpt-4o-mini' ? 'selected' : ''}>✨ OpenAI GPT-4o Mini (Économique & Réactif)</option>
@@ -5000,7 +5007,7 @@ function renderDashboardHtml(data) {
               id="robot-fallback-model" 
               class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition cursor-pointer"
             >
-              <option value="gemini-2.0-flash" ${rc.fallback_model === 'gemini-2.0-flash' ? 'selected' : ''}>⚡ Google Gemini 2.0 Flash (Haut quota & zéro coupure)</option>
+              <option value="gemini-3.8-flash" ${rc.fallback_model === 'gemini-3.8-flash' || rc.fallback_model === 'gemini-2.0-flash' ? 'selected' : ''}>⚡ Google Gemini 3.8 Flash (Haut quota & zéro coupure)</option>
               <option value="@cf/meta/llama-3.3-70b-instruct" ${rc.fallback_model === '@cf/meta/llama-3.3-70b-instruct' ? 'selected' : ''}>🚀 Cloudflare Workers AI - Llama 3.3 70B</option>
               <option value="gpt-4o-mini" ${rc.fallback_model === 'gpt-4o-mini' ? 'selected' : ''}>✨ OpenAI GPT-4o Mini</option>
               <option value="@cf/mistral/mistral-7b-instruct-v0.1" ${rc.fallback_model === '@cf/mistral/mistral-7b-instruct-v0.1' ? 'selected' : ''}>🔬 Mistral 7B Instruct</option>
@@ -5305,6 +5312,7 @@ function renderDashboardHtml(data) {
           </optgroup>
 
           <optgroup label="Google">
+            <option value="gemini-3.8-flash">Gemini 3.8 Flash (Recommandé)</option>
             <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
             <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
             <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
@@ -12748,6 +12756,7 @@ function renderDashboardHtml(data) {
         'gpt-4o': { name: 'GPT-4o (Omni)', id: 'gpt-4o', prov: 'openai', ctx: 128000, out: 4096 },
         'gpt-4o-mini': { name: 'GPT-4o Mini', id: 'gpt-4o-mini', prov: 'openai', ctx: 128000, out: 4096 },
         'other-openai': { name: 'Modèle OpenAI', id: 'gpt-', prov: 'openai', ctx: 128000, out: 4096 },
+        'gemini-3.8-flash': { name: 'Gemini 3.8 Flash', id: 'gemini-3.8-flash', prov: 'google', ctx: 1000000, out: 8192 },
         'gemini-3.6-flash': { name: 'Gemini 3.6 Flash', id: 'gemini-3.6-flash', prov: 'google', ctx: 1000000, out: 8192 },
         'gemini-2.0-flash': { name: 'Gemini 2.0 Flash', id: 'gemini-2.0-flash', prov: 'google', ctx: 1000000, out: 8192 },
         'gemini-1.5-pro': { name: 'Gemini 1.5 Pro', id: 'gemini-1.5-pro', prov: 'google', ctx: 2000000, out: 8192 },

@@ -521,7 +521,8 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
 
     return [
       { id: "@cf/meta/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct (Workers AI)", type: "agent" },
-      { id: "gemini-2.0-flash", name: "Google Gemini 2.0 Flash", type: "agent" },
+      { id: "gemini-3.8-flash", name: "Google Gemini 3.8 Flash", type: "agent" },
+      { id: "gemini-2.0-flash", name: "Google Gemini 3.8 Flash", type: "agent" },
       { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet (Anthropic)", type: "agent" },
       { id: "gpt-4o-mini", name: "OpenAI GPT-4o Mini", type: "agent" },
       { id: "@cf/moonshotai/kimi-k2.7-code", name: "Kimi K2.7 Code (Workers AI)", type: "agent" },
@@ -827,11 +828,19 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     let accountId = "c80164ed977e6535efd1b67a54741ed6";
     let displayName = id;
 
-    const matchedModel = remoteData?.models?.find((m: any) => m.id === id || m.model_id === id);
+    let matchedModel = remoteData?.models?.find((m: any) => m.id === id || m.model_id === id);
+    if (!matchedModel && (id.includes("gemini") || id.includes("google"))) {
+      matchedModel = remoteData?.models?.find((m: any) => m.provider === "google");
+    }
     if (matchedModel) {
       if (matchedModel.name) displayName = matchedModel.name;
       if (matchedModel.api_token) apiToken = matchedModel.api_token;
       if (matchedModel.account_id) accountId = matchedModel.account_id;
+    }
+
+    if (!apiToken && provider === "google" && remoteData?.models) {
+      const gModel = remoteData.models.find((m: any) => m.provider === "google" && m.api_token);
+      if (gModel?.api_token) apiToken = gModel.api_token;
     }
 
     if (!apiToken && remoteData?.config) {
@@ -846,11 +855,17 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       }
     }
 
+    let modelTarget = matchedModel?.model_id || id;
+    if (provider === "google" && (modelTarget === "gemini-2.0-flash" || modelTarget === "gemini-2.5-flash")) {
+      modelTarget = "gemini-3.8-flash";
+      displayName = "Google Gemini 3.8 Flash";
+    }
+
     return {
       profile: { id, name: displayName, type: "agent" },
       config: {
         provider,
-        model: matchedModel?.model_id || id,
+        model: modelTarget,
         apiToken,
         accountId: provider === "cloudflare" ? accountId : undefined
       }
