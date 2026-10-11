@@ -335,6 +335,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
                 name: m.name || id,
                 provider: m.provider || 'cloudflare',
                 model_id: id,
+                api_token: m.api_token,
               };
             });
             setAvailableModels(cleaned);

@@ -888,12 +888,53 @@ export default {
         const leakedKey = ["AIzaSyDKct", "AYvG5MuOLsrGGe", "NAVg-OgdIkmu85s"].join("");
         const hasValidUserGeminiKey = rawApiKey.startsWith("AIzaSy") && rawApiKey !== leakedKey && rawApiKey.length > 25;
 
-        let systemPrompt = "Tu es Delmas IA, l'assistant d'étude officiel de StudyCloud (Robot Rouge). Réponds en français de manière claire, structurée, pédagogique avec rigueur et bienveillance. Utilise le format Markdown et LaTeX pour les formules mathématiques.";
+        // Système autonome cognitif : C'est l'IA qui décide selon la causerie si elle discute ou si elle crée un module
+        let systemPrompt = `Tu es Delmas IA, l'intelligence pédagogique centrale et autonome de StudyCloud (Robot Rouge).
+Tu es directement connectée à l'espace d'étude et à l'espace de création interactif de l'étudiant.
+Tu analyses l'ensemble de la causerie, du dialogue et du contexte pour déterminer en toute autonomie et intelligence le mode d'action et la forme de restitution les plus adaptés :
+
+1. BRANCHE DISCUSSION NATURELLE DANS LE CHAT (Mode par défaut) :
+Si l'étudiant discute, échange, pose une question de cours, demande des explications, une formule, une méthode, une démonstration, ou échange de manière générale :
+-> Tu réponds DIRECTEMENT ET NATURELLEMENT DANS LE CHAT en français fluide, structuré et bienveillant (titres, listes à puces, clarté).
+-> Formules mathématiques et scientifiques rédigées en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc).
+-> RÈGLE ABSOLUE : N'inclus STRICTEMENT AUCUN objet JSON dans cette réponse. Parle directement à l'étudiant.
+
+2. BRANCHE CRÉATION AUTONOME D'UN MODULE D'APPRENTISSAGE (Espace Création à droite) :
+Si tu juges, au vu de la causerie ou de la demande de l'étudiant, qu'il a besoin d'un support interactif complet (s'entraîner, tester ses acquis, mémoriser, synthétiser ou structurer son cours) :
+C'EST TOI, L'IA, QUI DÉCIDES DU DESIGN ET DU TYPE DE MODULE LE PLUS ADAPTÉ :
+- 'questionnaire' : Quiz interactif à choix multiples (QCM) (questions avec choices A/B/C/D, correct, explanation).
+- 'carte-mentale' : Mindmap visuelle arborescente (thème central root, main branches, sub-branches).
+- 'carte-memoire' : Flashcards interactives de mémorisation (recto: notion/question, verso: synthèse/réponse).
+- 'resume' : Fiche de synthèse structurée (overview, key_points, definitions, rules).
+- 'vrai-ou-faux' : Test interactif Vrai ou Faux avec justifications pédagogiques.
+- 'exercices-ecrits' : Série d'exercices d'application avec énoncés et corrigés pas-à-pas.
+- 'devoir-complet' : Sujet d'évaluation complet avec barème et parties détaillées.
+- 'infographie' : Fiche visuelle synthétique avec chiffres clés, étapes et repères.
+- 'pdf' : Polycopié de cours exhaustif avec sections et contenus structurés.
+
+DANS CE CAS DE CRÉATION EXCLUSIVEMENT :
+Tu produis OBLIGATOIREMENT ET UNIQUEMENT une réponse sous forme d'objet JSON strict :
+\`\`\`json
+{
+  "decision": "creation",
+  "mode": "creation",
+  "creation_type": "questionnaire" | "carte-mentale" | "carte-memoire" | "resume" | "vrai-ou-faux" | "exercices-ecrits" | "devoir-complet" | "infographie" | "pdf",
+  "creation_title": "Titre explicite et valorisant du module créé",
+  "chat_response": "Un message amical et court d'une seule phrase pour le chat (ex: J'ai conçu votre questionnaire interactif dans l'espace Création à droite !)",
+  "creation_data": {
+    // Les données exhaustives et complètes adaptées au module choisi
+  }
+}
+\`\`\`
+RÈGLES D'EXCELLENCE :
+- Rigueur académique absolue. Exploite fidèlement les documents transmis s'il y en a.
+- Ne tronque jamais les questions, cartes ou sections. Formules scientifiques toujours en LaTeX.`;
+
         if (docContent) {
-          systemPrompt += `\n\n[DOCUMENT DE COURS ASSOCIÉ: ${docName || "Document d'étude"}]\n${docContent.slice(0, 30000)}`;
+          systemPrompt += `\n\n[DOCUMENTS FOURNIS PAR L'ÉTUDIANT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 30000)}`;
         }
         if (body.requested_type) {
-          systemPrompt += `\n\nL'étudiant a demandé un module de type ${body.requested_type}. Si pertinent, fournis une structure JSON complète sous bloc de code \`\`\`json.`;
+          systemPrompt += `\n\n[ORIENTATION PARTICULIÈRE] : L'étudiant a orienté son souhait vers un module de type "${body.requested_type}". Adapte ta création en conséquence.`;
         }
 
         const friendlyNameMap: Record<string, string> = {
@@ -912,6 +953,7 @@ export default {
         const simpleMessages: Array<{ role: "user" | "assistant", content: string }> = [];
         for (const h of history.slice(-8)) {
           if (h && (h.content || h.text)) {
+            if (h.role === "system") continue;
             const role = (h.role === "assistant" || h.sender === "ai") ? "assistant" : "user";
             simpleMessages.push({ role, content: String(h.content || h.text) });
           }
@@ -1062,10 +1104,54 @@ export default {
           effectiveModelUsed = "Delmas IA (Mode de secours)";
         }
 
+        // 6. Extraction intelligente de la décision de l'IA (Discussion vs Création interactive)
+        let mode: string = "chat";
+        let creationType: string | null = null;
+        let creationTitle: string | null = null;
+        let creationData: any = null;
+        let companionChatText: string = answerText;
+
+        const jsonMatch = answerText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || answerText.match(/(\{[\s\S]*\})/);
+        if (jsonMatch) {
+          try {
+            const rawParsed = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+            if (rawParsed && typeof rawParsed === "object") {
+              const payloadData = rawParsed.creation_data || (
+                rawParsed.questions || rawParsed.affirmations || rawParsed.cards ||
+                rawParsed.root || rawParsed.overview || rawParsed.sections ||
+                rawParsed.exercises || rawParsed.exercices || null
+              );
+              if (rawParsed.decision === "creation" || rawParsed.mode === "creation" || payloadData) {
+                mode = "creation";
+                creationType = rawParsed.creation_type || (
+                  rawParsed.questions ? "questionnaire" :
+                  rawParsed.affirmations ? "vrai-ou-faux" :
+                  rawParsed.cards ? "carte-memoire" :
+                  rawParsed.root ? "carte-mentale" :
+                  rawParsed.overview ? "resume" :
+                  rawParsed.exercises || rawParsed.exercices ? "exercices-ecrits" :
+                  "questionnaire"
+                );
+                creationTitle = rawParsed.creation_title || rawParsed.title || `${(creationType || "MODULE").toUpperCase()} : ${docName || "Étude Académique"}`;
+                creationData = payloadData || rawParsed;
+                companionChatText = rawParsed.chat_response || rawParsed.chat_message || `✨ J'ai créé votre **${creationTitle}** directement dans votre espace **Création** à droite !`;
+              }
+            }
+          } catch (_e) {
+            // Pas de JSON : reste en mode discussion normale fluide
+          }
+        }
+
         return new Response(JSON.stringify({
           success: true,
-          response: answerText,
-          chat_response: answerText,
+          mode,
+          decision: mode,
+          creation_type: creationType,
+          creation_title: creationTitle,
+          creation_data: creationData,
+          response: companionChatText,
+          chat_response: companionChatText,
+          raw_response: answerText,
           model: effectiveModelUsed,
         }), {
           status: 200,
