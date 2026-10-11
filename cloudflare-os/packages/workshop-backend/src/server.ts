@@ -896,6 +896,19 @@ export default {
           systemPrompt += `\n\nL'étudiant a demandé un module de type ${body.requested_type}. Si pertinent, fournis une structure JSON complète sous bloc de code \`\`\`json.`;
         }
 
+        const friendlyNameMap: Record<string, string> = {
+          "@cf/moonshotai/kimi-k2.7-code": "Kimi K2.7 Code (Workers AI)",
+          "@cf/zai-org/glm-5.3-flash": "GLM 5.3 Flash (Workers AI)",
+          "@cf/deepseek-ai/deepseek-v4-pro-0813": "DeepSeek V4 Pro 0813 (Workers AI)",
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": "Llama 3.3 70B (Fast)",
+          "@cf/meta/llama-3.3-70b-instruct": "Llama 3.3 70B (Fast)",
+          "gemini-3.8-flash": "Google Gemini 3.8 Flash",
+          "gemini-3.6-flash": "Google Gemini 3.6 Flash",
+          "claude-3-5-sonnet-20241022": "Claude 3.5 Sonnet",
+          "claude-sonnet-4-5": "Claude Sonnet 4.5",
+          "gpt-4o-mini": "OpenAI GPT-4o Mini",
+        };
+
         const simpleMessages: Array<{ role: "user" | "assistant", content: string }> = [];
         for (const h of history.slice(-8)) {
           if (h && (h.content || h.text)) {
@@ -906,52 +919,115 @@ export default {
         simpleMessages.push({ role: "user", content: userPrompt || "Bonjour !" });
 
         let answerText = "";
-        let effectiveModelUsed = targetModel;
+        let effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
 
-        // Stratégie 1: Si Gemini est demandé et qu'une clé API utilisateur personnalisée valide existe
-        if (targetModel.includes("gemini") && hasValidUserGeminiKey) {
+        const accountId = "c80164ed977e6535efd1b67a54741ed6";
+        const cfToken = ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join("");
+
+        // 1. Modèles Cloudflare Workers AI demandés explicitement (ex: Kimi K2.7, GLM 5.3, DeepSeek, Llama)
+        if (targetModel.startsWith("@cf/")) {
           try {
-            const contents: any[] = [];
-            for (const m of simpleMessages) {
-              contents.push({
-                role: m.role === "assistant" ? "model" : "user",
-                parts: [{ text: m.content }],
-              });
-            }
-            const geminiReqBody: any = { contents };
-            if (systemPrompt) {
-              geminiReqBody.systemInstruction = { parts: [{ text: systemPrompt }] };
-            }
-            const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${rawApiKey}`, {
+            const cfMessages: any[] = [];
+            if (systemPrompt) cfMessages.push({ role: "system", content: systemPrompt });
+            for (const m of simpleMessages) cfMessages.push({ role: m.role, content: m.content });
+
+            const cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(geminiReqBody),
+              headers: {
+                "Authorization": `Bearer ${cfToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: targetModel,
+                messages: cfMessages,
+                max_tokens: 4096,
+              }),
             });
-            if (geminiRes.ok) {
-              const gData: any = await geminiRes.json();
-              answerText = gData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
-              effectiveModelUsed = "Google Gemini 3.8 Flash";
+
+            if (cfRes.ok) {
+              const cfData: any = await cfRes.json();
+              const msg = cfData?.choices?.[0]?.message;
+              answerText = msg?.content || msg?.reasoning_content || "";
+              effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
             } else {
-              const errTxt = await geminiRes.text();
-              logger.warn("Google Gemini API error, falling back to Cloudflare Workers AI", { status: geminiRes.status, err: errTxt });
+              const errTxt = await cfRes.text();
+              logger.warn("Cloudflare Workers AI specific model failed, will try fallback", { model: targetModel, status: cfRes.status, err: errTxt });
             }
-          } catch (gErr) {
-            logger.warn("Google Gemini call exception, falling back to Workers AI", { error: gErr });
+          } catch (cfErr) {
+            logger.warn("Cloudflare Workers AI specific model exception", { model: targetModel, error: cfErr });
           }
         }
 
-        // Stratégie 2: Si answerText est vide (Gemini sans clé, clé révoquée/leaked 403, ou modèle Cloudflare)
+        // 2. Modèles Google Gemini demandés
+        if (!answerText && (targetModel.includes("gemini") || targetModel.includes("google"))) {
+          if (hasValidUserGeminiKey) {
+            try {
+              const contents: any[] = [];
+              for (const m of simpleMessages) {
+                contents.push({
+                  role: m.role === "assistant" ? "model" : "user",
+                  parts: [{ text: m.content }],
+                });
+              }
+              const geminiReqBody: any = { contents };
+              if (systemPrompt) {
+                geminiReqBody.systemInstruction = { parts: [{ text: systemPrompt }] };
+              }
+              const gModelId = targetModel.includes("3.6") ? "gemini-3.6-flash" : "gemini-3.8-flash";
+              const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${gModelId}:generateContent?key=${rawApiKey}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(geminiReqBody),
+              });
+              if (geminiRes.ok) {
+                const gData: any = await geminiRes.json();
+                answerText = gData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
+                effectiveModelUsed = friendlyNameMap[targetModel] || "Google Gemini 3.8 Flash";
+              } else {
+                const errTxt = await geminiRes.text();
+                logger.warn("Google Gemini API error, falling back to Cloudflare Workers AI", { status: geminiRes.status, err: errTxt });
+              }
+            } catch (gErr) {
+              logger.warn("Google Gemini call exception, falling back to Workers AI", { error: gErr });
+            }
+          }
+        }
+
+        // 3. Modèles OpenAI demandés (avec clé API OpenAI)
+        if (!answerText && (targetModel.includes("gpt") || targetModel.includes("openai")) && rawApiKey.startsWith("sk-")) {
+          try {
+            const oaiMessages: any[] = [];
+            if (systemPrompt) oaiMessages.push({ role: "system", content: systemPrompt });
+            for (const m of simpleMessages) oaiMessages.push({ role: m.role, content: m.content });
+
+            const oaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${rawApiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: targetModel.includes("4o") ? targetModel : "gpt-4o-mini",
+                messages: oaiMessages,
+                max_tokens: 4096,
+              }),
+            });
+            if (oaiRes.ok) {
+              const oaiData: any = await oaiRes.json();
+              answerText = oaiData?.choices?.[0]?.message?.content || "";
+              effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
+            }
+          } catch (oaiErr) {
+            logger.warn("OpenAI call exception, falling back", { error: oaiErr });
+          }
+        }
+
+        // 4. Secours automatique universel sur Cloudflare Workers AI (Llama 3.3 70B Fast)
         if (!answerText) {
           try {
-            const accountId = "c80164ed977e6535efd1b67a54741ed6";
-            const cfToken = ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join("");
             const cfMessages: any[] = [];
-            if (systemPrompt) {
-              cfMessages.push({ role: "system", content: systemPrompt });
-            }
-            for (const m of simpleMessages) {
-              cfMessages.push({ role: m.role, content: m.content });
-            }
+            if (systemPrompt) cfMessages.push({ role: "system", content: systemPrompt });
+            for (const m of simpleMessages) cfMessages.push({ role: m.role, content: m.content });
 
             const cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
               method: "POST",
@@ -968,8 +1044,9 @@ export default {
 
             if (cfRes.ok) {
               const cfData: any = await cfRes.json();
-              answerText = cfData?.choices?.[0]?.message?.content || "";
-              effectiveModelUsed = "Llama 3.3 70B (Cloudflare Workers AI)";
+              const msg = cfData?.choices?.[0]?.message;
+              answerText = msg?.content || msg?.reasoning_content || "";
+              effectiveModelUsed = targetModel.startsWith("@cf/") ? (friendlyNameMap[targetModel] || targetModel) : "Llama 3.3 70B (Cloudflare Workers AI)";
             } else {
               const cfErrTxt = await cfRes.text();
               logger.error("Cloudflare Workers AI returned error", { status: cfRes.status, err: cfErrTxt });
@@ -979,7 +1056,7 @@ export default {
           }
         }
 
-        // Stratégie 3: Ultime secours pédagogique gracieux si les deux passerelles distantes sont inaccessibles
+        // 5. Ultime secours pédagogique gracieux si toutes les passerelles sont inaccessibles
         if (!answerText) {
           answerText = "Bonjour ! Je suis Delmas IA, votre assistant d'étude StudyCloud. Les services d'IA distants sont momentanément saturés ou indisponibles. N'hésitez pas à relancer votre question dans un instant.";
           effectiveModelUsed = "Delmas IA (Mode de secours)";
