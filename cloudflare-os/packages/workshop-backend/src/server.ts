@@ -1020,8 +1020,15 @@ RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
             if (cfRes.ok) {
               const cfData: any = await cfRes.json();
               const msg = cfData?.choices?.[0]?.message;
+              const finishReason = cfData?.choices?.[0]?.finish_reason;
               answerText = msg?.content || msg?.reasoning_content || "";
               effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
+
+              // Protection anti-coupure brutale au milieu d'un mot ou d'une phrase
+              if (finishReason === "length" || (answerText && !/[.!?:;\n]$/.test(answerText.trim()) && !answerText.trim().endsWith("$$"))) {
+                answerText = answerText.trim().replace(/\s+[a-zA-ZÀ-ÿ0-9_-]+$/, "");
+                answerText += "\n\n*(Le calcul est vaste et dense. Voulez-vous que je continue avec la suite exacte ?)*";
+              }
             } else {
               const errTxt = await cfRes.text();
               logger.warn("Cloudflare Workers AI specific model failed, will try fallback", { model: targetModel, status: cfRes.status, err: errTxt });
@@ -1146,10 +1153,16 @@ RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
             if (cfRes.ok) {
               const cfData: any = await cfRes.json();
               const msg = cfData?.choices?.[0]?.message;
+              const finishReason = cfData?.choices?.[0]?.finish_reason;
               answerText = msg?.content || msg?.reasoning_content || "";
               effectiveModelUsed = targetModel.startsWith("@cf/")
                 ? (friendlyNameMap[targetModel] || targetModel)
                 : `${friendlyNameMap[targetModel] || targetModel} (Secours Llama 3.3)`;
+
+              if (finishReason === "length" || (answerText && !/[.!?:;\n]$/.test(answerText.trim()) && !answerText.trim().endsWith("$$"))) {
+                answerText = answerText.trim().replace(/\s+[a-zA-ZÀ-ÿ0-9_-]+$/, "");
+                answerText += "\n\n*(Le calcul est vaste et dense. Voulez-vous que je continue avec la suite exacte ?)*";
+              }
             } else {
               const cfErrTxt = await cfRes.text();
               logger.error("Cloudflare Workers AI returned error", { status: cfRes.status, err: cfErrTxt });

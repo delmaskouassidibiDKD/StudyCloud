@@ -196,7 +196,97 @@ function sanitizeLatexInput(rawText: string, inlineMode: boolean): string {
     })
     .join('\n\n');
 
+  // 5. Envelopper les commandes LaTeX orphelines avec accolades imbriquées dans des $ ... $
+  sanitized = wrapOrphanLatexInDollars(sanitized);
+
   return sanitized;
+}
+
+/**
+ * Extrait proprement une commande LaTeX complète avec équilibrage parfait des accolades imbriquées
+ */
+function extractBalancedLatexCommand(str: string, startIdx: number): { fullMatch: string; endIdx: number } | null {
+  const cmdMatch = str.slice(startIdx).match(/^\\(?:d?frac|sqrt|boxed|underline)\b/);
+  if (!cmdMatch) return null;
+  const cmd = cmdMatch[0];
+  let idx = startIdx + cmd.length;
+  const expectedArgs = (cmd.includes('frac')) ? 2 : 1;
+  const args: string[] = [];
+
+  while (args.length < expectedArgs && idx < str.length) {
+    while (idx < str.length && str[idx] !== '{' && /\s/.test(str[idx])) {
+      idx++;
+    }
+    if (str[idx] !== '{') break;
+
+    const openIdx = idx;
+    let depth = 0;
+    while (idx < str.length) {
+      if (str[idx] === '{') depth++;
+      else if (str[idx] === '}') {
+        depth--;
+        if (depth === 0) {
+          args.push(str.slice(openIdx, idx + 1));
+          idx++;
+          break;
+        }
+      }
+      idx++;
+    }
+  }
+
+  if (args.length === expectedArgs) {
+    return { fullMatch: str.slice(startIdx, idx), endIdx: idx };
+  }
+  return null;
+}
+
+/**
+ * Parcourt le texte et enveloppe toute commande LaTeX (\dfrac, \frac, \sqrt) orpheline
+ * non entourée de dollars dans des délimiteurs $ ... $ complets.
+ */
+function wrapOrphanLatexInDollars(text: string): string {
+  if (!text || !text.includes('\\')) return text;
+
+  let result = '';
+  let i = 0;
+  let inSingleDollar = false;
+  let inDoubleDollar = false;
+
+  while (i < text.length) {
+    if (text.startsWith('$$', i)) {
+      inDoubleDollar = !inDoubleDollar;
+      result += '$$';
+      i += 2;
+      continue;
+    }
+    if (text[i] === '$' && !inDoubleDollar) {
+      inSingleDollar = !inSingleDollar;
+      result += '$';
+      i++;
+      continue;
+    }
+
+    if (inSingleDollar || inDoubleDollar) {
+      result += text[i];
+      i++;
+      continue;
+    }
+
+    if (text[i] === '\\') {
+      const balanced = extractBalancedLatexCommand(text, i);
+      if (balanced) {
+        result += `$${balanced.fullMatch}$`;
+        i = balanced.endIdx;
+        continue;
+      }
+    }
+
+    result += text[i];
+    i++;
+  }
+
+  return result;
 }
 
 /**
@@ -209,38 +299,31 @@ function renderKaTeXSafe(mathExpr: string, displayMode: boolean): string | null 
   // Forcer \dfrac pour que la barre horizontale soit toujours bien nette et que le numérateur soit en haut et le dénominateur en bas
   trimmed = trimmed.replace(/\\frac\b/g, '\\dfrac');
 
+  // Réparation de l'équilibre des accolades { ... }
+  let openBraces = (trimmed.match(/\{/g) || []).length;
+  let closeBraces = (trimmed.match(/\}/g) || []).length;
+  while (closeBraces > openBraces && trimmed.endsWith('}')) {
+    trimmed = trimmed.slice(0, -1);
+    closeBraces--;
+  }
+  if (openBraces > closeBraces) {
+    trimmed += '}'.repeat(openBraces - closeBraces);
+  }
+
   try {
-    return katex.renderToString(trimmed, {
+    let html = katex.renderToString(trimmed, {
       displayMode,
       throwOnError: false,
       strict: false,
     });
-  } catch {
-    // Tentative de réparation de syntaxe en cas de délimiteur ou antislash orphelin
-    try {
-      let repaired = trimmed
-        .replace(/\\+$/, '') // Supprime les antislashs traînants en fin d'expression
-        .replace(/(?<!\\)\$/g, ''); // Supprime les dollars résiduels
-
-      // Réparation de l'équilibre des accolades { ... }
-      let openBraces = (repaired.match(/\{/g) || []).length;
-      let closeBraces = (repaired.match(/\}/g) || []).length;
-      while (closeBraces > openBraces && repaired.endsWith('}')) {
-        repaired = repaired.slice(0, -1);
-        closeBraces--;
-      }
-      if (openBraces > closeBraces) {
-        repaired += '}'.repeat(openBraces - closeBraces);
-      }
-
-      return katex.renderToString(repaired, {
-        displayMode,
-        throwOnError: false,
-        strict: false,
-      });
-    } catch {
-      return null;
+    // SUPPRESSION STRICTE DU ROUGE : Ne jamais polluer l'affichage de l'étudiant avec du rouge
+    if (html.includes('katex-error') || html.includes('#cc0000')) {
+      html = html.replace(/style="color:#cc0000"/gi, 'class="font-mono text-zinc-300"');
+      html = html.replace(/class="katex-error"/gi, 'class="katex-fallback text-zinc-300 font-mono"');
     }
+    return html;
+  } catch {
+    return null;
   }
 }
 
@@ -272,12 +355,12 @@ export const MathText: React.FC<MathTextProps> = ({
           return (
             <span
               key={idx}
-              className={isBlock ? "my-2.5 block overflow-x-auto custom-scrollbar text-center py-1 select-text" : "inline-math mx-1 inline-block align-middle select-text"}
+              className={isBlock ? "my-3 block overflow-x-auto custom-scrollbar text-center py-1 select-text text-[1.15em]" : "inline-math mx-1.5 inline-block align-middle select-text text-[1.12em]"}
               dangerouslySetInnerHTML={{ __html: html }}
             />
           );
         }
-        return <span key={idx} className="font-mono text-amber-600 dark:text-amber-400">{part}</span>;
+        return <span key={idx} className="font-mono text-zinc-300">{part}</span>;
       }
 
       // Formule en ligne ($ ... $)
@@ -288,42 +371,12 @@ export const MathText: React.FC<MathTextProps> = ({
           return (
             <span
               key={idx}
-              className="inline-math mx-0.5 inline-block align-middle select-text"
+              className="inline-math mx-1.5 inline-block align-middle select-text text-[1.12em]"
               dangerouslySetInnerHTML={{ __html: html }}
             />
           );
         }
-        return <span key={idx} className="font-mono text-amber-600 dark:text-amber-400">{part}</span>;
-      }
-
-      // Traitement des fractions ou commandes LaTeX orphelines non entourées de dollars (ex: \frac{a}{b}, \dfrac{a}{b})
-      if (part.includes('\\frac') || part.includes('\\dfrac') || part.includes('\\sqrt') || part.includes('\\sum') || part.includes('\\boxed')) {
-        try {
-          const subRegex = /(\\(?:d?frac|sqrt|sum|int|lim|prod|boxed|underline)\b[^{}]*(?:\{[^{}]*\}){1,4})/g;
-          const subMathParts = part.split(subRegex);
-          if (subMathParts.length > 1) {
-            return (
-              <span key={idx}>
-                {subMathParts.map((subM, smIdx) => {
-                  if (subM.startsWith('\\')) {
-                    const html = renderKaTeXSafe(subM, false);
-                    if (html) {
-                      return (
-                        <span
-                          key={smIdx}
-                          className="inline-math mx-0.5 inline-block align-middle select-text"
-                          dangerouslySetInnerHTML={{ __html: html }}
-                        />
-                      );
-                    }
-                    return subM;
-                  }
-                  return subM;
-                })}
-              </span>
-            );
-          }
-        } catch {}
+        return <span key={idx} className="font-mono text-zinc-300">{part}</span>;
       }
 
       // Rendu du texte avec prise en compte du gras **texte**
@@ -333,7 +386,7 @@ export const MathText: React.FC<MathTextProps> = ({
           {subParts.map((sub, sIdx) => {
             if (sub.startsWith('**') && sub.endsWith('**') && sub.length > 4) {
               return (
-                <strong key={sIdx} className="font-bold">
+                <strong key={sIdx} className="font-bold text-white">
                   {sub.slice(2, -2)}
                 </strong>
               );

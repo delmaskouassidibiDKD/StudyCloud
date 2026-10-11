@@ -175,6 +175,14 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
     cleaned = cleaned.replace(/\$\$([\s\S]*?)\$\$/g, (_match, eq) => {
       return '$$' + eq.replace(/\r?\n/g, ' ') + '$$';
     });
+
+    // Aérer et décoller les étapes de calculs collées sur une même ligne
+    if (!isUser) {
+      cleaned = cleaned
+        .replace(/([.;])\s*(Noeud\s+[A-Z0-9]+|L'équation|Equation|Soit\b|Or\b|Donc\b|On a\b|En substituant|A substituer|D'après)\b/gi, '$1\n\n$2')
+        .replace(/(?<!\n)\s*(=>|\\Rightarrow|⟹)\s*/g, '\n\n$1 ');
+    }
+
     return cleaned;
   }, [displayText, isUser]);
 
@@ -182,14 +190,14 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
 
   return (
     <div className="flex flex-col w-full items-start">
-      <div className="space-y-1.5 text-zinc-200 text-left w-full leading-relaxed font-medium">
+      <div className="space-y-2 text-zinc-100 text-left w-full leading-[1.8] font-normal text-[15px] sm:text-[16px] md:text-[17px] [&_.katex]:text-[1.12em] [&_.katex-display]:text-[1.25em]">
         {lines.map((line, idx) => {
           const isLastLine = idx === lines.length - 1;
           const trimmed = line.trim();
 
           // Espacement aéré pour les lignes vides (évite que tout soit groupé)
           if (!trimmed) {
-            return <div key={idx} className="h-3 sm:h-4 w-full" aria-hidden="true" />;
+            return <div key={idx} className="h-3.5 sm:h-4 w-full" aria-hidden="true" />;
           }
 
           // Détection d'une carte de recommandation interactive (ex: Recommandé : flashcards)
@@ -1316,7 +1324,7 @@ RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
             <div key={msg.id} className="w-full shrink-0">
               {msg.sender === 'user' ? (
                 <div className="flex justify-end w-full">
-                  <div className="bg-[#2a2b2f] text-zinc-100 px-4 py-2.5 rounded-[24px] rounded-tr-[4px] text-[13px] sm:text-sm max-w-[85%] break-words shadow-sm">
+                  <div className="bg-[#2a2b2f] text-zinc-100 px-4 py-2.5 rounded-[24px] rounded-tr-[4px] text-[14px] sm:text-[15px] md:text-[16px] max-w-[85%] break-words shadow-sm">
                     <ChatMessageText text={msg.text} isUser={true} />
                   </div>
                 </div>
@@ -1354,7 +1362,7 @@ RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
                     )}
                   </div>
                   
-                  <div className="text-[13px] sm:text-sm leading-relaxed font-medium text-zinc-200 pl-1">
+                  <div className="text-[15px] sm:text-[16px] md:text-[17px] leading-[1.8] font-normal text-zinc-100 pl-1">
                     <ChatMessageText text={msg.text} isUser={false} isStreaming={msg.isStreaming} />
                   </div>
 
