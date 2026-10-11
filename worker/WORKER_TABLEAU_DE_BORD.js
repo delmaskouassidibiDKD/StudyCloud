@@ -240,9 +240,9 @@ async function ensureStorageTables(db) {
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS robot_rouge_global_config (
         id TEXT PRIMARY KEY DEFAULT 'default',
-        default_model TEXT DEFAULT '@cf/meta/llama-3.3-70b-instruct',
-        fallback_model TEXT DEFAULT 'gemini-3.8-flash',
-        default_provider TEXT DEFAULT 'workers-ai',
+        default_model TEXT DEFAULT 'gemini-3.8-flash',
+        fallback_model TEXT DEFAULT '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+        default_provider TEXT DEFAULT 'google',
         openai_api_key TEXT DEFAULT '',
         anthropic_api_key TEXT DEFAULT '',
         gemini_api_key TEXT DEFAULT '',
@@ -252,14 +252,14 @@ async function ensureStorageTables(db) {
         welcome_credits INTEGER DEFAULT 50,
         is_maintenance INTEGER DEFAULT 0,
         edge_router_url TEXT DEFAULT 'https://router.delmaskouassidibi.workers.dev',
-        allowed_models_json TEXT DEFAULT '["@cf/meta/llama-3.3-70b-instruct","gemini-3.8-flash","gpt-4o-mini","claude-3-5-sonnet-20241022"]',
+        allowed_models_json TEXT DEFAULT '["gemini-3.8-flash","@cf/meta/llama-3.3-70b-instruct-fp8-fast","gpt-4o-mini","claude-sonnet-4-5"]',
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run().catch(() => {});
 
-    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN default_model TEXT DEFAULT '@cf/meta/llama-3.3-70b-instruct'").run(); } catch (e) {}
-    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN fallback_model TEXT DEFAULT 'gemini-3.8-flash'").run(); } catch (e) {}
-    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN default_provider TEXT DEFAULT 'workers-ai'").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN default_model TEXT DEFAULT 'gemini-3.8-flash'").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN fallback_model TEXT DEFAULT '@cf/meta/llama-3.3-70b-instruct-fp8-fast'").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN default_provider TEXT DEFAULT 'google'").run(); } catch (e) {}
     try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN openai_api_key TEXT DEFAULT ''").run(); } catch (e) {}
     try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN anthropic_api_key TEXT DEFAULT ''").run(); } catch (e) {}
     try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN gemini_api_key TEXT DEFAULT ''").run(); } catch (e) {}
@@ -275,16 +275,19 @@ async function ensureStorageTables(db) {
       INSERT OR IGNORE INTO robot_rouge_global_config (
         id, default_model, fallback_model, default_provider, system_instructions, cost_per_request, welcome_credits, is_maintenance, edge_router_url
       ) VALUES (
-        'default', '@cf/meta/llama-3.3-70b-instruct', 'gemini-3.8-flash', 'workers-ai',
+        'default', 'gemini-3.8-flash', '@cf/meta/llama-3.3-70b-instruct-fp8-fast', 'google',
         'Tu es l''assistant d''étude IA officiel de StudyCloud (Robot Rouge). Sois pédagogique, précis, encourageant et clair. Utilise le format Markdown et LaTeX pour les formules mathématiques.',
         1, 50, 0, 'https://router.delmaskouassidibi.workers.dev'
       )
     `).run().catch(() => {});
 
-    // Migration automatique vers Gemini 3.8 Flash pour toute base de données existante
+    // Migration automatique vers Gemini 3.8 Flash et Llama 3.3 FP8 Fast pour toute base de données existante
     try {
-      await db.prepare("UPDATE robot_rouge_global_config SET default_model = 'gemini-3.8-flash' WHERE default_model = 'gemini-2.0-flash' OR default_model = 'gemini-2.5-flash'").run();
+      await db.prepare("UPDATE robot_rouge_global_config SET default_model = 'gemini-3.8-flash' WHERE default_model = 'gemini-2.0-flash' OR default_model = 'gemini-2.5-flash' OR default_model = '@cf/meta/llama-3.3-70b-instruct'").run();
+      await db.prepare("UPDATE robot_rouge_global_config SET fallback_model = '@cf/meta/llama-3.3-70b-instruct-fp8-fast' WHERE fallback_model = '@cf/meta/llama-3.3-70b-instruct'").run();
       await db.prepare("UPDATE robot_rouge_global_config SET fallback_model = 'gemini-3.8-flash' WHERE fallback_model = 'gemini-2.0-flash' OR fallback_model = 'gemini-2.5-flash'").run();
+      await db.prepare("UPDATE robot_rouge_models SET model_id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast', id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name = 'Llama 3.3 70B Instruct (Workers AI)' WHERE model_id = '@cf/meta/llama-3.3-70b-instruct' OR id = '@cf/meta/llama-3.3-70b-instruct'").run();
+      await db.prepare("UPDATE robot_rouge_models SET model_id = 'gemini-3.8-flash', id = 'gemini-3.8-flash', name = 'Google Gemini 3.8 Flash' WHERE model_id = 'gemini-2.0-flash' OR model_id = 'gemini-2.5-flash' OR id = 'gemini-2.0-flash' OR id = 'gemini-2.5-flash'").run();
     } catch (eMigrateCfg) {}
 
     // Table D1 des Modèles IA configurés (Cloudflare OS & Robot Rouge)
@@ -14807,8 +14810,8 @@ export default {
 
         const isPublic = path.includes('/public');
         const resConfig = isPublic ? {
-          default_model: cfg.default_model || '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-          fallback_model: cfg.fallback_model || 'gemini-3.8-flash',
+          default_model: cfg.default_model || 'gemini-3.8-flash',
+          fallback_model: cfg.fallback_model || '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
           is_maintenance: cfg.is_maintenance,
           system_instructions: cfg.system_instructions,
           cost_per_request: cfg.cost_per_request,
@@ -14830,6 +14833,11 @@ export default {
             }
             return m;
           });
+          const gIdx = modelsList.findIndex(m => m.model_id === 'gemini-3.8-flash' || m.id === 'gemini-3.8-flash');
+          if (gIdx > 0) {
+            const [g] = modelsList.splice(gIdx, 1);
+            modelsList.unshift(g);
+          }
         } catch (e) {}
 
         return new Response(JSON.stringify({ 
@@ -14865,8 +14873,8 @@ export default {
               welcome_credits = excluded.welcome_credits,
               updated_at = CURRENT_TIMESTAMP
           `).bind(
-            (b.default_model === '@cf/meta/llama-3.3-70b-instruct' ? '@cf/meta/llama-3.3-70b-instruct-fp8-fast' : (b.default_model || '@cf/meta/llama-3.3-70b-instruct-fp8-fast')),
-            (b.fallback_model === 'gemini-2.0-flash' || b.fallback_model === 'gemini-2.5-flash' ? 'gemini-3.8-flash' : (b.fallback_model || 'gemini-3.8-flash')),
+            (b.default_model === 'gemini-2.0-flash' || b.default_model === 'gemini-2.5-flash' ? 'gemini-3.8-flash' : (b.default_model === '@cf/meta/llama-3.3-70b-instruct' ? '@cf/meta/llama-3.3-70b-instruct-fp8-fast' : (b.default_model || 'gemini-3.8-flash'))),
+            (b.fallback_model === '@cf/meta/llama-3.3-70b-instruct' ? '@cf/meta/llama-3.3-70b-instruct-fp8-fast' : (b.fallback_model || '@cf/meta/llama-3.3-70b-instruct-fp8-fast')),
             b.edge_router_url || 'https://router.delmaskouassidibi.workers.dev',
             b.is_maintenance ? 1 : 0,
             b.gemini_api_key || '',

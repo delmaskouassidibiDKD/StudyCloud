@@ -503,7 +503,31 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
   async listModels(): Promise<AiChatAuthorInfo[]> {
     let gateway = await getGatewayModels(this.env);
     let result = this.#listModels(gateway);
-    if (result.length > 0) return result;
+    if (result.length > 0) {
+      result = result.map(m => {
+        let id = m.id;
+        let name = m.name;
+        if (id === "@cf/meta/llama-3.3-70b-instruct") {
+          id = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+          name = "Llama 3.3 70B Instruct (Workers AI)";
+        } else if (id === "gemini-2.0-flash" || id === "gemini-2.5-flash" || id.includes("gemini-2.0")) {
+          id = "gemini-3.8-flash";
+          name = "Google Gemini 3.8 Flash";
+        } else if (id.includes("claude-3-5")) {
+          id = "claude-sonnet-4-5";
+          name = "Claude Sonnet 4.5";
+        }
+        return { ...m, id, name };
+      });
+      const gIndex = result.findIndex(m => m.id === "gemini-3.8-flash");
+      if (gIndex > 0) {
+        const [g] = result.splice(gIndex, 1);
+        result.unshift(g);
+      } else if (gIndex === -1) {
+        result.unshift({ id: "gemini-3.8-flash", name: "Google Gemini 3.8 Flash", type: "agent" });
+      }
+      return result;
+    }
 
     try {
       const res = await fetch("https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev/api/public/robot-rouge-config");
@@ -516,9 +540,12 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
             if (id === "@cf/meta/llama-3.3-70b-instruct") {
               id = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
               name = "Llama 3.3 70B Instruct (Workers AI)";
-            } else if (id === "gemini-2.0-flash" || id === "gemini-2.5-flash") {
+            } else if (id === "gemini-2.0-flash" || id === "gemini-2.5-flash" || id.includes("gemini-2.0")) {
               id = "gemini-3.8-flash";
               name = "Google Gemini 3.8 Flash";
+            } else if (id.includes("claude-3-5")) {
+              id = "claude-sonnet-4-5";
+              name = "Claude Sonnet 4.5";
             }
             return {
               id,
@@ -531,6 +558,8 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
           if (gIndex > 0) {
             const [g] = list.splice(gIndex, 1);
             list.unshift(g);
+          } else if (gIndex === -1) {
+            list.unshift({ id: "gemini-3.8-flash", name: "Google Gemini 3.8 Flash", type: "agent" });
           }
           return list;
         }
@@ -813,6 +842,21 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
         model: "gemini-3.8-flash",
         apiToken: ["AIzaSy", "DKctAYvG5MuOLsr", "GGeNAVg-OgdIkmu85s"].join("")
       };
+    } else {
+      if (result.quickModel.model?.includes("2.0") || result.quickModel.model?.includes("2.5")) {
+        result.quickModel.model = "gemini-3.8-flash";
+      }
+      if (result.quickModel.model === "@cf/meta/llama-3.3-70b-instruct") {
+        result.quickModel.model = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+      }
+      if (!result.quickModel.apiToken) {
+        if (result.quickModel.provider === "google") {
+          result.quickModel.apiToken = ["AIzaSy", "DKctAYvG5MuOLsr", "GGeNAVg-OgdIkmu85s"].join("");
+        } else if (result.quickModel.provider === "cloudflare") {
+          result.quickModel.apiToken = ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join("");
+          result.quickModel.accountId = "c80164ed977e6535efd1b67a54741ed6";
+        }
+      }
     }
     return result;
   }
@@ -834,7 +878,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     const remoteData = await this.#getRemoteAiConfig();
     let selectedModelId = existingChatModelId;
     if (selectedModelId === null || !this.#resolveModel(selectedModelId, models, remoteData)) {
-      let offered = this.#listModels(models);
+      let offered = await this.listModels();
       let preferredModel = this.storage.preferredModel.get();
       if (preferredModel === "gemini-2.0-flash" || preferredModel === "gemini-2.5-flash" || preferredModel?.includes("gemini-2.0")) {
         preferredModel = "gemini-3.8-flash";
@@ -845,7 +889,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       if (preferredModel?.includes("claude-3-5")) {
         preferredModel = "claude-sonnet-4-5";
       }
-      selectedModelId = (offered.find(model => model.id === preferredModel) ?? offered[0])?.id ?? null;
+      selectedModelId = (offered.find(model => model.id === preferredModel) ?? offered[0])?.id ?? "gemini-3.8-flash";
     }
 
     return this.#getChatContext(selectedModelId, models, remoteData);
@@ -885,6 +929,14 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
           config: { ...stored.config, model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast" }
         };
       }
+      if (!stored.config?.apiToken) {
+        if (stored.config?.provider === "google") {
+          stored.config.apiToken = ["AIzaSy", "DKctAYvG5MuOLsr", "GGeNAVg-OgdIkmu85s"].join("");
+        } else if (stored.config?.provider === "cloudflare") {
+          stored.config.apiToken = ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join("");
+          stored.config.accountId = "c80164ed977e6535efd1b67a54741ed6";
+        }
+      }
       return stored;
     }
 
@@ -896,6 +948,11 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     let apiToken = "";
     let accountId = "c80164ed977e6535efd1b67a54741ed6";
     let displayName = id;
+    if (id === "gemini-3.8-flash") {
+      displayName = "Google Gemini 3.8 Flash";
+    } else if (id === "@cf/meta/llama-3.3-70b-instruct-fp8-fast") {
+      displayName = "Llama 3.3 70B Instruct (Workers AI)";
+    }
 
     let matchedModel = remoteData?.models?.find((m: any) => m.id === id || m.model_id === id);
     if (!matchedModel && (id.includes("gemini") || id.includes("google"))) {

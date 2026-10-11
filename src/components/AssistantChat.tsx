@@ -759,6 +759,9 @@ RÈGLES D'EXCELLENCE :
       ];
 
       // 5. Appel au moteur d'IA officiel StudyCloud (Workshop Backend / Robot Rouge)
+      const selectedModelObj = availableModels.find(m => m.id === selectedModel || m.model_id === selectedModel);
+      const configuredToken = selectedModelObj?.api_token;
+
       const aiResult = await sendChatMessageToAi({
         messages: chatHistory,
         prompt: userText,
@@ -768,6 +771,9 @@ RÈGLES D'EXCELLENCE :
         conversationId: currentConversationId,
         model: selectedModel,
         selectedModel: selectedModel,
+        apiKey: configuredToken || getGeminiApiKey() || undefined,
+        apiToken: configuredToken || undefined,
+        geminiApiKey: configuredToken || getGeminiApiKey() || undefined,
         requested_type: explicitToolType || undefined,
         attachedFileId,
         attachedFileName,
@@ -781,7 +787,6 @@ RÈGLES D'EXCELLENCE :
         fileName: attachedFileName,
         imageBase64: attachedImageBase64 || undefined,
         audioBase64: attachedAudioBase64 || undefined,
-        geminiApiKey: getGeminiApiKey() || undefined,
       });
 
       const rawResponseText = aiResult.response || "Désolé, je n'ai pas pu obtenir de réponse.";
@@ -887,7 +892,7 @@ RÈGLES D'EXCELLENCE :
         isStreaming: true,
         attachedFileName: attachedFileName || undefined,
         model: aiResult.model,
-        isPowerMode: isPowerMode,
+        isPowerMode: false,
       };
       setMessages(prev => [...prev, initialAiMsg]);
 

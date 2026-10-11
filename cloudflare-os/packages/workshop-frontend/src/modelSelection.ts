@@ -16,7 +16,7 @@ export function getStoredSelectedModel(
 
   if (storedModel === "@cf/meta/llama-3.3-70b-instruct") {
     storedModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-  } else if (storedModel === "gemini-2.0-flash" || storedModel === "gemini-2.5-flash") {
+  } else if (storedModel === "gemini-2.0-flash" || storedModel === "gemini-2.5-flash" || storedModel?.includes("gemini-2.0")) {
     storedModel = "gemini-3.8-flash";
   } else if (storedModel && storedModel.includes("claude-3-5")) {
     storedModel = "claude-sonnet-4-5";

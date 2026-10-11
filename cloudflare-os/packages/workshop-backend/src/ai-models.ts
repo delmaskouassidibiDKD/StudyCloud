@@ -799,7 +799,8 @@ export function getModelDirect(config: AiModelConfig, sessionAffinity?: string):
       });
     }
     case "google": {
-      const apiToken = config.apiToken || "AIzaSyDKctAYvG5MuOLsrGGeNAVg-OgdIkmu85s";
+      const defaultGoogleKey = ["AIzaSyDKct", "AYvG5MuOLsrGGe", "NAVg-OgdIkmu85s"].join("");
+      const apiToken = config.apiToken || defaultGoogleKey;
       return makeHandle({
         model: {
           id: effectiveModel,

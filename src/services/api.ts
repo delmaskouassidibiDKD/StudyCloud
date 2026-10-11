@@ -276,6 +276,8 @@ export async function sendChatMessageToAi(params: {
     isPowerMode: isPowerMode,
     engine: isPowerMode ? 'gemini' : (params.engine || 'standard'),
     geminiApiKey: userGeminiApiKey,
+    apiKey: params.apiKey || params.apiToken || userGeminiApiKey,
+    apiToken: params.apiKey || params.apiToken || userGeminiApiKey,
     message: params.prompt || params.message || '',
     prompt: params.prompt || params.message || '',
     conversation_id: params.conversationId || params.conversation_id || params.sessionId,
