@@ -288,13 +288,14 @@ function gatewayNativeModel(config: AiModelConfig, gatewayUrl: string): Model<Ap
         thinkingLevelMap: catalog?.thinkingLevelMap,
         compat: catalog?.compat,
       };
-    case "google":
-      // pi's own gateway catalog skips Google, but the gateway's google-ai-studio passthrough +
-      // pi's google API impl work; we construct the model ourselves. The @google/genai SDK
-      // treats baseUrl as already including the version path.
+    case "google": {
+      let gModel = config.model;
+      if (gModel.includes("gemini-2.0") || gModel.includes("gemini-2.5") || gModel.includes("gemini-1.5") || gModel === "gemini-2.0-flash") {
+        gModel = "gemini-3.8-flash";
+      }
       return {
-        id: config.model,
-        name: catalog?.name ?? config.model,
+        id: gModel,
+        name: catalog?.name ?? gModel,
         api: "google-generative-ai",
         provider: "google",
         baseUrl: `${gatewayUrl}/google-ai-studio/v1beta`,
@@ -304,6 +305,7 @@ function gatewayNativeModel(config: AiModelConfig, gatewayUrl: string): Model<Ap
         ...window,
         thinkingLevelMap: catalog?.thinkingLevelMap,
       };
+    }
     case "cloudflare":
       // Workers AI's own OpenAI-compatible endpoint, exposed through the gateway's workers-ai
       // route. This is Workers AI's native chat API (the same surface as its direct
@@ -564,6 +566,13 @@ function withoutPromptCacheKey(model: Model<Api>, payload: unknown): object | un
 export function getModel(env: Cloudflare.Env, config: AiModelConfig,
                          initiator: AiChatAuthorInfo,
                          options: ModelRoutingOptions = {}): ModelHandle {
+  // Automatically migrate any deprecated Gemini model to gemini-3.8-flash
+  if (config.provider === "google" || (typeof config.model === "string" && config.model.includes("gemini"))) {
+    if (config.model.includes("2.0") || config.model.includes("2.5") || config.model.includes("1.5") || config.model === "gemini-2.0-flash") {
+      config = { ...config, model: "gemini-3.8-flash" };
+    }
+  }
+
   // BYOK: a connected user's own Cloudflare account pays for everything (all providers, including
   // Workers AI), routed through the user's own AI Gateway with unified billing. Honored regardless
   // of whether a platform AI Gateway is configured, so connected users are always billed correctly.
@@ -784,7 +793,7 @@ function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelH
             "Ce modèle Google Gemini n'a pas encore de clé API configurée. Veuillez ajouter votre clé API Gemini dans votre Tableau de Bord StudyCloud (Onglet Robot Rouge - Studio IA).");
       }
       let targetModel = config.model;
-      if (targetModel === "gemini-2.0-flash" || targetModel === "gemini-2.5-flash" || targetModel === "gemini-2.0-flash-exp") {
+      if (targetModel.includes("gemini-2.0") || targetModel.includes("gemini-2.5") || targetModel.includes("gemini-1.5") || targetModel === "gemini-2.0-flash") {
         targetModel = "gemini-3.8-flash";
       }
       return makeHandle({

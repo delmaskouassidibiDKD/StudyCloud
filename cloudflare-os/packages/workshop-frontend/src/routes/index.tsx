@@ -116,7 +116,6 @@ export function HomePageContent({ prompt }: HomeSearch) {
         finalModels = [
           { id: "@cf/meta/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct (Workers AI)", type: "agent" },
           { id: "gemini-3.8-flash", name: "Google Gemini 3.8 Flash", type: "agent" },
-          { id: "gemini-2.0-flash", name: "Google Gemini 3.8 Flash", type: "agent" },
           { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet (Anthropic)", type: "agent" },
           { id: "gpt-4o-mini", name: "OpenAI GPT-4o Mini", type: "agent" },
           { id: "@cf/moonshotai/kimi-k2.7-code", name: "Kimi K2.7 Code (Workers AI)", type: "agent" },

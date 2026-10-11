@@ -522,7 +522,6 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     return [
       { id: "@cf/meta/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct (Workers AI)", type: "agent" },
       { id: "gemini-3.8-flash", name: "Google Gemini 3.8 Flash", type: "agent" },
-      { id: "gemini-2.0-flash", name: "Google Gemini 3.8 Flash", type: "agent" },
       { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet (Anthropic)", type: "agent" },
       { id: "gpt-4o-mini", name: "OpenAI GPT-4o Mini", type: "agent" },
       { id: "@cf/moonshotai/kimi-k2.7-code", name: "Kimi K2.7 Code (Workers AI)", type: "agent" },
@@ -797,12 +796,18 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     // An existing chat keeps its model while it still resolves, even once no longer offered. A new
     // conversation takes the user's preferred model only while it is still offered, as the web
     // composer does with its stored choice, and otherwise the first available model.
+    if (existingChatModelId === "gemini-2.0-flash" || existingChatModelId === "gemini-2.5-flash" || existingChatModelId?.includes("gemini-2.0")) {
+      existingChatModelId = "gemini-3.8-flash";
+    }
     let models = await getGatewayModels(this.env);
     const remoteData = await this.#getRemoteAiConfig();
     let selectedModelId = existingChatModelId;
     if (selectedModelId === null || !this.#resolveModel(selectedModelId, models, remoteData)) {
       let offered = this.#listModels(models);
       let preferredModel = this.storage.preferredModel.get();
+      if (preferredModel === "gemini-2.0-flash" || preferredModel === "gemini-2.5-flash" || preferredModel?.includes("gemini-2.0")) {
+        preferredModel = "gemini-3.8-flash";
+      }
       selectedModelId = (offered.find(model => model.id === preferredModel) ?? offered[0])?.id ?? null;
     }
 
@@ -815,9 +820,23 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
    * stored model resolves on a gateway deployment whose users may not add their own.
    */
   #resolveModel(id: string, models: GatewayModels | null, remoteData?: any): UserAiModelRecord | undefined {
+    if (id === "gemini-2.0-flash" || id === "gemini-2.5-flash" || id.includes("gemini-2.0")) {
+      id = "gemini-3.8-flash";
+    }
     if (models?.get(id)) return models.resolve(id);
     let stored = models && !models.userModels ? undefined : this.storage.aiModels.get(id);
-    if (stored) return stored;
+    if (stored) {
+      if (stored.config?.provider === "google" || stored.config?.model?.includes("gemini")) {
+        if (stored.config.model?.includes("2.0") || stored.config.model?.includes("2.5") || stored.config.model === "gemini-2.0-flash") {
+          stored = {
+            ...stored,
+            profile: { ...stored.profile, name: "Google Gemini 3.8 Flash" },
+            config: { ...stored.config, model: "gemini-3.8-flash" }
+          };
+        }
+      }
+      return stored;
+    }
 
     let provider: AiModelProvider = "cloudflare";
     if (id.includes("gemini") || id.includes("google")) provider = "google";
@@ -856,7 +875,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     }
 
     let modelTarget = matchedModel?.model_id || id;
-    if (provider === "google" && (modelTarget === "gemini-2.0-flash" || modelTarget === "gemini-2.5-flash")) {
+    if (provider === "google" && (modelTarget.includes("gemini-2.0") || modelTarget.includes("gemini-2.5") || modelTarget === "gemini-2.0-flash")) {
       modelTarget = "gemini-3.8-flash";
       displayName = "Google Gemini 3.8 Flash";
     }
