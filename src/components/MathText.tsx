@@ -14,6 +14,82 @@ interface MathTextProps {
  * notamment : mélanges de $ et symboles (ex: \text{k}\$\Omega), blocs $$ non fermés, etc.
  */
 /**
+ * Convertit intelligemment les notations scientifiques ASCII et les fractions avec slash '/'
+ * en vraies fractions LaTeX verticales \dfrac{numérateur}{dénominateur} avec barre horizontale nette.
+ */
+export function convertAsciiMathToLatex(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  let res = text;
+
+  // 1. Toujours promouvoir \frac en \dfrac pour assurer une fraction haute avec barre horizontale
+  res = res.replace(/\\frac\b/g, '\\dfrac');
+
+  // 2. Conversion de pi et symboles grecs
+  res = res.replace(/π/g, '\\pi');
+
+  // 3. Conversion de la racine carrée Unicode √ ou sqrt
+  res = res
+    .replace(/√\(([^)]+)\)/g, '\\sqrt{$1}')
+    .replace(/√([a-zA-Z0-9_]+)/g, '\\sqrt{$1}')
+    .replace(/\bsqrt\(([^)]+)\)/gi, '\\sqrt{$1}');
+
+  // 4. Variables fréquentes avec indices (w0, f0, Q0, A0, R1, R2, etc.)
+  res = res
+    .replace(/w0/g, '\\omega_0')
+    .replace(/w_0/g, '\\omega_0')
+    .replace(/\bf0\b/g, 'f_0')
+    .replace(/\bf_0\b/g, 'f_0')
+    .replace(/\bQ0\b/g, 'Q_0')
+    .replace(/\bQ_0\b/g, 'Q_0')
+    .replace(/\bA0\b/g, 'A_0')
+    .replace(/\bA_0\b/g, 'A_0')
+    .replace(/\bR1\b/g, 'R_1')
+    .replace(/\bR2\b/g, 'R_2')
+    .replace(/\bC1\b/g, 'C_1')
+    .replace(/\bC2\b/g, 'C_2');
+
+  // En contexte de pulsation (ex: w/\omega_0 ou \omega_0/w ou jw)
+  res = res
+    .replace(/jw\b/g, 'j\\omega')
+    .replace(/\bj\s*w\b/g, 'j\\omega')
+    .replace(/\bw\s*\/\s*\\omega_0/g, '\\dfrac{\\omega}{\\omega_0}')
+    .replace(/\\omega_0\s*\/\s*w\b/g, '\\dfrac{\\omega_0}{\\omega}');
+
+  // 5. Fractions dans les racines \sqrt{L/C}
+  res = res.replace(/\\sqrt\{([A-Za-z0-9_\\]+)\s*\/\s*([A-Za-z0-9_\\]+)\}/g, '\\sqrt{\\dfrac{$1}{$2}}');
+
+  // 6. Remplacement des fractions complexes avec crochets / [ ... ] ou parenthèses / ( ... )
+  res = res.replace(/([A-Za-z0-9_\\\s^+\-*]+?)\s*\/\s*\[([^\]]+)\]/g, '\\dfrac{$1}{$2}');
+  res = res.replace(/([A-Za-z0-9_\\\s^+\-*]+?)\s*\/\s*\(([^()]+)\)/g, '\\dfrac{$1}{$2}');
+
+  // 7. Fractions imbriquées avec parenthèses
+  for (let i = 0; i < 3; i++) {
+    res = res.replace(/\(([^()]+)\)\s*\/\s*\(([^()]+)\)/g, '\\dfrac{$1}{$2}');
+    res = res.replace(/\(([^()]+)\)\s*\/\s*([0-9a-zA-Z_\\]+)/g, '\\dfrac{$1}{$2}');
+    res = res.replace(/([0-9a-zA-Z_\\]+)\s*\/\s*\(([^()]+)\)/g, '\\dfrac{$1}{$2}');
+  }
+
+  // 8. Fractions avec racine carrée: X / \sqrt{...}
+  res = res.replace(/([0-9a-zA-Z_\\]+)\s*\/\s*(\\sqrt\{[^}]+\})/g, '\\dfrac{$1}{$2}');
+
+  // 9. Fractions simples sans parenthèses: R2/R1, L\omega_0/R1, 1/Q_0, p/\omega_0
+  res = res.replace(/([0-9a-zA-Z_\\^]+)\s*\/\s*([0-9a-zA-Z_\\^]+)/g, (match, n, d) => {
+    if (match.includes('http') || (/\d{2,4}\/\d{1,2}/.test(match) && !/[a-zA-Z_\\]/.test(match))) {
+      return match;
+    }
+    return `\\dfrac{${n}}{${d}}`;
+  });
+
+  // 10. Exposants ² -> ^2
+  res = res.replace(/²/g, '^2').replace(/³/g, '^3');
+
+  // Nettoyage des crochets résiduels autour d'une \dfrac
+  res = res.replace(/\[\s*(\\dfrac\{[^{}]+\}\{[^{}]+\})\s*\]/g, '$1');
+
+  return res;
+}
+
+/**
  * Nettoie, répare et unifie les formules mathématiques (LaTeX / KaTeX)
  * Résout les corruptions typiques des LLMs :
  * 1. Dollars hachés au milieu des expressions (ex: Q$_0 = \frac{1}{1000}$\sqrt{...}$)
@@ -24,6 +100,12 @@ interface MathTextProps {
 function healMathLine(rawLine: string, inlineMode: boolean): string {
   let line = rawLine.trim();
   if (!line) return '';
+
+  // 1. Convertir les fractions ASCII / et variables scientifiques si la ligne semble contenir des formules
+  const seemsMath = /[=+\-*/^√π]|\\(?:d?frac|sqrt|omega|alpha|beta|pi|boxed)|(?:\b(?:w0|f0|Q0|A0|R1|R2|Cp)\b)/.test(line);
+  if (seemsMath) {
+    line = convertAsciiMathToLatex(line);
+  }
 
   const hasLatexCmds = /\\(?:d?frac|sqrt|boxed|underline|omega|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|rho|sigma|tau|phi|Omega|Delta|times|approx|infty|pm|to|Rightarrow|leftarrow|Leftarrow|quad|qquad|left|right|sum|int|prod|lim|cdot|text)\b/i.test(line);
 
@@ -121,8 +203,11 @@ function sanitizeLatexInput(rawText: string, inlineMode: boolean): string {
  * Tentative de rendu KaTeX avec réparation automatique si la formule comporte une erreur de syntaxe mineure
  */
 function renderKaTeXSafe(mathExpr: string, displayMode: boolean): string | null {
-  const trimmed = mathExpr.trim();
+  let trimmed = mathExpr.trim();
   if (!trimmed) return '';
+
+  // Forcer \dfrac pour que la barre horizontale soit toujours bien nette et que le numérateur soit en haut et le dénominateur en bas
+  trimmed = trimmed.replace(/\\frac\b/g, '\\dfrac');
 
   try {
     return katex.renderToString(trimmed, {

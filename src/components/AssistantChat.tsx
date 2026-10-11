@@ -182,10 +182,15 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
 
   return (
     <div className="flex flex-col w-full items-start">
-      <div className="space-y-2 text-zinc-200 text-left w-full leading-relaxed font-medium">
+      <div className="space-y-1.5 text-zinc-200 text-left w-full leading-relaxed font-medium">
         {lines.map((line, idx) => {
           const isLastLine = idx === lines.length - 1;
           const trimmed = line.trim();
+
+          // Espacement aéré pour les lignes vides (évite que tout soit groupé)
+          if (!trimmed) {
+            return <div key={idx} className="h-3 sm:h-4 w-full" aria-hidden="true" />;
+          }
 
           // Détection d'une carte de recommandation interactive (ex: Recommandé : flashcards)
           const recoMatch = trimmed.match(/^(?:\[?💡?\s*Recommand[ée]\s*:\s*([a-zA-ZÀ-ÿ\s]+)\]?)/i);
@@ -193,32 +198,94 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
             return <ChatRecommendationCard key={idx} recoType={recoMatch[1]} />;
           }
 
-          // Rendu des titres Markdown (H1, H2, H3)
-          if (trimmed.startsWith('### ')) {
-            return (
-              <h3 key={idx} className="text-base font-bold text-white pt-2 pb-1 border-b border-zinc-800">
-                <MathText text={trimmed.slice(4)} inline={true} />
-              </h3>
-            );
-          }
-          if (trimmed.startsWith('## ')) {
-            return (
-              <h2 key={idx} className="text-lg font-black text-white pt-3 pb-1 border-b border-zinc-800">
-                <MathText text={trimmed.slice(3)} inline={true} />
-              </h2>
-            );
-          }
+          // Grand Titre principal (H1) avec dégradé et icône lumineuse
           if (trimmed.startsWith('# ')) {
             return (
-              <h1 key={idx} className="text-xl font-black text-orange-400 pt-3 pb-1">
-                <MathText text={trimmed.slice(2)} inline={true} />
-              </h1>
+              <div key={idx} className="pt-5 pb-2.5 mt-3 mb-2 border-b border-orange-500/25 w-full">
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-amber-300 to-yellow-200 flex items-center gap-2.5">
+                  <span className="p-1 rounded-lg bg-orange-500/10 text-orange-400 text-sm">✦</span>
+                  <MathText text={trimmed.slice(2)} inline={true} />
+                </h1>
+              </div>
+            );
+          }
+
+          // Titre de section ou question (H2) avec bande latérale orange
+          if (trimmed.startsWith('## ')) {
+            return (
+              <div key={idx} className="pt-4 pb-2 mt-3 mb-1.5 w-full">
+                <h2 className="text-lg sm:text-xl font-extrabold text-white flex items-center gap-2.5 border-l-4 border-orange-500 pl-3 py-1 bg-gradient-to-r from-orange-500/10 to-transparent rounded-r-xl">
+                  <MathText text={trimmed.slice(3)} inline={true} />
+                </h2>
+              </div>
+            );
+          }
+
+          // Sous-titre (H3)
+          if (trimmed.startsWith('### ')) {
+            return (
+              <div key={idx} className="pt-2.5 pb-1 mt-2 mb-1 w-full">
+                <h3 className="text-base font-bold text-amber-200 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+                  <MathText text={trimmed.slice(4)} inline={true} />
+                </h3>
+              </div>
+            );
+          }
+
+          // Détection d'une Question, Étape ou Exercice -> Carte stylée avec badge
+          const stepMatch = trimmed.match(/^(Question\s*\d+|[EÉ]tape\s*\d+|Exercice\s*\d+|Partie\s*[A-Z0-9]+)\s*[:.-]?\s*(.*)$/i);
+          if (stepMatch) {
+            return (
+              <div key={idx} className="my-3 p-3.5 rounded-xl bg-[#1a1c26] border border-orange-500/30 shadow-md w-full">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="px-2.5 py-0.5 rounded-md text-xs font-black uppercase tracking-wider bg-orange-500 text-black shadow-sm">
+                    {stepMatch[1]}
+                  </span>
+                </div>
+                {stepMatch[2] ? (
+                  <div className="text-sm sm:text-base font-semibold text-zinc-100 mt-1">
+                    <MathText text={stepMatch[2]} inline={true} />
+                  </div>
+                ) : null}
+              </div>
+            );
+          }
+
+          // Formule bloc isolée ($$ ... $$) -> Encadré mathématique dédié centré
+          if (trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4) {
+            return (
+              <div key={idx} className="my-3.5 py-3.5 px-4 rounded-2xl bg-[#13151f] border border-zinc-700/60 shadow-inner text-center overflow-x-auto custom-scrollbar w-full">
+                <MathText text={trimmed} inline={false} />
+              </div>
+            );
+          }
+
+          // Mise en valeur des conclusions ou déductions (Donc :, Conclusion :, etc.)
+          if (/^(Donc|Conclusion|Résultat final|On en déduit|En conclusion)\s*[:.-]/i.test(trimmed)) {
+            return (
+              <div key={idx} className="my-2.5 p-3 rounded-xl bg-amber-500/10 border-l-4 border-amber-400 text-zinc-100 font-medium">
+                <MathText text={line} inline={true} />
+              </div>
+            );
+          }
+
+          // Puces de listes avec losange doré et espacement aéré
+          const bulletMatch = trimmed.match(/^([-*•])\s+(.*)$/);
+          if (bulletMatch) {
+            return (
+              <div key={idx} className="flex items-start gap-2.5 my-1.5 pl-2 leading-relaxed">
+                <span className="text-orange-400 mt-1 select-none text-xs">◆</span>
+                <div className="flex-1">
+                  <MathText text={bulletMatch[2]} inline={true} />
+                </div>
+              </div>
             );
           }
 
           // Ligne normale avec KaTeX
           return (
-            <div key={idx} className="whitespace-pre-wrap break-words">
+            <div key={idx} className="whitespace-pre-wrap break-words leading-relaxed text-zinc-200">
               <MathText text={line} inline={true} />
               {isStreaming && isLastLine && (
                 <span className="inline-flex items-center align-middle ml-2 select-none" title="L'IA écrit en temps réel...">
@@ -741,12 +808,33 @@ Tu réponds sous la forme d'un objet JSON strict :
 }
 \`\`\`
 
-RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
-- Rigueur académique absolue. Exploite fidèlement les documents transmis s'il y en a.
-- TOUTE formule ou expression mathématique/scientifique DOIT ÊTRE UNIFIÉE à l'intérieur d'un délimiteur unique ($...$ en ligne ou $$...$$ en bloc).
-- RÈGLE D'OR : NE JAMAIS hacher une formule avec des $ au milieu (ex: JAMAIS Q$_0 = \frac{1}{1000}$\sqrt...$, mais TOUJOURS $$Q_0 = \frac{1}{1000}\sqrt{\frac{0{,}905}{7 \times 10^{-9}}}$$).
-- DANS LES CRÉATIONS (Questionnaires, QCM, Cartes, Exercices) : Toute formule dans l'énoncé et dans CHAQUE option de réponse DOIT impérativement être entourée de dollars, par exemple : "$T(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$".
-- Les encadrements \\boxed{...} doivent impérativement être placés DANS les délimiteurs mathématiques ($$\\boxed{...}$$).`;
+RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
+1. INTERDICTION FORMELLE D'ÉCRIRE DES FRACTIONS AVEC LE SLASH '/' :
+   - IL EST STRICTEMENT INTERDIT d'écrire des fractions sous la forme a/b ou 1/√(LC) ou A0 = -R2/R1 ou (1/Q0)(p/w0).
+   - TOUTE fraction mathématique ou scientifique DOIT IMPÉRATIVEMENT être écrite sous forme de vraie fraction verticale avec \\dfrac{numérateur}{dénominateur} :
+     * Le numérateur en haut,
+     * La barre horizontale nette au milieu,
+     * Le dénominateur en bas.
+   - Exemples obligatoires :
+     * JAMAIS : w0 = 1/√(LC)  --> TOUJOURS : $$ \\omega_0 = \\dfrac{1}{\\sqrt{LC}} $$
+     * JAMAIS : f0 = 1/(2π√(LC)) --> TOUJOURS : $$ f_0 = \\dfrac{1}{2\\pi \\sqrt{LC}} $$
+     * JAMAIS : Q0 = Lw0/R1 --> TOUJOURS : $$ Q_0 = \\dfrac{L\\omega_0}{R_1} = \\dfrac{1}{R_1 C \\omega_0} = \\dfrac{1}{R_1}\\sqrt{\\dfrac{L}{C}} $$
+     * JAMAIS : A0 = -R2/R1 --> TOUJOURS : $$ A_0 = -\\dfrac{R_2}{R_1} $$
+     * JAMAIS : T(p) = -R2 C p / [...] --> TOUJOURS : $$ T(p) = \\dfrac{-R_2 C p}{1 + \\dfrac{1}{Q_0}\\dfrac{p}{\\omega_0} + \\left(\\dfrac{p}{\\omega_0}\\right)^2} $$
+   - Utilise TOUJOURS les symboles scientifiques corrects : \\omega_0 (jamais w0), \\pi (jamais pi), \\tau, \\alpha, \\beta, \\Omega.
+
+2. STRUCTURE AÉRÉE, GRANDS TITRES ET MISE EN VALEUR :
+   - Structure TOUJOURS ta réponse avec des grands titres clairs (# Grand Titre pour le sujet, ## Titre pour chaque question ou étape majeure, ### Sous-titre).
+   - Sépare clairement chaque question ou étape (ex: ## Question 5 : Expressions canoniques de A₀, f₀, Q₀).
+   - Fais de VRAIS sauts de ligne doubles entre chaque paragraphe ou étape pour que le texte ne soit JAMAIS compacté ni groupé.
+   - Pour chaque formule majeure, écris-la isolée sur sa propre ligne entre doubles dollars $$ ... $$ pour qu'elle s'affiche en grand, centrée et aérée.
+   - Encadre systématiquement le résultat final de chaque question avec \\boxed{...} dans un bloc centré $$ \\boxed{...} $$.
+   - Souligne les concepts essentiels avec **gras** ou \\underline{...}.
+
+3. RÉPONSE INTÉGRALE JUSQU'AU BOUT (ZÉRO COUPURE) :
+   - Tu dois MENER TA DÉMONSTRATION JUSQU'AU BOUT ET NE JAMAIS T'ARRÊTER AU MILIEU.
+   - Conclus chaque question ou calcul de manière définitive avec la formule finale encadrée.
+- DANS LES CRÉATIONS (Questionnaires, QCM, Cartes, Exercices) : Toute formule dans l'énoncé et dans CHAQUE option de réponse DOIT impérativement être entourée de dollars, par exemple : "$T(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$".`;
 
       if (docNames.length > 0) {
         systemContent += `\n\nDOCUMENTS FOURNIS PAR L'ÉTUDIANT :\nL'utilisateur a ouvert ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct et complet au contenu textuel de ces documents.`;

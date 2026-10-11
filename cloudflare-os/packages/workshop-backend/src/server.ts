@@ -926,12 +926,33 @@ Tu produis OBLIGATOIREMENT ET UNIQUEMENT une réponse sous forme d'objet JSON st
   }
 }
 \`\`\`
-RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
-- TOUTE formule ou expression mathématique/scientifique DOIT ÊTRE UNIFIÉE à l'intérieur d'un délimiteur unique ($...$ en ligne ou $$...$$ en bloc).
-- RÈGLE D'OR : NE JAMAIS hacher une formule avec des $ à l'intérieur (ex: JAMAIS Q$_0 = \frac{1}{1000}$\sqrt...$, mais TOUJOURS $$Q_0 = \frac{1}{1000}\sqrt{\frac{0{,}905}{7 \times 10^{-9}}}$$).
-- DANS LES CRÉATIONS (Questionnaires, QCM, Cartes, Exercices) : Toute formule dans l'énoncé et dans CHAQUE option de réponse DOIT impérativement être entourée de dollars, par exemple : "$T(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$".
-- Les encadrements \\boxed{...} doivent impérativement être placés DANS les délimiteurs mathématiques ($$\\boxed{...}$$).
-- Rigueur académique absolue. Exploite fidèlement les documents transmis. Ne tronque jamais les modules.`;
+RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
+1. INTERDICTION FORMELLE D'ÉCRIRE DES FRACTIONS AVEC LE SLASH '/' :
+   - IL EST STRICTEMENT INTERDIT d'écrire des fractions sous la forme a/b ou 1/√(LC) ou A0 = -R2/R1 ou (1/Q0)(p/w0).
+   - TOUTE fraction mathématique ou scientifique DOIT IMPÉRATIVEMENT être écrite sous forme de vraie fraction verticale avec \\dfrac{numérateur}{dénominateur} :
+     * Le numérateur en haut,
+     * La barre horizontale nette au milieu,
+     * Le dénominateur en bas.
+   - Exemples obligatoires :
+     * JAMAIS : w0 = 1/√(LC)  --> TOUJOURS : $$ \\omega_0 = \\dfrac{1}{\\sqrt{LC}} $$
+     * JAMAIS : f0 = 1/(2π√(LC)) --> TOUJOURS : $$ f_0 = \\dfrac{1}{2\\pi \\sqrt{LC}} $$
+     * JAMAIS : Q0 = Lw0/R1 --> TOUJOURS : $$ Q_0 = \\dfrac{L\\omega_0}{R_1} = \\dfrac{1}{R_1 C \\omega_0} = \\dfrac{1}{R_1}\\sqrt{\\dfrac{L}{C}} $$
+     * JAMAIS : A0 = -R2/R1 --> TOUJOURS : $$ A_0 = -\\dfrac{R_2}{R_1} $$
+     * JAMAIS : T(p) = -R2 C p / [...] --> TOUJOURS : $$ T(p) = \\dfrac{-R_2 C p}{1 + \\dfrac{1}{Q_0}\\dfrac{p}{\\omega_0} + \\left(\\dfrac{p}{\\omega_0}\\right)^2} $$
+   - Utilise TOUJOURS les lettres grecques correctes : \\omega_0 (jamais w0), \\pi (jamais pi), \\tau, \\alpha, \\beta, \\Omega.
+
+2. STRUCTURE AÉRÉE, GRANDS TITRES ET COULEURS :
+   - Structure TOUJOURS ta réponse avec des grands titres clairs (# Grand Titre pour le sujet, ## Titre pour chaque question ou étape majeure, ### Sous-titre pour les sous-étapes).
+   - Sépare clairement chaque question ou étape de calcul (ex: ## Question 5 : Expressions canoniques de A₀, f₀, Q₀).
+   - Fais de VRAIS sauts de ligne doubles entre chaque paragraphe ou étape pour que le texte ne soit JAMAIS compacté ni groupé.
+   - Pour chaque formule majeure, écris-la isolée sur sa propre ligne entre doubles dollars $$ ... $$ pour qu'elle s'affiche en grand, centrée et aérée.
+   - Encadre systématiquement le résultat final de chaque question avec \\boxed{...} dans un bloc centré $$ \\boxed{...} $$.
+   - Souligne les concepts essentiels avec \\underline{...} ou du gras **...**.
+
+3. RÉPONSE INTÉGRALE JUSQU'AU BOUT (ZÉRO COUPURE) :
+   - Tu dois MENER TA DÉMONSTRATION JUSQU'AU BOUT ET NE JAMAIS T'ARRÊTER AU MILIEU.
+   - Conclus chaque question ou calcul de manière définitive avec la formule finale encadrée.
+- DANS LES CRÉATIONS (Questionnaires, QCM, Cartes, Exercices) : Toute formule dans l'énoncé et dans CHAQUE option de réponse DOIT impérativement être entourée de dollars, par exemple : "$T(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$".`;
 
         if (docContent) {
           systemPrompt += `\n\n[DOCUMENTS FOURNIS PAR L'ÉTUDIANT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 30000)}`;
@@ -986,7 +1007,7 @@ RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
               body: JSON.stringify({
                 model: targetModel,
                 messages: cfMessages,
-                max_tokens: 4096,
+                max_tokens: 8192,
               }),
             });
 
@@ -1052,7 +1073,7 @@ RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
               },
               body: JSON.stringify({
                 model: targetModel.includes("3-5") ? "claude-3-5-sonnet-20241022" : "claude-3-5-haiku-20241022",
-                max_tokens: 4096,
+                max_tokens: 8192,
                 system: systemPrompt,
                 messages: antMessages,
               }),
@@ -1083,7 +1104,7 @@ RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
               body: JSON.stringify({
                 model: targetModel.includes("4o") ? targetModel : "gpt-4o-mini",
                 messages: oaiMessages,
-                max_tokens: 4096,
+                max_tokens: 8192,
               }),
             });
             if (oaiRes.ok) {
@@ -1112,7 +1133,7 @@ RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
               body: JSON.stringify({
                 model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
                 messages: cfMessages,
-                max_tokens: 4096,
+                max_tokens: 8192,
               }),
             });
 
