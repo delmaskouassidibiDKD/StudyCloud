@@ -737,10 +737,12 @@ Tu réponds sous la forme d'un objet JSON strict :
 }
 \`\`\`
 
-RÈGLES D'EXCELLENCE :
-- Pas de blabla inutile ni de règles artificielles.
-- Si un document est fourni, exploite fidèlement ses notions réelles.
-- Rédige toutes les formules scientifiques en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc).`;
+RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
+- Rigueur académique absolue. Exploite fidèlement les documents transmis s'il y en a.
+- TOUTE formule ou expression mathématique/scientifique DOIT ÊTRE UNIFIÉE à l'intérieur d'un délimiteur unique ($...$ en ligne ou $$...$$ en bloc).
+- RÈGLE D'OR : NE JAMAIS hacher une formule avec des $ au milieu (ex: JAMAIS Q$_0 = \frac{1}{1000}$\sqrt...$, mais TOUJOURS $$Q_0 = \frac{1}{1000}\sqrt{\frac{0{,}905}{7 \times 10^{-9}}}$$).
+- DANS LES CRÉATIONS (Questionnaires, QCM, Cartes, Exercices) : Toute formule dans l'énoncé et dans CHAQUE option de réponse DOIT impérativement être entourée de dollars, par exemple : "$T(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$".
+- Les encadrements \\boxed{...} doivent impérativement être placés DANS les délimiteurs mathématiques ($$\\boxed{...}$$).`;
 
       if (docNames.length > 0) {
         systemContent += `\n\nDOCUMENTS FOURNIS PAR L'ÉTUDIANT :\nL'utilisateur a ouvert ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct et complet au contenu textuel de ces documents.`;

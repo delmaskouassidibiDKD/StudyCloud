@@ -926,9 +926,12 @@ Tu produis OBLIGATOIREMENT ET UNIQUEMENT une réponse sous forme d'objet JSON st
   }
 }
 \`\`\`
-RÈGLES D'EXCELLENCE :
-- Rigueur académique absolue. Exploite fidèlement les documents transmis s'il y en a.
-- Ne tronque jamais les questions, cartes ou sections. Formules scientifiques toujours en LaTeX.`;
+RÈGLES D'EXCELLENCE POUR LES FORMULES MATHÉMATIQUES & SCIENTIFIQUES :
+- TOUTE formule ou expression mathématique/scientifique DOIT ÊTRE UNIFIÉE à l'intérieur d'un délimiteur unique ($...$ en ligne ou $$...$$ en bloc).
+- RÈGLE D'OR : NE JAMAIS hacher une formule avec des $ à l'intérieur (ex: JAMAIS Q$_0 = \frac{1}{1000}$\sqrt...$, mais TOUJOURS $$Q_0 = \frac{1}{1000}\sqrt{\frac{0{,}905}{7 \times 10^{-9}}}$$).
+- DANS LES CRÉATIONS (Questionnaires, QCM, Cartes, Exercices) : Toute formule dans l'énoncé et dans CHAQUE option de réponse DOIT impérativement être entourée de dollars, par exemple : "$T(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$".
+- Les encadrements \\boxed{...} doivent impérativement être placés DANS les délimiteurs mathématiques ($$\\boxed{...}$$).
+- Rigueur académique absolue. Exploite fidèlement les documents transmis. Ne tronque jamais les modules.`;
 
         if (docContent) {
           systemPrompt += `\n\n[DOCUMENTS FOURNIS PAR L'ÉTUDIANT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 30000)}`;
