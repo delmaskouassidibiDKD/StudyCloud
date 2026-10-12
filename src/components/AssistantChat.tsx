@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap } from 'lucide-react';
+import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap, Palette, HelpCircle, Download } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
@@ -132,7 +132,130 @@ function ChatRecommendationCard({ recoType }: { recoType: string; key?: any }) {
   );
 }
 
-const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: boolean; isStreaming?: boolean }) => {
+function sanitizeSvg(rawSvg: string): string {
+  if (!rawSvg) return '';
+  return rawSvg
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/\bon\w+\s*=\s*(['"]).*?\1/gi, '')
+    .replace(/\bon\w+\s*=\s*[^>\s]+/gi, '')
+    .replace(/javascript:/gi, '');
+}
+
+function extractSvgBlocks(content: string): { cleanText: string; svgBlocks: string[] } {
+  const svgBlocks: string[] = [];
+  let cleanText = content;
+
+  // 1. Blocs de code ```svg ... ```
+  cleanText = cleanText.replace(/```(?:svg|xml)?\s*(<svg[\s\S]*?<\/svg>)\s*```/gi, (_match, svg) => {
+    svgBlocks.push(sanitizeSvg(svg));
+    return `\n\n__STUDYCLOUD_SVG_BLOCK_${svgBlocks.length - 1}__\n\n`;
+  });
+
+  // 2. Balises brutes <svg ... </svg>
+  cleanText = cleanText.replace(/(<svg\b[^>]*>[\s\S]*?<\/svg>)/gi, (match) => {
+    svgBlocks.push(sanitizeSvg(match));
+    return `\n\n__STUDYCLOUD_SVG_BLOCK_${svgBlocks.length - 1}__\n\n`;
+  });
+
+  return { cleanText, svgBlocks };
+}
+
+function extractSuggestedQuestions(content: string): { cleanText: string; questions: string[] } {
+  const questions: string[] = [];
+  let cleanText = content;
+
+  const markerRegex = /(?:\[QUESTIONS_SUGG[EÉ]R[EÉ]ES\]|###\s*(?:Questions|Pistes)\s*(?:d['’]approfondissement|sugg[eé]r[eé]es|de\s*r[eé]flexion))([\s\S]*?)$/i;
+  const match = cleanText.match(markerRegex);
+
+  if (match) {
+    const questionsBlock = match[1];
+    cleanText = cleanText.replace(markerRegex, '').trim();
+
+    const qLines = questionsBlock.split('\n');
+    for (const line of qLines) {
+      const qClean = line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').trim();
+      if (qClean && qClean.length > 5 && !qClean.toLowerCase().startsWith('cliquez') && !qClean.toLowerCase().startsWith('vous pouvez')) {
+        questions.push(qClean);
+      }
+    }
+  }
+
+  return { cleanText, questions };
+}
+
+function SvgDiagramCard({ svgContent }: { svgContent: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(svgContent);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownload = () => {
+    try {
+      const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `schema_studycloud_${Date.now()}.svg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.warn('Erreur téléchargement SVG:', e);
+    }
+  };
+
+  return (
+    <div className="my-4 rounded-2xl bg-[#0f1118] border border-orange-500/35 shadow-xl overflow-hidden w-full max-w-2xl mx-auto">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-[#171922] border-b border-zinc-800 text-xs">
+        <div className="flex items-center gap-2">
+          <Palette className="w-4 h-4 text-orange-400" />
+          <span className="font-bold text-white tracking-wide">Schéma technique & Illustration</span>
+          <span className="px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-300 font-semibold text-[10px]">
+            Dessiné par l'IA
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+            title="Copier le code SVG"
+          >
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+          </button>
+          <button
+            type="button"
+            onClick={handleDownload}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+            title="Télécharger l'image vectorielle SVG"
+          >
+            <Download className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+      <div 
+        className="p-4 sm:p-6 overflow-x-auto custom-scrollbar flex items-center justify-center [&_svg]:max-w-full [&_svg]:h-auto [&_svg]:mx-auto"
+        dangerouslySetInnerHTML={{ __html: svgContent }}
+      />
+    </div>
+  );
+}
+
+const ChatMessageText = ({ 
+  text, 
+  isUser, 
+  isStreaming,
+  onSelectSuggestion 
+}: { 
+  text: string; 
+  isUser: boolean; 
+  isStreaming?: boolean;
+  onSelectSuggestion?: (question: string) => void;
+}) => {
   const [expanded, setExpanded] = useState(false);
 
   const maxUserPromptLength = 350;
@@ -158,10 +281,23 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
     );
   }
 
-  // Normalisation préalable pour KaTeX et nettoyage des résidus JSON
+  // 1. Extraction préalable des questions suggérées et des blocs SVG
+  const { textWithoutQuestions, suggestedQuestions } = useMemo(() => {
+    if (isUser || !displayText) return { textWithoutQuestions: displayText, suggestedQuestions: [] };
+    const res = extractSuggestedQuestions(displayText);
+    return { textWithoutQuestions: res.cleanText, suggestedQuestions: res.questions };
+  }, [displayText, isUser]);
+
+  const { textWithoutSvg, svgBlocks } = useMemo(() => {
+    if (isUser || !textWithoutQuestions) return { textWithoutSvg: textWithoutQuestions, svgBlocks: [] };
+    const res = extractSvgBlocks(textWithoutQuestions);
+    return { textWithoutSvg: res.cleanText, svgBlocks: res.svgBlocks };
+  }, [textWithoutQuestions, isUser]);
+
+  // 2. Normalisation préalable pour KaTeX et nettoyage des résidus JSON
   const normalizedDisplayText = useMemo(() => {
-    if (!displayText) return '';
-    let cleaned = displayText;
+    if (!textWithoutSvg) return '';
+    let cleaned = textWithoutSvg;
     if (!isUser && (cleaned.includes('"decision"') || cleaned.includes('"creation_data"'))) {
       cleaned = cleanChatText(cleaned);
       if (!cleaned) {
@@ -184,7 +320,7 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
     }
 
     return cleaned;
-  }, [displayText, isUser]);
+  }, [textWithoutSvg, isUser]);
 
   const lines = normalizedDisplayText.split('\n');
 
@@ -198,6 +334,16 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
           // Espacement aéré pour les lignes vides (évite que tout soit groupé)
           if (!trimmed) {
             return <div key={idx} className="h-3.5 sm:h-4 w-full" aria-hidden="true" />;
+          }
+
+          // Détection d'un bloc SVG à insérer
+          const svgTokenMatch = trimmed.match(/^__STUDYCLOUD_SVG_BLOCK_(\d+)__$/);
+          if (svgTokenMatch) {
+            const svgIndex = parseInt(svgTokenMatch[1], 10);
+            if (svgBlocks[svgIndex]) {
+              return <SvgDiagramCard key={idx} svgContent={svgBlocks[svgIndex]} />;
+            }
+            return null;
           }
 
           // Détection d'une carte de recommandation interactive (ex: Recommandé : flashcards)
@@ -241,6 +387,24 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
             );
           }
 
+          // Commentaires & Remarques (ne doivent JAMAIS être confondus avec des explications ou calculs)
+          const commentMatch = trimmed.match(/^(?:>\s*)?(?:\*\*)?(Remarque|Note|Astuce|Attention|Observation|Conseil|Point clé|Rappel)(?:\s+[^:]*?)?(?:\*\*)?\s*[:.-]\s*(.*)$/i) || (trimmed.startsWith('> ') ? [null, 'Remarque', trimmed.slice(2).trim()] : null);
+          if (commentMatch) {
+            const commentLabel = commentMatch[1] || 'Remarque méthodologique';
+            const commentBody = commentMatch[2] || '';
+            return (
+              <div key={idx} className="my-3 p-3.5 sm:p-4 rounded-2xl bg-sky-950/25 border-l-4 border-sky-400 text-sky-100 shadow-sm w-full">
+                <div className="flex items-center gap-2 mb-1.5 text-xs font-bold text-sky-300">
+                  <MessageSquare className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span className="uppercase tracking-wider">{commentLabel}</span>
+                </div>
+                <div className="text-[14px] sm:text-[15px] md:text-[16px] text-sky-100/90 leading-relaxed font-normal italic">
+                  <MathText text={commentBody} inline={true} />
+                </div>
+              </div>
+            );
+          }
+
           // Détection d'une Question, Étape ou Exercice -> Carte stylée avec badge
           const stepMatch = trimmed.match(/^(Question\s*\d+|[EÉ]tape\s*\d+|Exercice\s*\d+|Partie\s*[A-Z0-9]+)\s*[:.-]?\s*(.*)$/i);
           if (stepMatch) {
@@ -278,6 +442,21 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
             );
           }
 
+          // Alinéas pour sous-questions et étapes indentées (ex: a), b), 1), 2), i.)
+          const alineaMatch = trimmed.match(/^(?:([a-zA-Z]|\d+|[ivxIVX]+)\)\s+)(.*)$/);
+          if (alineaMatch) {
+            return (
+              <div key={idx} className="ml-3 sm:ml-7 pl-3.5 border-l-2 border-orange-500/40 my-2.5 bg-white/[0.02] rounded-r-xl py-2 flex items-start gap-2.5 w-full">
+                <span className="px-2 py-0.5 rounded-md bg-orange-500/15 border border-orange-500/30 text-orange-400 font-bold text-xs shrink-0 select-none">
+                  {alineaMatch[1]})
+                </span>
+                <div className="flex-1 text-zinc-100 leading-relaxed text-[15px] sm:text-[16px] md:text-[17px]">
+                  <MathText text={alineaMatch[2]} inline={true} />
+                </div>
+              </div>
+            );
+          }
+
           // Puces de listes avec losange doré et espacement aéré
           const bulletMatch = trimmed.match(/^([-*•])\s+(.*)$/);
           if (bulletMatch) {
@@ -304,6 +483,42 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
           );
         })}
       </div>
+
+      {/* Propositions de questions sous forme de boutons carrés (décidé par l'IA) */}
+      {!isStreaming && suggestedQuestions.length > 0 && (
+        <div className="mt-6 pt-4 border-t border-zinc-800/80 w-full animate-fadeIn">
+          <div className="flex items-center gap-2 mb-3">
+            <HelpCircle className="w-4 h-4 text-orange-400" />
+            <span className="text-xs font-bold uppercase tracking-wider text-orange-300">
+              Pistes & Questions d'approfondissement proposées
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
+            {suggestedQuestions.map((q, qIdx) => (
+              <button
+                key={qIdx}
+                type="button"
+                onClick={() => onSelectSuggestion?.(q)}
+                className="group relative p-4 rounded-2xl bg-[#1b1d25] hover:bg-[#252834] border border-zinc-700/80 hover:border-orange-500/60 shadow-md hover:shadow-orange-500/10 transition-all duration-200 cursor-pointer flex flex-col justify-between text-left active:scale-[0.98] min-h-[110px]"
+              >
+                <div className="flex items-start justify-between gap-2 mb-2 w-full">
+                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-orange-500/15 border border-orange-500/30 text-orange-400 text-xs font-black">
+                    {qIdx + 1}
+                  </span>
+                  <Sparkles className="w-3.5 h-3.5 text-zinc-500 group-hover:text-amber-400 transition-colors" />
+                </div>
+                <div className="text-xs sm:text-sm font-semibold text-zinc-100 group-hover:text-white leading-snug my-1 line-clamp-3">
+                  <MathText text={q} inline={true} />
+                </div>
+                <div className="mt-2 pt-2 border-t border-zinc-800 flex items-center justify-between text-[11px] font-bold text-orange-400/90 group-hover:text-orange-400">
+                  <span>Poser cette question</span>
+                  <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -848,6 +1063,33 @@ RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
      * Demande alors clairement à l'étudiant : "Voulez-vous que je poursuive avec la question suivante / la suite de la démonstration ?"
    - SI L'ÉTUDIANT RÉPOND "OUI", "CONTINUE", OU DEMANDE LA SUITE :
      * Enchaîne IMMÉDIATEMENT avec la suite exacte (les questions suivantes ou la seconde partie de la démonstration), sans répéter ce qui a déjà été expliqué.
+
+4. SCHÉMAS, CIRCUITS ET DESSINS VECTORIELS (DESSINER SI NÉCESSAIRE) :
+   - Si la résolution ou l'explication concerne un circuit électronique (ex: AOP, filtre RLC, quadripôle, pont diviseur), un repère géométrique, un signal ou un schéma bloc :
+     DESSINE-LE DIRECTEMENT sous forme de schéma vectoriel SVG propre et net dans un bloc de code \`\`\`svg ... \`\`\` :
+     * Utilise une balise <svg viewBox="0 0 550 250" xmlns="http://www.w3.org/2000/svg" className="w-full">
+     * Style moderne et sombre : fond sombre (#0d0f17) ou transparent, traits en orange (#f97316) ou cyan (#38bdf8), textes lisibles en blanc (#f3f4f6) avec font-size adaptée.
+     * Indique clairement les composants (Ve, Vs, R1, R2, C, L, noeuds, masse GND, entrées + et - de l'AOP).
+
+5. DÉCISION AUTONOME SUR LES QUESTIONS SUGGÉRÉES (PROPOSITIONS SOUS FORME DE CARTES BOUTONS) :
+   - À la fin d'un problème, exercice, démonstration ou situation, C'EST TOI L'IA QUI DÉCIDES AUTONOMEMENT s'il est pertinent de suggérer des questions de prolongement ou d'approfondissement à l'étudiant.
+   - Si tu juges pertinent d'en proposer (et uniquement quand la situation s'y prête bien), ajoute à la toute fin de ta réponse le bloc :
+[QUESTIONS_SUGGÉRÉES]
+- Question ou piste de calcul 1
+- Question ou piste de calcul 2
+- Question ou piste de calcul 3
+   Ces questions seront automatiquement transformées en boutons carrés cliquables pour l'étudiant. Si la situation ne nécessite aucun prolongement, ne mets pas ce bloc.
+
+6. STRUCTURATION STRICTE, ALINÉAS ET SÉPARATION DES COMMENTAIRES :
+   - NE CONFONDS JAMAIS les commentaires avec les calculs ou les explications théoriques !
+   - EXPLICATIONS : Rédige des phrases claires et aérées avec de grands titres (#, ##, ###).
+   - ALINÉAS : Pour les sous-questions ou sous-étapes, utilise systématiquement des alinéas avec 'a) ', 'b) ', 'c) ' ou '1) ', '2) ' pour que chaque étape soit bien indentée et aérée.
+   - CALCULS PURS : Isole chaque formule majeure dans un bloc centré $$ ... $$ avec \\dfrac{}{} et le résultat final encadré dans $$ \\boxed{...} $$.
+   - COMMENTAIRES ET REMARQUES : Mets TOUJOURS tes commentaires, observations physiques, astuces ou conseils sous la forme :
+> **Remarque :** Ton commentaire méthodologique ici.
+ou
+> **Note :** Ta note de vigilance ici.
+   Ils seront ainsi isolés dans un encadré distinct bleu ciel sans jamais se mélanger aux calculs.
 - DANS LES CRÉATIONS (Questionnaires, QCM, Cartes, Exercices) : Toute formule dans l'énoncé et dans CHAQUE option de réponse DOIT impérativement être entourée de dollars, par exemple : "$T(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$".`;
 
       if (docNames.length > 0) {
@@ -1363,7 +1605,7 @@ RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
                   </div>
                   
                   <div className="text-[15px] sm:text-[16px] md:text-[17px] leading-[1.8] font-normal text-zinc-100 pl-1">
-                    <ChatMessageText text={msg.text} isUser={false} isStreaming={msg.isStreaming} />
+                    <ChatMessageText text={msg.text} isUser={false} isStreaming={msg.isStreaming} onSelectSuggestion={(q) => sendMessage(q)} />
                   </div>
 
                   {!msg.isStreaming && msg.text && (() => {
