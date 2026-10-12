@@ -295,6 +295,7 @@ export async function sendChatMessageToAi(params: {
 
   // Appel vers le Neurone d'Agent StudyCloud (Durable Objects & Llama 70B) :
   let response: Response;
+  const fetchSignal = params.signal || params.abortSignal;
   try {
     response = await fetch(`${dedicatedAiUrl}/api/ai/chat`, {
       method: 'POST',
@@ -303,8 +304,12 @@ export async function sendChatMessageToAi(params: {
         'x-user-id': currentUserId,
       },
       body: JSON.stringify(payload),
+      signal: fetchSignal,
     });
-  } catch (_netErr) {
+  } catch (_netErr: any) {
+    if (_netErr?.name === 'AbortError') {
+      return { response: "*(Tâche annulée par l'utilisateur)*", success: false, mode: 'chat' };
+    }
     response = await fetch(dedicatedAiUrl, {
       method: 'POST',
       headers: {
@@ -312,6 +317,7 @@ export async function sendChatMessageToAi(params: {
         'x-user-id': currentUserId,
       },
       body: JSON.stringify(payload),
+      signal: fetchSignal,
     });
   }
 

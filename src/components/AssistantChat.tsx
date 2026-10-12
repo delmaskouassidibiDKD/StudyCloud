@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap, Palette, HelpCircle, Download } from 'lucide-react';
+import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap, Palette, HelpCircle, Download, Square } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
@@ -264,8 +264,8 @@ const ChatMessageText = ({
 
   if (isUser) {
     return (
-      <div className="flex flex-col w-full items-end">
-        <p className="whitespace-pre-wrap break-words text-left w-full">
+      <div className="flex flex-col w-full items-end select-text chat-selectable cursor-text">
+        <p className="whitespace-pre-wrap break-words text-left w-full select-text chat-selectable cursor-text">
           {displayText}
         </p>
         {isLongUserMsg && (
@@ -325,8 +325,8 @@ const ChatMessageText = ({
   const lines = normalizedDisplayText.split('\n');
 
   return (
-    <div className="flex flex-col w-full items-start">
-      <div className="space-y-2 text-zinc-100 text-left w-full leading-[1.8] font-normal text-[15px] sm:text-[16px] md:text-[17px] [&_.katex]:text-[1.12em] [&_.katex-display]:text-[1.25em]">
+    <div className="flex flex-col w-full items-start select-text chat-selectable cursor-text">
+      <div className="space-y-2 text-zinc-100 text-left w-full leading-[1.8] font-normal text-[15px] sm:text-[16px] md:text-[17px] [&_.katex]:text-[1.12em] [&_.katex-display]:text-[1.25em] select-text chat-selectable cursor-text">
         {lines.map((line, idx) => {
           const isLastLine = idx === lines.length - 1;
           const trimmed = line.trim();
@@ -472,7 +472,7 @@ const ChatMessageText = ({
 
           // Ligne normale avec KaTeX
           return (
-            <div key={idx} className="whitespace-pre-wrap break-words leading-relaxed text-zinc-200">
+            <div key={idx} className="whitespace-pre-wrap break-words leading-relaxed text-zinc-200 select-text chat-selectable cursor-text">
               <MathText text={line} inline={true} />
               {isStreaming && isLastLine && (
                 <span className="inline-flex items-center align-middle ml-2 select-none" title="L'IA écrit en temps réel...">
@@ -662,6 +662,56 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimerRef = useRef<any>(null);
+  const isUserScrolledUpRef = useRef<boolean>(false);
+  const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const handleScroll = () => {
+    if (!scrollContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
+    const isScrolledUp = distanceFromBottom > 90;
+    isUserScrolledUpRef.current = isScrolledUp;
+    setShowScrollBottomBtn(isScrolledUp);
+  };
+
+  const scrollToBottom = (smooth = true) => {
+    if (scrollContainerRef.current) {
+      isUserScrolledUpRef.current = false;
+      setShowScrollBottomBtn(false);
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: smooth ? 'smooth' : 'auto'
+      });
+    }
+  };
+
+  // Annuler / interrompre immédiatement la tâche IA en cours
+  const handleCancelTask = () => {
+    if (abortControllerRef.current) {
+      try {
+        abortControllerRef.current.abort();
+      } catch {}
+      abortControllerRef.current = null;
+    }
+    if (typingTimerRef.current) {
+      clearInterval(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+    setIsWaitingServer(false);
+    setIsTyping(false);
+    setMessages(prev => {
+      const last = prev[prev.length - 1];
+      if (last && last.sender === 'ai' && last.isStreaming) {
+        return prev.map((m, i) => i === prev.length - 1 ? {
+          ...m,
+          isStreaming: false,
+          text: m.text ? `${m.text}\n\n*(Génération interrompue par l'utilisateur)*` : "*(Tâche annulée)*"
+        } : m);
+      }
+      return prev;
+    });
+  };
 
   // Sauvegarde ID de session courante (uniquement si ce n'est pas une création directe)
   useEffect(() => {
@@ -675,7 +725,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   }, [messages.length, onHasMessagesChange]);
 
   useEffect(() => {
-    if (scrollContainerRef.current) {
+    // Défilement automatique fluide UNIQUEMENT si l'utilisateur n'a pas délibérément défilé vers le haut
+    if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
       scrollContainerRef.current.scrollTo({ top: scrollContainerRef.current.scrollHeight, behavior: 'smooth' });
     }
   }, [messages, isTyping, isWaitingServer]);
@@ -882,7 +933,20 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   };
 
   const sendMessage = async (textToSend: string, requestedTypeOverride?: string) => {
-    if (!textToSend.trim() || isTyping) return;
+    if (!textToSend.trim()) return;
+
+    // Si une tâche IA est déjà en cours, on l'interrompt pour exécuter immédiatement la nouvelle tâche
+    if (isTyping || isWaitingServer) {
+      handleCancelTask();
+    }
+
+    // Réinitialise le défilement pour suivre le nouveau prompt
+    isUserScrolledUpRef.current = false;
+    setShowScrollBottomBtn(false);
+
+    // Initialisation du contrôleur d'annulation pour cette requête
+    abortControllerRef.current = new AbortController();
+    const abortSignal = abortControllerRef.current.signal;
 
     const userText = textToSend.trim();
     const newUserMsgId = Date.now().toString();
@@ -1138,7 +1202,15 @@ ou
         fileName: attachedFileName,
         imageBase64: attachedImageBase64 || undefined,
         audioBase64: attachedAudioBase64 || undefined,
+        signal: abortSignal,
+        abortSignal,
       });
+
+      if (abortSignal.aborted) {
+        setIsWaitingServer(false);
+        setIsTyping(false);
+        return;
+      }
 
       const rawResponseText = aiResult.response || "Désolé, je n'ai pas pu obtenir de réponse.";
       setIsWaitingServer(false);
@@ -1280,12 +1352,17 @@ ou
           );
         }
 
-        if (scrollContainerRef.current) {
+        if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
           scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
         }
       }, tickSpeed);
 
     } catch (err: any) {
+      if (err?.name === 'AbortError' || err?.message?.includes('aborted')) {
+        setIsWaitingServer(false);
+        setIsTyping(false);
+        return;
+      }
       console.error('[AssistantChat] Erreur appel IA:', err);
       setIsWaitingServer(false);
       setIsTyping(false);
@@ -1547,7 +1624,8 @@ ou
       {/* Messages Area */}
       <div 
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-6 flex flex-col"
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-6 flex flex-col select-text chat-selectable"
       >
         {messages.length === 0 && !isTyping && !isWaitingServer ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center max-h-full my-auto pb-10">
@@ -1565,9 +1643,23 @@ ou
           messages.map(msg => (
             <div key={msg.id} className="w-full shrink-0">
               {msg.sender === 'user' ? (
-                <div className="flex justify-end w-full">
-                  <div className="bg-[#2a2b2f] text-zinc-100 px-4 py-2.5 rounded-[24px] rounded-tr-[4px] text-[14px] sm:text-[15px] md:text-[16px] max-w-[85%] break-words shadow-sm">
-                    <ChatMessageText text={msg.text} isUser={true} />
+                <div className="flex justify-end w-full group relative">
+                  <div className="flex items-center gap-1.5 max-w-[85%]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(msg.text);
+                        setCopiedMsgId(msg.id);
+                        setTimeout(() => setCopiedMsgId(null), 2000);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 cursor-pointer shrink-0"
+                      title="Copier mon message"
+                    >
+                      {copiedMsgId === msg.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                    <div className="bg-[#2a2b2f] text-zinc-100 px-4 py-2.5 rounded-[24px] rounded-tr-[4px] text-[14px] sm:text-[15px] md:text-[16px] break-words shadow-sm select-text chat-selectable cursor-text">
+                      <ChatMessageText text={msg.text} isUser={true} />
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -1604,7 +1696,7 @@ ou
                     )}
                   </div>
                   
-                  <div className="text-[15px] sm:text-[16px] md:text-[17px] leading-[1.8] font-normal text-zinc-100 pl-1">
+                  <div className="text-[15px] sm:text-[16px] md:text-[17px] leading-[1.8] font-normal text-zinc-100 pl-1 select-text chat-selectable cursor-text">
                     <ChatMessageText text={msg.text} isUser={false} isStreaming={msg.isStreaming} onSelectSuggestion={(q) => sendMessage(q)} />
                   </div>
 
@@ -1684,18 +1776,41 @@ ou
         
         {isWaitingServer && (
           <div className="flex flex-col w-full text-zinc-100 mb-4 animate-fadeIn">
-            <div className="flex items-center gap-3 bg-[#26282d] border border-orange-500/25 px-4 py-3 rounded-2xl w-fit max-w-[90%] shadow-lg">
-              <DnaLogo className="w-6 h-6 animate-dna-spin-float shrink-0 text-orange-500" glow={true} />
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-orange-400 animate-pulse">
-                  L'IA formule votre réponse...
-                </span>
-                <span className="text-[11px] text-zinc-400">
-                  Raisonnement et analyse approfondie
-                </span>
+            <div className="flex items-center justify-between gap-3 bg-[#26282d] border border-orange-500/25 px-4 py-3 rounded-2xl w-fit max-w-[90%] shadow-lg">
+              <div className="flex items-center gap-3">
+                <DnaLogo className="w-6 h-6 animate-dna-spin-float shrink-0 text-orange-500" glow={true} />
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-orange-400 animate-pulse">
+                    L'IA formule votre réponse...
+                  </span>
+                  <span className="text-[11px] text-zinc-400">
+                    Raisonnement et analyse approfondie
+                  </span>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={handleCancelTask}
+                className="ml-3 px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 text-xs font-bold transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+                title="Annuler cette tâche"
+              >
+                <Square className="w-3 h-3 fill-current text-rose-400" />
+                <span>Annuler</span>
+              </button>
             </div>
           </div>
+        )}
+
+        {showScrollBottomBtn && (
+          <button
+            type="button"
+            onClick={() => scrollToBottom(true)}
+            className="sticky bottom-2 self-end z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#2a2d35]/95 hover:bg-orange-500 border border-zinc-700 hover:border-orange-400 text-zinc-300 hover:text-white text-xs font-bold shadow-xl transition-all cursor-pointer backdrop-blur-sm active:scale-95 animate-fadeIn"
+            title="Revenir en bas du fil de discussion"
+          >
+            <ChevronDown className="w-3.5 h-3.5 text-orange-400 group-hover:text-white" />
+            <span>Bas</span>
+          </button>
         )}
       </div>
 
@@ -1715,11 +1830,18 @@ ou
             onKeyDown={handleKeyDown}
             placeholder="Posez votre question ou collez votre cours..."
             rows={3}
-            className="w-full bg-transparent text-white placeholder-zinc-400 text-sm outline-none resize-none overflow-y-auto"
+            className="w-full bg-transparent text-white placeholder-zinc-400 text-sm outline-none resize-none overflow-y-auto select-text"
           />
 
           <div className="flex items-center justify-between pt-0.5">
             <div className="flex items-center gap-2 overflow-x-auto flex-1 mr-2 custom-scrollbar pb-1">
+               {!resolvedActiveName && attachedResources.length === 0 && (
+                 <div className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800/60 border border-zinc-700/60 rounded-lg text-zinc-400 text-[10px] sm:text-[11px] font-medium shrink-0 select-none" title="Aucun fichier d'étude n'est actuellement sélectionné">
+                   <FileText className="w-3 h-3 text-zinc-500 shrink-0" />
+                   <span>Aucun fichier sélectionné</span>
+                 </div>
+               )}
+
                {resolvedActiveName && (
                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-orange-500/10 border border-orange-500/40 rounded-lg max-w-[160px] sm:max-w-[210px] shrink-0" title="Document ouvert à l'écran (sélectionné en orange)">
                    <div className="shrink-0 flex items-center justify-center">
@@ -1764,14 +1886,27 @@ ou
                  </div>
                ))}
             </div>
-            <button
-              type="submit"
-              disabled={!inputValue.trim() || isTyping}
-              className="self-end p-2.5 font-bold rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0 bg-[#70a5ff] hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-slate-950"
-              title="Envoyer"
-            >
-              <Send className="w-4 h-4" />
-            </button>
+
+            {isTyping || isWaitingServer ? (
+              <button
+                type="button"
+                onClick={handleCancelTask}
+                className="self-end px-3.5 py-2 font-bold rounded-full flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs shrink-0"
+                title="Arrêter la tâche en cours"
+              >
+                <Square className="w-3.5 h-3.5 fill-current text-rose-400" />
+                <span>Arrêter</span>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!inputValue.trim()}
+                className="self-end p-2.5 font-bold rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0 bg-[#70a5ff] hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-slate-950"
+                title="Envoyer"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </form>
       </div>
