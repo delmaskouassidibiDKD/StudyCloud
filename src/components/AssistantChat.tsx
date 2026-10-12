@@ -552,7 +552,9 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const [currentConversationId, setCurrentConversationId] = useState<string>(() => {
     const saved = safeGetItem('studycloud_current_conversation_id');
     if (saved && !saved.startsWith('creation-')) return saved;
-    return 'conv-' + Date.now();
+    const newId = 'conv-' + Date.now();
+    safeSetItem('studycloud_current_conversation_id', newId);
+    return newId;
   });
   const [currentConversationTitle, setCurrentConversationTitle] = useState<string>('Nouvelle discussion');
 
@@ -561,7 +563,19 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [historySearch, setHistorySearch] = useState('');
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const savedId = safeGetItem('studycloud_current_conversation_id');
+    if (savedId && !savedId.startsWith('creation-')) {
+      const local = safeGetItem(`studycloud_conv_msgs_${savedId}`);
+      if (local) {
+        try {
+          const parsed = JSON.parse(local);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch {}
+      }
+    }
+    return [];
+  });
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isWaitingServer, setIsWaitingServer] = useState(false);
@@ -720,6 +734,13 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     }
   }, [currentConversationId]);
 
+  // Sauvegarde automatique du fil de discussion actif pour reprise immédiate sans perte
+  useEffect(() => {
+    if (currentConversationId && !currentConversationId.startsWith('creation-') && messages.length > 0) {
+      safeSetItem(`studycloud_conv_msgs_${currentConversationId}`, JSON.stringify(messages));
+    }
+  }, [messages, currentConversationId]);
+
   useEffect(() => {
     onHasMessagesChange?.(messages.length > 0);
   }, [messages.length, onHasMessagesChange]);
@@ -769,7 +790,19 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       setMessages([]);
       return;
     }
+    // 1. Chargement instantané du cache local (zéro latence)
+    const local = safeGetItem(`studycloud_conv_msgs_${convId}`);
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed);
+        }
+      } catch {}
+    }
+
     try {
+      // 2. Synchronisation en arrière-plan avec la base Cloudflare D1
       const res = await StudyCloudAPI.getAiConversationMessages(convId);
       if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
         const loaded: Message[] = res.data.map((row: any) => {
@@ -792,14 +825,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           };
         });
         setMessages(loaded);
-      } else {
-        // Fallback session locale
-        const local = localStorage.getItem(`studycloud_conv_msgs_${convId}`);
-        if (local) {
-          try { setMessages(JSON.parse(local)); } catch { setMessages([]); }
-        } else {
-          setMessages([]);
-        }
+        safeSetItem(`studycloud_conv_msgs_${convId}`, JSON.stringify(loaded));
       }
 
       // Recharger également la dernière création associée à cette conversation si elle vient du chat
@@ -879,6 +905,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     setActiveCreation(null);
     setIsHistoryDrawerOpen(false);
     setShowProposalBar(true);
+    safeSetItem('studycloud_current_conversation_id', newId);
+    safeLocalStorageRemove(`studycloud_conv_msgs_${newId}`);
 
     // Initialisation D1
     StudyCloudAPI.createAiConversation({
@@ -952,9 +980,12 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     const newUserMsgId = Date.now().toString();
     const newUserMsg: Message = { id: newUserMsgId, text: userText, sender: 'user' };
     
-    // Ajout immédiat du message utilisateur à la liste
+    // Ajout immédiat du message utilisateur à la liste et au cache local
     const updatedMessages = [...messages, newUserMsg];
     setMessages(updatedMessages);
+    try {
+      safeSetItem(`studycloud_conv_msgs_${currentConversationId}`, JSON.stringify(updatedMessages));
+    } catch {}
     setInputValue('');
     setIsTyping(true);
     setIsWaitingServer(true);
@@ -1031,6 +1062,15 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       const mainDocName = docNames[0] || activePreviewItem?.name || 'Document d\'étude';
       const attachedImageBase64 = targetDocs.find(d => d.imageBase64)?.imageBase64 || activePreviewItem?.imageBase64 || '';
       const attachedAudioBase64 = targetDocs.find(d => d.audioBase64)?.audioBase64 || activePreviewItem?.audioBase64 || '';
+
+      // Sauvegarde immédiate Cloudflare D1 du message utilisateur
+      StudyCloudAPI.saveAiMessage({
+        id: newUserMsgId,
+        conversationId: currentConversationId,
+        role: 'user',
+        content: userText,
+        metadata: { attachedFileName: attachedFileName || undefined, model: selectedModel }
+      }).catch(() => {});
 
       // 2. ANALYSE D'HÉSITATION ÉTUDIANTE (Suggestions d'aide douce)
       const isHesitating = /(je ne sais pas|que (peux|doit|puis)-tu|propose|id[eé]es|aide-moi à (choisir|r[eé]viser)|quelles options|que me conseilles-tu|conseille-moi|que faire)/i.test(userText);
@@ -1343,6 +1383,14 @@ ou
             )
           );
           setIsTyping(false);
+          // Sauvegarde Cloudflare D1 du message assistant complet
+          StudyCloudAPI.saveAiMessage({
+            id: aiMsgId,
+            conversationId: currentConversationId,
+            role: 'assistant',
+            content: fullResponseText,
+            metadata: { model: effectiveModelName }
+          }).catch(() => {});
         } else {
           const partial = fullResponseText.slice(0, index);
           setMessages(prev =>

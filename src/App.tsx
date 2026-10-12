@@ -37,7 +37,7 @@ import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { AppUpdatePrompt } from './components/AppUpdatePrompt';
 import { StorageAlertNotificationModal } from './components/StorageAlertNotificationModal';
 import { UploadQueueWidget } from './components/UploadQueueWidget';
-import { purgeVolatileStorage } from './utils/safeStorage';
+import { purgeVolatileStorage, safeLocalStorageRemove } from './utils/safeStorage';
 
 // Nettoyage immédiat au chargement de l'application pour libérer l'espace des appareils saturés
 if (typeof window !== 'undefined') {
@@ -710,6 +710,7 @@ export default function App() {
       try {
         localStorage.removeItem('studycloud_active_preview_item');
         localStorage.removeItem('studycloud_preview_owner_tab');
+        safeLocalStorageRemove('studycloud_current_conversation_id');
       } catch (e) {}
       return;
     }
@@ -1954,6 +1955,7 @@ export default function App() {
                   setIsStudySpaceOpen(false);
                   setActiveFolderDetail(null);
                   setIsStudySpaceFullscreen(false);
+                  safeLocalStorageRemove('studycloud_current_conversation_id');
                 }}
                 className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-extrabold text-[11px] sm:text-xs rounded-lg border-2 border-stone-800 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
               >

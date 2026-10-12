@@ -19,7 +19,7 @@ import { getGalleryFilesForCategory } from '../data/categoryFilesData';
 import { isGalleryOrDemoFile } from './FilesMenuView';
 import { compressFile } from '../utils/fileCompressor';
 import { extractAudioMetadataWithTags, setCachedMediaThumbnail } from '../services/mediaPreviewService';
-import { safeLocalStorageSet } from '../utils/safeStorage';
+import { safeLocalStorageSet, safeLocalStorageRemove } from '../utils/safeStorage';
 
 
 interface LeftMenuProps {
@@ -278,6 +278,13 @@ export function LeftMenu({
     window.addEventListener('auto-prompt', handleAutoPrompt);
     return () => window.removeEventListener('auto-prompt', handleAutoPrompt);
   }, [setIsAssistantOpen]);
+
+  // Réinitialisation de la session active du chat UNIQUEMENT quand on quitte l'Espace d'étude
+  useEffect(() => {
+    return () => {
+      safeLocalStorageRemove('studycloud_current_conversation_id');
+    };
+  }, []);
 
   const [syncTick, setSyncTick] = useState(0);
 
@@ -1336,6 +1343,9 @@ export function LeftMenu({
               >
                 <div className="relative p-0.5 rounded-full transition-all duration-200 hover:scale-105 shadow-[0_2px_8px_rgba(37,99,235,0.3)]">
                   <DelmasRobot size={42} />
+                  {hasChatMessages && !isAssistantOpen && (
+                    <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-orange-500 rounded-full border-2 border-white animate-pulse" />
+                  )}
                 </div>
                 <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider mt-1 leading-none whitespace-nowrap text-blue-600 group-hover:text-blue-700">
                   Assistante DKD
@@ -1391,6 +1401,9 @@ export function LeftMenu({
                       : 'hover:scale-105 shadow-[0_2px_8px_rgba(37,99,235,0.3)]'
                   }`}>
                     <DelmasRobot size={42} />
+                    {hasChatMessages && !isAssistantOpen && (
+                      <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-orange-500 rounded-full border-2 border-white animate-pulse" />
+                    )}
                   </div>
                   <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider mt-1 leading-none whitespace-nowrap transition-colors ${
                     isAssistantOpen ? 'text-orange-600' : 'text-blue-600 group-hover:text-blue-700'
@@ -1404,9 +1417,8 @@ export function LeftMenu({
         </div>
       ) : null}
 
-      {/* Main Content: Files List OR Assistant Chat in natural flex flow */}
-      {!isAssistantOpen ? (
-        <div className="flex-1 w-full overflow-hidden flex flex-col px-2.5 sm:px-3 py-1.5 min-h-0">
+      {/* Main Content: Files List (masqué quand le chat est ouvert, mais conservé dans le DOM) */}
+      <div className={`flex-1 w-full overflow-hidden flex-col px-2.5 sm:px-3 py-1.5 min-h-0 ${!isAssistantOpen ? 'flex' : 'hidden'}`}>
           {menuFiles.length > 0 ? (
             <div className="w-full flex flex-col gap-1.5 h-full overflow-hidden">
               {/* Imported Files Section - fixed at top, single horizontal row with horizontal scrolling */}
@@ -1548,11 +1560,11 @@ export function LeftMenu({
              </div>
           )}
         </div>
-      ) : (
-        <div className="flex-1 w-full overflow-hidden bg-[#1e2024] flex flex-col min-h-0 relative">
-          <AssistantChat key={chatKey} onClose={() => setIsAssistantOpen(false)} onHasMessagesChange={setHasChatMessages} activePreviewItem={activePreviewItem} attachedResources={attachedResources} setAttachedResources={setAttachedResources} />
-        </div>
-      )}
+
+      {/* Main Content: Assistant Chat - Persistant et actif tant qu'on est dans l'Espace d'étude */}
+      <div className={`flex-1 w-full overflow-hidden bg-[#1e2024] flex-col min-h-0 relative ${isAssistantOpen ? 'flex' : 'hidden'}`}>
+        <AssistantChat onClose={() => setIsAssistantOpen(false)} onHasMessagesChange={setHasChatMessages} activePreviewItem={activePreviewItem} attachedResources={attachedResources} setAttachedResources={setAttachedResources} />
+      </div>
       
       {/* Drag Handle Right of Col 1 with Fluid Resize & Visual Indicator */}
       <div 
