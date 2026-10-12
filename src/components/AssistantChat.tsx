@@ -3,7 +3,7 @@ import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2
 import { DnaLogo } from './DnaLogo';
 import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
-import { MathText } from './MathText';
+import { MathText, stripAiReasoningScratchpad } from './MathText';
 import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey, safeJsonParse } from '../services/api';
 import { safeSetItem, safeGetItem, safeLocalStorageRemove } from '../utils/safeStorage';
 import { extractDocumentText } from '../services/documentTextExtractor';
@@ -298,25 +298,34 @@ const ChatMessageText = ({
   const normalizedDisplayText = useMemo(() => {
     if (!textWithoutSvg) return '';
     let cleaned = textWithoutSvg;
-    if (!isUser && (cleaned.includes('"decision"') || cleaned.includes('"creation_data"'))) {
-      cleaned = cleanChatText(cleaned);
-      if (!cleaned) {
-        cleaned = "✨ Votre création a été générée avec succès dans le volet Création à droite.";
+    if (!isUser) {
+      cleaned = stripAiReasoningScratchpad(cleaned);
+      if (cleaned.includes('"decision"') || cleaned.includes('"creation_data"')) {
+        cleaned = cleanChatText(cleaned);
+        if (!cleaned) {
+          cleaned = "✨ Votre création a été générée avec succès dans le volet Création à droite.";
+        }
       }
     }
     cleaned = cleaned
       .replace(/\${3,}/g, '$$')
       .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
       .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+
+    // Isoler TOUJOURS les équations en bloc $$ ... $$ sur leur propre ligne avec sauts doubles
+    // pour garantir un rendu aéré, clair et lisible sans jamais se coller au texte
     cleaned = cleaned.replace(/\$\$([\s\S]*?)\$\$/g, (_match, eq) => {
-      return '$$' + eq.replace(/\r?\n/g, ' ') + '$$';
+      const cleanEq = eq.replace(/\r?\n/g, ' ').trim();
+      return `\n\n$$${cleanEq}$$\n\n`;
     });
 
     // Aérer et décoller les étapes de calculs collées sur une même ligne
     if (!isUser) {
       cleaned = cleaned
+        .replace(/([.;?!])\s*(\b(?:Num[eé]rateur|D[eé]nominateur|Numerator|Denominator|Ratio|Posons|Soit|On a|En rempla[çc]ant|D'o[ùu]|Par cons[eé]quent|Pour la question|Question \d+|[EÉ]tape \d+)\b)/gi, '$1\n\n$2')
         .replace(/([.;])\s*(Noeud\s+[A-Z0-9]+|L'équation|Equation|Soit\b|Or\b|Donc\b|On a\b|En substituant|A substituer|D'après)\b/gi, '$1\n\n$2')
-        .replace(/(?<!\n)\s*(=>|\\Rightarrow|⟹)\s*/g, '\n\n$1 ');
+        .replace(/(?<!\n)\s*(=>|\\Rightarrow|⟹)\s*/g, '\n\n$1 ')
+        .replace(/\n{3,}/g, '\n\n');
     }
 
     return cleaned;
@@ -1136,6 +1145,12 @@ Tu réponds sous la forme d'un objet JSON strict :
 \`\`\`
 
 RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
+0. LANGUE FRANÇAISE STRICTE ET ZÉRO MONOLOGUE INTERNE (ANTI-SCRATCHPAD) :
+   - TU RÉPONDS EXCLUSIVEMENT ET TOTALEMENT EN FRANÇAIS SOIGNÉ, CLAIR ET PÉDAGOGIQUE.
+   - IL EST STRICTEMENT INTERDIT D'ÉCRIRE EN ANGLAIS ET D'AFFICHER UN MONOLOGUE DE RÉFLEXION INTERNE, DU BRAINSTORMING OU UN BROUILLON ('Let's think', 'Waitcheck', 'The figure caption text', 'Hmm', 'Actually', etc.).
+   - NE DIVAGUE PAS. DONNE DIRECTEMENT LA RÉPONSE PÉDAGOGIQUE COMPLÈTE ET STRUCTURÉE POUR L'ÉTUDIANT.
+   - AÈRE AU MAXIMUM : GRANDS TITRES (#, ##, ###), DOUBLES SAUTS DE LIGNE ENTRE CHAQUE ÉTAPE, ET FORMULES ISOLÉES EN BLOC $$ ... $$.
+
 1. INTERDICTION FORMELLE D'ÉCRIRE DES FRACTIONS AVEC LE SLASH '/' :
    - IL EST STRICTEMENT INTERDIT d'écrire des fractions sous la forme a/b ou 1/√(LC) ou A0 = -R2/R1 ou (1/Q0)(p/w0).
    - TOUTE fraction mathématique ou scientifique DOIT IMPÉRATIVEMENT être écrite sous forme de vraie fraction verticale avec \\dfrac{numérateur}{dénominateur} :
@@ -1343,7 +1358,7 @@ ou
       } else {
         // BRANCHE DISCUSSION SIMPLE DANS LE CHAT : Réponse directe sans rien déranger dans l'espace création
         const cleaned = cleanChatText(aiResult.chat_response || rawResponseText);
-        fullResponseText = cleaned || "✨ Votre demande a été traitée avec succès.";
+        fullResponseText = stripAiReasoningScratchpad(cleaned) || "✨ Votre demande a été traitée avec succès.";
       }
 
       const effectiveModelName = aiResult.model || currentModelDisplay;

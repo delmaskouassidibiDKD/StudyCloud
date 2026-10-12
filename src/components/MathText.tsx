@@ -14,6 +14,95 @@ interface MathTextProps {
  * notamment : mélanges de $ et symboles (ex: \text{k}\$\Omega), blocs $$ non fermés, etc.
  */
 /**
+ * Vérifie si un jeton est une variable mathématique ou un nombre valide
+ * (ex: R_1, R2, C, L, p, \omega_0, f_0, 1, 1000, j\omega, LC\omega^2)
+ * et NON un mot de la langue courante (ex: series, parallel, input, feedback, and, or...)
+ */
+function isMathToken(token: string): boolean {
+  const t = token.trim();
+  if (!t) return false;
+  // Nombre pur ou avec puissance (ex: 1, 2, 1000, 10^3, 2.5)
+  if (/^\d+(?:\.\d+)?(?:\^\d+)?$/.test(t)) return true;
+  // Symbole grec LaTeX (ex: \omega, \omega_0, \pi, \Delta, \tau)
+  if (/^\\[a-zA-Z]+(?:_[0-9a-zA-Z]+)?$/.test(t)) return true;
+  // Variable simple ou indexée (ex: R, C, L, p, s, j, w, R_1, R1, C_2, w_0, f_0, Q_0, A_0, U_e, U_s, V_e, V_s, j\omega, LC\omega^2)
+  if (/^[a-zA-Z](?:_[0-9a-zA-Z]+|\d+)?$/.test(t)) return true;
+  // Expression courte avec produit ou puissance de variables (ex: jCw, LCw^2, R2Cp, 1+LCw^2)
+  if (/^(?:[0-9a-zA-Z_\\^]+)$/.test(t)) {
+    // Exclure formellement les mots de la langue courante (anglais & français)
+    const commonWords = /^(?:series|parallel|serie|parallele|input|output|feedback|filter|filtre|gain|signal|circuit|ground|masse|and|or|et|ou|in|out|to|from|for|pour|avec|sans|dans|sur|soit|donc|comme|page|fig|figure|step|etape|part|partie|case|cas|true|false|yes|no|min|max|all|low|high|band|stop|pass|notch|trap|mode|type|left|right|gauche|droite|the|this|that|with|without|between|about|maybe|suggests|removes|removing|leaving|replaces|replacing|inductor|capacitor|resistor|impedance|resistance|transfer|function|frequency|pulsation|tension|courant|ampli|op-amp|aop)$/i;
+    if (commonWords.test(t)) return false;
+    // Si c'est un mot de 4 lettres ou plus sans chiffres ni tirets ni antislashes (ex: "sistor", "branch", "inductor"), ce n'est PAS une variable mathématique
+    if (t.length >= 4 && !/[0-9_\\^]/.test(t)) return false;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Détecte si une ligne contient du texte explicatif ou de la prose en langage naturel
+ * (en français ou en anglais), pour éviter absolument de l'envelopper dans $$...$$
+ */
+function containsNaturalLanguageProse(line: string): boolean {
+  if (!line || typeof line !== 'string') return false;
+  // Supprimer les commandes LaTeX connues
+  const stripped = line
+    .replace(/\\(?:dfrac|frac|sqrt|boxed|underline|omega|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|rho|sigma|tau|phi|Omega|Delta|times|approx|infty|pm|to|Rightarrow|leftarrow|Leftarrow|quad|qquad|left|right|sum|int|prod|lim|cdot|text)\b/gi, ' ')
+    .replace(/\\[a-zA-Z]+/g, ' ')
+    .replace(/[$_{}^=+\-*/()\[\]0-9.:,;?!|~<>]/g, ' ');
+  const words = stripped.match(/[a-zA-ZÀ-ÿ]{3,}/g) || [];
+  // Mots mathématiques valides de 3 lettres
+  const mathKeywords = new Set(['max', 'min', 'cos', 'sin', 'tan', 'log', 'exp', 'sup', 'inf', 'lim', 'det']);
+  const proseWords = words.filter(w => !mathKeywords.has(w.toLowerCase()));
+  // S'il y a 2 mots ou plus de langage courant (ex: "Transfer function", "Multiply numerator", "This is", "En déduire", "Dans le circuit"), c'est de la prose !
+  return proseWords.length >= 2;
+}
+
+/**
+ * Supprime radicalement les réflexions internes (scratchpad), balises <think>
+ * et monologues de brainstorming en anglais générés par les modèles de raisonnement (Kimi, DeepSeek R1, Qwen...)
+ */
+export function stripAiReasoningScratchpad(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  let cleaned = text;
+
+  // 1. Suppression des balises <think>...</think>, <thought>...</thought>, <reasoning>...</reasoning>
+  cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  cleaned = cleaned.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim();
+  cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '').trim();
+
+  // 2. Balise <think> ouverte mais non fermée (si la réponse a été tronquée en cours de pensée)
+  cleaned = cleaned.replace(/<think>[\s\S]*$/gi, '').trim();
+  cleaned = cleaned.replace(/<thought>[\s\S]*$/gi, '').trim();
+  cleaned = cleaned.replace(/<reasoning>[\s\S]*$/gi, '').trim();
+
+  // 3. Suppression des préambules de réflexion interne en anglais
+  const reasoningMonologuePatterns = [
+    /^(?:[\s\S]*?\b(?:Let['’]s think|Waitcheck|The figure caption|doesn['’]t indicate|We need infer|retire la self['’]? ambiguous|Thisisaband-stop|Actually in the original circuit)\b[\s\S]*?\n\n)/i,
+    /^(?:(?:out and feedback branches|Standard active first-order|The figure caption text)[\s\S]*?\n\n)/i,
+  ];
+
+  for (const pat of reasoningMonologuePatterns) {
+    if (pat.test(cleaned)) {
+      cleaned = cleaned.replace(pat, '').trim();
+    }
+  }
+
+  // 4. Si après nettoyage le texte commence encore par un monologue en anglais,
+  // cherchons le premier vrai titre Markdown (#, ##, ###) ou le début d'une explication en français
+  const frenchOrHeadingIdx = cleaned.search(/(?:\n\s*|^)(?:#{1,3}\s+|(?:\*\*|__)?(?:Question|Exercice|[EÉ]tape|Partie|Démonstration|Calcul|Analyse|Pour|Dans|Soit|On|Le|La|Les|D'après|Notons|Considérons)\b)/i);
+  if (frenchOrHeadingIdx > 0 && frenchOrHeadingIdx < 1500) {
+    const preamble = cleaned.slice(0, frenchOrHeadingIdx);
+    if (/\b(?:think|wait|circuit|maybe|suggests|removes|removing|leaving|replaces|sistor|op-amp|inverting|feedback|series|parallel|branch|figure|caption|infer)\b/i.test(preamble) &&
+        !/\b(?:bonjour|voici|étudiant|question|résolution|exercice)\b/i.test(preamble)) {
+      cleaned = cleaned.slice(frenchOrHeadingIdx).trim();
+    }
+  }
+
+  return cleaned;
+}
+
+/**
  * Convertit intelligemment les notations scientifiques ASCII et les fractions avec slash '/'
  * en vraies fractions LaTeX verticales \dfrac{numérateur}{dénominateur} avec barre horizontale nette.
  */
@@ -23,6 +112,9 @@ export function convertAsciiMathToLatex(text: string): string {
 
   // 1. Toujours promouvoir \frac en \dfrac pour assurer une fraction haute avec barre horizontale
   res = res.replace(/\\frac\b/g, '\\dfrac');
+
+  // Nettoyage préalable de fractions corrompues comme \dfrac{R_2}{\dfrac}{R_1}
+  res = res.replace(/\\dfrac\{([^{}]+)\}\{\\dfrac\}\{([^{}]+)\}/g, '\\dfrac{$1}{$2}');
 
   // 2. Conversion de pi et symboles grecs
   res = res.replace(/π/g, '\\pi');
@@ -56,25 +148,47 @@ export function convertAsciiMathToLatex(text: string): string {
     .replace(/\\omega_0\s*\/\s*w\b/g, '\\dfrac{\\omega_0}{\\omega}');
 
   // 5. Fractions dans les racines \sqrt{L/C}
-  res = res.replace(/\\sqrt\{([A-Za-z0-9_\\]+)\s*\/\s*([A-Za-z0-9_\\]+)\}/g, '\\sqrt{\\dfrac{$1}{$2}}');
+  res = res.replace(/\\sqrt\{([A-Za-z0-9_\\]+)\s*\/\s*([A-Za-z0-9_\\]+)\}/g, (match, n, d) => {
+    if (!isMathToken(n) || !isMathToken(d)) return match;
+    return `\\sqrt{\\dfrac{${n}}{${d}}}`;
+  });
 
   // 6. Remplacement des fractions complexes avec crochets / [ ... ] ou parenthèses / ( ... )
-  res = res.replace(/([A-Za-z0-9_\\\s^+\-*]+?)\s*\/\s*\[([^\]]+)\]/g, '\\dfrac{$1}{$2}');
-  res = res.replace(/([A-Za-z0-9_\\\s^+\-*]+?)\s*\/\s*\(([^()]+)\)/g, '\\dfrac{$1}{$2}');
+  res = res.replace(/([A-Za-z0-9_\\\s^+\-*]+?)\s*\/\s*\[([^\]]+)\]/g, (match, n, d) => {
+    if (!isMathToken(n)) return match;
+    return `\\dfrac{${n}}{${d}}`;
+  });
+  res = res.replace(/([A-Za-z0-9_\\\s^+\-*]+?)\s*\/\s*\(([^()]+)\)/g, (match, n, d) => {
+    if (!isMathToken(n)) return match;
+    return `\\dfrac{${n}}{${d}}`;
+  });
 
   // 7. Fractions imbriquées avec parenthèses
   for (let i = 0; i < 3; i++) {
     res = res.replace(/\(([^()]+)\)\s*\/\s*\(([^()]+)\)/g, '\\dfrac{$1}{$2}');
-    res = res.replace(/\(([^()]+)\)\s*\/\s*([0-9a-zA-Z_\\]+)/g, '\\dfrac{$1}{$2}');
-    res = res.replace(/([0-9a-zA-Z_\\]+)\s*\/\s*\(([^()]+)\)/g, '\\dfrac{$1}{$2}');
+    res = res.replace(/\(([^()]+)\)\s*\/\s*([0-9a-zA-Z_\\]+)/g, (match, n, d) => {
+      if (!isMathToken(d)) return match;
+      return `\\dfrac{${n}}{${d}}`;
+    });
+    res = res.replace(/([0-9a-zA-Z_\\]+)\s*\/\s*\(([^()]+)\)/g, (match, n, d) => {
+      if (!isMathToken(n)) return match;
+      return `\\dfrac{${n}}{${d}}`;
+    });
   }
 
   // 8. Fractions avec racine carrée: X / \sqrt{...}
-  res = res.replace(/([0-9a-zA-Z_\\]+)\s*\/\s*(\\sqrt\{[^}]+\})/g, '\\dfrac{$1}{$2}');
+  res = res.replace(/([0-9a-zA-Z_\\]+)\s*\/\s*(\\sqrt\{[^}]+\})/g, (match, n, d) => {
+    if (!isMathToken(n)) return match;
+    return `\\dfrac{${n}}{${d}}`;
+  });
 
   // 9. Fractions simples sans parenthèses: R2/R1, L\omega_0/R1, 1/Q_0, p/\omega_0
+  // Ne JAMAIS convertir des mots ordinaires comme series/parallel, input/output, and/or
   res = res.replace(/([0-9a-zA-Z_\\^]+)\s*\/\s*([0-9a-zA-Z_\\^]+)/g, (match, n, d) => {
     if (match.includes('http') || (/\d{2,4}\/\d{1,2}/.test(match) && !/[a-zA-Z_\\]/.test(match))) {
+      return match;
+    }
+    if (!isMathToken(n) || !isMathToken(d)) {
       return match;
     }
     return `\\dfrac{${n}}{${d}}`;
@@ -85,6 +199,9 @@ export function convertAsciiMathToLatex(text: string): string {
 
   // Nettoyage des crochets résiduels autour d'une \dfrac
   res = res.replace(/\[\s*(\\dfrac\{[^{}]+\}\{[^{}]+\})\s*\]/g, '$1');
+
+  // Réparation finale des fractions corrompues imbriquées
+  res = res.replace(/\\dfrac\{([^{}]+)\}\{\\dfrac\}\{([^{}]+)\}/g, '\\dfrac{$1}{$2}');
 
   return res;
 }
@@ -112,13 +229,17 @@ function healMathLine(rawLine: string, inlineMode: boolean): string {
   // Si aucun symbole LaTeX, retourner tel quel
   if (!hasLatexCmds) return line;
 
-  // Si c'est du texte pur en français (prose d'introduction comme "Le module est :" ou "Aux basses fréquences :")
-  const isProse = /^(?:Le|La|Les|Mais|Comme|Pour|Avec|Si|Dans|On|Donc|Or|Notons|Soit|En|De|D'après|Aux|Question|Remarque)\b/i.test(line.replace(/^\*+|\*+$/g, '').trim());
+  // Détecter formellement si la ligne contient de la prose explicative
+  const hasProse = containsNaturalLanguageProse(line);
 
-  // Détecter si la ligne entière est une expression ou une équation mathématique
-  const isEntireEquationLine = !isProse && (
+  // Détecter si la ligne entière est une expression ou une équation mathématique PURE
+  // RÈGLE CRITIQUE : Si la ligne contient de la prose (du texte avec des mots ordinaires),
+  // elle ne doit JAMAIS être considérée comme une équation complète et ne doit JAMAIS
+  // être emballée dans $$...$$, car cela supprimerait les espaces entre les mots !
+  const isEntireEquationLine = !hasProse && (
     /^\\(?:boxed|underline|d?frac|sqrt)/.test(line) ||
-    /[=]|\\approx|\\to|\\Rightarrow/.test(line)
+    /^[A-Za-z0-9\(\)\,\s\\_]+\s*=\s*[^=]+$/.test(line) ||
+    /^[\$\s]*[A-Za-z0-9\(\)\,\s\\_]+(=|\\approx|\\to|\\Rightarrow)/.test(line)
   );
 
   if (isEntireEquationLine) {
@@ -145,7 +266,7 @@ function healMathLine(rawLine: string, inlineMode: boolean): string {
   }
 
   // Si la ligne contient du LaTeX sans aucun dollar (ex: options de quiz "T(j\omega) = \dfrac{T_0}{...}")
-  if (!line.includes('$')) {
+  if (!line.includes('$') && !hasProse) {
     if (/^[A-Za-z\(\)\,\s\\]+=/.test(line) || /^\\(?:d?frac|sqrt|boxed|left|right)/.test(line)) {
       return inlineMode ? `$${line}$` : `$$${line}$$`;
     }

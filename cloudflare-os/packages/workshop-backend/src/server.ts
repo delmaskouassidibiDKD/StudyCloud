@@ -866,6 +866,40 @@ export default {
       return new Response(null, { status: 204, headers: corsHeaders });
     }
 
+    function stripAiReasoningScratchpad(text: string): string {
+      if (!text || typeof text !== "string") return "";
+      let cleaned = text;
+
+      cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+      cleaned = cleaned.replace(/<thought>[\s\S]*?<\/thought>/gi, "").trim();
+      cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, "").trim();
+      cleaned = cleaned.replace(/<think>[\s\S]*$/gi, "").trim();
+      cleaned = cleaned.replace(/<thought>[\s\S]*$/gi, "").trim();
+      cleaned = cleaned.replace(/<reasoning>[\s\S]*$/gi, "").trim();
+
+      const reasoningMonologuePatterns = [
+        /^(?:[\s\S]*?\b(?:Let['’]s think|Waitcheck|The figure caption|doesn['’]t indicate|We need infer|retire la self['’]? ambiguous|Thisisaband-stop|Actually in the original circuit)\b[\s\S]*?\n\n)/i,
+        /^(?:(?:out and feedback branches|Standard active first-order|The figure caption text)[\s\S]*?\n\n)/i,
+      ];
+
+      for (const pat of reasoningMonologuePatterns) {
+        if (pat.test(cleaned)) {
+          cleaned = cleaned.replace(pat, "").trim();
+        }
+      }
+
+      const frenchOrHeadingIdx = cleaned.search(/(?:\n\s*|^)(?:#{1,3}\s+|(?:\*\*|__)?(?:Question|Exercice|[EÉ]tape|Partie|Démonstration|Calcul|Analyse|Pour|Dans|Soit|On|Le|La|Les|D'après|Notons|Considérons)\b)/i);
+      if (frenchOrHeadingIdx > 0 && frenchOrHeadingIdx < 1500) {
+        const preamble = cleaned.slice(0, frenchOrHeadingIdx);
+        if (/\b(?:think|wait|circuit|maybe|suggests|removes|removing|leaving|replaces|sistor|op-amp|inverting|feedback|series|parallel|branch|figure|caption|infer)\b/i.test(preamble) &&
+            !/\b(?:bonjour|voici|étudiant|question|résolution|exercice)\b/i.test(preamble)) {
+          cleaned = cleaned.slice(frenchOrHeadingIdx).trim();
+        }
+      }
+
+      return cleaned;
+    }
+
     // Endpoint officiel de discussion IA pour l'espace d'étude StudyCloud (Robot Rouge)
     if (url.pathname === "/api/ai/chat" && req.method === "POST") {
       try {
@@ -927,6 +961,12 @@ Tu produis OBLIGATOIREMENT ET UNIQUEMENT une réponse sous forme d'objet JSON st
 }
 \`\`\`
 RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
+0. LANGUE FRANÇAISE STRICTE ET ZÉRO MONOLOGUE INTERNE (ANTI-SCRATCHPAD) :
+   - TU RÉPONDS EXCLUSIVEMENT ET TOTALEMENT EN FRANÇAIS SOIGNÉ, CLAIR ET PÉDAGOGIQUE.
+   - IL EST STRICTEMENT INTERDIT D'ÉCRIRE EN ANGLAIS ET D'AFFICHER UN MONOLOGUE DE RÉFLEXION INTERNE, DU BRAINSTORMING OU UN BROUILLON ('Let's think', 'Waitcheck', 'The figure caption text', 'Hmm', 'Actually', etc.).
+   - NE DIVAGUE PAS. DONNE DIRECTEMENT LA RÉPONSE PÉDAGOGIQUE COMPLÈTE ET STRUCTURÉE POUR L'ÉTUDIANT.
+   - AÈRE AU MAXIMUM : GRANDS TITRES (#, ##, ###), DOUBLES SAUTS DE LIGNE ENTRE CHAQUE ÉTAPE, ET FORMULES ISOLÉES EN BLOC $$ ... $$.
+
 1. INTERDICTION FORMELLE D'ÉCRIRE DES FRACTIONS AVEC LE SLASH '/' :
    - IL EST STRICTEMENT INTERDIT d'écrire des fractions sous la forme a/b ou 1/√(LC) ou A0 = -R2/R1 ou (1/Q0)(p/w0).
    - TOUTE fraction mathématique ou scientifique DOIT IMPÉRATIVEMENT être écrite sous forme de vraie fraction verticale avec \\dfrac{numérateur}{dénominateur} :
@@ -1046,9 +1086,8 @@ ou
 
             if (cfRes.ok) {
               const cfData: any = await cfRes.json();
-              const msg = cfData?.choices?.[0]?.message;
-              const finishReason = cfData?.choices?.[0]?.finish_reason;
-              answerText = msg?.content || msg?.reasoning_content || "";
+              const rawAns = msg?.content || msg?.reasoning_content || "";
+              answerText = stripAiReasoningScratchpad(rawAns);
               effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
 
               // Protection anti-coupure brutale au milieu d'un mot ou d'une phrase
@@ -1181,7 +1220,8 @@ ou
               const cfData: any = await cfRes.json();
               const msg = cfData?.choices?.[0]?.message;
               const finishReason = cfData?.choices?.[0]?.finish_reason;
-              answerText = msg?.content || msg?.reasoning_content || "";
+              const rawAns = msg?.content || msg?.reasoning_content || "";
+              answerText = stripAiReasoningScratchpad(rawAns);
               effectiveModelUsed = targetModel.startsWith("@cf/")
                 ? (friendlyNameMap[targetModel] || targetModel)
                 : `${friendlyNameMap[targetModel] || targetModel} (Secours Llama 3.3)`;
