@@ -2752,58 +2752,8 @@ function renderDashboardHtml(data) {
       }
     }
     window.toggleSidebar = toggleSidebar;
-
-    try {
-      var dashZoom = parseFloat(localStorage.getItem('studycloud_app_zoom'));
-      if (isNaN(dashZoom) || dashZoom < 0.75 || dashZoom > 0.80) {
-        dashZoom = 0.80;
-        localStorage.setItem('studycloud_app_zoom', '0.80');
-      }
-      document.documentElement.style.zoom = dashZoom.toString();
-    } catch(e) {
-      document.documentElement.style.zoom = '0.80';
-    }
-
-    window.addEventListener('keydown', function(e) {
-      if ((e.ctrlKey || e.metaKey) && (
-        e.key === '+' || e.key === '-' || e.key === '=' || e.key === '_' || e.key === '0' ||
-        e.code === 'NumpadAdd' || e.code === 'NumpadSubtract' || e.code === 'Equal' || e.code === 'Minus' || e.code === 'Digit0'
-      )) {
-        e.preventDefault();
-        var cur = parseFloat(document.documentElement.style.zoom) || 0.80;
-        var isMinus = (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract' || e.code === 'Minus');
-        var isZero = (e.key === '0' || e.code === 'Digit0' || e.code === 'Numpad0');
-        if (isZero) {
-          cur = 0.80;
-        } else if (isMinus) {
-          if (cur > 0.75) cur = Math.max(0.75, cur - 0.05);
-        } else {
-          if (cur < 0.80) cur = Math.min(0.80, cur + 0.05);
-        }
-        document.documentElement.style.zoom = cur.toString();
-        try { localStorage.setItem('studycloud_app_zoom', cur.toFixed(2)); } catch(_) {}
-      }
-    }, { passive: false });
-
-    window.addEventListener('wheel', function(e) {
-      if (e.ctrlKey) {
-        e.preventDefault();
-        var cur = parseFloat(document.documentElement.style.zoom) || 0.80;
-        if (e.deltaY < 0 && cur < 0.80) {
-          cur = Math.min(0.80, cur + 0.02);
-        } else if (e.deltaY > 0 && cur > 0.75) {
-          cur = Math.max(0.75, cur - 0.02);
-        }
-        document.documentElement.style.zoom = cur.toString();
-        try { localStorage.setItem('studycloud_app_zoom', cur.toFixed(2)); } catch(_) {}
-      }
-    }, { passive: false });
   </script>
   <style>
-    html {
-      zoom: 80%;
-      -webkit-text-size-adjust: 100%;
-    }
     body { font-family: 'Plus Jakarta Sans', sans-serif; }
     .neo-card {
       background: #111827;

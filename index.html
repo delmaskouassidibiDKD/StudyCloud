@@ -51,15 +51,7 @@
         if (localStorage.getItem('unifolder_dark_mode') === 'true') {
           document.documentElement.classList.add('dark');
         }
-        var initZoom = parseFloat(localStorage.getItem('studycloud_app_zoom'));
-        if (isNaN(initZoom) || initZoom < 0.75 || initZoom > 0.80) {
-          initZoom = 0.80;
-          localStorage.setItem('studycloud_app_zoom', '0.80');
-        }
-        document.documentElement.style.zoom = initZoom.toString();
-      } catch (e) {
-        document.documentElement.style.zoom = '0.80';
-      }
+      } catch (e) {}
     </script>
   </head>
   <body class="notranslate" translate="no">
@@ -91,112 +83,35 @@
         });
       });
 
-      // 2. VERROUILLAGE STRICT DU ZOOM ET DE LA RÉSOLUTION DE L'APPLICATION
-      // Plafond maximum : 80% (0.80) | Plancher minimum : 75% (0.75)
-      // Valeur imposée par défaut : 80% (0.80). Tout utilisateur hors intervalle est ramené à 80%.
-      var APP_ZOOM_MAX = 0.80; // 80% maximum
-      var APP_ZOOM_MIN = 0.75; // 75% minimum
-      var APP_ZOOM_DEFAULT = 0.80; // 80% imposé
-
-      function getStoredZoom() {
-        try {
-          var z = parseFloat(localStorage.getItem('studycloud_app_zoom'));
-          if (isNaN(z) || z < APP_ZOOM_MIN || z > APP_ZOOM_MAX) {
-            return APP_ZOOM_DEFAULT;
-          }
-          return z;
-        } catch(e) {
-          return APP_ZOOM_DEFAULT;
-        }
-      }
-
-      function enforceAppZoom(targetZoom) {
-        var z = (typeof targetZoom === 'number') ? targetZoom : getStoredZoom();
-        var clamped = Math.min(APP_ZOOM_MAX, Math.max(APP_ZOOM_MIN, Math.round(z * 100) / 100));
-        
-        document.documentElement.style.zoom = clamped.toString();
-        
-        try {
-          localStorage.setItem('studycloud_app_zoom', clamped.toFixed(2));
-        } catch(e) {}
-        
-        window.__studycloud_current_zoom = clamped;
-        return clamped;
-      }
-      window.enforceAppZoom = enforceAppZoom;
-
-      // Imposition immédiate à l'arrivée (ramène tout le monde à 80% ou dans l'intervalle)
-      enforceAppZoom(getStoredZoom());
-
-      // 3. Contrôle strict des raccourcis clavier de zoom (l'application reste fixe, bloquée à 80% max et 75% min)
+      // 2. Empêcher le navigateur de modifier ou déformer l'application (l'application reste fixe)
       window.addEventListener('keydown', function(e) {
         if ((e.ctrlKey || e.metaKey) && (
           e.key === '+' || e.key === '-' || e.key === '=' || e.key === '_' || e.key === '0' ||
           e.code === 'NumpadAdd' || e.code === 'NumpadSubtract' || e.code === 'Equal' || e.code === 'Minus' || e.code === 'Digit0'
         )) {
-          e.preventDefault(); // Bloque toute modification native du navigateur
-          
-          var current = window.__studycloud_current_zoom || getStoredZoom();
-          var isMinus = (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract' || e.code === 'Minus');
-          var isZero = (e.key === '0' || e.code === 'Digit0' || e.code === 'Numpad0');
-          
-          if (isZero) {
-            enforceAppZoom(APP_ZOOM_DEFAULT);
-          } else if (isMinus) {
-            // Zoom arrière : plancher absolu à 75% (ne peut pas descendre en dessous)
-            if (current > APP_ZOOM_MIN) {
-              enforceAppZoom(Math.max(APP_ZOOM_MIN, current - 0.05));
-            }
-          } else {
-            // Zoom avant : plafond absolu à 80% (ne peut pas dépasser 80%)
-            if (current < APP_ZOOM_MAX) {
-              enforceAppZoom(Math.min(APP_ZOOM_MAX, current + 0.05));
-            }
-          }
+          e.preventDefault(); // Bloque toute tentative de déformation par le navigateur
         }
       }, { passive: false });
 
-      // 4. Contrôle strict de la molette de souris (Ctrl + Molette) : bloque le zoom du navigateur
+      // 3. Bloquer le zoom molette de souris du navigateur
       window.addEventListener('wheel', function(e) {
         if (e.ctrlKey) {
-          e.preventDefault(); // Bloque le zoom natif
-          var current = window.__studycloud_current_zoom || getStoredZoom();
-          if (e.deltaY < 0) {
-            // Molette vers le haut = zoom avant, bloqué à 80% max
-            if (current < APP_ZOOM_MAX) {
-              enforceAppZoom(Math.min(APP_ZOOM_MAX, current + 0.02));
-            }
-          } else if (e.deltaY > 0) {
-            // Molette vers le bas = zoom arrière, bloqué à 75% min
-            if (current > APP_ZOOM_MIN) {
-              enforceAppZoom(Math.max(APP_ZOOM_MIN, current - 0.02));
-            }
-          }
+          e.preventDefault();
         }
       }, { passive: false });
 
-      // 5. Bloquer le zoom par pincement tactile multi-touch (iOS, Android, Touchpad, Écrans tactiles)
+      // 4. Bloquer le zoom par pincement tactile multi-touch (Touchpad, Écrans tactiles, Mobiles)
       window.addEventListener('touchstart', function(e) {
         if (e.touches && e.touches.length > 1) {
           e.preventDefault();
         }
       }, { passive: false });
 
-      // 6. Bloquer les gestes de zoom Safari / WebKit
+      // 5. Bloquer les gestes de zoom Safari / WebKit
       ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(event) {
         window.addEventListener(event, function(e) {
           e.preventDefault();
         }, { passive: false });
-      });
-
-      // 7. Surveillance continue : ramène automatiquement les utilisateurs connectés dans [75%, 80%]
-      ['resize', 'focus', 'visibilitychange'].forEach(function(ev) {
-        window.addEventListener(ev, function() {
-          var current = parseFloat(document.documentElement.style.zoom);
-          if (isNaN(current) || current < APP_ZOOM_MIN || current > APP_ZOOM_MAX) {
-            enforceAppZoom(APP_ZOOM_DEFAULT);
-          }
-        });
       });
 
       // 6. Bloquer le double-tap to zoom sur mobile
