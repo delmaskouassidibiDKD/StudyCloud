@@ -354,7 +354,7 @@ export default function Infographie({ data, title }: { data?: any; title?: strin
                           Direction Artistique & Prompt Générateur d'Image
                         </span>
                         <span className="text-[10px] text-blue-700/80">
-                          Optimisé pour DALL-E, Midjourney ou Cloudflare Workers AI
+                          Optimisé pour DALL-E, Midjourney ou Générateur IA
                         </span>
                       </div>
                     </div>

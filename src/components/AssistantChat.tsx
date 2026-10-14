@@ -32,6 +32,16 @@ interface ConversationItem {
   updated_at?: string;
 }
 
+export function stripWorkerAi(name?: string | null): string {
+  if (!name || typeof name !== 'string') return '';
+  return name
+    .replace(/\s*\(?\s*workers?\s*ai\s*\)?/gi, '')
+    .replace(/\s*\(?\s*cloudflare\s*\)?/gi, '')
+    .replace(/\bworkers?\s*ai\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 export function normalizeCreationType(type: string | undefined): ModuleId {
   if (!type) return 'questionnaire';
   const t = type.toLowerCase().trim();
@@ -852,13 +862,14 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
               if (id === 'gemini-2.0-flash' || id === 'gemini-2.5-flash') id = 'gemini-3.8-flash';
               
               // Priorité absolue au surnom personnalisé configuré dans le Tableau de Bord
-              const cleanNick = (m.nickname && typeof m.nickname === 'string') ? m.nickname.trim() : '';
-              const displayName = cleanNick.length > 0 ? cleanNick : (m.name || id);
+              const cleanNick = (m.nickname && typeof m.nickname === 'string') ? stripWorkerAi(m.nickname) : '';
+              const rawName = m.name || id;
+              const displayName = cleanNick.length > 0 ? cleanNick : stripWorkerAi(rawName);
 
               return {
                 id,
                 name: displayName,
-                rawName: m.name || id,
+                rawName: rawName,
                 nickname: cleanNick,
                 provider: m.provider || 'cloudflare',
                 model_id: id,
@@ -894,17 +905,17 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     const found = availableModels.find(m => m.id === selectedModel || m.model_id === selectedModel);
     if (found) {
       if (found.nickname && found.nickname.trim() !== '') {
-        return found.nickname.trim();
+        return stripWorkerAi(found.nickname);
       }
-      return found.name.replace(/ \(Workers AI\)/i, '').replace(/Instruct/i, '').replace(/Google /i, '').trim();
+      return stripWorkerAi(found.name).replace(/Instruct/i, '').replace(/Google /i, '').trim();
     }
     if (selectedModel.includes('llama')) return 'Llama 3.3 70B';
     if (selectedModel.includes('gemini')) return 'Gemini Flash';
     if (selectedModel.includes('deepseek')) return 'DeepSeek R1';
-    if (selectedModel.includes('kimi')) return 'Kimi K2.7';
+    if (selectedModel.includes('kimi')) return 'Kimi K2.7 Code';
     if (selectedModel.includes('claude')) return 'Claude 3.5';
     if (selectedModel.includes('gpt')) return 'GPT-4o Mini';
-    return selectedModel;
+    return stripWorkerAi(selectedModel);
   }, [availableModels, selectedModel]);
 
   // Message d'accueil spontané et dynamique envoyé de manière instantanée et fluide par l'IA sélectionnée
@@ -1893,7 +1904,7 @@ ou
                       >
                         <div className="flex items-center gap-2 truncate pr-2">
                           <span className={`w-2 h-2 rounded-full shrink-0 ${providerColor}`} />
-                          <span className="truncate">{m.name || m.model_id || m.id}</span>
+                          <span className="truncate">{stripWorkerAi(m.nickname || m.name || m.model_id || m.id)}</span>
                         </div>
                         {isSelected && <Check className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
                       </button>
@@ -2079,9 +2090,9 @@ ou
                       {(msg.model || currentModelDisplay) && (
                         <span 
                           className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800/95 border border-zinc-700 text-[10px] font-bold text-orange-400 shadow-xs"
-                          title={`Modèle ayant généré cette réponse : ${msg.model || currentModelDisplay}`}
+                          title={`Modèle ayant généré cette réponse : ${stripWorkerAi(msg.model || currentModelDisplay)}`}
                         >
-                          <span>{msg.model || currentModelDisplay}</span>
+                          <span>{stripWorkerAi(msg.model || currentModelDisplay)}</span>
                         </span>
                       )}
                       {msg.isPowerMode && (

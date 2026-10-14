@@ -286,8 +286,20 @@ async function ensureStorageTables(db) {
       await db.prepare("UPDATE robot_rouge_global_config SET default_model = 'gemini-3.8-flash' WHERE default_model = 'gemini-2.0-flash' OR default_model = 'gemini-2.5-flash' OR default_model = '@cf/meta/llama-3.3-70b-instruct'").run();
       await db.prepare("UPDATE robot_rouge_global_config SET fallback_model = '@cf/meta/llama-3.3-70b-instruct-fp8-fast' WHERE fallback_model = '@cf/meta/llama-3.3-70b-instruct'").run();
       await db.prepare("UPDATE robot_rouge_global_config SET fallback_model = 'gemini-3.8-flash' WHERE fallback_model = 'gemini-2.0-flash' OR fallback_model = 'gemini-2.5-flash'").run();
-      await db.prepare("UPDATE robot_rouge_models SET model_id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast', id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name = 'Llama 3.3 70B Instruct (Workers AI)' WHERE model_id = '@cf/meta/llama-3.3-70b-instruct' OR id = '@cf/meta/llama-3.3-70b-instruct'").run();
+      await db.prepare("UPDATE robot_rouge_models SET model_id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast', id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name = 'Llama 3.3 70B (Fast)' WHERE model_id = '@cf/meta/llama-3.3-70b-instruct' OR id = '@cf/meta/llama-3.3-70b-instruct'").run();
       await db.prepare("UPDATE robot_rouge_models SET model_id = 'gemini-3.8-flash', id = 'gemini-3.8-flash', name = 'Google Gemini 3.8 Flash' WHERE model_id = 'gemini-2.0-flash' OR model_id = 'gemini-2.5-flash' OR id = 'gemini-2.0-flash' OR id = 'gemini-2.5-flash'").run();
+
+      // Nettoyage automatique et définitif de tout résidu "Workers AI" en base D1 pour ne jamais l'afficher aux utilisateurs
+      await db.prepare("UPDATE robot_rouge_models SET name = 'Llama 3.3 70B (Fast)' WHERE id LIKE '%llama%' OR model_id LIKE '%llama%'").run().catch(() => {});
+      await db.prepare("UPDATE robot_rouge_models SET name = 'Kimi K2.7 Code' WHERE id LIKE '%kimi%' OR model_id LIKE '%kimi%'").run().catch(() => {});
+      await db.prepare("UPDATE robot_rouge_models SET name = 'GLM 5.3 Flash' WHERE id LIKE '%glm-5.3%' OR model_id LIKE '%glm-5.3%'").run().catch(() => {});
+      await db.prepare("UPDATE robot_rouge_models SET name = 'DeepSeek V4 Pro 0813' WHERE id LIKE '%deepseek-v4%' OR model_id LIKE '%deepseek-v4%'").run().catch(() => {});
+      await db.prepare("UPDATE robot_rouge_models SET name = REPLACE(name, ' (Workers AI)', '') WHERE name LIKE '%(Workers AI)%'").run().catch(() => {});
+      await db.prepare("UPDATE robot_rouge_models SET name = REPLACE(name, '(Workers AI)', '') WHERE name LIKE '%(Workers AI)%'").run().catch(() => {});
+      await db.prepare("UPDATE robot_rouge_models SET name = REPLACE(name, ' Workers AI', '') WHERE name LIKE '%Workers AI%'").run().catch(() => {});
+      await db.prepare("UPDATE robot_rouge_models SET nickname = REPLACE(nickname, ' (Workers AI)', '') WHERE nickname LIKE '%(Workers AI)%'").run().catch(() => {});
+      await db.prepare("UPDATE robot_rouge_models SET nickname = REPLACE(nickname, '(Workers AI)', '') WHERE nickname LIKE '%(Workers AI)%'").run().catch(() => {});
+      await db.prepare("UPDATE robot_rouge_models SET nickname = REPLACE(nickname, ' Workers AI', '') WHERE nickname LIKE '%Workers AI%'").run().catch(() => {});
     } catch (eMigrateCfg) {}
 
     // Table D1 des Modèles IA configurés (Cloudflare OS & Robot Rouge)
@@ -316,13 +328,13 @@ async function ensureStorageTables(db) {
       if (!existingCount || Number(existingCount.cnt) === 0) {
         await db.batch([
           db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
-            VALUES ('@cf/meta/llama-3.3-70b-instruct', 'cloudflare', 'Llama 3.3 70B Instruct (Workers AI)', '@cf/meta/llama-3.3-70b-instruct', 1, 1, 131072)`),
+            VALUES ('@cf/meta/llama-3.3-70b-instruct-fp8-fast', 'cloudflare', 'Llama 3.3 70B (Fast)', '@cf/meta/llama-3.3-70b-instruct-fp8-fast', 1, 1, 131072)`),
           db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
-            VALUES ('@cf/moonshotai/kimi-k2.7-code', 'cloudflare', 'Kimi K2.7 Code (Workers AI)', '@cf/moonshotai/kimi-k2.7-code', 0, 1, 262144)`),
+            VALUES ('@cf/moonshotai/kimi-k2.7-code', 'cloudflare', 'Kimi K2.7 Code', '@cf/moonshotai/kimi-k2.7-code', 0, 1, 262144)`),
           db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
-            VALUES ('@cf/zai-org/glm-5.3-flash', 'cloudflare', 'GLM 5.3 Flash (Workers AI)', '@cf/zai-org/glm-5.3-flash', 0, 1, 1048576)`),
+            VALUES ('@cf/zai-org/glm-5.3-flash', 'cloudflare', 'GLM 5.3 Flash', '@cf/zai-org/glm-5.3-flash', 0, 1, 1048576)`),
           db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
-            VALUES ('@cf/deepseek-ai/deepseek-v4-pro-0813', 'cloudflare', 'DeepSeek V4 Pro 0813 (Workers AI)', '@cf/deepseek-ai/deepseek-v4-pro-0813', 0, 1, 1048576)`),
+            VALUES ('@cf/deepseek-ai/deepseek-v4-pro-0813', 'cloudflare', 'DeepSeek V4 Pro 0813', '@cf/deepseek-ai/deepseek-v4-pro-0813', 0, 1, 1048576)`),
           db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
             VALUES ('gemini-3.8-flash', 'google', 'Google Gemini 3.8 Flash', 'gemini-3.8-flash', 0, 1, 1048576)`),
           db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
@@ -5002,11 +5014,11 @@ function renderDashboardHtml(data) {
               class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition cursor-pointer"
             >
               <option value="gemini-3.8-flash" ${rc.default_model === 'gemini-3.8-flash' || rc.default_model === 'gemini-2.0-flash' || !rc.default_model || rc.default_model === '@cf/meta/llama-3.3-70b-instruct' ? 'selected' : ''}>⚡ Google Gemini 3.8 Flash (Recommandé • Ultra-rapide & Fiable)</option>
-              <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast" ${rc.default_model === '@cf/meta/llama-3.3-70b-instruct-fp8-fast' ? 'selected' : ''}>🚀 Cloudflare Workers AI - Llama 3.3 70B Instruct Fast</option>
+              <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast" ${rc.default_model === '@cf/meta/llama-3.3-70b-instruct-fp8-fast' ? 'selected' : ''}>🚀 Llama 3.3 70B Fast</option>
               <option value="claude-3-5-sonnet-20241022" ${rc.default_model === 'claude-3-5-sonnet-20241022' ? 'selected' : ''}>🧠 Anthropic Claude 3.5 Sonnet (Raisonnement avancé & Code)</option>
               <option value="gpt-4o" ${rc.default_model === 'gpt-4o' ? 'selected' : ''}>💎 OpenAI GPT-4o (Référence mondiale)</option>
               <option value="gpt-4o-mini" ${rc.default_model === 'gpt-4o-mini' ? 'selected' : ''}>✨ OpenAI GPT-4o Mini (Économique & Réactif)</option>
-              <option value="@cf/moonshotai/kimi-k2.7-code" ${rc.default_model === '@cf/moonshotai/kimi-k2.7-code' ? 'selected' : ''}>🔬 Kimi K2.7 Code (Workers AI)</option>
+              <option value="@cf/moonshotai/kimi-k2.7-code" ${rc.default_model === '@cf/moonshotai/kimi-k2.7-code' ? 'selected' : ''}>🔬 Kimi K2.7 Code</option>
             </select>
             <p class="text-[10px] text-slate-400">Ce modèle sera utilisé automatiquement dès qu'un étudiant utilise le Robot Rouge.</p>
           </div>
@@ -5019,9 +5031,9 @@ function renderDashboardHtml(data) {
               class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition cursor-pointer"
             >
               <option value="gemini-3.8-flash" ${rc.fallback_model === 'gemini-3.8-flash' || rc.fallback_model === 'gemini-2.0-flash' || !rc.fallback_model ? 'selected' : ''}>⚡ Google Gemini 3.8 Flash (Haut quota & zéro coupure)</option>
-              <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast" ${rc.fallback_model === '@cf/meta/llama-3.3-70b-instruct-fp8-fast' || rc.fallback_model === '@cf/meta/llama-3.3-70b-instruct' ? 'selected' : ''}>🚀 Cloudflare Workers AI - Llama 3.3 70B Fast</option>
+              <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast" ${rc.fallback_model === '@cf/meta/llama-3.3-70b-instruct-fp8-fast' || rc.fallback_model === '@cf/meta/llama-3.3-70b-instruct' ? 'selected' : ''}>🚀 Llama 3.3 70B Fast</option>
               <option value="gpt-4o-mini" ${rc.fallback_model === 'gpt-4o-mini' ? 'selected' : ''}>✨ OpenAI GPT-4o Mini</option>
-              <option value="@cf/moonshotai/kimi-k2.7-code" ${rc.fallback_model === '@cf/moonshotai/kimi-k2.7-code' ? 'selected' : ''}>🔬 Kimi K2.7 Code (Workers AI)</option>
+              <option value="@cf/moonshotai/kimi-k2.7-code" ${rc.fallback_model === '@cf/moonshotai/kimi-k2.7-code' ? 'selected' : ''}>🔬 Kimi K2.7 Code</option>
             </select>
             <p class="text-[10px] text-slate-400">Si le fournisseur principal est temporairement indisponible, le Robot bascule instantanément sur ce secours.</p>
           </div>
@@ -5125,7 +5137,7 @@ function renderDashboardHtml(data) {
           <!-- Token Cloudflare AI -->
           <div class="space-y-1">
             <div class="flex items-center justify-between">
-              <label class="text-[11px] font-bold text-slate-300">Token API Cloudflare (Workers AI - Optionnel)</label>
+              <label class="text-[11px] font-bold text-slate-300">Token API Cloudflare (Optionnel)</label>
               <span id="badge-key-cf" class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">${rc.cf_ai_token ? '✓ Configuré' : 'Utilise Binding natif'}</span>
             </div>
             <div class="relative">
@@ -5295,13 +5307,13 @@ function renderDashboardHtml(data) {
         >
           <option value="">Choisir un modèle d'IA...</option>
           
-          <optgroup label="Cloudflare Workers AI">
-            <option value="@cf/moonshotai/kimi-k2.7-code">Kimi K2.7 Code (Workers AI)</option>
-            <option value="@cf/zai-org/glm-5.2">GLM 5.2 (Workers AI)</option>
-            <option value="@cf/zai-org/glm-5.3-flash">GLM 5.3 Flash (Workers AI)</option>
-            <option value="@cf/deepseek-ai/deepseek-v4-pro-0813">DeepSeek V4 Pro 0813 (Workers AI)</option>
-            <option value="@cf/meta/llama-3.3-70b-instruct">Llama 3.3 70B Instruct (Workers AI)</option>
-            <option value="other-cloudflare">Autre Cloudflare Workers AI...</option>
+          <optgroup label="Cloudflare Edge AI">
+            <option value="@cf/moonshotai/kimi-k2.7-code">Kimi K2.7 Code</option>
+            <option value="@cf/zai-org/glm-5.2">GLM 5.2</option>
+            <option value="@cf/zai-org/glm-5.3-flash">GLM 5.3 Flash</option>
+            <option value="@cf/deepseek-ai/deepseek-v4-pro-0813">DeepSeek V4 Pro 0813</option>
+            <option value="@cf/meta/llama-3.3-70b-instruct">Llama 3.3 70B Instruct</option>
+            <option value="other-cloudflare">Autre Cloudflare...</option>
           </optgroup>
 
           <optgroup label="Anthropic">
@@ -5343,12 +5355,12 @@ function renderDashboardHtml(data) {
           <div class="flex items-center gap-2.5">
             <span id="form-provider-icon" class="text-xl">☁️</span>
             <div>
-              <div id="form-provider-name" class="text-xs font-black text-white uppercase tracking-wider">Cloudflare Workers AI</div>
+              <div id="form-provider-name" class="text-xs font-black text-white uppercase tracking-wider">Cloudflare Edge AI</div>
               <div id="form-provider-desc" class="text-[10px] text-slate-400">Modèle hébergé sur le réseau Cloudflare</div>
             </div>
           </div>
           <span id="form-provider-badge" class="text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30">
-            Workers AI
+            Cloudflare
           </span>
         </div>
 
@@ -5358,7 +5370,7 @@ function renderDashboardHtml(data) {
           <input 
             type="text" 
             id="form-model-name" 
-            placeholder="Ex: Kimi K2.7 Code (Workers AI)" 
+            placeholder="Ex: Kimi K2.7 Code" 
             class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500 focus:border-orange-500 outline-none transition"
           >
         </div>
@@ -12735,10 +12747,10 @@ function renderDashboardHtml(data) {
 
       if (prov === 'cloudflare') {
         if (icon) icon.textContent = '☁️';
-        if (name) name.textContent = 'Cloudflare Workers AI';
+        if (name) name.textContent = 'Cloudflare Edge AI';
         if (desc) desc.textContent = 'Réseau Edge Mondial Cloudflare (Inférence ultra-rapide)';
-        if (badge) { badge.textContent = 'Workers AI'; badge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30'; }
-        if (tokLabel) tokLabel.textContent = 'Cloudflare API Token (Workers AI)';
+        if (badge) { badge.textContent = 'Cloudflare'; badge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30'; }
+        if (tokLabel) tokLabel.textContent = 'Token API Cloudflare';
         if (tokInput) tokInput.placeholder = 'cf_ai_... ou jeton API Cloudflare';
       } else if (prov === 'anthropic') {
         if (icon) icon.textContent = '🧠';
@@ -12785,12 +12797,12 @@ function renderDashboardHtml(data) {
       const outInput = document.getElementById('form-model-output');
 
       const presetMap = {
-        '@cf/moonshotai/kimi-k2.7-code': { name: 'Kimi K2.7 Code (Workers AI)', id: '@cf/moonshotai/kimi-k2.7-code', prov: 'cloudflare', ctx: 262144, out: 8192 },
-        '@cf/zai-org/glm-5.2': { name: 'GLM 5.2 (Workers AI)', id: '@cf/zai-org/glm-5.2', prov: 'cloudflare', ctx: 131072, out: 4096 },
-        '@cf/zai-org/glm-5.3-flash': { name: 'GLM 5.3 Flash (Workers AI)', id: '@cf/zai-org/glm-5.3-flash', prov: 'cloudflare', ctx: 131072, out: 4096 },
-        '@cf/deepseek-ai/deepseek-v4-pro-0813': { name: 'DeepSeek V4 Pro (Workers AI)', id: '@cf/deepseek-ai/deepseek-v4-pro-0813', prov: 'cloudflare', ctx: 131072, out: 8192 },
-        '@cf/meta/llama-3.3-70b-instruct': { name: 'Llama 3.3 70B Instruct (Workers AI)', id: '@cf/meta/llama-3.3-70b-instruct', prov: 'cloudflare', ctx: 131072, out: 8192 },
-        'other-cloudflare': { name: 'Cloudflare Workers AI Modèle', id: '@cf/', prov: 'cloudflare', ctx: 131072, out: 4096 },
+        '@cf/moonshotai/kimi-k2.7-code': { name: 'Kimi K2.7 Code', id: '@cf/moonshotai/kimi-k2.7-code', prov: 'cloudflare', ctx: 262144, out: 8192 },
+        '@cf/zai-org/glm-5.2': { name: 'GLM 5.2', id: '@cf/zai-org/glm-5.2', prov: 'cloudflare', ctx: 131072, out: 4096 },
+        '@cf/zai-org/glm-5.3-flash': { name: 'GLM 5.3 Flash', id: '@cf/zai-org/glm-5.3-flash', prov: 'cloudflare', ctx: 131072, out: 4096 },
+        '@cf/deepseek-ai/deepseek-v4-pro-0813': { name: 'DeepSeek V4 Pro', id: '@cf/deepseek-ai/deepseek-v4-pro-0813', prov: 'cloudflare', ctx: 131072, out: 8192 },
+        '@cf/meta/llama-3.3-70b-instruct': { name: 'Llama 3.3 70B Instruct', id: '@cf/meta/llama-3.3-70b-instruct', prov: 'cloudflare', ctx: 131072, out: 8192 },
+        'other-cloudflare': { name: 'Modèle Cloudflare Edge', id: '@cf/', prov: 'cloudflare', ctx: 131072, out: 4096 },
         'claude-opus-5-5': { name: 'Claude Opus 5.5', id: 'claude-opus-5-5', prov: 'anthropic', ctx: 200000, out: 8192 },
         'claude-sonnet-5-5': { name: 'Claude Sonnet 5.5', id: 'claude-sonnet-5-5', prov: 'anthropic', ctx: 200000, out: 8192 },
         'claude-fable-5-1': { name: 'Claude Fable 5.1', id: 'claude-fable-5-1', prov: 'anthropic', ctx: 200000, out: 8192 },
@@ -12908,7 +12920,7 @@ function renderDashboardHtml(data) {
         grid.innerHTML = '<div class="col-span-full p-8 rounded-2xl bg-slate-950/60 border border-slate-800 text-center space-y-3">' +
           '<span class="text-3xl">🤖</span>' +
           '<p class="text-xs text-slate-400 max-w-md mx-auto">' +
-          'Cliquez sur le bouton ci-dessous pour ajouter un modèle d&#39;IA (Workers AI, Claude, GPT, Gemini). Il sera immédiatement connecté et accessible à vos élèves.' +
+          'Cliquez sur le bouton ci-dessous pour ajouter un modèle d&#39;IA (Cloudflare, Claude, GPT, Gemini). Il sera immédiatement connecté et accessible à vos élèves.' +
           '</p>' +
           '<button type="button" onclick="openAddAiModelModal()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-stone-900 font-extrabold text-xs shadow-md shadow-orange-500/20 cursor-pointer inline-flex items-center gap-1.5">' +
             '<span>✨</span><span>Ajouter un Modèle Maintenant</span>' +
@@ -12928,7 +12940,7 @@ function renderDashboardHtml(data) {
           custom: '⚙️'
         };
         const provNames = {
-          cloudflare: 'Workers AI',
+          cloudflare: 'Cloudflare',
           anthropic: 'Anthropic',
           openai: 'OpenAI',
           google: 'Google Gemini',
@@ -14953,11 +14965,20 @@ export default {
         try {
           const mRes = await db.prepare("SELECT * FROM robot_rouge_models WHERE is_active = 1 ORDER BY is_default DESC, created_at ASC").all();
           modelsList = (mRes && mRes.results) ? mRes.results : [];
-          // Normaliser les modèles pour éviter les erreurs 5007 et 404
+          // Normaliser les modèles pour éviter les erreurs 5007 et 404, et nettoyer toute mention de Workers AI
           modelsList = modelsList.map(m => {
             let modelId = m.model_id;
             let id = m.id;
-            let name = m.name;
+            let name = (m.name || id)
+              .replace(/\s*\(?\s*workers?\s*ai\s*\)?/gi, '')
+              .replace(/\bworkers?\s*ai\b/gi, '')
+              .replace(/\s{2,}/g, ' ')
+              .trim();
+            let nickname = (m.nickname || '')
+              .replace(/\s*\(?\s*workers?\s*ai\s*\)?/gi, '')
+              .replace(/\bworkers?\s*ai\b/gi, '')
+              .replace(/\s{2,}/g, ' ')
+              .trim();
             if (modelId === '@cf/meta/llama-3.3-70b-instruct') {
               modelId = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
               id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
@@ -14973,7 +14994,7 @@ export default {
               id,
               model_id: modelId,
               name,
-              nickname: m.nickname || ''
+              nickname
             };
           });
           const gIdx = modelsList.findIndex(m => m.model_id === 'gemini-3.8-flash' || m.id === 'gemini-3.8-flash');
@@ -15075,7 +15096,20 @@ export default {
       if (request.method === 'GET' && path === '/api/admin/robot-rouge-models') {
         try {
           const res = await db.prepare("SELECT * FROM robot_rouge_models ORDER BY is_default DESC, created_at ASC").all();
-          return new Response(JSON.stringify({ success: true, models: res?.results || [] }), {
+          const cleanModels = (res?.results || []).map(m => ({
+            ...m,
+            name: (m.name || m.id || '')
+              .replace(/\s*\(?\s*workers?\s*ai\s*\)?/gi, '')
+              .replace(/\bworkers?\s*ai\b/gi, '')
+              .replace(/\s{2,}/g, ' ')
+              .trim(),
+            nickname: (m.nickname || '')
+              .replace(/\s*\(?\s*workers?\s*ai\s*\)?/gi, '')
+              .replace(/\bworkers?\s*ai\b/gi, '')
+              .replace(/\s{2,}/g, ' ')
+              .trim()
+          }));
+          return new Response(JSON.stringify({ success: true, models: cleanModels }), {
             status: 200,
             headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
           });
@@ -15092,8 +15126,16 @@ export default {
           const b = await request.json().catch(() => ({}));
           const id = (b.id || b.model_id || '').trim();
           const provider = (b.provider || 'cloudflare').trim();
-          const name = (b.name || id).trim();
-          const nickname = (b.nickname || '').trim();
+          const name = (b.name || id)
+            .replace(/\s*\(?\s*workers?\s*ai\s*\)?/gi, '')
+            .replace(/\bworkers?\s*ai\b/gi, '')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+          const nickname = (b.nickname || '')
+            .replace(/\s*\(?\s*workers?\s*ai\s*\)?/gi, '')
+            .replace(/\bworkers?\s*ai\b/gi, '')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
           const modelId = (b.model_id || id).trim();
           const apiToken = (b.api_token || '').trim();
           const accountId = (b.account_id || '').trim();
