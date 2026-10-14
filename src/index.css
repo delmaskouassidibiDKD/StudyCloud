@@ -2,6 +2,11 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+html {
+  zoom: 80%;
+  -webkit-text-size-adjust: 100%;
+}
+
 html,
 body {
   min-height: 100vh;

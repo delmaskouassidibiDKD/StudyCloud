@@ -61,7 +61,20 @@ export default function App() {
     return null;
   });
 
-  // Gérer le callback Google OAuth et la confirmation email (verify_token ou redirect)
+  // Verrouillage et imposition du zoom [75%, 80%] (80% par défaut et plafond maxi)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const enforce = (window as any).enforceAppZoom;
+      if (typeof enforce === 'function') {
+        enforce();
+      } else {
+        const current = parseFloat(document.documentElement.style.zoom);
+        if (isNaN(current) || current < 0.75 || current > 0.80) {
+          document.documentElement.style.zoom = '0.80';
+        }
+      }
+    }
+  }, []);
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const googleCode = urlParams.get('code');
