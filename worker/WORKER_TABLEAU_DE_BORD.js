@@ -3497,7 +3497,7 @@ function renderDashboardHtml(data) {
           </div>
           <div class="neo-card p-4 border-l-4 border-l-purple-500">
             <div class="text-[10px] uppercase font-bold text-slate-400">Boutiques</div>
-            <div class="text-2xl font-black text-purple-400 mt-1">${data.users.filter(u => u.user.hasShop).length}</div>
+            <div class="text-2xl font-black text-purple-400 mt-1">${(data.users || []).filter(u => (u && u.user && u.user.hasShop) || (u && u.hasShop)).length}</div>
             <div class="text-[10px] text-slate-400 mt-0.5">Boutiques actives</div>
           </div>
         </div>
@@ -6073,6 +6073,7 @@ function renderDashboardHtml(data) {
         }
       }
     }
+    window.switchView = switchView;
 
     function toggleAccordion(id) {
       const content = document.getElementById(id);
@@ -12946,10 +12947,12 @@ function renderDashboardHtml(data) {
         const bCol = provBadgeColors[m.provider] || 'bg-slate-700 text-slate-300 border-slate-600';
         const hasKey = m.api_token && m.api_token.length > 5;
         const keySnippet = hasKey ? '••••••••' + m.api_token.slice(-4) : (m.provider === 'cloudflare' ? 'Binding Edge natif' : 'Non renseignée');
-        const mSafeName = (m.name || m.id || '').replace(/'/g, "\\'");
-
         const isActive = (m.is_active === 1 || m.is_active === true || m.is_active === '1' || m.is_active === undefined);
         const nickname = m.nickname || '';
+        const safeModelId = escapeHtml(m.id || '');
+        const safeName = escapeHtml(m.name || m.id || '');
+        const safeRawModelId = escapeHtml(m.model_id || m.id || '');
+        const safeNick = escapeHtml(nickname);
 
         html += '<div class="p-4 rounded-2xl ' + (!isActive ? 'bg-slate-950/70 border border-dashed border-red-500/40 opacity-75' : (isDef ? 'bg-slate-900/90 border border-amber-500/70 shadow-lg shadow-amber-500/10' : 'bg-slate-900/90 border border-slate-800 hover:border-slate-700')) + ' flex flex-col justify-between gap-3 transition">' +
           '<div class="space-y-2">' +
@@ -12957,13 +12960,13 @@ function renderDashboardHtml(data) {
               '<div class="flex items-center gap-2">' +
                 '<span class="text-xl">' + icon + '</span>' +
                 '<div>' +
-                  '<div class="text-xs font-black text-white leading-tight">' + safeHtml(m.name || m.id) + '</div>' +
-                  '<div class="text-[10px] text-slate-400 font-mono truncate max-w-[180px]">' + safeHtml(m.model_id || m.id) + '</div>' +
+                  '<div class="text-xs font-black text-white leading-tight">' + safeName + '</div>' +
+                  '<div class="text-[10px] text-slate-400 font-mono truncate max-w-[180px]">' + safeRawModelId + '</div>' +
                 '</div>' +
               '</div>' +
               '<div class="flex flex-col items-end gap-1">' +
                 '<span class="text-[9px] px-2 py-0.5 rounded-full font-bold border ' + bCol + '">' +
-                  pName +
+                  escapeHtml(pName) +
                 '</span>' +
                 (!isActive ? '<span class="text-[9px] px-1.5 py-0.2 rounded font-bold bg-red-500/20 text-red-300 border border-red-500/30">Masqué</span>' : '') +
               '</div>' +
@@ -12971,7 +12974,7 @@ function renderDashboardHtml(data) {
 
         if (nickname) {
           html += '<div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/35 text-amber-300 text-[10px] font-bold">' +
-            '<span class="text-amber-400">🏷️ Surnom élève :</span> <span class="font-extrabold text-white underline decoration-amber-400">' + safeHtml(nickname) + '</span>' +
+            '<span class="text-amber-400">🏷️ Surnom élève :</span> <span class="font-extrabold text-white underline decoration-amber-400">' + safeNick + '</span>' +
           '</div>';
         }
 
@@ -12998,26 +13001,26 @@ function renderDashboardHtml(data) {
           '<div class="mt-1 p-2 rounded-xl bg-slate-950/90 border border-slate-800/90 space-y-1">' +
             '<div class="flex items-center justify-between text-[10px]">' +
               '<label class="font-extrabold text-amber-400 flex items-center gap-1">' +
-                '<span>🏷️</span><span>Surnom (affiché dans l\'application) :</span>' +
+                '<span>🏷️</span><span>Surnom (affiché dans l&#39;application) :</span>' +
               '</label>' +
               '<span class="text-[9px] text-slate-500">Visible par les élèves</span>' +
             '</div>' +
             '<div class="flex items-center gap-1.5">' +
-              '<input type="text" id="nick-' + m.id + '" value="' + safeAttr(nickname) + '" placeholder="Ex: Mon Tuteur, Flash Ultra..." class="flex-1 px-2.5 py-1.5 text-xs bg-slate-900 border border-slate-700 focus:border-amber-400 rounded-lg text-white font-medium placeholder-slate-500 outline-none transition" onkeydown="if(event.key===\'Enter\'){saveAiModelNickname(\'' + m.id + '\', this.value);}" />' +
-              '<button type="button" onclick="saveAiModelNickname(\'' + m.id + '\', document.getElementById(\'nick-' + m.id + '\').value)" class="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-900 font-extrabold text-[10px] transition cursor-pointer shrink-0 shadow-xs flex items-center gap-1" title="Enregistrer ce surnom dans D1">' +
+              '<input type="text" id="nick-' + safeModelId + '" data-model-id="' + safeModelId + '" value="' + safeNick + '" placeholder="Ex: Mon Tuteur, Flash Ultra..." class="flex-1 px-2.5 py-1.5 text-xs bg-slate-900 border border-slate-700 focus:border-amber-400 rounded-lg text-white font-medium placeholder-slate-500 outline-none transition" onkeydown="if(event.keyCode===13){saveNickForModel(this.dataset.modelId);}" />' +
+              '<button type="button" data-model-id="' + safeModelId + '" onclick="saveNickForModel(this.dataset.modelId)" class="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-900 font-extrabold text-[10px] transition cursor-pointer shrink-0 shadow-xs flex items-center gap-1" title="Enregistrer ce surnom dans D1">' +
                 '<span>💾</span><span>Enregistrer</span>' +
               '</button>' +
             '</div>' +
           '</div>' +
         '</div>' +
         '<div class="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">' +
-          '<button type="button" data-model-id="' + m.id + '" data-active="' + (isActive ? '0' : '1') + '" onclick="toggleAiModelActive(this.dataset.modelId, this.dataset.active)" class="px-2.5 py-1.5 rounded-lg text-[10px] font-extrabold transition flex items-center gap-1.5 cursor-pointer ' + (isActive ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/40' : 'bg-red-500/15 text-red-300 border border-red-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40') + '" title="' + (isActive ? 'Désactiver ce modèle (Il ne s\'affichera plus dans StudyCloud)' : 'Activer ce modèle (Il s\'affichera dans StudyCloud)') + '">' +
+          '<button type="button" data-model-id="' + safeModelId + '" data-active="' + (isActive ? '0' : '1') + '" onclick="toggleAiModelActive(this.dataset.modelId, this.dataset.active)" class="px-2.5 py-1.5 rounded-lg text-[10px] font-extrabold transition flex items-center gap-1.5 cursor-pointer ' + (isActive ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/40' : 'bg-red-500/15 text-red-300 border border-red-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40') + '" title="' + (isActive ? 'Désactiver ce modèle (Masqué dans StudyCloud)' : 'Activer ce modèle (Visible dans StudyCloud)') + '">' +
             '<span>' + (isActive ? '🟢' : '🔴') + '</span>' +
             '<span>' + (isActive ? 'Actif (Visible)' : 'Désactivé (Masqué)') + '</span>' +
           '</button>';
 
         if (!isDef) {
-          html += '<button type="button" data-model-id="' + m.id + '" onclick="setDefaultAiModel(this.dataset.modelId)" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 text-slate-300 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer" title="Définir comme modèle par défaut">' +
+          html += '<button type="button" data-model-id="' + safeModelId + '" onclick="setDefaultAiModel(this.dataset.modelId)" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 text-slate-300 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer" title="Définir comme modèle par défaut">' +
             '<span>⭐</span><span>Par défaut</span>' +
           '</button>';
         } else {
@@ -13025,8 +13028,8 @@ function renderDashboardHtml(data) {
         }
 
         html += '<div class="flex items-center gap-1 ml-auto">' +
-            '<button type="button" data-model-id="' + m.id + '" onclick="editAiModelById(this.dataset.modelId)" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs transition cursor-pointer" title="Modifier">✏️</button>' +
-            '<button type="button" data-model-id="' + m.id + '" onclick="deleteAiModel(this.dataset.modelId)" class="p-1.5 rounded-lg bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 text-xs transition cursor-pointer" title="Supprimer">🗑️</button>' +
+            '<button type="button" data-model-id="' + safeModelId + '" onclick="editAiModelById(this.dataset.modelId)" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs transition cursor-pointer" title="Modifier">✏️</button>' +
+            '<button type="button" data-model-id="' + safeModelId + '" onclick="deleteAiModel(this.dataset.modelId)" class="p-1.5 rounded-lg bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 text-xs transition cursor-pointer" title="Supprimer">🗑️</button>' +
           '</div>' +
         '</div>' +
       '</div>';
@@ -13034,6 +13037,15 @@ function renderDashboardHtml(data) {
 
       grid.innerHTML = html;
     }
+
+    function saveNickForModel(id) {
+      if (!id) return;
+      const input = document.getElementById('nick-' + id);
+      const val = input ? input.value : '';
+      saveAiModelNickname(id, val);
+    }
+    window.saveNickForModel = saveNickForModel;
+    window.renderRobotRougeModelsList = renderRobotRougeModelsList;
 
     try {
       if (Array.isArray(robotRougeModelsList) && robotRougeModelsList.length > 0) {
