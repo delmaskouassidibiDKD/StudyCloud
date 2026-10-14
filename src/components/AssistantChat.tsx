@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap, Palette, HelpCircle, Download, Square } from 'lucide-react';
+import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap, Palette, HelpCircle, Download, Square, WifiOff, RotateCw, AlertTriangle } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
@@ -20,6 +20,9 @@ interface Message {
   createdAt?: string;
   model?: string;
   isPowerMode?: boolean;
+  isError?: boolean;
+  errorType?: 'network' | 'server';
+  retryPrompt?: string;
 }
 
 interface ConversationItem {
@@ -84,6 +87,175 @@ function cleanChatText(text: string): string {
   }
 
   return clean;
+}
+
+// Détermine dynamiquement ce que l'IA réalise en temps réel (à l'instant T) selon le contexte et le délai
+function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: number, requestedType?: string): string {
+  const cleanPrompt = (prompt || '').trim().toLowerCase();
+  const mainDoc = docNames && docNames.length > 0 ? docNames[0] : '';
+  const hasDoc = Boolean(mainDoc);
+
+  // 1. Mathématiques, calculs, sciences dures, physique, électronique
+  const isMathScience = /(calcul|dériv|intégral|équat|formule|résoud|résous|schéma|circuit|aop|filtre|rlc|valeur|\$|\\dfrac|impédance|tension|courant|puissance|théorème|démonstr|vecteur|matrice|harmonique)/i.test(cleanPrompt);
+  if (isMathScience) {
+    if (elapsedSec <= 2) return "J'analyse les données et équations...";
+    if (elapsedSec <= 5) return "Je réfléchis aux étapes de calcul et à la démonstration...";
+    if (elapsedSec <= 8) return "Je résous les formules et vérifie les résultats...";
+    return "Je finalise la résolution méthodique...";
+  }
+
+  // 2. Création de modules d'apprentissage (Quiz, QCM, Cartes, Résumé, Devoir...)
+  const isCreation = Boolean(requestedType) || /(créer|conçois|concevoir|fais-moi un|génère|quiz|qcm|questionnaire|carte mentale|flashcards?|carte mémoire|résumé|fiche|devoir|examen|infographie)/i.test(cleanPrompt);
+  if (isCreation) {
+    const isQuiz = requestedType?.includes('questionnaire') || requestedType?.includes('quiz') || /(quiz|qcm|questionnaire)/i.test(cleanPrompt);
+    const isMindmap = requestedType?.includes('carte-mentale') || /(carte mentale|mindmap)/i.test(cleanPrompt);
+    const isSummary = requestedType?.includes('resume') || /(résumé|fiche|synthèse)/i.test(cleanPrompt);
+
+    if (isQuiz) {
+      if (elapsedSec <= 2) return "J'analyse le sujet pour concevoir le questionnaire...";
+      if (elapsedSec <= 5) return "Je réfléchis aux questions et aux options de réponse...";
+      if (elapsedSec <= 8) return "Je rédige les explications pédagogiques...";
+      return "Je finalise le questionnaire interactif...";
+    }
+    if (isMindmap) {
+      if (elapsedSec <= 2) return "J'extrais l'arborescence des notions...";
+      if (elapsedSec <= 5) return "Je structure les branches et concepts clés...";
+      return "Je finalise la carte mentale...";
+    }
+    if (isSummary) {
+      if (elapsedSec <= 2) return "J'extrais les points fondamentaux...";
+      if (elapsedSec <= 5) return "Je réfléchis à la synthèse des règles clés...";
+      return "Je finalise la fiche de synthèse...";
+    }
+    if (elapsedSec <= 2) return "J'analyse les consignes de création...";
+    if (elapsedSec <= 5) return "Je conçois le module pédagogique...";
+    return "Je finalise votre création...";
+  }
+
+  // 3. Document support d'étude ouvert ou joint
+  if (hasDoc) {
+    if (elapsedSec <= 2) return `J'explore le document « ${mainDoc} »...`;
+    if (elapsedSec <= 5) return "Je réfléchis aux concepts clés du cours...";
+    if (elapsedSec <= 8) return "Je structure l'explication adaptée à vos supports...";
+    return "Je finalise la réponse détaillée...";
+  }
+
+  // 4. Code / Informatique
+  const isCode = /(code|programme|fonction|python|javascript|typescript|c\+\+|java|algorithme|script|html|css|sql|bug|erreur)/i.test(cleanPrompt);
+  if (isCode) {
+    if (elapsedSec <= 2) return "J'analyse le code et la logique...";
+    if (elapsedSec <= 5) return "Je réfléchis à la solution optimale...";
+    if (elapsedSec <= 8) return "Je structure l'implémentation et les explications...";
+    return "Je vérifie la syntaxe et finalise...";
+  }
+
+  // 5. Schéma / Dessin vectoriel
+  const isDrawing = /(dessin|schéma|figure|graphique|svg|tracer|illustr|circuit)/i.test(cleanPrompt);
+  if (isDrawing) {
+    if (elapsedSec <= 2) return "J'analyse la structure visuelle à représenter...";
+    if (elapsedSec <= 5) return "Je conçois le schéma vectoriel...";
+    return "Je finalise le tracé graphique...";
+  }
+
+  // 6. Message court ou salutation
+  if (cleanPrompt.length < 15 && /(cc|salut|bonjour|coucou|hello|hi|hey|merci)/i.test(cleanPrompt)) {
+    if (elapsedSec <= 2) return "Je vous réponds...";
+    return "Je prépare votre réponse...";
+  }
+
+  // 7. Question générale / explication de cours (cas par défaut)
+  if (elapsedSec <= 2) return "J'analyse votre question...";
+  if (elapsedSec <= 5) return "Je réfléchis...";
+  if (elapsedSec <= 8) return "Je structure les explications pas à pas...";
+  return "Je finalise la réponse détaillée...";
+}
+
+// Détection professionnelle des coupures réseau et absence de connexion
+export function isNetworkError(err: any): boolean {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  if (!err) return false;
+  const msg = String(err?.message || err || '').toLowerCase();
+  return (
+    msg.includes('failed to fetch') ||
+    msg.includes('networkerror') ||
+    msg.includes('network request failed') ||
+    msg.includes('network_disconnected') ||
+    msg.includes('connexion internet') ||
+    msg.includes('hors ligne') ||
+    msg.includes('offline') ||
+    msg.includes('load failed') ||
+    msg.includes('net::err') ||
+    (err?.name === 'TypeError' && (msg.includes('fetch') || msg.includes('network')))
+  );
+}
+
+function isNetworkErrorMessage(msg: Message): boolean {
+  if (msg.errorType === 'network') return true;
+  if (!msg.text) return false;
+  const t = msg.text.toLowerCase();
+  return (
+    t.includes('failed to fetch') ||
+    t.includes('network_disconnected') ||
+    t.includes('connexion internet') ||
+    t.includes('hors ligne') ||
+    t.includes('networkerror') ||
+    t.includes('vérifier votre connexion') ||
+    t.includes('vérifier votre réseau')
+  );
+}
+
+// Carte professionnelle d'erreur de réseau (design inspiré des grandes entreprises tech)
+function NetworkErrorCard({
+  retryPrompt,
+  onRetry,
+}: {
+  retryPrompt?: string;
+  onRetry: () => void;
+}) {
+  const [isRetrying, setIsRetrying] = useState(false);
+
+  const handleAction = () => {
+    setIsRetrying(true);
+    onRetry();
+  };
+
+  return (
+    <div className="my-2.5 p-4 sm:p-5 rounded-2xl bg-[#1e2026] border border-amber-500/30 shadow-xl w-full max-w-xl transition-all animate-fadeIn">
+      <div className="flex items-start gap-3.5">
+        <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 shrink-0 mt-0.5 shadow-sm">
+          <WifiOff className="w-5 h-5 text-amber-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <h4 className="text-sm sm:text-base font-bold text-white tracking-tight">
+              Connexion Internet interrompue
+            </h4>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/30 text-[10px] font-bold text-rose-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping" />
+              Hors ligne
+            </span>
+          </div>
+          <p className="text-xs sm:text-[13px] text-zinc-300 leading-relaxed font-normal">
+            Impossible de joindre les serveurs d'intelligence artificielle. Veuillez vérifier que votre appareil est bien connecté à Internet (Wi-Fi ou données mobiles).
+          </p>
+          <div className="mt-3.5 pt-3 border-t border-zinc-800/80 flex items-center justify-between gap-3 flex-wrap">
+            <button
+              type="button"
+              onClick={handleAction}
+              disabled={isRetrying}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md shadow-orange-500/25 transition-all cursor-pointer disabled:opacity-60"
+            >
+              <RotateCw className={`w-3.5 h-3.5 text-white ${isRetrying ? 'animate-spin' : ''}`} />
+              <span>{isRetrying ? 'Reconnexion en cours...' : 'Réessayer'}</span>
+            </button>
+            <span className="text-[11px] text-zinc-400 italic">
+              Votre question a été conservée
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ChatRecommendationCard({ recoType }: { recoType: string; key?: any }) {
@@ -588,6 +760,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isWaitingServer, setIsWaitingServer] = useState(false);
+  const [aiActivityText, setAiActivityText] = useState<string>('Je réfléchis...');
+  const activityTimerRef = useRef<any>(null);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [isExtractingDoc, setIsExtractingDoc] = useState(false);
   
@@ -720,6 +894,10 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     if (typingTimerRef.current) {
       clearInterval(typingTimerRef.current);
       typingTimerRef.current = null;
+    }
+    if (activityTimerRef.current) {
+      clearInterval(activityTimerRef.current);
+      activityTimerRef.current = null;
     }
     setIsWaitingServer(false);
     setIsTyping(false);
@@ -898,10 +1076,18 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     };
   }, [activeCreation, currentConversationId]);
 
-  // Nettoyage du timer d'animation au démontage
+  // Nettoyage des timers d'animation et d'activité
+  useEffect(() => {
+    if (!isWaitingServer && activityTimerRef.current) {
+      clearInterval(activityTimerRef.current);
+      activityTimerRef.current = null;
+    }
+  }, [isWaitingServer]);
+
   useEffect(() => {
     return () => {
       if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+      if (activityTimerRef.current) clearInterval(activityTimerRef.current);
     };
   }, []);
 
@@ -998,6 +1184,39 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     setInputValue('');
     setIsTyping(true);
     setIsWaitingServer(true);
+
+    // Détection immédiate hors ligne avant envoi réseau
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setIsWaitingServer(false);
+      setIsTyping(false);
+      const errorMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        text: "Connexion Internet interrompue : Votre appareil semble hors ligne. Veuillez vérifier votre réseau Wi-Fi ou vos données mobiles.",
+        sender: 'ai',
+        isStreaming: false,
+        isError: true,
+        errorType: 'network',
+        retryPrompt: userText,
+      };
+      setMessages(prev => [...prev, errorMsg]);
+      return;
+    }
+
+    // Initialisation du statut dynamique à l'instant T
+    if (activityTimerRef.current) clearInterval(activityTimerRef.current);
+    const startTimestamp = Date.now();
+    const activeDocName = resolvedActiveItem?.name || resolvedActiveItem?.title || '';
+    const initialDocNames: string[] = activeDocName ? [activeDocName] : [];
+    if (Array.isArray(attachedResources)) {
+      for (const r of attachedResources) {
+        if (r?.name && !initialDocNames.includes(r.name)) initialDocNames.push(r.name);
+      }
+    }
+    setAiActivityText(getLiveAiActivity(userText, initialDocNames, 0, requestedTypeOverride));
+    activityTimerRef.current = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startTimestamp) / 1000);
+      setAiActivityText(getLiveAiActivity(userText, initialDocNames, elapsed, requestedTypeOverride));
+    }, 1000);
 
     // Mise à jour du titre de conversation si c'est le 1er message
     if (messages.length === 0) {
@@ -1430,12 +1649,20 @@ ou
       setIsWaitingServer(false);
       setIsTyping(false);
       window.dispatchEvent(new CustomEvent('ai-creation-error', { detail: { error: err.message } }));
+      
+      const isNetwork = isNetworkError(err);
       const isFriendlyMsg = err.message && (err.message.includes("StudyCloud") || err.message.includes("disponible"));
+      
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
-        text: isFriendlyMsg ? `⚠️ ${err.message}` : `⚠️ Erreur IA : ${err.message || "L'assistante StudyCloud n'est pas disponible pour le moment."}.`,
+        text: isNetwork 
+          ? "Connexion Internet interrompue : Impossible de joindre les serveurs d'intelligence artificielle. Veuillez vérifier votre connexion réseau (Wi-Fi ou données mobiles) et réessayer."
+          : (isFriendlyMsg ? `⚠️ ${err.message}` : `⚠️ Erreur : ${err.message || "L'assistante StudyCloud n'est pas disponible pour le moment."}`),
         sender: 'ai',
         isStreaming: false,
+        isError: true,
+        errorType: isNetwork ? 'network' : 'server',
+        retryPrompt: userText,
       };
       setMessages(prev => [...prev, errorMsg]);
     }
@@ -1759,11 +1986,54 @@ ou
                     )}
                   </div>
                   
-                  <div className="text-[15px] sm:text-[16px] md:text-[17px] leading-[1.8] font-normal text-zinc-100 pl-1 select-text chat-selectable cursor-text">
-                    <ChatMessageText text={msg.text} isUser={false} isStreaming={msg.isStreaming} onSelectSuggestion={(q) => sendMessage(q)} />
-                  </div>
+                  {isNetworkErrorMessage(msg) ? (
+                    <NetworkErrorCard
+                      retryPrompt={msg.retryPrompt}
+                      onRetry={() => {
+                        const targetPrompt = msg.retryPrompt || (() => {
+                          const idx = messages.findIndex(m => m.id === msg.id);
+                          const before = idx >= 0 ? messages.slice(0, idx) : messages;
+                          const lastUser = [...before].reverse().find(m => m.sender === 'user');
+                          return lastUser?.text || '';
+                        })();
+                        setMessages(prev => prev.filter(m => m.id !== msg.id));
+                        if (targetPrompt) sendMessage(targetPrompt);
+                      }}
+                    />
+                  ) : msg.isError ? (
+                    <div className="my-2.5 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/25 text-rose-200 flex items-start gap-3 w-full max-w-xl animate-fadeIn">
+                      <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-sm text-white mb-1">Service temporairement indisponible</div>
+                        <div className="text-xs text-rose-200/90 leading-relaxed font-normal">
+                          {msg.text.replace(/^⚠️\s*(Erreur\s*(du\s*serveur|IA)?\s*:\s*)?/i, '')}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const targetPrompt = msg.retryPrompt || (() => {
+                              const idx = messages.findIndex(m => m.id === msg.id);
+                              const before = idx >= 0 ? messages.slice(0, idx) : messages;
+                              const lastUser = [...before].reverse().find(m => m.sender === 'user');
+                              return lastUser?.text || '';
+                            })();
+                            setMessages(prev => prev.filter(m => m.id !== msg.id));
+                            if (targetPrompt) sendMessage(targetPrompt);
+                          }}
+                          className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold transition-all cursor-pointer border border-rose-500/30 active:scale-95"
+                        >
+                          <RotateCw className="w-3 h-3" />
+                          <span>Réessayer</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-[15px] sm:text-[16px] md:text-[17px] leading-[1.8] font-normal text-zinc-100 pl-1 select-text chat-selectable cursor-text">
+                      <ChatMessageText text={msg.text} isUser={false} isStreaming={msg.isStreaming} onSelectSuggestion={(q) => sendMessage(q)} />
+                    </div>
+                  )}
 
-                  {!msg.isStreaming && msg.text && (() => {
+                  {!msg.isStreaming && msg.text && !msg.isError && !isNetworkErrorMessage(msg) && (() => {
                     const isLastAssistant = msg.id === messages[messages.length - 1]?.id;
                     const offersContinuation = isLastAssistant && /(voulez-vous|souhaitez-vous|veux-tu|on continue|continuer\s*\?|la suite\s*\?|je poursuis|dois-je continuer|on passe à la suite|continuer\s*:\s*oui)/i.test(msg.text);
                     return offersContinuation ? (
@@ -1781,7 +2051,7 @@ ou
                     ) : null;
                   })()}
 
-                  {!msg.isStreaming && msg.text && (
+                  {!msg.isStreaming && msg.text && !msg.isError && !isNetworkErrorMessage(msg) && (
                     <div className="flex items-center mt-3 pl-1">
                       <div className="flex items-center gap-1 sm:gap-2 text-zinc-400">
                         <button 
@@ -1839,27 +2109,11 @@ ou
         
         {isWaitingServer && (
           <div className="flex flex-col w-full text-zinc-100 mb-4 animate-fadeIn">
-            <div className="flex items-center justify-between gap-3 bg-[#26282d] border border-orange-500/25 px-4 py-3 rounded-2xl w-fit max-w-[90%] shadow-lg">
-              <div className="flex items-center gap-3">
-                <DnaLogo className="w-6 h-6 animate-dna-spin-float shrink-0 text-orange-500" glow={true} />
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-orange-400 animate-pulse">
-                    L'IA formule votre réponse...
-                  </span>
-                  <span className="text-[11px] text-zinc-400">
-                    Raisonnement et analyse approfondie
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleCancelTask}
-                className="ml-3 px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 text-xs font-bold transition-all cursor-pointer flex items-center gap-1 active:scale-95"
-                title="Annuler cette tâche"
-              >
-                <Square className="w-3 h-3 fill-current text-rose-400" />
-                <span>Annuler</span>
-              </button>
+            <div className="flex items-center gap-2.5 bg-[#26282d] px-3.5 py-2.5 rounded-2xl w-fit max-w-[90%] shadow-md">
+              <DnaLogo className="w-5 h-5 animate-dna-spin-float shrink-0 text-orange-500" glow={true} />
+              <span className="text-xs sm:text-[13px] font-medium text-zinc-200 animate-pulse tracking-wide select-none">
+                {aiActivityText || 'Je réfléchis...'}
+              </span>
             </div>
           </div>
         )}

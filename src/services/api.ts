@@ -310,15 +310,22 @@ export async function sendChatMessageToAi(params: {
     if (_netErr?.name === 'AbortError') {
       return { response: "*(Tâche annulée par l'utilisateur)*", success: false, mode: 'chat' };
     }
-    response = await fetch(dedicatedAiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-user-id': currentUserId,
-      },
-      body: JSON.stringify(payload),
-      signal: fetchSignal,
-    });
+    try {
+      response = await fetch(dedicatedAiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': currentUserId,
+        },
+        body: JSON.stringify(payload),
+        signal: fetchSignal,
+      });
+    } catch (_fallbackErr: any) {
+      if (_fallbackErr?.name === 'AbortError') {
+        return { response: "*(Tâche annulée par l'utilisateur)*", success: false, mode: 'chat' };
+      }
+      throw new Error("Impossible de joindre le serveur. Veuillez vérifier votre connexion Internet.");
+    }
   }
 
   if (!response.ok) {
