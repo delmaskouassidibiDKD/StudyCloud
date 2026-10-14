@@ -1759,7 +1759,6 @@ ou
               className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white active:scale-95 shrink-0 shadow-xs"
               title="Changer de modèle IA (Configurés depuis le Tableau de Bord)"
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
               <span className="max-w-[110px] sm:max-w-[140px] truncate">{currentModelDisplay}</span>
               <ChevronDown className={`w-3 h-3 text-zinc-400 transition-transform ${isModelDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -1963,7 +1962,6 @@ ou
                           className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800/95 border border-zinc-700 text-[10px] font-bold text-orange-400 shadow-xs"
                           title={`Modèle ayant généré cette réponse : ${msg.model || currentModelDisplay}`}
                         >
-                          <Sparkles className="w-2.5 h-2.5 text-amber-400 shrink-0" />
                           <span>{msg.model || currentModelDisplay}</span>
                         </span>
                       )}
@@ -2133,13 +2131,22 @@ ou
 
       {/* ZONE BASSE : FORMULAIRE */}
       <div className="px-3 sm:px-5 pt-2 pb-6 sm:pb-8 shrink-0">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSend();
-          }}
-          className="flex flex-col gap-2 bg-[#282a2f] border border-zinc-700/60 focus-within:border-zinc-500 rounded-3xl p-3 sm:p-3.5 transition-all shadow-lg mx-2 md:mx-4"
-        >
+        <div className="relative mx-2 md:mx-4 rounded-3xl p-[1.5px] overflow-hidden bg-zinc-700/60 shadow-lg group">
+          {/* Liseré fin arc-en-ciel rotatif à 360° qui fait le tour complet */}
+          <div
+            className="absolute -inset-[250%] pointer-events-none animate-rainbow-spin"
+            style={{
+              background: 'conic-gradient(from 0deg at 50% 50%, transparent 0deg, transparent 160deg, #ff3b30 200deg, #ff9500 230deg, #ffcc00 260deg, #34c759 290deg, #00c7be 315deg, #007aff 335deg, #af52de 355deg, transparent 360deg)',
+              animation: 'rainbowBorderSpin 5s linear infinite',
+            }}
+          />
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSend();
+            }}
+            className="relative flex flex-col gap-2 bg-[#282a2f] rounded-[22.5px] p-3 sm:p-3.5 transition-all w-full h-full"
+          >
           <textarea
             ref={textareaRef}
             value={inputValue}
@@ -2226,6 +2233,7 @@ ou
             )}
           </div>
         </form>
+        </div>
       </div>
 
 

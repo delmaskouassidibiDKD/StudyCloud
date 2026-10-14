@@ -771,5 +771,19 @@ p.brand-tagline,
   animation: robotFloatMove 3.2s ease-in-out infinite;
 }
 
+/* Animation liseré arc-en-ciel fin rotatif à 360° */
+@keyframes rainbowBorderSpin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-rainbow-spin {
+  animation: rainbowBorderSpin 5s linear infinite;
+}
+
 
 
