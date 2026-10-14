@@ -812,15 +812,28 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   // Création active suivie pour modification et itération continue
   const [activeCreation, setActiveCreation] = useState<AiCreation | null>(null);
 
-  // Modèles IA configurés dans le Tableau de Bord
-  const [availableModels, setAvailableModels] = useState<Array<{ id: string; name: string; nickname?: string; rawName?: string; provider: string; model_id?: string }>>([
-    { id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name: 'Llama 3.3 70B (Fast)', provider: 'cloudflare' },
-    { id: 'gemini-3.8-flash', name: 'Google Gemini 3.8 Flash', provider: 'google' },
-    { id: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', name: 'DeepSeek R1 32B', provider: 'cloudflare' },
-    { id: '@cf/moonshotai/kimi-k2.7-code', name: 'Kimi K2.7 Code', provider: 'cloudflare' },
-    { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'anthropic' },
-    { id: 'gpt-4o-mini', name: 'OpenAI GPT-4o Mini', provider: 'openai' },
-  ]);
+  // Cache des modèles IA actifs pour éviter tout clignotement / disparition à l'écran
+  const getCachedActiveModels = (): Array<{ id: string; name: string; nickname?: string; rawName?: string; provider: string; model_id?: string }> => {
+    try {
+      const raw = safeGetItem('studycloud_active_ai_models_v2', '');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((m: any) => ({
+            ...m,
+            name: stripWorkerAi(m.nickname || m.name || m.id),
+            nickname: stripWorkerAi(m.nickname || ''),
+            rawName: stripWorkerAi(m.rawName || m.name || m.id)
+          }));
+        }
+      }
+    } catch (e) {}
+    return [];
+  };
+
+  // Modèles IA actifs uniquement (aucun modèle désactivé n'apparaît même brièvement)
+  const [availableModels, setAvailableModels] = useState<Array<{ id: string; name: string; nickname?: string; rawName?: string; provider: string; model_id?: string }>>(() => getCachedActiveModels());
+  const [isModelsLoading, setIsModelsLoading] = useState<boolean>(() => getCachedActiveModels().length === 0);
 
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     return safeGetItem('studycloud_selected_ai_model', '@cf/meta/llama-3.3-70b-instruct-fp8-fast');
@@ -848,7 +861,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     };
   }, [isModelDropdownOpen]);
 
-  // Chargement dynamique des modèles configurés dans le Tableau de Bord
+  // Chargement dynamique des modèles configurés (seuls les modèles activés sont conservés)
   useEffect(() => {
     StudyCloudAPI.getRobotRougeConfig()
       .then((res: any) => {
@@ -861,10 +874,10 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
               if (id === '@cf/meta/llama-3.3-70b-instruct') id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
               if (id === 'gemini-2.0-flash' || id === 'gemini-2.5-flash') id = 'gemini-3.8-flash';
               
-              // Priorité absolue au surnom personnalisé configuré dans le Tableau de Bord
+              // Priorité absolue au surnom personnalisé configuré
               const cleanNick = (m.nickname && typeof m.nickname === 'string') ? stripWorkerAi(m.nickname) : '';
-              const rawName = m.name || id;
-              const displayName = cleanNick.length > 0 ? cleanNick : stripWorkerAi(rawName);
+              const rawName = stripWorkerAi(m.name || id);
+              const displayName = cleanNick.length > 0 ? cleanNick : rawName;
 
               return {
                 id,
@@ -877,12 +890,14 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
               };
             });
             setAvailableModels(cleaned);
-            const currentExists = cleaned.some((m: any) => m.id === selectedModel);
+            safeSetItem('studycloud_active_ai_models_v2', JSON.stringify(cleaned));
+
+            const currentExists = cleaned.some((m: any) => m.id === selectedModel || m.model_id === selectedModel);
             if (!currentExists && res.config?.default_model) {
               let def = res.config.default_model;
               if (def === '@cf/meta/llama-3.3-70b-instruct') def = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
               if (def === 'gemini-2.0-flash' || def === 'gemini-2.5-flash') def = 'gemini-3.8-flash';
-              const defExists = cleaned.some((m: any) => m.id === def);
+              const defExists = cleaned.some((m: any) => m.id === def || m.model_id === def);
               if (defExists) {
                 setSelectedModel(def);
               } else if (cleaned[0]) {
@@ -893,11 +908,15 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             }
           } else {
             setAvailableModels([]);
+            safeSetItem('studycloud_active_ai_models_v2', JSON.stringify([]));
           }
         }
       })
       .catch((err) => {
-        console.warn('[AssistantChat] Erreur chargement modèles du Tableau de Bord:', err);
+        console.warn('[AssistantChat] Erreur chargement modèles IA:', err);
+      })
+      .finally(() => {
+        setIsModelsLoading(false);
       });
   }, []);
 
@@ -1865,13 +1884,13 @@ ou
             <Plus className="w-4 h-4 text-orange-400" />
           </button>
 
-          {/* Sélecteur de Modèle IA (Configurés dans le Tableau de Bord) */}
+          {/* Sélecteur de Modèle IA */}
           <div className="relative shrink-0" ref={modelDropdownRef}>
             <button
               type="button"
               onClick={() => setIsModelDropdownOpen(prev => !prev)}
               className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white active:scale-95 shrink-0 shadow-xs"
-              title="Changer de modèle IA (Configurés depuis le Tableau de Bord)"
+              title="Changer de modèle IA"
             >
               <span className="max-w-[110px] sm:max-w-[140px] truncate">{currentModelDisplay}</span>
               <ChevronDown className={`w-3 h-3 text-zinc-400 transition-transform ${isModelDropdownOpen ? 'rotate-180' : ''}`} />
@@ -1879,37 +1898,47 @@ ou
 
             {isModelDropdownOpen && (
               <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-60 sm:w-68 bg-[#181a20] border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-50 animate-fadeIn backdrop-blur-md">
-                <div className="px-3 py-1.5 border-b border-zinc-800/80 text-[10px] font-black text-zinc-400 uppercase tracking-wider flex items-center justify-between">
-                  <span>Modèles IA du Tableau de Bord</span>
-                  <span className="text-[9px] text-zinc-500 font-normal">{availableModels.length} actifs</span>
+                <div className="px-3 py-1.5 border-b border-zinc-800/80 text-[10px] font-black text-zinc-400 uppercase tracking-wider">
+                  <span>Modèles IA</span>
                 </div>
                 <div className="max-h-64 overflow-y-auto py-1">
-                  {availableModels.map((m) => {
-                    const isSelected = selectedModel === m.id || selectedModel === m.model_id;
-                    const providerColor =
-                      m.provider === 'google' ? 'bg-blue-400' :
-                      m.provider === 'cloudflare' ? 'bg-orange-400' :
-                      m.provider === 'anthropic' ? 'bg-amber-400' : 'bg-emerald-400';
-                    return (
-                      <button
-                        key={m.id || m.model_id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedModel(m.id || m.model_id);
-                          setIsModelDropdownOpen(false);
-                        }}
-                        className={`w-full flex items-center justify-between px-3 py-2 text-left text-xs transition-colors cursor-pointer ${
-                          isSelected ? 'bg-orange-500/15 text-orange-400 font-bold' : 'text-zinc-300 hover:bg-zinc-800/80 hover:text-white'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 truncate pr-2">
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${providerColor}`} />
-                          <span className="truncate">{stripWorkerAi(m.nickname || m.name || m.model_id || m.id)}</span>
-                        </div>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
-                      </button>
-                    );
-                  })}
+                  {isModelsLoading && availableModels.length === 0 ? (
+                    <div className="px-3 py-3 text-center text-xs text-zinc-400 flex items-center justify-center gap-2">
+                      <div className="w-3 h-3 rounded-full border-2 border-orange-500 border-t-transparent animate-spin" />
+                      <span>Chargement des modèles...</span>
+                    </div>
+                  ) : availableModels.length === 0 ? (
+                    <div className="px-3 py-3 text-center text-xs text-zinc-500">
+                      Aucun modèle actif
+                    </div>
+                  ) : (
+                    availableModels.map((m) => {
+                      const isSelected = selectedModel === m.id || selectedModel === m.model_id;
+                      const providerColor =
+                        m.provider === 'google' ? 'bg-blue-400' :
+                        m.provider === 'cloudflare' ? 'bg-orange-400' :
+                        m.provider === 'anthropic' ? 'bg-amber-400' : 'bg-emerald-400';
+                      return (
+                        <button
+                          key={m.id || m.model_id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedModel(m.id || m.model_id);
+                            setIsModelDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2 text-left text-xs transition-colors cursor-pointer ${
+                            isSelected ? 'bg-orange-500/15 text-orange-400 font-bold' : 'text-zinc-300 hover:bg-zinc-800/80 hover:text-white'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate pr-2">
+                            <span className={`w-2 h-2 rounded-full shrink-0 ${providerColor}`} />
+                            <span className="truncate">{stripWorkerAi(m.nickname || m.name || m.model_id || m.id)}</span>
+                          </div>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             )}
