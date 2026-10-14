@@ -296,6 +296,7 @@ async function ensureStorageTables(db) {
         id TEXT PRIMARY KEY,
         provider TEXT NOT NULL,
         name TEXT NOT NULL,
+        nickname TEXT DEFAULT '',
         model_id TEXT NOT NULL,
         api_token TEXT DEFAULT '',
         account_id TEXT DEFAULT '',
@@ -353,6 +354,7 @@ async function ensureStorageTables(db) {
     for (const sql of userAlterCols) {
       try { await db.prepare(sql).run(); } catch (e) {}
     }
+    try { await db.prepare("ALTER TABLE robot_rouge_models ADD COLUMN nickname TEXT DEFAULT ''").run(); } catch (e) {}
 
     // 2. Table 'shop_profiles' pour les boutiques et services
     await db.prepare(`
@@ -5350,15 +5352,30 @@ function renderDashboardHtml(data) {
           </span>
         </div>
 
-        <!-- Nom affiché -->
+        <!-- Nom original / technique -->
         <div class="space-y-1">
-          <label class="text-[11px] font-bold text-slate-300 block">Nom affiché dans StudyCloud *</label>
+          <label class="text-[11px] font-bold text-slate-300 block">Nom du modèle (Catalogue) *</label>
           <input 
             type="text" 
             id="form-model-name" 
             placeholder="Ex: Kimi K2.7 Code (Workers AI)" 
             class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500 focus:border-orange-500 outline-none transition"
           >
+        </div>
+
+        <!-- Surnom affiché aux élèves dans StudyCloud -->
+        <div class="space-y-1">
+          <div class="flex items-center justify-between">
+            <label class="text-[11px] font-bold text-amber-400 block">Surnom du modèle (affiché dans StudyCloud)</label>
+            <span class="text-[9px] text-amber-300 font-extrabold uppercase bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30">Prioritaire sur l'interface</span>
+          </div>
+          <input 
+            type="text" 
+            id="form-model-nickname" 
+            placeholder="Ex: Mon Tuteur Maths, Flash Ultra, Delmas IA..." 
+            class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-amber-500/50 hover:border-amber-400 focus:border-amber-400 outline-none transition font-medium"
+          >
+          <p class="text-[10px] text-slate-400 leading-tight">Si renseigné, c'est ce surnom qui s'affichera partout dans StudyCloud pour les élèves à la place du nom technique.</p>
         </div>
 
         <!-- Model ID -->
@@ -5421,6 +5438,18 @@ function renderDashboardHtml(data) {
               class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 outline-none transition font-mono"
             >
           </div>
+        </div>
+
+        <!-- Actif / Désactivé pour les élèves -->
+        <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between">
+          <div>
+            <div class="text-xs font-bold text-white">Activer ce Modèle pour les Élèves</div>
+            <div class="text-[10px] text-slate-400">Si désactivé, ce modèle sera masqué et inaccessible dans l'application StudyCloud.</div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="form-model-is-active" class="sr-only peer" checked>
+            <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+          </label>
         </div>
 
         <!-- Définir par défaut -->
@@ -12627,6 +12656,9 @@ function renderDashboardHtml(data) {
         const nInput = document.getElementById('form-model-name');
         if (nInput) nInput.value = modelData.name || '';
 
+        const nickInput = document.getElementById('form-model-nickname');
+        if (nickInput) nickInput.value = modelData.nickname || '';
+
         const idInput = document.getElementById('form-model-id');
         if (idInput) idInput.value = modelData.model_id || modelData.id || '';
 
@@ -12644,6 +12676,9 @@ function renderDashboardHtml(data) {
 
         const defInput = document.getElementById('form-model-is-default');
         if (defInput) defInput.checked = !!modelData.is_default;
+
+        const actInput = document.getElementById('form-model-is-active');
+        if (actInput) actInput.checked = (modelData.is_active === undefined || modelData.is_active === 1 || modelData.is_active === true || modelData.is_active === '1');
         
         updateProviderDisplay(modelData.provider || detectProviderFromId(modelData.model_id));
       } else {
@@ -12651,6 +12686,8 @@ function renderDashboardHtml(data) {
         if (formZone) { formZone.classList.add('hidden'); formZone.style.display = 'none'; }
         const nInput = document.getElementById('form-model-name');
         if (nInput) nInput.value = '';
+        const nickInput = document.getElementById('form-model-nickname');
+        if (nickInput) nickInput.value = '';
         const idInput = document.getElementById('form-model-id');
         if (idInput) idInput.value = '';
         const tokInput = document.getElementById('form-model-token');
@@ -12663,6 +12700,8 @@ function renderDashboardHtml(data) {
         if (outInput) outInput.value = '';
         const defInput = document.getElementById('form-model-is-default');
         if (defInput) defInput.checked = false;
+        const actInput = document.getElementById('form-model-is-active');
+        if (actInput) actInput.checked = true;
       }
     }
 
@@ -12784,12 +12823,14 @@ function renderDashboardHtml(data) {
     async function submitSaveAiModelForm() {
       const btn = document.getElementById('btn-submit-ai-model');
       const name = document.getElementById('form-model-name')?.value?.trim();
+      const nickname = document.getElementById('form-model-nickname')?.value?.trim() || '';
       const modelId = document.getElementById('form-model-id')?.value?.trim();
       const token = document.getElementById('form-model-token')?.value?.trim();
       const accountId = document.getElementById('form-model-account-id')?.value?.trim();
       const contextWindow = document.getElementById('form-model-context')?.value;
       const outputLimit = document.getElementById('form-model-output')?.value;
       const isDefault = document.getElementById('form-model-is-default')?.checked;
+      const isActive = document.getElementById('form-model-is-active')?.checked ? 1 : 0;
 
       if (!name || !modelId) {
         showToast("Veuillez renseigner le nom et l'identifiant du modèle");
@@ -12808,13 +12849,14 @@ function renderDashboardHtml(data) {
           id: modelId,
           provider: provider,
           name: name,
+          nickname: nickname,
           model_id: modelId,
           api_token: token,
           account_id: accountId,
           context_window: contextWindow ? Number(contextWindow) : 0,
           output_limit: outputLimit ? Number(outputLimit) : 0,
           is_default: isDefault,
-          is_active: 1
+          is_active: isActive
         };
 
         const res = await fetch('/api/admin/robot-rouge-models', {
@@ -12906,20 +12948,32 @@ function renderDashboardHtml(data) {
         const keySnippet = hasKey ? '••••••••' + m.api_token.slice(-4) : (m.provider === 'cloudflare' ? 'Binding Edge natif' : 'Non renseignée');
         const mSafeName = (m.name || m.id || '').replace(/'/g, "\\'");
 
-        html += '<div class="p-4 rounded-2xl bg-slate-900/90 border ' + (isDef ? 'border-amber-500/70 shadow-lg shadow-amber-500/10' : 'border-slate-800 hover:border-slate-700') + ' flex flex-col justify-between gap-3 transition">' +
+        const isActive = (m.is_active === 1 || m.is_active === true || m.is_active === '1' || m.is_active === undefined);
+        const nickname = m.nickname || '';
+
+        html += '<div class="p-4 rounded-2xl ' + (!isActive ? 'bg-slate-950/70 border border-dashed border-red-500/40 opacity-75' : (isDef ? 'bg-slate-900/90 border border-amber-500/70 shadow-lg shadow-amber-500/10' : 'bg-slate-900/90 border border-slate-800 hover:border-slate-700')) + ' flex flex-col justify-between gap-3 transition">' +
           '<div class="space-y-2">' +
             '<div class="flex items-start justify-between gap-2">' +
               '<div class="flex items-center gap-2">' +
                 '<span class="text-xl">' + icon + '</span>' +
                 '<div>' +
-                  '<div class="text-xs font-black text-white leading-tight">' + (m.name || m.id) + '</div>' +
-                  '<div class="text-[10px] text-slate-400 font-mono truncate max-w-[180px]">' + (m.model_id || m.id) + '</div>' +
+                  '<div class="text-xs font-black text-white leading-tight">' + safeHtml(m.name || m.id) + '</div>' +
+                  '<div class="text-[10px] text-slate-400 font-mono truncate max-w-[180px]">' + safeHtml(m.model_id || m.id) + '</div>' +
                 '</div>' +
               '</div>' +
-              '<span class="text-[9px] px-2 py-0.5 rounded-full font-bold border ' + bCol + '">' +
-                pName +
-              '</span>' +
+              '<div class="flex flex-col items-end gap-1">' +
+                '<span class="text-[9px] px-2 py-0.5 rounded-full font-bold border ' + bCol + '">' +
+                  pName +
+                '</span>' +
+                (!isActive ? '<span class="text-[9px] px-1.5 py-0.2 rounded font-bold bg-red-500/20 text-red-300 border border-red-500/30">Masqué</span>' : '') +
+              '</div>' +
             '</div>';
+
+        if (nickname) {
+          html += '<div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/35 text-amber-300 text-[10px] font-bold">' +
+            '<span class="text-amber-400">🏷️ Surnom élève :</span> <span class="font-extrabold text-white underline decoration-amber-400">' + safeHtml(nickname) + '</span>' +
+          '</div>';
+        }
 
         if (isDef) {
           html += '<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-black">' +
@@ -12940,15 +12994,34 @@ function renderDashboardHtml(data) {
           '</div>';
         }
 
-        html += '</div></div>' +
-          '<div class="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">';
+        html += '</div>' +
+          '<div class="mt-1 p-2 rounded-xl bg-slate-950/90 border border-slate-800/90 space-y-1">' +
+            '<div class="flex items-center justify-between text-[10px]">' +
+              '<label class="font-extrabold text-amber-400 flex items-center gap-1">' +
+                '<span>🏷️</span><span>Surnom (affiché dans l\'application) :</span>' +
+              '</label>' +
+              '<span class="text-[9px] text-slate-500">Visible par les élèves</span>' +
+            '</div>' +
+            '<div class="flex items-center gap-1.5">' +
+              '<input type="text" id="nick-' + m.id + '" value="' + safeAttr(nickname) + '" placeholder="Ex: Mon Tuteur, Flash Ultra..." class="flex-1 px-2.5 py-1.5 text-xs bg-slate-900 border border-slate-700 focus:border-amber-400 rounded-lg text-white font-medium placeholder-slate-500 outline-none transition" onkeydown="if(event.key===\'Enter\'){saveAiModelNickname(\'' + m.id + '\', this.value);}" />' +
+              '<button type="button" onclick="saveAiModelNickname(\'' + m.id + '\', document.getElementById(\'nick-' + m.id + '\').value)" class="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-900 font-extrabold text-[10px] transition cursor-pointer shrink-0 shadow-xs flex items-center gap-1" title="Enregistrer ce surnom dans D1">' +
+                '<span>💾</span><span>Enregistrer</span>' +
+              '</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">' +
+          '<button type="button" data-model-id="' + m.id + '" data-active="' + (isActive ? '0' : '1') + '" onclick="toggleAiModelActive(this.dataset.modelId, this.dataset.active)" class="px-2.5 py-1.5 rounded-lg text-[10px] font-extrabold transition flex items-center gap-1.5 cursor-pointer ' + (isActive ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/40' : 'bg-red-500/15 text-red-300 border border-red-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40') + '" title="' + (isActive ? 'Désactiver ce modèle (Il ne s\'affichera plus dans StudyCloud)' : 'Activer ce modèle (Il s\'affichera dans StudyCloud)') + '">' +
+            '<span>' + (isActive ? '🟢' : '🔴') + '</span>' +
+            '<span>' + (isActive ? 'Actif (Visible)' : 'Désactivé (Masqué)') + '</span>' +
+          '</button>';
 
         if (!isDef) {
           html += '<button type="button" data-model-id="' + m.id + '" onclick="setDefaultAiModel(this.dataset.modelId)" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 text-slate-300 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer" title="Définir comme modèle par défaut">' +
-            '<span>⭐</span><span>Activer par défaut</span>' +
+            '<span>⭐</span><span>Par défaut</span>' +
           '</button>';
         } else {
-          html += '<span class="text-[10px] text-amber-400 font-bold flex items-center gap-1"><span>✓</span> Actif pour tous</span>';
+          html += '<span class="text-[10px] text-amber-400 font-bold flex items-center gap-1"><span>⭐</span> Défaut</span>';
         }
 
         html += '<div class="flex items-center gap-1 ml-auto">' +
@@ -13018,6 +13091,49 @@ function renderDashboardHtml(data) {
       }
     }
 
+    async function toggleAiModelActive(id, newActive) {
+      const isActive = newActive === '1' || newActive === 1 || newActive === true;
+      try {
+        const res = await fetch('/api/admin/robot-rouge-models/toggle-active', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: id, is_active: isActive })
+        });
+        const data = await res.json();
+        if (data && data.success) {
+          showToast(isActive ? '✓ Modèle activé dans D1 (Visible par les élèves)' : '✓ Modèle désactivé dans D1 (Masqué pour les élèves)');
+          robotRougeModelsList = data.models || [];
+          renderRobotRougeModelsList(robotRougeModelsList);
+          loadRobotRougeConfig();
+        } else {
+          showToast('⚠️ Erreur : ' + (data.error || 'Échec'));
+        }
+      } catch (err) {
+        showToast('❌ Erreur : ' + err.message);
+      }
+    }
+
+    async function saveAiModelNickname(id, nickname) {
+      const cleanNick = (nickname || '').trim();
+      try {
+        const res = await fetch('/api/admin/robot-rouge-models/set-nickname', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: id, nickname: cleanNick })
+        });
+        const data = await res.json();
+        if (data && data.success) {
+          showToast(cleanNick ? '✓ Surnom « ' + cleanNick + ' » enregistré dans D1 !' : '✓ Surnom réinitialisé');
+          robotRougeModelsList = data.models || [];
+          renderRobotRougeModelsList(robotRougeModelsList);
+        } else {
+          showToast('⚠️ Erreur : ' + (data.error || 'Échec'));
+        }
+      } catch (err) {
+        showToast('❌ Erreur : ' + err.message);
+      }
+    }
+
     window.toggleSecretVisibility = toggleSecretVisibility;
     window.syncRobotRougeForm = syncRobotRougeForm;
     window.loadRobotRougeConfig = loadRobotRougeConfig;
@@ -13032,6 +13148,8 @@ function renderDashboardHtml(data) {
     window.setDefaultAiModel = setDefaultAiModel;
     window.deleteAiModel = deleteAiModel;
     window.editAiModelById = editAiModelById;
+    window.toggleAiModelActive = toggleAiModelActive;
+    window.saveAiModelNickname = saveAiModelNickname;
 
     window.addEventListener('focus', () => {
       smartAutoRefresh();
@@ -14825,13 +14943,26 @@ export default {
           modelsList = (mRes && mRes.results) ? mRes.results : [];
           // Normaliser les modèles pour éviter les erreurs 5007 et 404
           modelsList = modelsList.map(m => {
-            if (m.model_id === '@cf/meta/llama-3.3-70b-instruct') {
-              return { ...m, model_id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name: 'Llama 3.3 70B (Fast)' };
+            let modelId = m.model_id;
+            let id = m.id;
+            let name = m.name;
+            if (modelId === '@cf/meta/llama-3.3-70b-instruct') {
+              modelId = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+              id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+              name = 'Llama 3.3 70B (Fast)';
             }
-            if (m.model_id === 'gemini-2.0-flash' || m.model_id === 'gemini-2.5-flash') {
-              return { ...m, model_id: 'gemini-3.8-flash', id: 'gemini-3.8-flash', name: 'Google Gemini 3.8 Flash' };
+            if (modelId === 'gemini-2.0-flash' || modelId === 'gemini-2.5-flash') {
+              modelId = 'gemini-3.8-flash';
+              id = 'gemini-3.8-flash';
+              name = 'Google Gemini 3.8 Flash';
             }
-            return m;
+            return {
+              ...m,
+              id,
+              model_id: modelId,
+              name,
+              nickname: m.nickname || ''
+            };
           });
           const gIdx = modelsList.findIndex(m => m.model_id === 'gemini-3.8-flash' || m.id === 'gemini-3.8-flash');
           if (gIdx > 0) {
@@ -14950,6 +15081,7 @@ export default {
           const id = (b.id || b.model_id || '').trim();
           const provider = (b.provider || 'cloudflare').trim();
           const name = (b.name || id).trim();
+          const nickname = (b.nickname || '').trim();
           const modelId = (b.model_id || id).trim();
           const apiToken = (b.api_token || '').trim();
           const accountId = (b.account_id || '').trim();
@@ -14974,12 +15106,13 @@ export default {
 
           await db.prepare(`
             INSERT INTO robot_rouge_models (
-              id, provider, name, model_id, api_token, account_id, api_url,
+              id, provider, name, nickname, model_id, api_token, account_id, api_url,
               context_window, output_limit, is_default, is_active, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               provider = excluded.provider,
               name = excluded.name,
+              nickname = excluded.nickname,
               model_id = excluded.model_id,
               api_token = CASE WHEN excluded.api_token != '' THEN excluded.api_token ELSE robot_rouge_models.api_token END,
               account_id = excluded.account_id,
@@ -14989,10 +15122,70 @@ export default {
               is_default = excluded.is_default,
               is_active = excluded.is_active,
               updated_at = CURRENT_TIMESTAMP
-          `).bind(id, provider, name, modelId, apiToken, accountId, apiUrl, contextWindow, outputLimit, isDefault, isActive).run();
+          `).bind(id, provider, name, nickname, modelId, apiToken, accountId, apiUrl, contextWindow, outputLimit, isDefault, isActive).run();
 
           const allModels = await db.prepare("SELECT * FROM robot_rouge_models ORDER BY is_default DESC, created_at ASC").all();
           return new Response(JSON.stringify({ success: true, message: "Modèle enregistré dans D1", models: allModels?.results || [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ success: false, error: e.message }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+      }
+
+      if (request.method === 'POST' && path === '/api/admin/robot-rouge-models/toggle-active') {
+        try {
+          const b = await request.json().catch(() => ({}));
+          const id = (b.id || '').trim();
+          const isActive = b.is_active !== undefined ? (b.is_active ? 1 : 0) : 1;
+          if (!id) {
+            return new Response(JSON.stringify({ success: false, error: "ID du modèle manquant" }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+            });
+          }
+
+          await db.prepare("UPDATE robot_rouge_models SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(isActive, id).run();
+          const allModels = await db.prepare("SELECT * FROM robot_rouge_models ORDER BY is_default DESC, created_at ASC").all();
+          return new Response(JSON.stringify({ 
+            success: true, 
+            message: isActive ? "Modèle activé dans D1" : "Modèle désactivé dans D1", 
+            models: allModels?.results || [] 
+          }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ success: false, error: e.message }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+      }
+
+      if (request.method === 'POST' && path === '/api/admin/robot-rouge-models/set-nickname') {
+        try {
+          const b = await request.json().catch(() => ({}));
+          const id = (b.id || '').trim();
+          const nickname = (b.nickname || '').trim();
+          if (!id) {
+            return new Response(JSON.stringify({ success: false, error: "ID du modèle manquant" }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+            });
+          }
+
+          await db.prepare("UPDATE robot_rouge_models SET nickname = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(nickname, id).run();
+          const allModels = await db.prepare("SELECT * FROM robot_rouge_models ORDER BY is_default DESC, created_at ASC").all();
+          return new Response(JSON.stringify({ 
+            success: true, 
+            message: "Surnom enregistré dans D1", 
+            models: allModels?.results || [] 
+          }), {
             status: 200,
             headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
           });
@@ -15064,7 +15257,7 @@ export default {
       // Route Publique pour l'Application & Cloudflare OS (sans exposer les tokens en clair)
       if (request.method === 'GET' && (path === '/api/public/robot-rouge-models' || path === '/api/robot-rouge/models')) {
         try {
-          const res = await db.prepare("SELECT id, provider, name, model_id, context_window, output_limit, is_default FROM robot_rouge_models WHERE is_active = 1 ORDER BY is_default DESC, created_at ASC").all();
+          const res = await db.prepare("SELECT id, provider, name, nickname, model_id, context_window, output_limit, is_default FROM robot_rouge_models WHERE is_active = 1 ORDER BY is_default DESC, created_at ASC").all();
           const cfg = await db.prepare("SELECT default_model, is_maintenance, system_instructions, cost_per_request, welcome_credits, edge_router_url FROM robot_rouge_global_config WHERE id = 'default'").first();
           return new Response(JSON.stringify({ 
             success: true, 

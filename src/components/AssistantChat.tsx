@@ -803,7 +803,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const [activeCreation, setActiveCreation] = useState<AiCreation | null>(null);
 
   // Modèles IA configurés dans le Tableau de Bord
-  const [availableModels, setAvailableModels] = useState<Array<{ id: string; name: string; provider: string; model_id?: string }>>([
+  const [availableModels, setAvailableModels] = useState<Array<{ id: string; name: string; nickname?: string; rawName?: string; provider: string; model_id?: string }>>([
     { id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name: 'Llama 3.3 70B (Fast)', provider: 'cloudflare' },
     { id: 'gemini-3.8-flash', name: 'Google Gemini 3.8 Flash', provider: 'google' },
     { id: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', name: 'DeepSeek R1 32B', provider: 'cloudflare' },
@@ -842,16 +842,24 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   useEffect(() => {
     StudyCloudAPI.getRobotRougeConfig()
       .then((res: any) => {
-        if (res && res.success && Array.isArray(res.models) && res.models.length > 0) {
-          const active = res.models.filter((m: any) => m.is_active === 1 || m.is_active === true || m.enabled === 1 || m.enabled === true);
+        if (res && res.success && Array.isArray(res.models)) {
+          // Filtrer strictement les modèles actifs (exclut immédiatement les modèles désactivés)
+          const active = res.models.filter((m: any) => m.is_active === 1 || m.is_active === true || m.is_active === '1' || m.enabled === 1 || m.enabled === true);
           if (active.length > 0) {
             const cleaned = active.map((m: any) => {
               let id = m.id || m.model_id;
               if (id === '@cf/meta/llama-3.3-70b-instruct') id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
               if (id === 'gemini-2.0-flash' || id === 'gemini-2.5-flash') id = 'gemini-3.8-flash';
+              
+              // Priorité absolue au surnom personnalisé configuré dans le Tableau de Bord
+              const cleanNick = (m.nickname && typeof m.nickname === 'string') ? m.nickname.trim() : '';
+              const displayName = cleanNick.length > 0 ? cleanNick : (m.name || id);
+
               return {
                 id,
-                name: m.name || id,
+                name: displayName,
+                rawName: m.name || id,
+                nickname: cleanNick,
                 provider: m.provider || 'cloudflare',
                 model_id: id,
                 api_token: m.api_token,
@@ -863,8 +871,17 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
               let def = res.config.default_model;
               if (def === '@cf/meta/llama-3.3-70b-instruct') def = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
               if (def === 'gemini-2.0-flash' || def === 'gemini-2.5-flash') def = 'gemini-3.8-flash';
-              setSelectedModel(def);
+              const defExists = cleaned.some((m: any) => m.id === def);
+              if (defExists) {
+                setSelectedModel(def);
+              } else if (cleaned[0]) {
+                setSelectedModel(cleaned[0].id);
+              }
+            } else if (!currentExists && cleaned[0]) {
+              setSelectedModel(cleaned[0].id);
             }
+          } else {
+            setAvailableModels([]);
           }
         }
       })
@@ -876,6 +893,9 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const currentModelDisplay = useMemo(() => {
     const found = availableModels.find(m => m.id === selectedModel || m.model_id === selectedModel);
     if (found) {
+      if (found.nickname && found.nickname.trim() !== '') {
+        return found.nickname.trim();
+      }
       return found.name.replace(/ \(Workers AI\)/i, '').replace(/Instruct/i, '').replace(/Google /i, '').trim();
     }
     if (selectedModel.includes('llama')) return 'Llama 3.3 70B';
