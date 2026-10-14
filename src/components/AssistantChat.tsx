@@ -689,6 +689,52 @@ const ChatMessageText = ({
   );
 };
 
+// Générateur de messages d'accueil spontanés et chaleureux envoyés en direct par l'IA
+function getSpontaneousAiGreeting(modelName: string, activeDocName?: string | null): { title: string; subtitle: string } {
+  const hour = new Date().getHours();
+  const timeGreeting = hour >= 5 && hour < 12 ? 'Bonjour !' : hour >= 18 ? 'Bonsoir !' : 'Salut !';
+
+  const friendlyTitles = [
+    "Comment vas-tu aujourd'hui ?",
+    "On fait quoi aujourd'hui ?",
+    "Ravi de te retrouver ! Qu'est-ce qu'on étudie ensemble ?",
+    `${timeGreeting} Prêt à progresser aujourd'hui ?`,
+    "Comment se passe ta journée d'étude ?",
+    "Je suis là pour toi. Sur quoi souhaites-tu travailler ?",
+    "Dis-moi tout, sur quel sujet veux-tu avancer ?",
+    "Une question, un exercice ou une notion à explorer ?",
+    "Prêt pour une bonne session d'apprentissage ?",
+    "Hello ! Quel défi académique relève-t-on ensemble ?",
+    "Je suis à ton écoute, par quoi commence-t-on ?",
+    "Besoin d'un coup de pouce sur tes cours aujourd'hui ?",
+    "Je suis prêt ! Qu'aimerais-tu découvrir ou réviser ?"
+  ];
+
+  let subtitles: string[] = [];
+  if (activeDocName) {
+    subtitles = [
+      `Je suis prêt à analyser « ${activeDocName} » avec toi.`,
+      `On explore « ${activeDocName} » ensemble ? Pose-moi toutes tes questions.`,
+      `Pose ta question sur « ${activeDocName} » ou demande un résumé clair.`,
+      `Dis-moi ce que tu souhaites comprendre ou approfondir dans « ${activeDocName} ».`
+    ];
+  } else {
+    subtitles = [
+      "Pose ta question, colle ton cours ou explore tes documents.",
+      "Je t'accompagne pas à pas pour comprendre et réussir tes cours.",
+      "Demande-moi des explications, des résumés ou de l'aide sur tes exercices.",
+      "Pose n'importe quelle question, avance à ton propre rythme.",
+      "Colle un exercice difficile ou une notion floue, on débloque ça ensemble.",
+      "Synthèses, fiches de révision ou quiz : dis-moi ce dont tu as besoin."
+    ];
+  }
+
+  const title = friendlyTitles[Math.floor(Math.random() * friendlyTitles.length)];
+  const subtitle = subtitles[Math.floor(Math.random() * subtitles.length)];
+
+  return { title, subtitle };
+}
+
 export interface AssistantChatProps {
   onClose: () => void;
   onHasMessagesChange?: (has: boolean) => void;
@@ -840,6 +886,58 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     if (selectedModel.includes('gpt')) return 'GPT-4o Mini';
     return selectedModel;
   }, [availableModels, selectedModel]);
+
+  // Message d'accueil spontané et dynamique envoyé de manière instantanée et fluide par l'IA sélectionnée
+  const [welcomeGreeting, setWelcomeGreeting] = useState<{ title: string; subtitle: string }>(() =>
+    getSpontaneousAiGreeting(currentModelDisplay, resolvedActiveName)
+  );
+  const [displayedWelcomeTitle, setDisplayedWelcomeTitle] = useState<string>('');
+  const [displayedWelcomeSubtitle, setDisplayedWelcomeSubtitle] = useState<string>('');
+  const [isTypingWelcome, setIsTypingWelcome] = useState<boolean>(true);
+  const welcomeAnimTimeoutRef = useRef<any[]>([]);
+
+  useEffect(() => {
+    // Nettoyer toute animation précédente
+    welcomeAnimTimeoutRef.current.forEach(clearTimeout);
+    welcomeAnimTimeoutRef.current = [];
+
+    // Ne s'active que si la conversation est vide
+    if (messages.length > 0) return;
+
+    const newGreeting = getSpontaneousAiGreeting(currentModelDisplay, resolvedActiveName);
+    setWelcomeGreeting(newGreeting);
+    setDisplayedWelcomeTitle('');
+    setDisplayedWelcomeSubtitle('');
+    setIsTypingWelcome(true);
+
+    const titleText = newGreeting.title;
+    const subtitleText = newGreeting.subtitle;
+
+    // Frappe instantanée et fluide du titre (18ms par caractère)
+    for (let i = 1; i <= titleText.length; i++) {
+      const t = setTimeout(() => {
+        setDisplayedWelcomeTitle(titleText.slice(0, i));
+      }, i * 18);
+      welcomeAnimTimeoutRef.current.push(t);
+    }
+
+    // Le sous-titre commence à s'écrire juste après la fin du titre (12ms par caractère)
+    const titleDuration = titleText.length * 18 + 70;
+    for (let j = 1; j <= subtitleText.length; j++) {
+      const t = setTimeout(() => {
+        setDisplayedWelcomeSubtitle(subtitleText.slice(0, j));
+        if (j === subtitleText.length) {
+          setIsTypingWelcome(false);
+        }
+      }, titleDuration + j * 12);
+      welcomeAnimTimeoutRef.current.push(t);
+    }
+
+    return () => {
+      welcomeAnimTimeoutRef.current.forEach(clearTimeout);
+      welcomeAnimTimeoutRef.current = [];
+    };
+  }, [selectedModel, currentConversationId, messages.length === 0, resolvedActiveName, currentModelDisplay]);
   
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1902,15 +2000,31 @@ ou
         className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-6 flex flex-col select-text chat-selectable"
       >
         {messages.length === 0 && !isTyping && !isWaitingServer ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center max-h-full my-auto pb-10">
-            <div className="mb-4">
-              <DnaLogo className="w-12 h-12 text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.35)]" glow={false} />
+          <div className="flex-1 flex flex-col items-center justify-center text-center max-h-full my-auto pb-10 px-4 animate-fadeIn">
+            {/* Logo ADN officiel */}
+            <div className="mb-3 relative group">
+              <DnaLogo className="w-12 h-12 text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.35)] transition-transform duration-300 group-hover:scale-105" glow={false} />
             </div>
-            <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 tracking-tight">
-              On fait quoi aujourd'hui ?
+
+            {/* Badge de l'IA active sélectionnée qui s'adresse spontanément à l'utilisateur */}
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 mb-2.5 rounded-full bg-zinc-800/85 border border-zinc-700/60 shadow-xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="text-[11px] font-semibold text-zinc-300 tracking-wide">
+                {currentModelDisplay}
+              </span>
+            </div>
+
+            {/* Titre spontané et fluide envoyé en temps réel par l'IA */}
+            <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 tracking-tight min-h-[32px] flex items-center justify-center">
+              <span>{displayedWelcomeTitle || welcomeGreeting.title}</span>
+              {isTypingWelcome && (
+                <span className="inline-block w-0.5 h-5 bg-orange-400 ml-1.5 animate-pulse align-middle" />
+              )}
             </h2>
-            <p className="text-xs sm:text-sm font-medium text-white/85 max-w-xs leading-relaxed">
-              Posez votre question, analysez vos cours ou explorez vos documents.
+
+            {/* Sous-titre dynamique bienveillant */}
+            <p className="text-xs sm:text-sm font-medium text-white/85 max-w-sm leading-relaxed min-h-[22px]">
+              {displayedWelcomeSubtitle || (!isTypingWelcome ? welcomeGreeting.subtitle : '')}
             </p>
           </div>
         ) : (
