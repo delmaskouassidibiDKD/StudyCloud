@@ -204,7 +204,7 @@ function isNetworkErrorMessage(msg: Message): boolean {
   );
 }
 
-// Carte professionnelle d'erreur de réseau (design inspiré des grandes entreprises tech)
+// Carte d'information de connexion (sans texte superflu ni bouton rouge)
 function NetworkErrorCard({
   retryPrompt,
   onRetry,
@@ -220,39 +220,24 @@ function NetworkErrorCard({
   };
 
   return (
-    <div className="my-2.5 p-4 sm:p-5 rounded-2xl bg-[#1e2026] border border-amber-500/30 shadow-xl w-full max-w-xl transition-all animate-fadeIn">
-      <div className="flex items-start gap-3.5">
-        <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 shrink-0 mt-0.5 shadow-sm">
-          <WifiOff className="w-5 h-5 text-amber-400" />
+    <div className="my-2 p-3 sm:p-3.5 rounded-2xl bg-[#1e2026] border border-zinc-700/80 shadow-md w-full max-w-xl transition-all animate-fadeIn">
+      <div className="flex items-center gap-3">
+        <div className="p-2 rounded-xl bg-orange-500/15 border border-orange-500/30 text-orange-400 shrink-0">
+          <WifiOff className="w-4 h-4 text-orange-400" />
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <h4 className="text-sm sm:text-base font-bold text-white tracking-tight">
-              Connexion Internet interrompue
-            </h4>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/30 text-[10px] font-bold text-rose-300">
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping" />
-              Hors ligne
-            </span>
-          </div>
-          <p className="text-xs sm:text-[13px] text-zinc-300 leading-relaxed font-normal">
-            Impossible de joindre les serveurs d'intelligence artificielle. Veuillez vérifier que votre appareil est bien connecté à Internet (Wi-Fi ou données mobiles).
-          </p>
-          <div className="mt-3.5 pt-3 border-t border-zinc-800/80 flex items-center justify-between gap-3 flex-wrap">
-            <button
-              type="button"
-              onClick={handleAction}
-              disabled={isRetrying}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md shadow-orange-500/25 transition-all cursor-pointer disabled:opacity-60"
-            >
-              <RotateCw className={`w-3.5 h-3.5 text-white ${isRetrying ? 'animate-spin' : ''}`} />
-              <span>{isRetrying ? 'Reconnexion en cours...' : 'Réessayer'}</span>
-            </button>
-            <span className="text-[11px] text-zinc-400 italic">
-              Votre question a été conservée
-            </span>
-          </div>
-        </div>
+        <p className="flex-1 text-xs sm:text-[13px] text-zinc-200 leading-relaxed font-medium">
+          Veuillez vérifier que votre appareil est bien connecté à Internet (Wi-Fi ou données mobiles).
+        </p>
+        <button
+          type="button"
+          onClick={handleAction}
+          disabled={isRetrying}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 hover:text-white text-xs font-bold transition-all cursor-pointer disabled:opacity-60 shrink-0 active:scale-95 shadow-sm"
+          title="Réessayer"
+        >
+          <RotateCw className={`w-3 h-3 text-orange-400 ${isRetrying ? 'animate-spin' : ''}`} />
+          <span>{isRetrying ? 'Connexion...' : 'Réessayer'}</span>
+        </button>
       </div>
     </div>
   );
@@ -1191,7 +1176,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       setIsTyping(false);
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
-        text: "Connexion Internet interrompue : Votre appareil semble hors ligne. Veuillez vérifier votre réseau Wi-Fi ou vos données mobiles.",
+        text: "Veuillez vérifier que votre appareil est bien connecté à Internet (Wi-Fi ou données mobiles).",
         sender: 'ai',
         isStreaming: false,
         isError: true,
@@ -1656,7 +1641,7 @@ ou
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         text: isNetwork 
-          ? "Connexion Internet interrompue : Impossible de joindre les serveurs d'intelligence artificielle. Veuillez vérifier votre connexion réseau (Wi-Fi ou données mobiles) et réessayer."
+          ? "Veuillez vérifier que votre appareil est bien connecté à Internet (Wi-Fi ou données mobiles)."
           : (isFriendlyMsg ? `⚠️ ${err.message}` : `⚠️ Erreur : ${err.message || "L'assistante StudyCloud n'est pas disponible pour le moment."}`),
         sender: 'ai',
         isStreaming: false,
@@ -1999,11 +1984,11 @@ ou
                       }}
                     />
                   ) : msg.isError ? (
-                    <div className="my-2.5 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/25 text-rose-200 flex items-start gap-3 w-full max-w-xl animate-fadeIn">
-                      <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                    <div className="my-2 p-3 sm:p-3.5 rounded-2xl bg-[#1e2026] border border-zinc-700/80 text-zinc-200 flex items-start gap-3 w-full max-w-xl animate-fadeIn">
+                      <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
                       <div className="flex-1 min-w-0">
-                        <div className="font-bold text-sm text-white mb-1">Service temporairement indisponible</div>
-                        <div className="text-xs text-rose-200/90 leading-relaxed font-normal">
+                        <div className="font-bold text-xs sm:text-sm text-white mb-1">Service temporairement indisponible</div>
+                        <div className="text-xs text-zinc-300 leading-relaxed font-normal">
                           {msg.text.replace(/^⚠️\s*(Erreur\s*(du\s*serveur|IA)?\s*:\s*)?/i, '')}
                         </div>
                         <button
@@ -2018,9 +2003,9 @@ ou
                             setMessages(prev => prev.filter(m => m.id !== msg.id));
                             if (targetPrompt) sendMessage(targetPrompt);
                           }}
-                          className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold transition-all cursor-pointer border border-rose-500/30 active:scale-95"
+                          className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold transition-all cursor-pointer border border-zinc-700 active:scale-95"
                         >
-                          <RotateCw className="w-3 h-3" />
+                          <RotateCw className="w-3 h-3 text-orange-400" />
                           <span>Réessayer</span>
                         </button>
                       </div>

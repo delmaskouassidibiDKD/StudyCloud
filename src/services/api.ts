@@ -324,7 +324,7 @@ export async function sendChatMessageToAi(params: {
       if (_fallbackErr?.name === 'AbortError') {
         return { response: "*(Tâche annulée par l'utilisateur)*", success: false, mode: 'chat' };
       }
-      throw new Error("Impossible de joindre le serveur. Veuillez vérifier votre connexion Internet.");
+      throw new Error("Veuillez vérifier que votre appareil est bien connecté à Internet (Wi-Fi ou données mobiles).");
     }
   }
 
