@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Maximize, Minimize, ArrowLeftRight } from 'lucide-react';
 import { UniversalContentRenderer } from './universal-render/UniversalContentRenderer';
+import DotField from './DotField';
 
 interface RightMenuProps {
   isRightFullscreen: boolean;
@@ -55,7 +56,7 @@ export function RightMenu({
 
   return (
     <div
-      className={`w-full h-full pointer-events-auto relative bg-[#1e2024] flex flex-col pt-[44px] overflow-hidden ${
+      className={`w-full h-full pointer-events-auto relative ${activeCreation ? 'bg-[#1e2024]' : 'bg-[#120F17]'} flex flex-col pt-[44px] overflow-hidden ${
         isCenterFullscreen
           ? 'hidden'
           : isMobileScreen
@@ -88,7 +89,7 @@ export function RightMenu({
       )}
 
       {/* Barre d'outils supérieure : Bouton Zoom jaune (Plein écran / Réduire) */}
-      <div className="w-full flex items-center justify-between px-3 py-1.5 bg-[#1a1c22] border-b border-zinc-700/60 shrink-0 z-20 shadow-xs">
+      <div className={`w-full flex items-center justify-between px-3 py-1.5 ${activeCreation ? 'bg-[#1a1c22] border-zinc-700/60' : 'bg-[#120F17]/90 border-purple-900/30'} border-b shrink-0 z-20 shadow-xs backdrop-blur-sm`}>
         <div className="flex items-center gap-2">
           {/* Bouton Zoom jaune */}
           <button
@@ -102,7 +103,7 @@ export function RightMenu({
         </div>
       </div>
 
-      {/* Zone principale : Reste totalement vide si aucune création, ou affiche la création polymorphe */}
+      {/* Zone principale : Affiche DotField pour l'accueil du menu création, ou la création polymorphe */}
       {activeCreation ? (
         <div className="flex-1 w-full min-h-0 overflow-hidden relative">
           <UniversalContentRenderer
@@ -112,7 +113,22 @@ export function RightMenu({
           />
         </div>
       ) : (
-        <div className="flex-1 w-full min-h-0 bg-[#16181f]" />
+        <div style={{ width: '100%', height: '100%', position: 'relative' }} className="flex-1 w-full h-full min-h-0 overflow-hidden bg-[#120F17]">
+          <DotField
+            dotRadius={1}
+            dotSpacing={22}
+            bulgeStrength={67}
+            glowRadius={200}
+            sparkle={false}
+            waveAmplitude={0}
+            cursorRadius={850}
+            cursorForce={0.44}
+            bulgeOnly
+            gradientFrom="#A855F7"
+            gradientTo="#B497CF"
+            glowColor="#120F17"
+          />
+        </div>
       )}
     </div>
   );
