@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Maximize, Minimize, ArrowLeftRight, Sparkles } from 'lucide-react';
+import { Maximize, Minimize, ArrowLeftRight } from 'lucide-react';
 import { UniversalContentRenderer } from './universal-render/UniversalContentRenderer';
 import DotField from './DotField';
 
@@ -105,47 +105,31 @@ export function RightMenu({
 
       {/* Zone principale : Affiche DotField en fond permanent, et par-dessus la création polymorphe */}
       <div className="flex-1 w-full h-full min-h-0 overflow-hidden relative bg-[#120F17]">
-        {/* Fond animé avec les petits points colorés bien visible */}
-        <div className="absolute inset-0 z-0">
+        {/* Fond animé WebGL2 avec les petits points colorés */}
+        <div className="absolute inset-0 z-0 w-full h-full">
           <DotField
-            dotRadius={2.8}
-            dotSpacing={18}
-            bulgeStrength={75}
-            glowRadius={220}
-            sparkle={true}
-            waveAmplitude={4}
-            cursorRadius={650}
-            cursorForce={0.3}
-            bulgeOnly
-            colorStops={[
-              { offset: 0, color: '#C084FC' },     // Violet lumineux / Purple
-              { offset: 0.25, color: '#F472B6' },  // Rose néon / Magenta
-              { offset: 0.5, color: '#818CF8' },   // Indigo vibrant
-              { offset: 0.75, color: '#38BDF8' },  // Bleu électrique / Cyan
-              { offset: 1, color: '#34D399' }      // Emeraude / Mint
-            ]}
-            glowColor="rgba(192, 132, 252, 0.45)"
-            dotGlowColor="rgba(192, 132, 252, 0.6)"
-            dotGlowBlur={4}
+            gradientFrom="#5227FF"
+            gradientTo="#FF9FFC"
+            dotRadius={1.5}
+            dotSpacing={14}
+            cursorRadius={240}
+            bulgeStrength={0.6}
+            glowRadius={160}
+            pattern="grid"
+            glowColor="#ffffff"
+            gradientAngle={135}
+            twist={0}
+            glowIntensity={0.8}
+            baseOpacity={0.55}
+            waveAmplitude={0}
+            speed={1}
+            sparkle={false}
+            interactive
+            holdToZoom
+            intro
+            lightMode={false}
           />
         </div>
-
-        {/* Si aucune création active : Carte centrale élégante en verre dépoli */}
-        {!activeCreation && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 text-center pointer-events-none select-none">
-            <div className="max-w-sm p-6 rounded-2xl bg-[#171422]/70 border border-purple-500/20 backdrop-blur-md shadow-2xl flex flex-col items-center space-y-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-purple-500/30">
-                <Sparkles className="w-6 h-6 animate-pulse" />
-              </div>
-              <h3 className="text-base font-bold text-white tracking-wide">
-                Espace Créations IA
-              </h3>
-              <p className="text-xs text-purple-200/80 leading-relaxed">
-                Vos questionnaires, résumés, fiches de révision et devoirs générés s'afficheront directement ici.
-              </p>
-            </div>
-          </div>
-        )}
 
         {/* Si une création est active : UniversalContentRenderer au premier plan avec transparence élégante */}
         {activeCreation && (
