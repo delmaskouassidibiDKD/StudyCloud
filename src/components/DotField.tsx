@@ -3,6 +3,11 @@ import './DotField.css';
 
 const TWO_PI = Math.PI * 2;
 
+export interface ColorStop {
+  offset: number;
+  color: string;
+}
+
 export interface DotFieldProps extends React.HTMLAttributes<HTMLDivElement> {
   dotRadius?: number;
   dotSpacing?: number;
@@ -16,6 +21,9 @@ export interface DotFieldProps extends React.HTMLAttributes<HTMLDivElement> {
   gradientFrom?: string;
   gradientTo?: string;
   glowColor?: string;
+  colorStops?: ColorStop[];
+  dotGlowColor?: string;
+  dotGlowBlur?: number;
 }
 
 interface Dot {
@@ -29,19 +37,31 @@ interface Dot {
   y: number;
 }
 
+// Palette lumineuse multicolore par défaut
+const defaultColorStops: ColorStop[] = [
+  { offset: 0, color: '#C084FC' },     // Violet lumineux / Purple
+  { offset: 0.25, color: '#F472B6' },  // Rose néon / Magenta
+  { offset: 0.5, color: '#818CF8' },   // Indigo vibrant
+  { offset: 0.75, color: '#38BDF8' },  // Bleu électrique / Cyan
+  { offset: 1, color: '#34D399' }      // Emeraude / Mint
+];
+
 export const DotField: React.FC<DotFieldProps> = memo(({
-  dotRadius = 1.5,
-  dotSpacing = 14,
-  cursorRadius = 500,
-  cursorForce = 0.1,
+  dotRadius = 2.8,
+  dotSpacing = 18,
+  cursorRadius = 600,
+  cursorForce = 0.25,
   bulgeOnly = true,
-  bulgeStrength = 67,
-  glowRadius = 160,
-  sparkle = false,
-  waveAmplitude = 0,
-  gradientFrom = 'rgba(168, 85, 247, 0.35)',
-  gradientTo = 'rgba(180, 151, 207, 0.25)',
-  glowColor = '#120F17',
+  bulgeStrength = 75,
+  glowRadius = 220,
+  sparkle = true,
+  waveAmplitude = 4,
+  gradientFrom = '#C084FC',
+  gradientTo = '#38BDF8',
+  glowColor = 'rgba(192, 132, 252, 0.45)',
+  colorStops = defaultColorStops,
+  dotGlowColor = 'rgba(192, 132, 252, 0.55)',
+  dotGlowBlur = 4,
   ...rest
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -64,7 +84,10 @@ export const DotField: React.FC<DotFieldProps> = memo(({
     waveAmplitude,
     gradientFrom,
     gradientTo,
-    glowColor
+    glowColor,
+    colorStops,
+    dotGlowColor,
+    dotGlowBlur,
   });
 
   propsRef.current = {
@@ -78,7 +101,10 @@ export const DotField: React.FC<DotFieldProps> = memo(({
     waveAmplitude,
     gradientFrom,
     gradientTo,
-    glowColor
+    glowColor,
+    colorStops,
+    dotGlowColor,
+    dotGlowBlur,
   };
 
   const rebuildRef = useRef<(() => void) | null>(null);
@@ -148,6 +174,12 @@ export const DotField: React.FC<DotFieldProps> = memo(({
       mouseRef.current.y = e.clientY - rect.top;
     }
 
+    function onMouseLeave() {
+      mouseRef.current.x = -9999;
+      mouseRef.current.y = -9999;
+      mouseRef.current.speed = 0;
+    }
+
     function onTouchMove(e: TouchEvent) {
       if (!canvas || !e.touches[0]) return;
       const rect = canvas.getBoundingClientRect();
@@ -184,12 +216,14 @@ export const DotField: React.FC<DotFieldProps> = memo(({
         return;
       }
 
-      const targetEngagement = Math.min(m.speed / 5, 1);
-      engagement.current += (targetEngagement - engagement.current) * 0.06;
+      // Engagement actif dès que la souris survole le panneau
+      const isInside = m.x >= 0 && m.x <= w && m.y >= 0 && m.y <= h;
+      const targetEngagement = isInside ? Math.min(0.55 + (m.speed / 6), 1) : 0;
+      engagement.current += (targetEngagement - engagement.current) * 0.08;
       if (engagement.current < 0.001) engagement.current = 0;
       const eng = engagement.current;
 
-      glowOpacity.current += (eng - glowOpacity.current) * 0.08;
+      glowOpacity.current += (eng - glowOpacity.current) * 0.1;
 
       if (glowEl) {
         glowEl.setAttribute('cx', String(m.x));
@@ -199,10 +233,27 @@ export const DotField: React.FC<DotFieldProps> = memo(({
 
       ctx.clearRect(0, 0, w, h);
 
+      // Dégradé multicolore riche et vibrant
       const grad = ctx.createLinearGradient(0, 0, w, h);
-      grad.addColorStop(0, p.gradientFrom);
-      grad.addColorStop(1, p.gradientTo);
+      if (p.colorStops && p.colorStops.length > 0) {
+        for (let i = 0; i < p.colorStops.length; i++) {
+          const cs = p.colorStops[i];
+          grad.addColorStop(cs.offset, cs.color);
+        }
+      } else {
+        grad.addColorStop(0, p.gradientFrom);
+        grad.addColorStop(1, p.gradientTo);
+      }
       ctx.fillStyle = grad;
+
+      // Halo néon subtil pour faire ressortir les points sur fond sombre
+      if (p.dotGlowBlur && p.dotGlowBlur > 0) {
+        ctx.shadowColor = p.dotGlowColor || 'rgba(192, 132, 252, 0.55)';
+        ctx.shadowBlur = p.dotGlowBlur;
+      } else {
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+      }
 
       const cr = p.cursorRadius;
       const crSq = cr * cr;
@@ -228,7 +279,7 @@ export const DotField: React.FC<DotFieldProps> = memo(({
             d.sy += (d.ay - Math.sin(angle) * push - d.sy) * 0.15;
           } else {
             const angle = Math.atan2(dy, dx);
-            const move = (500 / dist) * (m.speed * p.cursorForce);
+            const move = (500 / Math.max(dist, 1)) * (m.speed * p.cursorForce);
             d.vx += Math.cos(angle) * -move;
             d.vy += Math.sin(angle) * -move;
           }
@@ -248,16 +299,22 @@ export const DotField: React.FC<DotFieldProps> = memo(({
 
         let drawX = d.sx;
         let drawY = d.sy;
+
+        // Vague fluide continue organique (vivante même au repos)
         if (p.waveAmplitude > 0) {
-          drawY += Math.sin(d.ax * 0.03 + t) * p.waveAmplitude;
-          drawX += Math.cos(d.ay * 0.03 + t * 0.7) * p.waveAmplitude * 0.5;
+          const waveY = Math.sin(d.ax * 0.02 + t) * p.waveAmplitude + Math.cos(d.ay * 0.025 + t * 0.8) * (p.waveAmplitude * 0.5);
+          const waveX = Math.cos(d.ay * 0.02 + t * 0.6) * (p.waveAmplitude * 0.5);
+          drawY += waveY;
+          drawX += waveX;
         }
 
+        // Effet scintillement étoilé harmonieux (sparkle)
         if (p.sparkle) {
-          const hash = ((i * 2654435761) ^ (frameCount >> 3)) >>> 0;
-          if ((hash % 100) < 3) {
-            ctx.moveTo(drawX + rad * 1.8, drawY);
-            ctx.arc(drawX, drawY, rad * 1.8, 0, TWO_PI);
+          const sparkleVal = Math.sin((i * 137.5) + t * 2.5);
+          if (sparkleVal > 0.65) {
+            const sparkleRad = rad * (1 + (sparkleVal - 0.65) * 1.8);
+            ctx.moveTo(drawX + sparkleRad, drawY);
+            ctx.arc(drawX, drawY, sparkleRad, 0, TWO_PI);
           } else {
             ctx.moveTo(drawX + rad, drawY);
             ctx.arc(drawX, drawY, rad, 0, TWO_PI);
@@ -277,6 +334,7 @@ export const DotField: React.FC<DotFieldProps> = memo(({
     window.addEventListener('resize', resize);
     window.addEventListener('mousemove', onMouseMove, { passive: true });
     window.addEventListener('touchmove', onTouchMove, { passive: true });
+    canvas.addEventListener('mouseleave', onMouseLeave, { passive: true });
 
     let ro: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined' && canvas.parentElement) {
@@ -301,6 +359,7 @@ export const DotField: React.FC<DotFieldProps> = memo(({
       window.removeEventListener('resize', resize);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('touchmove', onTouchMove);
+      if (canvas) canvas.removeEventListener('mouseleave', onMouseLeave);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -332,8 +391,9 @@ export const DotField: React.FC<DotFieldProps> = memo(({
       >
         <defs>
           <radialGradient id={glowIdRef.current}>
-            <stop offset="0%" stopColor={glowColor} />
-            <stop offset="100%" stopColor="transparent" />
+            <stop offset="0%" stopColor={glowColor} stopOpacity={0.85} />
+            <stop offset="50%" stopColor={glowColor} stopOpacity={0.3} />
+            <stop offset="100%" stopColor={glowColor} stopOpacity={0} />
           </radialGradient>
         </defs>
         <circle

@@ -350,7 +350,7 @@ function extractSuggestedQuestions(content: string): { cleanText: string; questi
   return { cleanText, questions };
 }
 
-function SvgDiagramCard({ svgContent }: { svgContent: string }) {
+function SvgDiagramCard({ svgContent }: { svgContent: string; key?: any }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {

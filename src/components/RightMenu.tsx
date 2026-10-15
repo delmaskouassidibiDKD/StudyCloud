@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Maximize, Minimize, ArrowLeftRight } from 'lucide-react';
+import { Maximize, Minimize, ArrowLeftRight, Sparkles } from 'lucide-react';
 import { UniversalContentRenderer } from './universal-render/UniversalContentRenderer';
 import DotField from './DotField';
 
@@ -56,7 +56,7 @@ export function RightMenu({
 
   return (
     <div
-      className={`w-full h-full pointer-events-auto relative ${activeCreation ? 'bg-[#1e2024]' : 'bg-[#120F17]'} flex flex-col pt-[44px] overflow-hidden ${
+      className={`w-full h-full pointer-events-auto relative bg-[#120F17] flex flex-col pt-[44px] overflow-hidden ${
         isCenterFullscreen
           ? 'hidden'
           : isMobileScreen
@@ -89,7 +89,7 @@ export function RightMenu({
       )}
 
       {/* Barre d'outils supérieure : Bouton Zoom jaune (Plein écran / Réduire) */}
-      <div className={`w-full flex items-center justify-between px-3 py-1.5 ${activeCreation ? 'bg-[#1a1c22] border-zinc-700/60' : 'bg-[#120F17]/90 border-purple-900/30'} border-b shrink-0 z-20 shadow-xs backdrop-blur-sm`}>
+      <div className={`w-full flex items-center justify-between px-3 py-1.5 ${activeCreation ? 'bg-[#1a1c22]/90 border-zinc-700/60' : 'bg-[#120F17]/90 border-purple-900/30'} border-b shrink-0 z-20 shadow-xs backdrop-blur-sm`}>
         <div className="flex items-center gap-2">
           {/* Bouton Zoom jaune */}
           <button
@@ -103,34 +103,61 @@ export function RightMenu({
         </div>
       </div>
 
-      {/* Zone principale : Affiche DotField pour l'accueil du menu création, ou la création polymorphe */}
-      {activeCreation ? (
-        <div className="flex-1 w-full min-h-0 overflow-hidden relative">
-          <UniversalContentRenderer
-            item={activeCreation}
-            onClose={() => setActiveCreation(null)}
-            isFullscreen={isRightFullscreen}
-          />
-        </div>
-      ) : (
-        <div style={{ width: '100%', height: '100%', position: 'relative' }} className="flex-1 w-full h-full min-h-0 overflow-hidden bg-[#120F17]">
+      {/* Zone principale : Affiche DotField en fond permanent, et par-dessus la création polymorphe */}
+      <div className="flex-1 w-full h-full min-h-0 overflow-hidden relative bg-[#120F17]">
+        {/* Fond animé avec les petits points colorés bien visible */}
+        <div className="absolute inset-0 z-0">
           <DotField
-            dotRadius={1}
-            dotSpacing={22}
-            bulgeStrength={67}
-            glowRadius={200}
-            sparkle={false}
-            waveAmplitude={0}
-            cursorRadius={850}
-            cursorForce={0.44}
+            dotRadius={2.8}
+            dotSpacing={18}
+            bulgeStrength={75}
+            glowRadius={220}
+            sparkle={true}
+            waveAmplitude={4}
+            cursorRadius={650}
+            cursorForce={0.3}
             bulgeOnly
-            gradientFrom="#A855F7"
-            gradientTo="#B497CF"
-            glowColor="#120F17"
+            colorStops={[
+              { offset: 0, color: '#C084FC' },     // Violet lumineux / Purple
+              { offset: 0.25, color: '#F472B6' },  // Rose néon / Magenta
+              { offset: 0.5, color: '#818CF8' },   // Indigo vibrant
+              { offset: 0.75, color: '#38BDF8' },  // Bleu électrique / Cyan
+              { offset: 1, color: '#34D399' }      // Emeraude / Mint
+            ]}
+            glowColor="rgba(192, 132, 252, 0.45)"
+            dotGlowColor="rgba(192, 132, 252, 0.6)"
+            dotGlowBlur={4}
           />
         </div>
-      )}
+
+        {/* Si aucune création active : Carte centrale élégante en verre dépoli */}
+        {!activeCreation && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 text-center pointer-events-none select-none">
+            <div className="max-w-sm p-6 rounded-2xl bg-[#171422]/70 border border-purple-500/20 backdrop-blur-md shadow-2xl flex flex-col items-center space-y-3">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-purple-500/30">
+                <Sparkles className="w-6 h-6 animate-pulse" />
+              </div>
+              <h3 className="text-base font-bold text-white tracking-wide">
+                Espace Créations IA
+              </h3>
+              <p className="text-xs text-purple-200/80 leading-relaxed">
+                Vos questionnaires, résumés, fiches de révision et devoirs générés s'afficheront directement ici.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Si une création est active : UniversalContentRenderer au premier plan avec transparence élégante */}
+        {activeCreation && (
+          <div className="absolute inset-0 z-10 overflow-hidden flex flex-col bg-[#14121b]/80 backdrop-blur-sm animate-fadeIn">
+            <UniversalContentRenderer
+              item={activeCreation}
+              onClose={() => setActiveCreation(null)}
+              isFullscreen={isRightFullscreen}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-

@@ -132,9 +132,9 @@ export function UniversalContentRenderer({ item, onClose }: UniversalContentRend
   };
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#16181f] text-zinc-100 overflow-hidden relative">
+    <div className="w-full h-full flex flex-col bg-transparent text-zinc-100 overflow-hidden relative">
       {/* Barre d'en-tête de la création avec bouton de fermeture */}
-      <div className="w-full flex items-center justify-between px-4 py-2 bg-[#1a1c22] border-b border-zinc-800 shrink-0 z-10">
+      <div className="w-full flex items-center justify-between px-4 py-2 bg-[#1a1c22]/90 backdrop-blur-md border-b border-zinc-800/80 shrink-0 z-10">
         <div className="flex items-center gap-2 min-w-0">
           <Sparkles className="w-3.5 h-3.5 text-orange-400 shrink-0" />
           <span className="text-xs font-bold text-zinc-200 truncate">
