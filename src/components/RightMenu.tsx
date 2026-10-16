@@ -73,64 +73,29 @@ export function RightMenu({
     };
   }, [resolvedDocName]);
 
-  // Définition des 9 cartes carrées proposées par l'IA (exactement comme sur l'Image 2)
+  // Définition des cartes de créations réelles StudyCloud (exactement comme sur le schéma d'architecture)
   const proposalCards: CreationProposalCard[] = useMemo(() => [
     {
-      id: 'audio-overview',
-      title: 'Audio Overview',
-      iconColor: '#38bdf8',
+      id: 'questionnaire',
+      title: 'Questionnaire QCM',
+      iconColor: '#06b6d4',
       icon: (
-        <div className="relative flex items-center justify-center w-5 h-5 text-[#38bdf8]">
+        <div className="flex items-center justify-center w-5 h-5 text-[#06b6d4]">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-            <line x1="6" y1="9" x2="6" y2="15" />
-            <line x1="10" y1="6" x2="10" y2="18" />
-            <path d="m17 4 1 2 2 1-2 1-1 2-1-2-2-1 2-1Z" fill="currentColor" stroke="none" />
-            <line x1="15" y1="12" x2="15" y2="16" />
+            <rect width="15" height="15" x="4.5" y="4.5" rx="3.5" />
+            <path d="M9.5 9a2.5 2.5 0 0 1 4.5 1.5c0 1.5-2 2-2 2" />
+            <circle cx="12" cy="15.5" r="0.75" fill="currentColor" />
           </svg>
         </div>
       ),
-      toolType: 'resume',
+      toolType: 'questionnaire',
       getPrompt: (doc) => doc
-        ? `Conçois un Audio Overview captivant et complet sous forme de script de podcast d'étude sur « ${doc} » avec synthèse orale des points clés.`
-        : "Conçois un Audio Overview captivant sous forme de script de podcast d'étude clair et pédagogique résumant les points clés."
+        ? `Conçois un Questionnaire Quiz QCM interactif sur « ${doc} » avec 4 options par question et explications pédagogiques.`
+        : "Conçois un Questionnaire Quiz QCM interactif avec 4 options par question et explications pédagogiques pour tester mes connaissances."
     },
     {
-      id: 'slide-deck',
-      title: 'Slide Deck',
-      iconColor: '#f43f5e',
-      icon: (
-        <div className="flex items-center justify-center w-5 h-5 text-[#f43f5e]">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-            <rect width="18" height="13" x="3" y="5" rx="2" />
-            <line x1="7" y1="12" x2="17" y2="12" />
-          </svg>
-        </div>
-      ),
-      toolType: 'pdf',
-      getPrompt: (doc) => doc
-        ? `Génère une présentation Slide Deck complète avec diapositives structurées, titres et points clés sur « ${doc} » pour l'espace Création.`
-        : "Génère une présentation Slide Deck complète avec diapositives structurées, titres et points clés pour l'espace Création."
-    },
-    {
-      id: 'video-overview',
-      title: 'Video Overview',
-      iconColor: '#10b981',
-      icon: (
-        <div className="flex items-center justify-center w-5 h-5 text-[#10b981]">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-            <rect width="14" height="12" x="2" y="6" rx="3" />
-            <path d="m16 10 4-3v10l-4-3" />
-          </svg>
-        </div>
-      ),
-      toolType: 'resume',
-      getPrompt: (doc) => doc
-        ? `Conçois un script et plan de Video Overview dynamique pour réviser et comprendre rapidement « ${doc} » avec séquences clés.`
-        : "Conçois un script et plan de Video Overview dynamique pour réviser et comprendre rapidement avec séquences clés."
-    },
-    {
-      id: 'mind-map',
-      title: 'Mind Map',
+      id: 'carte-mentale',
+      title: 'Carte Mentale',
       iconColor: '#a855f7',
       icon: (
         <div className="flex items-center justify-center w-5 h-5 text-[#a855f7]">
@@ -145,30 +110,11 @@ export function RightMenu({
       toolType: 'carte-mentale',
       getPrompt: (doc) => doc
         ? `Conçois une Carte Mentale interactive et arborescente des concepts fondamentaux de « ${doc} » avec thème central et branches hiérarchiques.`
-        : "Conçois une Carte Mentale interactive et arborescente des concepts fondamentaux avec thème central et branches hiérarchiques."
+        : "Conçois une Carte Mentale interactive et arborescente des concepts fondamentaux avec branches hiérarchiques."
     },
     {
-      id: 'reports',
-      title: 'Reports',
-      badge: 'New!',
-      iconColor: '#f43f5e',
-      icon: (
-        <div className="flex items-center justify-center w-5 h-5 text-[#f43f5e]">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-            <rect width="10" height="13" x="3" y="7" rx="1.5" />
-            <path d="M7 3h8a2 2 0 0 1 2 2v10" />
-            <path d="m17 2 1 2 2 1-2 1-1 2-1-2-2-1 2-1Z" fill="currentColor" stroke="none" />
-          </svg>
-        </div>
-      ),
-      toolType: 'resume',
-      getPrompt: (doc) => doc
-        ? `Rédige un Rapport de synthèse officiel et structuré de « ${doc} » avec vue d'ensemble, points clés, définitions et règles fondamentales.`
-        : "Rédige un Rapport de synthèse complet et structuré avec vue d'ensemble, points clés, définitions et règles fondamentales."
-    },
-    {
-      id: 'flashcards',
-      title: 'Flashcards',
+      id: 'carte-memoire',
+      title: 'Cartes Mémoires',
       iconColor: '#f59e0b',
       icon: (
         <div className="flex items-center justify-center w-5 h-5 text-[#f59e0b]">
@@ -180,30 +126,101 @@ export function RightMenu({
       ),
       toolType: 'carte-memoire',
       getPrompt: (doc) => doc
-        ? `Crée un jeu complet de Flashcards interactives pour mémoriser les notions et formules de « ${doc} » (recto question, verso réponse).`
-        : "Crée un jeu complet de Flashcards interactives pour mémoriser les notions et formules essentielles (recto question, verso réponse)."
+        ? `Crée un jeu complet de Cartes Mémoires interactives (Flashcards) pour réviser et mémoriser « ${doc} » (recto question/notion, verso réponse/détail).`
+        : "Crée un jeu complet de Cartes Mémoires interactives (Flashcards) pour réviser et mémoriser les notions clés."
     },
     {
-      id: 'quiz',
-      title: 'Quiz',
-      iconColor: '#06b6d4',
+      id: 'resume',
+      title: 'Fiche de Résumé',
+      iconColor: '#ec4899',
       icon: (
-        <div className="flex items-center justify-center w-5 h-5 text-[#06b6d4]">
+        <div className="flex items-center justify-center w-5 h-5 text-[#ec4899]">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-            <rect width="15" height="15" x="4" y="4.5" rx="3" />
-            <path d="M9.5 9a2.5 2.5 0 0 1 4.5 1.5c0 1.5-2 2-2 2" />
-            <circle cx="12" cy="15.5" r="0.75" fill="currentColor" />
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
           </svg>
         </div>
       ),
-      toolType: 'questionnaire',
+      toolType: 'resume',
       getPrompt: (doc) => doc
-        ? `Génère un Quiz interactif à choix multiples sur « ${doc} » avec 4 options par question et explications pédagogiques.`
-        : "Génère un Quiz interactif à choix multiples avec 4 options par question et explications pédagogiques pour tester mes connaissances."
+        ? `Rédige une Fiche de Résumé structurée et claire de « ${doc} » avec vue d'ensemble, points clés, définitions et règles fondamentales.`
+        : "Rédige une Fiche de Résumé claire et structurée avec vue d'ensemble, points clés, définitions et règles fondamentales."
     },
     {
-      id: 'infographic',
-      title: 'Infographic',
+      id: 'pdf',
+      title: 'Document PDF',
+      iconColor: '#38bdf8',
+      icon: (
+        <div className="flex items-center justify-center w-5 h-5 text-[#38bdf8]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z" />
+            <path d="M6 6h10" />
+            <path d="M6 10h10" />
+          </svg>
+        </div>
+      ),
+      toolType: 'pdf',
+      getPrompt: (doc) => doc
+        ? `Génère un Document PDF polycopié d'étude officiel complet et structuré sur « ${doc} » avec sections, titres et contenu approfondi.`
+        : "Génère un Document PDF polycopié d'étude officiel complet et structuré avec sections, titres et contenu approfondi."
+    },
+    {
+      id: 'vrai-ou-faux',
+      title: 'Vrai ou Faux',
+      iconColor: '#10b981',
+      icon: (
+        <div className="flex items-center justify-center w-5 h-5 text-[#10b981]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <circle cx="12" cy="12" r="9" />
+            <path d="m9 12 2 2 4-4" />
+          </svg>
+        </div>
+      ),
+      toolType: 'vrai-ou-faux',
+      getPrompt: (doc) => doc
+        ? `Crée une série d'affirmations interactives Vrai ou Faux avec justifications détaillées et pièges fréquents sur « ${doc} ».`
+        : "Crée une série d'affirmations interactives Vrai ou Faux avec justifications détaillées et pièges fréquents."
+    },
+    {
+      id: 'exercices-ecrits',
+      title: 'Exercices Écrits',
+      iconColor: '#8b5cf6',
+      icon: (
+        <div className="flex items-center justify-center w-5 h-5 text-[#8b5cf6]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+            <path d="m15 5 4 4" />
+          </svg>
+        </div>
+      ),
+      toolType: 'exercices-ecrits',
+      getPrompt: (doc) => doc
+        ? `Conçois une série d'Exercices Écrits d'application avec énoncé pas à pas et correction guidée détaillée sur « ${doc} ».`
+        : "Conçois une série d'Exercices Écrits d'application avec énoncé pas à pas et correction guidée détaillée."
+    },
+    {
+      id: 'devoir-complet',
+      title: 'Devoir Complet',
+      badge: 'Examen',
+      iconColor: '#f43f5e',
+      icon: (
+        <div className="flex items-center justify-center w-5 h-5 text-[#f43f5e]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
+            <path d="M6 12v5c3 3 9 3 12 0v-5" />
+          </svg>
+        </div>
+      ),
+      toolType: 'devoir-complet',
+      getPrompt: (doc) => doc
+        ? `Conçois un Devoir Complet d'examen officiel avec plusieurs parties, barème de points et corrigé détaillé sur « ${doc} ».`
+        : "Conçois un Devoir Complet d'examen officiel avec plusieurs parties, barème de points et corrigé détaillé."
+    },
+    {
+      id: 'infographie',
+      title: 'Infographie',
       iconColor: '#facc15',
       icon: (
         <div className="flex items-center justify-center w-5 h-5 text-[#facc15]">
@@ -219,29 +236,26 @@ export function RightMenu({
       ),
       toolType: 'infographie',
       getPrompt: (doc) => doc
-        ? `Crée une Infographie pédagogique détaillée avec repères visuels, chronologie et métriques clés sur « ${doc} ».`
-        : "Crée une Infographie pédagogique détaillée avec repères visuels, chronologie et métriques clés."
+        ? `Crée une Infographie pédagogique détaillée avec repères visuels, chiffres clés, métriques et chronologie sur « ${doc} ».`
+        : "Crée une Infographie pédagogique détaillée avec repères visuels, chiffres clés, métriques et chronologie."
     },
     {
-      id: 'data-table',
-      title: 'Data Table',
-      iconColor: '#38bdf8',
+      id: 'questionnaire-test',
+      title: 'Test Noté',
+      badge: 'Chrono',
+      iconColor: '#fb923c',
       icon: (
-        <div className="flex items-center justify-center w-5 h-5 text-[#38bdf8]">
+        <div className="flex items-center justify-center w-5 h-5 text-[#fb923c]">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-            <circle cx="5" cy="7" r="1.5" fill="currentColor" />
-            <line x1="9" y1="7" x2="19" y2="7" />
-            <circle cx="5" cy="12" r="1.5" fill="currentColor" />
-            <line x1="9" y1="12" x2="19" y2="12" />
-            <circle cx="5" cy="17" r="1.5" fill="currentColor" />
-            <line x1="9" y1="17" x2="19" y2="17" />
+            <circle cx="12" cy="12" r="9" />
+            <polyline points="12 6 12 12 16 14" />
           </svg>
         </div>
       ),
-      toolType: 'resume',
+      toolType: 'questionnaire-test',
       getPrompt: (doc) => doc
-        ? `Synthétise les données, concepts et formules de « ${doc} » sous forme de Tableau comparatif structuré.`
-        : "Synthétise les données, concepts et formules sous forme de Tableau comparatif structuré."
+        ? `Prépare une Épreuve de Test Noté avec chronomètre et barème sur « ${doc} » pour évaluer mes acquis en conditions réelles.`
+        : "Prépare une Épreuve de Test Noté avec chronomètre et barème pour évaluer mes acquis en conditions réelles."
     }
   ], []);
 
