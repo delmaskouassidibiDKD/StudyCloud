@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Maximize, Minimize, ArrowLeftRight } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Maximize, Minimize, ArrowLeftRight, Sparkles, X } from 'lucide-react';
 import { UniversalContentRenderer } from './universal-render/UniversalContentRenderer';
 import DotField from './DotField';
+import MagicRings from './MagicRings';
 
 interface RightMenuProps {
   isRightFullscreen: boolean;
@@ -11,6 +12,16 @@ interface RightMenuProps {
   activePreviewItem?: any;
   isMobileScreen?: boolean;
   setIsResizingRight?: (v: boolean) => void;
+}
+
+interface CreationProposalCard {
+  id: string;
+  title: string;
+  badge?: string;
+  iconColor: string;
+  icon: React.ReactNode;
+  toolType: string;
+  getPrompt: (docName: string) => string;
 }
 
 export function RightMenu({
@@ -23,11 +34,248 @@ export function RightMenu({
   setIsResizingRight
 }: RightMenuProps) {
   const [activeCreation, setActiveCreation] = useState<any>(null);
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [liveStatusText, setLiveStatusText] = useState<string>('Je prépare votre création...');
 
+  const resolvedDocName = useMemo(() => {
+    return activePreviewItem?.name || activePreviewItem?.title || activePreviewItem?.fileName || '';
+  }, [activePreviewItem]);
+
+  // Effet machine à écrire pour le titre de proposition IA (comme quand l'IA écrit à l'arrivée dans le chat)
+  const [displayedSubtitle, setDisplayedSubtitle] = useState<string>('');
+  const [isTypingSubtitle, setIsTypingSubtitle] = useState<boolean>(true);
+  const typewriterTimeoutRef = useRef<any[]>([]);
+
+  useEffect(() => {
+    typewriterTimeoutRef.current.forEach(clearTimeout);
+    typewriterTimeoutRef.current = [];
+
+    const fullSubtitle = resolvedDocName
+      ? `Créations proposées par l'IA pour « ${resolvedDocName} »`
+      : "L'IA vous propose des créations interactives sur mesure :";
+
+    setDisplayedSubtitle('');
+    setIsTypingSubtitle(true);
+
+    for (let i = 1; i <= fullSubtitle.length; i++) {
+      const t = setTimeout(() => {
+        setDisplayedSubtitle(fullSubtitle.slice(0, i));
+        if (i === fullSubtitle.length) {
+          setIsTypingSubtitle(false);
+        }
+      }, i * 16);
+      typewriterTimeoutRef.current.push(t);
+    }
+
+    return () => {
+      typewriterTimeoutRef.current.forEach(clearTimeout);
+      typewriterTimeoutRef.current = [];
+    };
+  }, [resolvedDocName]);
+
+  // Définition des 9 cartes carrées proposées par l'IA (exactement comme sur l'Image 2)
+  const proposalCards: CreationProposalCard[] = useMemo(() => [
+    {
+      id: 'audio-overview',
+      title: 'Audio Overview',
+      iconColor: '#38bdf8',
+      icon: (
+        <div className="relative flex items-center justify-center w-5 h-5 text-[#38bdf8]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <line x1="6" y1="9" x2="6" y2="15" />
+            <line x1="10" y1="6" x2="10" y2="18" />
+            <path d="m17 4 1 2 2 1-2 1-1 2-1-2-2-1 2-1Z" fill="currentColor" stroke="none" />
+            <line x1="15" y1="12" x2="15" y2="16" />
+          </svg>
+        </div>
+      ),
+      toolType: 'resume',
+      getPrompt: (doc) => doc
+        ? `Conçois un Audio Overview captivant et complet sous forme de script de podcast d'étude sur « ${doc} » avec synthèse orale des points clés.`
+        : "Conçois un Audio Overview captivant sous forme de script de podcast d'étude clair et pédagogique résumant les points clés."
+    },
+    {
+      id: 'slide-deck',
+      title: 'Slide Deck',
+      iconColor: '#f43f5e',
+      icon: (
+        <div className="flex items-center justify-center w-5 h-5 text-[#f43f5e]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <rect width="18" height="13" x="3" y="5" rx="2" />
+            <line x1="7" y1="12" x2="17" y2="12" />
+          </svg>
+        </div>
+      ),
+      toolType: 'pdf',
+      getPrompt: (doc) => doc
+        ? `Génère une présentation Slide Deck complète avec diapositives structurées, titres et points clés sur « ${doc} » pour l'espace Création.`
+        : "Génère une présentation Slide Deck complète avec diapositives structurées, titres et points clés pour l'espace Création."
+    },
+    {
+      id: 'video-overview',
+      title: 'Video Overview',
+      iconColor: '#10b981',
+      icon: (
+        <div className="flex items-center justify-center w-5 h-5 text-[#10b981]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <rect width="14" height="12" x="2" y="6" rx="3" />
+            <path d="m16 10 4-3v10l-4-3" />
+          </svg>
+        </div>
+      ),
+      toolType: 'resume',
+      getPrompt: (doc) => doc
+        ? `Conçois un script et plan de Video Overview dynamique pour réviser et comprendre rapidement « ${doc} » avec séquences clés.`
+        : "Conçois un script et plan de Video Overview dynamique pour réviser et comprendre rapidement avec séquences clés."
+    },
+    {
+      id: 'mind-map',
+      title: 'Mind Map',
+      iconColor: '#a855f7',
+      icon: (
+        <div className="flex items-center justify-center w-5 h-5 text-[#a855f7]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <rect width="5" height="5" x="3" y="10" rx="1" />
+            <rect width="5" height="5" x="16" y="5" rx="1" />
+            <rect width="5" height="5" x="16" y="14" rx="1" />
+            <path d="M8 12.5h4v-5h4M12 12.5v4h4" />
+          </svg>
+        </div>
+      ),
+      toolType: 'carte-mentale',
+      getPrompt: (doc) => doc
+        ? `Conçois une Carte Mentale interactive et arborescente des concepts fondamentaux de « ${doc} » avec thème central et branches hiérarchiques.`
+        : "Conçois une Carte Mentale interactive et arborescente des concepts fondamentaux avec thème central et branches hiérarchiques."
+    },
+    {
+      id: 'reports',
+      title: 'Reports',
+      badge: 'New!',
+      iconColor: '#f43f5e',
+      icon: (
+        <div className="flex items-center justify-center w-5 h-5 text-[#f43f5e]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <rect width="10" height="13" x="3" y="7" rx="1.5" />
+            <path d="M7 3h8a2 2 0 0 1 2 2v10" />
+            <path d="m17 2 1 2 2 1-2 1-1 2-1-2-2-1 2-1Z" fill="currentColor" stroke="none" />
+          </svg>
+        </div>
+      ),
+      toolType: 'resume',
+      getPrompt: (doc) => doc
+        ? `Rédige un Rapport de synthèse officiel et structuré de « ${doc} » avec vue d'ensemble, points clés, définitions et règles fondamentales.`
+        : "Rédige un Rapport de synthèse complet et structuré avec vue d'ensemble, points clés, définitions et règles fondamentales."
+    },
+    {
+      id: 'flashcards',
+      title: 'Flashcards',
+      iconColor: '#f59e0b',
+      icon: (
+        <div className="flex items-center justify-center w-5 h-5 text-[#f59e0b]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <rect width="11" height="14" x="4" y="6" rx="2" />
+            <path d="M8 3h7a2 2 0 0 1 2 2v11" />
+          </svg>
+        </div>
+      ),
+      toolType: 'carte-memoire',
+      getPrompt: (doc) => doc
+        ? `Crée un jeu complet de Flashcards interactives pour mémoriser les notions et formules de « ${doc} » (recto question, verso réponse).`
+        : "Crée un jeu complet de Flashcards interactives pour mémoriser les notions et formules essentielles (recto question, verso réponse)."
+    },
+    {
+      id: 'quiz',
+      title: 'Quiz',
+      iconColor: '#06b6d4',
+      icon: (
+        <div className="flex items-center justify-center w-5 h-5 text-[#06b6d4]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <rect width="15" height="15" x="4" y="4.5" rx="3" />
+            <path d="M9.5 9a2.5 2.5 0 0 1 4.5 1.5c0 1.5-2 2-2 2" />
+            <circle cx="12" cy="15.5" r="0.75" fill="currentColor" />
+          </svg>
+        </div>
+      ),
+      toolType: 'questionnaire',
+      getPrompt: (doc) => doc
+        ? `Génère un Quiz interactif à choix multiples sur « ${doc} » avec 4 options par question et explications pédagogiques.`
+        : "Génère un Quiz interactif à choix multiples avec 4 options par question et explications pédagogiques pour tester mes connaissances."
+    },
+    {
+      id: 'infographic',
+      title: 'Infographic',
+      iconColor: '#facc15',
+      icon: (
+        <div className="flex items-center justify-center w-5 h-5 text-[#facc15]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <rect width="3.5" height="10" x="5" y="10" rx="1" fill="currentColor" stroke="none" />
+            <circle cx="6.75" cy="6" r="1.5" fill="currentColor" />
+            <rect width="3.5" height="7" x="15" y="13" rx="1" fill="currentColor" stroke="none" />
+            <circle cx="16.75" cy="9" r="1.5" fill="currentColor" />
+            <rect width="3.5" height="12" x="10" y="8" rx="1" fill="currentColor" stroke="none" />
+            <circle cx="11.75" cy="4" r="1.5" fill="currentColor" />
+          </svg>
+        </div>
+      ),
+      toolType: 'infographie',
+      getPrompt: (doc) => doc
+        ? `Crée une Infographie pédagogique détaillée avec repères visuels, chronologie et métriques clés sur « ${doc} ».`
+        : "Crée une Infographie pédagogique détaillée avec repères visuels, chronologie et métriques clés."
+    },
+    {
+      id: 'data-table',
+      title: 'Data Table',
+      iconColor: '#38bdf8',
+      icon: (
+        <div className="flex items-center justify-center w-5 h-5 text-[#38bdf8]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <circle cx="5" cy="7" r="1.5" fill="currentColor" />
+            <line x1="9" y1="7" x2="19" y2="7" />
+            <circle cx="5" cy="12" r="1.5" fill="currentColor" />
+            <line x1="9" y1="12" x2="19" y2="12" />
+            <circle cx="5" cy="17" r="1.5" fill="currentColor" />
+            <line x1="9" y1="17" x2="19" y2="17" />
+          </svg>
+        </div>
+      ),
+      toolType: 'resume',
+      getPrompt: (doc) => doc
+        ? `Synthétise les données, concepts et formules de « ${doc} » sous forme de Tableau comparatif structuré.`
+        : "Synthétise les données, concepts et formules sous forme de Tableau comparatif structuré."
+    }
+  ], []);
+
+  // Déclenchement de la création lors de l'appui sur une carte
+  const handleSelectCard = (card: CreationProposalCard) => {
+    const promptToSend = card.getPrompt(resolvedDocName);
+    setIsGenerating(true);
+    setLiveStatusText("J'analyse votre demande pour concevoir votre création...");
+
+    // Envoi du prompt à l'IA
+    window.dispatchEvent(new CustomEvent('studycloud-trigger-creation', {
+      detail: {
+        prompt: promptToSend,
+        toolType: card.toolType,
+        source: 'right-menu-cards'
+      }
+    }));
+
+    // Sur mobile, basculer sur l'onglet Création pour voir l'animation en direct
+    window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
+  };
+
+  // Annulation manuelle de la création
+  const handleCancelGeneration = () => {
+    setIsGenerating(false);
+    window.dispatchEvent(new CustomEvent('studycloud-cancel-creation'));
+  };
+
+  // Écouteurs d'événements pour le statut en direct de l'IA et la réception de la création
   useEffect(() => {
     const handleCreationReady = (e: any) => {
       const creation = e.detail?.creation || e.detail;
       if (creation) {
+        setIsGenerating(false);
         setActiveCreation(creation);
       }
     };
@@ -35,22 +283,41 @@ export function RightMenu({
     const handleOpenCreation = (e: any) => {
       const creation = e.detail?.creation || e.detail?.item || e.detail;
       if (creation) {
+        setIsGenerating(false);
         setActiveCreation(creation);
       }
     };
 
     const handleClearCreation = () => {
       setActiveCreation(null);
+      setIsGenerating(false);
+    };
+
+    const handleCreationStatus = (e: any) => {
+      if (typeof e.detail?.isLoading === 'boolean') {
+        setIsGenerating(e.detail.isLoading);
+      }
+      if (e.detail?.statusText) {
+        setLiveStatusText(e.detail.statusText);
+      }
+    };
+
+    const handleCreationError = () => {
+      setIsGenerating(false);
     };
 
     window.addEventListener('ai-creation-ready', handleCreationReady as any);
     window.addEventListener('studycloud-open-creation', handleOpenCreation as any);
     window.addEventListener('studycloud-clear-creation', handleClearCreation as any);
+    window.addEventListener('ai-creation-status-update', handleCreationStatus as any);
+    window.addEventListener('ai-creation-error', handleCreationError as any);
 
     return () => {
       window.removeEventListener('ai-creation-ready', handleCreationReady as any);
       window.removeEventListener('studycloud-open-creation', handleOpenCreation as any);
       window.removeEventListener('studycloud-clear-creation', handleClearCreation as any);
+      window.removeEventListener('ai-creation-status-update', handleCreationStatus as any);
+      window.removeEventListener('ai-creation-error', handleCreationError as any);
     };
   }, []);
 
@@ -89,7 +356,7 @@ export function RightMenu({
       )}
 
       {/* Barre d'outils supérieure : Bouton Zoom jaune (Plein écran / Réduire) */}
-      <div className={`w-full flex items-center justify-between px-3 py-1.5 ${activeCreation ? 'bg-[#1a1c22]/90 border-zinc-700/60' : 'bg-[#120F17]/90 border-purple-900/30'} border-b shrink-0 z-20 shadow-xs backdrop-blur-sm`}>
+      <div className={`w-full flex items-center justify-between px-3 py-1.5 ${isGenerating ? 'bg-black border-zinc-900' : activeCreation ? 'bg-[#1a1c22]/90 border-zinc-700/60' : 'bg-[#120F17]/90 border-purple-900/30'} border-b shrink-0 z-40 shadow-xs backdrop-blur-sm transition-colors`}>
         <div className="flex items-center gap-2">
           {/* Bouton Zoom jaune */}
           <button
@@ -101,9 +368,28 @@ export function RightMenu({
             {isRightFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
           </button>
         </div>
+
+        {/* Titre discret de l'en-tête */}
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-300 select-none">
+          {isGenerating ? (
+            <span className="flex items-center gap-1.5 text-purple-400 animate-pulse">
+              <span className="w-2 h-2 rounded-full bg-purple-400" />
+              Génération en cours...
+            </span>
+          ) : activeCreation ? (
+            <span className="text-zinc-200 truncate max-w-[200px]">
+              {activeCreation.title || 'Création IA'}
+            </span>
+          ) : (
+            <span className="text-zinc-400 flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+              Studio de Créations
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* Zone principale : Affiche DotField en fond permanent, et par-dessus la création polymorphe */}
+      {/* Zone principale */}
       <div className="flex-1 w-full h-full min-h-0 overflow-hidden relative bg-[#120F17]">
         {/* Fond animé WebGL2 avec les petits points colorés */}
         <div className="absolute inset-0 z-0 w-full h-full">
@@ -131,9 +417,113 @@ export function RightMenu({
           />
         </div>
 
+        {/* Grille des cartes carrées proposées par l'IA (2 par ligne comme sur l'Image 2) */}
+        {!activeCreation && !isGenerating && (
+          <div className="absolute inset-0 z-10 overflow-y-auto px-4 py-6 flex flex-col items-center justify-center custom-scrollbar animate-fadeIn select-none">
+            {/* Titre spontané écrit par l'IA */}
+            <div className="w-full max-w-[420px] mb-4 text-left">
+              <p className="text-xs sm:text-[13px] font-medium text-zinc-300 min-h-[22px] flex items-center">
+                <span>{displayedSubtitle}</span>
+                {isTypingSubtitle && (
+                  <span className="inline-block w-0.5 h-3.5 bg-purple-400 ml-1 animate-pulse" />
+                )}
+              </p>
+            </div>
+
+            {/* Cartes : 2 par ligne, compactes, simples et élégantes */}
+            <div className="grid grid-cols-2 gap-2.5 w-full max-w-[420px]">
+              {proposalCards.map((card) => (
+                <button
+                  key={card.id}
+                  type="button"
+                  onClick={() => handleSelectCard(card)}
+                  className="group relative flex items-center gap-2.5 px-3.5 py-3 rounded-[20px] bg-[#18181b]/90 hover:bg-[#232328] border border-zinc-800/80 hover:border-zinc-700/90 shadow-sm transition-all duration-200 cursor-pointer active:scale-[0.98] text-left"
+                >
+                  <div className="shrink-0 transition-transform duration-200 group-hover:scale-110">
+                    {card.icon}
+                  </div>
+                  <span className="text-xs sm:text-[13px] font-semibold text-zinc-100 group-hover:text-white truncate">
+                    {card.title}
+                  </span>
+                  {card.badge && (
+                    <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 group-hover:text-pink-300 border border-zinc-700/60 shrink-0">
+                      {card.badge}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ÉCRAN NOIR PENDANT LA CRÉATION AVEC ANIMATION MAGICRINGS ET DIALOGUE EN DIRECT DE L'IA */}
+        {isGenerating && (
+          <div className="absolute inset-0 z-30 bg-black flex flex-col items-center justify-center overflow-hidden animate-fadeIn">
+            <div style={{ width: '100%', height: '500px', position: 'relative' }}>
+              <MagicRings
+                color="#A855F7"
+                colorTwo="#6366F1"
+                motion="pulse"
+                ringCount={6}
+                speed={1}
+                lineThickness={2}
+                glow={1}
+                hoverScale={1.2}
+                clickBurst
+                baseRadius={0.35}
+                radiusStep={0.1}
+                expansion={0.1}
+                taper={1.5}
+                rotation={0}
+                spin={0}
+                tilt={0}
+                dispersion={0}
+                grain={0}
+                opacity={1}
+                followMouse={false}
+                mouseInfluence={0.2}
+                hoverIntensity={1}
+                parallax={0.05}
+                intro
+              />
+
+              {/* Ce que l'IA fait en direct au milieu de l'écran / des anneaux */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center pointer-events-none z-20">
+                <div className="flex flex-col items-center gap-3 max-w-sm px-6 py-5 rounded-3xl bg-black/60 backdrop-blur-md border border-purple-500/25 shadow-[0_0_30px_rgba(168,85,247,0.2)]">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/30">
+                    <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+                    <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider">
+                      Création en direct
+                    </span>
+                  </div>
+
+                  {/* Statut dynamique en temps réel */}
+                  <p className="text-sm sm:text-base font-semibold text-white tracking-wide leading-relaxed animate-pulse">
+                    {liveStatusText || "Je conçois votre création..."}
+                  </p>
+
+                  <span className="text-[11px] font-medium text-zinc-400">
+                    L'IA structure vos données pédagogiques
+                  </span>
+
+                  {/* Bouton Annuler au centre */}
+                  <button
+                    type="button"
+                    onClick={handleCancelGeneration}
+                    className="mt-1 pointer-events-auto flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-900/90 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs border border-zinc-800 hover:border-zinc-700 transition-colors cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                    <span>Annuler</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Si une création est active : UniversalContentRenderer au premier plan avec transparence élégante */}
         {activeCreation && (
-          <div className="absolute inset-0 z-10 overflow-hidden flex flex-col bg-[#14121b]/80 backdrop-blur-sm animate-fadeIn">
+          <div className="absolute inset-0 z-20 overflow-hidden flex flex-col bg-[#14121b]/80 backdrop-blur-sm animate-fadeIn">
             <UniversalContentRenderer
               item={activeCreation}
               onClose={() => setActiveCreation(null)}
@@ -145,3 +535,4 @@ export function RightMenu({
     </div>
   );
 }
+export default RightMenu;

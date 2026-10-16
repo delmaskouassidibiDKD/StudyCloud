@@ -1034,6 +1034,9 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     }
     setIsWaitingServer(false);
     setIsTyping(false);
+    window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
+      detail: { isLoading: false, isCancelled: true }
+    }));
     setMessages(prev => {
       const last = prev[prev.length - 1];
       if (last && last.sender === 'ai' && last.isStreaming) {
@@ -1345,10 +1348,18 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         if (r?.name && !initialDocNames.includes(r.name)) initialDocNames.push(r.name);
       }
     }
-    setAiActivityText(getLiveAiActivity(userText, initialDocNames, 0, requestedTypeOverride));
+    const initialLiveStatus = getLiveAiActivity(userText, initialDocNames, 0, requestedTypeOverride);
+    setAiActivityText(initialLiveStatus);
+    window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
+      detail: { statusText: initialLiveStatus, isLoading: true, prompt: userText, toolType: requestedTypeOverride }
+    }));
     activityTimerRef.current = setInterval(() => {
       const elapsed = Math.floor((Date.now() - startTimestamp) / 1000);
-      setAiActivityText(getLiveAiActivity(userText, initialDocNames, elapsed, requestedTypeOverride));
+      const liveStatus = getLiveAiActivity(userText, initialDocNames, elapsed, requestedTypeOverride);
+      setAiActivityText(liveStatus);
+      window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
+        detail: { statusText: liveStatus, isLoading: true, prompt: userText, toolType: requestedTypeOverride }
+      }));
     }, 1000);
 
     // Mise à jour du titre de conversation si c'est le 1er message
@@ -1616,6 +1627,7 @@ ou
       if (abortSignal.aborted) {
         setIsWaitingServer(false);
         setIsTyping(false);
+        window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { isLoading: false, isCancelled: true } }));
         return;
       }
 
@@ -1699,6 +1711,7 @@ ou
 
         setActiveCreation(newCreation);
         window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
+        window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { isLoading: false } }));
         window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
 
         // Nettoyage radical du texte pour la discussion : JAMAIS de JSON brut !
@@ -1711,6 +1724,7 @@ ou
         // BRANCHE DISCUSSION SIMPLE DANS LE CHAT : Réponse directe sans rien déranger dans l'espace création
         const cleaned = cleanChatText(aiResult.chat_response || rawResponseText);
         fullResponseText = stripAiReasoningScratchpad(cleaned) || "✨ Votre demande a été traitée avec succès.";
+        window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { isLoading: false } }));
       }
 
       const effectiveModelName = aiResult.model || currentModelDisplay;
@@ -1782,6 +1796,7 @@ ou
       setIsWaitingServer(false);
       setIsTyping(false);
       window.dispatchEvent(new CustomEvent('ai-creation-error', { detail: { error: err.message } }));
+      window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { isLoading: false, isError: true } }));
       
       const isNetwork = isNetworkError(err);
       const isFriendlyMsg = err.message && (err.message.includes("StudyCloud") || err.message.includes("disponible"));
@@ -1803,14 +1818,20 @@ ou
 
   useEffect(() => {
     const handleAutoPrompt = (e: any) => {
-      const promptText = e.detail?.prompt;
-      const reqType = e.detail?.requested_type;
+      const promptText = e.detail?.prompt || e.detail?.text;
+      const reqType = e.detail?.requested_type || e.detail?.requestedType || e.detail?.toolType;
       if (promptText) {
         sendMessage(promptText, reqType);
       }
     };
     window.addEventListener('auto-prompt', handleAutoPrompt as any);
-    return () => window.removeEventListener('auto-prompt', handleAutoPrompt as any);
+    window.addEventListener('studycloud-trigger-creation', handleAutoPrompt as any);
+    window.addEventListener('studycloud-submit-prompt', handleAutoPrompt as any);
+    return () => {
+      window.removeEventListener('auto-prompt', handleAutoPrompt as any);
+      window.removeEventListener('studycloud-trigger-creation', handleAutoPrompt as any);
+      window.removeEventListener('studycloud-submit-prompt', handleAutoPrompt as any);
+    };
   }, [messages, isTyping, activePreviewItem, attachedResources, activeCreation, currentConversationId]);
 
   const handleSend = () => {
