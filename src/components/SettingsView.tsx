@@ -11,7 +11,26 @@ import proLogo from '../assets/pro-logo.jpg';
 
 export const SettingsView: React.FC = () => {
   const { user, logout } = useAuth();
-  const [activeSubView, setActiveSubView] = useState<'none' | 'promotion' | 'pricing' | 'notifications' | 'user-settings' | 'service'>('none');
+  const [activeSubView, setActiveSubView] = useState<'none' | 'promotion' | 'pricing' | 'notifications' | 'user-settings' | 'service'>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_settings_subview') || localStorage.getItem('studycloud_open_subview');
+      if (saved && ['promotion', 'pricing', 'notifications', 'user-settings', 'service'].includes(saved)) {
+        return saved as any;
+      }
+    } catch {}
+    return 'none';
+  });
+
+  useEffect(() => {
+    try {
+      if (activeSubView && activeSubView !== 'none') {
+        localStorage.setItem('studycloud_settings_subview', activeSubView);
+      } else {
+        localStorage.removeItem('studycloud_settings_subview');
+        localStorage.removeItem('studycloud_open_subview');
+      }
+    } catch {}
+  }, [activeSubView]);
   const [showContactMenu, setShowContactMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportText, setReportText] = useState('');

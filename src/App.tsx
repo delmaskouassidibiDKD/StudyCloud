@@ -185,7 +185,7 @@ export default function App() {
       }
     } catch (e) {}
     const saved = localStorage.getItem('unifolder_current_tab');
-    if (saved && ['folders', 'upload', 'share-portal', 'library', 'shared', 'settings', 'publish-file', 'ai-subscriptions'].includes(saved)) {
+    if (saved && ['folders', 'upload', 'share-portal', 'library', 'shared', 'settings', 'publish-file', 'ai-subscriptions', 'storage-menu'].includes(saved)) {
       return saved as NavigationTab;
     }
     return 'folders';
@@ -697,7 +697,23 @@ export default function App() {
     return 'folders';
   });
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
-  const [isStudySpaceOpen, setIsStudySpaceOpen] = useState(false);
+  const [isStudySpaceOpen, setIsStudySpaceOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('studycloud_is_study_space_open') === 'true';
+    } catch {}
+    return false;
+  });
+
+  useEffect(() => {
+    try {
+      if (isStudySpaceOpen) {
+        localStorage.setItem('studycloud_is_study_space_open', 'true');
+      } else {
+        localStorage.removeItem('studycloud_is_study_space_open');
+      }
+    } catch {}
+  }, [isStudySpaceOpen]);
+
   const [isStudySpaceFullscreen, setIsStudySpaceFullscreen] = useState(false);
 
   const setActivePreviewItem = (item: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean; folderName?: string; lockFullscreen?: boolean } | null) => {
@@ -763,7 +779,21 @@ export default function App() {
     } catch (e) {}
   }, [previewScrollMode]);
 
-  const [mobilePreviewTab, setMobilePreviewTab] = useState<0 | 1 | 2>(1);
+  const [mobilePreviewTab, setMobilePreviewTab] = useState<0 | 1 | 2>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_mobile_preview_tab');
+      if (saved === '0' || saved === '1' || saved === '2') {
+        return parseInt(saved, 10) as 0 | 1 | 2;
+      }
+    } catch {}
+    return 1;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_mobile_preview_tab', String(mobilePreviewTab));
+    } catch {}
+  }, [mobilePreviewTab]);
 
   useEffect(() => {
     const handleSwitchMobileTab = (e: any) => {

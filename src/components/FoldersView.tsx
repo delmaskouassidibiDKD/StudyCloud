@@ -129,15 +129,39 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     window.location.reload();
   };
   const [activeNotification, setActiveNotification] = useState<string | null>(null);
-  const [pricingInitialTab, setPricingInitialTab] = useState<'storage' | 'ai' | 'renewal'>('storage');
-  const [previousViewMode, setPreviousViewMode] = useState<string>('home');
-  // viewMode ne doit JAMAIS être restauré depuis localStorage - toujours démarrer à 'home'
-  const [viewMode, setViewMode] = useState<'home' | 'abondamment' | 'files-menu' | 'storage-menu' | 'schedule-menu' | 'notes-menu' | 'grades-menu' | 'calendar-menu' | 'favorites-menu' | 'clock-menu' | 'level-menu' | 'calculator-menu' | 'red-robot-menu' | string>('home');
+  const [pricingInitialTab, setPricingInitialTab] = useState<'storage' | 'ai' | 'renewal'>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_pricing_initial_tab');
+      if (saved === 'storage' || saved === 'ai' || saved === 'renewal') return saved;
+    } catch {}
+    return 'storage';
+  });
 
   useEffect(() => {
-    // Nettoyage : effacer toute ancienne valeur de viewMode dans localStorage
-    localStorage.removeItem('unifolder_view_mode');
-  }, []);
+    try {
+      localStorage.setItem('studycloud_pricing_initial_tab', pricingInitialTab);
+    } catch {}
+  }, [pricingInitialTab]);
+
+  const [previousViewMode, setPreviousViewMode] = useState<string>('home');
+  // Restauration persistante du viewMode pour conserver exactement le menu où se trouvait l'utilisateur lors d'une mise à jour ou actualisation
+  const [viewMode, setViewMode] = useState<'home' | 'abondamment' | 'files-menu' | 'storage-menu' | 'schedule-menu' | 'notes-menu' | 'grades-menu' | 'calendar-menu' | 'favorites-menu' | 'clock-menu' | 'level-menu' | 'calculator-menu' | 'red-robot-menu' | string>(() => {
+    try {
+      const saved = localStorage.getItem('unifolder_view_mode');
+      if (saved && saved.trim().length > 0) {
+        return saved;
+      }
+    } catch {}
+    return 'home';
+  });
+
+  useEffect(() => {
+    try {
+      if (viewMode) {
+        localStorage.setItem('unifolder_view_mode', viewMode);
+      }
+    } catch {}
+  }, [viewMode]);
 
   useEffect(() => {
     const handleOpenPricingEvent = (e: any) => {
@@ -154,7 +178,23 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
 
   // État et gestion du carrousel de l'écran d'accueil (Page 0 = Page vide, Page 1 = Écran d'accueil principal)
-  const [activePageIndex, setActivePageIndex] = useState<number>(1);
+  const [activePageIndex, setActivePageIndex] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_dashboard_page_index');
+      if (saved !== null) {
+        const val = parseInt(saved, 10);
+        if (!isNaN(val) && val >= 0 && val <= 2) return val;
+      }
+    } catch {}
+    return 1;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_dashboard_page_index', String(activePageIndex));
+    } catch {}
+  }, [activePageIndex]);
+
   const [dragOffset, setDragOffset] = useState<number>(0);
   const [isDragging, setIsDragging] = useState<boolean>(false);
 

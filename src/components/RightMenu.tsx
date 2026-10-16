@@ -33,7 +33,23 @@ export function RightMenu({
   isMobileScreen,
   setIsResizingRight
 }: RightMenuProps) {
-  const [activeCreation, setActiveCreation] = useState<any>(null);
+  const [activeCreation, setActiveCreation] = useState<any>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_active_creation');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
+
+  useEffect(() => {
+    try {
+      if (activeCreation) {
+        localStorage.setItem('studycloud_active_creation', JSON.stringify(activeCreation));
+      } else {
+        localStorage.removeItem('studycloud_active_creation');
+      }
+    } catch {}
+  }, [activeCreation]);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [liveStatusText, setLiveStatusText] = useState<string>('Je prépare votre création...');
   const [isRightDrawerOpen, setIsRightDrawerOpen] = useState<boolean>(false);

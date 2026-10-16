@@ -348,10 +348,28 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   setActivePreviewItem,
   onOpenCreateShareLink,
 }) => {
-  const [selectedCategory, setSelectedCategory] = useState('Tous');
+  const [selectedCategory, setSelectedCategory] = useState<string>(() => {
+    try {
+      return localStorage.getItem('studycloud_library_category') || 'Tous';
+    } catch {}
+    return 'Tous';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_library_category', selectedCategory);
+    } catch {}
+  }, [selectedCategory]);
+
   const [activeSubTab, setActiveSubTab] = useState<'librairie' | 'ressources' | 'liens'>(() => {
     return (localStorage.getItem('studycloud_library_subtab') as any) || 'ressources';
   });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_library_subtab', activeSubTab);
+    } catch {}
+  }, [activeSubTab]);
   const [selectedSchoolFilter, setSelectedSchoolFilter] = useState<string | null>(null);
   const [selectedFiliereFilter, setSelectedFiliereFilter] = useState<string | null>(null);
   const [selectedMatiereFilter, setSelectedMatiereFilter] = useState<string | null>(null);
