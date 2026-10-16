@@ -219,19 +219,14 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     });
   }, []);
 
-  // Synchronisation transparente en arrière-plan : préchargement en mémoire (0ms perçu)
+  // Synchronisation transparente en arrière-plan : mise à jour immédiate 0ms
   useEffect(() => {
     if (cloudWallpaperData?.url) {
       if (cloudWallpaperData.url !== dashboardWallpaper && !cloudWallpaperData.url.startsWith('blob:')) {
-        // Précharger l'image dans le cache du navigateur avant de l'afficher
-        const img = new Image();
-        img.src = cloudWallpaperData.url;
-        img.onload = () => {
-          setDashboardWallpaper(cloudWallpaperData.url);
-          try {
-            localStorage.setItem('studycloud_dashboard_wallpaper', cloudWallpaperData.url);
-          } catch {}
-        };
+        setDashboardWallpaper(cloudWallpaperData.url);
+        try {
+          localStorage.setItem('studycloud_dashboard_wallpaper', cloudWallpaperData.url);
+        } catch {}
       }
     } else if (cloudWallpaperData === null && dashboardWallpaper !== null) {
       // Cas où le fond d'écran a été réinitialisé depuis un autre appareil
@@ -248,9 +243,9 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       const wp = e?.detail?.wallpaper !== undefined 
         ? e.detail.wallpaper 
         : localStorage.getItem('studycloud_dashboard_wallpaper');
-      if (wp && !wp.startsWith('blob:')) {
+      if (wp) {
         setDashboardWallpaper(wp);
-      } else if (!wp) {
+      } else {
         setDashboardWallpaper(null);
       }
     };
@@ -1111,6 +1106,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             left: 0,
             width: '100vw',
             height: '100vh',
+            backgroundImage: `url("${dashboardWallpaper}")`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
             transform: 'translate3d(0, 0, 0)',
             willChange: 'transform'
           }}
@@ -1118,6 +1117,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           <img 
             src={dashboardWallpaper} 
             alt="Fond d'écran Tableau de Bord" 
+            loading="eager"
+            decoding="sync"
+            // @ts-ignore
+            fetchPriority="high"
             className="w-full h-full object-cover select-none filter brightness-[0.78] contrast-[1.05]" 
             style={{
               objectFit: 'cover',

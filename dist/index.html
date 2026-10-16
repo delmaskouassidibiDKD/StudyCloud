@@ -51,9 +51,18 @@
         if (localStorage.getItem('unifolder_dark_mode') === 'true') {
           document.documentElement.classList.add('dark');
         }
+        var wp = localStorage.getItem('studycloud_dashboard_wallpaper');
+        if (wp && !wp.startsWith('blob:')) {
+          var link = document.createElement('link');
+          link.rel = 'preload';
+          link.as = 'image';
+          link.href = wp;
+          link.fetchPriority = 'high';
+          document.head.appendChild(link);
+        }
       } catch (e) {}
     </script>
-    <script type="module" crossorigin src="/assets/index-Dk1jqqUk.js"></script>
+    <script type="module" crossorigin src="/assets/index-COhSCXu2.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-react-DQyCuIb2.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-icons-CL8U4wng.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-pdf-B5tYFR6d.js">

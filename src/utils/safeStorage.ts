@@ -32,8 +32,7 @@ const VOLATILE_PURGEABLE_KEYS = [
   'studycloud_secure_folder_files',
   'studycloud_downloaded_items',
   'studycloud_downloaded_files',
-  'studycloud_classeur_3d_folders',
-  'studycloud_dashboard_wallpaper_meta'
+  'studycloud_classeur_3d_folders'
 ];
 
 /**
@@ -60,7 +59,14 @@ export function purgeVolatileStorage(): void {
         convMsgKeys.push({ key: k, len: val ? val.length : 0 });
       } else if (k.startsWith('sc_fallback_') || k.startsWith('unifolder_cache_') || k.startsWith('pdfjs_')) {
         keysToRemove.push(k);
-      } else if (k !== 'unifolder_user_id' && k !== 'studycloud_user_id' && k !== 'studycloud_auth_token') {
+      } else if (
+        k !== 'unifolder_user_id' &&
+        k !== 'studycloud_user_id' &&
+        k !== 'studycloud_auth_token' &&
+        k !== 'studycloud_dashboard_wallpaper' &&
+        k !== 'studycloud_dashboard_wallpaper_meta' &&
+        k !== 'unifolder_user_avatar'
+      ) {
         try {
           const val = localStorage.getItem(k);
           if (val && (val.includes('data:image') || val.includes('data:application/pdf') || val.length > 200000)) {

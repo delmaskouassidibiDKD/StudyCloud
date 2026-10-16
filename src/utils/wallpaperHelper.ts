@@ -115,49 +115,81 @@ export async function applyDashboardWallpaper(
   name?: string,
   fileId?: string
 ): Promise<string> {
-  // 1. Conversion en base64 garanti et persistant
-  let persistentData = '';
-  try {
-    persistentData = await convertToWallpaperDataUrl(source, fileId);
-  } catch (err) {
-    console.warn('[WallpaperHelper] Erreur conversion dataURL, utilisation du fallback direct:', err);
-    if (typeof source === 'string') persistentData = source;
+  // 1. APPLICATION OPTIMISTE INSTANTANÉE (0ms) :
+  // Affiche immédiatement l'image à l'écran dès le clic sans attendre aucun calcul ni requête réseau
+  let immediateSource = '';
+  if (typeof source === 'string' && source) {
+    immediateSource = source;
+  } else if (source instanceof Blob) {
+    try {
+      immediateSource = URL.createObjectURL(source);
+    } catch {}
   }
 
-  if (!persistentData) {
-    throw new Error('Données du fond d\'écran indisponibles');
+  if (!immediateSource && fileId) {
+    try {
+      const b = await getFileBlob(fileId);
+      if (b) immediateSource = URL.createObjectURL(b);
+    } catch {}
   }
 
-  // 2. Sauvegarde en IndexedDB pour accès offline instantané
-  await storeThumbnailData(IDB_WALLPAPER_KEY, persistentData);
+  if (immediateSource) {
+    try {
+      localStorage.setItem(LS_WALLPAPER_KEY, immediateSource);
+      localStorage.setItem('unifolder_user_avatar', immediateSource);
+    } catch {}
+    window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: immediateSource } }));
+    window.dispatchEvent(new CustomEvent('studycloud_avatar_updated', { detail: { avatar: immediateSource } }));
+  }
 
-  // 3. Sauvegarde optimiste dans localStorage & propagation d'événements
-  try {
-    localStorage.setItem(LS_WALLPAPER_KEY, persistentData);
-    localStorage.setItem('unifolder_user_avatar', persistentData);
-  } catch {}
-
-  window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: persistentData } }));
-  window.dispatchEvent(new CustomEvent('studycloud_avatar_updated', { detail: { avatar: persistentData } }));
-
-  // 4. Téléversement vers Cloudflare R2 / D1
-  try {
-    const res = await CloudStorageAPI.saveWallpaper(persistentData, name || 'Fond d\'écran');
-    if (res?.success && res.wallpaper?.url) {
-      const permanentUrl = res.wallpaper.url;
+  // 2. Traitement d'optimisation et persistance en tâche de fond (asynchrone, non bloquant)
+  const backgroundSync = async () => {
+    try {
+      let persistentData = '';
       try {
-        localStorage.setItem(LS_WALLPAPER_KEY, permanentUrl);
-        localStorage.setItem(LS_WALLPAPER_META, JSON.stringify(res.wallpaper));
-      } catch {}
-      window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: permanentUrl } }));
-      invalidateCloudQueries.wallpaper().catch(() => {});
-      return permanentUrl;
-    }
-  } catch (cloudErr) {
-    console.warn('[WallpaperHelper] Sauvegarde Cloudflare différée:', cloudErr);
-  }
+        persistentData = await convertToWallpaperDataUrl(source || immediateSource, fileId);
+      } catch (err) {
+        console.warn('[WallpaperHelper] Erreur conversion dataURL, utilisation du fallback direct:', err);
+        if (typeof source === 'string' && source) persistentData = source;
+      }
 
-  return persistentData;
+      if (!persistentData && immediateSource) {
+        persistentData = immediateSource;
+      }
+
+      if (persistentData) {
+        // Sauvegarde en IndexedDB pour accès offline instantané
+        await storeThumbnailData(IDB_WALLPAPER_KEY, persistentData).catch(() => {});
+
+        try {
+          localStorage.setItem(LS_WALLPAPER_KEY, persistentData);
+          localStorage.setItem('unifolder_user_avatar', persistentData);
+        } catch {}
+
+        window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: persistentData } }));
+        window.dispatchEvent(new CustomEvent('studycloud_avatar_updated', { detail: { avatar: persistentData } }));
+
+        // Téléversement vers Cloudflare R2 / D1
+        const res = await CloudStorageAPI.saveWallpaper(persistentData, name || 'Fond d\'écran');
+        if (res?.success && res.wallpaper?.url) {
+          const permanentUrl = res.wallpaper.url;
+          try {
+            localStorage.setItem(LS_WALLPAPER_KEY, permanentUrl);
+            localStorage.setItem(LS_WALLPAPER_META, JSON.stringify(res.wallpaper));
+          } catch {}
+          window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: permanentUrl } }));
+          invalidateCloudQueries.wallpaper().catch(() => {});
+        }
+      }
+    } catch (bgErr) {
+      console.warn('[WallpaperHelper] Synchronisation arrière-plan:', bgErr);
+    }
+  };
+
+  // Démarrer la persistance en tâche de fond
+  backgroundSync();
+
+  return immediateSource || (typeof source === 'string' ? source : '');
 }
 
 /**

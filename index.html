@@ -51,6 +51,15 @@
         if (localStorage.getItem('unifolder_dark_mode') === 'true') {
           document.documentElement.classList.add('dark');
         }
+        var wp = localStorage.getItem('studycloud_dashboard_wallpaper');
+        if (wp && !wp.startsWith('blob:')) {
+          var link = document.createElement('link');
+          link.rel = 'preload';
+          link.as = 'image';
+          link.href = wp;
+          link.fetchPriority = 'high';
+          document.head.appendChild(link);
+        }
       } catch (e) {}
     </script>
   </head>
