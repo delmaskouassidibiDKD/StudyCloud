@@ -239,10 +239,81 @@ function parseQuizFromText(rawText: string, safeDocName: string): QuizContent {
  * Extraction dynamique d'une Carte Mentale à partir du texte / Markdown de l'IA
  */
 function parseMindMapFromText(rawText: string, safeDocName: string): MindMapContent {
-  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
   const rootLabel = safeDocName.replace(/\.[^/.]+$/, '') || 'Cours';
   const branches: MindMapNode[] = [];
   let currentBranch: MindMapNode | null = null;
+
+  // 1. Détection syntaxe Mermaid mindmap
+  if (rawText.includes('mindmap')) {
+    const rawLines = rawText.split('\n');
+    let inMindmap = false;
+    let detectedRoot = rootLabel;
+
+    for (const rawLine of rawLines) {
+      const trimmed = rawLine.trim();
+      if (!trimmed || trimmed.startsWith('%%')) continue;
+      if (trimmed.startsWith('mindmap')) {
+        inMindmap = true;
+        continue;
+      }
+      if (!inMindmap) continue;
+
+      const indentMatch = rawLine.match(/^(\s+)/);
+      const indent = indentMatch ? indentMatch[1].length : 0;
+
+      const cleanText = trimmed
+        .replace(/^root\s*/i, '')
+        .replace(/^[\(\[\{]{1,2}/, '')
+        .replace(/[\)\]\}]{1,2}$/, '')
+        .replace(/^[-*]\s*/, '')
+        .trim();
+
+      if (!cleanText) continue;
+
+      if (indent <= 2 && branches.length === 0) {
+        detectedRoot = cleanText;
+        continue;
+      }
+
+      if (indent <= 6) {
+        currentBranch = {
+          id: `branch-${branches.length + 1}`,
+          label: cleanText,
+          details: '',
+          children: []
+        };
+        branches.push(currentBranch);
+      } else if (currentBranch) {
+        currentBranch.children = currentBranch.children || [];
+        currentBranch.children.push({
+          id: `sub-${currentBranch.id}-${currentBranch.children.length + 1}`,
+          label: cleanText,
+          details: ''
+        });
+      }
+    }
+
+    if (branches.length > 0) {
+      return {
+        root: {
+          id: 'root-node',
+          label: detectedRoot,
+          details: 'Thème central',
+          children: branches
+        },
+        root_title: detectedRoot,
+        branches: branches.map(b => ({
+          title: b.label,
+          description: b.details || '',
+          children: b.children || [],
+          subBranches: (b.children || []).map(c => c.label)
+        }))
+      };
+    }
+  }
+
+  // 2. Détection standard par titres et puces
+  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
 
   for (const line of lines) {
     // En-têtes ou puces de niveau 1 (Branches principales)
@@ -858,11 +929,11 @@ export function parseOrBuildAiCreation(
         }
         case 'mindmap': {
           const root = dataObj.root || dataObj;
-          if (root && (root.label || root.children || dataObj.branches)) {
+          if (root && (root.label || root.title || root.children || dataObj.branches || dataObj.nodes)) {
             const rawChildren = Array.isArray(root.children)
               ? root.children
-              : (Array.isArray(dataObj.branches) ? dataObj.branches : []);
-            const rootLabel = sanitizeText(root.label || root.title || dataObj.root_title || safeDocName);
+              : (Array.isArray(dataObj.branches) ? dataObj.branches : (Array.isArray(dataObj.nodes) ? dataObj.nodes : []));
+            const rootLabel = sanitizeText(root.label || root.title || dataObj.root_title || dataObj.title || safeDocName);
             const defaultMmTitle = normType.includes('carte-mentale-2') || normType.includes('mindmap2')
               ? `Carte Mentale 2 : ${safeDocName}`
               : `Carte Mentale : ${safeDocName}`;
@@ -877,9 +948,12 @@ export function parseOrBuildAiCreation(
                 },
                 root_title: rootLabel,
                 branches: rawChildren.map((b: any, bIdx: number) => ({
-                  title: b.title || b.label || `Axe ${bIdx + 1}`,
+                  title: b.title || b.label || b.name || `Axe ${bIdx + 1}`,
                   description: b.description || b.details || '',
-                  subBranches: Array.isArray(b.children) ? b.children.map((c: any) => c.label || c.title || String(c)) : (b.subBranches || [])
+                  children: Array.isArray(b.children) ? b.children : (Array.isArray(b.nodes) ? b.nodes : (b.subBranches || [])),
+                  subBranches: Array.isArray(b.children)
+                    ? b.children.map((c: any) => typeof c === 'string' ? c : (c.formula ? `${c.label || c.title || ''} : $${c.formula}$` : (c.label || c.title || c.name || String(c))))
+                    : (b.subBranches || [])
                 }))
               }
             };

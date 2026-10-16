@@ -240,27 +240,180 @@ function getInitialView() {
   };
 }
 
+export function parseMermaidMindmap(code: string): any {
+  if (!code || typeof code !== 'string') return null;
+  const lines = code.split('\n');
+  let rootTitle = 'Carte Mentale';
+  const branches: Array<{ title: string; children: any[] }> = [];
+  let currentBranch: { title: string; children: any[] } | null = null;
+  let inMindmap = false;
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed || trimmed.startsWith('%%')) continue;
+    if (trimmed.startsWith('mindmap')) {
+      inMindmap = true;
+      continue;
+    }
+    if (!inMindmap) continue;
+
+    const indentMatch = rawLine.match(/^(\s+)/);
+    const indent = indentMatch ? indentMatch[1].length : 0;
+
+    let text = trimmed
+      .replace(/^root\s*/i, '')
+      .replace(/^[\(\[\{]{1,2}/, '')
+      .replace(/[\)\]\}]{1,2}$/, '')
+      .replace(/^[-*]\s*/, '')
+      .trim();
+
+    if (!text) continue;
+
+    if (indent <= 2 && branches.length === 0 && (!currentBranch || currentBranch.title !== text)) {
+      rootTitle = text;
+      continue;
+    }
+
+    if (indent <= 6) {
+      currentBranch = { title: text, children: [] };
+      branches.push(currentBranch);
+    } else if (currentBranch) {
+      currentBranch.children.push({ title: text });
+    }
+  }
+
+  if (branches.length > 0) {
+    return {
+      root_title: rootTitle,
+      branches
+    };
+  }
+  return null;
+}
+
+export function extractSubNodeText(sub: any, sIdx: number): string {
+  if (typeof sub === 'string') return sub.trim();
+  if (typeof sub === 'number') return String(sub);
+  if (!sub || typeof sub !== 'object') return `Sous-notion ${sIdx + 1}`;
+
+  // 1. Libellé / Notion / Concept principal
+  const main = (
+    sub.title ||
+    sub.label ||
+    sub.text ||
+    sub.concept ||
+    sub.notion ||
+    sub.name ||
+    sub.keyword ||
+    sub.content ||
+    sub.description ||
+    sub.value ||
+    sub.definition ||
+    ''
+  ).trim();
+
+  // 2. Formule mathématique ou scientifique
+  const rawFormula = (
+    sub.formula ||
+    sub.formule ||
+    sub.math ||
+    sub.equation ||
+    ''
+  ).trim();
+
+  let formattedFormula = '';
+  if (rawFormula) {
+    formattedFormula = rawFormula.startsWith('$') ? rawFormula : `$${rawFormula}$`;
+  }
+
+  // 3. Fusion notion + formule
+  if (main && formattedFormula) {
+    if (main.includes('$') || main.includes(rawFormula)) {
+      return main;
+    }
+    return `${main} : ${formattedFormula}`;
+  }
+
+  if (formattedFormula) {
+    return formattedFormula;
+  }
+
+  if (main) {
+    return main;
+  }
+
+  // 4. Recherche de toute propriété textuelle signifiante (anti-placeholder "Sous-notion X")
+  const anyStr = Object.entries(sub).find(
+    ([k, v]) => typeof v === 'string' && (v as string).trim() && !k.toLowerCase().includes('id') && !k.toLowerCase().includes('color')
+  )?.[1] as string;
+
+  return anyStr ? anyStr.trim() : `Sous-notion ${sIdx + 1}`;
+}
+
+export function extractSubList(item: any): any[] {
+  if (!item || typeof item !== 'object') return [];
+  if (Array.isArray(item.nodes) && item.nodes.length > 0) return item.nodes;
+  if (Array.isArray(item.children) && item.children.length > 0) return item.children;
+  if (Array.isArray(item.subBranches) && item.subBranches.length > 0) return item.subBranches;
+  if (Array.isArray(item.sub_branches) && item.sub_branches.length > 0) return item.sub_branches;
+  if (Array.isArray(item.subbranches) && item.subbranches.length > 0) return item.subbranches;
+  if (Array.isArray(item.subConcepts) && item.subConcepts.length > 0) return item.subConcepts;
+  if (Array.isArray(item.sub_concepts) && item.sub_concepts.length > 0) return item.sub_concepts;
+  if (Array.isArray(item.subconcepts) && item.subconcepts.length > 0) return item.subconcepts;
+  if (Array.isArray(item.items) && item.items.length > 0) return item.items;
+  if (Array.isArray(item.notions) && item.notions.length > 0) return item.notions;
+  if (Array.isArray(item.points) && item.points.length > 0) return item.points;
+  if (Array.isArray(item.elements) && item.elements.length > 0) return item.elements;
+  if (Array.isArray(item.formulas) && item.formulas.length > 0) return item.formulas;
+  if (Array.isArray(item.details) && item.details.length > 0) return item.details;
+  return [];
+}
+
 export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
   if (!data) return INITIAL_NODES;
   if (Array.isArray(data.nodes) && data.nodes.length > 0) return data.nodes;
 
-  const actualData = data.mind_map || data.mindmap || data.mindMap || data;
+  let actualData = data;
+  if (typeof actualData === 'string') {
+    const trimmed = actualData.trim();
+    if (trimmed.includes('mindmap')) {
+      const parsedMermaid = parseMermaidMindmap(trimmed);
+      if (parsedMermaid) actualData = parsedMermaid;
+    } else if (trimmed.startsWith('{') || trimmed.includes('```json')) {
+      try {
+        const jsonMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+        const parsed = JSON.parse(jsonMatch ? jsonMatch[1] : trimmed);
+        actualData = parsed;
+      } catch {}
+    }
+  }
 
-  let rootText = actualData.root_title || actualData.rootTitle || actualData.title || actualData.root?.text || actualData.root?.label || fallbackTitle || 'Carte Mentale';
+  if (actualData && typeof actualData === 'object') {
+    const possibleMermaid = actualData.mermaid || actualData.mermaidCode || actualData.code;
+    if (typeof possibleMermaid === 'string' && possibleMermaid.includes('mindmap')) {
+      const parsed = parseMermaidMindmap(possibleMermaid);
+      if (parsed) actualData = parsed;
+    }
+  }
+
+  const unnested = actualData?.mind_map || actualData?.mindmap || actualData?.mindMap || actualData?.creation_data || actualData;
+  if (!unnested) return INITIAL_NODES;
+
+  let rootText = unnested.root_title || unnested.rootTitle || unnested.title || unnested.root?.text || unnested.root?.label || unnested.root?.title || fallbackTitle || 'Carte Mentale';
   let level1List: Array<any> = [];
 
-  if (Array.isArray(actualData.branches)) {
-    level1List = actualData.branches;
-  } else if (Array.isArray(actualData.root?.children)) {
-    level1List = actualData.root.children;
-  } else if (Array.isArray(actualData.concepts)) {
-    level1List = actualData.concepts;
-  } else if (Array.isArray(actualData.themes)) {
-    level1List = actualData.themes;
-  } else if (Array.isArray(actualData.cards)) {
-    level1List = actualData.cards;
-  } else if (Array.isArray(actualData)) {
-    level1List = actualData;
+  if (Array.isArray(unnested.branches)) {
+    level1List = unnested.branches;
+  } else if (Array.isArray(unnested.root?.children)) {
+    level1List = unnested.root.children;
+  } else if (Array.isArray(unnested.concepts)) {
+    level1List = unnested.concepts;
+  } else if (Array.isArray(unnested.themes)) {
+    level1List = unnested.themes;
+  } else if (Array.isArray(unnested.cards)) {
+    level1List = unnested.cards;
+  } else if (Array.isArray(unnested)) {
+    level1List = unnested;
   }
 
   if (level1List.length === 0) {
@@ -327,17 +480,17 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
       width: branchWidth
     });
 
-    const subList = Array.isArray(item.nodes) ? item.nodes : (Array.isArray(item.children) ? item.children : (Array.isArray(item.items) ? item.items : (Array.isArray(item.subconcepts) ? item.subconcepts : [])));
+    const subList = extractSubList(item);
     if (subList.length > 0) {
       const hasLongSub = subList.some((s: any) => {
-        const str = typeof s === 'string' ? s : (s.text || s.title || '');
+        const str = typeof s === 'string' ? s : (s.text || s.title || s.label || s.formula || '');
         return str.length > 30 || str.includes('$') || str.includes('\n');
       });
       const subSpacing = hasLongSub ? 52 : 44;
       const subStartY = branchY - ((subList.length - 1) * subSpacing) / 2;
       subList.forEach((sub: any, sIdx: number) => {
-        const subText = typeof sub === 'string' ? sub : (sub.text || sub.title || sub.name || `Sous-notion ${sIdx + 1}`);
-        const subWidth = Math.min(420, Math.max(110, Math.round(subText.length * 8 + 22)));
+        const subText = extractSubNodeText(sub, sIdx);
+        const subWidth = Math.min(440, Math.max(110, Math.round(subText.length * 8 + 24)));
         result.push({
           id: `${branchId}_sub_${sIdx}`,
           parentId: branchId,
@@ -375,17 +528,17 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
       width: branchWidth
     });
 
-    const subList = Array.isArray(item.nodes) ? item.nodes : (Array.isArray(item.children) ? item.children : (Array.isArray(item.items) ? item.items : (Array.isArray(item.subconcepts) ? item.subconcepts : [])));
+    const subList = extractSubList(item);
     if (subList.length > 0) {
       const hasLongSub = subList.some((s: any) => {
-        const str = typeof s === 'string' ? s : (s.text || s.title || '');
+        const str = typeof s === 'string' ? s : (s.text || s.title || s.label || s.formula || '');
         return str.length > 30 || str.includes('$') || str.includes('\n');
       });
       const subSpacing = hasLongSub ? 52 : 44;
       const subStartY = branchY - ((subList.length - 1) * subSpacing) / 2;
       subList.forEach((sub: any, sIdx: number) => {
-        const subText = typeof sub === 'string' ? sub : (sub.text || sub.title || sub.name || `Sous-notion ${sIdx + 1}`);
-        const subWidth = Math.min(420, Math.max(110, Math.round(subText.length * 8 + 22)));
+        const subText = extractSubNodeText(sub, sIdx);
+        const subWidth = Math.min(440, Math.max(110, Math.round(subText.length * 8 + 24)));
         result.push({
           id: `${branchId}_sub_${sIdx}`,
           parentId: branchId,

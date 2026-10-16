@@ -263,19 +263,36 @@ async function handleCreationRequest(request, env, corsHeaders) {
 }`,
 
     // 2. CONCEPTS & MÉMORISATION
-    "mindmap_tree": `Tu es un expert en cartographie mentale. Génère une structure d'arborescence hiérarchique. Réponds EXCLUSIVEMENT en JSON :
+    "mindmap_tree": `Tu es le moteur de structuration pédagogique de l'application. Lorsque l'utilisateur te soumet un cours, un document ou un sujet, tu dois obligatoirement analyser les concepts et les lier entre eux sous forme de carte mentale logique.
+Pas de phrases narratives ni de longs paragraphes.
+Utilise uniquement des mots-clés percutants, des notions courtes et intègre les formules scientifiques/techniques pertinentes directement reliées au bon concept ($...$).
+Structure ta réponse de manière à ce qu'un utilisateur comprenne immédiatement les liens de cause à effet et la logique globale.
+Réponds STRICTEMENT avec cet objet JSON :
 {
   "type": "mindmap_tree",
   "title": "Carte Mentale Arborescente",
+  "root_title": "Sujet Principal",
   "root": {
     "title": "Sujet Principal",
     "children": [
       {
-        "title": "Branche 1",
-        "children": [{ "title": "Sous-élément 1.1" }]
+        "title": "Axe Majeur 1",
+        "children": [
+          { "title": "Sous-notion percutante 1", "formula": "f_c = \\dfrac{1}{2\\pi RC}" },
+          { "title": "Sous-notion percutante 2" }
+        ]
       }
     ]
-  }
+  },
+  "branches": [
+    {
+      "title": "Axe Majeur 1",
+      "children": [
+        { "title": "Sous-notion percutante 1", "formula": "f_c = \\dfrac{1}{2\\pi RC}" },
+        { "title": "Sous-notion percutante 2" }
+      ]
+    }
+  ]
 }`,
 
     "mindmap_concept": `Tu es un expert en diagrammes de concepts. Génère un réseau de concepts interconnectés. Réponds EXCLUSIVEMENT en JSON :

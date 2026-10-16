@@ -1163,25 +1163,43 @@ Réponds STRICTEMENT avec cet objet JSON :
     case "carte-mentale":
       return {
         agentName: "ChartMindmapAgent",
-        systemPrompt: `Tu es l'Agent Cartographe Conceptuel de StudyCloud. Génère un arbre hiérarchique clair des notions.
-Réponds STRICTEMENT avec cet objet JSON :
+        systemPrompt: `Tu es le moteur de structuration pédagogique de l'application StudyCloud. Lorsque l'utilisateur te soumet un cours, un document ou un sujet, tu dois obligatoirement analyser les concepts et les lier entre eux sous forme de carte mentale logique.
+RÈGLES SYSTÈME STRICTES DE FORMATAGE :
+1. PAS DE PHRASES NARRATIVES NI DE LONGS PARAGRAPHES.
+2. Utilise UNIQUEMENT DES MOTS-CLÉS PERCUTANTS et des notions courtes.
+3. INTÈGRE LES FORMULES SCIENTIFIQUES/TECHNIQUES PERTINENTES directement reliées au bon concept (ex: KaTeX $f_c = \\dfrac{1}{2\\pi RC}$, $Q_0 = \\dfrac{1}{R}\\sqrt{\\dfrac{L}{C}}$).
+4. Structure ta réponse de manière à ce qu'un utilisateur comprenne immédiatement les liens de cause à effet et la logique globale (Thème central -> Axes majeurs -> Sous-notions et Formules).
+5. INTERDICTION ABSOLUE de renvoyer du texte brut narratif ou des libellés vides comme "Sous-notion 1", "Sous-notion 2" : chaque nœud doit porter le vrai terme ou la formule exacte issue du document.
+Réponds STRICTEMENT avec cet objet JSON exploitable par le front-end :
 {
   "type": "carte-mentale",
   "title": "Carte Mentale : ${docTitle}",
+  "root_title": "${docTitle}",
   "root": {
     "id": "root",
+    "title": "${docTitle}",
     "label": "${docTitle}",
     "children": [
       {
         "id": "concept_1",
-        "label": "Notion Majeure 1",
-        "description": "Détail de la notion",
+        "title": "Axe Majeur 1 (ex: Définition & Rôle)",
+        "label": "Axe Majeur 1",
         "children": [
-          { "id": "sub_1", "label": "Sous-notion A" }
+          { "id": "sub_1", "title": "Sous-notion percutante 1", "label": "Sous-notion percutante 1", "formula": "f_c = \\dfrac{1}{2\\pi RC}" },
+          { "id": "sub_2", "title": "Sous-notion percutante 2", "label": "Sous-notion percutante 2" }
         ]
       }
     ]
-  }
+  },
+  "branches": [
+    {
+      "title": "Axe Majeur 1",
+      "children": [
+        { "title": "Sous-notion percutante 1", "label": "Sous-notion percutante 1", "formula": "f_c = \\dfrac{1}{2\\pi RC}" },
+        { "title": "Sous-notion percutante 2", "label": "Sous-notion percutante 2" }
+      ]
+    }
+  ]
 }`
       };
 
@@ -1390,7 +1408,7 @@ Réponds STRICTEMENT avec cet objet JSON :
 function normalizeCreationType(raw) {
   const s = String(raw || "").trim().toLowerCase();
   if (s === "qcm" || s === "quiz" || s === "questionnaire" || s === "questionnaire-test") return "questionnaire";
-  if (s === "mindmap" || s === "carte-mentale" || s === "carte_mentale") return "carte-mentale";
+  if (s === "mindmap" || s === "carte-mentale" || s === "carte_mentale" || s === "carte-mentale-2" || s === "mindmap2") return "carte-mentale";
   if (s === "flashcards" || s === "carte-memoire" || s === "carte_memoire" || s === "flashcard") return "carte-memoire";
   if (s === "summary" || s === "resume" || s === "fiche") return "resume";
   if (s === "pdf" || s === "polycopie") return "pdf";

@@ -256,12 +256,18 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
       ? col.items
       : Array.isArray(col.children)
       ? col.children
+      : Array.isArray(col.subBranches)
+      ? col.subBranches
+      : Array.isArray(col.sub_branches)
+      ? col.sub_branches
+      : Array.isArray(col.subConcepts)
+      ? col.subConcepts
       : [];
 
     let maxW = Math.max(260, Math.min(380, colTitle.length * 9 + 40));
     items.forEach((item: any) => {
-      const itTitle = typeof item === 'string' ? '' : (item.title || item.pillTitle || item.name || '');
-      const itDesc = typeof item === 'string' ? item : (item.description || item.desc || item.body || item.title || '');
+      const itTitle = typeof item === 'string' ? '' : (item.title || item.pillTitle || item.name || item.label || item.concept || '');
+      const itDesc = typeof item === 'string' ? item : (item.description || item.desc || item.body || item.details || item.formula || item.title || item.label || '');
       if (itDesc.length > 90 || itDesc.includes('$')) {
         maxW = Math.max(maxW, 300);
       }
@@ -291,8 +297,13 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
 
     let curY = 225 + colHeight / 2 + 55;
     items.forEach((item: any, iIdx: number) => {
-      const cardTitle = (typeof item === 'string' ? `Point ${iIdx + 1}` : (item.title || item.pillTitle || item.pillText || item.name || `Point ${iIdx + 1}`)).toUpperCase();
-      const cardDesc = typeof item === 'string' ? item : (item.description || item.desc || item.body || item.title || '');
+      const cardTitle = (typeof item === 'string' ? `Point ${iIdx + 1}` : (item.title || item.pillTitle || item.pillText || item.label || item.concept || item.name || `Point ${iIdx + 1}`)).toUpperCase();
+      let cardDesc = typeof item === 'string' ? item : (item.description || item.desc || item.body || item.details || item.content || item.title || item.label || '');
+      const itemFormula = typeof item === 'object' ? (item.formula || item.formule || item.math || item.equation || '') : '';
+      if (itemFormula) {
+        const cleanFormula = itemFormula.startsWith('$') ? itemFormula : `$${itemFormula}$`;
+        cardDesc = cardDesc ? `${cardDesc} : ${cleanFormula}` : cleanFormula;
+      }
       
       const cardH = Math.max(120, Math.min(320, 75 + Math.ceil(cardDesc.length / 26) * 22));
       const cardPillW = Math.max(120, Math.min(colWidth - 20, cardTitle.length * 8.5 + 26));

@@ -2036,6 +2036,43 @@ ou
     -> INTÈGRE DES CALCULS ET PROBLÈMES CONCRETS : Ne te limite pas à des définitions verbales. Pose des vrais calculs numériques chiffrés dès que le cours comporte des formules ($f_0$, bande passante \\Delta f, facteur de qualité Q_0, valeurs numériques réelles, dérivées, impédances, intégrales, lois physiques).
     -> Pour les Vrai ou Faux ('vrai-ou-faux', 'vrai-ou-faux-test') : Équilibre strictement environ 50% de VRAI et 50% de FAUX avec des affirmations stimulantes et subtiles.`;
 
+      systemContent += `\n\n9. DIRECTIVE SYSTÈME STRICTE DE STRUCTURATION PÉDAGOGIQUE POUR LES CARTES MENTALES ('carte-mentale' et 'carte-mentale-2') :
+Tu es le moteur de structuration pédagogique de l'application. Lorsque l'utilisateur te soumet un cours, un document ou un sujet, tu dois obligatoirement analyser les concepts et les lier entre eux sous forme de carte mentale logique.
+- PAS DE PHRASES NARRATIVES NI DE LONGS PARAGRAPHES.
+- UTILISE UNIQUEMENT DES MOTS-CLÉS PERCUTANTS, des notions courtes et précises.
+- INTÈGRE LES FORMULES SCIENTIFIQUES/TECHNIQUES PERTINENTES directement reliées au bon concept (ex: 'Fréquence de coupure : $f_c = \\dfrac{1}{2\\pi RC}$', 'Gain statique : $T_0 = -\\dfrac{R_2}{R_1}$', 'Facteur de qualité : $Q_0 = \\dfrac{1}{R}\\sqrt{\\dfrac{L}{C}}$').
+- Structure ta réponse de manière à ce qu'un utilisateur comprenne immédiatement les liens de cause à effet et la logique globale (Thème central -> Axes majeurs -> Sous-notions et Formules).
+- FORMAT DE SORTIE STRUCTURÉ EXPLOITABLE PAR LE FRONT-END (JSON ou Mermaid) :
+  Dans 'creation_data', fournis impérativement la structure hiérarchique :
+  \`\`\`json
+  {
+    "root_title": "Thème Central du Cours",
+    "root": {
+      "title": "Thème Central du Cours",
+      "children": [
+        {
+          "title": "Axe Majeur 1 (ex: Définition & Rôle)",
+          "children": [
+            { "title": "Sous-notion percutante 1", "formula": "f_c = \\dfrac{1}{2\\pi RC}" },
+            { "title": "Sous-notion percutante 2" }
+          ]
+        }
+      ]
+    },
+    "branches": [
+      {
+        "title": "Axe Majeur 1",
+        "children": [
+          { "title": "Sous-notion percutante 1", "formula": "f_c = \\dfrac{1}{2\\pi RC}" },
+          { "title": "Sous-notion percutante 2" }
+        ]
+      }
+    ]
+  }
+  \`\`\`
+  Alternativement, tu peux inclure un champ 'mermaid': "mindmap\\n  root((Thème))\\n    Axe 1\\n      Notion 1\\n      Formule: $...$" qui sera dessiné à l'écran.
+- INTERDICTION FORMELLE d'utiliser des placeholders vides comme 'Sous-notion 1', 'Sous-notion 2', 'Branche 1' : chaque nœud DOIT porter le vrai concept ou la formule du cours !`;
+
       if (docNames.length > 0) {
         systemContent += `\n\nDOCUMENTS FOURNIS PAR L'ÉTUDIANT :\nL'utilisateur a ouvert ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct et complet au contenu textuel de ces documents.`;
       }
@@ -2125,15 +2162,15 @@ ou
           toolType: normType,
         };
         companionChatMessage = aiResult.chat_response || '';
-      } else if (hasCreationClues) {
+      } else if (hasCreationClues || rawResponseText.includes('mindmap')) {
         const jsonMatch = rawResponseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || rawResponseText.match(/(\{[\s\S]*\})/);
         const candidate = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : rawResponseText;
         const parsed = safeJsonParse(candidate);
 
         if (parsed && typeof parsed === 'object') {
-          const parsedData = parsed.creation_data || (parsed.questions || parsed.affirmations || parsed.cards || parsed.root || parsed.overview || parsed.sections || parsed.exercises || parsed.exercices || parsed.written_exercise || parsed.complete_exam ? parsed : null);
+          const parsedData = parsed.creation_data || (parsed.questions || parsed.affirmations || parsed.cards || parsed.root || parsed.branches || parsed.mermaid || parsed.overview || parsed.sections || parsed.exercises || parsed.exercices || parsed.written_exercise || parsed.complete_exam ? parsed : null);
           if (parsedData) {
-            const detectedType = parsed.creation_type || (parsed.questions ? 'questionnaire' : parsed.affirmations ? 'vrai-ou-faux' : parsed.cards ? 'carte-memoire' : parsed.root ? 'carte-mentale' : parsed.overview ? 'resume' : explicitToolType || 'questionnaire');
+            const detectedType = parsed.creation_type || (parsed.questions ? 'questionnaire' : parsed.affirmations ? 'vrai-ou-faux' : parsed.cards ? 'carte-memoire' : (parsed.root || parsed.branches || parsed.mermaid) ? 'carte-mentale' : parsed.overview ? 'resume' : explicitToolType || 'questionnaire');
             const normType = normalizeCreationType(detectedType);
             creationParsed = {
               title: parsed.creation_title || parsed.title || `${normType.toUpperCase()} : ${mainDocName}`,
@@ -2141,6 +2178,19 @@ ou
               toolType: normType,
             };
             companionChatMessage = parsed.chat_message || parsed.chat_response || '';
+          }
+        }
+
+        // Détection de Mermaid Mindmap direct dans la réponse
+        if (!creationParsed) {
+          const mermaidMindmapMatch = rawResponseText.match(/```(?:mermaid)?\s*(mindmap[\s\S]*?)```/i) || (rawResponseText.trim().startsWith('mindmap') ? [rawResponseText, rawResponseText] : null);
+          if (mermaidMindmapMatch) {
+            creationParsed = {
+              title: `Carte Mentale : ${mainDocName}`,
+              content: { mermaid: mermaidMindmapMatch[1].trim() },
+              toolType: 'carte-mentale'
+            };
+            companionChatMessage = "J'ai conçu votre carte mentale logique interactive !";
           }
         }
 
