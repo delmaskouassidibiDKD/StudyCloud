@@ -38,6 +38,73 @@ function sanitizeText(str: any): string {
 }
 
 /**
+ * Mélange aléatoirement les options d'une question à choix multiples tout en recalculant
+ * fidèlement l'index de la bonne réponse, pour garantir que la bonne réponse ne soit jamais
+ * prévisiblement toujours au début (option 1 ou 2).
+ */
+export function shuffleOptionsWithCorrectIndex(
+  options: string[],
+  correctIndex: number
+): { shuffledOptions: string[]; newCorrectIndex: number } {
+  if (!options || options.length <= 1) {
+    return {
+      shuffledOptions: options || [],
+      newCorrectIndex: Math.max(0, Math.min(correctIndex || 0, (options?.length || 1) - 1)),
+    };
+  }
+
+  // Ne pas mélanger un Vrai/Faux binaire canonique pour préserver l'ordre Vrai puis Faux
+  const isBinaryTrueFalse =
+    options.length === 2 &&
+    options.some(o => /^(vrai|true)/i.test(o.trim())) &&
+    options.some(o => /^(faux|false)/i.test(o.trim()));
+
+  if (isBinaryTrueFalse) {
+    return {
+      shuffledOptions: options,
+      newCorrectIndex: Math.max(0, Math.min(correctIndex || 0, options.length - 1)),
+    };
+  }
+
+  const safeCorrIdx = Math.max(0, Math.min(correctIndex || 0, options.length - 1));
+
+  // Association de chaque option avec un drapeau indiquant si c'est la bonne réponse
+  const items = options.map((opt, i) => ({
+    opt,
+    isCorrect: i === safeCorrIdx,
+  }));
+
+  // Fisher-Yates shuffle
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const temp = items[i];
+    items[i] = items[j];
+    items[j] = temp;
+  }
+
+  const shuffledOptions = items.map(item => item.opt);
+  const foundIdx = items.findIndex(item => item.isCorrect);
+  const newCorrectIndex = foundIdx >= 0 ? foundIdx : 0;
+
+  return {
+    shuffledOptions,
+    newCorrectIndex,
+  };
+}
+
+/**
+ * Nettoie les explications des préfixes statiques de lettres (ex: "L'option A est correcte car...")
+ * pour que l'explication reste vraie et naturelle même une fois les options mélangées.
+ */
+export function cleanExplanationOfStaticLetterPrefixes(explanation: string): string {
+  if (!explanation || typeof explanation !== 'string') return '';
+  return explanation
+    .replace(/^(?:L'option|La proposition|La réponse|Réponse)\s+[A-D1-4]\s*(?:est\s+correcte\s*)?[:\-–—]\s*/i, '')
+    .replace(/^La\s+bonne\s+réponse\s+est\s+(?:l'option|la\s+proposition|la\s+lettre)?\s*[A-D1-4][\s.:,\-–—]*/i, '')
+    .trim();
+}
+
+/**
  * Nettoyage et validation d'un Quiz QCM sans injection de questions factices
  */
 function autoCorrectQuiz(quiz: any, safeDocName: string): QuizContent {
@@ -61,17 +128,21 @@ function autoCorrectQuiz(quiz: any, safeDocName: string): QuizContent {
     let ansIdx = typeof q?.answerIndex === 'number' ? Math.floor(q.answerIndex) : 0;
     if (ansIdx < 0 || ansIdx >= rawOptions.length) ansIdx = 0;
 
+    // Mélange aléatoire obligatoire des options avec recalcul fidèle de l'index
+    const { shuffledOptions, newCorrectIndex } = shuffleOptionsWithCorrectIndex(rawOptions, ansIdx);
+
     let expl = sanitizeText(q?.explanation);
     if (!expl) {
       expl = `La proposition correcte est validée par le cours "${safeDocName}".`;
     }
+    const cleanExpl = cleanExplanationOfStaticLetterPrefixes(expl) || expl;
 
     validQuestions.push({
       id: sanitizeText(q?.id) || `q-${validQuestions.length + 1}`,
       question: qText,
-      options: rawOptions,
-      answerIndex: ansIdx,
-      explanation: expl,
+      options: shuffledOptions,
+      answerIndex: newCorrectIndex,
+      explanation: cleanExpl,
     });
   }
 
@@ -135,10 +206,21 @@ function parseQuizFromText(rawText: string, safeDocName: string): QuizContent {
     questions.push(currentQ);
   }
 
+  const shuffledQuestions = questions.map(q => {
+    const { shuffledOptions, newCorrectIndex } = shuffleOptionsWithCorrectIndex(q.options, q.answerIndex);
+    const cleanExpl = cleanExplanationOfStaticLetterPrefixes(q.explanation) || q.explanation;
+    return {
+      ...q,
+      options: shuffledOptions,
+      answerIndex: newCorrectIndex,
+      explanation: cleanExpl,
+    };
+  });
+
   return {
     title: `Quiz : ${safeDocName}`,
     difficulty: 'Moyen',
-    questions: questions.length > 0 ? questions : [
+    questions: shuffledQuestions.length > 0 ? shuffledQuestions : [
       {
         id: 'q-1',
         question: `Compréhension du document : ${safeDocName}`,

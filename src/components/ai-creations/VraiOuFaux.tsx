@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Check, X, RotateCcw, HelpCircle, CheckCircle2, AlertCircle } from 'lucide-react';
 import { AffirmationVraiFaux } from './types';
@@ -41,7 +41,7 @@ function normalizeAffirmations(input: any): AffirmationVraiFaux[] {
 }
 
 export default function VraiOuFaux({ data }: { data?: any }) {
-  const dynamicList = normalizeAffirmations(data);
+  const dynamicList = useMemo(() => normalizeAffirmations(data), [data]);
   const affirmations: AffirmationVraiFaux[] = dynamicList;
 
   const [currentIndex, setCurrentIndex] = useState(0);

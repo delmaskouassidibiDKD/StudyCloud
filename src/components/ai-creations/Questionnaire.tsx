@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, XCircle, RotateCcw, Award, ChevronRight, HelpCircle } from 'lucide-react';
 import { QuestionQCM } from './types';
 import { MathText } from '../MathText';
+import { shuffleOptionsWithCorrectIndex, cleanExplanationOfStaticLetterPrefixes } from '../../services/aiCreationGenerator';
 
 
 
@@ -165,18 +166,21 @@ function normalizeQuestions(input: any): QuestionQCM[] {
       explText = q.explication || q.justification || '';
     }
 
+    const { shuffledOptions, newCorrectIndex } = shuffleOptionsWithCorrectIndex(cleanOptions, corrIdx);
+    const sanitizedExpl = cleanExplanationOfStaticLetterPrefixes(explText);
+
     return {
       id: q.id || `q_${idx + 1}`,
       question: rawQuestion,
-      options: cleanOptions,
-      correctIndex: Math.max(0, Math.min(corrIdx, cleanOptions.length - 1)),
-      explanation: explText
+      options: shuffledOptions,
+      correctIndex: newCorrectIndex,
+      explanation: sanitizedExpl || explText
     };
   });
 }
 
 export default function Questionnaire({ data }: { data?: any }) {
-  const dynamicQuestions = normalizeQuestions(data);
+  const dynamicQuestions = useMemo(() => normalizeQuestions(data), [data]);
   const questions: QuestionQCM[] = dynamicQuestions;
 
   const [currentIndex, setCurrentIndex] = useState(0);

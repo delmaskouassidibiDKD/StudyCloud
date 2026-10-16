@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
 import {
   Check,
@@ -49,7 +49,7 @@ function normalizeAffirmations(input: any): AffirmationVraiFaux[] {
 }
 
 export default function VraiOuFauxTest({ data }: { data?: any }) {
-  const dynamicList = normalizeAffirmations(data);
+  const dynamicList = useMemo(() => normalizeAffirmations(data), [data]);
   const affirmations: AffirmationVraiFaux[] = dynamicList;
 
   const [answers, setAnswers] = useState<Record<string, boolean>>({});

@@ -2022,6 +2022,20 @@ ou
      -> TU DOIS IMPÉRATIVEMENT L'INTERPELLER DANS LE CHAT en lui demandant avec bienveillance d'indiquer la matière ou le chapitre précis qu'il souhaite réviser, ou de joindre son fichier de cours.
      -> TU DOIS OBLIGATOIREMENT terminer ta réponse par le bloc [QUESTIONS_SUGGÉRÉES] avec 4 exemples concrets de prompts de création portant sur des matières variées (Maths, Physique, SVT, Informatique, etc.) sous forme de boutons cliquables.`;
 
+      systemContent += `\n\n8. POSITION ALÉATOIRE DES BONNES RÉPONSES ET DIVERSITÉ EXTRÊME DES QUESTIONS (ZÉRO QUESTION IDENTIQUE) :
+- POSITION STRICTEMENT ALÉATOIRE DANS LES QCM ET QUIZ ('questionnaire', 'questionnaire-test') :
+  * IL EST STRICTEMENT INTERDIT de placer systématiquement la bonne réponse en première ou deuxième position (index 0 ou 1) !
+  * La bonne réponse DOIT se cacher dedans de manière totalement aléatoire : répartis-la équitablement entre toutes les positions (tantôt A [index 0], tantôt B [index 1], tantôt C [index 2], tantôt D [index 3]).
+  * Les distracteurs (fausses options) doivent être plausibles et éducatifs (erreurs typiques d'étudiants, pièges d'unités, formules approchées, faux théorèmes).
+  * Dans "explanation", explique directement la réalité scientifique ou le calcul sans faire référence à une lettre statique ("L'option A...").
+- DIVERSITÉ MAXIMALE ET NON-RÉPÉTITION SUR UN MÊME DOCUMENT (ANTI-DOUBLONS INTRA ET INTER-MODULES) :
+  * Sur un polycopié, PDF ou cours, il y a des centaines de questions possibles. NE REPOSE JAMAIS LES MÊMES QUESTIONS d'un module à l'autre !
+  * Si l'étudiant te demande un questionnaire, puis un vrai/faux, un test, des flashcards ou des exercices :
+    -> Interdiction absolue de répéter les mêmes questions ou les mêmes 3 définitions introductives.
+    -> Explore d'AUTRES SECTIONS, d'autres chapitres, théorèmes et paragraphes du document.
+    -> INTÈGRE DES CALCULS ET PROBLÈMES CONCRETS : Ne te limite pas à des définitions verbales. Pose des vrais calculs numériques chiffrés dès que le cours comporte des formules ($f_0$, bande passante \\Delta f, facteur de qualité Q_0, valeurs numériques réelles, dérivées, impédances, intégrales, lois physiques).
+    -> Pour les Vrai ou Faux ('vrai-ou-faux', 'vrai-ou-faux-test') : Équilibre strictement environ 50% de VRAI et 50% de FAUX avec des affirmations stimulantes et subtiles.`;
+
       if (docNames.length > 0) {
         systemContent += `\n\nDOCUMENTS FOURNIS PAR L'ÉTUDIANT :\nL'utilisateur a ouvert ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct et complet au contenu textuel de ces documents.`;
       }

@@ -1141,6 +1141,9 @@ function getSubAgentCreationConfig(moduleType, docTitle) {
       return {
         agentName: "QuizAssessmentAgent",
         systemPrompt: `Tu es l'Agent Spécialiste des Évaluations de StudyCloud. Génère un QCM pédagogique interactif d'excellence.
+RÈGLES CAPITALES :
+1. Varie ALÉATOIREMENT l'emplacement de la bonne réponse ("correct_index" distribué équitablement entre 0, 1, 2, 3), ne place JAMAIS la bonne réponse toujours en première ou deuxième position.
+2. DIVERSITÉ : Ne pose pas toujours les mêmes questions d'introduction. Explore tout le document, intègre des calculs chiffrés réels ($...$), des problèmes d'application et des cas limites.
 Réponds STRICTEMENT avec cet objet JSON :
 {
   "type": "questionnaire",
@@ -1148,10 +1151,10 @@ Réponds STRICTEMENT avec cet objet JSON :
   "questions": [
     {
       "id": 1,
-      "question": "Énoncé précis de la question avec KaTeX si mathématique ($...$)",
-      "options": ["Option A", "Option B", "Option C", "Option D"],
-      "correct_index": 0,
-      "explanation": "Explication pédagogique détaillée de la bonne réponse."
+      "question": "Énoncé précis de la question ou problème de calcul avec KaTeX ($...$)",
+      "options": ["Distracteur A", "Distracteur B", "Bonne réponse scientifique", "Distracteur D"],
+      "correct_index": 2,
+      "explanation": "Explication pédagogique détaillée de la bonne réponse sans faire référence à une lettre fixe."
     }
   ]
 }`
@@ -1205,6 +1208,9 @@ Réponds STRICTEMENT avec cet objet JSON :
       return {
         agentName: "TrueFalseAssessmentAgent",
         systemPrompt: `Tu es l'Agent Évaluateur Vrai ou Faux de StudyCloud. Génère une série d'affirmations stimulantes avec justifications approfondies.
+RÈGLES CAPITALES :
+1. Équilibre rigoureusement 50% de VRAI et 50% de FAUX avec des pièges subtils, des calculs et des conditions limites.
+2. DIVERSITÉ : Explore des théorèmes variés et des parties avancées du document, sans jamais répéter les mêmes questions que les questionnaires précédents.
 Réponds STRICTEMENT avec cet objet JSON :
 {
   "type": "vrai-ou-faux",
@@ -1212,9 +1218,9 @@ Réponds STRICTEMENT avec cet objet JSON :
   "affirmations": [
     {
       "id": 1,
-      "statement": "Affirmation scientifique ou conceptuelle précise",
-      "is_true": true,
-      "explanation": "Justification rigoureuse et méthode de raisonnement."
+      "statement": "Affirmation scientifique ou conceptuelle précise avec KaTeX ($...$)",
+      "is_true": false,
+      "explanation": "Justification rigoureuse et méthode de raisonnement démontrant pourquoi l'affirmation est inexacte."
     }
   ]
 }`
