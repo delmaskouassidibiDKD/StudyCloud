@@ -1348,18 +1348,23 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         if (r?.name && !initialDocNames.includes(r.name)) initialDocNames.push(r.name);
       }
     }
+    const isExplicitCreationRequest = Boolean(requestedTypeOverride);
     const initialLiveStatus = getLiveAiActivity(userText, initialDocNames, 0, requestedTypeOverride);
     setAiActivityText(initialLiveStatus);
-    window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
-      detail: { statusText: initialLiveStatus, isLoading: true, prompt: userText, toolType: requestedTypeOverride }
-    }));
+    if (isExplicitCreationRequest) {
+      window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
+        detail: { statusText: initialLiveStatus, isLoading: true, isCreation: true, prompt: userText, toolType: requestedTypeOverride }
+      }));
+    }
     activityTimerRef.current = setInterval(() => {
       const elapsed = Math.floor((Date.now() - startTimestamp) / 1000);
       const liveStatus = getLiveAiActivity(userText, initialDocNames, elapsed, requestedTypeOverride);
       setAiActivityText(liveStatus);
-      window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
-        detail: { statusText: liveStatus, isLoading: true, prompt: userText, toolType: requestedTypeOverride }
-      }));
+      if (isExplicitCreationRequest) {
+        window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
+          detail: { statusText: liveStatus, isLoading: true, isCreation: true, prompt: userText, toolType: requestedTypeOverride }
+        }));
+      }
     }, 1000);
 
     // Mise à jour du titre de conversation si c'est le 1er message
@@ -1580,6 +1585,10 @@ ou
 
       if (activeCreation) {
         systemContent += `\n\nCRÉATION ACTUELLE DANS L'ESPACE DE DROITE ("${activeCreation.title}", type: "${activeCreation.toolType}") : Si l'utilisateur demande explicitement de la modifier, l'enrichir ou la mettre à jour, réponds en mode création JSON avec la version actualisée.`;
+      }
+
+      if (isExplicitOverride && explicitToolType) {
+        systemContent += `\n\nCOMMANDE EXPLICITE DE CRÉATION DEPUIS LE MENU CRÉATION :\nL'étudiant a expressément sélectionné le format de création « ${explicitToolType} » dans l'espace Création.\nTu DOIS OBLIGATOIREMENT te placer dans la BRANCHE 2 (CRÉATION D'UN MODULE D'ÉTUDE) et répondre avec l'objet JSON strict de création ("decision": "creation", "mode": "creation", "creation_type": "${explicitToolType}", "creation_title": "...", "chat_response": "...", "creation_data": { ... }). Ne produis aucun monologue ni texte Markdown de discussion libre dans ce cas. Remplis directement toutes les données complètes de création.`;
       }
 
       // 4. Préparation de l'historique complet pour alimenter le RAG conversationnel
@@ -1833,6 +1842,14 @@ ou
       window.removeEventListener('studycloud-submit-prompt', handleAutoPrompt as any);
     };
   }, [messages, isTyping, activePreviewItem, attachedResources, activeCreation, currentConversationId]);
+
+  useEffect(() => {
+    const handleCancelFromCreation = () => {
+      handleCancelTask();
+    };
+    window.addEventListener('studycloud-cancel-creation', handleCancelFromCreation as any);
+    return () => window.removeEventListener('studycloud-cancel-creation', handleCancelFromCreation as any);
+  }, []);
 
   const handleSend = () => {
     sendMessage(inputValue);

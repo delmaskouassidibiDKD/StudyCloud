@@ -256,6 +256,7 @@ export function RightMenu({
       detail: {
         prompt: promptToSend,
         toolType: card.toolType,
+        isCreation: true,
         source: 'right-menu-cards'
       }
     }));
@@ -294,8 +295,11 @@ export function RightMenu({
     };
 
     const handleCreationStatus = (e: any) => {
-      if (typeof e.detail?.isLoading === 'boolean') {
-        setIsGenerating(e.detail.isLoading);
+      // Activer l'animation de création UNIQUEMENT s'il s'agit explicitement d'une création
+      if (e.detail?.isLoading === true && (e.detail?.isCreation || e.detail?.toolType)) {
+        setIsGenerating(true);
+      } else if (e.detail?.isLoading === false) {
+        setIsGenerating(false);
       }
       if (e.detail?.statusText) {
         setLiveStatusText(e.detail.statusText);
