@@ -1,10 +1,9 @@
-import { logRpcFailure } from '../rpcErrors'
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import { createRootRoute, Outlet, useRouterState } from '@tanstack/react-router'
 import { TooltipProvider, Toasty } from '@cloudflare/kumo'
 import { RpcStub } from 'capnweb'
 import { AuthenticatedApi } from '@gadgets/workshop-shared/api'
-import { useRpcStub, useConnectionLost } from '../RpcContext'
+import { useRpcStub } from '../RpcContext'
 import { useAuth, CF_ACCESS_MODE } from '../useAuth'
 import { AuthProvider } from '../AuthContext'
 import { HANDOFF_PATH } from '../connectHandoff'
@@ -12,7 +11,6 @@ import { FeatureFlagsProvider } from '../FeatureFlagsContext'
 import Header from '../components/Header'
 import AppShell from '../components/AppShell/AppShell'
 import LoginPage from '../LoginPage'
-import OnboardingWizard from '../OnboardingWizard'
 import AccountSelectionModal from '../components/billing/AccountSelectionModal'
 import { NotificationBridge } from '../features/notifications/NotificationBridge'
 
@@ -22,7 +20,6 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   const rpcStub = useRpcStub()
-  const connectionLost = useConnectionLost()
   const { isAuthenticated, authenticatedApi, isLoading, error, logout, login } = useAuth(rpcStub)
   const pathname = useRouterState({ select: (s) => s.location.pathname })
 

@@ -2,10 +2,10 @@ import { useNavigate } from '@tanstack/react-router'
 import { DropdownMenu } from '@cloudflare/kumo'
 import { useAuthenticatedApi } from '../AuthContext'
 import { useAvatar } from '../useAvatar'
-import { MENU_CONTENT, MENU_ITEM, MENU_ITEM_DANGER, MENU_POSITIONER_STYLE } from './menuStyles'
+import { MENU_CONTENT, MENU_ITEM, MENU_POSITIONER_STYLE } from './menuStyles'
 
 export default function UserMenu() {
-  const { authenticatedApi, logout, currentUser, isAdmin } = useAuthenticatedApi()
+  const { authenticatedApi, currentUser, isAdmin } = useAuthenticatedApi()
   const navigate = useNavigate()
 
   const avatarUrl = useAvatar(authenticatedApi, currentUser?.id)

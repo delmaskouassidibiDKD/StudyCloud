@@ -1,4 +1,4 @@
-import { classifyRpcError, logRpcFailure, rpcFailureDescription } from "../rpcErrors";
+import { logRpcFailure, rpcFailureDescription } from "../rpcErrors";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useKumoToastManager } from "@cloudflare/kumo";

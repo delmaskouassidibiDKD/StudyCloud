@@ -2,7 +2,7 @@ import { useEffect } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { useDocumentTitle } from "./useDocumentTitle"
 
-export default function SignupPage() {
+export default function SignupPage({ rpcStub }: { rpcStub?: any } = {}) {
   const navigate = useNavigate()
   useDocumentTitle("Studio IA StudyCloud")
 

@@ -987,7 +987,8 @@ async function handleCreationRequest(request: Request, env: Env, corsHeaders: Re
  * Gestionnaire pour la correction automatique du Devoir sur 20 points
  */
 async function handleGradingRequest(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
-  const { devoirData, userAnswers } = await request.json().catch(() => ({}));
+  const body: any = await request.json().catch(() => ({}));
+  const { devoirData, userAnswers } = body || {};
 
   if (!devoirData || !userAnswers) {
     return new Response(
