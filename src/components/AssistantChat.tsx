@@ -119,7 +119,17 @@ function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: numbe
     return steps[idx];
   };
 
-  // 1. Questionnaire / Quiz QCM
+  // 1. Questionnaire Test (Test noté avec chronomètre)
+  if (normType.includes('questionnaire-test') || normType === 'test' || /(questionnaire test|test noté|test chrono|épreuve notée)/i.test(cleanPrompt)) {
+    return pickReassuringStep([
+      "Je prépare les questions de votre test noté...",
+      "J'ajuste le barème, le chronomètre et les critères d'évaluation...",
+      "Je formule les explications pédagogiques détaillées pour chaque question...",
+      "Tout est bientôt prêt pour votre test noté..."
+    ]);
+  }
+
+  // 2. Questionnaire / Quiz QCM
   if (normType.includes('questionnaire') || normType.includes('quiz') || /(quiz|qcm|questionnaire)/i.test(cleanPrompt)) {
     return pickReassuringStep([
       "J'étudie votre sujet avec attention...",
@@ -130,7 +140,17 @@ function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: numbe
     ]);
   }
 
-  // 2. Carte Mentale
+  // 3. Carte Mentale 2 (Conceptuelle)
+  if (normType.includes('carte-mentale-2') || normType.includes('mindmap2') || /(carte mentale 2|carte conceptuelle|mindmap 2)/i.test(cleanPrompt)) {
+    return pickReassuringStep([
+      "J'analyse les piliers et relations conceptuelles de votre cours...",
+      "Je structure les concepts en blocs hiérarchiques et connecteurs...",
+      "Je relie les notions maîtresses pour une vue d'ensemble limpide...",
+      "Votre carte mentale 2 (conceptuelle) est bientôt prête..."
+    ]);
+  }
+
+  // 4. Carte Mentale (Arborescente)
   if (normType.includes('carte-mentale') || normType.includes('mindmap') || /(carte mentale|mindmap)/i.test(cleanPrompt)) {
     return pickReassuringStep([
       "J'organise les idées maîtresses de votre cours...",
@@ -141,7 +161,7 @@ function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: numbe
     ]);
   }
 
-  // 3. Cartes Mémoires / Flashcards
+  // 5. Cartes Mémoires / Flashcards
   if (normType.includes('carte-memoire') || normType.includes('flashcard') || /(flashcards?|carte mémoire)/i.test(cleanPrompt)) {
     return pickReassuringStep([
       "Je repère les définitions et notions indispensables...",
@@ -152,7 +172,7 @@ function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: numbe
     ]);
   }
 
-  // 4. Fiche de Résumé / Synthèse
+  // 6. Fiche de Résumé / Synthèse
   if (normType.includes('resume') || /(résumé|fiche|synthèse)/i.test(cleanPrompt)) {
     return pickReassuringStep([
       "Je parcours les points clés de votre cours...",
@@ -163,7 +183,7 @@ function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: numbe
     ]);
   }
 
-  // 5. Document PDF
+  // 7. Document PDF
   if (normType.includes('pdf') || /document pdf/i.test(cleanPrompt)) {
     return pickReassuringStep([
       "Je structure votre document d'étude...",
@@ -174,7 +194,17 @@ function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: numbe
     ]);
   }
 
-  // 6. Vrai ou Faux
+  // 8. Vrai ou Faux Test (Épreuve notée)
+  if (normType.includes('vrai-ou-faux-test') || normType.includes('vf-test') || /(vrai ou faux test|épreuve vrai faux|test vrai ou faux)/i.test(cleanPrompt)) {
+    return pickReassuringStep([
+      "Je prépare la série d'affirmations ciblées pour votre épreuve...",
+      "Je configure le barème et la notation globale de l'épreuve...",
+      "J'ajoute les justifications pédagogiques pour chaque énoncé...",
+      "Votre épreuve de vrai ou faux test est presque prête..."
+    ]);
+  }
+
+  // 9. Vrai ou Faux
   if (normType.includes('vrai') || /vrai ou faux/i.test(cleanPrompt)) {
     return pickReassuringStep([
       "Je prépare des affirmations ciblées sur votre cours...",
@@ -184,8 +214,18 @@ function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: numbe
     ]);
   }
 
-  // 7. Exercices Écrits / Devoirs / Examens
-  if (normType.includes('exercice') || normType.includes('devoir') || /(exercice|devoir|examen)/i.test(cleanPrompt)) {
+  // 10. Devoir Complet (Examen officiel)
+  if (normType.includes('devoir-complet') || /(devoir complet|sujet d'examen|épreuve d'examen|examen officiel)/i.test(cleanPrompt)) {
+    return pickReassuringStep([
+      "Je conçois un sujet d'examen officiel complet avec plusieurs parties...",
+      "J'élabore les énoncés d'application et les questions pas à pas...",
+      "Je prépare le barème officiel sur 20 points et le corrigé détaillé...",
+      "Votre devoir complet d'examen est bientôt prêt..."
+    ]);
+  }
+
+  // 11. Exercices Écrits
+  if (normType.includes('exercice') || normType.includes('devoir') || /(exercice|devoir|exercices écrits)/i.test(cleanPrompt)) {
     return pickReassuringStep([
       "Je prépare des exercices progressifs et adaptés à votre niveau...",
       "Je rédige des énoncés limpides et encourageants...",
@@ -195,23 +235,13 @@ function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: numbe
     ]);
   }
 
-  // 8. Infographie
+  // 12. Infographie
   if (normType.includes('infographie') || /infographie/i.test(cleanPrompt)) {
     return pickReassuringStep([
       "Je regroupe les repères et informations indispensables...",
       "Je mets en valeur les points clés pour une lecture intuitive...",
       "J'harmonise la présentation de votre infographie...",
       "Votre infographie pédagogique est presque prête..."
-    ]);
-  }
-
-  // 9. Test Noté / Évaluation
-  if (normType.includes('test') || /test noté/i.test(cleanPrompt)) {
-    return pickReassuringStep([
-      "Je prépare les questions adaptées à votre programme...",
-      "J'ajuste le barème et les critères d'évaluation...",
-      "Je règle le chronomètre et les explications pédagogiques...",
-      "Tout est bientôt prêt pour votre test..."
     ]);
   }
 
@@ -399,14 +429,18 @@ function extractSvgBlocks(content: string): { cleanText: string; svgBlocks: stri
 const CREATION_FORMAT_LABELS: Record<string, string> = {
   'questionnaire': 'Questionnaire Quiz QCM interactif',
   'quiz': 'Questionnaire Quiz QCM interactif',
-  'questionnaire-test': 'Test Noté avec chronomètre',
+  'questionnaire-test': 'Questionnaire Test noté avec chronomètre',
   'carte-mentale': 'Carte Mentale arborescente',
   'mindmap': 'Carte Mentale arborescente',
+  'carte-mentale-2': 'Carte Mentale 2 (Conceptuelle)',
+  'mindmap2': 'Carte Mentale 2 (Conceptuelle)',
   'carte-memoire': 'Cartes Mémoires (Flashcards)',
   'flashcards': 'Cartes Mémoires (Flashcards)',
   'resume': 'Fiche de Résumé structurée',
   'pdf': 'Document PDF polycopié d\'étude',
   'vrai-ou-faux': 'Série Vrai ou Faux interactive',
+  'vrai-ou-faux-test': 'Épreuve Vrai ou Faux Test notée',
+  'vf-test': 'Épreuve Vrai ou Faux Test notée',
   'exercices-ecrits': 'Série d\'Exercices Écrits d\'application',
   'exercices': 'Série d\'Exercices Écrits d\'application',
   'devoir-complet': 'Devoir Complet d\'examen officiel',
@@ -417,6 +451,14 @@ const CREATION_FORMAT_LABELS: Record<string, string> = {
 // Suggestions de prompts avec sujets concrets selon le format demandé
 function getSuggestedPromptsForFormat(formatType: string): string[] {
   const norm = (formatType || '').toLowerCase().replace(/_/g, '-');
+  if (norm.includes('carte-mentale-2') || norm.includes('mindmap2')) {
+    return [
+      'Carte Mentale 2 sur les Fonctions et Dérivées en Mathématiques',
+      'Carte Mentale 2 sur l\'Architecture des Systèmes Informatiques',
+      'Carte Mentale 2 sur les Réactions d\'Oxydoréduction en Chimie',
+      'Carte Mentale 2 sur les Structures de Données et Graphes'
+    ];
+  }
   if (norm.includes('carte-mentale') || norm.includes('mindmap')) {
     return [
       'Carte Mentale sur les Fonctions et Dérivées en Mathématiques',
@@ -447,6 +489,14 @@ function getSuggestedPromptsForFormat(formatType: string): string[] {
       'Document PDF sur les Principes de la Mécanique Newtonienne',
       'Document PDF sur la Programmation Orientée Objet en Python',
       'Document PDF sur les Institutions de la Ve République'
+    ];
+  }
+  if (norm.includes('vrai-ou-faux-test') || norm.includes('vf-test')) {
+    return [
+      'Vrai ou Faux Test noté sur les Nombres Complexes et Trigonométrie',
+      'Vrai ou Faux Test sur la Génétique et l\'ADN en SVT',
+      'Vrai ou Faux Test sur les Lois de Newton et Énergie Mécanique',
+      'Vrai ou Faux Test sur les Circuits Électriques et Théorèmes de Kirchhoff'
     ];
   }
   if (norm.includes('vrai-ou-faux')) {
@@ -481,12 +531,12 @@ function getSuggestedPromptsForFormat(formatType: string): string[] {
       'Infographie sur le Modèle OSI et Protocoles Réseaux'
     ];
   }
-  if (norm.includes('test')) {
+  if (norm.includes('test') || norm.includes('questionnaire-test')) {
     return [
-      'Test Noté chronométré sur les Dérivées et Études de Fonctions',
-      'Test Noté sur les Principes Fondamentaux de la Thermodynamique',
-      'Test Noté sur la Conjugaison et Grammaire Espagnole B2',
-      'Test Noté sur les Algorithmes de Tri et Recherche'
+      'Questionnaire Test noté sur les Dérivées et Études de Fonctions',
+      'Questionnaire Test noté sur les Principes Fondamentaux de la Thermodynamique',
+      'Questionnaire Test avec chronomètre sur les Lois de Newton',
+      'Questionnaire Test noté sur les Algorithmes de Tri et Recherche'
     ];
   }
   return [
@@ -505,14 +555,26 @@ function detectCreationFormat(userText: string, requestedType?: string): string 
   if (!userText || typeof userText !== 'string') return null;
   const t = userText.trim().toLowerCase();
 
-  if (/(?:questionnaire\s+quiz|quiz\s+qcm|questionnaire\s+qcm|faire\s+un\s+quiz|fais-moi\s+un\s+quiz|cr[eé]e\s+un\s+quiz|un\s+quiz|le\s+quiz|un\s+qcm|le\s+qcm|des\s+qcm|questionnaire)/i.test(t)) {
-    if (t.includes('test noté') || t.includes('test chrono')) return 'questionnaire-test';
-    return 'questionnaire';
-  }
-  if (/(?:test\s+not[eé]|test\s+chrono|[eé]preuve\s+not[eé]e)/i.test(t)) {
+  // Test noté / Questionnaire Test
+  if (/(?:questionnaire\s+test|test\s+not[eé]|test\s+chrono|[eé]preuve\s+not[eé]e)/i.test(t)) {
     return 'questionnaire-test';
   }
-  if (/(?:carte\s+mentale|mindmap|carte\s+conceptuelle|arborescence)/i.test(t)) {
+  if (/(?:questionnaire\s+quiz|quiz\s+qcm|questionnaire\s+qcm|faire\s+un\s+quiz|fais-moi\s+un\s+quiz|cr[eé]e\s+un\s+quiz|un\s+quiz|le\s+quiz|un\s+qcm|le\s+qcm|des\s+qcm|questionnaire)/i.test(t)) {
+    if (t.includes('test') || t.includes('noté') || t.includes('chrono')) return 'questionnaire-test';
+    return 'questionnaire';
+  }
+  // Vrai ou Faux Test vs Vrai ou Faux
+  if (/(?:vrai\s+ou\s+faux\s+test|vrai\/faux\s+test|vf\s+test|[eé]preuve\s+vrai\s+ou\s+faux)/i.test(t)) {
+    return 'vrai-ou-faux-test';
+  }
+  if (/(?:vrai\s+ou\s+faux|vrai\/faux)/i.test(t)) {
+    return 'vrai-ou-faux';
+  }
+  // Carte Mentale 2 vs Carte Mentale
+  if (/(?:carte\s+mentale\s+2|mindmap\s*2|carte\s+conceptuelle)/i.test(t)) {
+    return 'carte-mentale-2';
+  }
+  if (/(?:carte\s+mentale|mindmap|arborescence)/i.test(t)) {
     return 'carte-mentale';
   }
   if (/(?:carte\s+m[eé]moire|cartes\s+m[eé]moires|flashcard|flashcards)/i.test(t)) {
@@ -524,14 +586,11 @@ function detectCreationFormat(userText: string, requestedType?: string): string 
   if (/(?:document\s+pdf|polycopi[eé]|polycopie|g[eé]n[eé]rer\s+un\s+pdf|cr[eé]er\s+un\s+pdf|faire\s+un\s+pdf)/i.test(t)) {
     return 'pdf';
   }
-  if (/(?:vrai\s+ou\s+faux|vrai\/faux)/i.test(t)) {
-    return 'vrai-ou-faux';
+  if (/(?:devoir\s+complet|sujet\s+d['’]examen|[eé]preuve\s+d['’]examen|devoir\s+d['’]examen)/i.test(t)) {
+    return 'devoir-complet';
   }
   if (/(?:exercices?\s+[eé]crits?|exercices?\s+d['’]application|s[eé]rie\s+d['’]exercices)/i.test(t)) {
     return 'exercices-ecrits';
-  }
-  if (/(?:devoir\s+complet|sujet\s+d['’]examen|[eé]preuve\s+d['’]examen|devoir\s+d['’]examen)/i.test(t)) {
-    return 'devoir-complet';
   }
   if (/(?:infographie|fiche\s+visuelle)/i.test(t)) {
     return 'infographie';
@@ -1854,22 +1913,25 @@ Si l'étudiant discute, échange, pose une question, demande une explication de 
 -> IMPORTANTISSIME : NE PRODUIS AUCUN CODE JSON, PAS D'ACCOLADES {} NI DE BALISES JSON DANS CETTE RÉPONSE. Parle directement à l'étudiant avec pédagogie, clarté et bienveillance.
 
 2. BRANCHE CRÉATION D'UN MODULE D'ÉTUDE (Dans l'espace création à droite) :
-Uniquement si l'étudiant te demande expressément et clairement de CONCEVOIR / FABRIQUER / GÉNÉRER un module d'apprentissage interactif complet parmi les 4 grandes catégories :
-- Faire un Résumé ou créer un PDF :
-  * 'resume' : Fiche de synthèse structurée (overview, key_points, definitions, rules)
-  * 'pdf' : Polycopié ou document d'étude officiel (title, sections, content)
-- Questionnaire ou Carte Mentale :
-  * 'questionnaire' : Quiz QCM interactif (questions avec choix A/B/C/D, correct, explanation)
-  * 'questionnaire-test' : Test noté avec chronomètre et barème
-  * 'carte-mentale' : Mindmap arborescente (thème central, branches principales, sous-branches)
+Uniquement si l'étudiant te demande expressément et clairement de CONCEVOIR / FABRIQUER / GÉNÉRER un module d'apprentissage interactif complet parmi les 12 formats officiels StudyCloud :
+- Questionnaires et Tests :
+  * 'questionnaire' : Quiz QCM interactif avec feedback immédiat (questions avec choix A/B/C/D, correctIndex, explanation)
+  * 'questionnaire-test' : Questionnaire Test (épreuve notée avec chronomètre et barème, résultats et corrigé à la fin)
+- Vrai ou Faux :
+  * 'vrai-ou-faux' : Affirmations Vrai ou Faux avec justification détaillée immédiate
+  * 'vrai-ou-faux-test' : Vrai ou Faux Test (épreuve notée avec validation d'ensemble et score final)
+- Cartes Mentales et Conceptuelles :
+  * 'carte-mentale' : Carte Mentale arborescente (thème central, branches principales, sous-branches)
+  * 'carte-mentale-2' : Carte Mentale 2 (carte conceptuelle en blocs hiérarchiques avec piliers et connecteurs)
+- Cartes Mémoires :
   * 'carte-memoire' : Flashcards mémorisation (recto question/concept, verso réponse/détail)
-- Vrai ou Faux / Exercice Écrit / Devoir Complet :
-  * 'vrai-ou-faux' : Affirmations Vrai ou Faux avec justification détaillée
-  * 'vrai-ou-faux-test' : Épreuve Vrai/Faux notée
-  * 'exercices-ecrits' : Série d'exercices d'application avec énoncé et correction guidée
-  * 'devoir-complet' : Sujet d'examen complet avec parties, exercices et barème
-- Infographie :
-  * 'infographie' : Fiche visuelle avec repères visuels, chiffres clés, métriques, chronologie
+- Documents et Fiches de Synthèse :
+  * 'resume' : Fiche de Résumé structurée (overview, keyPoints, definitions, rules)
+  * 'pdf' : Polycopié ou Document PDF d'étude officiel (title, sections, content)
+  * 'infographie' : Infographie visuelle (chiffres clés, métriques, repères visuels, chronologie)
+- Exercices et Examens :
+  * 'exercices-ecrits' : Série d'exercices d'application avec énoncé pas à pas et correction guidée
+  * 'devoir-complet' : Devoir Complet officiel d'examen avec parties, barème sur 20 points et corrigé
 
 DANS CE CAS DE CRÉATION EXCLUSIVEMENT :
 Tu réponds sous la forme d'un objet JSON strict :
@@ -1877,9 +1939,9 @@ Tu réponds sous la forme d'un objet JSON strict :
 {
   "decision": "creation",
   "mode": "creation",
-  "creation_type": "questionnaire" | "carte-mentale" | "carte-memoire" | "resume" | "pdf" | "infographie" | "vrai-ou-faux" | "exercices-ecrits" | "devoir-complet",
+  "creation_type": "questionnaire" | "questionnaire-test" | "vrai-ou-faux" | "vrai-ou-faux-test" | "carte-mentale" | "carte-mentale-2" | "carte-memoire" | "resume" | "pdf" | "infographie" | "exercices-ecrits" | "devoir-complet",
   "creation_title": "Titre explicite de la création",
-  "chat_response": "Court message amical d'une phrase pour le fil de discussion (ex: J'ai conçu votre questionnaire dans l'espace Création à droite !)",
+  "chat_response": "Court message amical d'une phrase pour le fil de discussion (ex: J'ai conçu votre création dans l'espace Création à droite !)",
   "creation_data": {
     // Les données complètes selon le type demandé
   }
@@ -2088,7 +2150,7 @@ ou
       // Sécurité anti-création dans le vide pour TOUS les modèles IA (actuels et futurs) :
       if (creationParsed && (!allDocs || allDocs.length === 0) && !hasPromptSubject && !hasConversationContext) {
         creationParsed = null;
-        fullResponseText = `Pour que je puisse concevoir votre **création**, merci de me préciser sur quel cours ou sujet elle doit porter, ou de joindre votre fichier de cours (PDF, Word, photo d'exercice).\n\n[QUESTIONS_SUGGÉRÉES]\n- Questionnaire QCM sur les Lois de Newton en Physique\n- Carte Mentale sur les Fonctions et Dérivées en Mathématiques\n- Fiche de Résumé sur la Thermodynamique et Transferts Thermiques\n- Cartes Mémoires sur la Photosynthèse et Respiration Cellulaire`;
+        fullResponseText = `Pour que je puisse concevoir votre **création**, merci de me préciser sur quel cours ou sujet elle doit porter, ou de joindre votre fichier de cours (PDF, Word, photo d'exercice).\n\n[QUESTIONS_SUGGÉRÉES]\n- Questionnaire Test noté sur les Lois de Newton en Physique\n- Vrai ou Faux Test sur la Génétique et l'ADN en SVT\n- Carte Mentale 2 sur les Fonctions et Dérivées en Mathématiques\n- Devoir Complet d'examen officiel sur la Thermodynamique`;
         window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { isLoading: false, isCreation: false } }));
       }
 

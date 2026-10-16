@@ -694,15 +694,16 @@ export function parseOrBuildAiCreation(
         }
         case 'vrai-ou-faux': {
           const rawAff = Array.isArray(dataObj) ? dataObj : (dataObj.affirmations || dataObj.data);
+          const defaultVfTitle = normType.includes('test') ? `Vrai ou Faux Test : ${safeDocName}` : `Vrai ou Faux : ${safeDocName}`;
           if (Array.isArray(rawAff) && rawAff.length > 0) {
             return {
-              title: sanitizeText(parsed.creation_title || dataObj.title) || `Vrai ou Faux : ${safeDocName}`,
+              title: sanitizeText(parsed.creation_title || dataObj.title) || defaultVfTitle,
               content: dataObj
             };
           }
           const fallbackVF = parseVraiOuFauxFromText(cleanText, safeDocName);
           return {
-            title: sanitizeText(parsed.creation_title || dataObj.title) || `Vrai ou Faux : ${safeDocName}`,
+            title: sanitizeText(parsed.creation_title || dataObj.title) || defaultVfTitle,
             content: fallbackVF
           };
         }
@@ -780,8 +781,11 @@ export function parseOrBuildAiCreation(
               ? root.children
               : (Array.isArray(dataObj.branches) ? dataObj.branches : []);
             const rootLabel = sanitizeText(root.label || root.title || dataObj.root_title || safeDocName);
+            const defaultMmTitle = normType.includes('carte-mentale-2') || normType.includes('mindmap2')
+              ? `Carte Mentale 2 : ${safeDocName}`
+              : `Carte Mentale : ${safeDocName}`;
             return {
-              title: sanitizeText(parsed.creation_title || dataObj.title) || `Carte Mentale : ${safeDocName}`,
+              title: sanitizeText(parsed.creation_title || dataObj.title) || defaultMmTitle,
               content: {
                 root: {
                   id: sanitizeText(root.id) || 'root-node',
@@ -846,13 +850,15 @@ export function parseOrBuildAiCreation(
 
   if (['questionnaire', 'questionnaire-test', 'qcm', 'quiz'].includes(normType)) {
     const parsedQuiz = parseQuizFromText(cleanText, safeDocName);
-    return { title: parsedQuiz.title, content: parsedQuiz };
+    const title = parsedQuiz.title || (normType.includes('test') ? `Questionnaire Test : ${safeDocName}` : `Questionnaire QCM : ${safeDocName}`);
+    return { title, content: parsedQuiz };
   } else if (['vrai-ou-faux', 'vrai-ou-faux-test'].includes(normType)) {
     const parsedVF = parseVraiOuFauxFromText(cleanText, safeDocName);
-    return { title: `Vrai ou Faux : ${safeDocName}`, content: parsedVF };
+    const title = normType.includes('test') ? `Vrai ou Faux Test : ${safeDocName}` : `Vrai ou Faux : ${safeDocName}`;
+    return { title, content: parsedVF };
   } else if (['carte-memoire', 'flashcards'].includes(normType)) {
     const parsedCards = parseFlashcardsFromText(cleanText, safeDocName);
-    return { title: `Cartes Mémoire : ${safeDocName}`, content: parsedCards };
+    return { title: `Cartes Mémoires : ${safeDocName}`, content: parsedCards };
   } else if (['exercices-ecrits'].includes(normType)) {
     const parsedEx = parseExercicesFromText(cleanText, safeDocName);
     return { title: `Exercices Écrits : ${safeDocName}`, content: parsedEx };
@@ -864,7 +870,8 @@ export function parseOrBuildAiCreation(
     return { title: `Fiche de Résumé : ${safeDocName}`, content: parsedSummary };
   } else if (['carte-mentale', 'carte-mentale-2', 'mindmap'].includes(normType)) {
     const parsedMindMap = parseMindMapFromText(cleanText, safeDocName);
-    return { title: `Carte Mentale : ${safeDocName}`, content: parsedMindMap };
+    const title = (normType.includes('carte-mentale-2') || normType.includes('mindmap2')) ? `Carte Mentale 2 : ${safeDocName}` : `Carte Mentale : ${safeDocName}`;
+    return { title, content: parsedMindMap };
   } else if (['infographie', 'infographic'].includes(normType)) {
     const parsedInfographic = parseInfographicFromText(cleanText, safeDocName);
     return { title: parsedInfographic.mainTitle, content: parsedInfographic };

@@ -27,20 +27,30 @@ interface CreationProposalCard {
 const CREATION_NAME_MAP: Record<string, string> = {
   'questionnaire': 'Questionnaire QCM',
   'quiz': 'Questionnaire QCM',
+  'qcm': 'Questionnaire QCM',
+  'questionnaire-test': 'Questionnaire Test',
+  'test': 'Questionnaire Test',
   'carte-mentale': 'Carte Mentale',
   'mindmap': 'Carte Mentale',
+  'carte-mentale-2': 'Carte Mentale 2',
+  'carte-mentale-conceptuelle': 'Carte Mentale 2',
+  'mindmap2': 'Carte Mentale 2',
   'carte-memoire': 'Cartes Mémoires',
   'flashcards': 'Cartes Mémoires',
   'resume': 'Fiche de Résumé',
+  'summary': 'Fiche de Résumé',
   'pdf': 'Document PDF',
+  'document': 'Document PDF',
   'vrai-faux': 'Vrai ou Faux',
   'vrai-ou-faux': 'Vrai ou Faux',
+  'vrai-ou-faux-test': 'Vrai ou Faux Test',
+  'vf-test': 'Vrai ou Faux Test',
   'exercices': 'Exercices Écrits',
   'exercices-ecrits': 'Exercices Écrits',
   'devoir': 'Devoir Complet',
   'devoir-complet': 'Devoir Complet',
   'infographie': 'Infographie',
-  'questionnaire-test': 'Test Noté'
+  'infographic': 'Infographie'
 };
 
 function getCreationBadgeLabel(title?: string): string {
@@ -140,6 +150,61 @@ export function RightMenu({
         : "Conçois un Questionnaire Quiz QCM interactif avec 4 options par question et explications pédagogiques pour tester mes connaissances."
     },
     {
+      id: 'questionnaire-test',
+      title: 'Questionnaire Test',
+      badge: 'Test Noté',
+      iconColor: '#fb923c',
+      icon: (
+        <div className="flex items-center justify-center w-5 h-5 text-[#fb923c]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <circle cx="12" cy="12" r="9" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+        </div>
+      ),
+      toolType: 'questionnaire-test',
+      getPrompt: (doc) => doc
+        ? `Prépare une Épreuve de Questionnaire Test noté avec chronomètre et barème sur « ${doc} » pour évaluer mes acquis en conditions réelles.`
+        : "Prépare une Épreuve de Questionnaire Test noté avec chronomètre et barème pour évaluer mes acquis en conditions réelles."
+    },
+    {
+      id: 'vrai-ou-faux',
+      title: 'Vrai ou Faux',
+      iconColor: '#10b981',
+      icon: (
+        <div className="flex items-center justify-center w-5 h-5 text-[#10b981]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <circle cx="12" cy="12" r="9" />
+            <path d="m9 12 2 2 4-4" />
+          </svg>
+        </div>
+      ),
+      toolType: 'vrai-ou-faux',
+      getPrompt: (doc) => doc
+        ? `Crée une série d'affirmations interactives Vrai ou Faux avec justifications détaillées et pièges fréquents sur « ${doc} ».`
+        : "Crée une série d'affirmations interactives Vrai ou Faux avec justifications détaillées et pièges fréquents."
+    },
+    {
+      id: 'vrai-ou-faux-test',
+      title: 'Vrai ou Faux Test',
+      badge: 'Épreuve',
+      iconColor: '#14b8a6',
+      icon: (
+        <div className="flex items-center justify-center w-5 h-5 text-[#14b8a6]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <path d="m9 11 3 3L22 4" />
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+            <path d="m6 8 3 3" />
+            <path d="m9 8-3 3" />
+          </svg>
+        </div>
+      ),
+      toolType: 'vrai-ou-faux-test',
+      getPrompt: (doc) => doc
+        ? `Prépare une Épreuve de Vrai ou Faux Test notée sur « ${doc} » où toutes les réponses sont validées ensemble avec score et corrigé détaillé.`
+        : "Prépare une Épreuve de Vrai ou Faux Test notée où toutes les réponses sont validées ensemble avec score et corrigé détaillé."
+    },
+    {
       id: 'carte-mentale',
       title: 'Carte Mentale',
       iconColor: '#a855f7',
@@ -157,6 +222,27 @@ export function RightMenu({
       getPrompt: (doc) => doc
         ? `Conçois une Carte Mentale interactive et arborescente des concepts fondamentaux de « ${doc} » avec thème central et branches hiérarchiques.`
         : "Conçois une Carte Mentale interactive et arborescente des concepts fondamentaux avec branches hiérarchiques."
+    },
+    {
+      id: 'carte-mentale-2',
+      title: 'Carte Mentale 2',
+      badge: 'Conceptuelle',
+      iconColor: '#6366f1',
+      icon: (
+        <div className="flex items-center justify-center w-5 h-5 text-[#6366f1]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <rect width="6" height="4" x="2" y="3" rx="1" />
+            <rect width="6" height="4" x="9" y="17" rx="1" />
+            <rect width="6" height="4" x="16" y="3" rx="1" />
+            <path d="M5 7v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7" />
+            <path d="M12 13v4" />
+          </svg>
+        </div>
+      ),
+      toolType: 'carte-mentale-2',
+      getPrompt: (doc) => doc
+        ? `Conçois une Carte Mentale 2 (Conceptuelle) modélisant l'architecture et les relations de « ${doc} » en blocs hiérarchiques et connecteurs.`
+        : "Conçois une Carte Mentale 2 (Conceptuelle) modélisant l'architecture et les relations clés en blocs hiérarchiques et connecteurs."
     },
     {
       id: 'carte-memoire',
@@ -213,21 +299,25 @@ export function RightMenu({
         : "Génère un Document PDF polycopié d'étude officiel complet et structuré avec sections, titres et contenu approfondi."
     },
     {
-      id: 'vrai-ou-faux',
-      title: 'Vrai ou Faux',
-      iconColor: '#10b981',
+      id: 'infographie',
+      title: 'Infographie',
+      iconColor: '#facc15',
       icon: (
-        <div className="flex items-center justify-center w-5 h-5 text-[#10b981]">
+        <div className="flex items-center justify-center w-5 h-5 text-[#facc15]">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-            <circle cx="12" cy="12" r="9" />
-            <path d="m9 12 2 2 4-4" />
+            <rect width="3.5" height="10" x="5" y="10" rx="1" fill="currentColor" stroke="none" />
+            <circle cx="6.75" cy="6" r="1.5" fill="currentColor" />
+            <rect width="3.5" height="7" x="15" y="13" rx="1" fill="currentColor" stroke="none" />
+            <circle cx="16.75" cy="9" r="1.5" fill="currentColor" />
+            <rect width="3.5" height="12" x="10" y="8" rx="1" fill="currentColor" stroke="none" />
+            <circle cx="11.75" cy="4" r="1.5" fill="currentColor" />
           </svg>
         </div>
       ),
-      toolType: 'vrai-ou-faux',
+      toolType: 'infographie',
       getPrompt: (doc) => doc
-        ? `Crée une série d'affirmations interactives Vrai ou Faux avec justifications détaillées et pièges fréquents sur « ${doc} ».`
-        : "Crée une série d'affirmations interactives Vrai ou Faux avec justifications détaillées et pièges fréquents."
+        ? `Crée une Infographie pédagogique détaillée avec repères visuels, chiffres clés, métriques et chronologie sur « ${doc} ».`
+        : "Crée une Infographie pédagogique détaillée avec repères visuels, chiffres clés, métriques et chronologie."
     },
     {
       id: 'exercices-ecrits',
@@ -263,45 +353,6 @@ export function RightMenu({
       getPrompt: (doc) => doc
         ? `Conçois un Devoir Complet d'examen officiel avec plusieurs parties, barème de points et corrigé détaillé sur « ${doc} ».`
         : "Conçois un Devoir Complet d'examen officiel avec plusieurs parties, barème de points et corrigé détaillé."
-    },
-    {
-      id: 'infographie',
-      title: 'Infographie',
-      iconColor: '#facc15',
-      icon: (
-        <div className="flex items-center justify-center w-5 h-5 text-[#facc15]">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-            <rect width="3.5" height="10" x="5" y="10" rx="1" fill="currentColor" stroke="none" />
-            <circle cx="6.75" cy="6" r="1.5" fill="currentColor" />
-            <rect width="3.5" height="7" x="15" y="13" rx="1" fill="currentColor" stroke="none" />
-            <circle cx="16.75" cy="9" r="1.5" fill="currentColor" />
-            <rect width="3.5" height="12" x="10" y="8" rx="1" fill="currentColor" stroke="none" />
-            <circle cx="11.75" cy="4" r="1.5" fill="currentColor" />
-          </svg>
-        </div>
-      ),
-      toolType: 'infographie',
-      getPrompt: (doc) => doc
-        ? `Crée une Infographie pédagogique détaillée avec repères visuels, chiffres clés, métriques et chronologie sur « ${doc} ».`
-        : "Crée une Infographie pédagogique détaillée avec repères visuels, chiffres clés, métriques et chronologie."
-    },
-    {
-      id: 'questionnaire-test',
-      title: 'Test Noté',
-      badge: 'Chrono',
-      iconColor: '#fb923c',
-      icon: (
-        <div className="flex items-center justify-center w-5 h-5 text-[#fb923c]">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-            <circle cx="12" cy="12" r="9" />
-            <polyline points="12 6 12 12 16 14" />
-          </svg>
-        </div>
-      ),
-      toolType: 'questionnaire-test',
-      getPrompt: (doc) => doc
-        ? `Prépare une Épreuve de Test Noté avec chronomètre et barème sur « ${doc} » pour évaluer mes acquis en conditions réelles.`
-        : "Prépare une Épreuve de Test Noté avec chronomètre et barème pour évaluer mes acquis en conditions réelles."
     }
   ], []);
 
@@ -753,10 +804,10 @@ export function RightMenu({
             </span>
           </button>
 
-          {/* Section Lancer une création (10 formats réels) */}
+          {/* Section Lancer une création (12 formats réels) */}
           <div>
             <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-2 px-1">
-              Lancer une création
+              Lancer une création (12 modules)
             </p>
             <div className="space-y-1.5">
               {proposalCards.map((card) => (
