@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Maximize, Minimize, ArrowLeftRight, Sparkles, X } from 'lucide-react';
+import { Maximize, Minimize, ArrowLeftRight, X, Menu, ChevronRight, History } from 'lucide-react';
 import { UniversalContentRenderer } from './universal-render/UniversalContentRenderer';
 import DotField from './DotField';
 import MagicRings from './MagicRings';
@@ -36,6 +36,8 @@ export function RightMenu({
   const [activeCreation, setActiveCreation] = useState<any>(null);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [liveStatusText, setLiveStatusText] = useState<string>('Je prépare votre création...');
+  const [isRightDrawerOpen, setIsRightDrawerOpen] = useState<boolean>(false);
+  const [creationsHistory, setCreationsHistory] = useState<any[]>([]);
 
   const resolvedDocName = useMemo(() => {
     return activePreviewItem?.name || activePreviewItem?.title || activePreviewItem?.fileName || '';
@@ -292,6 +294,13 @@ export function RightMenu({
       if (creation) {
         setIsGenerating(false);
         setActiveCreation(creation);
+        setCreationsHistory((prev) => {
+          const exists = prev.some((c) => (c.id && c.id === creation.id) || (c.title && c.title === creation.title));
+          if (!exists) {
+            return [creation, ...prev];
+          }
+          return prev;
+        });
       }
     };
 
@@ -300,6 +309,13 @@ export function RightMenu({
       if (creation) {
         setIsGenerating(false);
         setActiveCreation(creation);
+        setCreationsHistory((prev) => {
+          const exists = prev.some((c) => (c.id && c.id === creation.id) || (c.title && c.title === creation.title));
+          if (!exists) {
+            return [creation, ...prev];
+          }
+          return prev;
+        });
       }
     };
 
@@ -339,6 +355,17 @@ export function RightMenu({
     };
   }, []);
 
+  // Fermeture du menu latéral avec la touche Échap
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isRightDrawerOpen) {
+        setIsRightDrawerOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isRightDrawerOpen]);
+
   return (
     <div
       className={`w-full h-full pointer-events-auto relative bg-[#120F17] flex flex-col pt-[44px] overflow-hidden ${
@@ -373,10 +400,10 @@ export function RightMenu({
         </div>
       )}
 
-      {/* Barre d'outils supérieure : Bouton Zoom jaune (Plein écran / Réduire) */}
-      <div className={`w-full flex items-center justify-between px-3 py-1.5 ${isGenerating ? 'bg-black border-zinc-900' : activeCreation ? 'bg-[#1a1c22]/90 border-zinc-700/60' : 'bg-[#120F17]/90 border-purple-900/30'} border-b shrink-0 z-40 shadow-xs backdrop-blur-sm transition-colors`}>
+      {/* Barre d'outils supérieure : Bouton Zoom jaune à gauche, Titre au milieu sans logo étoiles, Bouton 3 traits à droite */}
+      <div className={`w-full relative flex items-center justify-between px-3 py-1.5 ${isGenerating ? 'bg-black border-zinc-900' : activeCreation ? 'bg-[#1a1c22]/90 border-zinc-700/60' : 'bg-[#120F17]/90 border-purple-900/30'} border-b shrink-0 z-30 shadow-xs backdrop-blur-sm transition-colors`}>
+        {/* Côté gauche : Bouton Zoom jaune */}
         <div className="flex items-center gap-2">
-          {/* Bouton Zoom jaune */}
           <button
             type="button"
             onClick={() => setIsRightFullscreen(!isRightFullscreen)}
@@ -387,23 +414,35 @@ export function RightMenu({
           </button>
         </div>
 
-        {/* Titre discret de l'en-tête */}
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-300 select-none">
+        {/* Centre : Titre repoussé vers le milieu, sans logo étoile */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none text-xs sm:text-[13px] font-semibold text-zinc-200 select-none max-w-[55%] truncate text-center">
           {isGenerating ? (
-            <span className="flex items-center gap-1.5 text-purple-400 animate-pulse">
-              <span className="w-2 h-2 rounded-full bg-purple-400" />
+            <span className="flex items-center gap-1.5 text-purple-400">
+              <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
               Génération en cours...
             </span>
           ) : activeCreation ? (
-            <span className="text-zinc-200 truncate max-w-[200px]">
+            <span className="text-zinc-200 truncate">
               {activeCreation.title || 'Création IA'}
             </span>
           ) : (
-            <span className="text-zinc-400 flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            <span className="text-zinc-200 tracking-wide font-medium">
               Studio de Créations
             </span>
           )}
+        </div>
+
+        {/* Côté droit (ancienne place du titre entouré en rouge) : Bouton 3 traits pour ouvrir le menu latéral */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsRightDrawerOpen((prev) => !prev)}
+            className="p-1.5 rounded-lg bg-zinc-800/80 hover:bg-zinc-700/90 border border-zinc-700/70 text-zinc-200 hover:text-white transition-all cursor-pointer flex items-center justify-center shrink-0 active:scale-95 shadow-xs"
+            title="Menu latéral du Studio"
+            aria-label="Ouvrir le menu latéral"
+          >
+            <Menu className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
@@ -550,6 +589,188 @@ export function RightMenu({
           </div>
         )}
       </div>
+
+      {/* Toile de fond (Backdrop) pour refermer le menu latéral en cliquant à côté */}
+      <div
+        onClick={() => setIsRightDrawerOpen(false)}
+        className={`absolute top-[44px] left-0 right-0 bottom-0 z-50 bg-black/60 backdrop-blur-xs transition-opacity duration-300 ease-in-out ${
+          isRightDrawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
+      />
+
+      {/* Menu latéral droit glissant avec transition fluide */}
+      <aside
+        className={`absolute top-[44px] right-0 bottom-0 z-50 bg-[#15131e]/98 backdrop-blur-md border-l border-purple-900/40 shadow-[-16px_0_40px_rgba(0,0,0,0.7)] flex flex-col transition-transform duration-300 ease-in-out will-change-transform ${
+          isRightFullscreen ? 'w-full sm:w-1/3 md:w-1/3' : 'w-[85%] sm:w-[60%] max-w-[340px]'
+        } ${
+          isRightDrawerOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
+        }`}
+      >
+        {/* En-tête du menu latéral avec titre et bouton flèche / croix pour fermer */}
+        <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-zinc-800/80 bg-[#120F17]/95 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+            <span className="text-xs sm:text-[13px] font-bold text-white tracking-wide">
+              Menu du Studio
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {/* Bouton croix / flèche pour faire disparaître le volet */}
+            <button
+              type="button"
+              onClick={() => setIsRightDrawerOpen(false)}
+              className="p-1.5 rounded-lg bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700/60 transition-all cursor-pointer flex items-center justify-center active:scale-95 shadow-xs"
+              title="Fermer le menu latéral"
+              aria-label="Fermer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Corps défilable du menu latéral */}
+        <div className="flex-1 overflow-y-auto p-3.5 space-y-4 custom-scrollbar text-xs">
+          {/* Bloc d'action / état actuel */}
+          {activeCreation ? (
+            <div className="p-3 rounded-2xl bg-purple-950/30 border border-purple-800/40 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300">
+                  Création active
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-900/60 text-purple-200">
+                  En cours
+                </span>
+              </div>
+              <p className="font-semibold text-zinc-100 text-xs line-clamp-2">
+                {activeCreation.title || 'Création IA'}
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsRightDrawerOpen(false)}
+                  className="flex-1 py-1.5 px-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-medium text-xs text-center transition-colors cursor-pointer"
+                >
+                  Afficher
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveCreation(null);
+                    setIsRightDrawerOpen(false);
+                  }}
+                  className="py-1.5 px-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white font-medium text-xs text-center border border-zinc-700 transition-colors cursor-pointer"
+                  title="Fermer la création et revenir aux cartes"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3 rounded-2xl bg-zinc-900/70 border border-zinc-800/80 flex items-center justify-between">
+              <div>
+                <p className="font-semibold text-zinc-200 text-xs">Catalogue de Créations</p>
+                <p className="text-[11px] text-zinc-400">10 formats d'études disponibles</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRightDrawerOpen(false)}
+                className="px-2.5 py-1 rounded-xl bg-purple-600/80 hover:bg-purple-600 text-white text-xs font-medium transition-colors cursor-pointer"
+              >
+                Explorer
+              </button>
+            </div>
+          )}
+
+          {/* Action Plein écran */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsRightFullscreen(!isRightFullscreen);
+            }}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-zinc-900/60 hover:bg-zinc-800/80 border border-zinc-800 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+          >
+            <span className="flex items-center gap-2 font-medium">
+              {isRightFullscreen ? <Minimize className="w-3.5 h-3.5 text-yellow-400" /> : <Maximize className="w-3.5 h-3.5 text-yellow-400" />}
+              {isRightFullscreen ? 'Réduire la vue' : 'Plein écran'}
+            </span>
+            <span className="text-[10px] text-zinc-500 font-mono">
+              {isRightFullscreen ? '1/3 largeur' : 'plein'}
+            </span>
+          </button>
+
+          {/* Section Lancer une création (10 formats réels) */}
+          <div>
+            <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-2 px-1">
+              Lancer une création
+            </p>
+            <div className="space-y-1.5">
+              {proposalCards.map((card) => (
+                <button
+                  key={card.id}
+                  type="button"
+                  onClick={() => {
+                    handleSelectCard(card);
+                    setIsRightDrawerOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-[#1a1824]/80 hover:bg-[#252233] border border-zinc-800/70 hover:border-purple-800/50 text-left transition-all cursor-pointer group"
+                >
+                  <div className="shrink-0 group-hover:scale-110 transition-transform">
+                    {card.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-zinc-200 group-hover:text-white truncate">
+                        {card.title}
+                      </span>
+                      {card.badge && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700/60">
+                          {card.badge}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-purple-400 shrink-0 transition-colors" />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Historique de session si des créations ont été générées */}
+          {creationsHistory.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-2 px-1 flex items-center gap-1.5">
+                <History className="w-3.5 h-3.5 text-purple-400" />
+                Historique ({creationsHistory.length})
+              </p>
+              <div className="space-y-1.5">
+                {creationsHistory.map((item, idx) => (
+                  <button
+                    key={item.id || idx}
+                    type="button"
+                    onClick={() => {
+                      setActiveCreation(item);
+                      setIsRightDrawerOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border text-left transition-all cursor-pointer ${
+                      activeCreation && activeCreation.id === item.id
+                        ? 'bg-purple-950/40 border-purple-700/60 text-purple-200'
+                        : 'bg-zinc-900/60 hover:bg-zinc-800/80 border-zinc-800 text-zinc-300 hover:text-white'
+                    }`}
+                  >
+                    <span className="text-xs font-medium truncate flex-1 mr-2">
+                      {item.title || 'Création sans titre'}
+                    </span>
+                    <span className="text-[10px] text-zinc-500 uppercase shrink-0">
+                      {item.type || 'format'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </aside>
     </div>
   );
 }
