@@ -327,6 +327,223 @@ function extractSvgBlocks(content: string): { cleanText: string; svgBlocks: stri
   return { cleanText, svgBlocks };
 }
 
+// Formats de création StudyCloud officiels
+const CREATION_FORMAT_LABELS: Record<string, string> = {
+  'questionnaire': 'Questionnaire Quiz QCM interactif',
+  'quiz': 'Questionnaire Quiz QCM interactif',
+  'questionnaire-test': 'Test Noté avec chronomètre',
+  'carte-mentale': 'Carte Mentale arborescente',
+  'mindmap': 'Carte Mentale arborescente',
+  'carte-memoire': 'Cartes Mémoires (Flashcards)',
+  'flashcards': 'Cartes Mémoires (Flashcards)',
+  'resume': 'Fiche de Résumé structurée',
+  'pdf': 'Document PDF polycopié d\'étude',
+  'vrai-ou-faux': 'Série Vrai ou Faux interactive',
+  'exercices-ecrits': 'Série d\'Exercices Écrits d\'application',
+  'exercices': 'Série d\'Exercices Écrits d\'application',
+  'devoir-complet': 'Devoir Complet d\'examen officiel',
+  'devoir': 'Devoir Complet d\'examen officiel',
+  'infographie': 'Infographie pédagogique visuelle',
+};
+
+// Suggestions de prompts avec sujets concrets selon le format demandé
+function getSuggestedPromptsForFormat(formatType: string): string[] {
+  const norm = (formatType || '').toLowerCase().replace(/_/g, '-');
+  if (norm.includes('carte-mentale') || norm.includes('mindmap')) {
+    return [
+      'Carte Mentale sur les Fonctions et Dérivées en Mathématiques',
+      'Carte Mentale sur les Réactions d\'Oxydoréduction en Chimie',
+      'Carte Mentale sur la Mitose et la Méiose en Biologie SVT',
+      'Carte Mentale sur les Structures de Données et Algorithmes en Informatique'
+    ];
+  }
+  if (norm.includes('carte-memoire') || norm.includes('flashcard')) {
+    return [
+      'Cartes Mémoires sur les Formules de Trigonométrie et Dérivées',
+      'Cartes Mémoires sur le Vocabulaire Anglais du Monde du Travail',
+      'Cartes Mémoires sur les Définitions Fondamentales du Droit Constitutionnel',
+      'Cartes Mémoires sur la Photosynthèse et la Respiration Cellulaire'
+    ];
+  }
+  if (norm.includes('resume')) {
+    return [
+      'Fiche de Résumé sur la Thermodynamique et les Transferts Thermiques',
+      'Fiche de Résumé sur les Espaces Vectoriels et Matrices en Algèbre',
+      'Fiche de Résumé sur les Notions Clés de la Microéconomie',
+      'Fiche de Résumé sur l\'Architecture des Processeurs et Mémoires'
+    ];
+  }
+  if (norm.includes('pdf')) {
+    return [
+      'Document PDF complet sur le Calcul Intégral et Équations Différentielles',
+      'Document PDF sur les Principes de la Mécanique Newtonienne',
+      'Document PDF sur la Programmation Orientée Objet en Python',
+      'Document PDF sur les Institutions de la Ve République'
+    ];
+  }
+  if (norm.includes('vrai-ou-faux')) {
+    return [
+      'Vrai ou Faux sur les Nombres Complexes et Géométrie dans le Plan',
+      'Vrai ou Faux sur la Génétique et les Lois de Mendel en SVT',
+      'Vrai ou Faux sur les Circuits Électriques et Théorème de Millman',
+      'Vrai ou Faux sur la Programmation et Complexité Algorithmique'
+    ];
+  }
+  if (norm.includes('exercice')) {
+    return [
+      'Exercices Écrits corrigés sur les Équations Différentielles du 1er et 2nd ordre',
+      'Exercices Écrits sur la Cinématique et Mouvement Rectiligne Uniforme',
+      'Exercices Écrits sur les Suites Numériques et Récurrence',
+      'Exercices Écrits sur les Arbres Binaires et Parcours en Informatique'
+    ];
+  }
+  if (norm.includes('devoir') || norm.includes('examen')) {
+    return [
+      'Devoir Complet d\'examen sur les Amplificateurs Opérationnels (AOP en régime linéaire)',
+      'Devoir Complet sur les Probabilités, Variables Aléatoires et Lois de Densité',
+      'Devoir Complet sur l\'Optique Géométrique et Lentilles Minces',
+      'Devoir Complet sur les Bases de Données et Requêtes SQL Avancées'
+    ];
+  }
+  if (norm.includes('infographie')) {
+    return [
+      'Infographie sur le Cycle Cellulaire et les Phases de la Mitose',
+      'Infographie sur le Spectre Électromagnétique et Longueurs d\'Onde',
+      'Infographie sur la Chronologie de la Construction Européenne',
+      'Infographie sur le Modèle OSI et Protocoles Réseaux'
+    ];
+  }
+  if (norm.includes('test')) {
+    return [
+      'Test Noté chronométré sur les Dérivées et Études de Fonctions',
+      'Test Noté sur les Principes Fondamentaux de la Thermodynamique',
+      'Test Noté sur la Conjugaison et Grammaire Espagnole B2',
+      'Test Noté sur les Algorithmes de Tri et Recherche'
+    ];
+  }
+  return [
+    'Questionnaire QCM sur les Lois de Newton et l\'Énergie Mécanique',
+    'Questionnaire QCM sur les Équations du Second Degré en Mathématiques',
+    'Questionnaire QCM sur la Révolution Industrielle et Société au XIXe siècle',
+    'Questionnaire QCM sur les Listes et Dictionnaires en Python'
+  ];
+}
+
+// Détection du format de création demandé
+function detectCreationFormat(userText: string, requestedType?: string): string | null {
+  if (requestedType && typeof requestedType === 'string' && requestedType.trim()) {
+    return requestedType.trim().toLowerCase();
+  }
+  if (!userText || typeof userText !== 'string') return null;
+  const t = userText.trim().toLowerCase();
+
+  if (/(?:questionnaire\s+quiz|quiz\s+qcm|questionnaire\s+qcm|faire\s+un\s+quiz|fais-moi\s+un\s+quiz|cr[eé]e\s+un\s+quiz|un\s+quiz|le\s+quiz|un\s+qcm|le\s+qcm|des\s+qcm|questionnaire)/i.test(t)) {
+    if (t.includes('test noté') || t.includes('test chrono')) return 'questionnaire-test';
+    return 'questionnaire';
+  }
+  if (/(?:test\s+not[eé]|test\s+chrono|[eé]preuve\s+not[eé]e)/i.test(t)) {
+    return 'questionnaire-test';
+  }
+  if (/(?:carte\s+mentale|mindmap|carte\s+conceptuelle|arborescence)/i.test(t)) {
+    return 'carte-mentale';
+  }
+  if (/(?:carte\s+m[eé]moire|cartes\s+m[eé]moires|flashcard|flashcards)/i.test(t)) {
+    return 'carte-memoire';
+  }
+  if (/(?:fiche\s+de\s+r[eé]sum[eé]|r[eé]sum[eé]|synth[eè]se|fiche\s+de\s+synth[eè]se)/i.test(t)) {
+    return 'resume';
+  }
+  if (/(?:document\s+pdf|polycopi[eé]|polycopie|g[eé]n[eé]rer\s+un\s+pdf|cr[eé]er\s+un\s+pdf|faire\s+un\s+pdf)/i.test(t)) {
+    return 'pdf';
+  }
+  if (/(?:vrai\s+ou\s+faux|vrai\/faux)/i.test(t)) {
+    return 'vrai-ou-faux';
+  }
+  if (/(?:exercices?\s+[eé]crits?|exercices?\s+d['’]application|s[eé]rie\s+d['’]exercices)/i.test(t)) {
+    return 'exercices-ecrits';
+  }
+  if (/(?:devoir\s+complet|sujet\s+d['’]examen|[eé]preuve\s+d['’]examen|devoir\s+d['’]examen)/i.test(t)) {
+    return 'devoir-complet';
+  }
+  if (/(?:infographie|fiche\s+visuelle)/i.test(t)) {
+    return 'infographie';
+  }
+
+  return null;
+}
+
+// Détection si le prompt utilisateur spécifie un vrai sujet d'étude
+function detectHasSpecificSubject(text: string): boolean {
+  if (!text || typeof text !== 'string') return false;
+  const t = text.trim();
+
+  // Phrases des 10 cartes de RightMenu quand aucun document n'est ouvert
+  const genericPhrases = [
+    'pour tester mes connaissances',
+    'des concepts fondamentaux avec branches hiérarchiques',
+    'pour réviser et mémoriser les notions clés',
+    'avec vue d\'ensemble, points clés, définitions',
+    'avec sections, titres et contenu approfondi',
+    'avec justifications détaillées et pièges fréquents',
+    'avec énoncé pas à pas et correction guidée',
+    'avec plusieurs parties, barème de points et corrigé',
+    'avec repères visuels, chiffres clés, métriques',
+    'pour évaluer mes acquis en conditions réelles',
+  ];
+  for (const gp of genericPhrases) {
+    if (t.toLowerCase().includes(gp.toLowerCase())) {
+      const m = t.match(/sur\s+«\s*([^»]+)\s*»/i);
+      if (m && m[1]?.trim().length > 1) return true;
+      return false;
+    }
+  }
+
+  // Phrases courtes purement génériques ("fais un quiz", etc.)
+  const shortGeneric = /^(?:bonjour\s*,?\s*)?(?:s['’]il\s+te\s+pla[îi]t\s*,?\s*)?(?:peux-tu\s+|pourrais-tu\s+|je\s+veux\s+|je\s+voudrais\s+|fais(?:-moi)?\s+|fais\s+|faire\s+|cr[eé]er?\s+|g[eé]n[eé]rer?\s+|conçois\s+|donne-moi\s+|pr[eé]pare\s+|bâtis\s+)?(?:un|une|des)?\s*(?:questionnaire|quiz|qcm|carte\s+mentale|mindmap|cartes?\s+m[eé]moires?|flashcards?|r[eé]sum[eé]|fiche(?:\s+de\s+r[eé]sum[eé])?|document\s+pdf|pdf|polycopi[eé]|vrai\s+ou\s+faux|exercices?(?:\s+[eé]crits?)?|devoir(?:\s+complet)?|examen|infographie|test(?:\s+not[eé])?)\s*(?:s['’]il\s+te\s+pla[îi]t|svp|stp|maintenant|rapide|interactif)?\s*[.!?]?$/i;
+  if (shortGeneric.test(t)) {
+    return false;
+  }
+
+  // Détection de "sur [matière/chapitre]" ou "concernant [notion]" ou "à propos de [notion]"
+  const subjectIntro = /\b(?:sur|concernant|portant\s+sur|à\s+propos\s+de|en|d['’]|de)\s+([a-zA-ZÀ-ÿ0-9\s'’-]{3,})/i;
+  const match = t.match(subjectIntro);
+  if (match) {
+    const candidate = match[1].trim().toLowerCase();
+    const vaguePhrases = ['mes cours', 'mes connaissances', 'ce cours', 'ce document', 'mon cours', 'mon document', 'la matière', 'mon examen', 'ceci', 'cela', 'ça', 'tout', 'un sujet', 'n\'importe quoi', 'mon niveau'];
+    if (!vaguePhrases.includes(candidate) && candidate.length >= 3) {
+      return true;
+    }
+  }
+
+  // Présence de vocabulaire disciplinaire
+  const academicTerms = /(math|physique|chimie|svt|biologie|histoire|g[eé]o|droit|économie|gestion|informatique|python|algorithme|code|philosophie|fran[çc]ais|anglais|espagnol|litt[eé]rature|m[eé]canique|optique|thermo|quantique|cellule|mitose|adn|r[eé]action|mol[eé]cule|atome|fonction|d[eé]riv[eé]|int[eé]gral|matrice|vecteur|th[eé]or[eè]me|loi|article|constitution|programme|base\s+de\s+donn[eé]es|sql|r[eé]seau|circuit|aop|courant|tension)/i;
+  if (t.length > 30 && academicTerms.test(t)) {
+    return true;
+  }
+
+  return false;
+}
+
+// Détection si la discussion récente porte sur un vrai sujet d'étude
+function hasRecentAcademicContext(messages: Array<{ sender: string; text: string }>): boolean {
+  if (!Array.isArray(messages) || messages.length === 0) return false;
+  const recent = messages.slice(-6);
+  for (const m of recent) {
+    const text = (m.text || '').trim();
+    if (text.length < 25) continue;
+    if (/^(bonjour|salut|hello|coucou|merci|de rien|au revoir|comment vas-tu|qui es-tu)/i.test(text) && text.length < 50) {
+      continue;
+    }
+    if (text.includes('$') || text.includes('\\') || text.length > 70) {
+      return true;
+    }
+    if (/(math|physique|chimie|svt|biologie|histoire|droit|économie|informatique|algorithme|cours|chapitre|formule|exercice|problème|théorème)/i.test(text)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function extractSuggestedQuestions(content: string): { cleanText: string; questions: string[] } {
   const questions: string[] = [];
   let cleanText = content;
@@ -1338,7 +1555,116 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       return;
     }
 
-    // Initialisation du statut dynamique à l'instant T
+    // 1. Rassemblement et vérification préalable de tous les documents (Actif en Orange + Pièces jointes en Bleu)
+    const allDocs: any[] = [];
+    const currentActive = resolvedActiveItem;
+    if (currentActive && (currentActive.id || currentActive.name || currentActive.title || currentActive.file || currentActive.blob)) {
+      allDocs.push({ ...currentActive, isOrangeActive: true });
+    }
+    if (Array.isArray(attachedResources)) {
+      for (const res of attachedResources) {
+        if (res) {
+          const alreadyIn = allDocs.some(d =>
+            (d.id && res.id && d.id === res.id) ||
+            (d.name && res.name && d.name === res.name) ||
+            (d.title && res.title && d.title === res.title)
+          );
+          if (!alreadyIn) {
+            allDocs.push({ ...res, isOrangeActive: false });
+          }
+        }
+      }
+    }
+
+    const hasAttachedDoc = allDocs.length > 0;
+    const detectedFormat = detectCreationFormat(userText, requestedTypeOverride);
+    const isCreationIntent = Boolean(detectedFormat);
+    const hasPromptSubject = detectHasSpecificSubject(userText);
+    const hasConversationContext = hasRecentAcademicContext(messages);
+
+    // INTERPELLATION OBLIGATOIRE : Si l'utilisateur demande une création sans document, sans sujet précis et sans contexte de discussion
+    const needsSubjectClarification = isCreationIntent && !hasAttachedDoc && !hasPromptSubject && !hasConversationContext;
+
+    if (needsSubjectClarification && detectedFormat) {
+      setIsWaitingServer(false);
+      window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
+        detail: { isLoading: false, isCreation: false }
+      }));
+      window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
+
+      const formatName = CREATION_FORMAT_LABELS[detectedFormat] || 'création interactive';
+      const suggestions = getSuggestedPromptsForFormat(detectedFormat);
+
+      const interpellationText = `Pour que je puisse concevoir votre **${formatName}**, vous devez d'abord m'indiquer précisément sur quoi elle doit porter !
+
+Je ne peux pas concevoir de support d'étude « dans le vide » sans sujet ni document d'appui.
+
+👉 **Pour m'indiquer votre sujet, vous pouvez :**
+1. **Écrire directement le thème ou chapitre** dans votre message (par exemple : *« Sur les fonctions dérivées en maths »*, *« Sur la Seconde Guerre Mondiale »*, *« Sur les réactions d'oxydoréduction »*...).
+2. Ou **joindre votre fichier de cours** (document PDF, Word, fiche ou photo d'exercice) en cliquant sur le trombone 📎 d'importation en bas.
+
+---
+Voici quelques exemples concrets sur lesquels vous pouvez lancer votre création immédiatement en un clic :
+
+[QUESTIONS_SUGGÉRÉES]
+${suggestions.map(s => `- ${s}`).join('\n')}`;
+
+      // Animation machine à écrire pour l'interpellation
+      const aiMsgId = (Date.now() + 1).toString();
+      const initialAiMsg: Message = {
+        id: aiMsgId,
+        text: '',
+        sender: 'ai',
+        isStreaming: true,
+        model: currentModelDisplay,
+        isPowerMode: false,
+      };
+      setMessages(prev => [...prev, initialAiMsg]);
+
+      try {
+        safeSetItem(`studycloud_conv_msgs_${currentConversationId}`, JSON.stringify([...updatedMessages, { ...initialAiMsg, text: interpellationText, isStreaming: false, model: currentModelDisplay }]));
+      } catch {}
+
+      let index = 0;
+      const chunkSize = 4;
+      const tickSpeed = 16;
+      if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+
+      typingTimerRef.current = setInterval(() => {
+        index += chunkSize;
+        if (index >= interpellationText.length) {
+          if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+          setMessages(prev =>
+            prev.map(m =>
+              m.id === aiMsgId ? { ...m, text: interpellationText, isStreaming: false, model: currentModelDisplay } : m
+            )
+          );
+          setIsTyping(false);
+          StudyCloudAPI.saveAiMessage({
+            id: aiMsgId,
+            conversationId: currentConversationId,
+            role: 'assistant',
+            content: interpellationText,
+            metadata: { model: currentModelDisplay }
+          }).catch(() => {});
+        } else {
+          const partial = interpellationText.slice(0, index);
+          setMessages(prev =>
+            prev.map(m =>
+              m.id === aiMsgId ? { ...m, text: partial, model: currentModelDisplay } : m
+            )
+          );
+        }
+
+        if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
+          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+      }, tickSpeed);
+
+      return;
+    }
+
+    // Initialisation du statut dynamique à l'instant T (avec confirmation d'un document ou d'un sujet)
     if (activityTimerRef.current) clearInterval(activityTimerRef.current);
     const startTimestamp = Date.now();
     const activeDocName = resolvedActiveItem?.name || resolvedActiveItem?.title || '';
@@ -1348,21 +1674,22 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         if (r?.name && !initialDocNames.includes(r.name)) initialDocNames.push(r.name);
       }
     }
-    const isExplicitCreationRequest = Boolean(requestedTypeOverride);
-    const initialLiveStatus = getLiveAiActivity(userText, initialDocNames, 0, requestedTypeOverride);
+    const effectiveRequestedType = requestedTypeOverride || (isCreationIntent ? (detectedFormat as any) : undefined);
+    const isExplicitCreationRequest = Boolean(effectiveRequestedType);
+    const initialLiveStatus = getLiveAiActivity(userText, initialDocNames, 0, effectiveRequestedType);
     setAiActivityText(initialLiveStatus);
     if (isExplicitCreationRequest) {
       window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
-        detail: { statusText: initialLiveStatus, isLoading: true, isCreation: true, prompt: userText, toolType: requestedTypeOverride }
+        detail: { statusText: initialLiveStatus, isLoading: true, isCreation: true, prompt: userText, toolType: effectiveRequestedType }
       }));
     }
     activityTimerRef.current = setInterval(() => {
       const elapsed = Math.floor((Date.now() - startTimestamp) / 1000);
-      const liveStatus = getLiveAiActivity(userText, initialDocNames, elapsed, requestedTypeOverride);
+      const liveStatus = getLiveAiActivity(userText, initialDocNames, elapsed, effectiveRequestedType);
       setAiActivityText(liveStatus);
       if (isExplicitCreationRequest) {
         window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
-          detail: { statusText: liveStatus, isLoading: true, isCreation: true, prompt: userText, toolType: requestedTypeOverride }
+          detail: { statusText: liveStatus, isLoading: true, isCreation: true, prompt: userText, toolType: effectiveRequestedType }
         }));
       }
     }, 1000);
@@ -1379,27 +1706,6 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     }
 
     try {
-      // 1. Rassemblement de tous les documents (Actif en Orange + Pièces jointes en Bleu, jusqu'à 3 max)
-      const allDocs: any[] = [];
-      const currentActive = resolvedActiveItem;
-      if (currentActive && (currentActive.id || currentActive.name || currentActive.title || currentActive.file || currentActive.blob)) {
-        allDocs.push({ ...currentActive, isOrangeActive: true });
-      }
-      if (Array.isArray(attachedResources)) {
-        for (const res of attachedResources) {
-          if (res) {
-            const alreadyIn = allDocs.some(d =>
-              (d.id && res.id && d.id === res.id) ||
-              (d.name && res.name && d.name === res.name) ||
-              (d.title && res.title && d.title === res.title)
-            );
-            if (!alreadyIn) {
-              allDocs.push({ ...res, isOrangeActive: false });
-            }
-          }
-        }
-      }
-
       const targetDocs = allDocs.slice(0, 3);
       const docNames: string[] = [];
       const docIds: string[] = [];
@@ -1577,7 +1883,14 @@ RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
 ou
 > **Note :** Ta note de vigilance ici.
    Ils seront ainsi isolés dans un encadré distinct bleu ciel sans jamais se mélanger aux calculs.
-- DANS LES CRÉATIONS (Questionnaires, QCM, Cartes, Exercices) : Toute formule dans l'énoncé et dans CHAQUE option de réponse DOIT impérativement être entourée de dollars, par exemple : "$T(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$".`;
+- DANS LES CRÉATIONS (Questionnaires, QCM, Cartes, Exercices) : Toute formule dans l'énoncé et dans CHAQUE option de réponse DOIT impérativement être entourée de dollars, par exemple : "$T(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$".
+
+7. RÈGLE FONDAMENTALE DE DÉCISION — OBLIGATION D'UN SUJET D'ÉTUDE POUR TOUTE CRÉATION :
+   - IL EST STRICTEMENT INTERDIT de concevoir ou créer un module d'apprentissage (QCM, carte mentale, résumé, devoir, flashcards, exercices, infographie, etc.) « DANS LE VIDE », sans sujet, sans cours, ou sans contexte !
+   - Si l'étudiant te demande une création (ou a cliqué sur un bouton de création) MAIS qu'il n'a joint AUCUN document, n'a précisé AUCUN sujet de cours dans son message, ET que la discussion précédente ne porte sur aucun sujet d'étude précis :
+     -> TU NE DOIS EN AUCUN CAS PRODUIRE D'OBJET JSON DE CRÉATION NI CRÉER DANS LE VIDE.
+     -> TU DOIS IMPÉRATIVEMENT L'INTERPELLER DANS LE CHAT en lui demandant avec bienveillance d'indiquer la matière ou le chapitre précis qu'il souhaite réviser, ou de joindre son fichier de cours.
+     -> TU DOIS OBLIGATOIREMENT terminer ta réponse par le bloc [QUESTIONS_SUGGÉRÉES] avec 4 exemples concrets de prompts de création portant sur des matières variées (Maths, Physique, SVT, Informatique, etc.) sous forme de boutons cliquables.`;
 
       if (docNames.length > 0) {
         systemContent += `\n\nDOCUMENTS FOURNIS PAR L'ÉTUDIANT :\nL'utilisateur a ouvert ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct et complet au contenu textuel de ces documents.`;
@@ -1587,8 +1900,8 @@ ou
         systemContent += `\n\nCRÉATION ACTUELLE DANS L'ESPACE DE DROITE ("${activeCreation.title}", type: "${activeCreation.toolType}") : Si l'utilisateur demande explicitement de la modifier, l'enrichir ou la mettre à jour, réponds en mode création JSON avec la version actualisée.`;
       }
 
-      if (isExplicitOverride && explicitToolType) {
-        systemContent += `\n\nCOMMANDE EXPLICITE DE CRÉATION DEPUIS LE MENU CRÉATION :\nL'étudiant a expressément sélectionné le format de création « ${explicitToolType} » dans l'espace Création.\nTu DOIS OBLIGATOIREMENT te placer dans la BRANCHE 2 (CRÉATION D'UN MODULE D'ÉTUDE) et répondre avec l'objet JSON strict de création ("decision": "creation", "mode": "creation", "creation_type": "${explicitToolType}", "creation_title": "...", "chat_response": "...", "creation_data": { ... }). Ne produis aucun monologue ni texte Markdown de discussion libre dans ce cas. Remplis directement toutes les données complètes de création.`;
+      if (isExplicitOverride && explicitToolType && (docNames.length > 0 || hasPromptSubject || hasConversationContext)) {
+        systemContent += `\n\nCOMMANDE EXPLICITE DE CRÉATION DEPUIS LE MENU CRÉATION :\nL'étudiant a expressément sélectionné le format de création « ${explicitToolType} » pour le sujet/document d'étude.\nTu DOIS te placer dans la BRANCHE 2 (CRÉATION D'UN MODULE D'ÉTUDE) et répondre avec l'objet JSON strict de création ("decision": "creation", "mode": "creation", "creation_type": "${explicitToolType}", "creation_title": "...", "chat_response": "...", "creation_data": { ... }). Ne produis aucun monologue ni texte Markdown de discussion libre dans ce cas. Remplis directement toutes les données complètes de création.`;
       }
 
       // 4. Préparation de l'historique complet pour alimenter le RAG conversationnel
@@ -1702,6 +2015,13 @@ ou
             };
           }
         }
+      }
+
+      // Sécurité anti-création dans le vide pour TOUS les modèles IA (actuels et futurs) :
+      if (creationParsed && (!allDocs || allDocs.length === 0) && !hasPromptSubject && !hasConversationContext) {
+        creationParsed = null;
+        fullResponseText = `Pour que je puisse concevoir votre **création**, merci de me préciser sur quel cours ou sujet elle doit porter, ou de joindre votre fichier de cours (PDF, Word, photo d'exercice).\n\n[QUESTIONS_SUGGÉRÉES]\n- Questionnaire QCM sur les Lois de Newton en Physique\n- Carte Mentale sur les Fonctions et Dérivées en Mathématiques\n- Fiche de Résumé sur la Thermodynamique et Transferts Thermiques\n- Cartes Mémoires sur la Photosynthèse et Respiration Cellulaire`;
+        window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { isLoading: false, isCreation: false } }));
       }
 
       if (creationParsed && creationParsed.content) {

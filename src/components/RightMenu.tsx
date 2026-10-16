@@ -264,21 +264,28 @@ export function RightMenu({
   // Déclenchement de la création lors de l'appui sur une carte
   const handleSelectCard = (card: CreationProposalCard) => {
     const promptToSend = card.getPrompt(resolvedDocName);
-    setIsGenerating(true);
-    setLiveStatusText("J'analyse votre demande pour concevoir votre création...");
+    const hasDoc = Boolean(resolvedDocName && resolvedDocName.trim().length > 0);
+
+    // Si un document est présent, on peut démarrer l'animation de création
+    if (hasDoc) {
+      setIsGenerating(true);
+      setLiveStatusText("J'analyse votre document pour concevoir votre création...");
+      window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
+    } else {
+      // Pas de document : basculer sur le chat pour que l'IA interpelle l'utilisateur
+      window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
+    }
 
     // Envoi du prompt à l'IA
     window.dispatchEvent(new CustomEvent('studycloud-trigger-creation', {
       detail: {
         prompt: promptToSend,
         toolType: card.toolType,
-        isCreation: true,
+        isCreation: hasDoc,
+        hasDocument: hasDoc,
         source: 'right-menu-cards'
       }
     }));
-
-    // Sur mobile, basculer sur l'onglet Création pour voir l'animation en direct
-    window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
   };
 
   // Annulation manuelle de la création

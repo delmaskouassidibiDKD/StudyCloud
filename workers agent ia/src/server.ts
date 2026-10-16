@@ -1179,7 +1179,7 @@ Tu réponds sous la forme d'un objet JSON strict :
   }
 }
 \`\`\`
-${docText ? `DOCUMENT FOURNI PAR L'ÉTUDIANT :\n"""\n${docText.slice(0, 15000)}\n"""` : ""}`;
+${docText ? `DOCUMENT FOURNI PAR L'ÉTUDIANT :\n"""\n${docText.slice(0, 15000)}\n"""` : "\n\nAUCUN DOCUMENT FOURNI : Si l'étudiant demande une création mais sans document ni sujet précis, ne crée rien dans le vide. Demande-lui de préciser le sujet ou de joindre son cours, et termine par [QUESTIONS_SUGGÉRÉES] avec 4 exemples concrets."}`;
 
         const system = customSystem || defaultSystem;
 
