@@ -316,17 +316,12 @@ function isNetworkErrorMessage(msg: Message): boolean {
 function NetworkErrorCard({
   retryPrompt,
   onRetry,
+  isRetrying = false,
 }: {
   retryPrompt?: string;
   onRetry: () => void;
+  isRetrying?: boolean;
 }) {
-  const [isRetrying, setIsRetrying] = useState(false);
-
-  const handleAction = () => {
-    setIsRetrying(true);
-    onRetry();
-  };
-
   return (
     <div className="my-2 p-3 sm:p-3.5 rounded-2xl bg-[#1e2026] border border-zinc-700/80 shadow-md w-full max-w-xl transition-all animate-fadeIn">
       <div className="flex items-center gap-3">
@@ -338,7 +333,7 @@ function NetworkErrorCard({
         </p>
         <button
           type="button"
-          onClick={handleAction}
+          onClick={onRetry}
           disabled={isRetrying}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 hover:text-white text-xs font-bold transition-all cursor-pointer disabled:opacity-60 shrink-0 active:scale-95 shadow-sm"
           title="Réessayer"
@@ -1145,6 +1140,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isWaitingServer, setIsWaitingServer] = useState(false);
+  const [retryingMessageId, setRetryingMessageId] = useState<string | null>(null);
   const [aiActivityText, setAiActivityText] = useState<string>('Je réfléchis...');
   const activityTimerRef = useRef<any>(null);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
@@ -1378,6 +1374,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     }
     setIsWaitingServer(false);
     setIsTyping(false);
+    setRetryingMessageId(null);
     window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
       detail: { isLoading: false, isCancelled: true }
     }));
@@ -1578,6 +1575,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     setCurrentConversationTitle('Nouvelle discussion');
     setMessages([]);
     setActiveCreation(null);
+    setRetryingMessageId(null);
     setIsHistoryDrawerOpen(false);
     setShowProposalBar(true);
     safeSetItem('studycloud_current_conversation_id', newId);
@@ -1669,6 +1667,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       setIsWaitingServer(false);
       setIsTyping(false);
+      setRetryingMessageId(null);
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         text: "Veuillez vérifier que votre appareil est bien connecté à Internet (Wi-Fi ou données mobiles).",
@@ -1714,6 +1713,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
     if (needsSubjectClarification && detectedFormat) {
       setIsWaitingServer(false);
+      setRetryingMessageId(null);
       window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
         detail: { isLoading: false, isCreation: false }
       }));
@@ -2079,12 +2079,14 @@ ou
       if (abortSignal.aborted) {
         setIsWaitingServer(false);
         setIsTyping(false);
+        setRetryingMessageId(null);
         window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { isLoading: false, isCancelled: true } }));
         return;
       }
 
       const rawResponseText = aiResult.response || "Désolé, je n'ai pas pu obtenir de réponse.";
       setIsWaitingServer(false);
+      setRetryingMessageId(null);
 
       let fullResponseText = rawResponseText;
 
@@ -2223,6 +2225,7 @@ ou
             )
           );
           setIsTyping(false);
+          setRetryingMessageId(null);
           // Sauvegarde Cloudflare D1 du message assistant complet
           StudyCloudAPI.saveAiMessage({
             id: aiMsgId,
@@ -2246,6 +2249,7 @@ ou
       }, tickSpeed);
 
     } catch (err: any) {
+      setRetryingMessageId(null);
       if (err?.name === 'AbortError' || err?.message?.includes('aborted')) {
         setIsWaitingServer(false);
         setIsTyping(false);
@@ -2634,6 +2638,7 @@ ou
                   {isNetworkErrorMessage(msg) ? (
                     <NetworkErrorCard
                       retryPrompt={msg.retryPrompt}
+                      isRetrying={retryingMessageId === msg.id && (isWaitingServer || isTyping)}
                       onRetry={() => {
                         const targetPrompt = msg.retryPrompt || (() => {
                           const idx = messages.findIndex(m => m.id === msg.id);
@@ -2641,8 +2646,12 @@ ou
                           const lastUser = [...before].reverse().find(m => m.sender === 'user');
                           return lastUser?.text || '';
                         })();
-                        setMessages(prev => prev.filter(m => m.id !== msg.id));
-                        if (targetPrompt) sendMessage(targetPrompt);
+                        setRetryingMessageId(msg.id);
+                        if (targetPrompt) {
+                          sendMessage(targetPrompt);
+                        } else {
+                          setRetryingMessageId(null);
+                        }
                       }}
                     />
                   ) : msg.isError ? (
@@ -2655,6 +2664,7 @@ ou
                         </div>
                         <button
                           type="button"
+                          disabled={retryingMessageId === msg.id && (isWaitingServer || isTyping)}
                           onClick={() => {
                             const targetPrompt = msg.retryPrompt || (() => {
                               const idx = messages.findIndex(m => m.id === msg.id);
@@ -2662,13 +2672,17 @@ ou
                               const lastUser = [...before].reverse().find(m => m.sender === 'user');
                               return lastUser?.text || '';
                             })();
-                            setMessages(prev => prev.filter(m => m.id !== msg.id));
-                            if (targetPrompt) sendMessage(targetPrompt);
+                            setRetryingMessageId(msg.id);
+                            if (targetPrompt) {
+                              sendMessage(targetPrompt);
+                            } else {
+                              setRetryingMessageId(null);
+                            }
                           }}
-                          className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold transition-all cursor-pointer border border-zinc-700 active:scale-95"
+                          className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold transition-all cursor-pointer border border-zinc-700 active:scale-95 disabled:opacity-60"
                         >
-                          <RotateCw className="w-3 h-3 text-orange-400" />
-                          <span>Réessayer</span>
+                          <RotateCw className={`w-3 h-3 text-orange-400 ${retryingMessageId === msg.id && (isWaitingServer || isTyping) ? 'animate-spin' : ''}`} />
+                          <span>{retryingMessageId === msg.id && (isWaitingServer || isTyping) ? 'Connexion...' : 'Réessayer'}</span>
                         </button>
                       </div>
                     </div>
