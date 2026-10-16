@@ -1025,7 +1025,49 @@ RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
 ou
 > **Note :** Ta note de vigilance ici.
    Ils seront ainsi isolés dans un encadré distinct bleu ciel sans jamais se mélanger aux calculs.
-- DANS LES CRÉATIONS (Questionnaires, QCM, Cartes, Exercices) : Toute formule dans l'énoncé et dans CHAQUE option de réponse DOIT impérativement être entourée de dollars, par exemple : "$T(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$".`;
+- DANS LES CRÉATIONS (Questionnaires, QCM, Cartes, Exercices) : Toute formule dans l'énoncé et dans CHAQUE option de réponse DOIT impérativement être entourée de dollars, par exemple : "$T(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$".
+
+7. POSITION ALÉATOIRE DES BONNES RÉPONSES ET DIVERSITÉ EXTRÊME :
+- DANS LES QCM ('questionnaire') : "correct_index" DOIT ÊTRE ALÉATOIREMENT DISTRIBUÉ (0, 1, 2, 3), ne place JAMAIS la bonne réponse toujours en première ou deuxième position.
+- DIVERSITÉ : Ne pose pas toujours les mêmes questions d'introduction. Explore tout le document, intègre des calculs chiffrés réels ($...$), des problèmes d'application et des cas limites.
+- Vrai ou Faux : Équilibre strictement environ 50% VRAI et 50% FAUX avec justifications stimulantes.
+
+8. DIRECTIVE SYSTÈME STRICTE DE STRUCTURATION PÉDAGOGIQUE POUR LES CARTES MENTALES ('carte-mentale') :
+Tu es le moteur de structuration pédagogique de l'application. Lorsque l'utilisateur te soumet un cours, un document ou un sujet, tu dois obligatoirement analyser les concepts et les lier entre eux sous forme de carte mentale logique.
+- PAS DE PHRASES NARRATIVES NI DE LONGS PARAGRAPHES.
+- UTILISE UNIQUEMENT DES MOTS-CLÉS PERCUTANTS, des notions courtes et précises.
+- INTÈGRE LES FORMULES SCIENTIFIQUES/TECHNIQUES PERTINENTES directement reliées au bon concept (ex: 'Fréquence de coupure : $f_c = \\dfrac{1}{2\\pi RC}$', 'Gain statique : $T_0 = -\\dfrac{R_2}{R_1}$', 'Facteur de qualité : $Q_0 = \\dfrac{1}{R}\\sqrt{\\dfrac{L}{C}}$').
+- Structure ta réponse de manière à ce qu'un utilisateur comprenne immédiatement les liens de cause à effet et la logique globale (Thème central -> Axes majeurs -> Sous-notions et Formules).
+- FORMAT DE SORTIE STRUCTURÉ EXPLOITABLE PAR LE FRONT-END (JSON ou Mermaid) :
+  Dans 'creation_data', fournis impérativement la structure hiérarchique :
+  \`\`\`json
+  {
+    "root_title": "Thème Central du Cours",
+    "root": {
+      "title": "Thème Central du Cours",
+      "children": [
+        {
+          "title": "Axe Majeur 1 (ex: Définition & Rôle)",
+          "children": [
+            { "title": "Sous-notion percutante 1", "formula": "f_c = \\dfrac{1}{2\\pi RC}" },
+            { "title": "Sous-notion percutante 2" }
+          ]
+        }
+      ]
+    },
+    "branches": [
+      {
+        "title": "Axe Majeur 1",
+        "children": [
+          { "title": "Sous-notion percutante 1", "formula": "f_c = \\dfrac{1}{2\\pi RC}" },
+          { "title": "Sous-notion percutante 2" }
+        ]
+      }
+    ]
+  }
+  \`\`\`
+  Alternativement, tu peux inclure un champ 'mermaid': "mindmap\\n  root((Thème))\\n    Axe 1\\n      Notion 1\\n      Formule: $...$" qui sera dessiné à l'écran.
+- INTERDICTION FORMELLE d'utiliser des placeholders vides comme 'Sous-notion 1', 'Sous-notion 2', 'Branche 1' : chaque nœud DOIT porter le vrai concept ou la formule du cours !`;
 
         if (docContent) {
           systemPrompt += `\n\n[DOCUMENTS FOURNIS PAR L'ÉTUDIANT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 30000)}`;
@@ -1261,7 +1303,7 @@ ou
             if (rawParsed && typeof rawParsed === "object") {
               const payloadData = rawParsed.creation_data || (
                 rawParsed.questions || rawParsed.affirmations || rawParsed.cards ||
-                rawParsed.root || rawParsed.overview || rawParsed.sections ||
+                rawParsed.root || rawParsed.branches || rawParsed.mermaid || rawParsed.overview || rawParsed.sections ||
                 rawParsed.exercises || rawParsed.exercices || null
               );
               if (rawParsed.decision === "creation" || rawParsed.mode === "creation" || payloadData) {
@@ -1270,7 +1312,7 @@ ou
                   rawParsed.questions ? "questionnaire" :
                   rawParsed.affirmations ? "vrai-ou-faux" :
                   rawParsed.cards ? "carte-memoire" :
-                  rawParsed.root ? "carte-mentale" :
+                  (rawParsed.root || rawParsed.branches || rawParsed.mermaid) ? "carte-mentale" :
                   rawParsed.overview ? "resume" :
                   rawParsed.exercises || rawParsed.exercices ? "exercices-ecrits" :
                   "questionnaire"
@@ -1282,6 +1324,18 @@ ou
             }
           } catch (_e) {
             // Pas de JSON : reste en mode discussion normale fluide
+          }
+        }
+
+        // Détection de Mermaid Mindmap direct dans la réponse
+        if (mode !== "creation") {
+          const mermaidMatch = answerText.match(/```(?:mermaid)?\s*(mindmap[\s\S]*?)```/i) || (answerText.trim().startsWith("mindmap") ? [answerText, answerText] : null);
+          if (mermaidMatch) {
+            mode = "creation";
+            creationType = "carte-mentale";
+            creationTitle = `CARTE MENTALE : ${docName || "Étude Académique"}`;
+            creationData = { mermaid: mermaidMatch[1].trim() };
+            companionChatText = `✨ J'ai créé votre **${creationTitle}** directement dans votre espace **Création** à droite !`;
           }
         }
 
