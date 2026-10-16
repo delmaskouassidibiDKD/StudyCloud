@@ -24,6 +24,33 @@ interface CreationProposalCard {
   getPrompt: (docName: string) => string;
 }
 
+const CREATION_NAME_MAP: Record<string, string> = {
+  'questionnaire': 'Questionnaire QCM',
+  'quiz': 'Questionnaire QCM',
+  'carte-mentale': 'Carte Mentale',
+  'mindmap': 'Carte Mentale',
+  'carte-memoire': 'Cartes Mémoires',
+  'flashcards': 'Cartes Mémoires',
+  'resume': 'Fiche de Résumé',
+  'pdf': 'Document PDF',
+  'vrai-faux': 'Vrai ou Faux',
+  'vrai-ou-faux': 'Vrai ou Faux',
+  'exercices': 'Exercices Écrits',
+  'exercices-ecrits': 'Exercices Écrits',
+  'devoir': 'Devoir Complet',
+  'devoir-complet': 'Devoir Complet',
+  'infographie': 'Infographie',
+  'questionnaire-test': 'Test Noté'
+};
+
+function getCreationBadgeLabel(title?: string): string {
+  if (!title || title.trim() === '') return "Création en cours...";
+  const clean = title.trim();
+  const lower = clean.toLowerCase();
+  const elision = lower.startsWith('d') || lower.startsWith('e') || lower.startsWith('i') || lower.startsWith('a') || lower.startsWith('o') || lower.startsWith('u') || lower.startsWith('é') || lower.startsWith('è');
+  return `Création ${elision ? "d'" : "de "}${clean} en cours`;
+}
+
 export function RightMenu({
   isRightFullscreen,
   setIsRightFullscreen,
@@ -51,7 +78,8 @@ export function RightMenu({
     } catch {}
   }, [activeCreation]);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [liveStatusText, setLiveStatusText] = useState<string>('Je prépare votre création...');
+  const [generatingToolTitle, setGeneratingToolTitle] = useState<string>('');
+  const [liveStatusText, setLiveStatusText] = useState<string>('Je prépare votre support avec soin...');
   const [isRightDrawerOpen, setIsRightDrawerOpen] = useState<boolean>(false);
   const [creationsHistory, setCreationsHistory] = useState<any[]>([]);
 
@@ -69,8 +97,8 @@ export function RightMenu({
     typewriterTimeoutRef.current = [];
 
     const fullSubtitle = resolvedDocName
-      ? `Créations proposées par l'IA pour « ${resolvedDocName} »`
-      : "L'IA vous propose des créations interactives sur mesure :";
+      ? `Créations interactives pour « ${resolvedDocName} » :`
+      : "Créations interactives sur mesure :";
 
     setDisplayedSubtitle('');
     setIsTypingSubtitle(true);
@@ -285,7 +313,8 @@ export function RightMenu({
     // Si un document est présent, on peut démarrer l'animation de création
     if (hasDoc) {
       setIsGenerating(true);
-      setLiveStatusText("J'analyse votre document pour concevoir votre création...");
+      setGeneratingToolTitle(card.title);
+      setLiveStatusText("J'analyse votre document avec attention...");
       window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
     } else {
       // Pas de document : basculer sur le chat pour que l'IA interpelle l'utilisateur
@@ -351,6 +380,14 @@ export function RightMenu({
       // Activer l'animation de création UNIQUEMENT s'il s'agit explicitement d'une création
       if (e.detail?.isLoading === true && (e.detail?.isCreation || e.detail?.toolType)) {
         setIsGenerating(true);
+        if (e.detail?.toolType) {
+          const matched = proposalCards.find(c => c.toolType === e.detail.toolType || c.id === e.detail.toolType);
+          if (matched) {
+            setGeneratingToolTitle(matched.title);
+          } else if (CREATION_NAME_MAP[e.detail.toolType]) {
+            setGeneratingToolTitle(CREATION_NAME_MAP[e.detail.toolType]);
+          }
+        }
       } else if (e.detail?.isLoading === false) {
         setIsGenerating(false);
       }
@@ -440,9 +477,8 @@ export function RightMenu({
         {/* Centre : Titre repoussé vers le milieu, sans logo étoile */}
         <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none text-xs sm:text-[13px] font-semibold text-zinc-200 select-none max-w-[55%] truncate text-center">
           {isGenerating ? (
-            <span className="flex items-center gap-1.5 text-purple-400">
-              <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
-              Génération en cours...
+            <span className="text-purple-400 truncate font-medium">
+              {getCreationBadgeLabel(generatingToolTitle)}
             </span>
           ) : activeCreation ? (
             <span className="text-zinc-200 truncate">
@@ -570,21 +606,16 @@ export function RightMenu({
               {/* Ce que l'IA fait en direct au milieu de l'écran / des anneaux */}
               <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center pointer-events-none z-20">
                 <div className="flex flex-col items-center gap-3 max-w-sm px-6 py-5 rounded-3xl bg-black/60 backdrop-blur-md border border-purple-500/25 shadow-[0_0_30px_rgba(168,85,247,0.2)]">
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/30">
-                    <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
-                    <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider">
-                      Création en direct
+                  <div className="inline-flex items-center px-3 py-1 rounded-full bg-purple-500/20 border border-purple-500/30">
+                    <span className="text-[11px] font-bold text-purple-300 uppercase tracking-wider">
+                      {getCreationBadgeLabel(generatingToolTitle)}
                     </span>
                   </div>
 
                   {/* Statut dynamique en temps réel */}
                   <p className="text-sm sm:text-base font-semibold text-white tracking-wide leading-relaxed animate-pulse">
-                    {liveStatusText || "Je conçois votre création..."}
+                    {liveStatusText || "Je prépare votre support avec soin..."}
                   </p>
-
-                  <span className="text-[11px] font-medium text-zinc-400">
-                    L'IA structure vos données pédagogiques
-                  </span>
 
                   {/* Bouton Annuler au centre */}
                   <button

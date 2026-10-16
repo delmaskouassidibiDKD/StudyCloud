@@ -100,84 +100,152 @@ function cleanChatText(text: string): string {
 }
 
 // Détermine dynamiquement ce que l'IA réalise en temps réel (à l'instant T) selon le contexte et le délai
+// Rédigé avec des messages pédagogiques rassurants, fluides et sans jargon technique
 function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: number, requestedType?: string): string {
   const cleanPrompt = (prompt || '').trim().toLowerCase();
   const mainDoc = docNames && docNames.length > 0 ? docNames[0] : '';
   const hasDoc = Boolean(mainDoc);
+  const normType = (requestedType || '').toLowerCase().replace(/_/g, '-');
 
-  // 1. Mathématiques, calculs, sciences dures, physique, électronique
+  const pickReassuringStep = (steps: string[]): string => {
+    if (!steps || steps.length === 0) return "Je prépare votre réponse avec soin...";
+    const idx = Math.min(Math.floor(elapsedSec / 3), steps.length - 1);
+    if (Math.floor(elapsedSec / 3) >= steps.length) {
+      const extraIdx = (Math.floor(elapsedSec / 3) - steps.length) % 2;
+      return extraIdx === 0 
+        ? steps[steps.length - 1] 
+        : "Je peaufine les derniers détails pour vous...";
+    }
+    return steps[idx];
+  };
+
+  // 1. Questionnaire / Quiz QCM
+  if (normType.includes('questionnaire') || normType.includes('quiz') || /(quiz|qcm|questionnaire)/i.test(cleanPrompt)) {
+    return pickReassuringStep([
+      "J'étudie votre sujet avec attention...",
+      "Je sélectionne les questions les plus utiles pour votre révision...",
+      "Je formule des explications claires pour vous guider...",
+      "Je prépare les options de réponses pour vous entraîner...",
+      "Votre questionnaire interactif arrive dans un instant..."
+    ]);
+  }
+
+  // 2. Carte Mentale
+  if (normType.includes('carte-mentale') || normType.includes('mindmap') || /(carte mentale|mindmap)/i.test(cleanPrompt)) {
+    return pickReassuringStep([
+      "J'organise les idées maîtresses de votre cours...",
+      "Je relie les notions entre elles pour simplifier votre compréhension...",
+      "Je structure les concepts clés de manière visuelle...",
+      "J'harmonise la vue d'ensemble pour faciliter votre révision...",
+      "Votre carte mentale est presque prête..."
+    ]);
+  }
+
+  // 3. Cartes Mémoires / Flashcards
+  if (normType.includes('carte-memoire') || normType.includes('flashcard') || /(flashcards?|carte mémoire)/i.test(cleanPrompt)) {
+    return pickReassuringStep([
+      "Je repère les définitions et notions indispensables...",
+      "Je rédige des cartes claires pour stimuler votre mémoire...",
+      "Je prépare les explications détaillées au verso...",
+      "Je vérifie les réponses pour faciliter votre mémorisation...",
+      "Vos cartes mémoires sont bientôt prêtes..."
+    ]);
+  }
+
+  // 4. Fiche de Résumé / Synthèse
+  if (normType.includes('resume') || /(résumé|fiche|synthèse)/i.test(cleanPrompt)) {
+    return pickReassuringStep([
+      "Je parcours les points clés de votre cours...",
+      "Je synthétise les règles majeures pour aller à l'essentiel...",
+      "J'organise les points de repère pour vous faire gagner du temps...",
+      "Je soigne la clarté et la mise en page...",
+      "Votre fiche de synthèse est prête dans un instant..."
+    ]);
+  }
+
+  // 5. Document PDF
+  if (normType.includes('pdf') || /document pdf/i.test(cleanPrompt)) {
+    return pickReassuringStep([
+      "Je structure votre document d'étude...",
+      "Je rédige un contenu complet, clair et bien expliqué...",
+      "J'organise les chapitres pour vous faciliter l'apprentissage...",
+      "Je peaufine la mise en page pour une lecture agréable...",
+      "Votre document est presque prêt..."
+    ]);
+  }
+
+  // 6. Vrai ou Faux
+  if (normType.includes('vrai') || /vrai ou faux/i.test(cleanPrompt)) {
+    return pickReassuringStep([
+      "Je prépare des affirmations ciblées sur votre cours...",
+      "Je formule des cas concrets pour consolider vos acquis...",
+      "J'ajoute les justifications pédagogiques pour chaque réponse...",
+      "Votre série de vrai ou faux est presque prête..."
+    ]);
+  }
+
+  // 7. Exercices Écrits / Devoirs / Examens
+  if (normType.includes('exercice') || normType.includes('devoir') || /(exercice|devoir|examen)/i.test(cleanPrompt)) {
+    return pickReassuringStep([
+      "Je prépare des exercices progressifs et adaptés à votre niveau...",
+      "Je rédige des énoncés limpides et encourageants...",
+      "Je détaille la méthode pas à pas pour vous accompagner...",
+      "Je vérifie chaque consigne pour vous guider au mieux...",
+      "Votre entraînement arrive dans un instant..."
+    ]);
+  }
+
+  // 8. Infographie
+  if (normType.includes('infographie') || /infographie/i.test(cleanPrompt)) {
+    return pickReassuringStep([
+      "Je regroupe les repères et informations indispensables...",
+      "Je mets en valeur les points clés pour une lecture intuitive...",
+      "J'harmonise la présentation de votre infographie...",
+      "Votre infographie pédagogique est presque prête..."
+    ]);
+  }
+
+  // 9. Test Noté / Évaluation
+  if (normType.includes('test') || /test noté/i.test(cleanPrompt)) {
+    return pickReassuringStep([
+      "Je prépare les questions adaptées à votre programme...",
+      "J'ajuste le barème et les critères d'évaluation...",
+      "Je règle le chronomètre et les explications pédagogiques...",
+      "Tout est bientôt prêt pour votre test..."
+    ]);
+  }
+
+  // 10. Mathématiques, calculs, sciences dures (sans jargon technique)
   const isMathScience = /(calcul|dériv|intégral|équat|formule|résoud|résous|schéma|circuit|aop|filtre|rlc|valeur|\$|\\dfrac|impédance|tension|courant|puissance|théorème|démonstr|vecteur|matrice|harmonique)/i.test(cleanPrompt);
   if (isMathScience) {
-    if (elapsedSec <= 2) return "J'analyse les données et équations...";
-    if (elapsedSec <= 5) return "Je réfléchis aux étapes de calcul et à la démonstration...";
-    if (elapsedSec <= 8) return "Je résous les formules et vérifie les résultats...";
-    return "Je finalise la résolution méthodique...";
+    return pickReassuringStep([
+      "J'examine attentivement votre énoncé...",
+      "Je prépare une explication simple, étape par étape...",
+      "Je vérifie chaque résultat pour vous assurer une parfaite compréhension...",
+      "Je termine la présentation claire de la solution...",
+      "Votre explication détaillée est prête dans un instant..."
+    ]);
   }
 
-  // 2. Création de modules d'apprentissage (Quiz, QCM, Cartes, Résumé, Devoir...)
-  const isCreation = Boolean(requestedType) || /(créer|conçois|concevoir|fais-moi un|génère|quiz|qcm|questionnaire|carte mentale|flashcards?|carte mémoire|résumé|fiche|devoir|examen|infographie)/i.test(cleanPrompt);
-  if (isCreation) {
-    const isQuiz = requestedType?.includes('questionnaire') || requestedType?.includes('quiz') || /(quiz|qcm|questionnaire)/i.test(cleanPrompt);
-    const isMindmap = requestedType?.includes('carte-mentale') || /(carte mentale|mindmap)/i.test(cleanPrompt);
-    const isSummary = requestedType?.includes('resume') || /(résumé|fiche|synthèse)/i.test(cleanPrompt);
-
-    if (isQuiz) {
-      if (elapsedSec <= 2) return "J'analyse le sujet pour concevoir le questionnaire...";
-      if (elapsedSec <= 5) return "Je réfléchis aux questions et aux options de réponse...";
-      if (elapsedSec <= 8) return "Je rédige les explications pédagogiques...";
-      return "Je finalise le questionnaire interactif...";
-    }
-    if (isMindmap) {
-      if (elapsedSec <= 2) return "J'extrais l'arborescence des notions...";
-      if (elapsedSec <= 5) return "Je structure les branches et concepts clés...";
-      return "Je finalise la carte mentale...";
-    }
-    if (isSummary) {
-      if (elapsedSec <= 2) return "J'extrais les points fondamentaux...";
-      if (elapsedSec <= 5) return "Je réfléchis à la synthèse des règles clés...";
-      return "Je finalise la fiche de synthèse...";
-    }
-    if (elapsedSec <= 2) return "J'analyse les consignes de création...";
-    if (elapsedSec <= 5) return "Je conçois le module pédagogique...";
-    return "Je finalise votre création...";
-  }
-
-  // 3. Document support d'étude ouvert ou joint
+  // 11. Document d'étude ouvert ou joint
   if (hasDoc) {
-    if (elapsedSec <= 2) return `J'explore le document « ${mainDoc} »...`;
-    if (elapsedSec <= 5) return "Je réfléchis aux concepts clés du cours...";
-    if (elapsedSec <= 8) return "Je structure l'explication adaptée à vos supports...";
-    return "Je finalise la réponse détaillée...";
+    return pickReassuringStep([
+      `Je m'appuie sur votre document « ${mainDoc} »...`,
+      "Je sélectionne les passages importants pour répondre au mieux...",
+      "Je prépare une réponse claire adaptée à votre cours...",
+      "Je peaufine les explications pour vous guider...",
+      "Votre réponse est bientôt prête..."
+    ]);
   }
 
-  // 4. Code / Informatique
-  const isCode = /(code|programme|fonction|python|javascript|typescript|c\+\+|java|algorithme|script|html|css|sql|bug|erreur)/i.test(cleanPrompt);
-  if (isCode) {
-    if (elapsedSec <= 2) return "J'analyse le code et la logique...";
-    if (elapsedSec <= 5) return "Je réfléchis à la solution optimale...";
-    if (elapsedSec <= 8) return "Je structure l'implémentation et les explications...";
-    return "Je vérifie la syntaxe et finalise...";
-  }
-
-  // 5. Schéma / Dessin vectoriel
-  const isDrawing = /(dessin|schéma|figure|graphique|svg|tracer|illustr|circuit)/i.test(cleanPrompt);
-  if (isDrawing) {
-    if (elapsedSec <= 2) return "J'analyse la structure visuelle à représenter...";
-    if (elapsedSec <= 5) return "Je conçois le schéma vectoriel...";
-    return "Je finalise le tracé graphique...";
-  }
-
-  // 6. Message court ou salutation
-  if (cleanPrompt.length < 15 && /(cc|salut|bonjour|coucou|hello|hi|hey|merci)/i.test(cleanPrompt)) {
-    if (elapsedSec <= 2) return "Je vous réponds...";
-    return "Je prépare votre réponse...";
-  }
-
-  // 7. Question générale / explication de cours (cas par défaut)
-  if (elapsedSec <= 2) return "J'analyse votre question...";
-  if (elapsedSec <= 5) return "Je réfléchis...";
-  if (elapsedSec <= 8) return "Je structure les explications pas à pas...";
-  return "Je finalise la réponse détaillée...";
+  // 12. Cas général (Discussion normale)
+  return pickReassuringStep([
+    "J'analyse votre question avec attention...",
+    "Je prépare une explication claire et détaillée...",
+    "Je structure la réponse étape par étape...",
+    "Je peaufine les conseils pour vous...",
+    "Votre réponse arrive dans un instant..."
+  ]);
 }
 
 // Détection professionnelle des coupures réseau et absence de connexion
