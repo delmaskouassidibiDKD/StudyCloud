@@ -2022,7 +2022,12 @@ ou
      -> TU DOIS IMPÉRATIVEMENT L'INTERPELLER DANS LE CHAT en lui demandant avec bienveillance d'indiquer la matière ou le chapitre précis qu'il souhaite réviser, ou de joindre son fichier de cours.
      -> TU DOIS OBLIGATOIREMENT terminer ta réponse par le bloc [QUESTIONS_SUGGÉRÉES] avec 4 exemples concrets de prompts de création portant sur des matières variées (Maths, Physique, SVT, Informatique, etc.) sous forme de boutons cliquables.`;
 
-      systemContent += `\n\n8. POSITION ALÉATOIRE DES BONNES RÉPONSES ET DIVERSITÉ EXTRÊME DES QUESTIONS (ZÉRO QUESTION IDENTIQUE) :
+      systemContent += `\n\n8. POSITION ALÉATOIRE, DIVERSITÉ ET NOMBRE MAXIMUM (18 MAXIMUM) POUR QUESTIONNAIRES ET VRAI OU FAUX :
+- RÈGLE STRICTE SUR LE NOMBRE DE QUESTIONS / AFFIRMATIONS :
+  * Si l'étudiant ne spécifie aucun nombre exact : GÉNÈRE LE MAXIMUM POSSIBLE pour couvrir exhaustivement le document ou le cours (entre 15 et 18 questions ou affirmations).
+  * Si l'étudiant demande un nombre spécifique : respecte scrupuleusement sa demande SANS JAMAIS DÉPASSER 18.
+  * Si l'étudiant demande plus de 18 (par exemple 20, 25, 30, 50, etc.) : TU DOIS OBLIGATOIREMENT LIMITER À STRICTEMENT 18 MAXIMUM. Ne crée JAMAIS plus de 18 items.
+  * Cette règle est ABSOLUE pour les questionnaires ('questionnaire', 'questionnaire-test') et pour les vrai ou faux ('vrai-ou-faux', 'vrai-ou-faux-test').
 - POSITION STRICTEMENT ALÉATOIRE DANS LES QCM ET QUIZ ('questionnaire', 'questionnaire-test') :
   * IL EST STRICTEMENT INTERDIT de placer systématiquement la bonne réponse en première ou deuxième position (index 0 ou 1) !
   * La bonne réponse DOIT se cacher dedans de manière totalement aléatoire : répartis-la équitablement entre toutes les positions (tantôt A [index 0], tantôt B [index 1], tantôt C [index 2], tantôt D [index 3]).
@@ -2034,7 +2039,21 @@ ou
     -> Interdiction absolue de répéter les mêmes questions ou les mêmes 3 définitions introductives.
     -> Explore d'AUTRES SECTIONS, d'autres chapitres, théorèmes et paragraphes du document.
     -> INTÈGRE DES CALCULS ET PROBLÈMES CONCRETS : Ne te limite pas à des définitions verbales. Pose des vrais calculs numériques chiffrés dès que le cours comporte des formules ($f_0$, bande passante \\Delta f, facteur de qualité Q_0, valeurs numériques réelles, dérivées, impédances, intégrales, lois physiques).
-    -> Pour les Vrai ou Faux ('vrai-ou-faux', 'vrai-ou-faux-test') : Équilibre strictement environ 50% de VRAI et 50% de FAUX avec des affirmations stimulantes et subtiles.`;
+- FORMAT STRICT ET OBLIGATOIRE POUR VRAI OU FAUX ('vrai-ou-faux', 'vrai-ou-faux-test') :
+  * Équilibre rigoureusement environ 50% de VRAI et 50% de FAUX avec affirmations stimulantes, subtiles et calculs réels.
+  * Structure JSON obligatoire dans 'creation_data' :
+    \`\`\`json
+    {
+      "affirmations": [
+        {
+          "id": 1,
+          "statement": "Énoncé précis avec formule KaTeX ($...$)",
+          "is_true": true,
+          "explanation": "Démonstration pédagogique complète expliquant pourquoi c'est vrai ou faux."
+        }
+      ]
+    }
+    \`\`\``;
 
       systemContent += `\n\n9. DIRECTIVE SYSTÈME STRICTE DE STRUCTURATION PÉDAGOGIQUE POUR LES CARTES MENTALES ('carte-mentale' et 'carte-mentale-2') :
 Tu es le moteur de structuration pédagogique de l'application. Lorsque l'utilisateur te soumet un cours, un document ou un sujet, tu dois obligatoirement analyser les concepts et les lier entre eux sous forme de carte mentale logique.
@@ -2155,10 +2174,48 @@ Tu es le moteur de structuration pédagogique de l'application. Lorsque l'utilis
       let companionChatMessage = '';
 
       if (aiResult.creation_data) {
-        const normType = normalizeCreationType(aiResult.creation_type || explicitToolType || 'questionnaire');
+        let normType = normalizeCreationType(aiResult.creation_type || explicitToolType || 'questionnaire');
+        if (explicitToolType && (explicitToolType.includes('vrai') || explicitToolType.includes('faux'))) {
+          normType = explicitToolType.includes('test') ? 'vrai-ou-faux-test' : 'vrai-ou-faux';
+        }
+        let finalContent = aiResult.creation_data;
+        if (normType === 'vrai-ou-faux' || normType === 'vrai-ou-faux-test') {
+          const rawAffs = Array.isArray(finalContent)
+            ? finalContent
+            : (finalContent.affirmations || finalContent.questions || finalContent.items || finalContent.statements || finalContent.data);
+          if (Array.isArray(rawAffs) && rawAffs.length > 0) {
+            finalContent = {
+              affirmations: rawAffs.slice(0, 18).map((a: any, idx: number) => {
+                let isTrue = true;
+                if (typeof a.is_true === 'boolean') isTrue = a.is_true;
+                else if (typeof a.isTrue === 'boolean') isTrue = a.isTrue;
+                else if (typeof a.reponse === 'boolean') isTrue = a.reponse;
+                else if (typeof a.correctAnswer === 'boolean') isTrue = a.correctAnswer;
+                else if (typeof a.is_true === 'string') isTrue = a.is_true.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
+                else if (typeof a.isTrue === 'string') isTrue = a.isTrue.toLowerCase() === 'true' || a.isTrue.toLowerCase() === 'vrai';
+                else if (typeof a.reponse === 'string') isTrue = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
+                return {
+                  id: a.id || `vf_${idx + 1}`,
+                  statement: a.statement || a.affirmation || a.question || a.texte || a.text || `Affirmation n°${idx + 1}`,
+                  is_true: isTrue,
+                  isTrue,
+                  explanation: a.explanation || a.explication || a.justification || ''
+                };
+              })
+            };
+          }
+        } else if (normType === 'questionnaire' || normType === 'questionnaire-test') {
+          const rawQs = Array.isArray(finalContent) ? finalContent : finalContent.questions;
+          if (Array.isArray(rawQs)) {
+            finalContent = {
+              ...(typeof finalContent === 'object' && !Array.isArray(finalContent) ? finalContent : {}),
+              questions: rawQs.slice(0, 18)
+            };
+          }
+        }
         creationParsed = {
           title: aiResult.creation_title || `${normType.toUpperCase()} : ${mainDocName}`,
-          content: aiResult.creation_data,
+          content: finalContent,
           toolType: normType,
         };
         companionChatMessage = aiResult.chat_response || '';
@@ -2170,11 +2227,65 @@ Tu es le moteur de structuration pédagogique de l'application. Lorsque l'utilis
         if (parsed && typeof parsed === 'object') {
           const parsedData = parsed.creation_data || (parsed.questions || parsed.affirmations || parsed.cards || parsed.root || parsed.branches || parsed.mermaid || parsed.overview || parsed.sections || parsed.exercises || parsed.exercices || parsed.written_exercise || parsed.complete_exam ? parsed : null);
           if (parsedData) {
-            const detectedType = parsed.creation_type || (parsed.questions ? 'questionnaire' : parsed.affirmations ? 'vrai-ou-faux' : parsed.cards ? 'carte-memoire' : (parsed.root || parsed.branches || parsed.mermaid) ? 'carte-mentale' : parsed.overview ? 'resume' : explicitToolType || 'questionnaire');
+            let detectedType = parsed.creation_type;
+            if (explicitToolType && (explicitToolType.includes('vrai') || explicitToolType.includes('faux'))) {
+              detectedType = explicitToolType;
+            } else if (!detectedType) {
+              if (explicitToolType) {
+                detectedType = explicitToolType;
+              } else if (parsed.affirmations) {
+                detectedType = 'vrai-ou-faux';
+              } else if (parsed.questions) {
+                detectedType = 'questionnaire';
+              } else if (parsed.cards) {
+                detectedType = 'carte-memoire';
+              } else if (parsed.root || parsed.branches || parsed.mermaid) {
+                detectedType = 'carte-mentale';
+              } else if (parsed.overview) {
+                detectedType = 'resume';
+              } else {
+                detectedType = 'questionnaire';
+              }
+            }
             const normType = normalizeCreationType(detectedType);
+            let finalContent = parsedData;
+            if (normType === 'vrai-ou-faux' || normType === 'vrai-ou-faux-test') {
+              const rawAffs = Array.isArray(finalContent)
+                ? finalContent
+                : (finalContent.affirmations || finalContent.questions || finalContent.items || finalContent.statements || finalContent.data || parsed.affirmations || parsed.questions || []);
+              if (Array.isArray(rawAffs) && rawAffs.length > 0) {
+                finalContent = {
+                  affirmations: rawAffs.slice(0, 18).map((a: any, idx: number) => {
+                    let isTrue = true;
+                    if (typeof a.is_true === 'boolean') isTrue = a.is_true;
+                    else if (typeof a.isTrue === 'boolean') isTrue = a.isTrue;
+                    else if (typeof a.reponse === 'boolean') isTrue = a.reponse;
+                    else if (typeof a.correctAnswer === 'boolean') isTrue = a.correctAnswer;
+                    else if (typeof a.is_true === 'string') isTrue = a.is_true.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
+                    else if (typeof a.isTrue === 'string') isTrue = a.isTrue.toLowerCase() === 'true' || a.isTrue.toLowerCase() === 'vrai';
+                    else if (typeof a.reponse === 'string') isTrue = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
+                    return {
+                      id: a.id || `vf_${idx + 1}`,
+                      statement: a.statement || a.affirmation || a.question || a.texte || a.text || `Affirmation n°${idx + 1}`,
+                      is_true: isTrue,
+                      isTrue,
+                      explanation: a.explanation || a.explication || a.justification || ''
+                    };
+                  })
+                };
+              }
+            } else if (normType === 'questionnaire' || normType === 'questionnaire-test') {
+              const rawQs = Array.isArray(finalContent) ? finalContent : (finalContent.questions || parsed.questions || []);
+              if (Array.isArray(rawQs)) {
+                finalContent = {
+                  ...(typeof finalContent === 'object' && !Array.isArray(finalContent) ? finalContent : {}),
+                  questions: rawQs.slice(0, 18)
+                };
+              }
+            }
             creationParsed = {
               title: parsed.creation_title || parsed.title || `${normType.toUpperCase()} : ${mainDocName}`,
-              content: parsedData,
+              content: finalContent,
               toolType: normType,
             };
             companionChatMessage = parsed.chat_message || parsed.chat_response || '';
@@ -2194,16 +2305,24 @@ Tu es le moteur de structuration pédagogique de l'application. Lorsque l'utilis
           }
         }
 
-        // Si l'utilisateur a explicitement cliqué sur un bouton d'action (override)
-        if (!creationParsed && isExplicitOverride && explicitToolType) {
-          const p = parseOrBuildAiCreation(explicitToolType, rawResponseText, mainDocName, userText);
-          if (p.content && (p.content.questions?.length > 0 || p.content.overview || p.content.root || p.content.metrics || p.content.sections || p.content.affirmations || p.content.cards || p.content.exercises || p.content.exercices)) {
+        // Si l'utilisateur a explicitement cliqué sur un bouton d'action ou demandé un module dans son message
+        const explicitOrInferredType = explicitToolType || (
+          /vrai.*faux/i.test(userText) ? (/test/i.test(userText) ? 'vrai-ou-faux-test' : 'vrai-ou-faux') :
+          /questionnaire|quiz|qcm/i.test(userText) ? (/test/i.test(userText) ? 'questionnaire-test' : 'questionnaire') :
+          /carte\s*mentale|mindmap/i.test(userText) ? 'carte-mentale' :
+          /flashcard|carte\s*m[ée]moire/i.test(userText) ? 'carte-memoire' :
+          /r[ée]sum[ée]|synth[èe]se/i.test(userText) ? 'resume' : null
+        );
+
+        if (!creationParsed && explicitOrInferredType) {
+          const p = parseOrBuildAiCreation(explicitOrInferredType as any, rawResponseText, mainDocName, userText);
+          if (p.content && (p.content.questions?.length > 0 || p.content.overview || p.content.root || p.content.metrics || p.content.sections || p.content.affirmations?.length > 0 || p.content.cards || p.content.exercises || p.content.exercices)) {
             creationParsed = {
               title: p.title,
               content: p.content,
-              toolType: explicitToolType,
+              toolType: explicitOrInferredType,
             };
-          } else {
+          } else if (isExplicitOverride && explicitToolType) {
             creationParsed = {
               title: p.title || `${explicitToolType} : ${mainDocName}`,
               content: p.content || null,
@@ -2221,7 +2340,41 @@ Tu es le moteur de structuration pédagogique de l'application. Lorsque l'utilis
       }
 
       if (creationParsed && creationParsed.content) {
-        const effectiveToolType = creationParsed.toolType || explicitToolType || 'questionnaire';
+        let effectiveToolType = creationParsed.toolType || explicitToolType || 'questionnaire';
+        if (effectiveToolType === 'vrai-ou-faux' || effectiveToolType === 'vrai-ou-faux-test') {
+          const rawAffs = Array.isArray(creationParsed.content)
+            ? creationParsed.content
+            : (creationParsed.content.affirmations || creationParsed.content.questions || creationParsed.content.items || creationParsed.content.statements || creationParsed.content.data || []);
+          if (Array.isArray(rawAffs) && rawAffs.length > 0) {
+            creationParsed.content = {
+              affirmations: rawAffs.slice(0, 18).map((a: any, idx: number) => {
+                let isTrue = true;
+                if (typeof a.is_true === 'boolean') isTrue = a.is_true;
+                else if (typeof a.isTrue === 'boolean') isTrue = a.isTrue;
+                else if (typeof a.reponse === 'boolean') isTrue = a.reponse;
+                else if (typeof a.correctAnswer === 'boolean') isTrue = a.correctAnswer;
+                else if (typeof a.is_true === 'string') isTrue = a.is_true.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
+                else if (typeof a.isTrue === 'string') isTrue = a.isTrue.toLowerCase() === 'true' || a.isTrue.toLowerCase() === 'vrai';
+                else if (typeof a.reponse === 'string') isTrue = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
+                return {
+                  id: a.id || `vf_${idx + 1}`,
+                  statement: a.statement || a.affirmation || a.question || a.texte || a.text || `Affirmation n°${idx + 1}`,
+                  is_true: isTrue,
+                  isTrue,
+                  explanation: a.explanation || a.explication || a.justification || ''
+                };
+              })
+            };
+          }
+        } else if (effectiveToolType === 'questionnaire' || effectiveToolType === 'questionnaire-test') {
+          const rawQs = Array.isArray(creationParsed.content) ? creationParsed.content : creationParsed.content.questions;
+          if (Array.isArray(rawQs)) {
+            creationParsed.content = {
+              ...(typeof creationParsed.content === 'object' && !Array.isArray(creationParsed.content) ? creationParsed.content : {}),
+              questions: rawQs.slice(0, 18)
+            };
+          }
+        }
         const newCreation: AiCreation = {
           id: 'ai-' + Date.now(),
           userId: currentUserId,

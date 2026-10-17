@@ -220,7 +220,7 @@ function parseQuizFromText(rawText: string, safeDocName: string): QuizContent {
   return {
     title: `Quiz : ${safeDocName}`,
     difficulty: 'Moyen',
-    questions: shuffledQuestions.length > 0 ? shuffledQuestions : [
+    questions: (shuffledQuestions.length > 0 ? shuffledQuestions : [
       {
         id: 'q-1',
         question: `Compréhension du document : ${safeDocName}`,
@@ -231,7 +231,7 @@ function parseQuizFromText(rawText: string, safeDocName: string): QuizContent {
         answerIndex: 0,
         explanation: 'L\'assistant a analysé votre document et synthétisé les points clés pour vos révisions.'
       }
-    ],
+    ]).slice(0, 18),
   };
 }
 
@@ -611,7 +611,7 @@ function parseVraiOuFauxFromText(rawText: string, safeDocName: string): { affirm
     });
   }
 
-  return { affirmations };
+  return { affirmations: affirmations.slice(0, 18) };
 }
 
 /**
@@ -816,7 +816,9 @@ export function parseOrBuildAiCreation(
       const normType = String(toolType || '').toLowerCase();
       let effectiveType = normType;
 
-      if (['questionnaire', 'questionnaire-test', 'qcm', 'quiz'].includes(normType) || Array.isArray(dataObj.questions) || Array.isArray(parsed.questions)) {
+      if (['vrai-ou-faux', 'vrai-ou-faux-test'].includes(normType) || Array.isArray(dataObj.affirmations) || Array.isArray(parsed.affirmations)) {
+        effectiveType = 'vrai-ou-faux';
+      } else if (['questionnaire', 'questionnaire-test', 'qcm', 'quiz'].includes(normType) || Array.isArray(dataObj.questions) || Array.isArray(parsed.questions)) {
         effectiveType = 'quiz';
       } else if (['carte-mentale', 'carte-mentale-2', 'mindmap'].includes(normType) || (dataObj.root && (dataObj.root.label || dataObj.root.children))) {
         effectiveType = 'mindmap';
@@ -824,8 +826,6 @@ export function parseOrBuildAiCreation(
         effectiveType = 'infographic';
       } else if (['resume', 'summary'].includes(normType) || dataObj.overview || Array.isArray(dataObj.keyPoints)) {
         effectiveType = 'summary';
-      } else if (['vrai-ou-faux', 'vrai-ou-faux-test'].includes(normType) || Array.isArray(dataObj.affirmations)) {
-        effectiveType = 'vrai-ou-faux';
       } else if (['carte-memoire', 'flashcards'].includes(normType) || Array.isArray(dataObj.cards) || Array.isArray(dataObj.flashcards)) {
         effectiveType = 'carte-memoire';
       } else if (['exercices-ecrits'].includes(normType) || dataObj.written_exercise || Array.isArray(dataObj.exercises) || Array.isArray(dataObj.exercices)) {
@@ -838,6 +838,7 @@ export function parseOrBuildAiCreation(
         case 'quiz': {
           const corrected = autoCorrectQuiz(dataObj, safeDocName);
           if (corrected.questions && corrected.questions.length > 0) {
+            corrected.questions = corrected.questions.slice(0, 18);
             return {
               title: sanitizeText(parsed.creation_title || dataObj.title) || corrected.title,
               content: corrected
@@ -846,12 +847,35 @@ export function parseOrBuildAiCreation(
           break;
         }
         case 'vrai-ou-faux': {
-          const rawAff = Array.isArray(dataObj) ? dataObj : (dataObj.affirmations || dataObj.data);
+          const rawAff = Array.isArray(dataObj)
+            ? dataObj
+            : (dataObj.affirmations || dataObj.questions || dataObj.items || dataObj.statements || dataObj.propositions || dataObj.data);
           const defaultVfTitle = normType.includes('test') ? `Vrai ou Faux Test : ${safeDocName}` : `Vrai ou Faux : ${safeDocName}`;
           if (Array.isArray(rawAff) && rawAff.length > 0) {
+            const cleanAffs = rawAff.slice(0, 18).map((a: any, idx: number) => {
+              let isTrue = true;
+              if (typeof a.is_true === 'boolean') isTrue = a.is_true;
+              else if (typeof a.isTrue === 'boolean') isTrue = a.isTrue;
+              else if (typeof a.reponse === 'boolean') isTrue = a.reponse;
+              else if (typeof a.correctAnswer === 'boolean') isTrue = a.correctAnswer;
+              else if (typeof a.correct === 'boolean') isTrue = a.correct;
+              else if (typeof a.is_correct === 'boolean') isTrue = a.is_correct;
+              else if (typeof a.is_true === 'string') isTrue = a.is_true.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
+              else if (typeof a.isTrue === 'string') isTrue = a.isTrue.toLowerCase() === 'true' || a.isTrue.toLowerCase() === 'vrai';
+              else if (typeof a.reponse === 'string') isTrue = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
+              else if (typeof a.correctAnswer === 'string') isTrue = a.correctAnswer.toLowerCase() === 'true' || a.correctAnswer.toLowerCase() === 'vrai';
+
+              return {
+                id: a.id || `vf_${idx + 1}`,
+                statement: a.statement || a.affirmation || a.question || a.texte || a.text || `Affirmation n°${idx + 1}`,
+                isTrue,
+                is_true: isTrue,
+                explanation: a.explanation || a.explication || a.justification || ''
+              };
+            });
             return {
               title: sanitizeText(parsed.creation_title || dataObj.title) || defaultVfTitle,
-              content: dataObj
+              content: { affirmations: cleanAffs }
             };
           }
           const fallbackVF = parseVraiOuFauxFromText(cleanText, safeDocName);

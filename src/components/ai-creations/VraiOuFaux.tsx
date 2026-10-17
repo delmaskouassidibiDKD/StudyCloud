@@ -6,20 +6,43 @@ import { MathText } from '../MathText';
 
 function normalizeAffirmations(input: any): AffirmationVraiFaux[] {
   if (!input) return [];
-  const list = Array.isArray(input) ? input : (Array.isArray(input?.affirmations) ? input.affirmations : (Array.isArray(input?.data) ? input.data : []));
+  const list = Array.isArray(input)
+    ? input
+    : (Array.isArray(input?.affirmations)
+      ? input.affirmations
+      : (Array.isArray(input?.questions)
+        ? input.questions
+        : (Array.isArray(input?.items)
+          ? input.items
+          : (Array.isArray(input?.statements)
+            ? input.statements
+            : (Array.isArray(input?.propositions)
+              ? input.propositions
+              : (Array.isArray(input?.data)
+                ? input.data
+                : []))))));
   if (!Array.isArray(list) || list.length === 0) return [];
 
-  return list.map((a: any, idx: number) => {
+  return list.slice(0, 18).map((a: any, idx: number) => {
     let isTrueVal = true;
-    if (typeof a.isTrue === 'boolean') isTrueVal = a.isTrue;
+    if (typeof a.is_true === 'boolean') isTrueVal = a.is_true;
+    else if (typeof a.isTrue === 'boolean') isTrueVal = a.isTrue;
     else if (typeof a.reponse === 'boolean') isTrueVal = a.reponse;
     else if (typeof a.correctAnswer === 'boolean') isTrueVal = a.correctAnswer;
+    else if (typeof a.correct === 'boolean') isTrueVal = a.correct;
+    else if (typeof a.is_correct === 'boolean') isTrueVal = a.is_correct;
+    else if (typeof a.is_true === 'string') isTrueVal = a.is_true.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
     else if (typeof a.isTrue === 'string') isTrueVal = a.isTrue.toLowerCase() === 'true' || a.isTrue.toLowerCase() === 'vrai';
     else if (typeof a.reponse === 'string') isTrueVal = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
+    else if (typeof a.correctAnswer === 'string') isTrueVal = a.correctAnswer.toLowerCase() === 'true' || a.correctAnswer.toLowerCase() === 'vrai';
 
     let explText = '';
     if (typeof a.explanation === 'string') {
       explText = a.explanation;
+    } else if (typeof a.explication === 'string') {
+      explText = a.explication;
+    } else if (typeof a.justification === 'string') {
+      explText = a.justification;
     } else if (a.explanation && typeof a.explanation === 'object') {
       const parts: string[] = [];
       if (a.explanation.theory) parts.push(a.explanation.theory);
@@ -28,12 +51,12 @@ function normalizeAffirmations(input: any): AffirmationVraiFaux[] {
       }
       explText = parts.join('\n\n') || JSON.stringify(a.explanation);
     } else {
-      explText = a.explication || a.justification || '';
+      explText = a.explication || a.justification || a.details || a.detail || '';
     }
 
     return {
       id: a.id || `vf_${idx + 1}`,
-      statement: a.statement || a.affirmation || a.texte || a.question || `Affirmation n°${idx + 1}`,
+      statement: a.statement || a.affirmation || a.question || a.texte || a.text || a.proposition || `Affirmation n°${idx + 1}`,
       isTrue: isTrueVal,
       explanation: explText
     };

@@ -572,6 +572,47 @@ export async function generateDirectAiCreation(params: {
       } catch (_parseErr) {}
     }
 
+    // Normalisation et plafonnement strict à 18 items max pour vrai-ou-faux et questionnaires
+    if (params.toolType === 'vrai-ou-faux' || params.toolType === 'vrai-ou-faux-test') {
+      const rawAffs = Array.isArray(creationData)
+        ? creationData
+        : (creationData?.affirmations || creationData?.questions || creationData?.items || creationData?.statements || creationData?.data);
+      if (Array.isArray(rawAffs) && rawAffs.length > 0) {
+        creationData = {
+          affirmations: rawAffs.slice(0, 18).map((a: any, idx: number) => {
+            let isTrue = true;
+            if (typeof a.is_true === 'boolean') isTrue = a.is_true;
+            else if (typeof a.isTrue === 'boolean') isTrue = a.isTrue;
+            else if (typeof a.reponse === 'boolean') isTrue = a.reponse;
+            else if (typeof a.correctAnswer === 'boolean') isTrue = a.correctAnswer;
+            else if (typeof a.is_true === 'string') isTrue = a.is_true.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
+            else if (typeof a.isTrue === 'string') isTrue = a.isTrue.toLowerCase() === 'true' || a.isTrue.toLowerCase() === 'vrai';
+            else if (typeof a.reponse === 'string') isTrue = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
+            return {
+              id: a.id || `vf_${idx + 1}`,
+              statement: a.statement || a.affirmation || a.question || a.texte || a.text || `Affirmation n°${idx + 1}`,
+              is_true: isTrue,
+              isTrue,
+              explanation: a.explanation || a.explication || a.justification || ''
+            };
+          })
+        };
+      } else {
+        try {
+          const built = parseOrBuildAiCreation(params.toolType as any, rawTextCandidate || params.docContent, params.docName, params.prompt);
+          if (built?.content) creationData = built.content;
+        } catch {}
+      }
+    } else if (params.toolType === 'questionnaire' || params.toolType === 'questionnaire-test') {
+      const rawQs = Array.isArray(creationData) ? creationData : creationData?.questions;
+      if (Array.isArray(rawQs) && rawQs.length > 0) {
+        creationData = {
+          ...(typeof creationData === 'object' && !Array.isArray(creationData) ? creationData : {}),
+          questions: rawQs.slice(0, 18)
+        };
+      }
+    }
+
     return {
       success: true,
       creation_type: params.toolType,

@@ -1027,10 +1027,29 @@ ou
    Ils seront ainsi isolés dans un encadré distinct bleu ciel sans jamais se mélanger aux calculs.
 - DANS LES CRÉATIONS (Questionnaires, QCM, Cartes, Exercices) : Toute formule dans l'énoncé et dans CHAQUE option de réponse DOIT impérativement être entourée de dollars, par exemple : "$T(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$".
 
-7. POSITION ALÉATOIRE DES BONNES RÉPONSES ET DIVERSITÉ EXTRÊME :
-- DANS LES QCM ('questionnaire') : "correct_index" DOIT ÊTRE ALÉATOIREMENT DISTRIBUÉ (0, 1, 2, 3), ne place JAMAIS la bonne réponse toujours en première ou deuxième position.
+7. RÈGLES STRICTES SUR LE NOMBRE ET LE FORMAT DES QUESTIONNAIRES ET VRAI OU FAUX (18 MAXIMUM) :
+- QUANTITÉ STRICTE DE QUESTIONS / AFFIRMATIONS :
+  * Si l'étudiant ne précise aucun nombre exact : GÉNÈRE LE MAXIMUM POSSIBLE pour couvrir exhaustivement le document ou le cours (entre 15 et 18 questions ou affirmations).
+  * Si l'étudiant demande un nombre spécifique : respecte scrupuleusement sa demande SANS JAMAIS DÉPASSER 18.
+  * Si l'étudiant demande plus de 18 (par exemple 20, 25, 30, 50, etc.) : TU DOIS OBLIGATOIREMENT LIMITER À STRICTEMENT 18 MAXIMUM. Ne crée JAMAIS plus de 18 items.
+  * Cette règle est ABSOLUE pour les questionnaires ('questionnaire', 'questionnaire-test') et pour les vrai ou faux ('vrai-ou-faux', 'vrai-ou-faux-test').
+- POSITION ALÉATOIRE DANS LES QCM ('questionnaire') : "correct_index" DOIT ÊTRE ALÉATOIREMENT DISTRIBUÉ (0, 1, 2, 3), ne place JAMAIS la bonne réponse toujours en première ou deuxième position.
 - DIVERSITÉ : Ne pose pas toujours les mêmes questions d'introduction. Explore tout le document, intègre des calculs chiffrés réels ($...$), des problèmes d'application et des cas limites.
-- Vrai ou Faux : Équilibre strictement environ 50% VRAI et 50% FAUX avec justifications stimulantes.
+- FORMAT STRICT ET OBLIGATOIRE POUR VRAI OU FAUX ('vrai-ou-faux', 'vrai-ou-faux-test') :
+  * Équilibre rigoureusement environ 50% de VRAI et 50% de FAUX avec justifications approfondies.
+  * Structure JSON obligatoire dans 'creation_data' :
+    \`\`\`json
+    {
+      "affirmations": [
+        {
+          "id": 1,
+          "statement": "Énoncé précis de l'affirmation scientifique avec KaTeX ($...$)",
+          "is_true": true,
+          "explanation": "Justification pédagogique détaillée démontrant rigoureusement pourquoi c'est vrai ou faux."
+        }
+      ]
+    }
+    \`\`\`
 
 8. DIRECTIVE SYSTÈME STRICTE DE STRUCTURATION PÉDAGOGIQUE POUR LES CARTES MENTALES ('carte-mentale') :
 Tu es le moteur de structuration pédagogique de l'application. Lorsque l'utilisateur te soumet un cours, un document ou un sujet, tu dois obligatoirement analyser les concepts et les lier entre eux sous forme de carte mentale logique.
@@ -1308,17 +1327,64 @@ Tu es le moteur de structuration pédagogique de l'application. Lorsque l'utilis
               );
               if (rawParsed.decision === "creation" || rawParsed.mode === "creation" || payloadData) {
                 mode = "creation";
-                creationType = rawParsed.creation_type || (
-                  rawParsed.questions ? "questionnaire" :
-                  rawParsed.affirmations ? "vrai-ou-faux" :
-                  rawParsed.cards ? "carte-memoire" :
-                  (rawParsed.root || rawParsed.branches || rawParsed.mermaid) ? "carte-mentale" :
-                  rawParsed.overview ? "resume" :
-                  rawParsed.exercises || rawParsed.exercices ? "exercices-ecrits" :
-                  "questionnaire"
-                );
+
+                const reqTypeNorm = String(body.requested_type || "").toLowerCase().replace(/_/g, "-");
+                const parsedTypeNorm = String(rawParsed.creation_type || rawParsed.type || "").toLowerCase().replace(/_/g, "-");
+
+                if (reqTypeNorm.includes("vrai") || parsedTypeNorm.includes("vrai") || rawParsed.affirmations) {
+                  creationType = reqTypeNorm.includes("test") || parsedTypeNorm.includes("test") ? "vrai-ou-faux-test" : "vrai-ou-faux";
+                } else if (reqTypeNorm.includes("carte-mentale") || parsedTypeNorm.includes("carte-mentale") || parsedTypeNorm.includes("mindmap") || rawParsed.root || rawParsed.branches || rawParsed.mermaid) {
+                  creationType = reqTypeNorm.includes("carte-mentale-2") || parsedTypeNorm.includes("carte-mentale-2") ? "carte-mentale-2" : "carte-mentale";
+                } else if (reqTypeNorm.includes("questionnaire") || parsedTypeNorm.includes("questionnaire") || rawParsed.questions) {
+                  creationType = reqTypeNorm.includes("test") || parsedTypeNorm.includes("test") ? "questionnaire-test" : "questionnaire";
+                } else {
+                  creationType = rawParsed.creation_type || (
+                    rawParsed.cards ? "carte-memoire" :
+                    rawParsed.overview ? "resume" :
+                    rawParsed.exercises || rawParsed.exercices ? "exercices-ecrits" :
+                    (body.requested_type || "questionnaire")
+                  );
+                }
+
                 creationTitle = rawParsed.creation_title || rawParsed.title || `${(creationType || "MODULE").toUpperCase()} : ${docName || "Étude Académique"}`;
-                creationData = payloadData || rawParsed;
+
+                // Normalisation et plafonnement strict à 18 items maximum
+                if (creationType === "vrai-ou-faux" || creationType === "vrai-ou-faux-test") {
+                  const rawAffs = Array.isArray(payloadData)
+                    ? payloadData
+                    : (payloadData?.affirmations || payloadData?.questions || payloadData?.items || payloadData?.statements || payloadData?.data || (Array.isArray(rawParsed.affirmations) ? rawParsed.affirmations : []));
+                  const cleanAffs = (Array.isArray(rawAffs) ? rawAffs : []).slice(0, 18).map((a: any, idx: number) => {
+                    let isTrue = true;
+                    if (typeof a.is_true === "boolean") isTrue = a.is_true;
+                    else if (typeof a.isTrue === "boolean") isTrue = a.isTrue;
+                    else if (typeof a.reponse === "boolean") isTrue = a.reponse;
+                    else if (typeof a.correctAnswer === "boolean") isTrue = a.correctAnswer;
+                    else if (typeof a.is_true === "string") isTrue = a.is_true.toLowerCase() === "true" || a.is_true.toLowerCase() === "vrai";
+                    else if (typeof a.isTrue === "string") isTrue = a.isTrue.toLowerCase() === "true" || a.isTrue.toLowerCase() === "vrai";
+                    else if (typeof a.reponse === "string") isTrue = a.reponse.toLowerCase() === "true" || a.reponse.toLowerCase() === "vrai";
+                    return {
+                      id: a.id || idx + 1,
+                      statement: a.statement || a.affirmation || a.question || a.texte || `Affirmation n°${idx + 1}`,
+                      is_true: isTrue,
+                      isTrue: isTrue,
+                      explanation: a.explanation || a.explication || a.justification || ""
+                    };
+                  });
+                  creationData = { affirmations: cleanAffs };
+                } else if (creationType === "questionnaire" || creationType === "questionnaire-test") {
+                  const rawQs = Array.isArray(payloadData) ? payloadData : (payloadData?.questions || (Array.isArray(rawParsed.questions) ? rawParsed.questions : []));
+                  if (Array.isArray(rawQs) && rawQs.length > 0) {
+                    creationData = {
+                      ...(typeof payloadData === "object" && !Array.isArray(payloadData) ? payloadData : {}),
+                      questions: rawQs.slice(0, 18)
+                    };
+                  } else {
+                    creationData = payloadData || rawParsed;
+                  }
+                } else {
+                  creationData = payloadData || rawParsed;
+                }
+
                 companionChatText = rawParsed.chat_response || rawParsed.chat_message || `✨ J'ai créé votre **${creationTitle}** directement dans votre espace **Création** à droite !`;
               }
             }

@@ -1144,6 +1144,7 @@ function getSubAgentCreationConfig(moduleType, docTitle) {
 RÈGLES CAPITALES :
 1. Varie ALÉATOIREMENT l'emplacement de la bonne réponse ("correct_index" distribué équitablement entre 0, 1, 2, 3), ne place JAMAIS la bonne réponse toujours en première ou deuxième position.
 2. DIVERSITÉ : Ne pose pas toujours les mêmes questions d'introduction. Explore tout le document, intègre des calculs chiffrés réels ($...$), des problèmes d'application et des cas limites.
+3. QUANTITÉ (18 MAXIMUM) : Si l'utilisateur ne spécifie aucun nombre, génère le maximum possible (15 à 18 questions). S'il demande un nombre spécifique, respecte-le sans jamais dépasser 18. S'il demande plus de 18 (ex: 20, 30), limite strictement à 18 questions maximum.
 Réponds STRICTEMENT avec cet objet JSON :
 {
   "type": "questionnaire",
@@ -1229,6 +1230,7 @@ Réponds STRICTEMENT avec cet objet JSON :
 RÈGLES CAPITALES :
 1. Équilibre rigoureusement 50% de VRAI et 50% de FAUX avec des pièges subtils, des calculs et des conditions limites.
 2. DIVERSITÉ : Explore des théorèmes variés et des parties avancées du document, sans jamais répéter les mêmes questions que les questionnaires précédents.
+3. QUANTITÉ (18 MAXIMUM) : Si l'utilisateur ne spécifie aucun nombre, génère le maximum possible (15 à 18 affirmations). S'il demande un nombre spécifique, respecte-le sans jamais dépasser 18. S'il demande plus de 18 (ex: 20, 30), limite strictement à 18 affirmations maximum.
 Réponds STRICTEMENT avec cet objet JSON :
 {
   "type": "vrai-ou-faux",
