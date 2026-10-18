@@ -11,7 +11,26 @@ interface PdfRendererProps {
 }
 
 export function PdfRenderer({ data, title }: PdfRendererProps) {
-  const pdfUrl = data.url || data.pdfUrl || '';
+  const rawUrl = data.url || data.pdfUrl || '';
+  const isDirectPdf = typeof rawUrl === 'string' && (
+    rawUrl.startsWith('http://') ||
+    rawUrl.startsWith('https://') ||
+    rawUrl.startsWith('blob:') ||
+    rawUrl.startsWith('data:application/pdf')
+  );
+  const pdfUrl = isDirectPdf ? rawUrl : '';
+
+  if (!isDirectPdf || !pdfUrl) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center p-8 text-stone-400 text-center">
+        <FileText className="w-12 h-12 text-stone-500 mb-3" />
+        <h3 className="text-base font-bold text-stone-200 mb-1">{title || 'Document PDF'}</h3>
+        <p className="text-xs text-stone-400 max-w-sm">
+          Ce document est géré par le module d'édition StudyCloud.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-full flex flex-col p-4 sm:p-6 text-zinc-100 overflow-hidden">

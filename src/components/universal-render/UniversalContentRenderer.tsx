@@ -127,7 +127,24 @@ export function UniversalContentRenderer({ item, onClose }: UniversalContentRend
 
       case 'pdf':
       case 'document_pdf':
-        return <PdfRenderer data={data} title={title} />;
+      case 'document':
+      case 'polycopie': {
+        const rawUrl = data?.url || data?.pdfUrl || '';
+        const isExternalPdfUrl = typeof rawUrl === 'string' &&
+          (rawUrl.startsWith('http://') || rawUrl.startsWith('https://') || rawUrl.startsWith('blob:') || rawUrl.startsWith('data:application/pdf')) &&
+          !data.pages && !data.chapters && !data.sections && !data.pdf_document;
+        if (isExternalPdfUrl) {
+          return <PdfRenderer data={data} title={title} />;
+        }
+        return (
+          <AiPedagogyRenderer
+            type="pdf"
+            data={data.content || data}
+            title={title}
+            sourceFileName={item.sourceFileName}
+          />
+        );
+      }
 
       case 'chart':
       case 'graph':

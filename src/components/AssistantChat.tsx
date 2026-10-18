@@ -2268,6 +2268,54 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
 };
 `;
 
+      systemContent += `\n\n11. RÈGLE STRICTE ET SPÉCIALE : GÉNÉRATION DE DOCUMENTS PDF ('pdf') ET GESTION DES FICHIERS JOINTS :
+Tu disposes d'un moteur officiel de génération et téléchargement de documents PDF ('pdf').
+Tu dois appliquer rigoureusement les 3 CAS suivants :
+
+CAS 1 : FICHIER JOINT ET DEMANDE DE PDF GÉNÉRIQUE OU NON PRÉCISÉE (ex: "Fais un document PDF", "Je veux un PDF", ou clic sur le bouton Document PDF) :
+- IL EST STRICTEMENT INTERDIT de générer un PDF à l'aveugle sans savoir ce que l'étudiant désire !
+- Tu dois IMPÉRATIVEMENT répondre DANS LE CHAT (en texte Markdown direct, sans JSON de création immédiat) :
+  1. Confirme que tu as analysé son document joint avec attention.
+  2. Demande-lui clairement ce qu'il souhaite voir dans son document PDF téléchargeable (cours complet, exercices résolus, formulaire officiel, devoir d'entraînement, etc.). "Il faut toujours demander".
+  3. Termine OBLIGATOIREMENT par le bloc [QUESTIONS_SUGGÉRÉES] avec 3 à 4 options concrètes adaptées au document joint sous forme de boutons cliquables :
+     - Polycopié de cours complet et structuré en PDF sur [Thème du document]
+     - Résolution détaillée pas à pas des exercices du document en PDF
+     - Formulaire & Fiche méthode officielle d'examen en PDF
+     - Devoir d'entraînement type examen avec corrigé barémé en PDF
+
+CAS 2 : DEMANDE DE RÉSOUDRE UN EXERCICE ET DE METTRE ÇA EN PDF (ex: "Résous un exercice et mets ça en PDF", "Résous cet exercice en PDF", "Résous l'exercice 1 en PDF") :
+- Tu te places IMMÉDIATEMENT en mode CRÉATION ("decision": "creation", "mode": "creation", "creation_type": "pdf").
+- Tu résous l'exercice de A à Z avec une rigueur absolue :
+  * Énoncé de l'exercice et rappel des hypothèses.
+  * Formules mathématiques et physiques complètes avec LaTeX (\\dfrac{}{}).
+  * Logique de calcul étape par étape sans sauter d'étape.
+  * Résultats finaux encadrés \\boxed{...}.
+  * Schémas vectoriels SVG si circuit ou géométrie.
+- Tu structures le tout dans 'creation_data' avec les chapitres/exercices résolus :
+  {
+    "title": "Résolution Officielle : [Titre de l'exercice]",
+    "subtitle": "Correction méthodique et détaillée pas à pas",
+    "objective": "Comprendre les étapes de calcul et la justification rigoureuse.",
+    "chapters": [
+      {
+        "chapterNumber": 1,
+        "title": "Exercice : [Titre de l'exercice]",
+        "sections": [
+          { "heading": "Énoncé & Données", "body": "Texte de l'énoncé...", "points": ["Donnée 1", "Donnée 2"] },
+          { "heading": "Résolution détaillée & Calculs pas à pas", "body": "Démonstration complète...", "points": ["Résultat clé 1", "Résultat clé 2"] }
+        ]
+      }
+    ]
+  }
+
+CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais un PDF complet sur le filtrage analogique", "Rédige un polycopié PDF sur les intégrales") :
+- Tu te places IMMÉDIATEMENT en mode CRÉATION ("decision": "creation", "mode": "creation", "creation_type": "pdf").
+- Tu rédiges tout ce que l'utilisateur demande de manière exhaustive, approfondie et structurée :
+  * Page de couverture avec Titre officiel, Matière et Objectif.
+  * Chapitres complets (I. Définitions & Principes fondamentaux, II. Théorèmes & Formulaire détaillé, III. Applications & Méthodes pratiques).
+  * Explications denses, schémas, tableaux et formules.
+- L'étudiant pourra immédiatement lire et télécharger le vrai fichier .pdf.`;
+
       if (isExplicitOverride && explicitToolType && (docNames.length > 0 || hasPromptSubject || hasConversationContext)) {
         systemContent += `\n\nCOMMANDE EXPLICITE DE CRÉATION DEPUIS LE MENU CRÉATION :\nL'étudiant a expressément sélectionné le format de création « ${explicitToolType} » pour le sujet/document d'étude.\nTu DOIS te placer dans la BRANCHE 2 (CRÉATION D'UN MODULE D'ÉTUDE) et répondre avec l'objet JSON strict de création ("decision": "creation", "mode": "creation", "creation_type": "${explicitToolType}", "creation_title": "...", "chat_response": "...", "creation_data": { ... }). Ne produis aucun monologue ni texte Markdown de discussion libre dans ce cas. Remplis directement toutes les données complètes de création.`;
       }
@@ -2393,7 +2441,7 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
         const parsed = safeJsonParse(candidate);
 
         if (parsed && typeof parsed === 'object') {
-          const parsedData = parsed.creation_data || (parsed.questions || parsed.affirmations || parsed.cards || parsed.root || parsed.branches || parsed.mermaid || parsed.overview || parsed.sections || parsed.exercises || parsed.exercices || parsed.written_exercise || parsed.complete_exam ? parsed : null);
+          const parsedData = parsed.creation_data || (parsed.questions || parsed.affirmations || parsed.cards || parsed.root || parsed.branches || parsed.mermaid || parsed.overview || parsed.sections || parsed.chapters || parsed.pages || parsed.exercises || parsed.exercices || parsed.written_exercise || parsed.complete_exam ? parsed : null);
           if (parsedData) {
             let detectedType = parsed.creation_type;
             if (explicitToolType && (explicitToolType.includes('vrai') || explicitToolType.includes('faux'))) {
@@ -2411,6 +2459,8 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
                 detectedType = 'carte-mentale';
               } else if (parsed.overview) {
                 detectedType = 'resume';
+              } else if (parsed.chapters || parsed.pages) {
+                detectedType = 'pdf';
               } else {
                 detectedType = 'questionnaire';
               }
@@ -2479,12 +2529,15 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
           /questionnaire|quiz|qcm/i.test(userText) ? (/test/i.test(userText) ? 'questionnaire-test' : 'questionnaire') :
           /carte\s*mentale|mindmap/i.test(userText) ? 'carte-mentale' :
           /flashcard|carte\s*m[ée]moire/i.test(userText) ? 'carte-memoire' :
-          /r[ée]sum[ée]|synth[èe]se/i.test(userText) ? 'resume' : null
+          /r[ée]sum[ée]|synth[èe]se/i.test(userText) ? 'resume' :
+          /(?:document\s+pdf|polycopi[eé]|en\s+pdf|sous\s+forme\s+de\s+(?:document\s+)?pdf)/i.test(userText) ? 'pdf' :
+          /exercice|devoir/i.test(userText) ? (/devoir/i.test(userText) ? 'devoir-complet' : 'exercices-ecrits') :
+          /infographie/i.test(userText) ? 'infographie' : null
         );
 
         if (!creationParsed && explicitOrInferredType) {
           const p = parseOrBuildAiCreation(explicitOrInferredType as any, rawResponseText, mainDocName, userText);
-          if (p.content && (p.content.questions?.length > 0 || p.content.overview || p.content.root || p.content.metrics || p.content.sections || p.content.affirmations?.length > 0 || p.content.cards || p.content.exercises || p.content.exercices)) {
+          if (p.content && (p.content.questions?.length > 0 || p.content.overview || p.content.root || p.content.metrics || p.content.sections || p.content.chapters || p.content.pages || p.content.affirmations?.length > 0 || p.content.cards || p.content.exercises || p.content.exercices)) {
             creationParsed = {
               title: p.title,
               content: p.content,

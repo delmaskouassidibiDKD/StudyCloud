@@ -1336,16 +1336,38 @@ Réponds STRICTEMENT avec cet objet JSON :
     case "pdf":
       return {
         agentName: "AcademicPublisherAgent",
-        systemPrompt: `Tu es l'Agent d'Édition Académique de StudyCloud. Rédige un polycopié d'étude complet et élégant.
+        systemPrompt: `Tu es l'Agent d'Édition Académique de StudyCloud. Tu conçois des documents et polycopiés d'étude officiels denses, structurés et téléchargeables en PDF.
+Si la demande porte sur la résolution d'un exercice : résous-le pas à pas de manière exhaustive (énoncé, données, formules LaTeX \\dfrac{}{}, étapes, encadrement \\boxed{}).
+Si la demande porte sur un cours : développe des chapitres complets (définitions, théorèmes, formules démontrées, tableaux, méthodes).
+
 Réponds STRICTEMENT avec cet objet JSON :
 {
   "type": "pdf",
   "title": "Document d'Étude : ${docTitle}",
-  "subtitle": "Polycopié de référence",
-  "sections": [
+  "subtitle": "Support pédagogique officiel d'apprentissage",
+  "objective": "Comprendre, maîtriser et appliquer les concepts clés.",
+  "chapters": [
     {
-      "title": "1. Introduction et Définitions Clés",
-      "content": "Développement pédagogique approfondi avec formules KaTeX..."
+      "chapterNumber": 1,
+      "title": "Chapitre I : Notions Fondamentales & Définitions",
+      "sections": [
+        {
+          "heading": "1.1 Concepts clés et Hypothèses",
+          "body": "Développement pédagogique approfondi avec formules LaTeX $$ ... $$...",
+          "points": ["Point clé 1", "Point clé 2"]
+        }
+      ]
+    },
+    {
+      "chapterNumber": 2,
+      "title": "Chapitre II : Modélisation mathématique & Calculs",
+      "sections": [
+        {
+          "heading": "2.1 Formulaire et relations fondamentales",
+          "body": "Démonstrations méthodologiques pas à pas...",
+          "points": ["Résultat fondamental 1"]
+        }
+      ]
     }
   ]
 }`
@@ -1575,8 +1597,13 @@ function classifyCreationIntent(text, requestedType) {
     }
   }
 
-  if (/(polycopi[eé]|document d'[eé]tude|cours complet en pdf|fichier pdf)/i.test(lower)) {
-    if (hasCreationAction) {
+  if (/(polycopi[eé]|document d'[eé]tude|cours complet en pdf|fichier pdf|document pdf|\bpdf\b)/i.test(lower)) {
+    const isExercisePdf = /(?:r[eé]sous?|exercice|probl[èe]me|devoir|correction).*pdf|pdf.*(?:r[eé]sous?|exercice|probl[èe]me)/i.test(lower);
+    const hasSpecificTopic = /(?:sur|concernant|portant sur|de|d')\s+([a-zA-ZÀ-ÿ0-9\s'’-]{3,})/i.test(lower) && !/(?:ce document|ce cours|mon fichier)/i.test(lower);
+    if (isExercisePdf || hasSpecificTopic || lower.includes("polycopié complet") || lower.includes("cours complet")) {
+      return { isCreation: true, type: "pdf" };
+    }
+    if (hasCreationAction && lower.length > 30 && !/^(?:peux-tu\s+|fais[- ]moi\s+|cr[eé]e[- ]moi\s+|g[eé]n[eé]re[- ]moi\s+|fais\s+|cr[eé]er?\s+|g[eé]n[eé]rer?\s+)?(?:un|le)?\s*(?:document\s+pdf|pdf|polycopi[eé])\s*[.!?]?$/i.test(lower)) {
       return { isCreation: true, type: "pdf" };
     }
   }

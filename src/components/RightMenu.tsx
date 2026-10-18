@@ -295,8 +295,8 @@ export function RightMenu({
       ),
       toolType: 'pdf',
       getPrompt: (doc) => doc
-        ? `Génère un Document PDF polycopié d'étude officiel complet et structuré sur « ${doc} » avec sections, titres et contenu approfondi.`
-        : "Génère un Document PDF polycopié d'étude officiel complet et structuré avec sections, titres et contenu approfondi."
+        ? `J'aimerais concevoir un Document PDF à partir de mon document « ${doc} ». Analyse ce document et propose-moi les différents types de documents PDF que tu peux créer pour moi (ex: polycopié de cours complet, résolution pas à pas des exercices du document, formulaire officiel et fiches méthodes, devoir d'entraînement avec corrigé), ou demande-moi ce que je souhaite voir figurer dans le PDF.`
+        : "J'aimerais concevoir un Document PDF d'étude complet à télécharger. Demande-moi sur quel sujet ou matière je souhaite le créer et propose-moi des suggestions de thèmes."
     },
     {
       id: 'infographie',
@@ -360,6 +360,24 @@ export function RightMenu({
   const handleSelectCard = (card: CreationProposalCard) => {
     const promptToSend = card.getPrompt(resolvedDocName);
     const hasDoc = Boolean(resolvedDocName && resolvedDocName.trim().length > 0);
+
+    // Cas spécial 'pdf' :
+    // Selon la consigne :
+    // "si c'est un fichier joint et qu'il demande un pdf tu analyse le fichier et tu lui propose des prompt ce qu'il peut faire en pdf ou lui même te dire ce qu'il veut voir dans le pdf , il faut toujours demander"
+    // On bascule toujours dans le chat pour que l'IA engage la proposition interactive avec [QUESTIONS_SUGGÉRÉES]
+    if (card.id === 'pdf') {
+      window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
+      window.dispatchEvent(new CustomEvent('studycloud-trigger-creation', {
+        detail: {
+          prompt: promptToSend,
+          toolType: undefined, // Ne pas forcer le mode création direct afin de converser dans le chat
+          isCreation: false,
+          hasDocument: hasDoc,
+          source: 'right-menu-cards'
+        }
+      }));
+      return;
+    }
 
     // Si un document est présent, on peut démarrer l'animation de création
     if (hasDoc) {
