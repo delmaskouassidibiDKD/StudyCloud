@@ -248,15 +248,19 @@ function parseMindMapFromText(rawText: string, safeDocName: string): MindMapCont
     const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || rawText.match(/(\{[\s\S]*\})/);
     if (jsonMatch) {
       const parsed = safeJsonParse(jsonMatch[1] || jsonMatch[0]);
-      const data = parsed?.creation_data || (parsed?.children || parsed?.branches || parsed?.root ? parsed : null);
+      const data = parsed?.creation_data || (parsed?.children || parsed?.branches || parsed?.columns || parsed?.piliers || parsed?.noeud_central || parsed?.noeuds || parsed?.root ? parsed : null);
       if (data) {
+        if (data.columns || data.piliers || data.noeud_central || data.noeuds) {
+          return data;
+        }
         const rootItem = data.root || (data.children && data.label ? data : null);
-        const children = data.children || data.branches || rootItem?.children || [];
+        const children = data.children || data.branches || data.columns || rootItem?.children || [];
         return {
           id: data.id || 'root',
           label: data.label || data.root_title || data.title || rootLabel,
           type: 'box',
           children: children,
+          columns: children,
           root: rootItem || {
             id: 'root',
             label: data.label || data.root_title || data.title || rootLabel,
@@ -377,7 +381,13 @@ function parseMindMapFromText(rawText: string, safeDocName: string): MindMapCont
 
   // Si l'IA a produit des paragraphes simples sans puces, découper en branches
   if (branches.length === 0) {
-    const paras = rawText.split('\n\n').map(p => p.trim()).filter(p => p.length > 10);
+    const paras = rawText.split('\n\n').map(p => p.trim()).filter(p => {
+      if (p.length < 10) return false;
+      if (p.startsWith('{') || p.startsWith('```') || p.includes('":') || p.includes('"connecteurs"') || p.includes('"noeud_central"')) return false;
+      if (/^voici\s+(?:votre\s+)?(?:carte|résumé|fiche|synthèse)/i.test(p)) return false;
+      if (/^(?:bonjour|salut|hello|coucou)/i.test(p)) return false;
+      return true;
+    });
     paras.slice(0, 6).forEach((p, idx) => {
       const firstSentence = p.split('.')[0] || `Axe ${idx + 1}`;
       branches.push({
@@ -996,11 +1006,23 @@ export function parseOrBuildAiCreation(
           };
         }
         case 'mindmap': {
+          // Si on a directement des colonnes ou piliers pour Carte Mentale 2
+          if (Array.isArray(dataObj.columns) || Array.isArray(dataObj.piliers) || dataObj.noeud_central || Array.isArray(dataObj.cards)) {
+            const rootLabel = sanitizeText(dataObj.root_title || dataObj.rootTitle || dataObj.noeud_central?.nom || dataObj.noeud_central?.label || dataObj.title || safeDocName);
+            const defaultMmTitle = normType.includes('carte-mentale-2') || normType.includes('mindmap2')
+              ? `Carte Mentale 2 : ${safeDocName}`
+              : `Carte Mentale : ${safeDocName}`;
+            return {
+              title: sanitizeText(parsed.creation_title || dataObj.title) || defaultMmTitle,
+              content: dataObj
+            };
+          }
+
           const root = dataObj.root || dataObj;
-          if (root && (root.label || root.title || root.children || dataObj.branches || dataObj.nodes)) {
+          if (root && (root.label || root.title || root.children || dataObj.branches || dataObj.nodes || dataObj.columns || dataObj.children)) {
             const rawChildren = Array.isArray(root.children)
               ? root.children
-              : (Array.isArray(dataObj.branches) ? dataObj.branches : (Array.isArray(dataObj.nodes) ? dataObj.nodes : []));
+              : (Array.isArray(dataObj.branches) ? dataObj.branches : (Array.isArray(dataObj.columns) ? dataObj.columns : (Array.isArray(dataObj.nodes) ? dataObj.nodes : (Array.isArray(dataObj.children) ? dataObj.children : []))));
             const rootLabel = sanitizeText(root.label || root.title || dataObj.root_title || dataObj.title || safeDocName);
             const defaultMmTitle = normType.includes('carte-mentale-2') || normType.includes('mindmap2')
               ? `Carte Mentale 2 : ${safeDocName}`
@@ -1015,6 +1037,7 @@ export function parseOrBuildAiCreation(
                   children: rawChildren
                 },
                 root_title: rootLabel,
+                columns: rawChildren,
                 branches: rawChildren.map((b: any, bIdx: number) => ({
                   title: b.title || b.label || b.name || `Axe ${bIdx + 1}`,
                   description: b.description || b.details || '',

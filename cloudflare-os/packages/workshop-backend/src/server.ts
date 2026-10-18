@@ -946,15 +946,23 @@ C'EST TOI, L'IA, QUI DÉCIDES DU DESIGN ET DU TYPE DE MODULE LE PLUS ADAPTÉ :
 - 'infographie' : Fiche visuelle synthétique avec chiffres clés, étapes et repères.
 - 'pdf' : Polycopié de cours exhaustif avec sections et contenus structurés.
 
+- 'carte-mentale-2' : Carte Conceptuelle structurée en colonnes / piliers avec blocs hiérarchiques et formules LaTeX.
+
+RÈGLE ABSOLUE DE SORTIE (STRICTE) POUR LES CRÉATIONS :
+- NE RÉPONDS JAMAIS EN AFFICHANT DU CODE JSON BRUT DANS LE CHAT TEXTUEL DESTINÉ À L'HUMAIN.
+- Ta réponse DOIT ÊTRE UNIQUEMENT l'objet JSON strict, commençant par \`\`\`json et se terminant par \`\`\`. AUCUN texte narratif avant ou après le bloc JSON.
+- Le champ "chat_response" doit être une courte phrase amicale et humaine pour le chat (ex: "Voici votre carte mentale conceptuelle structurée dans l'espace Création !").
+- Toutes les données techniques, branches, questions ou formules se trouvent EXCLUSIVEMENT dans le champ "creation_data".
+
 DANS CE CAS DE CRÉATION EXCLUSIVEMENT :
 Tu produis OBLIGATOIREMENT ET UNIQUEMENT une réponse sous forme d'objet JSON strict :
 \`\`\`json
 {
   "decision": "creation",
   "mode": "creation",
-  "creation_type": "questionnaire" | "carte-mentale" | "carte-memoire" | "resume" | "vrai-ou-faux" | "exercices-ecrits" | "devoir-complet" | "infographie" | "pdf",
+  "creation_type": "questionnaire" | "carte-mentale" | "carte-mentale-2" | "carte-memoire" | "resume" | "vrai-ou-faux" | "exercices-ecrits" | "devoir-complet" | "infographie" | "pdf",
   "creation_title": "Titre explicite et valorisant du module créé",
-  "chat_response": "Un message amical et court d'une seule phrase pour le chat (ex: J'ai conçu votre questionnaire interactif dans l'espace Création à droite !)",
+  "chat_response": "Un message amical et court d'une seule phrase pour le chat (ex: J'ai conçu votre carte conceptuelle dans l'espace Création à droite !)",
   "creation_data": {
     // Les données exhaustives et complètes adaptées au module choisi
   }
@@ -1137,6 +1145,42 @@ EXEMPLE STRICT DU SCHÉMA JSON HIÉRARCHIQUE DANS 'creation_data' :
     }
   ]
 }
+\`\`\`
+
+EXEMPLE STRICT DU SCHÉMA POUR 'carte-mentale-2' (Carte Conceptuelle en colonnes / piliers) DANS 'creation_data' :
+\`\`\`json
+{
+  "root_title": "FILTRES ANALOGIQUES",
+  "columns": [
+    {
+      "title": "PILIER 1 : FILTRE PASSE-BAS",
+      "description": "Laisse passer les basses fréquences et atténue les hautes fréquences",
+      "children": [
+        {
+          "title": "ORDRE 1",
+          "description": "Circuit RC passif ou filtre actif AOP",
+          "formula": "$\\underline{T}(p) = \\dfrac{T_0}{1 + \\dfrac{p}{\\omega_0}}$"
+        },
+        {
+          "title": "ORDRE 2",
+          "description": "Structure active de Sallen-Key",
+          "formula": "$\\underline{T}(p) = \\dfrac{T_0}{1 + 2m\\dfrac{p}{\\omega_0} + \\left(\\dfrac{p}{\\omega_0}\\right)^2}$"
+        }
+      ]
+    },
+    {
+      "title": "PILIER 2 : FILTRE PASSE-HAUT",
+      "description": "Bloque les basses fréquences et transmet les signaux rapides",
+      "children": [
+        {
+          "title": "ORDRE 1",
+          "description": "Circuit CR ou filtre dérivateur borné",
+          "formula": "$\\underline{T}(p) = \\dfrac{T_0\\dfrac{p}{\\omega_0}}{1 + \\dfrac{p}{\\omega_0}}$"
+        }
+      ]
+    }
+  ]
+}
 \`\`\``;
 
         if (docContent) {
@@ -1200,6 +1244,8 @@ EXEMPLE STRICT DU SCHÉMA JSON HIÉRARCHIQUE DANS 'creation_data' :
 
             if (cfRes.ok) {
               const cfData: any = await cfRes.json();
+              const msg = cfData?.choices?.[0]?.message;
+              const finishReason = cfData?.choices?.[0]?.finish_reason;
               const rawAns = msg?.content || msg?.reasoning_content || "";
               answerText = stripAiReasoningScratchpad(rawAns);
               effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
@@ -1387,10 +1433,14 @@ EXEMPLE STRICT DU SCHÉMA JSON HIÉRARCHIQUE DANS 'creation_data' :
             if (rawParsed && typeof rawParsed === "object") {
               const payloadData = rawParsed.creation_data || (
                 rawParsed.questions || rawParsed.affirmations || rawParsed.cards ||
-                rawParsed.root || rawParsed.branches || rawParsed.mermaid || rawParsed.overview || rawParsed.sections ||
+                rawParsed.root || rawParsed.branches || rawParsed.columns || rawParsed.piliers ||
+                rawParsed.noeud_central || rawParsed.noeuds || rawParsed.mermaid || rawParsed.overview || rawParsed.sections ||
                 rawParsed.exercises || rawParsed.exercices || null
               );
-              if (rawParsed.decision === "creation" || rawParsed.mode === "creation" || payloadData) {
+              if (
+                rawParsed.decision === "creation" || rawParsed.mode === "creation" || payloadData ||
+                rawParsed.columns || rawParsed.branches || rawParsed.noeud_central || rawParsed.connecteurs
+              ) {
                 mode = "creation";
 
                 const reqTypeNorm = String(body.requested_type || "").toLowerCase().replace(/_/g, "-");
@@ -1398,8 +1448,18 @@ EXEMPLE STRICT DU SCHÉMA JSON HIÉRARCHIQUE DANS 'creation_data' :
 
                 if (reqTypeNorm.includes("vrai") || parsedTypeNorm.includes("vrai") || rawParsed.affirmations) {
                   creationType = reqTypeNorm.includes("test") || parsedTypeNorm.includes("test") ? "vrai-ou-faux-test" : "vrai-ou-faux";
-                } else if (reqTypeNorm.includes("carte-mentale") || parsedTypeNorm.includes("carte-mentale") || parsedTypeNorm.includes("mindmap") || rawParsed.root || rawParsed.branches || rawParsed.mermaid || rawParsed.type === "box" || (rawParsed.children && rawParsed.label) || payloadData?.type === "box" || (payloadData?.children && payloadData?.label)) {
-                  creationType = reqTypeNorm.includes("carte-mentale-2") || parsedTypeNorm.includes("carte-mentale-2") ? "carte-mentale-2" : "carte-mentale";
+                } else if (
+                  reqTypeNorm.includes("carte-mentale-2") || parsedTypeNorm.includes("carte-mentale-2") ||
+                  rawParsed.columns || rawParsed.piliers || rawParsed.noeud_central || rawParsed.connecteurs ||
+                  payloadData?.columns || payloadData?.piliers || payloadData?.noeud_central
+                ) {
+                  creationType = "carte-mentale-2";
+                } else if (
+                  reqTypeNorm.includes("carte-mentale") || parsedTypeNorm.includes("carte-mentale") || parsedTypeNorm.includes("mindmap") ||
+                  rawParsed.root || rawParsed.branches || rawParsed.mermaid || rawParsed.type === "box" ||
+                  (rawParsed.children && rawParsed.label) || payloadData?.type === "box" || (payloadData?.children && payloadData?.label)
+                ) {
+                  creationType = "carte-mentale";
                 } else if (reqTypeNorm.includes("questionnaire") || parsedTypeNorm.includes("questionnaire") || rawParsed.questions) {
                   creationType = reqTypeNorm.includes("test") || parsedTypeNorm.includes("test") ? "questionnaire-test" : "questionnaire";
                 } else {
@@ -1425,7 +1485,7 @@ EXEMPLE STRICT DU SCHÉMA JSON HIÉRARCHIQUE DANS 'creation_data' :
                     else if (typeof a.reponse === "boolean") isTrue = a.reponse;
                     else if (typeof a.correctAnswer === "boolean") isTrue = a.correctAnswer;
                     else if (typeof a.is_true === "string") isTrue = a.is_true.toLowerCase() === "true" || a.is_true.toLowerCase() === "vrai";
-                    else if (typeof a.isTrue === "string") isTrue = a.isTrue.toLowerCase() === "true" || a.isTrue.toLowerCase() === "vrai";
+                    else if (typeof a.isTrue === "string") isTrue = a.isTrue.toLowerCase() === "true" || a.is_true.toLowerCase() === "vrai";
                     else if (typeof a.reponse === "string") isTrue = a.reponse.toLowerCase() === "true" || a.reponse.toLowerCase() === "vrai";
                     return {
                       id: a.id || idx + 1,
@@ -1446,11 +1506,51 @@ EXEMPLE STRICT DU SCHÉMA JSON HIÉRARCHIQUE DANS 'creation_data' :
                   } else {
                     creationData = payloadData || rawParsed;
                   }
+                } else if (creationType === "carte-mentale-2") {
+                  const rootData = payloadData || rawParsed;
+                  if (rootData?.noeud_central || Array.isArray(rootData?.noeuds)) {
+                    const ncNom = rootData.noeud_central?.nom || rootData.noeud_central?.label || docName || "CARTE CONCEPTUELLE";
+                    const nodes = Array.isArray(rootData.noeuds) ? rootData.noeuds : [];
+                    const topLevelNodes = nodes.filter((n: any) => {
+                      const p = n.parent || n.parentId;
+                      return !p || p === "NC" || p === "root" || p === "noeud_central" || n.type === "catégorie" || n.type === "pilier";
+                    });
+                    const subNodes = nodes.filter((n: any) => !topLevelNodes.includes(n));
+                    creationData = {
+                      root_title: ncNom,
+                      columns: (topLevelNodes.length > 0 ? topLevelNodes : nodes.slice(0, 4)).map((tl: any) => {
+                        const sub = subNodes.filter((s: any) => (s.parent || s.parentId) === tl.id);
+                        return {
+                          title: tl.nom || tl.label || tl.title || tl.id,
+                          description: tl.description || tl.role || tl.desc || "Pilier fondamental",
+                          children: sub.map((s: any) => ({
+                            title: s.nom || s.label || s.title || s.id,
+                            description: s.description || s.desc || s.formule || "",
+                            formula: s.formula || s.formule || ""
+                          }))
+                        };
+                      })
+                    };
+                  } else {
+                    creationData = payloadData || rawParsed;
+                  }
                 } else {
                   creationData = payloadData || rawParsed;
                 }
 
-                companionChatText = rawParsed.chat_response || rawParsed.chat_message || `✨ J'ai créé votre **${creationTitle}** directement dans votre espace **Création** à droite !`;
+                let extractedMsg = rawParsed.chat_response || rawParsed.chat_message;
+                if (!extractedMsg && answerText) {
+                  const preJson = answerText.split(/```(?:json)?/i)[0].trim();
+                  if (preJson && !preJson.startsWith("{") && !preJson.includes('":') && preJson.length > 5 && preJson.length < 300) {
+                    extractedMsg = preJson;
+                  }
+                }
+                companionChatText = extractedMsg || `✨ J'ai créé votre **${creationTitle}** directement dans votre espace **Création** à droite !`;
+                // GARANTIE ABSOLUE : Zéro JSON dans companionChatText
+                companionChatText = companionChatText
+                  .replace(/```(?:json)?[\s\S]*?```/gi, "")
+                  .replace(/\{[\s\S]*\}/g, "")
+                  .trim() || `✨ J'ai créé votre **${creationTitle}** directement dans votre espace **Création** à droite !`;
               }
             }
           } catch (_e) {

@@ -65,36 +65,52 @@ function cleanChatText(text: string): string {
   if (!text) return '';
   let clean = text.trim();
 
-  // Si le texte est ou contient un payload JSON de création
-  if (clean.includes('"decision"') || clean.includes('"creation_data"') || clean.includes('"creation_type"') || clean.startsWith('{') || clean.startsWith('```json')) {
-    const jsonMatch = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || clean.match(/(\{[\s\S]*\})/);
-    if (jsonMatch) {
-      const parsed = safeJsonParse(jsonMatch[1] || jsonMatch[0]);
-      if (parsed && typeof parsed === 'object') {
-        const msg = parsed.chat_message || parsed.chat_response;
-        if (typeof msg === 'string' && !msg.trim().startsWith('{') && !msg.trim().startsWith('```') && !msg.includes('"creation_data"')) {
-          return msg.trim();
-        }
+  // 1. Extraire chat_message / chat_response si présent
+  const msgMatch = clean.match(/"(?:chat_message|chat_response)"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
+  if (msgMatch) {
+    try {
+      const extracted = JSON.parse(`"${msgMatch[1]}"`).trim();
+      if (extracted && !extracted.startsWith('{') && !extracted.includes('":')) {
+        return extracted;
+      }
+    } catch {
+      const unescaped = msgMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim();
+      if (unescaped && !unescaped.startsWith('{')) {
+        return unescaped;
       }
     }
-
-    // Regex d'extraction du message conversationnel
-    const msgMatch = clean.match(/"(?:chat_message|chat_response)"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
-    if (msgMatch) {
-      try {
-        return JSON.parse(`"${msgMatch[1]}"`).trim();
-      } catch {
-        return msgMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim();
-      }
-    }
-
-    // Nettoyage de résidus JSON de création
-    clean = clean
-      .replace(/```(?:json)?\s*\{[\s\S]*?"(?:decision|creation_data|creation_type)"[\s\S]*?\}\s*```/gi, '')
-      .replace(/<creation[^>]*>[\s\S]*?<\/creation>/gi, '')
-      .replace(/\{[\s\S]*"(?:decision|creation_data|creation_type|questions|affirmations)"[\s\S]*\}/gi, '')
-      .trim();
   }
+
+  // 2. Supprimer TOUS les blocs ```json ... ``` ou ``` ... ``` contenant du JSON
+  clean = clean.replace(/```(?:json)?\s*[\s\S]*?```/gi, '').trim();
+
+  // 3. Supprimer les balises <creation>
+  clean = clean.replace(/<creation[^>]*>[\s\S]*?<\/creation>/gi, '').trim();
+
+  // 4. Supprimer tout objet JSON brut complet { ... }
+  clean = clean.replace(/\{[\s\S]*?\}(?=\s*$|\n\n)/g, (match) => {
+    if (match.includes('":') || match.includes('"title"') || match.includes('"decision"') || match.includes('"connecteurs"') || match.includes('"noeud_central"')) {
+      return '';
+    }
+    return match;
+  }).trim();
+
+  if (clean.startsWith('{') && clean.endsWith('}')) {
+    clean = '';
+  }
+
+  // 5. Supprimer les lignes orphelines de syntaxe JSON résiduelle ("connecteurs": [, "source": ..., "cible": ..., etc.)
+  clean = clean
+    .split('\n')
+    .filter(line => {
+      const trimmed = line.trim();
+      if (/^["']?(?:connecteurs|noeuds|noeud_central|columns|branches|children|root|cards|questions|affirmations|creation_data|creation_type|decision|mode)["']?\s*:\s*[\[{]/i.test(trimmed)) return false;
+      if (/^["']?(?:source|cible|relation|type|pillTitle|description|formula|statement|is_true|explanation|correctAnswer)["']?\s*:\s*["'].*["'],?$/i.test(trimmed)) return false;
+      if (/^[\[\]\{\}],?$/.test(trimmed)) return false;
+      return true;
+    })
+    .join('\n')
+    .trim();
 
   return clean;
 }
@@ -806,7 +822,18 @@ const ChatMessageText = ({
     let cleaned = textWithoutSvg;
     if (!isUser) {
       cleaned = stripAiReasoningScratchpad(cleaned);
-      if (cleaned.includes('"decision"') || cleaned.includes('"creation_data"')) {
+      if (
+        cleaned.includes('"decision"') ||
+        cleaned.includes('"creation_data"') ||
+        cleaned.includes('```json') ||
+        cleaned.includes('"connecteurs"') ||
+        cleaned.includes('"noeud_central"') ||
+        cleaned.includes('"columns"') ||
+        cleaned.includes('"branches"') ||
+        cleaned.includes('"questions"') ||
+        cleaned.includes('"affirmations"') ||
+        (cleaned.includes('{') && cleaned.includes('":'))
+      ) {
         cleaned = cleanChatText(cleaned);
         if (!cleaned) {
           cleaned = "✨ Votre création a été générée avec succès dans le volet Création à droite.";
@@ -2436,7 +2463,8 @@ EXEMPLE STRICT DU SCHÉMA JSON HIÉRARCHIQUE DANS 'creation_data' :
         window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
 
         // Nettoyage radical du texte pour la discussion : JAMAIS de JSON brut !
-        const cleanIntro = cleanChatText(companionChatMessage || aiResult.chat_response || rawResponseText);
+        const candidateIntro = companionChatMessage || aiResult.chat_response || '';
+        const cleanIntro = cleanChatText(candidateIntro);
 
         fullResponseText = `${cleanIntro ? cleanIntro + '\n\n' : ''}✨ J'ai généré votre **${newCreation.title}** directement dans votre espace **Création** !
 

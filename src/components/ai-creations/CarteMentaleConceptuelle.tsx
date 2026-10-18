@@ -23,6 +23,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { MathText } from '../MathText';
+import { safeJsonParse } from '../../services/api';
 
 export interface ConceptCard {
   id: string;
@@ -210,43 +211,130 @@ const PRESET_PALETTES = [
   { name: 'Sunset Vif', col1: '#3B82F6', col2: '#F59E0B', col3: '#EF4444' }
 ];
 
+function cleanConceptText(text: any): string {
+  if (!text) return '';
+  if (typeof text !== 'string') return String(text);
+  let cleaned = text.trim();
+  // Si le texte ressemble à un bloc JSON brut ou du code technique
+  if (cleaned.startsWith('{') || cleaned.startsWith('[') || cleaned.includes('"noeud_central"') || cleaned.includes('"connecteurs"') || cleaned.includes('":')) {
+    return '';
+  }
+  // Si le texte est un préambule de chat conversationnel
+  if (/^voici\s+(?:votre\s+)?(?:carte|synthèse|schéma)/i.test(cleaned)) {
+    return '';
+  }
+  return cleaned.replace(/^[\s*#\-–—]+/, '').replace(/[*_#`]/g, '').trim();
+}
+
 function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDataset | null {
   if (!data) return null;
-  const actualData = data.mind_map || data.mindmap || data.mindMap || data;
+  let raw = data;
+  if (typeof raw === 'string') {
+    const parsed = safeJsonParse(raw);
+    if (parsed) raw = parsed;
+  }
+  let actualData = (raw && typeof raw === 'object') ? (raw.creation_data || raw.content || raw.mind_map || raw.mindmap || raw.mindMap || raw) : raw;
+  if (typeof actualData === 'string') {
+    const parsed = safeJsonParse(actualData);
+    if (parsed) actualData = parsed.creation_data || parsed.content || parsed;
+  }
+  if (!actualData || typeof actualData !== 'object') return null;
 
+  // Si on a déjà un dataset direct avec des cartes toutes prêtes
   if (actualData.cards && Array.isArray(actualData.cards) && actualData.cards.length > 0) {
-    return {
-      id: 'ai-dataset',
-      name: actualData.name || actualData.title || fallbackTitle || 'Carte Conceptuelle',
-      badge: 'Généré par IA',
-      rootTitle: (actualData.root_title || actualData.rootTitle || actualData.title || fallbackTitle || 'CARTE CONCEPTUELLE').toUpperCase(),
-      rootColor: actualData.rootColor || '#F59E0B',
-      cards: actualData.cards
-    };
+    const validCards = actualData.cards.filter((c: any) => c && c.pillTitle && !c.pillTitle.startsWith('{'));
+    if (validCards.length > 0) {
+      return {
+        id: 'ai-dataset',
+        name: actualData.name || actualData.title || fallbackTitle || 'Carte Conceptuelle',
+        badge: 'Généré par IA',
+        rootTitle: (actualData.root_title || actualData.rootTitle || actualData.title || fallbackTitle || 'CARTE CONCEPTUELLE').toUpperCase(),
+        rootColor: actualData.rootColor || '#F59E0B',
+        cards: validCards
+      };
+    }
   }
 
-  const cols = Array.isArray(actualData.branches)
+  // Support direct du schéma avec noeud_central + noeuds / connecteurs
+  if (actualData.noeud_central || Array.isArray(actualData.noeuds)) {
+    const ncTitle = cleanConceptText(actualData.noeud_central?.nom || actualData.noeud_central?.label || actualData.noeud_central?.title || actualData.titre || fallbackTitle || 'CARTE CONCEPTUELLE');
+    const nodes = Array.isArray(actualData.noeuds) ? actualData.noeuds : [];
+    const topLevelNodes = nodes.filter((n: any) => {
+      const p = n.parent || n.parentId;
+      return !p || p === 'NC' || p === 'root' || p === 'noeud_central' || n.type === 'catégorie' || n.type === 'pilier' || n.type === 'branche';
+    });
+    const subNodes = nodes.filter((n: any) => !topLevelNodes.includes(n));
+
+    if (topLevelNodes.length > 0) {
+      actualData = {
+        root_title: ncTitle || 'CARTE CONCEPTUELLE',
+        columns: topLevelNodes.map((tl: any) => {
+          const childrenOfTl = subNodes.filter((sn: any) => (sn.parent || sn.parentId) === tl.id);
+          return {
+            title: cleanConceptText(tl.nom || tl.label || tl.title || tl.id),
+            description: cleanConceptText(tl.description || tl.role || tl.desc || 'Pilier conceptuel'),
+            children: childrenOfTl.map((c: any) => ({
+              title: cleanConceptText(c.nom || c.label || c.title || c.id),
+              description: cleanConceptText(c.description || c.desc || c.formule || c.details || ''),
+              formula: c.formula || c.formule || ''
+            }))
+          };
+        })
+      };
+    }
+  }
+
+  let cols: any[] = Array.isArray(actualData.columns)
+    ? actualData.columns
+    : Array.isArray(actualData.piliers)
+    ? actualData.piliers
+    : Array.isArray(actualData.branches)
     ? actualData.branches
     : Array.isArray(actualData.root?.children)
     ? actualData.root.children
-    : Array.isArray(actualData.columns)
-    ? actualData.columns
+    : Array.isArray(actualData.children)
+    ? actualData.children
     : Array.isArray(actualData.categories)
     ? actualData.categories
     : [];
+
+  // Filtrer les colonnes qui contiendraient du texte JSON ou des intros parasites
+  cols = cols.filter((col: any) => {
+    if (!col) return false;
+    if (typeof col === 'string') {
+      return !col.startsWith('{') && !col.includes('":') && !/^voici\s+(?:votre\s+)?carte/i.test(col);
+    }
+    const t = col.branch_title || col.title || col.name || col.label || '';
+    if (typeof t === 'string' && (t.startsWith('{') || t.includes('":') || /^voici\s+(?:votre\s+)?carte/i.test(t))) {
+      return false;
+    }
+    return true;
+  });
+
   if (cols.length === 0) return null;
 
-  const rootTitle = (actualData.root_title || actualData.rootTitle || actualData.title || fallbackTitle || 'CARTE CONCEPTUELLE').toUpperCase();
+  let rawRoot = actualData.root_title || actualData.rootTitle || actualData.title || actualData.root?.label || actualData.root?.title || fallbackTitle || 'CARTE CONCEPTUELLE';
+  if (typeof rawRoot === 'string' && (rawRoot.startsWith('{') || rawRoot.includes('":') || /^voici/i.test(rawRoot))) {
+    rawRoot = fallbackTitle || 'CARTE CONCEPTUELLE';
+  }
+  const rootTitle = String(rawRoot).toUpperCase();
   const palette = ['#06B6D4', '#10B981', '#EC4899', '#3B82F6', '#F59E0B', '#8B5CF6'];
   const generatedCards: ConceptCard[] = [];
 
-  let currentX = 220;
+  // Centrage dynamique : calculer la largeur pour bien équilibrer les colonnes
+  const colCount = Math.min(cols.length, 6);
+  const estimatedColWidth = 300;
+  const colGap = 50;
+  const totalGridWidth = colCount * estimatedColWidth + (colCount - 1) * colGap;
+  let currentX = Math.max(80, (1400 - totalGridWidth) / 2);
 
   cols.slice(0, 6).forEach((col: any, cIdx: number) => {
     const colId = `col_${cIdx + 1}`;
     const colColor = palette[cIdx % palette.length];
-    const colTitle = (col.branch_title || col.title || col.name || col.label || `Axe ${cIdx + 1}`).toUpperCase();
-    const colDesc = col.description || col.subtitle || col.summary || 'Axe fondamental';
+    const rawTitle = col.branch_title || col.title || col.name || col.label || `Pilier ${cIdx + 1}`;
+    const colTitle = (cleanConceptText(rawTitle) || `PILIER ${cIdx + 1}`).toUpperCase();
+    const rawDesc = col.description || col.subtitle || col.summary || 'Axe fondamental';
+    const colDesc = cleanConceptText(rawDesc) || 'Axe fondamental';
 
     const items = Array.isArray(col.nodes)
       ? col.nodes
@@ -266,8 +354,8 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
 
     let maxW = Math.max(260, Math.min(380, colTitle.length * 9 + 40));
     items.forEach((item: any) => {
-      const itTitle = typeof item === 'string' ? '' : (item.title || item.pillTitle || item.name || item.label || item.concept || '');
-      const itDesc = typeof item === 'string' ? item : (item.description || item.desc || item.body || item.details || item.formula || item.title || item.label || '');
+      const itTitle = typeof item === 'string' ? '' : cleanConceptText(item.title || item.pillTitle || item.name || item.label || item.concept || '');
+      const itDesc = typeof item === 'string' ? cleanConceptText(item) : cleanConceptText(item.description || item.desc || item.body || item.details || item.formula || item.title || item.label || '');
       if (itDesc.length > 90 || itDesc.includes('$')) {
         maxW = Math.max(maxW, 300);
       }
@@ -297,8 +385,10 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
 
     let curY = 225 + colHeight / 2 + 55;
     items.forEach((item: any, iIdx: number) => {
-      const cardTitle = (typeof item === 'string' ? `Point ${iIdx + 1}` : (item.title || item.pillTitle || item.pillText || item.label || item.concept || item.name || `Point ${iIdx + 1}`)).toUpperCase();
-      let cardDesc = typeof item === 'string' ? item : (item.description || item.desc || item.body || item.details || item.content || item.title || item.label || '');
+      const rawItemTitle = typeof item === 'string' ? `Point ${iIdx + 1}` : (item.title || item.pillTitle || item.pillText || item.label || item.concept || item.name || `Point ${iIdx + 1}`);
+      const cardTitle = (cleanConceptText(rawItemTitle) || `Point ${iIdx + 1}`).toUpperCase();
+      let rawItemDesc = typeof item === 'string' ? item : (item.description || item.desc || item.body || item.details || item.content || item.title || item.label || '');
+      let cardDesc = cleanConceptText(rawItemDesc);
       const itemFormula = typeof item === 'object' ? (item.formula || item.formule || item.math || item.equation || '') : '';
       if (itemFormula) {
         const cleanFormula = itemFormula.startsWith('$') ? itemFormula : `$${itemFormula}$`;
@@ -325,7 +415,7 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
       curY += cardH + 35;
     });
 
-    currentX += colWidth + 50;
+    currentX += colWidth + colGap;
   });
 
   return {
