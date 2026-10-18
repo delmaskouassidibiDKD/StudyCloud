@@ -6,20 +6,21 @@ import { MathText } from '../MathText';
 
 function normalizeAffirmations(input: any): AffirmationVraiFaux[] {
   if (!input) return [];
-  const list = Array.isArray(input)
-    ? input
-    : (Array.isArray(input?.affirmations)
-      ? input.affirmations
-      : (Array.isArray(input?.questions)
-        ? input.questions
-        : (Array.isArray(input?.items)
-          ? input.items
-          : (Array.isArray(input?.statements)
-            ? input.statements
-            : (Array.isArray(input?.propositions)
-              ? input.propositions
-              : (Array.isArray(input?.data)
-                ? input.data
+  const source = input?.content || input;
+  const list = Array.isArray(source)
+    ? source
+    : (Array.isArray(source?.affirmations)
+      ? source.affirmations
+      : (Array.isArray(source?.questions)
+        ? source.questions
+        : (Array.isArray(source?.items)
+          ? source.items
+          : (Array.isArray(source?.statements)
+            ? source.statements
+            : (Array.isArray(source?.propositions)
+              ? source.propositions
+              : (Array.isArray(source?.data)
+                ? source.data
                 : []))))));
   if (!Array.isArray(list) || list.length === 0) return [];
 

@@ -174,7 +174,13 @@ export const AppUpdatePrompt: React.FC = () => {
     // 9. Filet de sécurité en cas de chunk obsolète suite à un nouveau déploiement
     const handlePreloadError = (e: Event) => {
       e.preventDefault();
-      console.warn('[StudyCloud Update] Erreur de chunk détectée (nouvelle version déployée).');
+      console.warn('[StudyCloud Update] Erreur de chunk détectée (nouvelle version déployée). Actualisation...');
+      const reloadKey = 'studycloud_preload_reload_' + Date.now().toString(36).slice(0, 4);
+      if (!sessionStorage.getItem(reloadKey)) {
+        sessionStorage.setItem(reloadKey, '1');
+        window.location.reload();
+        return;
+      }
       if (isTargetAccountConnected()) {
         triggerUpdatePrompt();
       }

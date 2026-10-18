@@ -1,15 +1,76 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, Component } from 'react';
 import { UniversalItem } from './types';
-import { Loader2, X, Sparkles } from 'lucide-react';
+import { Loader2, X, Sparkles, RefreshCw, AlertCircle } from 'lucide-react';
 
-const VideoRenderer = lazy(() => import('./renderers/VideoRenderer'));
-const AudioRenderer = lazy(() => import('./renderers/AudioRenderer'));
-const ThreeDRenderer = lazy(() => import('./renderers/ThreeDRenderer'));
-const PdfRenderer = lazy(() => import('./renderers/PdfRenderer'));
-const ChartRenderer = lazy(() => import('./renderers/ChartRenderer'));
-const DiagramRenderer = lazy(() => import('./renderers/DiagramRenderer'));
-const TextCodeRenderer = lazy(() => import('./renderers/TextCodeRenderer'));
-const AiPedagogyRenderer = lazy(() => import('./renderers/AiPedagogyRenderer'));
+function safeLazy<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T } | any>
+): React.LazyExoticComponent<T> {
+  return lazy(async () => {
+    try {
+      const mod = await factory();
+      if (!mod) {
+        throw new Error('Module import returned undefined');
+      }
+      return mod.default ? mod : { default: mod };
+    } catch (err: any) {
+      console.warn('[UniversalContentRenderer] Dynamic import error:', err);
+      const reloadKey = 'studycloud_chunk_fail_reload';
+      if (!sessionStorage.getItem(reloadKey)) {
+        sessionStorage.setItem(reloadKey, '1');
+        window.location.reload();
+      }
+      throw err;
+    }
+  });
+}
+
+const VideoRenderer = safeLazy(() => import('./renderers/VideoRenderer'));
+const AudioRenderer = safeLazy(() => import('./renderers/AudioRenderer'));
+const ThreeDRenderer = safeLazy(() => import('./renderers/ThreeDRenderer'));
+const PdfRenderer = safeLazy(() => import('./renderers/PdfRenderer'));
+const ChartRenderer = safeLazy(() => import('./renderers/ChartRenderer'));
+const DiagramRenderer = safeLazy(() => import('./renderers/DiagramRenderer'));
+const TextCodeRenderer = safeLazy(() => import('./renderers/TextCodeRenderer'));
+const AiPedagogyRenderer = safeLazy(() => import('./renderers/AiPedagogyRenderer'));
+
+class StudioErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
+  state = { hasError: false, error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[StudioErrorBoundary caught error]:', error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-zinc-300 space-y-4 bg-zinc-900/60">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <div className="space-y-1 max-w-sm">
+            <h4 className="text-sm font-bold text-white">Affichage temporairement indisponible</h4>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              {this.state.error?.message || "Le module n'a pas pu s'afficher correctement."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => this.setState({ hasError: false, error: null })}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-md transition-all cursor-pointer"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Réessayer l'affichage</span>
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 interface UniversalContentRendererProps {
   item: UniversalItem | any;
@@ -97,6 +158,7 @@ export function UniversalContentRenderer({ item, onClose }: UniversalContentRend
       case 'carte-mentale':
       case 'carte-mentale-2':
       case 'carte-mentale-conceptuelle':
+      case 'mindmap2':
       case 'flashcards':
       case 'carte-memoire':
       case 'resume':
@@ -159,18 +221,20 @@ export function UniversalContentRenderer({ item, onClose }: UniversalContentRend
         )}
       </div>
 
-      {/* Corps du renderer avec Suspense pour lazy loading */}
+      {/* Corps du renderer avec StudioErrorBoundary et Suspense */}
       <div className="flex-1 w-full min-h-0 overflow-hidden relative">
-        <Suspense
-          fallback={
-            <div className="w-full h-full flex flex-col items-center justify-center p-8 text-zinc-400">
-              <Loader2 className="w-8 h-8 animate-spin text-orange-400 mb-2" />
-              <span className="text-xs">Chargement du contenu...</span>
-            </div>
-          }
-        >
-          {renderContent()}
-        </Suspense>
+        <StudioErrorBoundary>
+          <Suspense
+            fallback={
+              <div className="w-full h-full flex flex-col items-center justify-center p-8 text-zinc-400">
+                <Loader2 className="w-8 h-8 animate-spin text-orange-400 mb-2" />
+                <span className="text-xs">Chargement du contenu...</span>
+              </div>
+            }
+          >
+            {renderContent()}
+          </Suspense>
+        </StudioErrorBoundary>
       </div>
     </div>
   );

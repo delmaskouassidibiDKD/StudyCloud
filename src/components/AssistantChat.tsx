@@ -2252,7 +2252,7 @@ EXEMPLE STRICT DU SCHÉMA JSON HIÉRARCHIQUE DANS 'creation_data' :
         if (normType === 'vrai-ou-faux' || normType === 'vrai-ou-faux-test') {
           const rawAffs = Array.isArray(finalContent)
             ? finalContent
-            : (finalContent.affirmations || finalContent.questions || finalContent.items || finalContent.statements || finalContent.data);
+            : (finalContent?.affirmations || finalContent?.questions || finalContent?.items || finalContent?.statements || finalContent?.data);
           if (Array.isArray(rawAffs) && rawAffs.length > 0) {
             finalContent = {
               affirmations: rawAffs.slice(0, 18).map((a: any, idx: number) => {
@@ -2322,7 +2322,7 @@ EXEMPLE STRICT DU SCHÉMA JSON HIÉRARCHIQUE DANS 'creation_data' :
             if (normType === 'vrai-ou-faux' || normType === 'vrai-ou-faux-test') {
               const rawAffs = Array.isArray(finalContent)
                 ? finalContent
-                : (finalContent.affirmations || finalContent.questions || finalContent.items || finalContent.statements || finalContent.data || parsed.affirmations || parsed.questions || []);
+                : (finalContent?.affirmations || finalContent?.questions || finalContent?.items || finalContent?.statements || finalContent?.data || parsed?.affirmations || parsed?.questions || []);
               if (Array.isArray(rawAffs) && rawAffs.length > 0) {
                 finalContent = {
                   affirmations: rawAffs.slice(0, 18).map((a: any, idx: number) => {
@@ -2414,7 +2414,7 @@ EXEMPLE STRICT DU SCHÉMA JSON HIÉRARCHIQUE DANS 'creation_data' :
         if (effectiveToolType === 'vrai-ou-faux' || effectiveToolType === 'vrai-ou-faux-test') {
           const rawAffs = Array.isArray(creationParsed.content)
             ? creationParsed.content
-            : (creationParsed.content.affirmations || creationParsed.content.questions || creationParsed.content.items || creationParsed.content.statements || creationParsed.content.data || []);
+            : (creationParsed.content?.affirmations || creationParsed.content?.questions || creationParsed.content?.items || creationParsed.content?.statements || creationParsed.content?.data || []);
           if (Array.isArray(rawAffs) && rawAffs.length > 0) {
             creationParsed.content = {
               affirmations: rawAffs.slice(0, 18).map((a: any, idx: number) => {

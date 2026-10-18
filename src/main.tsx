@@ -47,7 +47,15 @@ class ErrorBoundary extends React.Component {
                       }
                     });
                   } catch (e) {}
-                  window.location.reload();
+                  if (typeof caches !== 'undefined') {
+                    caches.keys().then((names) => {
+                      return Promise.all(names.map((name) => caches.delete(name)));
+                    }).finally(() => {
+                      window.location.href = window.location.origin + window.location.pathname + '?fresh=' + Date.now();
+                    });
+                  } else {
+                    window.location.href = window.location.origin + window.location.pathname + '?fresh=' + Date.now();
+                  }
                 }}
                 className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer"
               >
@@ -59,7 +67,15 @@ class ErrorBoundary extends React.Component {
                     purgeVolatileStorage();
                     localStorage.clear();
                   } catch {}
-                  window.location.reload();
+                  if (typeof caches !== 'undefined') {
+                    caches.keys().then((names) => {
+                      return Promise.all(names.map((name) => caches.delete(name)));
+                    }).finally(() => {
+                      window.location.href = window.location.origin + window.location.pathname + '?clean=' + Date.now();
+                    });
+                  } else {
+                    window.location.href = window.location.origin + window.location.pathname + '?clean=' + Date.now();
+                  }
                 }}
                 className="w-full py-2.5 bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 font-bold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer"
               >
