@@ -23,8 +23,7 @@ interface ResumeProps {
 function cleanFormulaLatex(latex?: string): string {
   if (!latex) return '';
   return latex
-    .replace(/^(?:\s*\$+\s*)+/g, '')
-    .replace(/(?:\s*\$+\s*)+$/g, '')
+    .replace(/(?<!\\)\$/g, '')
     .trim();
 }
 
@@ -611,14 +610,14 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             </section>
           )}
 
-          {/* II. Formulaire & Méthodologie avec BOÎTES COLORÉES BLEUES (#f0f7ff / #0066cc) */}
+          {/* II. Formulaire & Méthodes de Calcul - Rédigé directement sur le fond de page comme un livre */}
           {parsedSummary.formulas.length > 0 && (
-            <section className="space-y-5 pt-4">
+            <section className="space-y-6 pt-4">
               <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
                 II. Formulaire & Méthodes de Calcul
               </h2>
 
-              <div className="space-y-6">
+              <div className="space-y-8">
                 {parsedSummary.formulas.map((formula, fidx) => {
                   const cleanedLatex = cleanFormulaLatex(formula.latex);
                   const hasObjective = Boolean(formula.target_goal || (!isFillerText(formula.when_to_use) ? formula.when_to_use : null));
@@ -629,44 +628,39 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                   return (
                     <div
                       key={fidx}
-                      className="p-4 sm:p-6 my-4 rounded-xl border-l-[6px] border-[#0066cc] bg-[#f8fbff] shadow-xs space-y-4 border border-blue-100"
+                      className="space-y-3 pt-2"
                     >
-                      {/* En-tête de la formule */}
-                      <div className="flex items-center gap-2 font-black text-[#004085] text-base sm:text-lg">
-                        <span className="text-xl">🧮</span>
-                        <span>FORMULE CLÉ - </span>
-                        <MathText text={formula.name || `Formule ${fidx + 1}`} inline={true} />
+                      {/* En-tête de la formule - style titre de livre de cours */}
+                      <div className="text-base sm:text-lg font-bold text-black flex items-center gap-2">
+                        <span className="font-extrabold">{fidx + 1}.</span>
+                        <span className="uppercase tracking-wide">
+                          <MathText text={formula.name || `Formule ${fidx + 1}`} inline={true} />
+                        </span>
                       </div>
 
-                      {/* Bloc KaTeX centré : strictement un seul double dollar $$ */}
-                      <div className="py-4 px-4 rounded-xl bg-white border border-blue-200 text-center overflow-x-auto text-lg sm:text-2xl font-bold text-black my-2 shadow-xs">
+                      {/* Formule mathématique centrée directement sur le fond de la page (sans boîte ni bordure) */}
+                      <div className="py-2 px-2 text-center overflow-x-auto text-xl sm:text-2xl font-bold text-black my-2">
                         <MathText text={`$$ ${cleanedLatex} $$`} />
                       </div>
 
-                      {/* Structure Pédagogique en 5 blocs visuels */}
-                      <div className="space-y-3 pt-1">
-                        {/* 1. 🎯 Objectif : Quand le sujet demande... */}
+                      {/* Contenu pédagogique continu sur le fond de page */}
+                      <div className="space-y-2.5 text-stone-900 text-base leading-relaxed pl-1 sm:pl-3">
+                        {/* 1. Objectif du calcul */}
                         {hasObjective && (
-                          <div className="p-3.5 bg-white rounded-lg border border-blue-100 flex items-start gap-3 shadow-2xs">
-                            <span className="text-lg shrink-0 mt-0.5">🎯</span>
-                            <div className="flex-1 text-sm sm:text-base">
-                              <span className="font-extrabold text-blue-950">Objectif du calcul : </span>
-                              <span className="text-stone-900 leading-relaxed">
-                                <MathText text={formula.target_goal || formula.when_to_use || ''} inline={true} />
-                              </span>
-                            </div>
-                          </div>
+                          <p className="text-stone-800">
+                            <strong className="font-bold text-black">🎯 Objectif du calcul : </strong>
+                            <MathText text={formula.target_goal || formula.when_to_use || ''} inline={true} />
+                          </p>
                         )}
 
-                        {/* 2. 🛠️ Comment la DÉMONTRER à partir du schéma / des lois */}
+                        {/* 2. Comment la DÉMONTRER à partir du schéma & des lois */}
                         {(hasSteps || hasDerivation) && (
-                          <div className="p-4 bg-emerald-50/90 rounded-lg border border-emerald-200/90 space-y-2 shadow-2xs">
-                            <div className="flex items-center gap-2 font-black text-emerald-950 text-sm sm:text-base">
-                              <span className="text-lg">🛠️</span>
-                              <span>Comment la DÉMONTRER à partir du schéma & des lois :</span>
-                            </div>
+                          <div className="space-y-1.5 pt-0.5">
+                            <p className="font-bold text-black">
+                              🛠️ Comment la démontrer à partir du schéma & des lois :
+                            </p>
                             {hasSteps ? (
-                              <ol className="list-decimal list-inside space-y-1.5 pl-1 pt-1 text-sm sm:text-base text-stone-900 leading-relaxed font-medium">
+                              <ol className="list-decimal pl-6 space-y-1 text-stone-800 font-normal">
                                 {formula.demonstration_steps!.map((step, sidx) => (
                                   <li key={sidx} className="pl-1">
                                     <MathText text={step} inline={true} />
@@ -674,39 +668,34 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                                 ))}
                               </ol>
                             ) : (
-                              <div className="text-stone-900 text-sm sm:text-base pl-6 pt-1 leading-relaxed">
+                              <div className="pl-4 text-stone-800">
                                 <MathText text={formula.how_to_derive!} inline={true} />
                               </div>
                             )}
                           </div>
                         )}
 
-                        {/* 3. 📐 Variables & Unités */}
+                        {/* 3. Variables & Unités */}
                         {formula.variables && (
-                          <div className="p-3.5 bg-white rounded-lg border border-blue-100 flex items-start gap-3 shadow-2xs">
-                            <span className="text-lg shrink-0 mt-0.5">📐</span>
-                            <div className="flex-1 text-sm sm:text-base">
-                              <span className="font-extrabold text-blue-950">Variables & Unités : </span>
-                              <span className="text-stone-900 leading-relaxed">
-                                <MathText text={formula.variables} inline={true} />
-                              </span>
-                            </div>
-                          </div>
+                          <p className="text-stone-800">
+                            <strong className="font-bold text-black">📐 Variables & Unités : </strong>
+                            <MathText text={formula.variables} inline={true} />
+                          </p>
                         )}
 
-                        {/* 4. 🚨 Piège à l'examen & Décodage des sujets */}
+                        {/* 4. Piège à l'examen */}
                         {hasTraps && (
-                          <div className="p-3.5 bg-amber-50/90 rounded-lg border border-amber-200/90 flex items-start gap-3 shadow-2xs">
-                            <span className="text-lg shrink-0 mt-0.5">🚨</span>
-                            <div className="flex-1 text-sm sm:text-base">
-                              <span className="font-extrabold text-amber-950">Piège à l'examen : </span>
-                              <span className="text-stone-900 leading-relaxed font-medium">
-                                <MathText text={formula.exam_trap!} inline={true} />
-                              </span>
-                            </div>
-                          </div>
+                          <p className="text-stone-800">
+                            <strong className="font-bold text-black">⚠️ Piège à l'examen : </strong>
+                            <MathText text={formula.exam_trap!} inline={true} />
+                          </p>
                         )}
                       </div>
+
+                      {/* Séparation sobre de livre entre deux formules */}
+                      {fidx < parsedSummary.formulas.length - 1 && (
+                        <hr className="border-t border-stone-200 my-6" />
+                      )}
                     </div>
                   );
                 })}
@@ -751,43 +740,25 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             </section>
           )}
 
-          {/* IV. Pièges à éviter & Remarques (NB) avec BOÎTES COLORÉES (Jaune/Orange/Rouge et Bleue Ciel) */}
+          {/* IV. Pièges à Éviter & Astuces Méthodologiques (NB) - Sans bloc coloré ni trait vertical */}
           {parsedSummary.trapsAndTips.length > 0 && (
             <section className="space-y-4 pt-4">
               <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
                 IV. Pièges à Éviter & Astuces Méthodologiques (NB)
               </h2>
 
-              <div className="space-y-4">
+              <div className="space-y-4 pt-1">
                 {parsedSummary.trapsAndTips.map((item, tidx) => {
                   const isTrap = item.type === 'trap' || /pi[èe]ge/i.test(item.title || '');
-                  return isTrap ? (
-                    <div
-                      key={tidx}
-                      className="p-4 sm:p-5 rounded-r-xl border-l-[5px] border-[#ffc107] bg-[#fff3cd] shadow-2xs text-stone-900 space-y-2"
-                    >
-                      <div className="font-extrabold text-[#856404] flex items-center gap-2 text-base sm:text-lg">
-                        <span>⚠️ PIÈGE CLASSIQUE :</span>
+                  return (
+                    <div key={tidx} className="space-y-1 text-base text-stone-900 leading-relaxed pl-1 sm:pl-3">
+                      <p className="font-bold text-black flex items-center gap-2">
+                        <span>{isTrap ? '⚠️ PIÈGE CLASSIQUE :' : '💡 ASTUCE MÉTHODOLOGIQUE (NB) :'}</span>
                         {item.title && !/^(pi[èe]ge|astuce)/i.test(item.title) && (
-                          <span className="font-bold text-stone-900">{item.title}</span>
+                          <span className="font-semibold text-stone-800">{item.title}</span>
                         )}
-                      </div>
-                      <div className="text-stone-900 font-medium pl-6 text-sm sm:text-base leading-relaxed">
-                        <MathText text={item.content} inline={true} />
-                      </div>
-                    </div>
-                  ) : (
-                    <div
-                      key={tidx}
-                      className="p-4 sm:p-5 rounded-r-xl border-l-[5px] border-[#0284c7] bg-[#e8f4fd] shadow-2xs text-stone-900 space-y-2"
-                    >
-                      <div className="font-extrabold text-[#0369a1] flex items-center gap-2 text-base sm:text-lg">
-                        <span>💡 ASTUCE MÉTHODOLOGIQUE (NB) :</span>
-                        {item.title && !/^(pi[èe]ge|astuce)/i.test(item.title) && (
-                          <span className="font-bold text-stone-900">{item.title}</span>
-                        )}
-                      </div>
-                      <div className="text-stone-900 font-medium pl-6 text-sm sm:text-base leading-relaxed">
+                      </p>
+                      <div className="pl-6 text-stone-800 font-normal">
                         <MathText text={item.content} inline={true} />
                       </div>
                     </div>
@@ -797,30 +768,32 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             </section>
           )}
 
-          {/* V. Exemple Pratique d'Application avec BOÎTE VERTE (#f0fdf4 / #16a34a) */}
+          {/* V. Exemple Pratique d'Application - Rédigé directement sur le fond de page */}
           {parsedSummary.practicalExample && (
             <section className="space-y-4 pt-4">
               <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
                 V. Exemple Pratique d'Application
               </h2>
 
-              <div className="p-4 sm:p-5 rounded-r-xl border-l-[5px] border-[#16a34a] bg-[#f0fdf4] shadow-2xs text-stone-900 space-y-3">
-                <div className="font-extrabold text-[#15803d] flex items-center gap-2 text-base sm:text-lg">
-                  <span>🛠️ CAS CONCRET RÉSOLU ÉTAPE PAR ÉTAPE</span>
+              <div className="space-y-3 pt-1 text-base text-stone-900 leading-relaxed pl-1 sm:pl-3">
+                <div className="space-y-1">
+                  <p className="font-bold text-black">
+                    🛠️ Cas concret résolu étape par étape
+                  </p>
                 </div>
 
-                <div className="text-sm sm:text-base text-stone-900 pl-4 border-l-2 border-emerald-300">
-                  <p className="font-bold text-stone-950 mb-1">Énoncé :</p>
+                <div className="space-y-1 pl-4">
+                  <p className="font-bold text-black">Énoncé :</p>
                   <div className="italic text-stone-800">
                     <MathText text={parsedSummary.practicalExample.statement} inline={true} />
                   </div>
                 </div>
 
                 <div className="space-y-2 pt-1 pl-4">
-                  <p className="font-bold text-emerald-950 text-xs uppercase tracking-wide">
-                    Résolution détaillée :
+                  <p className="font-bold text-black text-sm uppercase tracking-wide">
+                    Résolution détaillée pas à pas :
                   </p>
-                  <ol className="space-y-2 list-decimal list-inside text-stone-900 text-sm sm:text-base leading-relaxed">
+                  <ol className="space-y-2 list-decimal pl-6 text-stone-900 text-base leading-relaxed">
                     {parsedSummary.practicalExample.resolution_steps.map((step, sidx) => (
                       <li key={sidx} className="pl-1">
                         <MathText text={step.replace(/^\s*\d+[\.\-\)]\s*/, '')} inline={true} />

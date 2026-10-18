@@ -341,9 +341,8 @@ function wrapOrphanSymbolsAndFixDollars(text: string): string {
   }).join('\n');
 
   // 3. Envelopper les équations scientifiques orphelines dans la prose (sans aucun dollar)
-  // Exemples : \omega_0 = \dfrac{1}{RC} = 10^4\text{ rad/s} ou f_0 = \dfrac{\omega_0}{2\pi} \approx 1591{,}5\text{ Hz}
   res = res.replace(
-    /(?<!\$|\$\$|\\)(\b[A-Za-z0-9_|\(\)]+\s*=\s*[^.,;\n$]*?\\(?:d?frac|sqrt|omega|pi|approx|times|Delta|log|exp)[^.,;\n$]*)(?!\$|\$\$)/g,
+    /(?<!\$|\$\$)(?:\\underline\{[^{}]+\}|\\Delta\s*[A-Za-z]|[A-Za-z0-9_|\(\)]+)\s*=\s*[^.,;\n$]*?\\(?:d?frac|sqrt|omega|pi|approx|times|Delta|log|exp|cdot)[^.,;\n$]*/g,
     (match) => {
       const trimmed = match.trim();
       if (trimmed.includes('$') || trimmed.length < 5) return match;
@@ -351,32 +350,47 @@ function wrapOrphanSymbolsAndFixDollars(text: string): string {
     }
   );
 
-  // 4. Envelopper les symboles grecs ou égalités de pulsation orphelines (ex: \Omega = \omega_0 ou \omega_0)
-  res = res.replace(/(?<!\$|\$\$|\\)(\\Omega\s*=\s*\\omega_0)(?!\$|\$\$)/g, ' $ $1 $ ');
-  res = res.replace(/(?<!\$|\$\$|\\)(\\(?:Omega|omega|pi|Delta|tau|alpha|beta|gamma|lambda|mu|theta|sigma)(?:_[0-9a-zA-Z]+)?)(?!\$|\$\$)/g, ' $ $1 $ ');
-
-  // 5. Envelopper les unités scientifiques LaTeX orphelines (ex: 3\text{ dB} -> $3\text{ dB}$)
-  res = res.replace(/(?<!\$|\$\$|\\)(\b\d+(?:[.,]\d+)?\s*\\text\{\s*(?:dB|Hz|kHz|MHz|rad\/s|V|A|mA|k\s*\\Omega|\\Omega|s|ms|\mu s|nF|\mu F|pF)\s*\})(?!\$|\$\$)/g, ' $ $1 $ ');
-
   return res;
 }
 
 function sanitizeLatexInput(rawText: string, inlineMode: boolean): string {
   if (!rawText || typeof rawText !== 'string') return '';
 
-  let sanitized = wrapOrphanSymbolsAndFixDollars(rawText)
+  // 0. Protection absolue des blocs déjà en mode mathématique ($$...$$ et $...$)
+  // pour qu'AUCUNE fonction de prose ne vienne jamais insérer de dollars à l'intérieur
+  const mathPlaceholders: string[] = [];
+  let protectedText = rawText
+    .replace(/\${2,}\s*\${2,}/g, '$$')
+    .replace(/\${3,}/g, '$$')
+    .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
+    .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+
+  // Extraction et sécurisation des $$ ... $$
+  protectedText = protectedText.replace(/\$\$([\s\S]+?)\$\$/g, (_match, mathContent) => {
+    // Nettoyer strictement tout dollar parasite à l'intérieur
+    const cleanMath = mathContent.replace(/(?<!\\)\$/g, '').trim();
+    const token = `__STUDYCLOUD_PROTECTED_BLOCK_${mathPlaceholders.length}__`;
+    mathPlaceholders.push(`$$${cleanMath}$$`);
+    return token;
+  });
+
+  // Extraction et sécurisation des $ ... $ (inline)
+  protectedText = protectedText.replace(/\$([^\$\n\r]+?)\$/g, (_match, mathContent) => {
+    const cleanMath = mathContent.replace(/(?<!\\)\$/g, '').trim();
+    const token = `__STUDYCLOUD_PROTECTED_INLINE_${mathPlaceholders.length}__`;
+    mathPlaceholders.push(`$${cleanMath}$`);
+    return token;
+  });
+
+  // Maintenant, protectedText ne contient QUE de la prose textuelle ordinaire (hors mode maths)
+  let sanitized = wrapOrphanSymbolsAndFixDollars(protectedText)
     // 1. Répare les caractères de contrôle corrompus par le parsing JSON :
     .replace(/[\x0c\u000c]/g, '\\f')
     .replace(/[\x08\u0008]/g, '\\b')
     .replace(/&amp;/g, '&')
     .replace(/&nbsp;/g, ' ')
     .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    // RÈGLE ANTI-DOUBLES DOLLARS STRICTE :
-    .replace(/\${2,}\s*\${2,}/g, '$$')
-    .replace(/\${3,}/g, '$$')
-    .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
-    .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+    .replace(/&gt;/g, '>');
 
   // 2. Traitement ligne par ligne pour soigner les équations morcelées
   const lines = sanitized.split('\n');
@@ -386,7 +400,6 @@ function sanitizeLatexInput(rawText: string, inlineMode: boolean): string {
   sanitized = sanitized
     .replace(/\\text\{\s*\\d?frac\{([^{}]+)\}\{([^{}]+)\}\s*\}/gi, '\\text{ $1/$2 }')
     .replace(/\\text\{\s*([^{}\\]*)\\d?frac\{([^{}]+)\}\{([^{}]+)\}([^{}\\]*)\s*\}/gi, '\\text{ $1 $2/$3 $4 }')
-    // Répare les \text{... orphelins sans accolade fermante avant la fin de l'expression
     .replace(/\\text\{([a-zA-Z0-9\s,\/]+)(?=\s*(?:\$|\\approx|\\le|\\ge|=|\n|$))/g, '\\text{$1}');
 
   // 4. Correction des symboles parasites dans \text{...}
@@ -400,22 +413,15 @@ function sanitizeLatexInput(rawText: string, inlineMode: boolean): string {
     .replace(/\bk\s*\\?\$+(\\?Omega)\$?/gi, '\\text{k }\\Omega')
     .replace(/\\k\\Omega\b/gi, '\\text{k}\\Omega');
 
-  // 5. Fermeture automatique des blocs $$ non fermés et nettoyage des doubles balises
-  const paragraphs = sanitized.split(/\n{2,}/);
-  sanitized = paragraphs
-    .map((para) => {
-      // Nettoyer les $$ $$ à l'intérieur de chaque paragraphe
-      let p = para.replace(/\${2,}\s*\${2,}/g, '$$');
-      const doubleDollarMatches = p.match(/\$\$/g);
-      if (doubleDollarMatches && doubleDollarMatches.length % 2 !== 0) {
-        return p.trimEnd() + ' $$';
-      }
-      return p;
-    })
-    .join('\n\n');
-
   // 5. Envelopper les commandes LaTeX orphelines avec accolades imbriquées dans des $ ... $
   sanitized = wrapOrphanLatexInDollars(sanitized);
+
+  // 6. Restauration fidèle des blocs mathématiques d'origine protégés
+  mathPlaceholders.forEach((mathBlock, pIdx) => {
+    sanitized = sanitized
+      .replace(`__STUDYCLOUD_PROTECTED_BLOCK_${pIdx}__`, mathBlock)
+      .replace(`__STUDYCLOUD_PROTECTED_INLINE_${pIdx}__`, mathBlock);
+  });
 
   return sanitized;
 }
@@ -424,7 +430,7 @@ function sanitizeLatexInput(rawText: string, inlineMode: boolean): string {
  * Extrait proprement une commande LaTeX complète avec équilibrage parfait des accolades imbriquées
  */
 function extractBalancedLatexCommand(str: string, startIdx: number): { fullMatch: string; endIdx: number } | null {
-  const cmdMatch = str.slice(startIdx).match(/^\\(?:d?frac|sqrt|boxed|underline)\b/);
+  const cmdMatch = str.slice(startIdx).match(/^\\(?:d?frac|sqrt|boxed)\b/);
   if (!cmdMatch) return null;
   const cmd = cmdMatch[0];
   let idx = startIdx + cmd.length;
@@ -508,16 +514,65 @@ function wrapOrphanLatexInDollars(text: string): string {
 }
 
 /**
+ * Traduction de secours en Unicode mathématique lisible si KaTeX échoue
+ * pour garantir qu'AUCUN antislash LaTeX ou code brut ne s'affiche à l'écran
+ */
+export function latexToReadableUnicode(latex: string): string {
+  if (!latex || typeof latex !== 'string') return '';
+  return latex
+    .replace(/(?<!\\)\$/g, '')
+    .replace(/\\underline\{([^{}]+)\}/g, '$1')
+    .replace(/\\text\{([^{}]+)\}/g, '$1')
+    .replace(/\\mathrm\{([^{}]+)\}/g, '$1')
+    .replace(/\\mathbf\{([^{}]+)\}/g, '$1')
+    .replace(/\\d?frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1) / ($2)')
+    .replace(/\\sqrt\{([^{}]+)\}/g, '√($1)')
+    .replace(/\\times\b/g, '×')
+    .replace(/\\cdot\b/g, '·')
+    .replace(/\\approx\b/g, '≈')
+    .replace(/\\le(?:q)?\b/g, '≤')
+    .replace(/\\ge(?:q)?\b/g, '≥')
+    .replace(/\\neq\b/g, '≠')
+    .replace(/\\to\b/g, '→')
+    .replace(/\\Rightarrow\b/g, '⇒')
+    .replace(/\\infty\b/g, '∞')
+    .replace(/\\omega_0\b/g, 'ω₀')
+    .replace(/\\omega\b/g, 'ω')
+    .replace(/\\Omega_0\b/g, 'Ω₀')
+    .replace(/\\Omega\b/g, 'Ω')
+    .replace(/\\pi\b/g, 'π')
+    .replace(/\\Delta\b/g, 'Δ')
+    .replace(/\\tau\b/g, 'τ')
+    .replace(/\\alpha\b/g, 'α')
+    .replace(/\\beta\b/g, 'β')
+    .replace(/\\gamma\b/g, 'γ')
+    .replace(/\\theta\b/g, 'θ')
+    .replace(/\\mu\b/g, 'μ')
+    .replace(/\\lambda\b/g, 'λ')
+    .replace(/\\sigma\b/g, 'σ')
+    .replace(/\\quad|\\qquad/g, ' ')
+    .replace(/\\left\(|\\right\)/g, '')
+    .replace(/\\left\[|\\right\]/g, '')
+    .replace(/\\([a-zA-Z]+)/g, '$1')
+    .replace(/\{([^{}]+)\}/g, '$1')
+    .trim();
+}
+
+/**
  * Tentative de rendu KaTeX avec réparation automatique si la formule comporte une erreur de syntaxe mineure
  */
 function renderKaTeXSafe(mathExpr: string, displayMode: boolean): string | null {
   let trimmed = mathExpr.trim();
   if (!trimmed) return '';
 
-  // Forcer \dfrac pour que la barre horizontale soit toujours bien nette et que le numérateur soit en haut et le dénominateur en bas
+  // 1. Éliminer impérativement tout dollar résiduel '$' qui se serait glissé À L'INTÉRIEUR de l'expression mathématique
+  // Car KaTeX est DÉJÀ en mode maths et tout dollar non échappé provoque l'erreur fatale "Can't use function '$' in math mode"
+  trimmed = trimmed.replace(/(?<!\\)\$/g, '').trim();
+
+  // 2. Forcer \dfrac pour que la barre horizontale soit toujours bien nette
   trimmed = trimmed.replace(/\\frac\b/g, '\\dfrac');
 
-  // Réparation de l'équilibre des accolades { ... }
+  // 3. Réparation de l'équilibre des accolades { ... }
   let openBraces = (trimmed.match(/\{/g) || []).length;
   let closeBraces = (trimmed.match(/\}/g) || []).length;
   while (closeBraces > openBraces && trimmed.endsWith('}')) {
@@ -536,12 +591,18 @@ function renderKaTeXSafe(mathExpr: string, displayMode: boolean): string | null 
     });
     // SUPPRESSION STRICTE DU ROUGE : Ne jamais polluer l'affichage de l'étudiant avec du rouge
     if (html.includes('katex-error') || html.includes('#cc0000')) {
-      html = html.replace(/style="color:#cc0000"/gi, 'class="font-mono opacity-85"');
-      html = html.replace(/class="katex-error"/gi, 'class="katex-fallback opacity-85 font-mono"');
+      const repaired = trimmed
+        .replace(/\\underline\{([^{}]+)\}/g, '$1')
+        .replace(/\\([a-zA-Z]+)\{/g, (m, cmd) => ['dfrac', 'sqrt', 'text', 'mathrm', 'mathbf', 'boxed'].includes(cmd) ? m : `{`);
+      const secondTry = katex.renderToString(repaired, { displayMode, throwOnError: false, strict: false });
+      if (!secondTry.includes('katex-error') && !secondTry.includes('#cc0000')) {
+        return secondTry;
+      }
+      return `<span class="inline-math font-semibold text-inherit select-text">${latexToReadableUnicode(trimmed)}</span>`;
     }
     return html;
   } catch {
-    return null;
+    return `<span class="inline-math font-semibold text-inherit select-text">${latexToReadableUnicode(trimmed)}</span>`;
   }
 }
 
@@ -555,6 +616,37 @@ export const MathText: React.FC<MathTextProps> = ({
 
   const renderedContent = useMemo(() => {
     if (!sourceText || typeof sourceText !== 'string') return null;
+
+    const trimmed = sourceText.trim();
+
+    // 0. Si le texte entier est DÉJÀ un bloc mathématique pur ($$...$$)
+    if (trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4) {
+      const pureMath = trimmed.slice(2, -2).trim();
+      const isBlock = !inline;
+      const html = renderKaTeXSafe(pureMath, isBlock);
+      if (html) {
+        return (
+          <span
+            className={isBlock ? "my-3 block overflow-x-auto custom-scrollbar text-center py-1 select-text text-[1.18em]" : "inline-math mx-1.5 inline-block align-middle select-text text-[1.12em]"}
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        );
+      }
+    }
+
+    // 0-bis. Si le texte entier est DÉJÀ une formule inline ($...$)
+    if (trimmed.startsWith('$') && trimmed.endsWith('$') && trimmed.length > 2 && !trimmed.slice(1, -1).includes('$')) {
+      const pureMath = trimmed.slice(1, -1).trim();
+      const html = renderKaTeXSafe(pureMath, false);
+      if (html) {
+        return (
+          <span
+            className="inline-math mx-1.5 inline-block align-middle select-text text-[1.12em]"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        );
+      }
+    }
 
     // 1. Nettoyage et assainissement des corruptions LaTeX
     const sanitized = sanitizeLatexInput(sourceText, inline);
@@ -578,7 +670,7 @@ export const MathText: React.FC<MathTextProps> = ({
             />
           );
         }
-        return <span key={idx} className="font-mono text-inherit opacity-85">{part}</span>;
+        return <span key={idx} className="font-semibold text-inherit select-text">{latexToReadableUnicode(math)}</span>;
       }
 
       // Formule en ligne ($ ... $)

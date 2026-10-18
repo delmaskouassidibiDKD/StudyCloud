@@ -41,8 +41,7 @@ function sanitizeText(str: any): string {
 function cleanFormulaLatex(latex?: string): string {
   if (!latex) return '';
   return latex
-    .replace(/^(?:\s*\$+\s*)+/g, '')
-    .replace(/(?:\s*\$+\s*)+$/g, '')
+    .replace(/(?<!\\)\$/g, '')
     .trim();
 }
 
