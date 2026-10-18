@@ -1183,6 +1183,82 @@ EXEMPLE STRICT DU SCHÉMA POUR 'carte-mentale-2' (Carte Conceptuelle en colonnes
 }
 \`\`\``;
 
+        systemPrompt += `\n\n10. CONSIGNE STRICTE - GÉNÉRATION DE FICHE DE RÉSUMÉ PÉDAGOGIQUE ('resume') :
+Tu es un professeur expert. Lorsque tu rédiges une "Fiche de Résumé" ('resume'), TU AS STRICTEMENT INTERDIT de rédiger de simples paragraphes de texte brut ou une courte introduction de 5 lignes. Tu dois obligatoirement produire une véritable fiche de révision complète, visuelle et structurée en 5 blocs distincts :
+
+STRUCTURE OBLIGATOIRE DE LA FICHE :
+# 📑 [TITRE DU COURS OU DU CHAPITRE EN SEMAINE/ENCADRÉ] (Domaine & Thème)
+
+---
+
+### 1. 📌 Notion Clé & Définition
+- **Concept principal :** Définition courte et percutante (mots-clés scientifiques essentiels en gras).
+- **Objectif :** À quoi ça sert concrètement et quelle problématique cela résout.
+
+---
+
+### 2. 🧮 Formulaire & Méthodologie
+Pour CHAQUE formule importante du document :
+* **Formule :** $$ Formule_LaTeX $$ (avec fractions verticales \\dfrac{}{})
+* **Signification des variables :** Expliciter chaque lettre/symbole et son unité physique ou mathématique.
+* **Quand l'utiliser ?** Dans quel type d'exercice, de question ou d'hypothèse physique.
+* **Comment la retrouver/démontrer ?** La méthode étape par étape pour la démontrer ou l'astuce de départ si oubliée.
+
+---
+
+### 3. 📊 Tableau Synthétique
+Génère un tableau comparatif en Markdown synthétisant toutes les variantes, types, ordres ou configurations décrits dans le document (ex: Filtre Passe-bas vs Passe-haut vs Passe-bande avec leurs fonctions de transfert et comportements).
+
+---
+
+### 4. ⚠️ Pièges à éviter & Remarques (NB)
+> 🚨 **PIÈGE CLASSIQUE :** [Exposer le piège ou l'erreur fréquente des étudiants dans ce chapitre]
+> 💡 **ASTUCE (NB) :** [L'astuce de calcul, la méthode de vérification rapide ou le cas limite]
+
+---
+
+### 5. 🛠️ Exemple Pratique d'Application
+Un mini-cas concrétisant les formules ci-dessus avec valeurs numériques réelles et sa résolution détaillée étape par étape.
+
+Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive avec les champs :
+{
+  "title": "Titre du chapitre",
+  "theme": "Domaine d'étude",
+  "overview": "Synthèse globale d'introduction...",
+  "key_definitions": [
+    { "concept": "Concept clé", "definition": "Définition courte...", "objective": "À quoi ça sert..." }
+  ],
+  "formulas": [
+    {
+      "name": "Nom de la formule",
+      "latex": "$$ \\underline{T}(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}} $$",
+      "variables": "T_0 : gain statique sans unité, \\omega_0 : pulsation de coupure en rad/s",
+      "when_to_use": "Régime sinusoïdal permanent, circuit du 1er ordre",
+      "how_to_derive": "Appliquer un pont diviseur de tension sur le dipôle de sortie..."
+    }
+  ],
+  "comparison_table": {
+    "headers": ["Type", "Bande passante", "Formule Canonique", "Ordre"],
+    "rows": [
+      ["Passe-Bas", "[0 ; f_c]", "$$\\dfrac{T_0}{1+j\\dfrac{\\omega}{\\omega_0}}$$", "1 ou 2"]
+    ]
+  },
+  "traps_and_tips": [
+    { "type": "trap", "title": "PIÈGE CLASSIQUE", "content": "Attention à ne pas confondre f (Hz) et \\omega (rad/s) : \\omega = 2\\pi f !" },
+    { "type": "tip", "title": "ASTUCE (NB)", "content": "À la coupure \\omega = \\omega_0, le module chute de 3 dB : G_{dB} = G_{max} - 3 dB." }
+  ],
+  "practical_example": {
+    "statement": "Énoncé du cas concret avec valeurs numériques...",
+    "resolution_steps": [
+      "1. Choix de la relation fondamentale...",
+      "2. Application numérique détaillée pas à pas...",
+      "3. Conclusion et interprétation physique..."
+    ]
+  },
+  "markdown": "# 📑 TITRE\\n..."
+};
+`;
+
         if (docContent) {
           systemPrompt += `\n\n[DOCUMENTS FOURNIS PAR L'ÉTUDIANT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 30000)}`;
         } else {

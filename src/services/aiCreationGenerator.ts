@@ -508,35 +508,85 @@ function parseInfographicFromText(rawText: string, safeDocName: string): Infogra
 }
 
 /**
- * Extraction dynamique d'une Fiche de Résumé à partir du texte de l'IA
+ * Extraction dynamique d'une Fiche de Résumé à partir du texte de l'IA (5 blocs pédagogiques)
  */
 function parseSummaryFromText(rawText: string, safeDocName: string): SummaryContent {
   const paragraphs = rawText.split('\n\n').map(p => p.trim()).filter(p => p.length > 15);
   const overview = paragraphs[0] || `Synthèse approfondie de "${safeDocName}".`;
   const keyPoints: string[] = [];
   const definitions: Array<{ term: string; definition: string }> = [];
+  const key_definitions: Array<{ concept: string; definition: string; objective?: string }> = [];
   const rules: string[] = [];
+  const formulas: Array<{ name?: string; latex: string; variables?: string; when_to_use?: string; how_to_derive?: string }> = [];
+  const traps_and_tips: Array<{ type: 'trap' | 'tip'; title?: string; content: string }> = [];
 
+  // 1. Détection des blocs d'attention (Callouts > 🚨 PIÈGE et > 💡 ASTUCE)
+  const calloutMatches = rawText.matchAll(/>\s*(🚨|💡|\*\*PIÈGE|\*\*ASTUCE)[^\n]*(?:\n>[^\n]*)*/gi);
+  for (const match of calloutMatches) {
+    const block = match[0].replace(/^>\s*/gm, '').trim();
+    if (/🚨|PI[ÈE]GE/i.test(block)) {
+      traps_and_tips.push({
+        type: 'trap',
+        title: 'PIÈGE CLASSIQUE',
+        content: block.replace(/^(?:🚨\s*)?(?:\*{1,2}PI[ÈE]GE(?:\s+CLASSIQUE)?\s*:\*{1,2}|\*{1,2}ATTENTION\s*:\*{1,2})\s*/i, '').trim()
+      });
+    } else if (/💡|ASTUCE|NB/i.test(block)) {
+      traps_and_tips.push({
+        type: 'tip',
+        title: 'ASTUCE (NB)',
+        content: block.replace(/^(?:💡\s*)?(?:\*{1,2}ASTUCE(?:\s*\(NB\))?\s*:\*{1,2}|\*{1,2}NB\s*:\*{1,2})\s*/i, '').trim()
+      });
+    }
+  }
+
+  // 2. Détection d'un tableau comparatif Markdown (| Col 1 | Col 2 | ...)
+  let comparison_table: { headers: string[]; rows: string[][] } | undefined = undefined;
+  const tableLines = rawText.split('\n').filter(l => l.trim().startsWith('|') && l.trim().endsWith('|'));
+  if (tableLines.length >= 3) {
+    const rawHeaders = tableLines[0].split('|').map(c => c.trim()).filter(Boolean);
+    const rawRows = tableLines.slice(2).map(r => r.split('|').map(c => c.trim()).filter(Boolean));
+    if (rawHeaders.length > 0 && rawRows.length > 0) {
+      comparison_table = { headers: rawHeaders, rows: rawRows };
+    }
+  }
+
+  // 3. Détection des formules isolées ou explicites
+  const formulaBlocks = rawText.matchAll(/(?:\*\s*\*\*Formule\s*:\*\*\s*)?(\$\$[\s\S]*?\$\$)/g);
+  for (const fMatch of formulaBlocks) {
+    const latex = fMatch[1].trim();
+    if (latex && !formulas.some(f => f.latex === latex)) {
+      formulas.push({
+        latex,
+        name: 'Formule clé',
+        when_to_use: 'Application directe du cours',
+        how_to_derive: 'Démonstration par application des lois fondamentales'
+      });
+    }
+  }
+
+  // 4. Détection des notions clés & définitions
   for (const p of paragraphs.slice(1)) {
     const lines = p.split('\n').map(l => l.trim()).filter(Boolean);
     for (const line of lines) {
-      // Définitions (terme en gras suivi de : ou tiret)
       const defMatch = line.match(/^(?:[-*•]\s*)?\*{1,2}([^*:]+)\*{1,2}\s*[:–—\-]\s*(.+)/);
       if (defMatch && definitions.length < 6) {
         definitions.push({
           term: defMatch[1].trim(),
           definition: defMatch[2].trim()
         });
+        key_definitions.push({
+          concept: defMatch[1].trim(),
+          definition: defMatch[2].trim(),
+          objective: 'Assimilation et application pratique'
+        });
         continue;
       }
 
-      // Règles / Théorèmes
       if (/th[eé]or[eè]me|formule|propri[eé]t[eé]|r[eè]gle/i.test(line) && rules.length < 5) {
         rules.push(line.replace(/^[-*•#\d\.\s]+/, '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim());
         continue;
       }
 
-      // Points clés
       if (/^[-*•\d\.]+\s+/.test(line) && keyPoints.length < 8) {
         keyPoints.push(line.replace(/^[-*•\d\.]+\s+/, '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim());
       }
@@ -550,12 +600,31 @@ function parseSummaryFromText(rawText: string, safeDocName: string): SummaryCont
     });
   }
 
+  // Détection d'un exemple pratique
+  let practical_example: { statement: string; resolution_steps: string[] } | undefined = undefined;
+  const exMatch = rawText.match(/(?:###\s*5\.\s*🛠️?[^\n]*|Exemple\s+Pratique[^\n]*)([\s\S]*?)(?:$|(?=\n###\s*\d))/i);
+  if (exMatch && exMatch[1].trim().length > 30) {
+    const exLines = exMatch[1].split('\n').map(l => l.trim()).filter(Boolean);
+    const statement = exLines[0] || 'Mini-cas concret d\'application.';
+    const resolution_steps = exLines.slice(1).filter(l => /^[0-9\-\*•]/.test(l));
+    practical_example = {
+      statement,
+      resolution_steps: resolution_steps.length > 0 ? resolution_steps : ['Application rigoureuse de la relation fondamentale.']
+    };
+  }
+
   return {
     overview,
     keyPoints,
+    key_definitions: key_definitions.length > 0 ? key_definitions : undefined,
     definitions,
+    formulas: formulas.length > 0 ? formulas : undefined,
+    comparison_table,
+    traps_and_tips: traps_and_tips.length > 0 ? traps_and_tips : undefined,
+    practical_example,
+    markdown: rawText,
     rules,
-    tags: ['Révision', 'Synthèse', safeDocName.split('.')[0] || 'Cours'],
+    tags: ['Révision', 'Fiche Pédagogique', safeDocName.split('.')[0] || 'Cours'],
   };
 }
 
@@ -997,9 +1066,20 @@ export function parseOrBuildAiCreation(
           return {
             title: sanitizeText(parsed.creation_title || dataObj.title) || `Fiche de Résumé : ${safeDocName}`,
             content: {
+              title: sanitizeText(dataObj.title || parsed.creation_title || `Fiche de Résumé : ${safeDocName}`),
+              theme: sanitizeText(dataObj.theme || dataObj.domaine || ''),
               overview: sanitizeText(dataObj.overview || dataObj.summary || cleanText.slice(0, 300)),
-              keyPoints: Array.isArray(dataObj.keyPoints) ? dataObj.keyPoints.map(sanitizeText) : [],
+              keyPoints: Array.isArray(dataObj.keyPoints)
+                ? dataObj.keyPoints.map(sanitizeText)
+                : (Array.isArray(dataObj.key_points) ? dataObj.key_points.map(sanitizeText) : []),
+              key_definitions: Array.isArray(dataObj.key_definitions) ? dataObj.key_definitions : [],
               definitions: Array.isArray(dataObj.definitions) ? dataObj.definitions : [],
+              formulas: Array.isArray(dataObj.formulas) ? dataObj.formulas : [],
+              comparison_table: dataObj.comparison_table || null,
+              traps_and_tips: Array.isArray(dataObj.traps_and_tips) ? dataObj.traps_and_tips : [],
+              practical_example: dataObj.practical_example || null,
+              sections: Array.isArray(dataObj.sections) ? dataObj.sections : [],
+              markdown: dataObj.markdown || (typeof dataObj.text === 'string' ? dataObj.text : ''),
               rules: Array.isArray(dataObj.rules) ? dataObj.rules.map(sanitizeText) : [],
               tags: Array.isArray(dataObj.tags) ? dataObj.tags.map(sanitizeText) : ['Révision', safeDocName],
             }

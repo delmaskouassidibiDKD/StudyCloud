@@ -1426,17 +1426,60 @@ Réponds STRICTEMENT avec cet objet JSON :
     default: // resume / summary
       return {
         agentName: "PedagogicalTutorAgent",
-        systemPrompt: `Tu es l'Agent de Synthèse Académique de StudyCloud. Conçois une fiche de révision complète et structurée.
-Réponds STRICTEMENT avec cet objet JSON :
+        systemPrompt: `Tu es l'Agent de Synthèse Académique de StudyCloud. Tu es un professeur expert.
+Lorsque tu rédiges une "Fiche de Résumé" ('resume'), TU AS STRICTEMENT INTERDIT de rédiger de simples paragraphes de texte brut ou une courte introduction de 5 lignes. Tu dois obligatoirement produire une véritable fiche de révision complète, visuelle et structurée en 5 blocs distincts :
+1. En-tête (Titre du chapitre + domaine d'étude)
+2. Notion Clé & Définition (Concept principal en gras + objectif)
+3. Formulaire & Méthodologie (Pour chaque formule : LaTeX avec \\dfrac{}{}, variables & unités, quand l'utiliser, comment la retrouver/démontrer)
+4. Tableau Synthétique (Tableau comparatif des variantes/types/ordres)
+5. Pièges à éviter & Remarques (NB avec callout 🚨 PIÈGE CLASSIQUE et 💡 ASTUCE)
+6. Exemple Pratique d'Application (Mini-cas concret chiffré et résolution pas à pas)
+
+Réponds STRICTEMENT avec cet objet JSON structuré :
 {
   "type": "resume",
-  "title": "Fiche de Synthèse : ${docTitle}",
-  "overview": "Synthèse globale du sujet...",
-  "key_points": ["Point clé essentiel 1", "Point clé 2"],
+  "title": "Fiche de Résumé : ${docTitle}",
+  "theme": "Domaine d'étude",
+  "overview": "Synthèse globale d'introduction détaillée...",
+  "key_definitions": [
+    {
+      "concept": "Nom du concept scientifique clé",
+      "definition": "Définition courte et percutante avec mots-clés essentiels",
+      "objective": "À quoi cela sert concrètement et ce que cela résout"
+    }
+  ],
+  "formulas": [
+    {
+      "name": "Nom précis de la loi ou formule",
+      "latex": "$$ \\\\underline{T}(j\\\\omega) = \\\\dfrac{T_0}{1 + j\\\\dfrac{\\\\omega}{\\\\omega_0}} $$",
+      "variables": "Expliciter chaque terme et unité : T_0 gain statique, \\\\omega_0 pulsation en rad/s",
+      "when_to_use": "Cas d'application précis et hypothèses",
+      "how_to_derive": "Méthode pas à pas pour retrouver ou démontrer la formule"
+    }
+  ],
+  "comparison_table": {
+    "headers": ["Type", "Bande Passante", "Fonction de Transfert Canonique", "Ordre"],
+    "rows": [
+      ["Passe-Bas", "[0 ; f_c]", "$$\\\\dfrac{T_0}{1+j\\\\dfrac{\\\\omega}{\\\\omega_0}}$$", "1 ou 2"]
+    ]
+  },
+  "traps_and_tips": [
+    { "type": "trap", "title": "PIÈGE CLASSIQUE", "content": "Attention à ne pas confondre f (Hz) et \\\\omega (rad/s) : \\\\omega = 2\\\\pi f !" },
+    { "type": "tip", "title": "ASTUCE (NB)", "content": "À la pulsation de coupure \\\\omega_0, le gain en tension chute de 3 dB." }
+  ],
+  "practical_example": {
+    "statement": "Énoncé complet d'un mini-cas concret avec valeurs numériques réelles...",
+    "resolution_steps": [
+      "1. Étape 1 : Formule de départ...",
+      "2. Étape 2 : Application numérique pas à pas...",
+      "3. Étape 3 : Interprétation du résultat..."
+    ]
+  },
+  "key_points": ["Point fondamental 1", "Point fondamental 2"],
   "sections": [
     {
       "heading": "I. Notions Fondamentales",
-      "content": "Développement pédagogique avec formules KaTeX...",
+      "content": "Développement pédagogique approfondi avec formules mathématiques...",
       "key_takeaways": ["Point essentiel 1", "Point essentiel 2"]
     }
   ]

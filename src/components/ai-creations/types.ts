@@ -85,10 +85,55 @@ export interface EvaluationResult {
   detailedFeedback: string;
 }
 
+export interface SummaryKeyDefinition {
+  concept: string;
+  definition: string;
+  objective?: string;
+}
+
+export interface SummaryFormula {
+  name?: string;
+  latex: string;
+  variables?: string;
+  when_to_use?: string;
+  how_to_derive?: string;
+}
+
+export interface SummaryComparisonTable {
+  headers: string[];
+  rows: string[][];
+}
+
+export interface SummaryTrapOrTip {
+  type: 'trap' | 'tip' | string;
+  title?: string;
+  content: string;
+}
+
+export interface SummaryPracticalExample {
+  statement: string;
+  resolution_steps: string[];
+}
+
 export interface SummaryContent {
+  title?: string;
+  theme?: string;
   overview: string;
   keyPoints: string[];
+  key_definitions?: SummaryKeyDefinition[];
   definitions?: { term: string; definition: string }[];
+  formulas?: SummaryFormula[];
+  comparison_table?: SummaryComparisonTable;
+  traps_and_tips?: SummaryTrapOrTip[];
+  practical_example?: SummaryPracticalExample;
+  sections?: Array<{
+    number?: number;
+    heading: string;
+    body: string;
+    points?: string[];
+    protocolTitle?: string;
+  }>;
+  markdown?: string;
   rules?: string[];
   tags?: string[];
 }
