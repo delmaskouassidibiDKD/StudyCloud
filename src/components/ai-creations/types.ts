@@ -94,9 +94,12 @@ export interface SummaryKeyDefinition {
 export interface SummaryFormula {
   name?: string;
   latex: string;
+  target_goal?: string;
   variables?: string;
   when_to_use?: string;
   how_to_derive?: string;
+  demonstration_steps?: string[];
+  exam_trap?: string;
 }
 
 export interface SummaryComparisonTable {

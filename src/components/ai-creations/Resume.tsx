@@ -20,6 +20,19 @@ interface ResumeProps {
   sourceFileName?: string;
 }
 
+function cleanFormulaLatex(latex?: string): string {
+  if (!latex) return '';
+  return latex
+    .replace(/^(?:\s*\$+\s*)+/g, '')
+    .replace(/(?:\s*\$+\s*)+$/g, '')
+    .trim();
+}
+
+function isFillerText(str?: string): boolean {
+  if (!str) return true;
+  return /^(?:application directe du cours|selon les lois fondamentales|d[eé]monstration par application des lois fondamentales|selon le cours|application du cours|n\/a)$/i.test(str.trim());
+}
+
 export default function Resume({ data, title, sourceFileName }: ResumeProps) {
   const [copied, setCopied] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
@@ -98,16 +111,16 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
 
     if (formulas.length === 0 && rawMarkdown) {
       const formulaRegex =
-        /(?:\*\s*\*\*Formule\s*:\*\*\s*)?(\$\$[\s\S]*?\$\$)/g;
+        /(?:####?\s*🔹?\s*([^\n$]+)\n+)?(?:\*\s*\*\*Formule\s*:\*\*\s*)?(\$\$[\s\S]*?\$\$)/g;
       const fMatches = rawMarkdown.matchAll(formulaRegex);
       for (const m of fMatches) {
-        const latex = m[1].trim();
-        if (latex && !formulas.some((f) => f.latex === latex)) {
+        const detectedName = m[1]?.replace(/^[\s#*🔹\-\d\.]+/g, '').trim();
+        const rawLatex = m[2].trim();
+        const cleanLatex = cleanFormulaLatex(rawLatex);
+        if (cleanLatex && !formulas.some((f) => cleanFormulaLatex(f.latex) === cleanLatex)) {
           formulas.push({
-            name: 'Formule Fondamentale',
-            latex,
-            when_to_use: 'Application directe dans les configurations du cours',
-            how_to_derive: 'Application des lois fondamentales du chapitre (pont diviseur, Millman)',
+            name: detectedName || 'Formule Fondamentale',
+            latex: cleanLatex,
           });
         }
       }
@@ -208,33 +221,58 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       }
     }
 
-    // Fallbacks pédagogiques complets si le sujet concerne les Filtres Analogiques
+    // Enrichissement didactique d'excellence si le sujet concerne les Filtres Analogiques
     const isAnalogFilters = /(filtre|analogique|bode|coupure|passe-bas|passe-haut)/i.test(safeTitle + ' ' + safeTheme + ' ' + safeOverview);
     
     if (isAnalogFilters) {
-      // 1. Si les formules sont incomplètes, garantir le formulaire clé
-      if (formulas.length < 2) {
+      // Si les formules sont incomplètes ou contiennent du texte de remplissage générique
+      const hasFillerFormulas = formulas.some(f => isFillerText(f.how_to_derive) || isFillerText(f.when_to_use));
+      if (formulas.length < 2 || hasFillerFormulas) {
         formulas = [
           {
             name: "Fonction de Transfert Canonique (Filtre Passe-Bas d'Ordre 1)",
             latex: "\\underline{T}(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}} = \\dfrac{T_0}{1 + j\\dfrac{f}{f_0}}",
-            variables: "T_0 : gain statique sans unité (valeur en basse fréquence) ; \\omega_0 : pulsation de coupure à -3 dB en rad/s ; f_0 = \\dfrac{\\omega_0}{2\\pi} : fréquence de coupure en Hz.",
-            when_to_use: "Circuits RC passe-bas passifs ou actifs (amplificateur opérationnel en intégrateur borné).",
-            how_to_derive: "Appliquer le pont diviseur de tension : \\underline{U}_s = \\underline{U}_e \\cdot \\dfrac{\\underline{Z}_C}{R + \\underline{Z}_C} avec \\underline{Z}_C = \\dfrac{1}{jC\\omega}, puis diviser numérateur et dénominateur par \\underline{Z}_C pour identifier \\omega_0 = \\dfrac{1}{RC}."
+            target_goal: "Quand le sujet demande d'établir la fonction de transfert canonique du filtre passe-bas, c'est cette forme que tu dois obtenir.",
+            when_to_use: "Quand le sujet demande d'établir la fonction de transfert canonique du filtre passe-bas, c'est cette forme que tu dois obtenir.",
+            variables: "$T_0$ : Gain statique sans unité (valeur en basse fréquence) • $\\omega_0$ : Pulsation de coupure à $-3\\text{ dB}$ en $\\text{rad/s}$ • $f_0 = \\dfrac{\\omega_0}{2\\pi}$ : Fréquence de coupure en $\\text{Hz}$.",
+            how_to_derive: "Appliquer le pont diviseur de tension sur la sortie : $\\underline{U}_s = \\underline{U}_e \\times \\dfrac{\\underline{Z}_C}{R + \\underline{Z}_C}$. Remplacer $\\underline{Z}_C$ par $\\dfrac{1}{jC\\omega}$, multiplier numérateur et dénominateur par $jC\\omega$ pour simplifier l'étage, puis identifier par identification : gain statique $T_0 = 1$ et pulsation de coupure $\\omega_0 = \\dfrac{1}{RC}$.",
+            demonstration_steps: [
+              "Appliquer le **Pont Diviseur de Tension** sur le dipôle de sortie : $\\underline{U}_s = \\underline{U}_e \\times \\dfrac{\\underline{Z}_C}{R + \\underline{Z}_C}$",
+              "Remplacer l'impédance du condensateur par son expression complexe : $\\underline{Z}_C = \\dfrac{1}{jC\\omega}$",
+              "Multiplier le numérateur et le dénominateur par $jC\\omega$ pour simplifier l'étage : $\\underline{T}(j\\omega) = \\dfrac{1}{1 + jRC\\omega}$",
+              "Identifier terme à terme avec la forme canonique : gain statique $T_0 = 1$ et pulsation de coupure $\\omega_0 = \\dfrac{1}{RC}$ (soit $f_0 = \\dfrac{1}{2\\pi RC}$)"
+            ],
+            exam_trap: "Attention aux unités : ne pas confondre la pulsation $\\omega$ (en $\\text{rad/s}$) et la fréquence $f$ (en $\\text{Hz}$) : $\\omega = 2\\pi f$ ! Attention aux unités de condensateurs : $1\\text{ nF} = 10^{-9}\\text{ F}$, $1\\ \\mu\\text{F} = 10^{-6}\\text{ F}$."
           },
           {
             name: "Fonction de Transfert Canonique (Filtre Passe-Haut d'Ordre 1)",
             latex: "\\underline{T}(j\\omega) = \\dfrac{T_0 \\cdot j\\dfrac{\\omega}{\\omega_0}}{1 + j\\dfrac{\\omega}{\\omega_0}}",
-            variables: "T_0 : gain asymptotique en haute fréquence ; \\omega_0 : pulsation de coupure en rad/s (avec \\omega_0 = \\dfrac{1}{RC}).",
-            when_to_use: "Circuits CR passe-haut éliminant la composante continue (bloqueur de continu).",
-            how_to_derive: "Pont diviseur sur la résistance : \\underline{U}_s = \\underline{U}_e \\cdot \\dfrac{R}{R + \\dfrac{1}{jC\\omega}} = \\underline{U}_e \\cdot \\dfrac{jRC\\omega}{1 + jRC\\omega}."
+            target_goal: "Quand le sujet demande d'éliminer la composante continue (bloqueur de continu) ou d'étudier un filtre passe-haut.",
+            when_to_use: "Quand le sujet demande d'éliminer la composante continue (bloqueur de continu) ou d'étudier un filtre passe-haut.",
+            variables: "$T_0$ : Gain asymptotique en haute fréquence sans unité • $\\omega_0$ : Pulsation de coupure en $\\text{rad/s}$ (avec $\\omega_0 = \\dfrac{1}{RC}$).",
+            how_to_derive: "Pont diviseur de tension appliqué à la résistance $R$ : $\\underline{U}_s = \\underline{U}_e \\times \\dfrac{R}{R + \\dfrac{1}{jC\\omega}} = \\underline{U}_e \\times \\dfrac{jRC\\omega}{1 + jRC\\omega}$, puis identifier $\\omega_0 = \\dfrac{1}{RC}$.",
+            demonstration_steps: [
+              "Appliquer le **Pont Diviseur de Tension** aux bornes de la résistance : $\\underline{U}_s = \\underline{U}_e \\times \\dfrac{R}{R + \\underline{Z}_C}$",
+              "Remplacer $\\underline{Z}_C$ par $\\dfrac{1}{jC\\omega}$ : $\\underline{T}(j\\omega) = \\dfrac{R}{R + \\dfrac{1}{jC\\omega}}$",
+              "Multiplier numérateur et dénominateur par $jC\\omega$ : $\\underline{T}(j\\omega) = \\dfrac{jRC\\omega}{1 + jRC\\omega}$",
+              "Poser $\\omega_0 = \\dfrac{1}{RC}$ pour obtenir la forme canonique officielle"
+            ],
+            exam_trap: "En très basse fréquence (BF), le condensateur se comporte comme un circuit ouvert, la tension de sortie s'annule : le continu est bloqué."
           },
           {
-            name: "Fonction de Transfert Canonique (Filtre d'Ordre 2 avec Amortissement)",
-            latex: "\\underline{T}(j\\omega) = \\dfrac{T_0}{1 + 2m\\,j\\dfrac{\\omega}{\\omega_0} + \\left(j\\dfrac{\\omega}{\\omega_0}\\right)^2} = \\dfrac{T_0}{1 + j\\dfrac{1}{Q_0}\\dfrac{\\omega}{\\omega_0} - \\left(\\dfrac{\\omega}{\\omega_0}\\right)^2}",
-            variables: "m : coefficient d'amortissement sans unité ; Q_0 = \\dfrac{1}{2m} : facteur de qualité ; \\omega_0 : pulsation propre non amortie en rad/s.",
-            when_to_use: "Circuits RLC, filtres actifs de Sallen-Key ou Rauch du second ordre.",
-            how_to_derive: "Écrire la loi des mailles ou le théorème de Millman aux nœuds du filtre, regrouper les termes selon les puissances de (j\\omega) et identifier les coefficients canoniques."
+            name: "Fonction de Transfert Canonique (Filtre Passe-Bande d'Ordre 2)",
+            latex: "\\underline{T}(j\\omega) = \\dfrac{T_0}{1 + jQ_0\\left(\\dfrac{\\omega}{\\omega_0} - \\dfrac{\\omega_0}{\\omega}\\right)}",
+            target_goal: "Sélectionner une bande de fréquence étroite autour d'une fréquence centrale $f_0$.",
+            when_to_use: "Sélectionner une bande de fréquence étroite autour d'une fréquence centrale $f_0$.",
+            variables: "$T_0$ : Gain maximal à la résonance $\\omega = \\omega_0$ • $Q_0$ : Facteur de qualité sans unité • $\\Delta\\omega = \\dfrac{\\omega_0}{Q_0}$ : Bande passante à $-3\\text{ dB}$.",
+            how_to_derive: "Appliquer la loi des mailles ou le théorème de Millman aux nœuds du quadripôle RLC, factoriser par $j\\omega$ et regrouper pour identifier la pulsation centrale $\\omega_0 = \\dfrac{1}{\\sqrt{LC}}$ et le facteur de qualité $Q_0$.",
+            demonstration_steps: [
+              "Écrire l'impédance totale du dipôle résonant : $\\underline{Z} = R + j\\left(L\\omega - \\dfrac{1}{C\\omega}\\right)$",
+              "À la résonance $\\omega_0 = \\dfrac{1}{\\sqrt{LC}}$, la partie imaginaire s'annule et le gain est maximal : $T_{max} = T_0$",
+              "Exprimer la bande passante à $-3\\text{ dB}$ : $\\Delta f = \\dfrac{f_0}{Q_0}$",
+              "Plus $Q_0$ est élevé, plus le filtre est sélectif"
+            ],
+            exam_trap: "Attention au calcul de la bande passante : $\\Delta f$ s'exprime en $\\text{Hz}$ alors que $\\Delta\\omega$ s'exprime en $\\text{rad/s}$ !"
           }
         ];
       }
@@ -580,51 +618,98 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                 II. Formulaire & Méthodes de Calcul
               </h2>
 
-              <div className="space-y-5">
-                {parsedSummary.formulas.map((formula, fidx) => (
-                  <div
-                    key={fidx}
-                    className="p-4 sm:p-5 my-3 rounded-r-xl border-l-[5px] border-[#0066cc] bg-[#f0f7ff] shadow-2xs space-y-3"
-                  >
-                    <div className="flex items-center gap-2 font-bold text-[#004085] text-base sm:text-lg">
-                      <span>🧮 FORMULE CLÉ - </span>
-                      <MathText text={formula.name || `Formule ${fidx + 1}`} inline={true} />
-                    </div>
+              <div className="space-y-6">
+                {parsedSummary.formulas.map((formula, fidx) => {
+                  const cleanedLatex = cleanFormulaLatex(formula.latex);
+                  const hasObjective = Boolean(formula.target_goal || (!isFillerText(formula.when_to_use) ? formula.when_to_use : null));
+                  const hasSteps = Boolean(formula.demonstration_steps && formula.demonstration_steps.length > 0);
+                  const hasDerivation = Boolean(formula.how_to_derive && !isFillerText(formula.how_to_derive));
+                  const hasTraps = Boolean(formula.exam_trap);
 
-                    {/* Bloc Formule KaTeX centré dans un cadre blanc net */}
-                    <div className="py-3 px-4 rounded-lg bg-white border border-blue-100 text-center overflow-x-auto text-lg sm:text-xl font-bold text-black my-1 shadow-2xs">
-                      <MathText text={formula.latex.startsWith('$$') ? formula.latex : `$$ ${formula.latex} $$`} />
-                    </div>
+                  return (
+                    <div
+                      key={fidx}
+                      className="p-4 sm:p-6 my-4 rounded-xl border-l-[6px] border-[#0066cc] bg-[#f8fbff] shadow-xs space-y-4 border border-blue-100"
+                    >
+                      {/* En-tête de la formule */}
+                      <div className="flex items-center gap-2 font-black text-[#004085] text-base sm:text-lg">
+                        <span className="text-xl">🧮</span>
+                        <span>FORMULE CLÉ - </span>
+                        <MathText text={formula.name || `Formule ${fidx + 1}`} inline={true} />
+                      </div>
 
-                    {/* Explications des variables et démonstration pas à pas */}
-                    <div className="space-y-2 text-sm sm:text-base text-stone-900 pt-1">
-                      {formula.variables && (
-                        <div className="flex items-start gap-2">
-                          <span className="font-bold text-blue-950 shrink-0">• Variables & Unités :</span>
-                          <div className="flex-1 text-stone-900">
-                            <MathText text={formula.variables} inline={true} />
+                      {/* Bloc KaTeX centré : strictement un seul double dollar $$ */}
+                      <div className="py-4 px-4 rounded-xl bg-white border border-blue-200 text-center overflow-x-auto text-lg sm:text-2xl font-bold text-black my-2 shadow-xs">
+                        <MathText text={`$$ ${cleanedLatex} $$`} />
+                      </div>
+
+                      {/* Structure Pédagogique en 5 blocs visuels */}
+                      <div className="space-y-3 pt-1">
+                        {/* 1. 🎯 Objectif : Quand le sujet demande... */}
+                        {hasObjective && (
+                          <div className="p-3.5 bg-white rounded-lg border border-blue-100 flex items-start gap-3 shadow-2xs">
+                            <span className="text-lg shrink-0 mt-0.5">🎯</span>
+                            <div className="flex-1 text-sm sm:text-base">
+                              <span className="font-extrabold text-blue-950">Objectif du calcul : </span>
+                              <span className="text-stone-900 leading-relaxed">
+                                <MathText text={formula.target_goal || formula.when_to_use || ''} inline={true} />
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      )}
-                      {formula.when_to_use && (
-                        <div className="flex items-start gap-2">
-                          <span className="font-bold text-blue-950 shrink-0">• Cas d'application :</span>
-                          <div className="flex-1 text-stone-900">
-                            <MathText text={formula.when_to_use} inline={true} />
+                        )}
+
+                        {/* 2. 🛠️ Comment la DÉMONTRER à partir du schéma / des lois */}
+                        {(hasSteps || hasDerivation) && (
+                          <div className="p-4 bg-emerald-50/90 rounded-lg border border-emerald-200/90 space-y-2 shadow-2xs">
+                            <div className="flex items-center gap-2 font-black text-emerald-950 text-sm sm:text-base">
+                              <span className="text-lg">🛠️</span>
+                              <span>Comment la DÉMONTRER à partir du schéma & des lois :</span>
+                            </div>
+                            {hasSteps ? (
+                              <ol className="list-decimal list-inside space-y-1.5 pl-1 pt-1 text-sm sm:text-base text-stone-900 leading-relaxed font-medium">
+                                {formula.demonstration_steps!.map((step, sidx) => (
+                                  <li key={sidx} className="pl-1">
+                                    <MathText text={step} inline={true} />
+                                  </li>
+                                ))}
+                              </ol>
+                            ) : (
+                              <div className="text-stone-900 text-sm sm:text-base pl-6 pt-1 leading-relaxed">
+                                <MathText text={formula.how_to_derive!} inline={true} />
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      )}
-                      {formula.how_to_derive && (
-                        <div className="flex items-start gap-2 pt-2 border-t border-blue-200/80">
-                          <span className="font-bold text-emerald-900 shrink-0">🛠️ Démonstration & Méthode :</span>
-                          <div className="flex-1 text-stone-900">
-                            <MathText text={formula.how_to_derive} inline={true} />
+                        )}
+
+                        {/* 3. 📐 Variables & Unités */}
+                        {formula.variables && (
+                          <div className="p-3.5 bg-white rounded-lg border border-blue-100 flex items-start gap-3 shadow-2xs">
+                            <span className="text-lg shrink-0 mt-0.5">📐</span>
+                            <div className="flex-1 text-sm sm:text-base">
+                              <span className="font-extrabold text-blue-950">Variables & Unités : </span>
+                              <span className="text-stone-900 leading-relaxed">
+                                <MathText text={formula.variables} inline={true} />
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
+
+                        {/* 4. 🚨 Piège à l'examen & Décodage des sujets */}
+                        {hasTraps && (
+                          <div className="p-3.5 bg-amber-50/90 rounded-lg border border-amber-200/90 flex items-start gap-3 shadow-2xs">
+                            <span className="text-lg shrink-0 mt-0.5">🚨</span>
+                            <div className="flex-1 text-sm sm:text-base">
+                              <span className="font-extrabold text-amber-950">Piège à l'examen : </span>
+                              <span className="text-stone-900 leading-relaxed font-medium">
+                                <MathText text={formula.exam_trap!} inline={true} />
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           )}

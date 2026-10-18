@@ -316,15 +316,36 @@ Réponds STRICTEMENT avec cet objet JSON :
   ]
 }`,
 
-    // 3. RÉDACTION & SYNTHÈSE
-    "resume": `Tu es un expert en synthèse documentaire. Génère une fiche résumé structurée. Réponds EXCLUSIVEMENT en JSON :
+    "resume": `Tu es un professeur agrégé et un pédagogue hors-pair. Génère une Fiche de Résumé exhaustive et méthodologique du cours.
+RÈGLES STRICTES LATEX : Formules centrées avec exactement $$ formule $$, en ligne avec $formule$, jamais de doubles dollars ($$ $$), expressions valides KaTeX.
+INTERDICTION FORMELLE : Interdit de mettre des phrases génériques creuses ("application directe du cours", etc.).
+Pour CHAQUE formule : indique son nom, Objectif (target_goal), Démonstration pas à pas (demonstration_steps), Variables & Unités (variables) et Pièges à l'examen (exam_trap).
+Réponds EXCLUSIVEMENT en JSON :
 {
   "type": "resume",
-  "title": "Fiche de Synthèse",
-  "key_takeaways": ["L'essentiel 1", "L'essentiel 2"],
-  "sections": [
-    { "heading": "I. Introduction", "content": "Résumé du premier axe..." }
-  ]
+  "title": "Fiche de Résumé Approfondie",
+  "overview": "Compréhension physique/technique et problème résolu...",
+  "formulas": [
+    {
+      "name": "Nom de la formule fondamentale",
+      "latex": "$$ \\\\underline{T}(j\\\\omega) = \\\\dfrac{T_0}{1 + j\\\\dfrac{\\\\omega}{\\\\omega_0}} $$",
+      "target_goal": "Ce que le sujet/l'exercice demande de calculer",
+      "demonstration_steps": ["1. Loi de départ...", "2. Simplifications...", "3. Identification..."],
+      "variables": "T_0 sans unité, \\\\omega_0 en rad/s, f_0 en Hz",
+      "exam_trap": "Pièges d'unités ou confusion fréquence/pulsation"
+    }
+  ],
+  "comparison_table": {
+    "headers": ["Type", "Formule Canonique", "Coupure", "Pente"],
+    "rows": [["Passe-Bas", "$$\\\\dfrac{T_0}{1 + j\\\\dfrac{\\\\omega}{\\\\omega_0}}$$", "$$f_0 = \\\\dfrac{1}{2\\\\pi RC}$$", "-20 dB/décade"]]
+  },
+  "traps_and_tips": [
+    { "type": "trap", "title": "PIÈGE CLASSIQUE", "content": "Attention aux unités nF (10^-9 F)." }
+  ],
+  "practical_example": {
+    "statement": "Mini-cas concret chiffré...",
+    "resolution_steps": ["Étape 1...", "Étape 2..."]
+  }
 }`,
 
     "pdf_export": `Tu es un rédacteur professionnel. Génère un rapport formel prêt à l'exportation PDF. Réponds EXCLUSIVEMENT en JSON :

@@ -1,6 +1,7 @@
 import {
   AiCreationType,
   SummaryContent,
+  SummaryFormula,
   QuizContent,
   MindMapContent,
   InfographicContent,
@@ -35,6 +36,19 @@ function sanitizeText(str: any): string {
     .replace(/[\x08\u0008]/g, '\\b') // Répare \x08eta -> \beta
     .replace(/[\x00-\x08\x0B\x0E-\x1F\x7F]/g, ' ') // Ne supprime PAS les retours à la ligne \n (0x0A)
     .trim();
+}
+
+function cleanFormulaLatex(latex?: string): string {
+  if (!latex) return '';
+  return latex
+    .replace(/^(?:\s*\$+\s*)+/g, '')
+    .replace(/(?:\s*\$+\s*)+$/g, '')
+    .trim();
+}
+
+function isFillerText(str?: string): boolean {
+  if (!str) return true;
+  return /^(?:application directe du cours|selon les lois fondamentales|d[eé]monstration par application des lois fondamentales|selon le cours|application du cours|n\/a)$/i.test(str.trim());
 }
 
 /**
@@ -517,7 +531,7 @@ function parseSummaryFromText(rawText: string, safeDocName: string): SummaryCont
   const definitions: Array<{ term: string; definition: string }> = [];
   const key_definitions: Array<{ concept: string; definition: string; objective?: string }> = [];
   const rules: string[] = [];
-  const formulas: Array<{ name?: string; latex: string; variables?: string; when_to_use?: string; how_to_derive?: string }> = [];
+  const formulas: SummaryFormula[] = [];
   const traps_and_tips: Array<{ type: 'trap' | 'tip'; title?: string; content: string }> = [];
 
   // 1. Détection des blocs d'attention (Callouts > 🚨 PIÈGE et > 💡 ASTUCE)
@@ -550,18 +564,67 @@ function parseSummaryFromText(rawText: string, safeDocName: string): SummaryCont
     }
   }
 
-  // 3. Détection des formules isolées ou explicites
-  const formulaBlocks = rawText.matchAll(/(?:\*\s*\*\*Formule\s*:\*\*\s*)?(\$\$[\s\S]*?\$\$)/g);
-  for (const fMatch of formulaBlocks) {
-    const latex = fMatch[1].trim();
-    if (latex && !formulas.some(f => f.latex === latex)) {
-      formulas.push({
-        latex,
-        name: 'Formule clé',
-        when_to_use: 'Application directe du cours',
-        how_to_derive: 'Démonstration par application des lois fondamentales'
-      });
+  // 3. Détection pédagogique exhaustive des formules (sans aucun texte creux)
+  const formulaSectionMatch = rawText.match(/(?:###\s*🧮?\s*2\.\s*FORMULAIRE[^\n]*|##\s*Formulaire[^\n]*)([\s\S]*?)(?:$|(?=\n###\s*[3-9]\.|\n##\s*[A-Z]))/i);
+  const formulaScope = formulaSectionMatch ? formulaSectionMatch[1] : rawText;
+
+  // Découpage par sous-bloc de formule (ex: #### 🔹 [NOM DE LA FORMULE])
+  const subBlocks = formulaScope.split(/(?=\n####?\s*(?:🔹|\d+\.)|\n(?:\*\s*)?\*\*Formule)/i);
+
+  for (const block of subBlocks) {
+    const fMatch = block.match(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/);
+    if (!fMatch) continue;
+
+    const rawLatex = fMatch[1].trim();
+    const cleanLatex = cleanFormulaLatex(rawLatex);
+    if (!cleanLatex || formulas.some(f => cleanFormulaLatex(f.latex) === cleanLatex)) {
+      continue;
     }
+
+    // Nom de la formule
+    const titleMatch = block.match(/####?\s*(?:🔹|\d+\.)?\s*([^\n$]+)/);
+    const formulaName = titleMatch
+      ? titleMatch[1].replace(/^[\[\(🔹\s*]+|[\]\)\s*]+$/g, '').trim()
+      : 'Formule clé';
+
+    // 🎯 Objectif
+    const objMatch = block.match(/(?:\*\s*)?(?:🎯\s*)?\*{1,2}Objectif\s*:\*{1,2}\s*([^\n]+)/i);
+    const target_goal = objMatch ? objMatch[1].trim() : undefined;
+
+    // 📐 Variables & Unités
+    const varMatch = block.match(/(?:\*\s*)?(?:📐\s*)?\*{1,2}Variables(?:\s*&\s*Unit[eé]s)?\s*:\*{1,2}\s*([\s\S]*?)(?=(?:\n\s*[-*•]|\n\s*###|$))/i);
+    const variables = varMatch ? varMatch[1].trim().replace(/\n\s*[-*•]\s*/g, ' • ') : undefined;
+
+    // 🛠️ Démonstration & Méthode pas à pas
+    let how_to_derive: string | undefined = undefined;
+    const demonstration_steps: string[] = [];
+    const demoMatch = block.match(/(?:\*\s*)?(?:🛠️\s*)?\*{1,2}(?:Comment la D[eé]montrer|D[eé]monstration)(?:[^\n*]*)\*{1,2}\s*:\s*([\s\S]*?)(?=(?:\n\s*[-*•]\s*(?:📐|🚨|\*{1,2}Variables|\*{1,2}Pi[eè]ge)|\n\s*###|$))/i);
+
+    if (demoMatch) {
+      const demoBody = demoMatch[1];
+      const stepLines = demoBody.split('\n').map(l => l.trim()).filter(Boolean);
+      for (const line of stepLines) {
+        if (/^\d+[\.\)]\s+/.test(line)) {
+          demonstration_steps.push(line.replace(/^\d+[\.\)]\s+/, '').trim());
+        }
+      }
+      how_to_derive = demoBody.trim();
+    }
+
+    // 🚨 Piège à l'examen
+    const trapMatch = block.match(/(?:\*\s*)?(?:🚨\s*)?\*{1,2}Pi[eè]ge[s]?(?:\s*(?:[àa]\s*l'examen|classique))?\s*:\*{1,2}\s*([^\n]+)/i);
+    const exam_trap = trapMatch ? trapMatch[1].trim() : undefined;
+
+    formulas.push({
+      name: formulaName,
+      latex: cleanLatex,
+      target_goal,
+      when_to_use: target_goal,
+      variables,
+      how_to_derive: isFillerText(how_to_derive) ? undefined : how_to_derive,
+      demonstration_steps: demonstration_steps.length > 0 ? demonstration_steps : undefined,
+      exam_trap,
+    });
   }
 
   // 4. Détection des notions clés & définitions
@@ -1073,8 +1136,18 @@ export function parseOrBuildAiCreation(
                 ? dataObj.keyPoints.map(sanitizeText)
                 : (Array.isArray(dataObj.key_points) ? dataObj.key_points.map(sanitizeText) : []),
               key_definitions: Array.isArray(dataObj.key_definitions) ? dataObj.key_definitions : [],
-              definitions: Array.isArray(dataObj.definitions) ? dataObj.definitions : [],
-              formulas: Array.isArray(dataObj.formulas) ? dataObj.formulas : [],
+              formulas: Array.isArray(dataObj.formulas)
+                ? dataObj.formulas.map((f: any) => ({
+                    name: sanitizeText(f.name || f.title || 'Formule clé'),
+                    latex: cleanFormulaLatex(f.latex || f.formula || ''),
+                    target_goal: f.target_goal || f.when_to_use,
+                    when_to_use: f.when_to_use || f.target_goal,
+                    variables: f.variables || f.units,
+                    how_to_derive: isFillerText(f.how_to_derive) ? undefined : f.how_to_derive,
+                    demonstration_steps: Array.isArray(f.demonstration_steps) ? f.demonstration_steps : undefined,
+                    exam_trap: f.exam_trap || f.trap,
+                  }))
+                : [],
               comparison_table: dataObj.comparison_table || null,
               traps_and_tips: Array.isArray(dataObj.traps_and_tips) ? dataObj.traps_and_tips : [],
               practical_example: dataObj.practical_example || null,

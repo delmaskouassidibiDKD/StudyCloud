@@ -307,7 +307,13 @@ function wrapOrphanSymbolsAndFixDollars(text: string): string {
   let res = text
     .replace(/\n\s*:\s*\n/g, ' : ')
     .replace(/^[ \t]*:[ \t]*$/gm, '')
-    .replace(/^[ \t]*:[ \t]+/gm, '');
+    .replace(/^[ \t]*:[ \t]+/gm, '')
+    // Règle Anti-Doublon Dollar : $$ $$ ou $$  $$ ou $$$$ -> $$
+    .replace(/\${2,}\s*\${2,}/g, '$$')
+    .replace(/\${3,}/g, '$$');
+
+  // Normalisation des symboles grecs avec indices (ex: \omega _0 -> \omega_0, \Omega _0 -> \Omega_0)
+  res = res.replace(/\\(omega|Omega|tau|alpha|beta|pi|Delta|theta|mu)\s+_([0-9a-zA-Z]+)/g, '\\$1_$2');
 
   // 2. Traitement ligne par ligne pour équilibrer les $ simples orphelins
   const lines = res.split('\n');
@@ -318,10 +324,15 @@ function wrapOrphanSymbolsAndFixDollars(text: string): string {
     const singleCount = singleMatches ? singleMatches.length : 0;
     if (singleCount % 2 !== 0) {
       // Un dollar orphelin !
-      // Si la ligne se termine par un dollar (ex: "... par : \omega_0 = 2\pi f_0$")
-      const eqMatch = line.match(/^(.*?)([:=]\s*[^=:]+)\$$/);
+      // Cas A : L'équation commence après un deux-points (ex: "... tension : G_{dB}(\omega) = ... = -3{,}01\text{ dB}$")
+      const colonEqMatch = line.match(/^(.*?:)\s*([A-Za-z0-9_\\[\]\(\)\s=+\-*/^,.;~|]+?)\$$/);
+      if (colonEqMatch) {
+        return `${colonEqMatch[1]} $ ${colonEqMatch[2].trim()} $`;
+      }
+      // Cas B : L'équation commence après un signe égal
+      const eqMatch = line.match(/^(.*?=\s*)([^=]+)\$$/);
       if (eqMatch) {
-        return `${eqMatch[1]}${eqMatch[2].startsWith(':') ? ' :' : ' ='} $ ${eqMatch[2].replace(/^[:=]\s*/, '').trim()} $`;
+        return `${eqMatch[1]} $ ${eqMatch[2].trim()} $`;
       }
       // Sinon retirer le dollar solitaire qui risque d'avaler toute la prose
       return line.replace(/\$/, '');
@@ -329,9 +340,23 @@ function wrapOrphanSymbolsAndFixDollars(text: string): string {
     return line;
   }).join('\n');
 
-  // 3. Envelopper les symboles grecs LaTeX orphelins hors mode math
-  // (ex: \Omega_0, \omega_0, \pi, \Delta, \tau) avec espaces propres
+  // 3. Envelopper les équations scientifiques orphelines dans la prose (sans aucun dollar)
+  // Exemples : \omega_0 = \dfrac{1}{RC} = 10^4\text{ rad/s} ou f_0 = \dfrac{\omega_0}{2\pi} \approx 1591{,}5\text{ Hz}
+  res = res.replace(
+    /(?<!\$|\$\$|\\)(\b[A-Za-z0-9_|\(\)]+\s*=\s*[^.,;\n$]*?\\(?:d?frac|sqrt|omega|pi|approx|times|Delta|log|exp)[^.,;\n$]*)(?!\$|\$\$)/g,
+    (match) => {
+      const trimmed = match.trim();
+      if (trimmed.includes('$') || trimmed.length < 5) return match;
+      return ` $${trimmed}$ `;
+    }
+  );
+
+  // 4. Envelopper les symboles grecs ou égalités de pulsation orphelines (ex: \Omega = \omega_0 ou \omega_0)
+  res = res.replace(/(?<!\$|\$\$|\\)(\\Omega\s*=\s*\\omega_0)(?!\$|\$\$)/g, ' $ $1 $ ');
   res = res.replace(/(?<!\$|\$\$|\\)(\\(?:Omega|omega|pi|Delta|tau|alpha|beta|gamma|lambda|mu|theta|sigma)(?:_[0-9a-zA-Z]+)?)(?!\$|\$\$)/g, ' $ $1 $ ');
+
+  // 5. Envelopper les unités scientifiques LaTeX orphelines (ex: 3\text{ dB} -> $3\text{ dB}$)
+  res = res.replace(/(?<!\$|\$\$|\\)(\b\d+(?:[.,]\d+)?\s*\\text\{\s*(?:dB|Hz|kHz|MHz|rad\/s|V|A|mA|k\s*\\Omega|\\Omega|s|ms|\mu s|nF|\mu F|pF)\s*\})(?!\$|\$\$)/g, ' $ $1 $ ');
 
   return res;
 }
@@ -347,6 +372,8 @@ function sanitizeLatexInput(rawText: string, inlineMode: boolean): string {
     .replace(/&nbsp;/g, ' ')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
+    // RÈGLE ANTI-DOUBLES DOLLARS STRICTE :
+    .replace(/\${2,}\s*\${2,}/g, '$$')
     .replace(/\${3,}/g, '$$')
     .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
     .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
@@ -355,7 +382,14 @@ function sanitizeLatexInput(rawText: string, inlineMode: boolean): string {
   const lines = sanitized.split('\n');
   sanitized = lines.map(l => healMathLine(l, inlineMode)).join('\n');
 
-  // 3. Correction des symboles parasites dans \text{...}
+  // 3. Répare \text{ \dfrac{rad}{s}} (interdit par KaTeX car \dfrac dans \text{}) -> \text{ rad/s}
+  sanitized = sanitized
+    .replace(/\\text\{\s*\\d?frac\{([^{}]+)\}\{([^{}]+)\}\s*\}/gi, '\\text{ $1/$2 }')
+    .replace(/\\text\{\s*([^{}\\]*)\\d?frac\{([^{}]+)\}\{([^{}]+)\}([^{}\\]*)\s*\}/gi, '\\text{ $1 $2/$3 $4 }')
+    // Répare les \text{... orphelins sans accolade fermante avant la fin de l'expression
+    .replace(/\\text\{([a-zA-Z0-9\s,\/]+)(?=\s*(?:\$|\\approx|\\le|\\ge|=|\n|$))/g, '\\text{$1}');
+
+  // 4. Correction des symboles parasites dans \text{...}
   sanitized = sanitized
     .replace(/\\text\{([^{}]*)\}\s*\\?\$+(\\?Omega|\bOmega\b)/gi, '\\text{$1 }\\Omega')
     .replace(/\\text\{([^{}]*)\\?\$+(\\?Omega|\bOmega\b)\}/gi, '\\text{$1 }\\Omega')
@@ -366,15 +400,17 @@ function sanitizeLatexInput(rawText: string, inlineMode: boolean): string {
     .replace(/\bk\s*\\?\$+(\\?Omega)\$?/gi, '\\text{k }\\Omega')
     .replace(/\\k\\Omega\b/gi, '\\text{k}\\Omega');
 
-  // 4. Fermeture automatique des blocs $$ non fermés
+  // 5. Fermeture automatique des blocs $$ non fermés et nettoyage des doubles balises
   const paragraphs = sanitized.split(/\n{2,}/);
   sanitized = paragraphs
     .map((para) => {
-      const doubleDollarMatches = para.match(/\$\$/g);
+      // Nettoyer les $$ $$ à l'intérieur de chaque paragraphe
+      let p = para.replace(/\${2,}\s*\${2,}/g, '$$');
+      const doubleDollarMatches = p.match(/\$\$/g);
       if (doubleDollarMatches && doubleDollarMatches.length % 2 !== 0) {
-        return para.trimEnd() + ' $$';
+        return p.trimEnd() + ' $$';
       }
-      return para;
+      return p;
     })
     .join('\n\n');
 
