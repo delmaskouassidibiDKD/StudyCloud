@@ -2170,38 +2170,59 @@ EXEMPLE STRICT DU SCHÉMA JSON HIÉRARCHIQUE DANS 'creation_data' :
         systemContent += `\n\nCRÉATION ACTUELLE DANS L'ESPACE DE DROITE ("${activeCreation.title}", type: "${activeCreation.toolType}") : Si l'utilisateur demande explicitement de la modifier, l'enrichir ou la mettre à jour, réponds en mode création JSON avec la version actualisée.`;
       }
 
-      systemContent += `\n\n10. CONSIGNE STRICTE - GÉNÉRATION DE FICHE DE RÉSUMÉ PÉDAGOGIQUE ('resume') :
-Tu es un professeur d'université et auteur de manuels de référence. Lorsque tu rédiges une "Fiche de Résumé" ('resume'), TU AS L'OBLIGATION FORMELLE D'EXPLOITER LE COURS EN PROFONDEUR ET DE LE RÉDIGER COMME UN VÉRITABLE LIVRE DE COURS STRUCTURÉ.
-IL EST STRICTEMENT INTERDIT de rédiger de simples paragraphes introductifs de 5 lignes ou un résumé superficiel. Tu dois développer chaque notion avec rigueur et densité pédagogique, expliciter toutes les démonstrations de calculs avec KaTeX, détailler les variables physiques et mathématiques, et couvrir exhaustivement l'intégralité du chapitre.
+      systemContent += `\n\n10. CONSIGNE STRICTE : FICHE DE RÉSUMÉ EXHAUSTIVE ET PÉDAGOGIQUE ('resume') :
+Tu dois rédiger une fiche de résumé COMPLÈTE qui remplace intégralement la lecture du cours original. L'étudiant ne doit pas avoir besoin de réouvrir son cours pour comprendre ou réussir ses exercices.
+IL EST STRICTEMENT INTERDIT de rédiger de simples paragraphes de 5 lignes ou un survol superficiel. Tu dois développer chaque notion avec rigueur et densité académique.
 
-STRUCTURE OBLIGATOIRE DE LA FICHE :
-# 📑 [TITRE DU COURS OU DU CHAPITRE EN SEMAINE/ENCADRÉ] (Domaine & Thème)
+RÈGLES DE RÉDACTION OBLIGATOIRES :
+1. NE ZAPPE AUCUN CONCEPT NI AUCUNE FORMULE : Si le cours contient des filtres d'ordre 1, d'ordre 2, des diagrammes de Bode (asymptotiques et réels), des calculs de gain ou de phase, des bandes passantes à -3 dB, des facteurs de qualité, TOUT doit être détaillé et expliqué sans aucun raccourci.
+2. LOGIQUE DE CALCUL & DÉMONSTRATION : Pour chaque formule fondamentale (ex: Fonction de transfert, Fréquence de coupure, Bande passante, Gain maximal) :
+   - Donne l'expression mathématique exacte en LaTeX ($$ ... $$) avec fractions verticales \\dfrac{}{}.
+   - Explique la méthode pas à pas pour la RETROUVER à partir d'un schéma ou d'une loi physique (ex: pont diviseur de tension, théorème de Millman, impédances complexes).
+   - Explique la signification physique de chaque paramètre et son unité (ex: T_0 gain statique sans unité, \\omega_0 pulsation en rad/s, f_0 fréquence en Hz, Q_0 facteur de qualité).
+3. STRUCTURE AVEC BLOCS COLORÉS (HTML / Markdown Callouts) :
+   - Encadre le titre principal dans une boîte d'en-tête au centre.
+   - Utilise des blocs d'encadrés distincts :
+     * 🧮 FORMULE CLÉ (Boîte Bleue) pour chaque fonction de transfert ou formule vitale avec sa démonstration et ses variables.
+     * 🛠️ MÉTHODOLOGIE & DÉMONSTRATION (Boîte Verte) pour la logique de calcul pas à pas.
+     * ⚠️ PIÈGE CLASSIQUE / À ÉVITER (Boîte Jaune/Orange/Rouge) pour les erreurs fréquentes (ex: confusion f et \\omega).
+     * 💡 ASTUCE (NB) (Boîte Bleue Ciel) pour les vérifications rapides et cas limites.
+4. TABLEAU SYNTHÉTIQUE COMPARATIF OBLIGATOIRE :
+   - Inclus systématiquement un grand tableau récapitulatif comparatif (ex: Comparatif des 4 types de filtres : Passe-bas, Passe-haut, Passe-bande, Coupe-bande avec leur forme canonique, gain max, ordre et équation de Bode).
+5. ESPACEMENT ET SYNTAXE LATEX :
+   - Toutes les variables mathématiques (comme \\omega_0, f_0, Q_0, \\pi) doivent être séparées du texte courant par des espaces explicites.
+   - Les formules centrées doivent OBLIGATOIREMENT être entourées de doubles dollars $$ ... $$ sur leur propre ligne sans aucun texte sur la même ligne.
+   - Ne laisse JAMAIS de deux-points isolés sur une ligne vide.
+
+STRUCTURE DE LA FICHE :
+# 📑 [TITRE DU COURS OU DU CHAPITRE] (Domaine & Thème)
 
 ---
 
-### 1. 📌 Notion Clé & Définition
-- **Concept principal :** Définition courte et percutante (mots-clés scientifiques essentiels en gras).
-- **Objectif :** À quoi ça sert concrètement et quelle problématique cela résout.
+### 1. 📌 Notions Fondamentales & Définitions
+- **Concept principal :** Définition complète et percutante (mots-clés en gras).
+- **Objectif :** Rôle concret et problématique résolue.
 
 ---
 
-### 2. 🧮 Formulaire & Méthodologie
+### 2. 🧮 Formulaire & Méthodes de Calcul
 Pour CHAQUE formule importante du document :
-* **Formule :** $$ Formule_LaTeX $$ (avec fractions verticales \\dfrac{}{})
-* **Signification des variables :** Expliciter chaque lettre/symbole et son unité physique ou mathématique.
-* **Quand l'utiliser ?** Dans quel type d'exercice, de question ou d'hypothèse physique.
-* **Comment la retrouver/démontrer ?** La méthode étape par étape pour la démontrer ou l'astuce de départ si oubliée.
+* **Nom de la formule :** [Nom exact]
+* **Formule :** $$ Formule_LaTeX $$
+* **Signification des variables :** [Expliciter chaque terme et son unité]
+* **Quand l'utiliser ?** [Cas d'application précis]
+* **Comment la retrouver/démontrer ?** [Méthode étape par étape : pont diviseur, Millman...]
 
 ---
 
 ### 3. 📊 Tableau Synthétique
-Génère un tableau comparatif en Markdown synthétisant toutes les variantes, types, ordres ou configurations décrits dans le document (ex: Filtre Passe-bas vs Passe-haut vs Passe-bande avec leurs fonctions de transfert et comportements).
+Tableau comparatif Markdown récapitulant l'ensemble des configurations, ordres et comportements.
 
 ---
 
 ### 4. ⚠️ Pièges à éviter & Remarques (NB)
-> 🚨 **PIÈGE CLASSIQUE :** [Exposer le piège ou l'erreur fréquente des étudiants dans ce chapitre]
-> 💡 **ASTUCE (NB) :** [L'astuce de calcul, la méthode de vérification rapide ou le cas limite]
+> 🚨 **PIÈGE CLASSIQUE :** [Exposer le piège fréquent]
+> 💡 **ASTUCE (NB) :** [L'astuce de calcul ou vérification rapide]
 
 ---
 

@@ -301,10 +301,45 @@ function healMathLine(rawLine: string, inlineMode: boolean): string {
   return line;
 }
 
+function wrapOrphanSymbolsAndFixDollars(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  // 1. Supprime les lignes isolées de deux-points ":" et sauts de ligne intempestifs
+  let res = text
+    .replace(/\n\s*:\s*\n/g, ' : ')
+    .replace(/^[ \t]*:[ \t]*$/gm, '')
+    .replace(/^[ \t]*:[ \t]+/gm, '');
+
+  // 2. Traitement ligne par ligne pour équilibrer les $ simples orphelins
+  const lines = res.split('\n');
+  res = lines.map(line => {
+    // Ne pas toucher aux blocs de code ou lignes sans dollar
+    if (!line.includes('$')) return line;
+    const singleMatches = line.replace(/\$\$/g, '').match(/\$/g);
+    const singleCount = singleMatches ? singleMatches.length : 0;
+    if (singleCount % 2 !== 0) {
+      // Un dollar orphelin !
+      // Si la ligne se termine par un dollar (ex: "... par : \omega_0 = 2\pi f_0$")
+      const eqMatch = line.match(/^(.*?)([:=]\s*[^=:]+)\$$/);
+      if (eqMatch) {
+        return `${eqMatch[1]}${eqMatch[2].startsWith(':') ? ' :' : ' ='} $ ${eqMatch[2].replace(/^[:=]\s*/, '').trim()} $`;
+      }
+      // Sinon retirer le dollar solitaire qui risque d'avaler toute la prose
+      return line.replace(/\$/, '');
+    }
+    return line;
+  }).join('\n');
+
+  // 3. Envelopper les symboles grecs LaTeX orphelins hors mode math
+  // (ex: \Omega_0, \omega_0, \pi, \Delta, \tau) avec espaces propres
+  res = res.replace(/(?<!\$|\$\$|\\)(\\(?:Omega|omega|pi|Delta|tau|alpha|beta|gamma|lambda|mu|theta|sigma)(?:_[0-9a-zA-Z]+)?)(?!\$|\$\$)/g, ' $ $1 $ ');
+
+  return res;
+}
+
 function sanitizeLatexInput(rawText: string, inlineMode: boolean): string {
   if (!rawText || typeof rawText !== 'string') return '';
 
-  let sanitized = rawText
+  let sanitized = wrapOrphanSymbolsAndFixDollars(rawText)
     // 1. Répare les caractères de contrôle corrompus par le parsing JSON :
     .replace(/[\x0c\u000c]/g, '\\f')
     .replace(/[\x08\u0008]/g, '\\b')
@@ -513,6 +548,32 @@ export const MathText: React.FC<MathTextProps> = ({
       // Formule en ligne ($ ... $)
       if (part.startsWith('$') && part.endsWith('$') && part.length > 2) {
         const math = part.slice(1, -1).trim();
+
+        // Si KaTeX essaie de parser de la prose avec des mots de langue courante (ex: "du filtre, liée à la fréquence...")
+        if (containsNaturalLanguageProse(math)) {
+          const splitIdx = math.search(/[:=]\s*\\?[a-zA-Z0-9]/);
+          if (splitIdx > 0) {
+            const prosePart = math.slice(0, splitIdx + 1);
+            const formulaPart = math.slice(splitIdx + 1).trim();
+            const formulaHtml = renderKaTeXSafe(formulaPart, false);
+            return (
+              <span key={idx}>
+                <span>{prosePart} </span>
+                {formulaHtml ? (
+                  <span
+                    className="inline-math mx-1.5 inline-block align-middle select-text text-[1.12em]"
+                    dangerouslySetInnerHTML={{ __html: formulaHtml }}
+                  />
+                ) : (
+                  <span className="font-mono text-inherit opacity-85">{formulaPart}</span>
+                )}
+              </span>
+            );
+          }
+          // Prose pure : retourner en texte ordinaire avec espaces
+          return <span key={idx}> {math} </span>;
+        }
+
         const html = renderKaTeXSafe(math, false);
         if (html) {
           return (

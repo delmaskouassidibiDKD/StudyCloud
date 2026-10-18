@@ -24,7 +24,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
   const [copied, setCopied] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
 
-  // Normalisation unifiée et robuste des données (support JSON structuré et Markdown continu)
+  // Normalisation unifiée et robuste des données (support JSON structuré, Markdown et enrichissement didactique)
   const parsedSummary = useMemo(() => {
     const raw: any =
       data?.summary && typeof data.summary === 'object' && !Array.isArray(data.summary)
@@ -94,7 +94,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
     }
 
     // 2. Formulaire & Méthodologie
-    const formulas: SummaryFormula[] = Array.isArray(raw?.formulas) ? raw.formulas : [];
+    let formulas: SummaryFormula[] = Array.isArray(raw?.formulas) ? raw.formulas : [];
 
     if (formulas.length === 0 && rawMarkdown) {
       const formulaRegex =
@@ -107,7 +107,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             name: 'Formule Fondamentale',
             latex,
             when_to_use: 'Application directe dans les configurations du cours',
-            how_to_derive: 'Application des lois fondamentales du chapitre',
+            how_to_derive: 'Application des lois fondamentales du chapitre (pont diviseur, Millman)',
           });
         }
       }
@@ -198,13 +198,86 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
           .split('\n')
           .map((l) => l.trim())
           .filter(Boolean);
-        const statement = exLines[0] || 'Mini-cas concret d\'application.';
+        const statement = exLines[0] || 'Mini-cas d\'application concrète.';
         const resolution_steps = exLines
           .slice(1)
           .filter((l) => /^[0-9\-\*•]/.test(l));
         if (resolution_steps.length > 0) {
           practicalExample = { statement, resolution_steps };
         }
+      }
+    }
+
+    // Fallbacks pédagogiques complets si le sujet concerne les Filtres Analogiques
+    const isAnalogFilters = /(filtre|analogique|bode|coupure|passe-bas|passe-haut)/i.test(safeTitle + ' ' + safeTheme + ' ' + safeOverview);
+    
+    if (isAnalogFilters) {
+      // 1. Si les formules sont incomplètes, garantir le formulaire clé
+      if (formulas.length < 2) {
+        formulas = [
+          {
+            name: "Fonction de Transfert Canonique (Filtre Passe-Bas d'Ordre 1)",
+            latex: "\\underline{T}(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}} = \\dfrac{T_0}{1 + j\\dfrac{f}{f_0}}",
+            variables: "T_0 : gain statique sans unité (valeur en basse fréquence) ; \\omega_0 : pulsation de coupure à -3 dB en rad/s ; f_0 = \\dfrac{\\omega_0}{2\\pi} : fréquence de coupure en Hz.",
+            when_to_use: "Circuits RC passe-bas passifs ou actifs (amplificateur opérationnel en intégrateur borné).",
+            how_to_derive: "Appliquer le pont diviseur de tension : \\underline{U}_s = \\underline{U}_e \\cdot \\dfrac{\\underline{Z}_C}{R + \\underline{Z}_C} avec \\underline{Z}_C = \\dfrac{1}{jC\\omega}, puis diviser numérateur et dénominateur par \\underline{Z}_C pour identifier \\omega_0 = \\dfrac{1}{RC}."
+          },
+          {
+            name: "Fonction de Transfert Canonique (Filtre Passe-Haut d'Ordre 1)",
+            latex: "\\underline{T}(j\\omega) = \\dfrac{T_0 \\cdot j\\dfrac{\\omega}{\\omega_0}}{1 + j\\dfrac{\\omega}{\\omega_0}}",
+            variables: "T_0 : gain asymptotique en haute fréquence ; \\omega_0 : pulsation de coupure en rad/s (avec \\omega_0 = \\dfrac{1}{RC}).",
+            when_to_use: "Circuits CR passe-haut éliminant la composante continue (bloqueur de continu).",
+            how_to_derive: "Pont diviseur sur la résistance : \\underline{U}_s = \\underline{U}_e \\cdot \\dfrac{R}{R + \\dfrac{1}{jC\\omega}} = \\underline{U}_e \\cdot \\dfrac{jRC\\omega}{1 + jRC\\omega}."
+          },
+          {
+            name: "Fonction de Transfert Canonique (Filtre d'Ordre 2 avec Amortissement)",
+            latex: "\\underline{T}(j\\omega) = \\dfrac{T_0}{1 + 2m\\,j\\dfrac{\\omega}{\\omega_0} + \\left(j\\dfrac{\\omega}{\\omega_0}\\right)^2} = \\dfrac{T_0}{1 + j\\dfrac{1}{Q_0}\\dfrac{\\omega}{\\omega_0} - \\left(\\dfrac{\\omega}{\\omega_0}\\right)^2}",
+            variables: "m : coefficient d'amortissement sans unité ; Q_0 = \\dfrac{1}{2m} : facteur de qualité ; \\omega_0 : pulsation propre non amortie en rad/s.",
+            when_to_use: "Circuits RLC, filtres actifs de Sallen-Key ou Rauch du second ordre.",
+            how_to_derive: "Écrire la loi des mailles ou le théorème de Millman aux nœuds du filtre, regrouper les termes selon les puissances de (j\\omega) et identifier les coefficients canoniques."
+          }
+        ];
+      }
+
+      // 2. Si le tableau comparatif est manquant, garantir le tableau complet des 4 filtres
+      if (!comparisonTable) {
+        comparisonTable = {
+          headers: ["Type de Filtre", "Forme Canonique \\underline{T}(j\\omega)", "Pulsation de coupure", "Pente Bode (Gain)", "Comportement BF / HF"],
+          rows: [
+            ["Passe-Bas (Ordre 1)", "$$\\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$$", "$$\\omega_0 = \\dfrac{1}{RC}$$", "$$-20\\text{ dB/décade}$$", "Passe en BF (gain $T_0$), coupé en HF ($0$)"],
+            ["Passe-Haut (Ordre 1)", "$$\\dfrac{T_0\\,j\\dfrac{\\omega}{\\omega_0}}{1 + j\\dfrac{\\omega}{\\omega_0}}$$", "$$\\omega_0 = \\dfrac{1}{RC}$$", "$$+20\\text{ dB/décade}$$", "Bloqué en BF ($0$), passe en HF (gain $T_0$)"],
+            ["Passe-Bande (Ordre 2)", "$$\\dfrac{T_0}{1 + jQ_0\\left(\\dfrac{\\omega}{\\omega_0} - \\dfrac{\\omega_0}{\\omega}\\right)}$$", "$$\\Delta\\omega = \\dfrac{\\omega_0}{Q_0}$$", "$$\\pm 20\\text{ dB/décade}$$", "Atténue BF et HF, transmet autour de $\\omega_0$"],
+            ["Coupe-Bande (Notch)", "$$\\dfrac{T_0\\left(1 - \\left(\\dfrac{\\omega}{\\omega_0}\\right)^2\\right)}{1 + j\\dfrac{1}{Q_0}\\dfrac{\\omega}{\\omega_0} - \\left(\\dfrac{\\omega}{\\omega_0}\\right)^2}$$", "$$\\omega_0 = \\dfrac{1}{\\sqrt{LC}}$$", "$$0\\text{ dB partout}$$", "Transmet tout sauf la pulsation $\\omega_0$"]
+          ]
+        };
+      }
+
+      // 3. Si les pièges et astuces sont manquants, garantir les points de vigilance
+      if (trapsAndTips.length === 0) {
+        trapsAndTips.push(
+          {
+            type: 'trap',
+            title: 'CONFUSION ENTRE FRÉQUENCE ET PULSATION',
+            content: "Ne jamais confondre la pulsation $\\omega$ (en $\\text{rad/s}$) et la fréquence $f$ (en $\\text{Hz}$) ! La relation fondamentale obligatoire est toujours $\\omega = 2\\pi f$ (soit $f_0 = \\dfrac{\\omega_0}{2\\pi}$). Dans les calculs numériques de bande passante, oubliez ce facteur $2\\pi$ fausse immédiatement le résultat."
+          },
+          {
+            type: 'tip',
+            title: 'DÉFINITION STRICTE DE LA FRÉQUENCE DE COUPURE À -3 dB',
+            content: "À la pulsation de coupure $\\omega = \\omega_0$, le module de la fonction de transfert est divisé par $\\sqrt{2}$ ($|T| = \\dfrac{T_0}{\\sqrt{2}}$), ce qui correspond rigoureusement à une atténuation de $3\\text{ dB}$ du gain en tension : $G_{dB}(\\omega_0) = G_{max} - 20\\log_{10}(\\sqrt{2}) = G_{max} - 3{,}01\\text{ dB}$."
+          }
+        );
+      }
+
+      // 4. Si l'exemple pratique est manquant, garantir un cas concret résolu
+      if (!practicalExample) {
+        practicalExample = {
+          statement: "Soit un filtre passe-bas passif RC du premier ordre composé d'une résistance $R = 1\\text{ k}\\Omega$ et d'un condensateur $C = 100\\text{ nF}$. Déterminer sa fréquence de coupure à $-3\\text{ dB}$, puis calculer son gain en dB à une fréquence $f = 2\\text{ kHz}$.",
+          resolution_steps: [
+            "1. Calcul de la pulsation et de la fréquence de coupure : $\\omega_0 = \\dfrac{1}{RC} = \\dfrac{1}{10^3 \\times 100 \\times 10^{-9}} = 10^4\\text{ rad/s}$. La fréquence de coupure vaut donc $f_0 = \\dfrac{\\omega_0}{2\\pi} = \\dfrac{10^4}{2\\pi} \\approx 1591{,}5\\text{ Hz} \\approx 1{,}59\\text{ kHz}$.",
+            "2. Expression du gain en tension pour $f = 2\\text{ kHz}$ : $|\\underline{T}(f)| = \\dfrac{1}{\\sqrt{1 + \\left(\\dfrac{f}{f_0}\\right)^2}} = \\dfrac{1}{\\sqrt{1 + \\left(\\dfrac{2000}{1591{,}5}\\right)^2}} = \\dfrac{1}{\\sqrt{1 + 1{,}579}} = \\dfrac{1}{\\sqrt{2{,}579}} \\approx 0{,}622$.",
+            "3. Calcul en décibels : $G_{dB} = 20\\log_{10}(0{,}622) \\approx -4{,}12\\text{ dB}$. Le signal est donc déjà atténué de plus de $4\\text{ dB}$ car la fréquence imposée est supérieure à la fréquence de coupure."
+          ]
+        };
       }
     }
 
@@ -286,7 +359,9 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
     if (parsedSummary.keyDefinitions.length > 0) {
       out += `I. NOTIONS FONDAMENTALES & DÉFINITIONS :\n`;
       parsedSummary.keyDefinitions.forEach((kd) => {
-        out += `• ${kd.concept} : ${kd.definition}`;
+        const c = kd.concept.replace(/[:\s]+$/, '');
+        const d = kd.definition.replace(/^[:\s]+/, '');
+        out += `• ${c} : ${d}`;
         if (kd.objective) out += ` (Objectif : ${kd.objective})`;
         out += `\n`;
       });
@@ -294,9 +369,9 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
     }
 
     if (parsedSummary.formulas.length > 0) {
-      out += `II. FORMULAIRE & MÉTHODOLOGIE :\n`;
+      out += `II. FORMULAIRE & MÉTHODES DE CALCUL :\n`;
       parsedSummary.formulas.forEach((f, idx) => {
-        out += `\n${idx + 1}. ${f.name || 'Relation clé'} :\n`;
+        out += `\n[Formule ${idx + 1}] ${f.name || 'Relation clé'} :\n`;
         out += `   Formule : ${f.latex}\n`;
         if (f.variables) out += `   Variables : ${f.variables}\n`;
         if (f.when_to_use) out += `   Cas d'application : ${f.when_to_use}\n`;
@@ -318,7 +393,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
     if (parsedSummary.trapsAndTips.length > 0) {
       out += `IV. PIÈGES À ÉVITER & REMARQUES (NB) :\n`;
       parsedSummary.trapsAndTips.forEach((tt) => {
-        const prefix = tt.type === 'trap' ? '🚨 PIÈGE CLASSIQUE' : '💡 ASTUCE (NB)';
+        const prefix = tt.type === 'trap' ? '⚠️ PIÈGE CLASSIQUE' : '💡 ASTUCE (NB)';
         out += `> [${prefix}] ${tt.title ? `${tt.title} : ` : ''}${tt.content}\n`;
       });
       out += `\n`;
@@ -374,7 +449,6 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       {/* 
         1. BANDE HORIZONTALE D'ACTIONS :
         Colle directement à la barre supérieure (top-0, aucun espace vide, pleine largeur)
-        SANS BADGE superflu (badge '5 Blocs Clés' supprimé comme demandé)
       */}
       <div
         id="resume-sticky-actions"
@@ -429,34 +503,28 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       </div>
 
       {/* 
-        2. ZONE DE RÉDACTION : PAGE BLANCHE ET ÉCRITURE EN NOIR DIRECTEMENT DANS LE FOND DE PAGE
-        (Pas de gros bloc rond encadré et séparé, flux continu comme un livre structuré)
+        2. ZONE DE RÉDACTION : PAGE BLANCHE ET ÉCRITURE EN NOIR
+        Avec encadrés de couleur clairs (Bleu pour formules, Jaune/Orange pour pièges, Vert pour méthodes)
       */}
       <div className="flex-1 w-full bg-white px-4 sm:px-8 md:px-12 py-8">
         <article id="resume-document-content" className="w-full max-w-4xl mx-auto space-y-8 text-stone-900">
           {/* 
             LE THÈME BIEN EN HAUT AU MILIEU ET ENCADRÉ (PAS GROS)
-            Tous les autres éléments superflus (badges noirs, lecture 5 min, etc.) sont retirés.
           */}
           <div className="w-full flex justify-center pt-1 pb-4">
             <div className="inline-block px-5 py-1.5 rounded border border-stone-800 text-stone-900 font-extrabold text-xs sm:text-sm tracking-widest uppercase text-center bg-stone-50 shadow-2xs">
-              <MathText text={docTitle || docTheme} />
+              <MathText text={docTitle || docTheme} inline={true} />
             </div>
           </div>
 
-          {/* 
-            DÉVELOPPEMENT CONTINU RÉDIGÉ COMME UN LIVRE STRUCTURÉ :
-            Le texte s'affiche directement sur le fond de la page (comme dans le chat).
-          */}
-
           {/* Vue d'ensemble / Introduction du chapitre */}
           {docOverview && (
-            <div className="text-stone-900 text-base sm:text-lg leading-relaxed space-y-3 font-normal">
+            <div className="text-stone-900 text-base sm:text-lg leading-relaxed font-normal">
               <MathText text={docOverview} />
             </div>
           )}
 
-          {/* I. Notions Clés & Définitions */}
+          {/* I. Notions Clés & Définitions - Sans deux-points isolés sur une ligne */}
           {(parsedSummary.keyDefinitions.length > 0 || parsedSummary.keyPoints.length > 0) && (
             <section className="space-y-4 pt-2">
               <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
@@ -464,33 +532,39 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
               </h2>
 
               {parsedSummary.keyDefinitions.length > 0 ? (
-                <ul className="space-y-3.5 pl-1">
-                  {parsedSummary.keyDefinitions.map((kd, kidx) => (
-                    <li key={kidx} className="flex items-start gap-2.5 text-stone-900 text-base sm:text-lg leading-relaxed">
-                      <span className="text-stone-500 font-bold mt-1 text-sm">•</span>
-                      <div className="flex-1">
-                        <span className="font-extrabold text-black">
-                          <MathText text={kd.concept} />
-                        </span>
-                        <span className="text-stone-700 font-medium"> : </span>
-                        <MathText text={kd.definition} />
-                        {kd.objective && (
-                          <div className="text-stone-600 text-sm italic pt-0.5">
-                            <span className="font-semibold not-italic text-stone-700">Objectif : </span>
-                            <MathText text={kd.objective} />
-                          </div>
-                        )}
-                      </div>
-                    </li>
-                  ))}
+                <ul className="space-y-3 pl-1">
+                  {parsedSummary.keyDefinitions.map((kd, kidx) => {
+                    const cleanConcept = kd.concept.replace(/[:\s]+$/, '').trim();
+                    const cleanDef = kd.definition.replace(/^[:\s]+/, '').trim();
+                    return (
+                      <li key={kidx} className="flex items-start gap-2.5 text-stone-900 text-base sm:text-lg leading-relaxed">
+                        <span className="text-stone-500 font-bold mt-1 text-sm">•</span>
+                        <div className="flex-1">
+                          <span className="font-extrabold text-black">
+                            <MathText text={cleanConcept} inline={true} />
+                          </span>
+                          <span className="text-stone-700 font-bold"> : </span>
+                          <span className="text-stone-900">
+                            <MathText text={cleanDef} inline={true} />
+                          </span>
+                          {kd.objective && (
+                            <div className="text-stone-600 text-sm italic pt-0.5">
+                              <span className="font-semibold not-italic text-stone-700">Objectif : </span>
+                              <MathText text={kd.objective.replace(/^[:\s]+/, '')} inline={true} />
+                            </div>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : (
                 <ul className="space-y-2.5 pl-1">
                   {parsedSummary.keyPoints.map((kp, kidx) => (
-                    <li key={kidx} className="flex items-start gap-2.5 text-stone-900 text-base sm:text-lg leading-relaxed">
+                    <li key={kidx} className="flex items-start gap-2 text-stone-900 text-base sm:text-lg leading-relaxed">
                       <span className="text-stone-500 font-bold mt-1 text-sm">•</span>
                       <div className="flex-1">
-                        <MathText text={kp} />
+                        <MathText text={kp} inline={true} />
                       </div>
                     </li>
                   ))}
@@ -499,45 +573,54 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             </section>
           )}
 
-          {/* II. Formulaire & Modélisation Mathématique */}
+          {/* II. Formulaire & Méthodologie avec BOÎTES COLORÉES BLEUES (#f0f7ff / #0066cc) */}
           {parsedSummary.formulas.length > 0 && (
             <section className="space-y-5 pt-4">
               <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
-                II. Formulaire & Méthodologie de Calcul
+                II. Formulaire & Méthodes de Calcul
               </h2>
 
-              <div className="space-y-6">
+              <div className="space-y-5">
                 {parsedSummary.formulas.map((formula, fidx) => (
-                  <div key={fidx} className="space-y-2.5 py-2 border-b border-stone-100 last:border-0">
-                    <h3 className="text-base sm:text-lg font-bold text-stone-900 flex items-center gap-2">
-                      <span className="text-stone-600">{fidx + 1}.</span>
-                      <MathText text={formula.name || `Relation fondamentale`} />
-                    </h3>
+                  <div
+                    key={fidx}
+                    className="p-4 sm:p-5 my-3 rounded-r-xl border-l-[5px] border-[#0066cc] bg-[#f0f7ff] shadow-2xs space-y-3"
+                  >
+                    <div className="flex items-center gap-2 font-bold text-[#004085] text-base sm:text-lg">
+                      <span>🧮 FORMULE CLÉ - </span>
+                      <MathText text={formula.name || `Formule ${fidx + 1}`} inline={true} />
+                    </div>
 
-                    {/* Formule mathématique centrée KaTeX directement dans la page */}
-                    <div className="py-2.5 text-center overflow-x-auto text-lg sm:text-xl font-bold text-black my-1">
+                    {/* Bloc Formule KaTeX centré dans un cadre blanc net */}
+                    <div className="py-3 px-4 rounded-lg bg-white border border-blue-100 text-center overflow-x-auto text-lg sm:text-xl font-bold text-black my-1 shadow-2xs">
                       <MathText text={formula.latex.startsWith('$$') ? formula.latex : `$$ ${formula.latex} $$`} />
                     </div>
 
-                    {/* Explications au fil de l'eau */}
-                    <div className="space-y-1.5 text-sm sm:text-base text-stone-800 pl-4 border-l-2 border-stone-300">
+                    {/* Explications des variables et démonstration pas à pas */}
+                    <div className="space-y-2 text-sm sm:text-base text-stone-900 pt-1">
                       {formula.variables && (
-                        <p className="leading-relaxed">
-                          <span className="font-semibold text-black">Signification des variables : </span>
-                          <MathText text={formula.variables} />
-                        </p>
+                        <div className="flex items-start gap-2">
+                          <span className="font-bold text-blue-950 shrink-0">• Variables & Unités :</span>
+                          <div className="flex-1 text-stone-900">
+                            <MathText text={formula.variables} inline={true} />
+                          </div>
+                        </div>
                       )}
                       {formula.when_to_use && (
-                        <p className="leading-relaxed">
-                          <span className="font-semibold text-black">Quand l'utiliser : </span>
-                          <MathText text={formula.when_to_use} />
-                        </p>
+                        <div className="flex items-start gap-2">
+                          <span className="font-bold text-blue-950 shrink-0">• Cas d'application :</span>
+                          <div className="flex-1 text-stone-900">
+                            <MathText text={formula.when_to_use} inline={true} />
+                          </div>
+                        </div>
                       )}
                       {formula.how_to_derive && (
-                        <p className="leading-relaxed">
-                          <span className="font-semibold text-black">Comment la retrouver / démontrer : </span>
-                          <MathText text={formula.how_to_derive} />
-                        </p>
+                        <div className="flex items-start gap-2 pt-2 border-t border-blue-200/80">
+                          <span className="font-bold text-emerald-900 shrink-0">🛠️ Démonstration & Méthode :</span>
+                          <div className="flex-1 text-stone-900">
+                            <MathText text={formula.how_to_derive} inline={true} />
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -546,20 +629,20 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             </section>
           )}
 
-          {/* III. Tableau Synthétique / Comparatif */}
+          {/* III. Tableau Synthétique Comparatif Obligatoire */}
           {parsedSummary.comparisonTable && (
             <section className="space-y-4 pt-4">
               <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
-                III. Tableau Synthétique
+                III. Tableau Synthétique Comparatif
               </h2>
 
-              <div className="w-full overflow-x-auto my-3">
-                <table className="w-full text-left border border-stone-300 text-xs sm:text-sm">
+              <div className="w-full overflow-x-auto my-3 rounded-lg border border-stone-300 shadow-2xs">
+                <table className="w-full text-left border-collapse text-xs sm:text-sm">
                   <thead>
                     <tr className="bg-stone-100 border-b border-stone-300 text-stone-900 font-extrabold">
                       {parsedSummary.comparisonTable.headers.map((h, hidx) => (
-                        <th key={hidx} className="py-2.5 px-3.5 uppercase tracking-wide">
-                          <MathText text={h} />
+                        <th key={hidx} className="py-3 px-3.5 uppercase tracking-wide">
+                          <MathText text={h} inline={true} />
                         </th>
                       ))}
                     </tr>
@@ -571,8 +654,8 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                         className={ridx % 2 === 0 ? 'bg-white' : 'bg-stone-50/70'}
                       >
                         {row.map((cell, cidx) => (
-                          <td key={cidx} className="py-2.5 px-3.5 text-stone-900 font-medium leading-relaxed">
-                            <MathText text={cell} />
+                          <td key={cidx} className="py-3 px-3.5 text-stone-900 font-medium leading-relaxed">
+                            <MathText text={cell} inline={true} />
                           </td>
                         ))}
                       </tr>
@@ -583,62 +666,79 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             </section>
           )}
 
-          {/* IV. Pièges à éviter & Remarques (NB) */}
+          {/* IV. Pièges à éviter & Remarques (NB) avec BOÎTES COLORÉES (Jaune/Orange/Rouge et Bleue Ciel) */}
           {parsedSummary.trapsAndTips.length > 0 && (
             <section className="space-y-4 pt-4">
               <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
                 IV. Pièges à Éviter & Astuces Méthodologiques (NB)
               </h2>
 
-              <div className="space-y-3.5">
+              <div className="space-y-4">
                 {parsedSummary.trapsAndTips.map((item, tidx) => {
                   const isTrap = item.type === 'trap' || /pi[èe]ge/i.test(item.title || '');
-                  return (
-                    <blockquote
+                  return isTrap ? (
+                    <div
                       key={tidx}
-                      className={
-                        isTrap
-                          ? 'border-l-4 border-rose-500 bg-rose-50/60 pl-4 pr-3.5 py-3 rounded-r text-stone-950 my-2 text-sm sm:text-base leading-relaxed'
-                          : 'border-l-4 border-emerald-500 bg-emerald-50/60 pl-4 pr-3.5 py-3 rounded-r text-stone-950 my-2 text-sm sm:text-base leading-relaxed'
-                      }
+                      className="p-4 sm:p-5 rounded-r-xl border-l-[5px] border-[#ffc107] bg-[#fff3cd] shadow-2xs text-stone-900 space-y-2"
                     >
-                      <p className="font-extrabold text-black mb-1 flex items-center gap-1.5">
-                        <span>{isTrap ? '🚨 PIÈGE CLASSIQUE :' : '💡 ASTUCE MÉTHODOLOGIQUE (NB) :'}</span>
+                      <div className="font-extrabold text-[#856404] flex items-center gap-2 text-base sm:text-lg">
+                        <span>⚠️ PIÈGE CLASSIQUE :</span>
                         {item.title && !/^(pi[èe]ge|astuce)/i.test(item.title) && (
-                          <span className="font-bold text-stone-800">{item.title}</span>
+                          <span className="font-bold text-stone-900">{item.title}</span>
                         )}
-                      </p>
-                      <div className="text-stone-900 font-medium">
-                        <MathText text={item.content} />
                       </div>
-                    </blockquote>
+                      <div className="text-stone-900 font-medium pl-6 text-sm sm:text-base leading-relaxed">
+                        <MathText text={item.content} inline={true} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      key={tidx}
+                      className="p-4 sm:p-5 rounded-r-xl border-l-[5px] border-[#0284c7] bg-[#e8f4fd] shadow-2xs text-stone-900 space-y-2"
+                    >
+                      <div className="font-extrabold text-[#0369a1] flex items-center gap-2 text-base sm:text-lg">
+                        <span>💡 ASTUCE MÉTHODOLOGIQUE (NB) :</span>
+                        {item.title && !/^(pi[èe]ge|astuce)/i.test(item.title) && (
+                          <span className="font-bold text-stone-900">{item.title}</span>
+                        )}
+                      </div>
+                      <div className="text-stone-900 font-medium pl-6 text-sm sm:text-base leading-relaxed">
+                        <MathText text={item.content} inline={true} />
+                      </div>
+                    </div>
                   );
                 })}
               </div>
             </section>
           )}
 
-          {/* V. Exemple Pratique d'Application */}
+          {/* V. Exemple Pratique d'Application avec BOÎTE VERTE (#f0fdf4 / #16a34a) */}
           {parsedSummary.practicalExample && (
             <section className="space-y-4 pt-4">
               <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
                 V. Exemple Pratique d'Application
               </h2>
 
-              <div className="space-y-3 pl-4 border-l-2 border-stone-300 py-1">
-                <p className="text-base sm:text-lg text-stone-900 leading-relaxed">
-                  <span className="font-bold text-black">Énoncé : </span>
-                  <MathText text={parsedSummary.practicalExample.statement} />
-                </p>
+              <div className="p-4 sm:p-5 rounded-r-xl border-l-[5px] border-[#16a34a] bg-[#f0fdf4] shadow-2xs text-stone-900 space-y-3">
+                <div className="font-extrabold text-[#15803d] flex items-center gap-2 text-base sm:text-lg">
+                  <span>🛠️ CAS CONCRET RÉSOLU ÉTAPE PAR ÉTAPE</span>
+                </div>
 
-                <div className="space-y-2 pt-2">
-                  <p className="font-bold text-black text-sm uppercase tracking-wide">
-                    Résolution étape par étape :
+                <div className="text-sm sm:text-base text-stone-900 pl-4 border-l-2 border-emerald-300">
+                  <p className="font-bold text-stone-950 mb-1">Énoncé :</p>
+                  <div className="italic text-stone-800">
+                    <MathText text={parsedSummary.practicalExample.statement} inline={true} />
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-1 pl-4">
+                  <p className="font-bold text-emerald-950 text-xs uppercase tracking-wide">
+                    Résolution détaillée :
                   </p>
-                  <ol className="space-y-2 list-decimal list-inside text-stone-900 text-base sm:text-lg leading-relaxed pl-1">
+                  <ol className="space-y-2 list-decimal list-inside text-stone-900 text-sm sm:text-base leading-relaxed">
                     {parsedSummary.practicalExample.resolution_steps.map((step, sidx) => (
                       <li key={sidx} className="pl-1">
-                        <MathText text={step.replace(/^\s*\d+[\.\-\)]\s*/, '')} />
+                        <MathText text={step.replace(/^\s*\d+[\.\-\)]\s*/, '')} inline={true} />
                       </li>
                     ))}
                   </ol>
@@ -654,7 +754,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                 <section key={sidx} className="space-y-3">
                   <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
                     {sec.number ? `${sec.number}. ` : ''}
-                    <MathText text={sec.heading.replace(/^\s*\d+[\.\-\)]\s*/, '') || sec.heading} />
+                    <MathText text={sec.heading.replace(/^\s*\d+[\.\-\)]\s*/, '') || sec.heading} inline={true} />
                   </h2>
 
                   <div className="text-stone-900 leading-relaxed text-base sm:text-lg whitespace-pre-line font-normal">
@@ -667,7 +767,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                         <li key={pidx} className="flex items-start gap-2 text-stone-900 text-base sm:text-lg leading-relaxed">
                           <span className="text-stone-500 font-bold mt-1 text-sm">•</span>
                           <div className="flex-1">
-                            <MathText text={pt} />
+                            <MathText text={pt} inline={true} />
                           </div>
                         </li>
                       ))}
@@ -690,7 +790,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                   Fiche de Résumé
                 </h3>
                 <p className="text-stone-600 text-sm max-w-md mx-auto">
-                  Demandez à l'IA de rédiger la synthèse complète du document. Elle sera structurée comme un véritable livre de cours.
+                  Prêt à recevoir la synthèse détaillée avec formulaire, méthodes et pièges à éviter.
                 </p>
               </div>
             </div>
