@@ -465,8 +465,8 @@ function renderKaTeXSafe(mathExpr: string, displayMode: boolean): string | null 
     });
     // SUPPRESSION STRICTE DU ROUGE : Ne jamais polluer l'affichage de l'étudiant avec du rouge
     if (html.includes('katex-error') || html.includes('#cc0000')) {
-      html = html.replace(/style="color:#cc0000"/gi, 'class="font-mono text-zinc-300"');
-      html = html.replace(/class="katex-error"/gi, 'class="katex-fallback text-zinc-300 font-mono"');
+      html = html.replace(/style="color:#cc0000"/gi, 'class="font-mono opacity-85"');
+      html = html.replace(/class="katex-error"/gi, 'class="katex-fallback opacity-85 font-mono"');
     }
     return html;
   } catch {
@@ -507,7 +507,7 @@ export const MathText: React.FC<MathTextProps> = ({
             />
           );
         }
-        return <span key={idx} className="font-mono text-zinc-300">{part}</span>;
+        return <span key={idx} className="font-mono text-inherit opacity-85">{part}</span>;
       }
 
       // Formule en ligne ($ ... $)
@@ -523,7 +523,7 @@ export const MathText: React.FC<MathTextProps> = ({
             />
           );
         }
-        return <span key={idx} className="font-mono text-zinc-300">{part}</span>;
+        return <span key={idx} className="font-mono text-inherit opacity-85">{part}</span>;
       }
 
       // Rendu du texte avec prise en compte du gras **texte**
@@ -533,7 +533,7 @@ export const MathText: React.FC<MathTextProps> = ({
           {subParts.map((sub, sIdx) => {
             if (sub.startsWith('**') && sub.endsWith('**') && sub.length > 4) {
               return (
-                <strong key={sIdx} className="font-bold text-white">
+                <strong key={sIdx} className="font-bold text-inherit">
                   {sub.slice(2, -2)}
                 </strong>
               );
