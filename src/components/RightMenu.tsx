@@ -277,30 +277,8 @@ export function RightMenu({
       ),
       toolType: 'resume',
       getPrompt: (doc) => doc
-        ? `Rédige une Fiche de Résumé exhaustive et méthodologique de « ${doc} ». Agis en professeur agrégé et pédagogue hors-pair :
-Pour CHAQUE notion et CHAQUE formule du cours, applique obligatoirement la méthode pas à pas :
-1. 🎯 Objectif : Ce que le sujet/l'exercice demande de calculer et la forme canonique visée.
-2. 🛠️ Comment la DÉMONTRER à partir du schéma & des lois physiques : étapes numérotées pas à pas (loi de départ, simplifications algébriques, identification).
-3. 📐 Variables & Unités : Définition physique et unité exacte de chaque variable.
-4. 🚨 Pièges à l'examen & Décodage des sujets : Conversions d'unités, confusions classiques, attentes du correcteur.
-5. Tableau comparatif synthétique récapitulant les formules, bandes passantes et gains.
-CONSIGNES STRICTES LATEX & ANTI-BUG :
-- N'écris JAMAIS deux fois les symboles de dollars ($$ $$).
-- Pour une formule centrée, mets EXACTEMENT un seul double dollar avant et un après : $$ formule $$.
-- Enveloppe toujours les expressions mathématiques dans $...$ et sépare-les du texte par un espace.
-- Interdiction formelle de phrases génériques creuses comme "application directe du cours" ou "démonstration par les lois fondamentales". Développe chaque étape avec rigueur.`
-        : `Rédige une Fiche de Résumé exhaustive et méthodologique. Agis en professeur agrégé et pédagogue hors-pair :
-Pour CHAQUE notion et CHAQUE formule du cours, applique obligatoirement la méthode pas à pas :
-1. 🎯 Objectif : Ce que le sujet/l'exercice demande de calculer et la forme canonique visée.
-2. 🛠️ Comment la DÉMONTRER à partir du schéma & des lois physiques : étapes numérotées pas à pas (loi de départ, simplifications algébriques, identification).
-3. 📐 Variables & Unités : Définition physique et unité exacte de chaque variable.
-4. 🚨 Pièges à l'examen & Décodage des sujets : Conversions d'unités, confusions classiques, attentes du correcteur.
-5. Tableau comparatif synthétique récapitulant les formules, bandes passantes et gains.
-CONSIGNES STRICTES LATEX & ANTI-BUG :
-- N'écris JAMAIS deux fois les symboles de dollars ($$ $$).
-- Pour une formule centrée, mets EXACTEMENT un seul double dollar avant et un après : $$ formule $$.
-- Enveloppe toujours les expressions mathématiques dans $...$ et sépare-les du texte par un espace.
-- Interdiction formelle de phrases génériques creuses comme "application directe du cours" ou "démonstration par les lois fondamentales". Développe chaque étape avec rigueur.`
+        ? `Rédige une Fiche de Résumé complète et structurée sur « ${doc} ».`
+        : "Rédige une Fiche de Résumé complète et structurée."
     },
     {
       id: 'pdf',

@@ -380,7 +380,15 @@ RÈGLES D'EXCELLENCE PÉDAGOGIQUE EN DISCUSSION :
 > **Remarque :** Ton commentaire méthodologique ici.
 ou
 > **Note :** Ta note de vigilance ici.
-   Ils seront ainsi isolés dans un encadré distinct bleu ciel sans jamais se mélanger aux calculs.`;
+   Ils seront ainsi isolés dans un encadré distinct bleu ciel sans jamais se mélanger aux calculs.
+
+6. GESTION MULTI-DOCUMENTS & DEMANDES IMPRÉCISES :
+   - Si l'étudiant a joint plusieurs documents distincts et que sa demande est générale ou non ciblée sur un fichier précis :
+     -> Ne choisis pas un document au hasard et ne produis pas de création confuse à l'aveugle.
+     -> Présente brièvement les documents joints et demande-lui clairement dans le chat sur quel document ou quel chapitre il souhaite se concentrer, ou s'il préfère une synthèse globale croisée de l'ensemble des documents.
+     -> Termine OBLIGATOIREMENT par le bloc [QUESTIONS_SUGGÉRÉES] proposant chaque document en bouton cliquable direct.
+   - Si la demande est vague ou imprécise (ex: "fais un résumé", "aide-moi", "crée un qcm" sans précision du chapitre ou du sujet souhaité) :
+     -> Pose des questions de clarification pédagogiques et propose 3 à 4 options d'angles d'attaque claires sous [QUESTIONS_SUGGÉRÉES].`;
 
   const messages = [{ role: "system", content: systemPrompt }];
 

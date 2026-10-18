@@ -1215,6 +1215,11 @@ Tu réponds sous la forme d'un objet JSON strict :
   }
 }
 \`\`\`
+
+3. GESTION MULTI-DOCUMENTS & DEMANDES IMPRÉCISES :
+- Si plusieurs documents sont fournis et que la demande n'indique pas sur quel document précis travailler :
+  Demande à l'étudiant sur quel document il souhaite se concentrer ou s'il préfère une synthèse globale croisée, et termine par [QUESTIONS_SUGGÉRÉES] avec les options cliquables.
+- Si la demande est vague ou non ciblée, pose des questions de clarification et propose des suggestions concrètes.
 ${docText ? `DOCUMENT FOURNI PAR L'ÉTUDIANT :\n"""\n${docText.slice(0, 15000)}\n"""` : ""}`;
 
         const system = customSystem || defaultSystem;

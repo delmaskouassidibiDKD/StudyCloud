@@ -610,6 +610,43 @@ function detectCreationFormat(userText: string, requestedType?: string): string 
   return null;
 }
 
+// Détection si l'utilisateur a choisi un document particulier parmi plusieurs ou une synthèse globale
+function detectTargetDocumentChoice(text: string, docs: any[]): { isAllDocs: boolean; targetedDoc: any | null } {
+  if (!text || !Array.isArray(docs) || docs.length <= 1) return { isAllDocs: false, targetedDoc: null };
+  const lower = text.toLowerCase();
+  
+  if (
+    lower.includes('tous les documents') ||
+    lower.includes('tous mes documents') ||
+    lower.includes('l\'ensemble des documents') ||
+    lower.includes('synthèse transversale') ||
+    lower.includes('synthèse globale') ||
+    lower.includes('combiner') ||
+    lower.includes('combinant tous') ||
+    lower.includes('toutes les pièces') ||
+    lower.includes('les deux documents') ||
+    lower.includes('les 2 documents') ||
+    lower.includes('les trois documents') ||
+    lower.includes('les 3 documents') ||
+    lower.includes('tous les fichiers') ||
+    lower.includes('tous mes fichiers') ||
+    lower.includes('ensemble des fichiers')
+  ) {
+    return { isAllDocs: true, targetedDoc: null };
+  }
+
+  for (const doc of docs) {
+    const rawName = (doc.name || doc.title || '').trim();
+    if (!rawName) continue;
+    const baseName = rawName.replace(/\.[a-zA-Z0-9]+$/, '').trim();
+    if (lower.includes(rawName.toLowerCase()) || (baseName.length >= 3 && lower.includes(baseName.toLowerCase()))) {
+      return { isAllDocs: false, targetedDoc: doc };
+    }
+  }
+
+  return { isAllDocs: false, targetedDoc: null };
+}
+
 // Détection si le prompt utilisateur spécifie un vrai sujet d'étude
 function detectHasSpecificSubject(text: string): boolean {
   if (!text || typeof text !== 'string') return false;
@@ -1754,33 +1791,24 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     const hasPromptSubject = detectHasSpecificSubject(userText);
     const hasConversationContext = hasRecentAcademicContext(messages);
 
+    // Vérification multi-documents : si l'utilisateur a joint plusieurs fichiers (>= 2)
+    const docChoice = detectTargetDocumentChoice(userText, allDocs);
+    const hasMultipleDocs = allDocs.length > 1;
+    // Si plusieurs documents sont joints et qu'aucun document précis n'est ciblé ni une synthèse globale demandée :
+    // On doit demander à l'utilisateur de préciser sur quoi il souhaite travailler !
+    const needsMultiDocClarification = hasMultipleDocs && !docChoice.targetedDoc && !docChoice.isAllDocs;
+
     // INTERPELLATION OBLIGATOIRE : Si l'utilisateur demande une création sans document, sans sujet précis et sans contexte de discussion
     const needsSubjectClarification = isCreationIntent && !hasAttachedDoc && !hasPromptSubject && !hasConversationContext;
 
-    if (needsSubjectClarification && detectedFormat) {
+    // Fonction d'interpellation interactive protégée avec animation machine à écrire
+    const runInterpellation = (interpellationText: string) => {
       setIsWaitingServer(false);
       setRetryingMessageId(null);
       window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
         detail: { isLoading: false, isCreation: false }
       }));
       window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
-
-      const formatName = CREATION_FORMAT_LABELS[detectedFormat] || 'création interactive';
-      const suggestions = getSuggestedPromptsForFormat(detectedFormat);
-
-      const interpellationText = `Pour que je puisse concevoir votre **${formatName}**, vous devez d'abord m'indiquer précisément sur quoi elle doit porter !
-
-Je ne peux pas concevoir de support d'étude « dans le vide » sans sujet ni document d'appui.
-
-👉 **Pour m'indiquer votre sujet, vous pouvez :**
-1. **Écrire directement le thème ou chapitre** dans votre message (par exemple : *« Sur les fonctions dérivées en maths »*, *« Sur la Seconde Guerre Mondiale »*, *« Sur les réactions d'oxydoréduction »*...).
-2. Ou **joindre votre fichier de cours** (document PDF, Word, fiche ou photo d'exercice) en cliquant sur le trombone 📎 d'importation en bas.
-
----
-Voici quelques exemples concrets sur lesquels vous pouvez lancer votre création immédiatement en un clic :
-
-[QUESTIONS_SUGGÉRÉES]
-${suggestions.map(s => `- ${s}`).join('\n')}`;
 
       // Ouvrir immédiatement le menu de chat pour afficher l'interpellation
       window.dispatchEvent(new CustomEvent('open-assistant-chat'));
@@ -1883,7 +1911,53 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
           finalizeInterpellation();
         }
       }, tickSpeed);
+    };
 
+    // Cas 1 : Plusieurs documents joints et demande non ciblée -> Clarification obligatoire
+    if (needsMultiDocClarification) {
+      const formatName = detectedFormat ? (CREATION_FORMAT_LABELS[detectedFormat] || 'création') : 'tâche d\'étude';
+      const docList = allDocs.map((d, i) => `${i + 1}. 📄 **${d.name || d.title || `Document ${i + 1}`}**`).join('\n');
+
+      const interpellationText = `J'ai bien détecté **${allDocs.length} documents joints** dans votre espace d'étude :
+${docList}
+
+Pour que je puisse concevoir votre **${formatName}** (ou répondre à votre demande), sur quoi souhaitez-vous que je me concentre ?
+
+- Vous pouvez choisir de travailler **exclusivement sur l'un de ces documents**.
+- Ou me demander une **synthèse globale** combinant l'ensemble de vos documents.
+- Ou m'indiquer un chapitre particulier.
+
+👉 **Choisissez directement l'une des options ci-dessous en un clic :**
+
+[QUESTIONS_SUGGÉRÉES]
+${allDocs.slice(0, 4).map(d => `- Travailler uniquement sur « ${d.name || d.title} » pour mon ${formatName}`).join('\n')}
+- Réaliser une synthèse transversale combinant TOUS les documents pour mon ${formatName}
+- Poser une question spécifique sur ces documents`;
+
+      runInterpellation(interpellationText);
+      return;
+    }
+
+    // Cas 2 : Demande de création sans aucun document ni sujet
+    if (needsSubjectClarification && detectedFormat) {
+      const formatName = CREATION_FORMAT_LABELS[detectedFormat] || 'création interactive';
+      const suggestions = getSuggestedPromptsForFormat(detectedFormat);
+
+      const interpellationText = `Pour que je puisse concevoir votre **${formatName}**, vous devez d'abord m'indiquer précisément sur quoi elle doit porter !
+
+Je ne peux pas concevoir de support d'étude « dans le vide » sans sujet ni document d'appui.
+
+👉 **Pour m'indiquer votre sujet, vous pouvez :**
+1. **Écrire directement le thème ou chapitre** dans votre message (par exemple : *« Sur les fonctions dérivées en maths »*, *« Sur la Seconde Guerre Mondiale »*, *« Sur les réactions d'oxydoréduction »*...).
+2. Ou **joindre votre fichier de cours** (document PDF, Word, fiche ou photo d'exercice) en cliquant sur le trombone 📎 d'importation en bas.
+
+---
+Voici quelques exemples concrets sur lesquels vous pouvez lancer votre création immédiatement en un clic :
+
+[QUESTIONS_SUGGÉRÉES]
+${suggestions.map(s => `- ${s}`).join('\n')}`;
+
+      runInterpellation(interpellationText);
       return;
     }
 
@@ -1929,7 +2003,7 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
     }
 
     try {
-      const targetDocs = allDocs.slice(0, 3);
+      const targetDocs = (docChoice.targetedDoc ? [docChoice.targetedDoc] : allDocs).slice(0, 5);
       const docNames: string[] = [];
       const docIds: string[] = [];
       const docR2Keys: string[] = [];
@@ -1965,7 +2039,7 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
       const attachedFileName = docNames.join(', ');
       const attachedFileId = docIds.join(',');
       const attachedFileR2Key = docR2Keys.join(',');
-      const mainDocName = docNames[0] || activePreviewItem?.name || 'Document d\'étude';
+      const mainDocName = docChoice.targetedDoc ? (docChoice.targetedDoc.name || docChoice.targetedDoc.title) : (docNames[0] || activePreviewItem?.name || 'Document d\'étude');
       const attachedImageBase64 = targetDocs.find(d => d.imageBase64)?.imageBase64 || activePreviewItem?.imageBase64 || '';
       const attachedAudioBase64 = targetDocs.find(d => d.audioBase64)?.audioBase64 || activePreviewItem?.audioBase64 || '';
 
@@ -2116,7 +2190,15 @@ ou
    - Si l'étudiant te demande une création (ou a cliqué sur un bouton de création) MAIS qu'il n'a joint AUCUN document, n'a précisé AUCUN sujet de cours dans son message, ET que la discussion précédente ne porte sur aucun sujet d'étude précis :
      -> TU NE DOIS EN AUCUN CAS PRODUIRE D'OBJET JSON DE CRÉATION NI CRÉER DANS LE VIDE.
      -> TU DOIS IMPÉRATIVEMENT L'INTERPELLER DANS LE CHAT en lui demandant avec bienveillance d'indiquer la matière ou le chapitre précis qu'il souhaite réviser, ou de joindre son fichier de cours.
-     -> TU DOIS OBLIGATOIREMENT terminer ta réponse par le bloc [QUESTIONS_SUGGÉRÉES] avec 4 exemples concrets de prompts de création portant sur des matières variées (Maths, Physique, SVT, Informatique, etc.) sous forme de boutons cliquables.`;
+     -> TU DOIS OBLIGATOIREMENT terminer ta réponse par le bloc [QUESTIONS_SUGGÉRÉES] avec 4 exemples concrets de prompts de création portant sur des matières variées (Maths, Physique, SVT, Informatique, etc.) sous forme de boutons cliquables.
+
+7.bis GESTION MULTI-DOCUMENTS & DEMANDES IMPRÉCISES :
+   - Si l'étudiant a joint plusieurs documents distincts et que sa demande est générale ou non ciblée sur un fichier précis :
+     -> Ne choisis pas un document au hasard et ne produis pas de création confuse à l'aveugle.
+     -> Présente brièvement les documents joints et demande-lui clairement dans le chat sur quel document ou quel chapitre il souhaite se concentrer, ou s'il préfère une synthèse globale croisée de l'ensemble des documents.
+     -> Termine OBLIGATOIREMENT par le bloc [QUESTIONS_SUGGÉRÉES] proposant chaque document en bouton cliquable direct.
+   - Si la demande est vague ou imprécise (ex: "fais un résumé", "aide-moi", "crée un qcm" sans précision du chapitre ou du sujet souhaité) :
+     -> Pose des questions de clarification pédagogiques et propose 3 à 4 options d'angles d'attaque claires sous [QUESTIONS_SUGGÉRÉES].`;
 
       systemContent += `\n\n8. POSITION ALÉATOIRE, DIVERSITÉ ET NOMBRE MAXIMUM (18 MAXIMUM) POUR QUESTIONNAIRES ET VRAI OU FAUX :
 - RÈGLE STRICTE SUR LE NOMBRE DE QUESTIONS / AFFIRMATIONS :
