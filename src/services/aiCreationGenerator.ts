@@ -525,7 +525,11 @@ function parseInfographicFromText(rawText: string, safeDocName: string): Infogra
  */
 function parseSummaryFromText(rawText: string, safeDocName: string): SummaryContent {
   const paragraphs = rawText.split('\n\n').map(p => p.trim()).filter(p => p.length > 15);
-  const overview = paragraphs[0] || `Synthèse approfondie de "${safeDocName}".`;
+  const validParagraphs = paragraphs.filter(p =>
+    !/^(?:j'ai\s+con[çc]u|j'ai\s+cr[ée][ée]|voici\s+votre|✨|\*\(Le calcul)/i.test(p) &&
+    !p.startsWith('{') && !p.startsWith('```')
+  );
+  const overview = validParagraphs[0] || `Synthèse approfondie de "${safeDocName}".`;
   const keyPoints: string[] = [];
   const definitions: Array<{ term: string; definition: string }> = [];
   const key_definitions: Array<{ concept: string; definition: string; objective?: string }> = [];
@@ -1125,16 +1129,20 @@ export function parseOrBuildAiCreation(
           };
         }
         case 'summary': {
+          const rawOverview = dataObj.overview || dataObj.summary || '';
+          const isCompanion = typeof rawOverview === 'string' && /^(?:j'ai\s+con[çc]u|j'ai\s+cr[ée][ée]|voici\s+votre|✨|\*\(Le calcul)/i.test(rawOverview.trim());
+          const safeOverview = isCompanion ? '' : rawOverview;
+
           return {
             title: sanitizeText(parsed.creation_title || dataObj.title) || `Fiche de Résumé : ${safeDocName}`,
             content: {
               title: sanitizeText(dataObj.title || parsed.creation_title || `Fiche de Résumé : ${safeDocName}`),
               theme: sanitizeText(dataObj.theme || dataObj.domaine || ''),
-              overview: sanitizeText(dataObj.overview || dataObj.summary || cleanText.slice(0, 300)),
+              overview: sanitizeText(safeOverview),
               keyPoints: Array.isArray(dataObj.keyPoints)
                 ? dataObj.keyPoints.map(sanitizeText)
                 : (Array.isArray(dataObj.key_points) ? dataObj.key_points.map(sanitizeText) : []),
-              key_definitions: Array.isArray(dataObj.key_definitions) ? dataObj.key_definitions : [],
+              key_definitions: Array.isArray(dataObj.key_definitions) ? dataObj.key_definitions : (Array.isArray(dataObj.definitions) ? dataObj.definitions : []),
               formulas: Array.isArray(dataObj.formulas)
                 ? dataObj.formulas.map((f: any) => ({
                     name: sanitizeText(f.name || f.title || 'Formule clé'),

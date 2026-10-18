@@ -2522,20 +2522,21 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
         return;
       }
 
-      const rawResponseText = aiResult.response || "Désolé, je n'ai pas pu obtenir de réponse.";
+      const fullAiText = (aiResult as any).raw_response || (aiResult as any).rawResponse || aiResult.response || "Désolé, je n'ai pas pu obtenir de réponse.";
+      const rawResponseText = fullAiText;
       setIsWaitingServer(false);
       setRetryingMessageId(null);
 
-      let fullResponseText = rawResponseText;
+      let fullResponseText = aiResult.response || rawResponseText;
 
       // 6. L'IA CHEF D'ORCHESTRE AUTONOME : DÉCISION DE L'IA ENTRE CHAT ET CRÉATION
       const hasCreationClues = Boolean(
         aiResult.mode === 'creation' ||
         (aiResult.creation_type && aiResult.creation_data) ||
         (isExplicitOverride && explicitToolType) ||
-        /"decision"\s*:\s*"creation"/i.test(rawResponseText) ||
-        /"creation_data"/i.test(rawResponseText) ||
-        /<creation/i.test(rawResponseText)
+        /"decision"\s*:\s*"creation"/i.test(fullAiText) ||
+        /"creation_data"/i.test(fullAiText) ||
+        /<creation/i.test(fullAiText)
       );
 
       let creationParsed: any = null;
@@ -2547,7 +2548,21 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
           normType = explicitToolType.includes('test') ? 'vrai-ou-faux-test' : 'vrai-ou-faux';
         }
         let finalContent = aiResult.creation_data;
-        if (normType === 'vrai-ou-faux' || normType === 'vrai-ou-faux-test') {
+        if (normType === 'resume') {
+          const rObj = finalContent?.summary || finalContent?.creation_data || finalContent;
+          finalContent = {
+            title: rObj.title || aiResult.creation_title || `Fiche de Résumé : ${mainDocName}`,
+            theme: rObj.theme || rObj.domaine || '',
+            overview: typeof rObj.overview === 'string' && !/^(?:j'ai\s+con[çc]u|j'ai\s+cr[ée][ée]|voici\s+votre|✨)/i.test(rObj.overview.trim()) ? rObj.overview : '',
+            key_definitions: Array.isArray(rObj.key_definitions) ? rObj.key_definitions : (Array.isArray(rObj.definitions) ? rObj.definitions : []),
+            formulas: Array.isArray(rObj.formulas) ? rObj.formulas : [],
+            comparison_table: rObj.comparison_table || null,
+            traps_and_tips: Array.isArray(rObj.traps_and_tips) ? rObj.traps_and_tips : [],
+            practical_example: rObj.practical_example || null,
+            sections: Array.isArray(rObj.sections) ? rObj.sections : [],
+            markdown: typeof rObj.markdown === 'string' ? rObj.markdown : '',
+          };
+        } else if (normType === 'vrai-ou-faux' || normType === 'vrai-ou-faux-test') {
           const rawAffs = Array.isArray(finalContent)
             ? finalContent
             : (finalContent?.affirmations || finalContent?.questions || finalContent?.items || finalContent?.statements || finalContent?.data);
@@ -2688,8 +2703,21 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
         );
 
         if (!creationParsed && explicitOrInferredType) {
-          const p = parseOrBuildAiCreation(explicitOrInferredType as any, rawResponseText, mainDocName, userText);
-          if (p.content && (p.content.questions?.length > 0 || p.content.overview || p.content.root || p.content.metrics || p.content.sections || p.content.chapters || p.content.pages || p.content.affirmations?.length > 0 || p.content.cards || p.content.exercises || p.content.exercices)) {
+          const p = parseOrBuildAiCreation(explicitOrInferredType as any, fullAiText, mainDocName, userText);
+          const hasValidOverview = p.content?.overview && typeof p.content.overview === 'string' && !/^(?:j'ai\s+con[çc]u|j'ai\s+cr[ée][ée]|voici\s+votre|✨)/i.test(p.content.overview.trim());
+          const hasRealData = Boolean(
+            (p.content?.questions && p.content.questions.length > 0) ||
+            (p.content?.affirmations && p.content.affirmations.length > 0) ||
+            (p.content?.formulas && p.content.formulas.length > 0) ||
+            (p.content?.key_definitions && p.content.key_definitions.length > 0) ||
+            (p.content?.cards && p.content.cards.length > 0) ||
+            (p.content?.exercises && p.content.exercises.length > 0) ||
+            (p.content?.exercices && p.content.exercices.length > 0) ||
+            (p.content?.sections && p.content.sections.length > 0) ||
+            p.content?.root || p.content?.columns || p.content?.metrics || p.content?.chapters || p.content?.pages ||
+            hasValidOverview
+          );
+          if (p.content && hasRealData) {
             creationParsed = {
               title: p.title,
               content: p.content,

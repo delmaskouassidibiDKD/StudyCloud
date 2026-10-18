@@ -673,25 +673,99 @@ Formate tes réponses en Markdown soigné :
  */
 function tryParseJson(str) {
   if (!str || typeof str !== "string") return null;
-  try {
-    return JSON.parse(str);
-  } catch (e) {
-    // Nettoyer les balises Markdown code (```json ... ```)
-    const cleaned = str.replace(/^[\s\S]*?```(?:json)?/i, "").replace(/```[\s\S]*$/, "").trim();
-    try {
-      return JSON.parse(cleaned);
-    } catch (e2) {
-      // Trouver le premier { et le dernier }
-      const start = str.indexOf("{");
-      const end = str.lastIndexOf("}");
-      if (start !== -1 && end > start) {
-        try {
-          return JSON.parse(str.slice(start, end + 1));
-        } catch (e3) {}
-      }
+
+  let cleaned = str.trim();
+  const jsonMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (jsonMatch) {
+    cleaned = jsonMatch[1].trim();
+  } else {
+    const firstBrace = cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      cleaned = cleaned.substring(firstBrace, lastBrace + 1);
     }
   }
-  return null;
+
+  const latexCommands = "dfrac|frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end|boxed|bm|boldsymbol|log|ln|lg|exp|cos|sin|tan|arctan|arccos|arcsin|dB|max|min|sup|inf|quad|qquad|rm|bf|cal|bb|mathbb|mathbf|mathcal|vert|Vert|langle|rangle";
+  const latexRegex = new RegExp(`(?<!\\\\)\\\\(${latexCommands})\\b`, "gi");
+  let preProcessed = cleaned.replace(latexRegex, "\\\\$1");
+  preProcessed = preProcessed.replace(/(?<!\\)\\u(?![0-9a-fA-F]{4})/gi, "\\\\u");
+
+  try {
+    return JSON.parse(preProcessed);
+  } catch (_e1) {}
+
+  let sanitized = "";
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < preProcessed.length; i++) {
+    const char = preProcessed[i];
+    const code = preProcessed.charCodeAt(i);
+
+    if (char === '"' && !escaped) {
+      inString = !inString;
+      sanitized += char;
+    } else if (inString) {
+      if (char === "\n") sanitized += "\\n";
+      else if (char === "\r") sanitized += "\\r";
+      else if (char === "\t") sanitized += "\\t";
+      else if (code < 32) sanitized += " ";
+      else if (char === "\\") {
+        const sub = preProcessed.slice(i + 1);
+        const isLatex = new RegExp(`^(${latexCommands})\\b`, "i").test(sub);
+        const next = preProcessed[i + 1];
+        const isHexU = next === "u" && /^[0-9a-fA-F]{4}/.test(preProcessed.slice(i + 2, i + 6));
+
+        if (isLatex) sanitized += "\\\\";
+        else if (next && ['"', "\\", "/"].includes(next)) sanitized += "\\";
+        else if (isHexU) sanitized += "\\";
+        else if (next && ["b", "f", "n", "r", "t"].includes(next) && !/^(?:frac|dfrac|beta|tau|theta|text|times|rho|right|rightarrow)\b/i.test(sub)) sanitized += "\\";
+        else sanitized += "\\\\";
+      } else {
+        sanitized += char;
+      }
+    } else {
+      sanitized += char;
+    }
+
+    if (char === "\\" && !escaped) escaped = true;
+    else escaped = false;
+  }
+
+  sanitized = sanitized.replace(/,\s*([\]}])/g, "$1");
+
+  try {
+    return JSON.parse(sanitized);
+  } catch (_e2) {}
+
+  let openBraces = 0;
+  let openBrackets = 0;
+  let inStr = false;
+  let esc = false;
+
+  for (let i = 0; i < sanitized.length; i++) {
+    const c = sanitized[i];
+    if (c === '"' && !esc) inStr = !inStr;
+    if (!inStr) {
+      if (c === "{") openBraces++;
+      else if (c === "}") openBraces = Math.max(0, openBraces - 1);
+      else if (c === "[") openBrackets++;
+      else if (c === "]") openBrackets = Math.max(0, openBrackets - 1);
+    }
+    esc = (c === "\\" && !esc);
+  }
+
+  let repaired = sanitized;
+  if (inStr) repaired += '"';
+  while (openBrackets > 0) { repaired += "]"; openBrackets--; }
+  while (openBraces > 0) { repaired += "}"; openBraces--; }
+
+  try {
+    return JSON.parse(repaired);
+  } catch (_e3) {
+    return null;
+  }
 }
 
 function buildLocalFallbackCreation(moduleType, title, text) {

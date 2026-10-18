@@ -897,7 +897,115 @@ export default {
         }
       }
 
-      return cleaned;
+    // Helper universel et robuste pour extraire et désérialiser du JSON avec formules KaTeX et antislashs
+    function safeJsonParse<T = any>(rawText: string): T | null {
+      if (!rawText || typeof rawText !== "string") return null;
+
+      let cleaned = rawText.trim();
+      const jsonMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (jsonMatch) {
+        cleaned = jsonMatch[1].trim();
+      } else {
+        const firstBrace = cleaned.indexOf("{");
+        const lastBrace = cleaned.lastIndexOf("}");
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+        }
+      }
+
+      const latexCommands = "dfrac|frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end|boxed|bm|boldsymbol|log|ln|lg|exp|cos|sin|tan|arctan|arccos|arcsin|dB|max|min|sup|inf|quad|qquad|rm|bf|cal|bb|mathbb|mathbf|mathcal|vert|Vert|langle|rangle";
+      const latexRegex = new RegExp(`(?<!\\\\)\\\\(${latexCommands})\\b`, "gi");
+      let preProcessed = cleaned.replace(latexRegex, "\\\\$1");
+      preProcessed = preProcessed.replace(/(?<!\\)\\u(?![0-9a-fA-F]{4})/gi, "\\\\u");
+
+      try {
+        return JSON.parse(preProcessed);
+      } catch (_e) {}
+
+      let sanitized = "";
+      let inString = false;
+      let escaped = false;
+
+      for (let i = 0; i < preProcessed.length; i++) {
+        const char = preProcessed[i];
+        const code = preProcessed.charCodeAt(i);
+
+        if (char === '"' && !escaped) {
+          inString = !inString;
+          sanitized += char;
+        } else if (inString) {
+          if (char === "\n") {
+            sanitized += "\\n";
+          } else if (char === "\r") {
+            sanitized += "\\r";
+          } else if (char === "\t") {
+            sanitized += "\\t";
+          } else if (code < 32) {
+            sanitized += " ";
+          } else if (char === "\\") {
+            const sub = preProcessed.slice(i + 1);
+            const isLatex = new RegExp(`^(${latexCommands})\\b`, "i").test(sub);
+            const next = preProcessed[i + 1];
+            const isHexU = next === "u" && /^[0-9a-fA-F]{4}/.test(preProcessed.slice(i + 2, i + 6));
+
+            if (isLatex) {
+              sanitized += "\\\\";
+            } else if (next && ['"', "\\", "/"].includes(next)) {
+              sanitized += "\\";
+            } else if (isHexU) {
+              sanitized += "\\";
+            } else if (next && ["b", "f", "n", "r", "t"].includes(next) && !/^(?:frac|dfrac|beta|tau|theta|text|times|rho|right|rightarrow)\b/i.test(sub)) {
+              sanitized += "\\";
+            } else {
+              sanitized += "\\\\";
+            }
+          } else {
+            sanitized += char;
+          }
+        } else {
+          sanitized += char;
+        }
+
+        if (char === "\\" && !escaped) {
+          escaped = true;
+        } else {
+          escaped = false;
+        }
+      }
+
+      sanitized = sanitized.replace(/,\s*([\]}])/g, "$1");
+
+      try {
+        return JSON.parse(sanitized);
+      } catch (_e2) {}
+
+      let openBraces = 0;
+      let openBrackets = 0;
+      let inStr = false;
+      let esc = false;
+
+      for (let i = 0; i < sanitized.length; i++) {
+        const c = sanitized[i];
+        if (c === '"' && !esc) inStr = !inStr;
+        if (!inStr) {
+          if (c === "{") openBraces++;
+          else if (c === "}") openBraces = Math.max(0, openBraces - 1);
+          else if (c === "[") openBrackets++;
+          else if (c === "]") openBrackets = Math.max(0, openBrackets - 1);
+        }
+        esc = (c === "\\" && !esc);
+      }
+
+      let repaired = sanitized;
+      if (inStr) repaired += '"';
+      while (openBrackets > 0) { repaired += "]"; openBrackets--; }
+      while (openBraces > 0) { repaired += "}"; openBraces--; }
+
+      try {
+        return JSON.parse(repaired);
+      } catch (_e3) {
+        return null;
+      }
     }
 
     // Endpoint officiel de discussion IA pour l'espace d'étude StudyCloud (Robot Rouge)
@@ -1299,8 +1407,9 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
               answerText = stripAiReasoningScratchpad(rawAns);
               effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
 
-              // Protection anti-coupure brutale au milieu d'un mot ou d'une phrase
-              if (finishReason === "length" || (answerText && !/[.!?:;\n]$/.test(answerText.trim()) && !answerText.trim().endsWith("$$"))) {
+              // Protection anti-coupure brutale pour le texte normal (ne pas altérer un bloc JSON de création)
+              const isCreationJson = answerText.includes('"decision"') || answerText.includes('"creation_data"') || answerText.trim().endsWith("}") || answerText.trim().endsWith("```");
+              if (!isCreationJson && (finishReason === "length" || (answerText && !/[.!?:;\n]$/.test(answerText.trim()) && !answerText.trim().endsWith("$$")))) {
                 answerText = answerText.trim().replace(/\s+[a-zA-ZÀ-ÿ0-9_-]+$/, "");
                 answerText += "\n\n*(Le calcul est vaste et dense. Voulez-vous que je continue avec la suite exacte ?)*";
               }
@@ -1435,7 +1544,8 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
                 ? (friendlyNameMap[targetModel] || targetModel)
                 : `${friendlyNameMap[targetModel] || targetModel} (Secours Llama 3.3)`;
 
-              if (finishReason === "length" || (answerText && !/[.!?:;\n]$/.test(answerText.trim()) && !answerText.trim().endsWith("$$"))) {
+              const isCreationJsonFallback = answerText.includes('"decision"') || answerText.includes('"creation_data"') || answerText.trim().endsWith("}") || answerText.trim().endsWith("```");
+              if (!isCreationJsonFallback && (finishReason === "length" || (answerText && !/[.!?:;\n]$/.test(answerText.trim()) && !answerText.trim().endsWith("$$")))) {
                 answerText = answerText.trim().replace(/\s+[a-zA-ZÀ-ÿ0-9_-]+$/, "");
                 answerText += "\n\n*(Le calcul est vaste et dense. Voulez-vous que je continue avec la suite exacte ?)*";
               }
@@ -1465,27 +1575,18 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
         if (jsonMatch) {
           try {
             const rawTextCandidate = jsonMatch[1] || jsonMatch[0];
-            const latexCommands = "dfrac|frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end|boxed|bm|boldsymbol";
-            let preProcessed = rawTextCandidate
-              .replace(new RegExp(`(?<!\\\\)\\\\(${latexCommands})\\b`, "gi"), "\\\\$1")
-              .replace(/(?<!\\)\\u(?![0-9a-fA-F]{4})/gi, "\\\\u");
-            let rawParsed: any = null;
-            try {
-              rawParsed = JSON.parse(preProcessed);
-            } catch {
-              const sanitized = preProcessed
-                .replace(/,\s*([\]}])/g, "$1")
-                .replace(/[\x0c\u000c]/g, "\\\\f")
-                .replace(/[\x08\u0008]/g, "\\\\b");
-              rawParsed = JSON.parse(sanitized);
-            }
+            const rawParsed = safeJsonParse(rawTextCandidate);
             if (rawParsed && typeof rawParsed === "object") {
-              const payloadData = rawParsed.creation_data || (
-                rawParsed.questions || rawParsed.affirmations || rawParsed.cards ||
-                rawParsed.root || rawParsed.branches || rawParsed.columns || rawParsed.piliers ||
-                rawParsed.noeud_central || rawParsed.noeuds || rawParsed.mermaid || rawParsed.overview || rawParsed.sections ||
-                rawParsed.exercises || rawParsed.exercices || null
-              );
+              const payloadData = (rawParsed.creation_data && typeof rawParsed.creation_data === "object")
+                ? rawParsed.creation_data
+                : (rawParsed.questions || rawParsed.affirmations || rawParsed.cards ||
+                   rawParsed.columns || rawParsed.piliers || rawParsed.root || rawParsed.branches ||
+                   rawParsed.noeud_central || rawParsed.noeuds || rawParsed.mermaid ||
+                   rawParsed.overview || rawParsed.formulas || rawParsed.key_definitions ||
+                   rawParsed.sections || rawParsed.exercises || rawParsed.exercices)
+                ? rawParsed
+                : null;
+
               if (
                 rawParsed.decision === "creation" || rawParsed.mode === "creation" || payloadData ||
                 rawParsed.columns || rawParsed.branches || rawParsed.noeud_central || rawParsed.connecteurs
@@ -1511,6 +1612,8 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
                   creationType = "carte-mentale";
                 } else if (reqTypeNorm.includes("questionnaire") || parsedTypeNorm.includes("questionnaire") || rawParsed.questions) {
                   creationType = reqTypeNorm.includes("test") || parsedTypeNorm.includes("test") ? "questionnaire-test" : "questionnaire";
+                } else if (reqTypeNorm.includes("resume") || reqTypeNorm.includes("summary") || parsedTypeNorm.includes("resume") || parsedTypeNorm.includes("summary") || rawParsed.overview || rawParsed.formulas || rawParsed.key_definitions) {
+                  creationType = "resume";
                 } else {
                   creationType = rawParsed.creation_type || (
                     rawParsed.cards ? "carte-memoire" :
@@ -1522,7 +1625,7 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
 
                 creationTitle = rawParsed.creation_title || rawParsed.title || `${(creationType || "MODULE").toUpperCase()} : ${docName || "Étude Académique"}`;
 
-                // Normalisation et plafonnement strict à 18 items maximum
+                // Normalisation et structuration selon le module
                 if (creationType === "vrai-ou-faux" || creationType === "vrai-ou-faux-test") {
                   const rawAffs = Array.isArray(payloadData)
                     ? payloadData
@@ -1534,7 +1637,7 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
                     else if (typeof a.reponse === "boolean") isTrue = a.reponse;
                     else if (typeof a.correctAnswer === "boolean") isTrue = a.correctAnswer;
                     else if (typeof a.is_true === "string") isTrue = a.is_true.toLowerCase() === "true" || a.is_true.toLowerCase() === "vrai";
-                    else if (typeof a.isTrue === "string") isTrue = a.isTrue.toLowerCase() === "true" || a.is_true.toLowerCase() === "vrai";
+                    else if (typeof a.isTrue === "string") isTrue = a.isTrue.toLowerCase() === "true" || a.isTrue.toLowerCase() === "vrai";
                     else if (typeof a.reponse === "string") isTrue = a.reponse.toLowerCase() === "true" || a.reponse.toLowerCase() === "vrai";
                     return {
                       id: a.id || idx + 1,
@@ -1583,8 +1686,27 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
                   } else {
                     creationData = payloadData || rawParsed;
                   }
+                } else if (creationType === "resume") {
+                  const resObj = (rawParsed.creation_data && typeof rawParsed.creation_data === "object")
+                    ? rawParsed.creation_data
+                    : (rawParsed.overview || rawParsed.formulas || rawParsed.key_definitions || rawParsed.sections)
+                    ? rawParsed
+                    : (typeof payloadData === "object" && payloadData !== null ? payloadData : rawParsed);
+
+                  creationData = {
+                    title: resObj.title || rawParsed.creation_title || docName || "Fiche de Résumé",
+                    theme: resObj.theme || resObj.domaine || "",
+                    overview: typeof resObj.overview === "string" ? resObj.overview : (typeof resObj.summary === "string" ? resObj.summary : ""),
+                    key_definitions: Array.isArray(resObj.key_definitions) ? resObj.key_definitions : (Array.isArray(resObj.definitions) ? resObj.definitions : []),
+                    formulas: Array.isArray(resObj.formulas) ? resObj.formulas : [],
+                    comparison_table: resObj.comparison_table || null,
+                    traps_and_tips: Array.isArray(resObj.traps_and_tips) ? resObj.traps_and_tips : [],
+                    practical_example: resObj.practical_example || null,
+                    sections: Array.isArray(resObj.sections) ? resObj.sections : [],
+                    markdown: typeof resObj.markdown === "string" ? resObj.markdown : ""
+                  };
                 } else {
-                  creationData = payloadData || rawParsed;
+                  creationData = (typeof payloadData === "object" && payloadData !== null) ? payloadData : rawParsed;
                 }
 
                 let extractedMsg = rawParsed.chat_response || rawParsed.chat_message;

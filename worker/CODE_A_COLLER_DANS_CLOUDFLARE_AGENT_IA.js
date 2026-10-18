@@ -1113,27 +1113,86 @@ function safeJsonParse(rawString) {
     clean = clean.slice(start, end + 1);
   }
 
-  // 2. Première tentative de parsing direct
+  // 2. Nettoyage préventif des commandes LaTeX pour doubler les antislashs uniques
+  const latexCommands = "dfrac|frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end|boxed|bm|boldsymbol|log|ln|lg|exp|cos|sin|tan|arctan|arccos|arcsin|dB|max|min|sup|inf|quad|qquad|rm|bf|cal|bb|mathbb|mathbf|mathcal|vert|Vert|langle|rangle";
+  const latexRegex = new RegExp(`(?<!\\\\)\\\\(${latexCommands})\\b`, "gi");
+  let preProcessed = clean.replace(latexRegex, "\\\\$1");
+  preProcessed = preProcessed.replace(/(?<!\\)\\u(?![0-9a-fA-F]{4})/gi, "\\\\u");
+
   try {
-    return JSON.parse(clean);
-  } catch (e1) {
-    // 3. Réparation avancée des antislashs LaTeX non échappés
-    // En JSON, des séquences comme \frac, \Delta, \alpha, \text font crasher JSON.parse car \f est form feed, \D invalide, etc.
-    try {
-      const repaired = clean
-        .replace(/\\/g, "\\\\") // Doubler tous les antislashs
-        .replace(/\\\\(["\\/bfnrtu])/g, "\\$1"); // Rétablir les vrais échappements JSON valides
-      return JSON.parse(repaired);
-    } catch (e2) {
-      // 4. Nettoyage des virgules orphelines (trailing commas)
-      try {
-        const withoutTrailingCommas = clean.replace(/,\s*([}\]])/g, "$1");
-        return JSON.parse(withoutTrailingCommas);
-      } catch (e3) {
-        console.warn("[safeJsonParse] Échec définitif du parsing JSON.");
-        return null;
+    return JSON.parse(preProcessed);
+  } catch (_e1) {}
+
+  let sanitized = "";
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < preProcessed.length; i++) {
+    const char = preProcessed[i];
+    const code = preProcessed.charCodeAt(i);
+
+    if (char === '"' && !escaped) {
+      inString = !inString;
+      sanitized += char;
+    } else if (inString) {
+      if (char === "\n") sanitized += "\\n";
+      else if (char === "\r") sanitized += "\\r";
+      else if (char === "\t") sanitized += "\\t";
+      else if (code < 32) sanitized += " ";
+      else if (char === "\\") {
+        const sub = preProcessed.slice(i + 1);
+        const isLatex = new RegExp(`^(${latexCommands})\\b`, "i").test(sub);
+        const next = preProcessed[i + 1];
+        const isHexU = next === "u" && /^[0-9a-fA-F]{4}/.test(preProcessed.slice(i + 2, i + 6));
+
+        if (isLatex) sanitized += "\\\\";
+        else if (next && ['"', "\\", "/"].includes(next)) sanitized += "\\";
+        else if (isHexU) sanitized += "\\";
+        else if (next && ["b", "f", "n", "r", "t"].includes(next) && !/^(?:frac|dfrac|beta|tau|theta|text|times|rho|right|rightarrow)\b/i.test(sub)) sanitized += "\\";
+        else sanitized += "\\\\";
+      } else {
+        sanitized += char;
       }
+    } else {
+      sanitized += char;
     }
+
+    if (char === "\\" && !escaped) escaped = true;
+    else escaped = false;
+  }
+
+  sanitized = sanitized.replace(/,\s*([\]}])/g, "$1");
+
+  try {
+    return JSON.parse(sanitized);
+  } catch (_e2) {}
+
+  let openBraces = 0;
+  let openBrackets = 0;
+  let inStr = false;
+  let esc = false;
+
+  for (let i = 0; i < sanitized.length; i++) {
+    const c = sanitized[i];
+    if (c === '"' && !esc) inStr = !inStr;
+    if (!inStr) {
+      if (c === "{") openBraces++;
+      else if (c === "}") openBraces = Math.max(0, openBraces - 1);
+      else if (c === "[") openBrackets++;
+      else if (c === "]") openBrackets = Math.max(0, openBrackets - 1);
+    }
+    esc = (c === "\\" && !esc);
+  }
+
+  let repaired = sanitized;
+  if (inStr) repaired += '"';
+  while (openBrackets > 0) { repaired += "]"; openBrackets--; }
+  while (openBraces > 0) { repaired += "}"; openBraces--; }
+
+  try {
+    return JSON.parse(repaired);
+  } catch (_e3) {
+    return null;
   }
 }
 

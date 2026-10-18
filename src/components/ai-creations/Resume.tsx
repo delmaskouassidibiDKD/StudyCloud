@@ -43,6 +43,8 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
         ? data.summary
         : data?.content && typeof data.content === 'object' && !Array.isArray(data.content)
         ? data.content
+        : data?.creation_data && typeof data.creation_data === 'object' && !Array.isArray(data.creation_data)
+        ? data.creation_data
         : data || {};
 
     const rawMarkdown: string =
@@ -83,11 +85,13 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       }
     }
 
-    const safeOverview =
+    const rawOverview =
       raw?.overview ||
       (typeof raw?.summary === 'string' ? raw.summary : '') ||
       raw?.description ||
       '';
+    const isCompanion = typeof rawOverview === 'string' && /^(?:j'ai\s+con[çc]u|j'ai\s+cr[ée][ée]|voici\s+votre|✨|\*\(Le calcul)/i.test(rawOverview.trim());
+    const safeOverview = isCompanion ? '' : rawOverview;
 
     // 1. Notions Clés & Définitions
     const rawKeyDefs: SummaryKeyDefinition[] = Array.isArray(raw?.key_definitions)
@@ -742,6 +746,13 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             </div>
           )}
 
+          {/* Rendu Markdown complet de repli si la fiche a été rédigée sous forme textuelle */}
+          {parsedSummary.markdown && parsedSummary.sections.length === 0 && parsedSummary.formulas.length === 0 && (
+            <div className="space-y-6 pt-4 text-stone-900 leading-relaxed text-base sm:text-lg">
+              <MathText text={parsedSummary.markdown} />
+            </div>
+          )}
+
           {/* État vide si aucune donnée */}
           {!hasDynamicData && (
             <div
@@ -749,12 +760,12 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
               className="w-full text-center py-16 space-y-4"
             >
               <FileText className="w-12 h-12 text-stone-400 mx-auto" />
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <h3 className="text-xl font-bold text-stone-800">
-                  Fiche de Résumé
+                  Fiche de Résumé non disponible
                 </h3>
                 <p className="text-stone-600 text-sm max-w-md mx-auto">
-                  Prêt à recevoir la synthèse détaillée avec formulaire, méthodes et pièges à éviter.
+                  La génération de la synthèse n'a pas pu être complétée. Veuillez relancer la création depuis le volet de droite ou dans le chat.
                 </p>
               </div>
             </div>

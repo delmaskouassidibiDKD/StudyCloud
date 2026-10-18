@@ -132,7 +132,7 @@ export function safeJsonParse<T = any>(raw: string): T | null {
 
   // 1. Nettoyage préventif des commandes LaTeX pour doubler les antislashs uniques (\frac -> \\frac)
   // afin que JSON.parse n'interprète pas \f comme Form Feed (ASCII 12 \x0c) ou \b comme Backspace, et \u comme Unicode escape invalide
-  const latexCommands = 'dfrac|frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end|boxed|bm|boldsymbol';
+  const latexCommands = 'dfrac|frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end|boxed|bm|boldsymbol|log|ln|lg|exp|cos|sin|tan|arctan|arccos|arcsin|dB|max|min|sup|inf|quad|qquad|rm|bf|cal|bb|mathbb|mathbf|mathcal|vert|Vert|langle|rangle';
   const latexRegex = new RegExp(`(?<!\\\\)\\\\(${latexCommands})\\b`, 'gi');
   let preProcessed = trimmed.replace(latexRegex, '\\\\$1');
 
@@ -267,6 +267,8 @@ export async function sendChatMessageToAi(params: {
   creation_type?: string;
   creation_title?: string;
   creation_data?: any;
+  raw_response?: string;
+  rawResponse?: string;
 }> {
   const isPowerMode = Boolean(params.powerMode || params.engine === 'gemini');
   const userGeminiApiKey = (params.geminiApiKey || getGeminiApiKey()).trim();
@@ -458,7 +460,7 @@ export async function sendChatMessageToAi(params: {
         }
         if (parsed.creation_data) {
           extractedCreationData = typeof parsed.creation_data === 'string' ? safeJsonParse(parsed.creation_data) : parsed.creation_data;
-        } else if (Array.isArray(parsed.questions) || Array.isArray(parsed.affirmations) || Array.isArray(parsed.cards) || parsed.root || parsed.overview || parsed.sections || parsed.exercises || parsed.exercices || parsed.written_exercise || parsed.complete_exam) {
+        } else if (Array.isArray(parsed.questions) || Array.isArray(parsed.affirmations) || Array.isArray(parsed.cards) || parsed.root || parsed.overview || parsed.sections || parsed.exercises || parsed.exercices || parsed.written_exercise || parsed.complete_exam || Array.isArray(parsed.formulas) || Array.isArray(parsed.key_definitions)) {
           extractedCreationData = parsed;
           extractedMode = 'creation';
         }
@@ -497,6 +499,8 @@ export async function sendChatMessageToAi(params: {
     ? (extractedChatResponse || `✨ J'ai généré votre création directement dans l'espace Création à droite !`)
     : (extractedChatResponse || data.chat_response || text);
 
+  const rawFull = data.raw_response || data.rawResponse || text;
+
   return {
     response: finalResponse,
     success: data.success !== false,
@@ -507,6 +511,8 @@ export async function sendChatMessageToAi(params: {
     creation_type: extractedCreationType || data.creation_type,
     creation_title: extractedCreationTitle || data.creation_title,
     creation_data: extractedCreationData || data.creation_data,
+    raw_response: rawFull,
+    rawResponse: rawFull,
   };
 }
 

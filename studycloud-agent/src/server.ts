@@ -45,7 +45,7 @@ export function extractAndSanitizeJson(rawText: string): any {
   }
 
   // 2. Nettoyage préventif des commandes LaTeX pour doubler les antislashs uniques (\frac -> \\frac)
-  const latexCommands = "dfrac|frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end|boxed|bm|boldsymbol";
+  const latexCommands = "dfrac|frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end|boxed|bm|boldsymbol|log|ln|lg|exp|cos|sin|tan|arctan|arccos|arcsin|dB|max|min|sup|inf|quad|qquad|rm|bf|cal|bb|mathbb|mathbf|mathcal|vert|Vert|langle|rangle";
   const latexRegex = new RegExp(`(?<!\\\\)\\\\(${latexCommands})\\b`, "gi");
   let preProcessed = cleaned.replace(latexRegex, "\\\\$1");
 
