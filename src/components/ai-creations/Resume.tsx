@@ -4,20 +4,9 @@ import {
   Check,
   Download,
   FileText,
-  Clock,
-  BookOpen,
-  Lightbulb,
-  CheckCircle2,
-  AlertTriangle,
-  Calculator,
-  Table as TableIcon,
-  Wrench,
-  Bookmark,
-  Sparkles,
 } from 'lucide-react';
 import { MathText } from '../MathText';
 import {
-  SummaryContent,
   SummaryFormula,
   SummaryComparisonTable,
   SummaryTrapOrTip,
@@ -35,7 +24,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
   const [copied, setCopied] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
 
-  // Normalisation unifiée et robuste des données (support JSON structuré et Markdown hybride)
+  // Normalisation unifiée et robuste des données (support JSON structuré et Markdown continu)
   const parsedSummary = useMemo(() => {
     const raw: any =
       data?.summary && typeof data.summary === 'object' && !Array.isArray(data.summary)
@@ -55,23 +44,26 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
         ? data.markdown
         : '';
 
-    // Détection d'un titre et d'un domaine
+    // Détection d'un titre et d'un thème propre
     let safeTitle =
       raw?.title ||
       data?.title ||
       title ||
-      (sourceFileName ? `Fiche de synthèse : ${sourceFileName}` : 'Fiche de Révision Pédagogique');
+      (sourceFileName ? sourceFileName.replace(/\.[^/.]+$/, '') : 'Fiche de Résumé');
+
+    // Nettoyage des préfixes redondants
+    safeTitle = safeTitle.replace(/^Fiche de R[ée]sum[ée]\s*:\s*/i, '').trim();
 
     let safeTheme =
       raw?.theme ||
       raw?.domaine ||
       data?.theme ||
-      'Synthèse & Méthodologie Universitaire';
+      safeTitle;
 
     if (rawMarkdown) {
       const titleMatch = rawMarkdown.match(/^#\s*📑?\s*\[?([^\]\n]+)\]?/m);
       if (titleMatch && titleMatch[1]) {
-        safeTitle = titleMatch[1].trim();
+        safeTitle = titleMatch[1].replace(/^Fiche de R[ée]sum[ée]\s*:\s*/i, '').trim();
       }
       const themeMatch = rawMarkdown.match(/\((?:Domaine|Thème)\s*[:–—\-]?\s*([^\)]+)\)/i);
       if (themeMatch && themeMatch[1]) {
@@ -96,7 +88,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
         rawKeyDefs.push({
           concept: d.term || d.concept || 'Notion clé',
           definition: d.definition || d.desc || '',
-          objective: d.objective || d.application || 'Assimilation et maîtrise pratique',
+          objective: d.objective || d.application || '',
         });
       });
     }
@@ -104,7 +96,6 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
     // 2. Formulaire & Méthodologie
     const formulas: SummaryFormula[] = Array.isArray(raw?.formulas) ? raw.formulas : [];
 
-    // Extraction de formules depuis le Markdown si non fournies
     if (formulas.length === 0 && rawMarkdown) {
       const formulaRegex =
         /(?:\*\s*\*\*Formule\s*:\*\*\s*)?(\$\$[\s\S]*?\$\$)/g;
@@ -115,8 +106,8 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
           formulas.push({
             name: 'Formule Fondamentale',
             latex,
-            when_to_use: 'Application directe dans les exercices et configurations types',
-            how_to_derive: 'Démonstration par application rigoureuse des lois physiques/mathématiques du cours',
+            when_to_use: 'Application directe dans les configurations du cours',
+            how_to_derive: 'Application des lois fondamentales du chapitre',
           });
         }
       }
@@ -226,7 +217,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       ? data.keyPoints
       : [];
 
-    // Sections rédigées additionnelles
+    // Sections rédigées de cours
     const rawSections = raw?.sections || data?.sections;
     const sections = Array.isArray(rawSections)
       ? rawSections.map((sec: any, idx: number) => ({
@@ -246,8 +237,6 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             : Array.isArray(sec.key_takeaways)
             ? sec.key_takeaways
             : [],
-          protocolTitle:
-            sec.protocolTitle || sec.highlightTitle || 'Points fondamentaux à retenir :',
         }))
       : [];
 
@@ -284,71 +273,69 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
   const docOverview = parsedSummary.overview;
   const hasDynamicData = parsedSummary.hasData;
 
-  // Texte intégral propre pour la copie et le téléchargement
+  // Texte intégral pour la copie et le téléchargement
   const fullText = useMemo(() => {
     if (!parsedSummary.hasData) return '';
-    let out = `=======================================================\n`;
-    out += `📑 FICHE DE RÉSUMÉ PÉDAGOGIQUE : ${parsedSummary.title.toUpperCase()}\n`;
-    out += `DOMAINE : ${parsedSummary.theme}\n`;
-    out += `=======================================================\n\n`;
+    let out = `${parsedSummary.title.toUpperCase()}\n`;
+    out += `Thème : ${parsedSummary.theme}\n\n`;
 
     if (parsedSummary.overview) {
-      out += `ESSENTIEL DU COURS (OVERVIEW) :\n${parsedSummary.overview}\n\n`;
+      out += `${parsedSummary.overview}\n\n`;
     }
 
     if (parsedSummary.keyDefinitions.length > 0) {
-      out += `1. NOTIONS CLÉS & DÉFINITIONS :\n`;
-      parsedSummary.keyDefinitions.forEach((kd, idx) => {
-        out += `  [${idx + 1}] ${kd.concept} :\n`;
-        out += `      • Définition : ${kd.definition}\n`;
-        if (kd.objective) out += `      • Objectif : ${kd.objective}\n`;
+      out += `I. NOTIONS FONDAMENTALES & DÉFINITIONS :\n`;
+      parsedSummary.keyDefinitions.forEach((kd) => {
+        out += `• ${kd.concept} : ${kd.definition}`;
+        if (kd.objective) out += ` (Objectif : ${kd.objective})`;
+        out += `\n`;
       });
       out += `\n`;
     }
 
     if (parsedSummary.formulas.length > 0) {
-      out += `2. FORMULAIRE & MÉTHODOLOGIE :\n`;
+      out += `II. FORMULAIRE & MÉTHODOLOGIE :\n`;
       parsedSummary.formulas.forEach((f, idx) => {
-        out += `  [Formule ${idx + 1}] ${f.name || 'Relation clé'} :\n`;
-        out += `      Formule : ${f.latex}\n`;
-        if (f.variables) out += `      Variables : ${f.variables}\n`;
-        if (f.when_to_use) out += `      Quand l'utiliser : ${f.when_to_use}\n`;
-        if (f.how_to_derive) out += `      Démonstration : ${f.how_to_derive}\n`;
+        out += `\n${idx + 1}. ${f.name || 'Relation clé'} :\n`;
+        out += `   Formule : ${f.latex}\n`;
+        if (f.variables) out += `   Variables : ${f.variables}\n`;
+        if (f.when_to_use) out += `   Cas d'application : ${f.when_to_use}\n`;
+        if (f.how_to_derive) out += `   Démonstration : ${f.how_to_derive}\n`;
       });
       out += `\n`;
     }
 
     if (parsedSummary.comparisonTable) {
-      out += `3. TABLEAU SYNTHÉTIQUE :\n`;
-      out += `  | ${parsedSummary.comparisonTable.headers.join(' | ')} |\n`;
-      out += `  | ${parsedSummary.comparisonTable.headers.map(() => '---').join(' | ')} |\n`;
+      out += `III. TABLEAU SYNTHÉTIQUE :\n`;
+      out += `| ${parsedSummary.comparisonTable.headers.join(' | ')} |\n`;
+      out += `| ${parsedSummary.comparisonTable.headers.map(() => '---').join(' | ')} |\n`;
       parsedSummary.comparisonTable.rows.forEach((row) => {
-        out += `  | ${row.join(' | ')} |\n`;
+        out += `| ${row.join(' | ')} |\n`;
       });
       out += `\n`;
     }
 
     if (parsedSummary.trapsAndTips.length > 0) {
-      out += `4. PIÈGES À ÉVITER & REMARQUES (NB) :\n`;
+      out += `IV. PIÈGES À ÉVITER & REMARQUES (NB) :\n`;
       parsedSummary.trapsAndTips.forEach((tt) => {
         const prefix = tt.type === 'trap' ? '🚨 PIÈGE CLASSIQUE' : '💡 ASTUCE (NB)';
-        out += `  [${prefix}] ${tt.title ? `${tt.title} : ` : ''}${tt.content}\n`;
+        out += `> [${prefix}] ${tt.title ? `${tt.title} : ` : ''}${tt.content}\n`;
       });
       out += `\n`;
     }
 
     if (parsedSummary.practicalExample) {
-      out += `5. EXEMPLE PRATIQUE D'APPLICATION :\n`;
-      out += `  Énoncé : ${parsedSummary.practicalExample.statement}\n`;
-      out += `  Résolution pas à pas :\n`;
+      out += `V. EXEMPLE PRATIQUE D'APPLICATION :\n`;
+      out += `Énoncé : ${parsedSummary.practicalExample.statement}\n`;
+      out += `Résolution pas à pas :\n`;
       parsedSummary.practicalExample.resolution_steps.forEach((step, sidx) => {
-        out += `    ${sidx + 1}. ${step}\n`;
+        out += `  ${sidx + 1}. ${step}\n`;
       });
       out += `\n`;
     }
 
     if (parsedSummary.sections.length > 0) {
-      out += `SECTIONS DÉTAILLÉES DU COURS :\n`;
+      out += `DÉVELOPPEMENTS DU COURS :\n`;
       parsedSummary.sections.forEach((sec) => {
         out += `\n--- ${sec.number}. ${sec.heading} ---\n${sec.body}\n`;
         if (sec.points && sec.points.length > 0) {
@@ -373,7 +360,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${(docTitle || 'Fiche_Revision').replace(/[^a-zA-Z0-9_-]/g, '_')}.txt`;
+    link.download = `${(docTitle || 'Resume').replace(/[^a-zA-Z0-9_-]/g, '_')}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -387,6 +374,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       {/* 
         1. BANDE HORIZONTALE D'ACTIONS :
         Colle directement à la barre supérieure (top-0, aucun espace vide, pleine largeur)
+        SANS BADGE superflu (badge '5 Blocs Clés' supprimé comme demandé)
       */}
       <div
         id="resume-sticky-actions"
@@ -394,10 +382,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       >
         <div className="flex items-center gap-2 text-stone-800 text-xs sm:text-sm font-bold min-w-0">
           <FileText className="w-4 h-4 text-stone-900 shrink-0" />
-          <span className="truncate">Fiche de Révision Pédagogique</span>
-          <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
-            5 Blocs Clés
-          </span>
+          <span className="truncate">Fiche de Résumé</span>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -406,7 +391,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             id="btn-copy-resume"
             onClick={handleCopy}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-stone-300 bg-white hover:bg-stone-100 text-stone-800 text-xs sm:text-sm font-semibold transition-all shadow-xs active:scale-95 cursor-pointer"
-            title="Copier l'intégralité du texte de la fiche"
+            title="Copier l'intégralité du texte"
           >
             {copied ? (
               <>
@@ -426,7 +411,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             id="btn-download-resume"
             onClick={handleDownload}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs sm:text-sm font-semibold transition-all shadow-xs active:scale-95 cursor-pointer"
-            title="Télécharger la fiche au format texte"
+            title="Télécharger la fiche"
           >
             {downloaded ? (
               <>
@@ -444,181 +429,115 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       </div>
 
       {/* 
-        2. ZONE DE RÉDACTION DU RÉSUMÉ : PAGE BLANCHE ET ÉCRITURE EN NOIR
+        2. ZONE DE RÉDACTION : PAGE BLANCHE ET ÉCRITURE EN NOIR DIRECTEMENT DANS LE FOND DE PAGE
+        (Pas de gros bloc rond encadré et séparé, flux continu comme un livre structuré)
       */}
-      <div className="flex-1 w-full bg-white px-4 sm:px-6 md:px-10 py-8">
-        <article id="resume-document-content" className="w-full max-w-4xl mx-auto space-y-10 text-stone-900">
+      <div className="flex-1 w-full bg-white px-4 sm:px-8 md:px-12 py-8">
+        <article id="resume-document-content" className="w-full max-w-4xl mx-auto space-y-8 text-stone-900">
           {/* 
-            ========================================================================
-            EN-TÊTE : THÈME ET TITRE ENCADRÉS (Boîte stylisée avec border, bg, radius)
-            ========================================================================
+            LE THÈME BIEN EN HAUT AU MILIEU ET ENCADRÉ (PAS GROS)
+            Tous les autres éléments superflus (badges noirs, lecture 5 min, etc.) sont retirés.
           */}
-          <header className="rounded-2xl border-2 border-stone-300/80 bg-stone-50/70 p-6 sm:p-8 space-y-4 shadow-xs relative overflow-hidden">
-            <div className="flex flex-wrap items-center justify-between gap-3 text-xs font-bold uppercase tracking-wider text-stone-600">
-              <div className="flex items-center gap-2">
-                <span className="px-2.5 py-1 rounded-md bg-stone-900 text-white text-[11px] font-extrabold flex items-center gap-1.5 shadow-xs">
-                  <Bookmark className="w-3 h-3 text-amber-400" />
-                  {docTheme}
-                </span>
-                <span className="hidden sm:inline text-stone-400">•</span>
-                <span className="hidden sm:flex items-center gap-1 text-stone-600 font-semibold">
-                  <Clock className="w-3.5 h-3.5" /> Lecture 5 min
-                </span>
-              </div>
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-300/80 text-[10px] font-bold">
-                <Sparkles className="w-3 h-3 text-amber-600" /> Support Pédagogique Officiel
-              </span>
+          <div className="w-full flex justify-center pt-1 pb-4">
+            <div className="inline-block px-5 py-1.5 rounded border border-stone-800 text-stone-900 font-extrabold text-xs sm:text-sm tracking-widest uppercase text-center bg-stone-50 shadow-2xs">
+              <MathText text={docTitle || docTheme} />
             </div>
-
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-black tracking-tight leading-tight break-words whitespace-normal">
-              <MathText text={docTitle} />
-            </h1>
-
-            {docOverview && (
-              <div className="text-stone-800 text-base sm:text-lg leading-relaxed pt-2 border-t border-stone-200">
-                <MathText text={docOverview} />
-              </div>
-            )}
-          </header>
+          </div>
 
           {/* 
-            ========================================================================
-            BLOC 1 : 📌 NOTIONS CLÉS & DÉFINITIONS
-            ========================================================================
+            DÉVELOPPEMENT CONTINU RÉDIGÉ COMME UN LIVRE STRUCTURÉ :
+            Le texte s'affiche directement sur le fond de la page (comme dans le chat).
           */}
+
+          {/* Vue d'ensemble / Introduction du chapitre */}
+          {docOverview && (
+            <div className="text-stone-900 text-base sm:text-lg leading-relaxed space-y-3 font-normal">
+              <MathText text={docOverview} />
+            </div>
+          )}
+
+          {/* I. Notions Clés & Définitions */}
           {(parsedSummary.keyDefinitions.length > 0 || parsedSummary.keyPoints.length > 0) && (
-            <section className="space-y-4">
-              <div className="flex items-center gap-2.5 pb-2 border-b-2 border-stone-200">
-                <span className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold text-base shadow-xs">
-                  1
-                </span>
-                <h2 className="text-xl sm:text-2xl font-extrabold text-black flex items-center gap-2">
-                  <span>📌 Notions Clés & Définitions</span>
-                </h2>
-              </div>
+            <section className="space-y-4 pt-2">
+              <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
+                I. Notions Fondamentales & Définitions
+              </h2>
 
               {parsedSummary.keyDefinitions.length > 0 ? (
-                <div className="grid grid-cols-1 gap-3.5">
+                <ul className="space-y-3.5 pl-1">
                   {parsedSummary.keyDefinitions.map((kd, kidx) => (
-                    <div
-                      key={kidx}
-                      className="p-4 sm:p-5 rounded-xl border border-stone-200 bg-white shadow-xs space-y-2 hover:border-stone-300 transition-colors"
-                    >
-                      <div className="flex items-start gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0 mt-1" />
-                        <div className="space-y-1.5 w-full">
-                          <p className="font-bold text-black text-base sm:text-lg">
-                            <MathText text={kd.concept} />
-                          </p>
-                          <div className="text-stone-900 text-sm sm:text-base leading-relaxed pl-1">
-                            <span className="font-semibold text-stone-700">Définition : </span>
-                            <MathText text={kd.definition} />
-                          </div>
-                          {kd.objective && (
-                            <div className="text-stone-800 text-xs sm:text-sm leading-relaxed pl-1 pt-1 border-t border-stone-100 flex items-start gap-1.5">
-                              <span className="font-semibold text-amber-800">🎯 Objectif :</span>
-                              <MathText text={kd.objective} />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                /* Fallback sur les keyPoints */
-                <div className="p-5 sm:p-6 rounded-2xl bg-amber-50/70 border border-amber-200/90 space-y-3 w-full shadow-xs">
-                  <h3 className="text-xs font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
-                    <Lightbulb className="w-4 h-4 text-amber-700" /> Points clés essentiels
-                  </h3>
-                  <ul className="space-y-2.5 text-sm sm:text-base text-stone-900">
-                    {parsedSummary.keyPoints.map((kp, kidx) => (
-                      <li key={kidx} className="flex items-start gap-2.5">
-                        <CheckCircle2 className="w-4 h-4 text-amber-700 shrink-0 mt-1" />
-                        <span className="font-medium break-words whitespace-normal leading-relaxed text-stone-900">
-                          <MathText text={kp} />
+                    <li key={kidx} className="flex items-start gap-2.5 text-stone-900 text-base sm:text-lg leading-relaxed">
+                      <span className="text-stone-500 font-bold mt-1 text-sm">•</span>
+                      <div className="flex-1">
+                        <span className="font-extrabold text-black">
+                          <MathText text={kd.concept} />
                         </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                        <span className="text-stone-700 font-medium"> : </span>
+                        <MathText text={kd.definition} />
+                        {kd.objective && (
+                          <div className="text-stone-600 text-sm italic pt-0.5">
+                            <span className="font-semibold not-italic text-stone-700">Objectif : </span>
+                            <MathText text={kd.objective} />
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <ul className="space-y-2.5 pl-1">
+                  {parsedSummary.keyPoints.map((kp, kidx) => (
+                    <li key={kidx} className="flex items-start gap-2.5 text-stone-900 text-base sm:text-lg leading-relaxed">
+                      <span className="text-stone-500 font-bold mt-1 text-sm">•</span>
+                      <div className="flex-1">
+                        <MathText text={kp} />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               )}
             </section>
           )}
 
-          {/* 
-            ========================================================================
-            BLOC 2 : 🧮 FORMULAIRE & MÉTHODOLOGIE
-            ========================================================================
-          */}
+          {/* II. Formulaire & Modélisation Mathématique */}
           {parsedSummary.formulas.length > 0 && (
-            <section className="space-y-4">
-              <div className="flex items-center gap-2.5 pb-2 border-b-2 border-stone-200">
-                <span className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-base shadow-xs">
-                  2
-                </span>
-                <h2 className="text-xl sm:text-2xl font-extrabold text-black flex items-center gap-2">
-                  <Calculator className="w-5 h-5 text-blue-600" />
-                  <span>Formulaire & Méthodologie</span>
-                </h2>
-              </div>
+            <section className="space-y-5 pt-4">
+              <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
+                II. Formulaire & Méthodologie de Calcul
+              </h2>
 
-              <div className="space-y-4">
+              <div className="space-y-6">
                 {parsedSummary.formulas.map((formula, fidx) => (
-                  <div
-                    key={fidx}
-                    className="p-5 sm:p-6 rounded-2xl border-2 border-blue-100 bg-white shadow-xs space-y-4 hover:border-blue-200 transition-colors"
-                  >
-                    {/* Nom de la formule */}
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-bold uppercase tracking-wider text-blue-900 px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200">
-                        {formula.name || `Formule Fondamentale ${fidx + 1}`}
-                      </span>
+                  <div key={fidx} className="space-y-2.5 py-2 border-b border-stone-100 last:border-0">
+                    <h3 className="text-base sm:text-lg font-bold text-stone-900 flex items-center gap-2">
+                      <span className="text-stone-600">{fidx + 1}.</span>
+                      <MathText text={formula.name || `Relation fondamentale`} />
+                    </h3>
+
+                    {/* Formule mathématique centrée KaTeX directement dans la page */}
+                    <div className="py-2.5 text-center overflow-x-auto text-lg sm:text-xl font-bold text-black my-1">
+                      <MathText text={formula.latex.startsWith('$$') ? formula.latex : `$$ ${formula.latex} $$`} />
                     </div>
 
-                    {/* Bloc Formule KaTeX centré et mis en valeur */}
-                    <div className="py-4 px-6 rounded-xl bg-stone-50 border border-stone-200 text-center overflow-x-auto">
-                      <div className="text-lg sm:text-xl font-bold text-stone-950 inline-block">
-                        <MathText text={formula.latex.startsWith('$$') ? formula.latex : `$$ ${formula.latex} $$`} />
-                      </div>
-                    </div>
-
-                    {/* Détails méthodologiques sous forme de cartes d'informations */}
-                    <div className="grid grid-cols-1 gap-2.5 text-xs sm:text-sm text-stone-900 pt-1">
+                    {/* Explications au fil de l'eau */}
+                    <div className="space-y-1.5 text-sm sm:text-base text-stone-800 pl-4 border-l-2 border-stone-300">
                       {formula.variables && (
-                        <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 space-y-1">
-                          <p className="font-bold text-stone-800 flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                            Signification des variables & unités :
-                          </p>
-                          <div className="text-stone-700 leading-relaxed pl-3">
-                            <MathText text={formula.variables} />
-                          </div>
-                        </div>
+                        <p className="leading-relaxed">
+                          <span className="font-semibold text-black">Signification des variables : </span>
+                          <MathText text={formula.variables} />
+                        </p>
                       )}
-
                       {formula.when_to_use && (
-                        <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 space-y-1">
-                          <p className="font-bold text-stone-800 flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            Quand l'utiliser ? (Cas d'application) :
-                          </p>
-                          <div className="text-stone-700 leading-relaxed pl-3">
-                            <MathText text={formula.when_to_use} />
-                          </div>
-                        </div>
+                        <p className="leading-relaxed">
+                          <span className="font-semibold text-black">Quand l'utiliser : </span>
+                          <MathText text={formula.when_to_use} />
+                        </p>
                       )}
-
                       {formula.how_to_derive && (
-                        <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 space-y-1">
-                          <p className="font-bold text-stone-800 flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
-                            Comment la retrouver / démontrer ? (Méthode étape par étape) :
-                          </p>
-                          <div className="text-stone-700 leading-relaxed pl-3">
-                            <MathText text={formula.how_to_derive} />
-                          </div>
-                        </div>
+                        <p className="leading-relaxed">
+                          <span className="font-semibold text-black">Comment la retrouver / démontrer : </span>
+                          <MathText text={formula.how_to_derive} />
+                        </p>
                       )}
                     </div>
                   </div>
@@ -627,29 +546,19 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             </section>
           )}
 
-          {/* 
-            ========================================================================
-            BLOC 3 : 📊 TABLEAU SYNTHÉTIQUE / COMPARATIF
-            ========================================================================
-          */}
+          {/* III. Tableau Synthétique / Comparatif */}
           {parsedSummary.comparisonTable && (
-            <section className="space-y-4">
-              <div className="flex items-center gap-2.5 pb-2 border-b-2 border-stone-200">
-                <span className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold text-base shadow-xs">
-                  3
-                </span>
-                <h2 className="text-xl sm:text-2xl font-extrabold text-black flex items-center gap-2">
-                  <TableIcon className="w-5 h-5 text-purple-600" />
-                  <span>Tableau Synthétique</span>
-                </h2>
-              </div>
+            <section className="space-y-4 pt-4">
+              <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
+                III. Tableau Synthétique
+              </h2>
 
-              <div className="w-full overflow-x-auto rounded-2xl border border-stone-300 shadow-xs bg-white">
-                <table className="w-full text-left border-collapse text-xs sm:text-sm">
+              <div className="w-full overflow-x-auto my-3">
+                <table className="w-full text-left border border-stone-300 text-xs sm:text-sm">
                   <thead>
                     <tr className="bg-stone-100 border-b border-stone-300 text-stone-900 font-extrabold">
                       {parsedSummary.comparisonTable.headers.map((h, hidx) => (
-                        <th key={hidx} className="py-3 px-4 uppercase tracking-wider text-xs">
+                        <th key={hidx} className="py-2.5 px-3.5 uppercase tracking-wide">
                           <MathText text={h} />
                         </th>
                       ))}
@@ -659,10 +568,10 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                     {parsedSummary.comparisonTable.rows.map((row, ridx) => (
                       <tr
                         key={ridx}
-                        className={ridx % 2 === 0 ? 'bg-white hover:bg-stone-50/80' : 'bg-stone-50/50 hover:bg-stone-50'}
+                        className={ridx % 2 === 0 ? 'bg-white' : 'bg-stone-50/70'}
                       >
                         {row.map((cell, cidx) => (
-                          <td key={cidx} className="py-3 px-4 text-stone-900 font-medium leading-relaxed">
+                          <td key={cidx} className="py-2.5 px-3.5 text-stone-900 font-medium leading-relaxed">
                             <MathText text={cell} />
                           </td>
                         ))}
@@ -674,164 +583,96 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             </section>
           )}
 
-          {/* 
-            ========================================================================
-            BLOC 4 : ⚠️ PIÈGES À ÉVITER & REMARQUES (NB)
-            Cadres de couleur dédiés : Rouge/Orange pour Piège, Vert/Bleu pour Astuce
-            ========================================================================
-          */}
+          {/* IV. Pièges à éviter & Remarques (NB) */}
           {parsedSummary.trapsAndTips.length > 0 && (
-            <section className="space-y-4">
-              <div className="flex items-center gap-2.5 pb-2 border-b-2 border-stone-200">
-                <span className="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold text-base shadow-xs">
-                  4
-                </span>
-                <h2 className="text-xl sm:text-2xl font-extrabold text-black flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-rose-600" />
-                  <span>Pièges à éviter & Remarques (NB)</span>
-                </h2>
-              </div>
+            <section className="space-y-4 pt-4">
+              <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
+                IV. Pièges à Éviter & Astuces Méthodologiques (NB)
+              </h2>
 
-              <div className="grid grid-cols-1 gap-4">
+              <div className="space-y-3.5">
                 {parsedSummary.trapsAndTips.map((item, tidx) => {
                   const isTrap = item.type === 'trap' || /pi[èe]ge/i.test(item.title || '');
                   return (
-                    <div
+                    <blockquote
                       key={tidx}
                       className={
                         isTrap
-                          ? 'p-5 sm:p-6 rounded-2xl border-2 border-rose-300 bg-rose-50/90 text-rose-950 space-y-2 shadow-xs'
-                          : 'p-5 sm:p-6 rounded-2xl border-2 border-emerald-300 bg-emerald-50/90 text-emerald-950 space-y-2 shadow-xs'
+                          ? 'border-l-4 border-rose-500 bg-rose-50/60 pl-4 pr-3.5 py-3 rounded-r text-stone-950 my-2 text-sm sm:text-base leading-relaxed'
+                          : 'border-l-4 border-emerald-500 bg-emerald-50/60 pl-4 pr-3.5 py-3 rounded-r text-stone-950 my-2 text-sm sm:text-base leading-relaxed'
                       }
                     >
-                      <div className="flex items-center gap-2 font-extrabold text-sm sm:text-base uppercase tracking-wide">
-                        {isTrap ? (
-                          <>
-                            <span className="text-xl">🚨</span>
-                            <span className="text-rose-950">{item.title || 'PIÈGE CLASSIQUE :'}</span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="text-xl">💡</span>
-                            <span className="text-emerald-950">{item.title || 'ASTUCE MÉTHODOLOGIQUE (NB) :'}</span>
-                          </>
+                      <p className="font-extrabold text-black mb-1 flex items-center gap-1.5">
+                        <span>{isTrap ? '🚨 PIÈGE CLASSIQUE :' : '💡 ASTUCE MÉTHODOLOGIQUE (NB) :'}</span>
+                        {item.title && !/^(pi[èe]ge|astuce)/i.test(item.title) && (
+                          <span className="font-bold text-stone-800">{item.title}</span>
                         )}
-                      </div>
-                      <div
-                        className={
-                          isTrap
-                            ? 'text-sm sm:text-base leading-relaxed text-rose-900 pl-7 font-medium'
-                            : 'text-sm sm:text-base leading-relaxed text-emerald-900 pl-7 font-medium'
-                        }
-                      >
+                      </p>
+                      <div className="text-stone-900 font-medium">
                         <MathText text={item.content} />
                       </div>
-                    </div>
+                    </blockquote>
                   );
                 })}
               </div>
             </section>
           )}
 
-          {/* 
-            ========================================================================
-            BLOC 5 : 🛠️ EXEMPLE PRATIQUE D'APPLICATION
-            Mini-cas concret avec résolution étape par étape
-            ========================================================================
-          */}
+          {/* V. Exemple Pratique d'Application */}
           {parsedSummary.practicalExample && (
-            <section className="space-y-4">
-              <div className="flex items-center gap-2.5 pb-2 border-b-2 border-stone-200">
-                <span className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-base shadow-xs">
-                  5
-                </span>
-                <h2 className="text-xl sm:text-2xl font-extrabold text-black flex items-center gap-2">
-                  <Wrench className="w-5 h-5 text-emerald-600" />
-                  <span>Exemple Pratique d'Application</span>
-                </h2>
-              </div>
+            <section className="space-y-4 pt-4">
+              <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
+                V. Exemple Pratique d'Application
+              </h2>
 
-              <div className="p-6 sm:p-7 rounded-2xl border-2 border-stone-200 bg-stone-50/70 shadow-xs space-y-4">
-                {/* Énoncé concret */}
-                <div className="space-y-1.5 pb-3 border-b border-stone-200">
-                  <span className="text-xs font-bold uppercase tracking-wider text-stone-500">
-                    Mini-cas d'application concrète :
-                  </span>
-                  <p className="text-base sm:text-lg font-bold text-black leading-relaxed">
-                    <MathText text={parsedSummary.practicalExample.statement} />
+              <div className="space-y-3 pl-4 border-l-2 border-stone-300 py-1">
+                <p className="text-base sm:text-lg text-stone-900 leading-relaxed">
+                  <span className="font-bold text-black">Énoncé : </span>
+                  <MathText text={parsedSummary.practicalExample.statement} />
+                </p>
+
+                <div className="space-y-2 pt-2">
+                  <p className="font-bold text-black text-sm uppercase tracking-wide">
+                    Résolution étape par étape :
                   </p>
-                </div>
-
-                {/* Résolution étape par étape */}
-                <div className="space-y-2.5">
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">
-                    Résolution détaillée pas à pas :
-                  </span>
-                  <div className="space-y-2">
+                  <ol className="space-y-2 list-decimal list-inside text-stone-900 text-base sm:text-lg leading-relaxed pl-1">
                     {parsedSummary.practicalExample.resolution_steps.map((step, sidx) => (
-                      <div
-                        key={sidx}
-                        className="flex items-start gap-3 p-3.5 rounded-xl bg-white border border-stone-200 shadow-2xs text-stone-900 text-sm sm:text-base leading-relaxed"
-                      >
-                        <span className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-900 font-extrabold text-xs flex items-center justify-center shrink-0 mt-0.5">
-                          {sidx + 1}
-                        </span>
-                        <div className="flex-1 font-medium">
-                          <MathText text={step.replace(/^\s*\d+[\.\-\)]\s*/, '')} />
-                        </div>
-                      </div>
+                      <li key={sidx} className="pl-1">
+                        <MathText text={step.replace(/^\s*\d+[\.\-\)]\s*/, '')} />
+                      </li>
                     ))}
-                  </div>
+                  </ol>
                 </div>
               </div>
             </section>
           )}
 
-          {/* 
-            ========================================================================
-            SECTIONS DÉTAILLÉES DU COURS (Si fournies par l'IA ou les documents)
-            ========================================================================
-          */}
+          {/* Sections détaillées de cours complémentaires */}
           {parsedSummary.sections.length > 0 && (
             <div className="space-y-8 pt-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-stone-200 text-xs font-bold uppercase tracking-wider text-stone-500">
-                <BookOpen className="w-4 h-4 text-stone-700" />
-                <span>Développements & Synthèses par Section</span>
-              </div>
-
               {parsedSummary.sections.map((sec, sidx) => (
-                <section key={sidx} className="space-y-3.5 w-full">
-                  <div className="flex items-center gap-3">
-                    <span className="w-7 h-7 rounded-lg bg-stone-900 text-white font-extrabold text-xs flex items-center justify-center shrink-0 shadow-xs">
-                      {sec.number || sidx + 1}
-                    </span>
-                    <h3 className="text-lg sm:text-xl font-bold text-black tracking-tight leading-relaxed break-words whitespace-normal">
-                      <MathText text={sec.heading.replace(/^\s*\d+[\.\-\)]\s*/, '') || sec.heading} />
-                    </h3>
-                  </div>
+                <section key={sidx} className="space-y-3">
+                  <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
+                    {sec.number ? `${sec.number}. ` : ''}
+                    <MathText text={sec.heading.replace(/^\s*\d+[\.\-\)]\s*/, '') || sec.heading} />
+                  </h2>
 
-                  <div className="text-stone-900 leading-relaxed text-base sm:text-lg whitespace-pre-line break-words w-full font-normal">
+                  <div className="text-stone-900 leading-relaxed text-base sm:text-lg whitespace-pre-line font-normal">
                     <MathText text={sec.body} />
                   </div>
 
                   {sec.points && sec.points.length > 0 && (
-                    <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 sm:p-5 space-y-2.5 text-stone-900 text-sm sm:text-base leading-relaxed w-full break-words">
-                      <p className="font-bold text-black text-xs uppercase tracking-wide">
-                        {sec.protocolTitle}
-                      </p>
-                      <ul className="space-y-2 list-none">
-                        {sec.points.map((pt: string, pidx: number) => (
-                          <li key={pidx} className="flex items-start gap-2.5">
-                            <CheckCircle2 className="w-4 h-4 text-stone-700 shrink-0 mt-1" />
-                            <span className="break-words whitespace-normal leading-relaxed text-stone-900">
-                              <MathText text={pt} />
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                    <ul className="space-y-2 pl-2">
+                      {sec.points.map((pt: string, pidx: number) => (
+                        <li key={pidx} className="flex items-start gap-2 text-stone-900 text-base sm:text-lg leading-relaxed">
+                          <span className="text-stone-500 font-bold mt-1 text-sm">•</span>
+                          <div className="flex-1">
+                            <MathText text={pt} />
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
                   )}
-                  {sidx < parsedSummary.sections.length - 1 && <hr className="border-stone-200 pt-2" />}
                 </section>
               ))}
             </div>
@@ -841,24 +682,16 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
           {!hasDynamicData && (
             <div
               id="resume-empty-card"
-              className="w-full bg-white border border-stone-200 rounded-2xl p-8 md:p-12 text-center space-y-4 shadow-xs my-6"
+              className="w-full text-center py-16 space-y-4"
             >
-              <div className="w-16 h-16 mx-auto rounded-2xl bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-700">
-                <FileText className="w-8 h-8" />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-xl md:text-2xl font-bold text-stone-900">
-                  Fiche de Révision Pédagogique
+              <FileText className="w-12 h-12 text-stone-400 mx-auto" />
+              <div className="space-y-1">
+                <h3 className="text-xl font-bold text-stone-800">
+                  Fiche de Résumé
                 </h3>
-                <p className="text-stone-600 text-sm md:text-base max-w-lg mx-auto leading-relaxed">
-                  Prêt à générer la fiche de synthèse complète structurée en 5 blocs : Notions Clés, Formulaire & Méthodologie, Tableau Synthétique, Pièges à éviter & Astuces (NB), et Exemple Pratique d'Application.
+                <p className="text-stone-600 text-sm max-w-md mx-auto">
+                  Demandez à l'IA de rédiger la synthèse complète du document. Elle sera structurée comme un véritable livre de cours.
                 </p>
-              </div>
-              <div className="pt-2 flex justify-center">
-                <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-50 border border-stone-200 text-xs font-semibold text-stone-700">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                  Format pleine page blanche avec écriture noire et encadrés colorés
-                </span>
               </div>
             </div>
           )}

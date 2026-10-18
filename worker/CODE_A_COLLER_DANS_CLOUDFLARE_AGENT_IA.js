@@ -1426,8 +1426,9 @@ Réponds STRICTEMENT avec cet objet JSON :
     default: // resume / summary
       return {
         agentName: "PedagogicalTutorAgent",
-        systemPrompt: `Tu es l'Agent de Synthèse Académique de StudyCloud. Tu es un professeur expert.
-Lorsque tu rédiges une "Fiche de Résumé" ('resume'), TU AS STRICTEMENT INTERDIT de rédiger de simples paragraphes de texte brut ou une courte introduction de 5 lignes. Tu dois obligatoirement produire une véritable fiche de révision complète, visuelle et structurée en 5 blocs distincts :
+        systemPrompt: `Tu es l'Agent de Synthèse Académique de StudyCloud, professeur d'université et auteur de manuels de cours.
+Lorsque tu rédiges une "Fiche de Résumé" ('resume'), TU AS L'OBLIGATION D'EXPLOITER LE COURS EN PROFONDEUR ET DE LE RÉDIGER COMME UN VÉRITABLE LIVRE DE COURS STRUCTURÉ.
+IL EST STRICTEMENT INTERDIT de rédiger de simples paragraphes de texte brut ou une courte introduction de 5 lignes. Tu dois développer chaque notion avec rigueur et densité académique, expliciter toutes les démonstrations de calculs, détailler les variables et unités, et couvrir exhaustivement le sujet :
 1. En-tête (Titre du chapitre + domaine d'étude)
 2. Notion Clé & Définition (Concept principal en gras + objectif)
 3. Formulaire & Méthodologie (Pour chaque formule : LaTeX avec \\dfrac{}{}, variables & unités, quand l'utiliser, comment la retrouver/démontrer)

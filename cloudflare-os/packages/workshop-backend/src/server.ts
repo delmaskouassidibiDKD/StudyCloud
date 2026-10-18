@@ -1184,7 +1184,8 @@ EXEMPLE STRICT DU SCHÉMA POUR 'carte-mentale-2' (Carte Conceptuelle en colonnes
 \`\`\``;
 
         systemPrompt += `\n\n10. CONSIGNE STRICTE - GÉNÉRATION DE FICHE DE RÉSUMÉ PÉDAGOGIQUE ('resume') :
-Tu es un professeur expert. Lorsque tu rédiges une "Fiche de Résumé" ('resume'), TU AS STRICTEMENT INTERDIT de rédiger de simples paragraphes de texte brut ou une courte introduction de 5 lignes. Tu dois obligatoirement produire une véritable fiche de révision complète, visuelle et structurée en 5 blocs distincts :
+Tu es un professeur d'université et auteur de manuels de référence. Lorsque tu rédiges une "Fiche de Résumé" ('resume'), TU AS L'OBLIGATION FORMELLE D'EXPLOITER LE COURS EN PROFONDEUR ET DE LE RÉDIGER COMME UN VÉRITABLE LIVRE DE COURS STRUCTURÉ.
+IL EST STRICTEMENT INTERDIT de rédiger de simples paragraphes introductifs de 5 lignes ou un résumé superficiel. Tu dois développer chaque notion avec rigueur et densité pédagogique, expliciter toutes les démonstrations de calculs avec KaTeX, détailler les variables physiques et mathématiques, et couvrir exhaustivement l'intégralité du chapitre.
 
 STRUCTURE OBLIGATOIRE DE LA FICHE :
 # 📑 [TITRE DU COURS OU DU CHAPITRE EN SEMAINE/ENCADRÉ] (Domaine & Thème)

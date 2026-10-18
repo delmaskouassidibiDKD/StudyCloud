@@ -277,8 +277,8 @@ export function RightMenu({
       ),
       toolType: 'resume',
       getPrompt: (doc) => doc
-        ? `Rédige une Fiche de Résumé structurée et claire de « ${doc} » avec vue d'ensemble, points clés, définitions et règles fondamentales.`
-        : "Rédige une Fiche de Résumé claire et structurée avec vue d'ensemble, points clés, définitions et règles fondamentales."
+        ? `Rédige une Fiche de Résumé complète et approfondie de « ${doc} », rédigée comme un véritable livre de cours structuré. Développe exhaustivement tout le cours : I. Notions fondamentales & Définitions rigoureuses, II. Formulaire & Modélisation mathématique détaillée (formules démontrées pas à pas avec LaTeX), III. Tableau comparatif synthétique, IV. Pièges classiques et astuces méthodologiques (NB), V. Exemple d'application pratique résolu pas à pas.`
+        : `Rédige une Fiche de Résumé complète et approfondie, rédigée comme un véritable livre de cours structuré. Développe exhaustivement tout le cours : I. Notions fondamentales & Définitions rigoureuses, II. Formulaire & Modélisation mathématique détaillée (formules démontrées pas à pas avec LaTeX), III. Tableau comparatif synthétique, IV. Pièges classiques et astuces méthodologiques (NB), V. Exemple d'application pratique résolu pas à pas.`
     },
     {
       id: 'pdf',
