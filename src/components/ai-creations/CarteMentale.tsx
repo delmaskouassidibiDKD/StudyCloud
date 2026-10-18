@@ -17,6 +17,7 @@ import {
   Crosshair
 } from 'lucide-react';
 import { MathText } from '../MathText';
+import { safeJsonParse } from '../../services/api';
 
 export interface MindNode {
   id: string;
@@ -28,10 +29,12 @@ export interface MindNode {
   side: 'left' | 'right' | 'center';
   isCentral?: boolean;
   width?: number;
+  height?: number;
+  level?: number;
+  type?: string;
 }
 
-// Nodes with layout precisely matching Image 2 (Carte_mentaleimage10.png)
-// Nœuds initiaux neutres et adaptatifs prêts pour toute matière
+// Nodes with layout precisely matching Box / Card containers
 const INITIAL_NODES: MindNode[] = [
   // Nœud central dynamique neutre
   {
@@ -43,69 +46,83 @@ const INITIAL_NODES: MindNode[] = [
     color: '#334155',
     side: 'center',
     isCentral: true,
-    width: 200
+    width: 220,
+    height: 68,
+    level: 0
   },
   // Branche 1 (Haut gauche)
   {
     id: 'b_l_0',
     parentId: 'root',
     text: 'Axe 1 : Notions Fondamentales',
-    x: 940,
+    x: 900,
     y: 460,
     color: '#0E5EBA',
     side: 'left',
-    width: 220
+    width: 230,
+    height: 50,
+    level: 1
   },
   {
     id: 'b_l_0_sub_0',
     parentId: 'b_l_0',
     text: 'Définitions et principes clés',
-    x: 640,
-    y: 430,
+    x: 580,
+    y: 425,
     color: '#0E5EBA',
     side: 'left',
-    width: 200
+    width: 210,
+    height: 46,
+    level: 2
   },
   {
     id: 'b_l_0_sub_1',
     parentId: 'b_l_0',
     text: 'Hypothèses d’application',
-    x: 640,
-    y: 490,
+    x: 580,
+    y: 495,
     color: '#0E5EBA',
     side: 'left',
-    width: 190
+    width: 200,
+    height: 46,
+    level: 2
   },
   // Branche 2 (Bas gauche)
   {
     id: 'b_l_1',
     parentId: 'root',
     text: 'Axe 2 : Méthodes & Formules',
-    x: 940,
+    x: 900,
     y: 820,
     color: '#D11928',
     side: 'left',
-    width: 220
+    width: 230,
+    height: 50,
+    level: 1
   },
   {
     id: 'b_l_1_sub_0',
     parentId: 'b_l_1',
     text: 'Équations directrices',
-    x: 640,
-    y: 790,
+    x: 580,
+    y: 785,
     color: '#D11928',
     side: 'left',
-    width: 180
+    width: 190,
+    height: 46,
+    level: 2
   },
   {
     id: 'b_l_1_sub_1',
     parentId: 'b_l_1',
     text: 'Conditions de validité',
-    x: 640,
-    y: 850,
+    x: 580,
+    y: 855,
     color: '#D11928',
     side: 'left',
-    width: 180
+    width: 190,
+    height: 46,
+    level: 2
   },
   // Branche 3 (Haut droite)
   {
@@ -116,27 +133,33 @@ const INITIAL_NODES: MindNode[] = [
     y: 460,
     color: '#1E8238',
     side: 'right',
-    width: 220
+    width: 230,
+    height: 50,
+    level: 1
   },
   {
     id: 'b_r_0_sub_0',
     parentId: 'b_r_0',
     text: 'Cas d’étude concret',
-    x: 1820,
-    y: 430,
+    x: 1860,
+    y: 425,
     color: '#1E8238',
     side: 'right',
-    width: 180
+    width: 190,
+    height: 46,
+    level: 2
   },
   {
     id: 'b_r_0_sub_1',
     parentId: 'b_r_0',
     text: 'Exemple d’application',
-    x: 1820,
-    y: 490,
+    x: 1860,
+    y: 495,
     color: '#1E8238',
     side: 'right',
-    width: 180
+    width: 190,
+    height: 46,
+    level: 2
   },
   // Branche 4 (Bas droite)
   {
@@ -147,27 +170,33 @@ const INITIAL_NODES: MindNode[] = [
     y: 820,
     color: '#7B1FA2',
     side: 'right',
-    width: 210
+    width: 230,
+    height: 50,
+    level: 1
   },
   {
     id: 'b_r_1_sub_0',
     parentId: 'b_r_1',
     text: 'Pièges fréquents à éviter',
-    x: 1820,
-    y: 790,
+    x: 1860,
+    y: 785,
     color: '#7B1FA2',
     side: 'right',
-    width: 200
+    width: 210,
+    height: 46,
+    level: 2
   },
   {
     id: 'b_r_1_sub_1',
     parentId: 'b_r_1',
     text: 'Points à retenir pour examen',
-    x: 1820,
-    y: 850,
+    x: 1860,
+    y: 855,
     color: '#7B1FA2',
     side: 'right',
-    width: 220
+    width: 220,
+    height: 46,
+    level: 2
   }
 ];
 
@@ -191,28 +220,21 @@ function calculateMindMapBounds(nodeList: MindNode[]) {
   let maxY = -Infinity;
 
   nodeList.forEach((n) => {
-    const w = n.width || 120;
-    if (n.side === 'left') {
-      minX = Math.min(minX, n.x - w - 25);
-      maxX = Math.max(maxX, n.x + 20);
-    } else if (n.side === 'right') {
-      minX = Math.min(minX, n.x - 20);
-      maxX = Math.max(maxX, n.x + w + 25);
-    } else {
-      minX = Math.min(minX, n.x - 100);
-      maxX = Math.max(maxX, n.x + 100);
-    }
-    minY = Math.min(minY, n.y - 45);
-    maxY = Math.max(maxY, n.y + 45);
+    const halfW = (n.width || 160) / 2 + 35;
+    const halfH = (n.height || 50) / 2 + 35;
+    minX = Math.min(minX, n.x - halfW);
+    maxX = Math.max(maxX, n.x + halfW);
+    minY = Math.min(minY, n.y - halfH);
+    maxY = Math.max(maxY, n.y + halfH);
   });
 
   return {
-    minX: Number.isFinite(minX) ? minX : 260,
-    maxX: Number.isFinite(maxX) ? maxX : 2180,
-    minY: Number.isFinite(minY) ? minY : 100,
-    maxY: Number.isFinite(maxY) ? maxY : 1180,
-    width: Number.isFinite(maxX - minX) ? maxX - minX : 1920,
-    height: Number.isFinite(maxY - minY) ? maxY - minY : 1080
+    minX: Number.isFinite(minX) ? minX : 300,
+    maxX: Number.isFinite(maxX) ? maxX : 2140,
+    minY: Number.isFinite(minY) ? minY : 150,
+    maxY: Number.isFinite(maxY) ? maxY : 1130,
+    width: Number.isFinite(maxX - minX) ? Math.max(maxX - minX, 800) : 1840,
+    height: Number.isFinite(maxY - minY) ? Math.max(maxY - minY, 500) : 980
   };
 }
 
@@ -369,6 +391,96 @@ export function extractSubList(item: any): any[] {
   return [];
 }
 
+export interface TreeItem {
+  id: string;
+  text: string;
+  children: TreeItem[];
+}
+
+export function extractTreeItem(raw: any, defaultId: string): TreeItem {
+  const text = extractSubNodeText(raw, 0);
+  const subRaw = extractSubList(raw);
+  const children = subRaw.map((s, idx) => extractTreeItem(s, `${defaultId}_${idx}`));
+  return {
+    id: raw?.id ? String(raw.id) : defaultId,
+    text,
+    children
+  };
+}
+
+function measureSubtree(item: TreeItem): number {
+  if (!item.children || item.children.length === 0) {
+    return 64; // Hauteur minimale d'une boîte feuille avec marge verticale
+  }
+  let sumH = 0;
+  for (const child of item.children) {
+    sumH += measureSubtree(child);
+  }
+  return Math.max(sumH, 64);
+}
+
+function layoutChildren(
+  parentX: number,
+  parentY: number,
+  parentW: number,
+  parentH: number,
+  parentId: string,
+  children: TreeItem[],
+  side: 'left' | 'right',
+  level: number,
+  branchColor: string,
+  resultNodes: MindNode[]
+) {
+  if (!children || children.length === 0) return;
+
+  const totalChildrenH = children.reduce((acc, c) => acc + measureSubtree(c), 0);
+  let childCurrentY = parentY - totalChildrenH / 2;
+
+  children.forEach((child, cIdx) => {
+    const childH_span = measureSubtree(child);
+    const childY = Math.round(childCurrentY + childH_span / 2);
+    childCurrentY += childH_span;
+
+    const cleanT = child.text.replace(/\\[a-zA-Z]+/g, 'X').replace(/[\{\}\$\_\^]/g, '');
+    const childW = Math.min(340, Math.max(130, Math.round(cleanT.length * 7.5 + 32)));
+    const childBoxH = (child.text.includes('\n') || child.text.includes('\\dfrac') || child.text.includes('\\frac')) ? 54 : 46;
+
+    const gapX = 75;
+    const childX = Math.round(side === 'right'
+      ? parentX + parentW / 2 + gapX + childW / 2
+      : parentX - parentW / 2 - gapX - childW / 2);
+
+    const childId = child.id || `${parentId}_sub_${cIdx}`;
+    resultNodes.push({
+      id: childId,
+      parentId,
+      text: child.text,
+      x: childX,
+      y: childY,
+      color: branchColor,
+      side,
+      width: childW,
+      height: childBoxH,
+      level
+    });
+
+    if (child.children && child.children.length > 0) {
+      layoutChildren(
+        childX,
+        childY,
+        childW,
+        childBoxH,
+        childId,
+        child.children,
+        side,
+        level + 1,
+        branchColor,
+        resultNodes
+      );
+    }
+  });
+}
+
 export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
   if (!data) return INITIAL_NODES;
   if (Array.isArray(data.nodes) && data.nodes.length > 0) return data.nodes;
@@ -376,15 +488,14 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
   let actualData = data;
   if (typeof actualData === 'string') {
     const trimmed = actualData.trim();
-    if (trimmed.includes('mindmap')) {
+    if (trimmed.startsWith('{') || trimmed.includes('```json') || (trimmed.includes('{') && trimmed.includes('}'))) {
+      const jsonMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || trimmed.match(/(\{[\s\S]*\})/);
+      const parsed = safeJsonParse(jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : trimmed);
+      if (parsed) actualData = parsed;
+    }
+    if (typeof actualData === 'string' && trimmed.includes('mindmap')) {
       const parsedMermaid = parseMermaidMindmap(trimmed);
       if (parsedMermaid) actualData = parsedMermaid;
-    } else if (trimmed.startsWith('{') || trimmed.includes('```json')) {
-      try {
-        const jsonMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-        const parsed = JSON.parse(jsonMatch ? jsonMatch[1] : trimmed);
-        actualData = parsed;
-      } catch {}
     }
   }
 
@@ -399,30 +510,37 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
   const unnested = actualData?.mind_map || actualData?.mindmap || actualData?.mindMap || actualData?.creation_data || actualData;
   if (!unnested) return INITIAL_NODES;
 
-  let rootText = unnested.root_title || unnested.rootTitle || unnested.title || unnested.root?.text || unnested.root?.label || unnested.root?.title || fallbackTitle || 'Carte Mentale';
-  let level1List: Array<any> = [];
+  let rootText = unnested.label || unnested.root_title || unnested.rootTitle || unnested.title || unnested.root?.text || unnested.root?.label || unnested.root?.title || fallbackTitle || 'Carte Mentale';
+  let rawChildren: any[] = [];
 
-  if (Array.isArray(unnested.branches)) {
-    level1List = unnested.branches;
-  } else if (Array.isArray(unnested.root?.children)) {
-    level1List = unnested.root.children;
-  } else if (Array.isArray(unnested.concepts)) {
-    level1List = unnested.concepts;
-  } else if (Array.isArray(unnested.themes)) {
-    level1List = unnested.themes;
-  } else if (Array.isArray(unnested.cards)) {
-    level1List = unnested.cards;
+  if (Array.isArray(unnested.children) && unnested.children.length > 0) {
+    rawChildren = unnested.children;
+  } else if (Array.isArray(unnested.branches) && unnested.branches.length > 0) {
+    rawChildren = unnested.branches;
+  } else if (Array.isArray(unnested.root?.children) && unnested.root.children.length > 0) {
+    rawChildren = unnested.root.children;
+  } else if (Array.isArray(unnested.concepts) && unnested.concepts.length > 0) {
+    rawChildren = unnested.concepts;
+  } else if (Array.isArray(unnested.themes) && unnested.themes.length > 0) {
+    rawChildren = unnested.themes;
+  } else if (Array.isArray(unnested.cards) && unnested.cards.length > 0) {
+    rawChildren = unnested.cards;
   } else if (Array.isArray(unnested)) {
-    level1List = unnested;
+    rawChildren = unnested;
   }
 
-  if (level1List.length === 0) {
+  if (rawChildren.length === 0) {
     return INITIAL_NODES;
   }
 
+  const treeBranches: TreeItem[] = rawChildren.map((item, idx) => extractTreeItem(item, `b_${idx}`));
+
   const result: MindNode[] = [];
-  const rootId = 'root';
-  const rootWidth = Math.min(360, Math.max(180, Math.round(rootText.length * 9.5 + 36)));
+  const rootId = unnested.id || 'root';
+  const cleanRoot = rootText.replace(/\\[a-zA-Z]+/g, 'X').replace(/[\{\}\$\_\^]/g, '');
+  const rootWidth = Math.min(380, Math.max(190, Math.round(cleanRoot.length * 9.5 + 36)));
+  const rootHeight = 68;
+
   result.push({
     id: rootId,
     parentId: null,
@@ -432,7 +550,9 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
     color: '#334155',
     side: 'center',
     isCentral: true,
-    width: rootWidth
+    width: rootWidth,
+    height: rootHeight,
+    level: 0
   });
 
   const branchColors = [
@@ -446,112 +566,112 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
     '#C2185B'  // Magenta
   ];
 
-  const leftBranches: Array<{ item: any; origIdx: number }> = [];
-  const rightBranches: Array<{ item: any; origIdx: number }> = [];
+  const leftBranches: { item: TreeItem; origIdx: number }[] = [];
+  const rightBranches: { item: TreeItem; origIdx: number }[] = [];
 
-  level1List.forEach((item, idx) => {
-    if (idx % 2 === 0) {
+  treeBranches.forEach((item, idx) => {
+    if (treeBranches.length === 1) {
+      rightBranches.push({ item, origIdx: idx });
+    } else if (idx % 2 === 0) {
       leftBranches.push({ item, origIdx: idx });
     } else {
       rightBranches.push({ item, origIdx: idx });
     }
   });
 
-  // Position left branches
-  const leftCount = leftBranches.length;
-  const leftSpacing = Math.min(220, Math.max(110, 780 / (leftCount + 1)));
-  const leftStartY = 640 - ((leftCount - 1) * leftSpacing) / 2;
+  // Layout left branches & subtrees
+  if (leftBranches.length > 0) {
+    const totalLeftH = leftBranches.reduce((acc, b) => acc + measureSubtree(b.item), 0) + (leftBranches.length - 1) * 28;
+    let currentLeftY = 640 - totalLeftH / 2;
 
-  leftBranches.forEach(({ item, origIdx }, i) => {
-    const branchId = `b_l_${origIdx}`;
-    const branchText = item.branch_title || item.branchTitle || item.text || item.title || item.label || item.name || `Branche ${origIdx + 1}`;
-    const branchY = leftStartY + i * leftSpacing;
-    const branchColor = branchColors[origIdx % branchColors.length];
-    const branchWidth = Math.min(380, Math.max(140, Math.round(branchText.length * 8.5 + 24)));
+    leftBranches.forEach(({ item, origIdx }) => {
+      const bH_span = measureSubtree(item);
+      const branchY = Math.round(currentLeftY + bH_span / 2);
+      currentLeftY += bH_span + 28;
 
-    result.push({
-      id: branchId,
-      parentId: rootId,
-      text: branchText,
-      x: 940,
-      y: branchY,
-      color: branchColor,
-      side: 'left',
-      width: branchWidth
+      const branchColor = branchColors[origIdx % branchColors.length];
+      const cleanText = item.text.replace(/\\[a-zA-Z]+/g, 'X').replace(/[\{\}\$\_\^]/g, '');
+      const branchWidth = Math.min(350, Math.max(140, Math.round(cleanText.length * 8 + 36)));
+      const branchHeight = (item.text.includes('\n') || item.text.includes('\\dfrac') || item.text.includes('\\frac')) ? 56 : 48;
+      const branchX = Math.round(1220 - rootWidth / 2 - 90 - branchWidth / 2);
+      const branchId = item.id || `b_l_${origIdx}`;
+
+      result.push({
+        id: branchId,
+        parentId: rootId,
+        text: item.text,
+        x: branchX,
+        y: branchY,
+        color: branchColor,
+        side: 'left',
+        width: branchWidth,
+        height: branchHeight,
+        level: 1
+      });
+
+      if (item.children && item.children.length > 0) {
+        layoutChildren(
+          branchX,
+          branchY,
+          branchWidth,
+          branchHeight,
+          branchId,
+          item.children,
+          'left',
+          2,
+          branchColor,
+          result
+        );
+      }
     });
+  }
 
-    const subList = extractSubList(item);
-    if (subList.length > 0) {
-      const hasLongSub = subList.some((s: any) => {
-        const str = typeof s === 'string' ? s : (s.text || s.title || s.label || s.formula || '');
-        return str.length > 30 || str.includes('$') || str.includes('\n');
+  // Layout right branches & subtrees
+  if (rightBranches.length > 0) {
+    const totalRightH = rightBranches.reduce((acc, b) => acc + measureSubtree(b.item), 0) + (rightBranches.length - 1) * 28;
+    let currentRightY = 640 - totalRightH / 2;
+
+    rightBranches.forEach(({ item, origIdx }) => {
+      const bH_span = measureSubtree(item);
+      const branchY = Math.round(currentRightY + bH_span / 2);
+      currentRightY += bH_span + 28;
+
+      const branchColor = branchColors[origIdx % branchColors.length];
+      const cleanText = item.text.replace(/\\[a-zA-Z]+/g, 'X').replace(/[\{\}\$\_\^]/g, '');
+      const branchWidth = Math.min(350, Math.max(140, Math.round(cleanText.length * 8 + 36)));
+      const branchHeight = (item.text.includes('\n') || item.text.includes('\\dfrac') || item.text.includes('\\frac')) ? 56 : 48;
+      const branchX = Math.round(1220 + rootWidth / 2 + 90 + branchWidth / 2);
+      const branchId = item.id || `b_r_${origIdx}`;
+
+      result.push({
+        id: branchId,
+        parentId: rootId,
+        text: item.text,
+        x: branchX,
+        y: branchY,
+        color: branchColor,
+        side: 'right',
+        width: branchWidth,
+        height: branchHeight,
+        level: 1
       });
-      const subSpacing = hasLongSub ? 52 : 44;
-      const subStartY = branchY - ((subList.length - 1) * subSpacing) / 2;
-      subList.forEach((sub: any, sIdx: number) => {
-        const subText = extractSubNodeText(sub, sIdx);
-        const subWidth = Math.min(440, Math.max(110, Math.round(subText.length * 8 + 24)));
-        result.push({
-          id: `${branchId}_sub_${sIdx}`,
-          parentId: branchId,
-          text: subText,
-          x: Math.min(680, 940 - branchWidth - 30),
-          y: subStartY + sIdx * subSpacing,
-          color: branchColor,
-          side: 'left',
-          width: subWidth
-        });
-      });
-    }
-  });
 
-  // Position right branches
-  const rightCount = rightBranches.length;
-  const rightSpacing = Math.min(220, Math.max(110, 780 / (rightCount + 1)));
-  const rightStartY = 640 - ((rightCount - 1) * rightSpacing) / 2;
-
-  rightBranches.forEach(({ item, origIdx }, i) => {
-    const branchId = `b_r_${origIdx}`;
-    const branchText = item.branch_title || item.branchTitle || item.text || item.title || item.label || item.name || `Branche ${origIdx + 1}`;
-    const branchY = rightStartY + i * rightSpacing;
-    const branchColor = branchColors[origIdx % branchColors.length];
-    const branchWidth = Math.min(380, Math.max(140, Math.round(branchText.length * 8.5 + 24)));
-
-    result.push({
-      id: branchId,
-      parentId: rootId,
-      text: branchText,
-      x: 1540,
-      y: branchY,
-      color: branchColor,
-      side: 'right',
-      width: branchWidth
+      if (item.children && item.children.length > 0) {
+        layoutChildren(
+          branchX,
+          branchY,
+          branchWidth,
+          branchHeight,
+          branchId,
+          item.children,
+          'right',
+          2,
+          branchColor,
+          result
+        );
+      }
     });
-
-    const subList = extractSubList(item);
-    if (subList.length > 0) {
-      const hasLongSub = subList.some((s: any) => {
-        const str = typeof s === 'string' ? s : (s.text || s.title || s.label || s.formula || '');
-        return str.length > 30 || str.includes('$') || str.includes('\n');
-      });
-      const subSpacing = hasLongSub ? 52 : 44;
-      const subStartY = branchY - ((subList.length - 1) * subSpacing) / 2;
-      subList.forEach((sub: any, sIdx: number) => {
-        const subText = extractSubNodeText(sub, sIdx);
-        const subWidth = Math.min(440, Math.max(110, Math.round(subText.length * 8 + 24)));
-        result.push({
-          id: `${branchId}_sub_${sIdx}`,
-          parentId: branchId,
-          text: subText,
-          x: Math.max(1800, 1540 + branchWidth + 30),
-          y: subStartY + sIdx * subSpacing,
-          color: branchColor,
-          side: 'right',
-          width: subWidth
-        });
-      });
-    }
-  });
+  }
 
   return result;
 }
@@ -891,8 +1011,15 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
         prev.map((n) => {
           if (n.id === editingNodeId) {
             const trimmed = editText.trim();
-            const width = Math.max(trimmed.length * 8.5 + 20, 55);
-            return { ...n, text: trimmed, width: n.isCentral ? 176 : width };
+            const cleanText = trimmed.replace(/\\[a-zA-Z]+/g, 'X').replace(/[\{\}\$\_\^]/g, '');
+            const width = Math.min(360, Math.max(130, Math.round(cleanText.length * 8 + 32)));
+            const height = (trimmed.includes('\n') || trimmed.includes('\\dfrac') || trimmed.includes('\\frac')) ? 56 : 46;
+            return {
+              ...n,
+              text: trimmed,
+              width: n.isCentral ? Math.max(width, 190) : width,
+              height: n.isCentral ? 68 : height
+            };
           }
           return n;
         })
@@ -923,16 +1050,20 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
 
     const newId = `custom-${Date.now()}`;
     const side = parent.side === 'center' ? 'right' : parent.side;
-    const offsetX = side === 'left' ? -170 : 170;
+    const parentW = parent.width || 180;
+    const newW = 140;
+    const offsetX = side === 'left' ? -(parentW / 2 + 75 + newW / 2) : (parentW / 2 + 75 + newW / 2);
     const newChild: MindNode = {
       id: newId,
       parentId: parent.id,
       text: 'Nouvelle idée',
       x: parent.x + offsetX,
-      y: parent.y + 35,
+      y: parent.y + 40,
       color: parent.color,
       side,
-      width: 105
+      width: newW,
+      height: 46,
+      level: (parent.level || 0) + 1
     };
 
     setNodes((prev) => [...prev, newChild]);
@@ -1229,42 +1360,25 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
               const parent = nodeMap.get(node.parentId);
               if (!parent) return null;
 
-              let startX = parent.x;
-              let startY = parent.y;
+              const isRight = node.side === 'right';
+              const parentW = parent.width || 180;
+              const nodeW = node.width || 150;
 
-              if (parent.isCentral) {
-                if (node.id === 'blog') {
-                  startX = parent.x;
-                  startY = parent.y + 35;
-                } else if (node.side === 'left') {
-                  startX = parent.x - 88;
-                  startY = parent.y;
-                } else {
-                  startX = parent.x + 88;
-                  startY = parent.y;
-                }
-              } else {
-                const parentW = parent.width || 100;
-                if (parent.side === 'left') {
-                  startX = parent.x - parentW;
-                  startY = parent.y;
-                } else {
-                  startX = parent.x + parentW;
-                  startY = parent.y;
-                }
-              }
+              // Connecteurs ancrés directement sur les bords des boîtes
+              const startX = isRight ? parent.x + parentW / 2 : parent.x - parentW / 2;
+              const startY = parent.y;
 
-              const endX = node.x;
+              const endX = isRight ? node.x - nodeW / 2 : node.x + nodeW / 2;
               const endY = node.y;
 
               const dx = endX - startX;
-              const ctrl1X = startX + dx * 0.48;
+              const ctrl1X = startX + dx * 0.5;
               const ctrl1Y = startY;
-              const ctrl2X = endX - dx * 0.48;
+              const ctrl2X = endX - dx * 0.5;
               const ctrl2Y = endY;
 
               const pathData = `M ${startX} ${startY} C ${ctrl1X} ${ctrl1Y}, ${ctrl2X} ${ctrl2Y}, ${endX} ${endY}`;
-              const strokeWidth = parent.isCentral ? 4.5 : 3;
+              const strokeWidth = parent.isCentral ? 3.8 : 2.6;
 
               return (
                 <g key={`branch-${node.id}`}>
@@ -1288,7 +1402,7 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
             })}
           </g>
 
-          {/* Nodes and Underlined Labels */}
+          {/* Nodes and Container Boxes */}
           <g id="mindmap-nodes-group">
             {nodes.map((node) => {
               if (!isNodeVisible(node)) return null;
@@ -1297,202 +1411,119 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
               const children = childrenMap.get(node.id) || [];
               const hasChildren = children.length > 0;
               const isCollapsed = collapsedNodes[node.id];
-              const calcWidth = Math.max(120, Math.min(480, Math.round(node.text.length * 8.5 + 24)));
-              const nodeWidth = node.width ? Math.max(node.width, calcWidth) : calcWidth;
-
-              // CENTRAL ROOT BOX (Matches Image 2 exactly)
-              if (node.isCentral) {
-                const centralW = Math.max(node.width || 180, Math.min(420, Math.round(node.text.length * 9.5 + 36)));
-                return (
-                  <g
-                    key={node.id}
-                    id={`node-${node.id}`}
-                    transform={`translate(${node.x}, ${node.y})`}
-                    onPointerDown={(e) => handleNodePointerDown(node.id, e)}
-                    onDoubleClick={() => startEditing(node)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedNodeId(node.id);
-                    }}
-                    className="cursor-pointer select-none"
-                  >
-                    <rect
-                      x={-centralW / 2}
-                      y={-35}
-                      width={centralW}
-                      height={70}
-                      rx={16}
-                      fill="#FFFFFF"
-                      stroke={isSelected ? '#0F172A' : '#CBD5E1'}
-                      strokeWidth={isSelected ? 2.5 : 1.5}
-                      filter="url(#soft-card-shadow)"
-                    />
-                    {(() => {
-                      const rootLines = node.text.split('\n');
-                      if (rootLines.length === 1) {
-                        return (
-                          <text
-                            textAnchor="middle"
-                            y={6}
-                            className="font-sans font-bold text-[15px] fill-slate-800 pointer-events-none tracking-tight"
-                          >
-                            {node.text}
-                          </text>
-                        );
-                      }
-                      return (
-                        <>
-                          <text
-                            textAnchor="middle"
-                            y={-6}
-                            className="font-sans font-bold text-[14px] fill-slate-800 pointer-events-none tracking-tight"
-                          >
-                            {rootLines[0]}
-                          </text>
-                          <text
-                            textAnchor="middle"
-                            y={18}
-                            className="font-sans font-bold text-[14px] fill-slate-800 pointer-events-none tracking-tight"
-                          >
-                            {rootLines.slice(1).join(' ')}
-                          </text>
-                        </>
-                      );
-                    })()}
-                  </g>
-                );
-              }
-
-              // BRANCH / LEAF NODES (Underlined matching Image 2)
+              const boxW = node.width || (node.isCentral ? 220 : 160);
+              const boxH = node.height || (node.isCentral ? 68 : 48);
               const isRightSide = node.side === 'right';
-              const underlineStartX = isRightSide ? node.x : node.x - nodeWidth;
-              const underlineEndX = isRightSide ? node.x + nodeWidth : node.x;
-
-              const textX = isRightSide ? node.x + 3 : node.x - 3;
-              const textAnchor = isRightSide ? 'start' : 'end';
-              const lines = node.text.split('\n');
 
               return (
                 <g
                   key={node.id}
                   id={`node-${node.id}`}
+                  transform={`translate(${node.x}, ${node.y})`}
                   onPointerDown={(e) => handleNodePointerDown(node.id, e)}
                   onDoubleClick={() => startEditing(node)}
                   onClick={(e) => {
                     e.stopPropagation();
                     setSelectedNodeId(node.id);
                   }}
-                  className="cursor-pointer select-none"
+                  className="cursor-pointer select-none group"
                 >
-                  {/* Invisible Hitbox covering entire idea area for PC mouse click & dragging */}
-                  <rect
-                    x={isRightSide ? node.x - 6 : node.x - nodeWidth - 6}
-                    y={lines.length > 1 ? node.y - 32 : node.y - 24}
-                    width={nodeWidth + 12}
-                    height={lines.length > 1 ? 44 : 34}
-                    fill="transparent"
-                    style={{ pointerEvents: 'all' }}
-                    className="cursor-pointer"
-                    onPointerDown={(e) => handleNodePointerDown(node.id, e)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedNodeId(node.id);
-                    }}
-                  />
-
-                  {/* Horizontal Baseline Underline */}
-                  <line
-                    x1={underlineStartX}
-                    y1={node.y}
-                    x2={underlineEndX}
-                    y2={node.y}
-                    stroke={node.color}
-                    strokeWidth={node.parentId === 'root' ? 4.2 : 3}
-                    strokeLinecap="round"
-                  />
-
-                  {/* Selection Highlight */}
+                  {/* Selection Outline Glow */}
                   {isSelected && (
                     <rect
-                      x={isRightSide ? node.x - 4 : node.x - nodeWidth - 4}
-                      y={node.y - 28}
-                      width={nodeWidth + 8}
-                      height={34}
-                      rx={6}
-                      fill={node.color}
-                      fillOpacity={0.12}
-                      stroke={node.color}
-                      strokeWidth={1.5}
+                      x={-boxW / 2 - 4}
+                      y={-boxH / 2 - 4}
+                      width={boxW + 8}
+                      height={boxH + 8}
+                      rx={node.isCentral ? 20 : (node.level === 1 ? 16 : 13)}
+                      fill="none"
+                      stroke={node.color || '#0F172A'}
+                      strokeWidth={2}
                       strokeDasharray="4 3"
+                      opacity={0.85}
                     />
                   )}
 
-                  {/* Label text */}
-                  {node.text.includes('$') || node.text.includes('\\') ? (
-                    <foreignObject
-                      x={isRightSide ? node.x + 3 : node.x - nodeWidth - 3}
-                      y={node.y - 26}
-                      width={nodeWidth + 14}
-                      height={26}
-                      className="pointer-events-none overflow-visible select-none"
-                    >
-                      <div
-                        className={`text-[12.5px] font-medium text-slate-800 select-none ${
-                          isRightSide ? 'text-left' : 'text-right'
-                        }`}
-                      >
-                        <MathText text={node.text} />
-                      </div>
-                    </foreignObject>
-                  ) : lines.length === 1 ? (
-                    <text
-                      x={textX}
-                      y={node.y - 5}
-                      textAnchor={textAnchor}
-                      className="font-sans font-medium text-[13.5px] fill-slate-800 tracking-tight select-none pointer-events-none"
-                    >
-                      {node.text}
-                    </text>
-                  ) : (
-                    <g className="pointer-events-none select-none">
-                      <text
-                        x={textX}
-                        y={node.y - 19}
-                        textAnchor={textAnchor}
-                        className="font-sans font-medium text-[13px] fill-slate-800 tracking-tight"
-                      >
-                        {lines[0]}
-                      </text>
-                      <text
-                        x={textX}
-                        y={node.y - 5}
-                        textAnchor={textAnchor}
-                        className="font-sans font-medium text-[13px] fill-slate-800 tracking-tight"
-                      >
-                        {lines[1]}
-                      </text>
-                    </g>
+                  {/* Card Background Container Box (Rectangle arrondi fermé) */}
+                  <rect
+                    x={-boxW / 2}
+                    y={-boxH / 2}
+                    width={boxW}
+                    height={boxH}
+                    rx={node.isCentral ? 16 : (node.level === 1 ? 12 : 9)}
+                    fill="#FFFFFF"
+                    stroke={isSelected ? '#0F172A' : (node.isCentral ? '#334155' : node.color)}
+                    strokeWidth={isSelected ? 3 : (node.isCentral ? 2.5 : 2)}
+                    filter="url(#soft-card-shadow)"
+                    className="transition-all duration-150"
+                  />
+
+                  {/* Visual Accent Strip for Level 1 branch boxes */}
+                  {node.level === 1 && !node.isCentral && (
+                    <rect
+                      x={isRightSide ? -boxW / 2 : boxW / 2 - 5}
+                      y={-boxH / 2 + 3}
+                      width={5}
+                      height={boxH - 6}
+                      rx={2.5}
+                      fill={node.color}
+                    />
                   )}
 
-                  {/* Fold/unfold pill if has children */}
+                  {/* Text & Math formula inside the Card Box */}
+                  <foreignObject
+                    x={-boxW / 2 + (node.level === 1 ? 10 : 6)}
+                    y={-boxH / 2 + 2}
+                    width={boxW - (node.level === 1 ? 18 : 12)}
+                    height={boxH - 4}
+                    className="pointer-events-none select-none overflow-hidden"
+                  >
+                    <div
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
+                        padding: '0 4px',
+                        userSelect: 'none',
+                        lineHeight: '1.25'
+                      }}
+                    >
+                      <div
+                        className={`${
+                          node.isCentral
+                            ? 'font-bold text-[14.5px] text-slate-800 tracking-tight'
+                            : node.level === 1
+                            ? 'font-bold text-[13px] text-slate-900 tracking-tight'
+                            : 'font-semibold text-[12px] text-slate-800'
+                        }`}
+                      >
+                        <MathText text={node.text} inline />
+                      </div>
+                    </div>
+                  </foreignObject>
+
+                  {/* Fold/unfold pill button directly on the outer anchor handle */}
                   {hasChildren && (
                     <g
-                      transform={`translate(${isRightSide ? underlineEndX + 9 : underlineStartX - 9}, ${node.y})`}
+                      transform={`translate(${isRightSide ? boxW / 2 + 10 : -boxW / 2 - 10}, 0)`}
                       onClick={(e) => handleToggleCollapse(node.id, e)}
                       className="cursor-pointer hover:scale-125 transition-transform"
                     >
                       <circle
-                        r={7.5}
+                        r={8}
                         fill="#FFFFFF"
                         stroke={node.color}
-                        strokeWidth={1.5}
+                        strokeWidth={1.8}
                         filter="url(#soft-card-shadow)"
                       />
                       <text
                         textAnchor="middle"
                         dominantBaseline="central"
                         y={-0.5}
-                        className="text-[10px] font-bold fill-slate-700 select-none pointer-events-none"
+                        className="text-[11px] font-black fill-slate-700 select-none pointer-events-none"
                       >
                         {isCollapsed ? '+' : '−'}
                       </text>

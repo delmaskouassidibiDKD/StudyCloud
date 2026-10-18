@@ -113,6 +113,19 @@ export function convertAsciiMathToLatex(text: string): string {
   // 1. Toujours promouvoir \frac en \dfrac pour assurer une fraction haute avec barre horizontale
   res = res.replace(/\\frac\b/g, '\\dfrac');
 
+  // Répare les commandes LaTeX dénudées de leur antislash (ex: underlineT -> \underline{T}, underlineU -> \underline{U})
+  res = res
+    .replace(/(?<!\\)\bunderline([A-Za-z])(?:_([0-9a-zA-Z]+))?/g, '\\underline{$1}$2')
+    .replace(/(?<!\\)\bunderline\{/g, '\\underline{')
+    .replace(/(?<!\\)\bdfrac\b/g, '\\dfrac')
+    .replace(/(?<!\\)\bleft\(/g, '\\left(')
+    .replace(/(?<!\\)\bright\)/g, '\\right)')
+    .replace(/(?<!\\)\bmathrm\{/g, '\\mathrm{')
+    .replace(/(?<!\\)\binfty\b/g, '\\infty')
+    .replace(/(?<!\\)\bomega_0\b/g, '\\omega_0')
+    .replace(/(?<!\\)\bomega\b/g, '\\omega')
+    .replace(/(?<!\\)\bDelta\s*([a-zA-Z])/g, '\\Delta $1');
+
   // Nettoyage préalable de fractions corrompues comme \dfrac{R_2}{\dfrac}{R_1}
   res = res.replace(/\\dfrac\{([^{}]+)\}\{\\dfrac\}\{([^{}]+)\}/g, '\\dfrac{$1}{$2}');
 
@@ -123,7 +136,8 @@ export function convertAsciiMathToLatex(text: string): string {
   res = res
     .replace(/√\(([^)]+)\)/g, '\\sqrt{$1}')
     .replace(/√([a-zA-Z0-9_]+)/g, '\\sqrt{$1}')
-    .replace(/\bsqrt\(([^)]+)\)/gi, '\\sqrt{$1}');
+    .replace(/\bsqrt\(([^)]+)\)/gi, '\\sqrt{$1}')
+    .replace(/(?<!\\)\bsqrt\{/g, '\\sqrt{');
 
   // 4. Variables fréquentes avec indices (w0, f0, Q0, A0, R1, R2, etc.)
   res = res
@@ -265,10 +279,22 @@ function healMathLine(rawLine: string, inlineMode: boolean): string {
     return inlineMode ? `$${cleanEq}$` : `$$${cleanEq}$$`;
   }
 
-  // Si la ligne contient du LaTeX sans aucun dollar (ex: options de quiz "T(j\omega) = \dfrac{T_0}{...}")
-  if (!line.includes('$') && !hasProse) {
-    if (/^[A-Za-z\(\)\,\s\\]+=/.test(line) || /^\\(?:d?frac|sqrt|boxed|left|right)/.test(line)) {
-      return inlineMode ? `$${line}$` : `$$${line}$$`;
+  // 3. Détecter un préfixe textuel (ex: "Ordre 1 : ", "Gain statique : ", "Fonction de transfert : ") suivi d'une formule
+  if (!line.includes('$')) {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx > 0 && colonIdx < line.length - 2) {
+      const prefix = line.substring(0, colonIdx + 1);
+      const remainder = line.substring(colonIdx + 1).trim();
+      const remainderHasLatex = /\\(?:d?frac|sqrt|boxed|underline|omega|alpha|beta|pi|Delta|infty|left|right)\b|(?:\b(?:w0|f0|Q0|A0|R1|R2)\b)/i.test(remainder);
+      if (remainderHasLatex && !containsNaturalLanguageProse(remainder)) {
+        return `${prefix} $${remainder}$`;
+      }
+    }
+    // Si la ligne entière contient du LaTeX sans aucun dollar (ex: options de quiz ou expressions brutes)
+    if (!hasProse) {
+      if (/^[A-Za-z\(\)\,\s\\]+=/.test(line) || /^\\(?:d?frac|sqrt|boxed|left|right|underline)/.test(line) || /\\(?:d?frac|sqrt|boxed|underline|omega|alpha|beta|pi|Delta|infty)\b/.test(line)) {
+        return inlineMode ? `$${line}$` : `$$${line}$$`;
+      }
     }
   }
 

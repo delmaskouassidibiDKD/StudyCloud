@@ -131,9 +131,13 @@ export function safeJsonParse<T = any>(raw: string): T | null {
   const trimmed = raw.trim();
 
   // 1. Nettoyage préventif des commandes LaTeX pour doubler les antislashs uniques (\frac -> \\frac)
-  // afin que JSON.parse n'interprète pas \f comme Form Feed (ASCII 12 \x0c) ou \b comme Backspace
-  const latexRegex = /(?<!\\)\\(frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end)\b/gi;
-  const preProcessed = trimmed.replace(latexRegex, '\\\\$1');
+  // afin que JSON.parse n'interprète pas \f comme Form Feed (ASCII 12 \x0c) ou \b comme Backspace, et \u comme Unicode escape invalide
+  const latexCommands = 'dfrac|frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end|boxed|bm|boldsymbol';
+  const latexRegex = new RegExp(`(?<!\\\\)\\\\(${latexCommands})\\b`, 'gi');
+  let preProcessed = trimmed.replace(latexRegex, '\\\\$1');
+
+  // Doubler tout \u qui n'est pas suivi de 4 chiffres hexadécimaux (ex: \underline, \upsilon)
+  preProcessed = preProcessed.replace(/(?<!\\)\\u(?![0-9a-fA-F]{4})/gi, '\\\\u');
 
   // Essai direct après sécurisation LaTeX
   try {
@@ -163,12 +167,17 @@ export function safeJsonParse<T = any>(raw: string): T | null {
         sanitized += ' ';
       } else if (char === '\\') {
         const sub = preProcessed.slice(i + 1);
-        const isLatex = /^(?:frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end)\b/i.test(sub);
+        const isLatex = new RegExp(`^(${latexCommands})\\b`, 'i').test(sub);
         const next = preProcessed[i + 1];
+        const isHexU = next === 'u' && /^[0-9a-fA-F]{4}/.test(preProcessed.slice(i + 2, i + 6));
 
         if (isLatex) {
           sanitized += '\\\\';
-        } else if (next && ['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'].includes(next)) {
+        } else if (next && ['"', '\\', '/'].includes(next)) {
+          sanitized += '\\';
+        } else if (isHexU) {
+          sanitized += '\\';
+        } else if (next && ['b', 'f', 'n', 'r', 't'].includes(next) && !/^(?:frac|dfrac|beta|tau|theta|text|times|rho|right|rightarrow)\b/i.test(sub)) {
           sanitized += '\\';
         } else {
           sanitized += '\\\\';

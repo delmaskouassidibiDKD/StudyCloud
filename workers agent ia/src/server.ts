@@ -45,8 +45,12 @@ export function extractAndSanitizeJson(rawText: string): any {
   }
 
   // 2. Nettoyage préventif des commandes LaTeX pour doubler les antislashs uniques (\frac -> \\frac)
-  const latexRegex = /(?<!\\)\\(frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end)\b/gi;
-  const preProcessed = cleaned.replace(latexRegex, "\\\\$1");
+  const latexCommands = "dfrac|frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end|boxed|bm|boldsymbol";
+  const latexRegex = new RegExp(`(?<!\\\\)\\\\(${latexCommands})\\b`, "gi");
+  let preProcessed = cleaned.replace(latexRegex, "\\\\$1");
+
+  // Doubler tout \u qui n'est pas suivi de 4 chiffres hexadécimaux (ex: \underline, \upsilon)
+  preProcessed = preProcessed.replace(/(?<!\\)\\u(?![0-9a-fA-F]{4})/gi, "\\\\u");
 
   try {
     return JSON.parse(preProcessed);
@@ -74,8 +78,18 @@ export function extractAndSanitizeJson(rawText: string): any {
       } else if (code < 32) {
         sanitized += " ";
       } else if (char === "\\") {
+        const sub = preProcessed.slice(i + 1);
+        const isLatex = new RegExp(`^(${latexCommands})\\b`, "i").test(sub);
         const next = preProcessed[i + 1];
-        if (next && ['"', "\\", "/", "b", "f", "n", "r", "t", "u"].includes(next)) {
+        const isHexU = next === "u" && /^[0-9a-fA-F]{4}/.test(preProcessed.slice(i + 2, i + 6));
+
+        if (isLatex) {
+          sanitized += "\\\\";
+        } else if (next && ['"', "\\", "/"].includes(next)) {
+          sanitized += "\\";
+        } else if (isHexU) {
+          sanitized += "\\";
+        } else if (next && ["b", "f", "n", "r", "t"].includes(next) && !/^(?:frac|dfrac|beta|tau|theta|text|times|rho|right|rightarrow)\b/i.test(sub)) {
           sanitized += "\\";
         } else {
           sanitized += "\\\\";
@@ -198,42 +212,67 @@ Format JSON STRICT attendu :
 
     case "carte-mentale":
     case "carte-mentale-2":
-      typeLabel = "Carte Mentale Conceptuelle";
-      jsonInstructions = `Structurez le cours sous forme d'une arborescence logique (Mind Map) avec nœud racine, branches hiérarchiques et liste de branches.
+      typeLabel = "Carte Mentale Hiérarchique";
+      jsonInstructions = `CONSIGNE STRICTE DE STRUCTURATION HIÉRARCHIQUE (CARTE MENTALE) :
+Tu dois STRICTEMENT respecter une arborescence à 3 niveaux minimum.
+IL EST STRICTEMENT INTERDIT de connecter directement plus de 4 à 6 branches principales au nœud central (pas de structure à plat ni de liste géante de fils au centre).
+
+STRUCTURE OBLIGATOIRE EN 4 PALIERS :
+- NIVEAU 0 (Racine) : Le Sujet Global uniquement (ex: "${docName}").
+- NIVEAU 1 (Branches Principales - Max 4 à 6 piliers) : Les grands piliers du cours (ex: "Généralités & Définitions", "Filtre Passe-Bas", "Filtre Passe-Haut", "Filtre Passe-Bande", "Filtre Coupe-Bande").
+- NIVEAU 2 (Sous-branches par catégorie) : Les caractéristiques de chaque grand pilier. Chaque branche de Niveau 1 DOIT contenir :
+  * "Définition / Rôle"
+  * "Fonction de Transfert"
+  * "Ordre 1 / Ordre 2"
+  * "Diagramme de Bode"
+- NIVEAU 3 (Feuilles de détails) : Les expressions exactes, formules ou valeurs numériques.
+  Exemple de cheminement :
+  Niveau 0 ("${docName}") -> Niveau 1 ("Filtre Passe-Bas") -> Niveau 2 ("Ordre 1") -> Niveau 3 ("$\\underline{T}(p) = \\dfrac{T_0}{1 + \\dfrac{p}{\\omega_0}}$")
+
+RÈGLE ABSOLUE POUR LES FORMULES LATEX :
+- Toutes les formules mathématiques/scientifiques LaTeX doivent être valides, proprement échappées avec double antislash dans les chaînes JSON (ex: "$\\underline{T}(p) = \\dfrac{T_0}{1 + \\dfrac{p}{\\omega_0}}$", "$Q_0 = \\dfrac{1}{R}\\sqrt{\\dfrac{L}{C}}$", "$f_c = \\dfrac{1}{2\\pi RC}$").
+- Les formules se placent UNIQUEMENT dans les nœuds finaux de détails (Niveau 3), jamais mélangées en vrac au niveau 1.
+- CHAQUE NŒUD EST UN BLOC / BOÎTE FERMÉE ("type": "box").
+- PAS DE PHRASES NARRATIVES NI DE LONGS PARAGRAPHES : mots-clés courts et percutants.
+
 Format JSON STRICT attendu :
 {
-  "title": "Carte Mentale : Titre du cours",
-  "root_title": "${docName}",
-  "root": {
-    "id": "root-1",
-    "title": "Concept Principal",
-    "label": "Concept Principal",
-    "notes": "Définition globale synthétique",
-    "color": "#3b82f6",
-    "children": [
-      {
-        "id": "branch-1",
-        "title": "Sous-thème A",
-        "label": "Sous-thème A",
-        "notes": "Explication clé",
-        "color": "#10b981",
-        "children": [
-          { "id": "sub-1-1", "title": "Détail 1", "label": "Détail 1", "notes": "Formule ou règle" }
-        ]
-      },
-      {
-        "id": "branch-2",
-        "title": "Sous-thème B",
-        "label": "Sous-thème B",
-        "notes": "Applications concrètes",
-        "color": "#f59e0b",
-        "children": []
-      }
-    ]
-  },
-  "branches": [
-    { "title": "Axe 1 : Fondements", "description": "Principes de base", "subBranches": ["Point A", "Point B"] },
-    { "title": "Axe 2 : Applications", "description": "Mise en pratique", "subBranches": ["Cas 1", "Cas 2"] }
+  "id": "root",
+  "label": "${docName}",
+  "type": "box",
+  "children": [
+    {
+      "id": "b1",
+      "label": "Grand Pilier 1",
+      "type": "box",
+      "children": [
+        {
+          "id": "b1-1",
+          "label": "Rôle / Définition",
+          "type": "box",
+          "children": [{ "id": "b1-1-1", "label": "Explication clé concise", "type": "box" }]
+        },
+        {
+          "id": "b1-2",
+          "label": "Formule Ordre 1",
+          "type": "box",
+          "children": [{ "id": "b1-2-1", "label": "$\\underline{T}(p) = \\dfrac{T_0}{1 + \\dfrac{p}{\\omega_0}}$", "type": "box" }]
+        }
+      ]
+    },
+    {
+      "id": "b2",
+      "label": "Grand Pilier 2",
+      "type": "box",
+      "children": [
+        {
+          "id": "b2-1",
+          "label": "Rôle / Définition",
+          "type": "box",
+          "children": [{ "id": "b2-1-1", "label": "Propriété majeure", "type": "box" }]
+        }
+      ]
+    }
   ]
 }`;
       break;

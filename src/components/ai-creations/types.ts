@@ -109,9 +109,14 @@ export interface QuizContent {
 }
 
 export interface MindMapContent {
+  id?: string;
+  label?: string;
+  type?: string;
+  children?: any[];
   root: MindMapNode;
   root_title?: string;
   branches?: any[];
+  [key: string]: any;
 }
 
 export interface InfographicMetric {

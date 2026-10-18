@@ -1051,42 +1051,93 @@ ou
     }
     \`\`\`
 
-8. DIRECTIVE SYSTÈME STRICTE DE STRUCTURATION PÉDAGOGIQUE POUR LES CARTES MENTALES ('carte-mentale') :
-Tu es le moteur de structuration pédagogique de l'application. Lorsque l'utilisateur te soumet un cours, un document ou un sujet, tu dois obligatoirement analyser les concepts et les lier entre eux sous forme de carte mentale logique.
-- PAS DE PHRASES NARRATIVES NI DE LONGS PARAGRAPHES.
-- UTILISE UNIQUEMENT DES MOTS-CLÉS PERCUTANTS, des notions courtes et précises.
-- INTÈGRE LES FORMULES SCIENTIFIQUES/TECHNIQUES PERTINENTES directement reliées au bon concept (ex: 'Fréquence de coupure : $f_c = \\dfrac{1}{2\\pi RC}$', 'Gain statique : $T_0 = -\\dfrac{R_2}{R_1}$', 'Facteur de qualité : $Q_0 = \\dfrac{1}{R}\\sqrt{\\dfrac{L}{C}}$').
-- Structure ta réponse de manière à ce qu'un utilisateur comprenne immédiatement les liens de cause à effet et la logique globale (Thème central -> Axes majeurs -> Sous-notions et Formules).
-- FORMAT DE SORTIE STRUCTURÉ EXPLOITABLE PAR LE FRONT-END (JSON ou Mermaid) :
-  Dans 'creation_data', fournis impérativement la structure hiérarchique :
-  \`\`\`json
-  {
-    "root_title": "Thème Central du Cours",
-    "root": {
-      "title": "Thème Central du Cours",
+8. CONSIGNE STRICTE DE STRUCTURATION HIÉRARCHIQUE (CARTE MENTALE - 'carte-mentale' et 'carte-mentale-2') :
+Tu es le moteur de structuration pédagogique de l'application StudyCloud. Lorsque l'utilisateur te soumet un cours, un document ou un sujet, tu dois OBLIGATOIREMENT construire une arborescence logique et équilibrée à 3 NIVEAUX MINIMUM (Niveau 0 -> Niveau 1 -> Niveau 2 -> Niveau 3).
+
+INTERDICTION FORMELLE DE FAIRE UNE STRUCTURE À PLAT ("hérisson" de 20 ou 30 branches connectées au centre).
+IL EST STRICTEMENT INTERDIT de connecter directement plus de 4 à 6 branches principales au nœud central.
+
+STRUCTURE OBLIGATOIRE EN 4 PALIERS :
+- NIVEAU 0 (Racine) : Le Sujet Global uniquement (ex: "Filtres Analogiques").
+- NIVEAU 1 (Branches Principales - Max 4 à 6 piliers) : Les grands piliers du cours.
+  Exemples stricts :
+  * "Généralités & Définitions"
+  * "Filtre Passe-Bas"
+  * "Filtre Passe-Haut"
+  * "Filtre Passe-Bande"
+  * "Filtre Coupe-Bande"
+
+- NIVEAU 2 (Sous-branches par catégorie) : Les caractéristiques de chaque grand pilier. Chaque branche de Niveau 1 DOIT contenir :
+  * "Définition / Rôle"
+  * "Fonction de Transfert"
+  * "Ordre 1 / Ordre 2"
+  * "Diagramme de Bode"
+
+- NIVEAU 3 (Feuilles de détails) : Les expressions exactes, formules ou valeurs numériques.
+  Exemple de cheminement :
+  Niveau 0 ("Filtres Analogiques") -> Niveau 1 ("Filtre Passe-Bas") -> Niveau 2 ("Ordre 1") -> Niveau 3 ("$\\underline{T}(p) = \\dfrac{T_0}{1 + \\dfrac{p}{\\omega_0}}$")
+
+RÈGLE ABSOLUE POUR LES FORMULES LATEX :
+- Toutes les formules mathématiques/scientifiques LaTeX doivent être valides, proprement échappées avec double antislash dans les chaînes JSON (ex: "$\\underline{T}(p) = \\dfrac{T_0}{1 + \\dfrac{p}{\\omega_0}}$", "$Q_0 = \\dfrac{1}{R}\\sqrt{\\dfrac{L}{C}}$", "$f_c = \\dfrac{1}{2\\pi RC}$").
+- Les formules se placent UNIQUEMENT dans les nœuds finaux de détails (Niveau 3), jamais mélangées en vrac au niveau 1.
+- CHAQUE NŒUD EST UN BLOC / BOÎTE FERMÉE ("type": "box").
+- PAS DE PHRASES NARRATIVES NI DE LONGS PARAGRAPHES : utilise des mots-clés courts et percutants.
+- INTERDICTION FORMELLE d'utiliser des placeholders vides ('Sous-notion 1', 'Branche 1') ou du Mermaid brut pour les cartes mentales.
+
+EXEMPLE STRICT DU SCHÉMA JSON HIÉRARCHIQUE DANS 'creation_data' :
+\`\`\`json
+{
+  "id": "root",
+  "label": "Filtres Analogiques",
+  "type": "box",
+  "children": [
+    {
+      "id": "b1",
+      "label": "Filtre Passe-Bas",
+      "type": "box",
       "children": [
         {
-          "title": "Axe Majeur 1 (ex: Définition & Rôle)",
-          "children": [
-            { "title": "Sous-notion percutante 1", "formula": "f_c = \\dfrac{1}{2\\pi RC}" },
-            { "title": "Sous-notion percutante 2" }
-          ]
+          "id": "b1-1",
+          "label": "Rôle",
+          "type": "box",
+          "children": [{ "id": "b1-1-1", "label": "Laisse passer les basses fréquences [0 ; f_C]", "type": "box" }]
+        },
+        {
+          "id": "b1-2",
+          "label": "Ordre 1",
+          "type": "box",
+          "children": [{ "id": "b1-2-1", "label": "$\\underline{T}(p) = \\dfrac{T_0}{1 + \\dfrac{p}{\\omega_0}}$", "type": "box" }]
+        },
+        {
+          "id": "b1-3",
+          "label": "Ordre 2",
+          "type": "box",
+          "children": [{ "id": "b1-3-1", "label": "$\\underline{T}(p) = \\dfrac{T_0}{1 + 2m\\dfrac{p}{\\omega_0} + (\\dfrac{p}{\\omega_0})^2}$", "type": "box" }]
         }
       ]
     },
-    "branches": [
-      {
-        "title": "Axe Majeur 1",
-        "children": [
-          { "title": "Sous-notion percutante 1", "formula": "f_c = \\dfrac{1}{2\\pi RC}" },
-          { "title": "Sous-notion percutante 2" }
-        ]
-      }
-    ]
-  }
-  \`\`\`
-  Alternativement, tu peux inclure un champ 'mermaid': "mindmap\\n  root((Thème))\\n    Axe 1\\n      Notion 1\\n      Formule: $...$" qui sera dessiné à l'écran.
-- INTERDICTION FORMELLE d'utiliser des placeholders vides comme 'Sous-notion 1', 'Sous-notion 2', 'Branche 1' : chaque nœud DOIT porter le vrai concept ou la formule du cours !`;
+    {
+      "id": "b2",
+      "label": "Filtre Passe-Haut",
+      "type": "box",
+      "children": [
+        {
+          "id": "b2-1",
+          "label": "Rôle",
+          "type": "box",
+          "children": [{ "id": "b2-1-1", "label": "Laisse passer les hautes fréquences", "type": "box" }]
+        },
+        {
+          "id": "b2-2",
+          "label": "Ordre 1",
+          "type": "box",
+          "children": [{ "id": "b2-2-1", "label": "$\\underline{T}(p) = \\dfrac{T_0\\dfrac{p}{\\omega_0}}{1 + \\dfrac{p}{\\omega_0}}$", "type": "box" }]
+        }
+      ]
+    }
+  ]
+}
+\`\`\``;
 
         if (docContent) {
           systemPrompt += `\n\n[DOCUMENTS FOURNIS PAR L'ÉTUDIANT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 30000)}`;
@@ -1318,7 +1369,21 @@ Tu es le moteur de structuration pédagogique de l'application. Lorsque l'utilis
         const jsonMatch = answerText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || answerText.match(/(\{[\s\S]*\})/);
         if (jsonMatch) {
           try {
-            const rawParsed = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+            const rawTextCandidate = jsonMatch[1] || jsonMatch[0];
+            const latexCommands = "dfrac|frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end|boxed|bm|boldsymbol";
+            let preProcessed = rawTextCandidate
+              .replace(new RegExp(`(?<!\\\\)\\\\(${latexCommands})\\b`, "gi"), "\\\\$1")
+              .replace(/(?<!\\)\\u(?![0-9a-fA-F]{4})/gi, "\\\\u");
+            let rawParsed: any = null;
+            try {
+              rawParsed = JSON.parse(preProcessed);
+            } catch {
+              const sanitized = preProcessed
+                .replace(/,\s*([\]}])/g, "$1")
+                .replace(/[\x0c\u000c]/g, "\\\\f")
+                .replace(/[\x08\u0008]/g, "\\\\b");
+              rawParsed = JSON.parse(sanitized);
+            }
             if (rawParsed && typeof rawParsed === "object") {
               const payloadData = rawParsed.creation_data || (
                 rawParsed.questions || rawParsed.affirmations || rawParsed.cards ||
@@ -1333,7 +1398,7 @@ Tu es le moteur de structuration pédagogique de l'application. Lorsque l'utilis
 
                 if (reqTypeNorm.includes("vrai") || parsedTypeNorm.includes("vrai") || rawParsed.affirmations) {
                   creationType = reqTypeNorm.includes("test") || parsedTypeNorm.includes("test") ? "vrai-ou-faux-test" : "vrai-ou-faux";
-                } else if (reqTypeNorm.includes("carte-mentale") || parsedTypeNorm.includes("carte-mentale") || parsedTypeNorm.includes("mindmap") || rawParsed.root || rawParsed.branches || rawParsed.mermaid) {
+                } else if (reqTypeNorm.includes("carte-mentale") || parsedTypeNorm.includes("carte-mentale") || parsedTypeNorm.includes("mindmap") || rawParsed.root || rawParsed.branches || rawParsed.mermaid || rawParsed.type === "box" || (rawParsed.children && rawParsed.label) || payloadData?.type === "box" || (payloadData?.children && payloadData?.label)) {
                   creationType = reqTypeNorm.includes("carte-mentale-2") || parsedTypeNorm.includes("carte-mentale-2") ? "carte-mentale-2" : "carte-mentale";
                 } else if (reqTypeNorm.includes("questionnaire") || parsedTypeNorm.includes("questionnaire") || rawParsed.questions) {
                   creationType = reqTypeNorm.includes("test") || parsedTypeNorm.includes("test") ? "questionnaire-test" : "questionnaire";

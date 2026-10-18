@@ -243,6 +243,36 @@ function parseMindMapFromText(rawText: string, safeDocName: string): MindMapCont
   const branches: MindMapNode[] = [];
   let currentBranch: MindMapNode | null = null;
 
+  // 0. Si rawText contient un JSON complet, l'extraire et le parser prioritairement avec safeJsonParse
+  if (rawText.includes('{') && rawText.includes('}')) {
+    const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || rawText.match(/(\{[\s\S]*\})/);
+    if (jsonMatch) {
+      const parsed = safeJsonParse(jsonMatch[1] || jsonMatch[0]);
+      const data = parsed?.creation_data || (parsed?.children || parsed?.branches || parsed?.root ? parsed : null);
+      if (data) {
+        const rootItem = data.root || (data.children && data.label ? data : null);
+        const children = data.children || data.branches || rootItem?.children || [];
+        return {
+          id: data.id || 'root',
+          label: data.label || data.root_title || data.title || rootLabel,
+          type: 'box',
+          children: children,
+          root: rootItem || {
+            id: 'root',
+            label: data.label || data.root_title || data.title || rootLabel,
+            type: 'box',
+            children: children
+          },
+          branches: Array.isArray(data.branches) ? data.branches : children.map((c: any) => ({
+            title: c.label || c.title || 'Axe',
+            children: c.children || [],
+            subBranches: (c.children || []).map((sc: any) => sc.label || sc.title || '')
+          }))
+        };
+      }
+    }
+  }
+
   // 1. Détection syntaxe Mermaid mindmap
   if (rawText.includes('mindmap')) {
     const rawLines = rawText.split('\n');
@@ -263,8 +293,8 @@ function parseMindMapFromText(rawText: string, safeDocName: string): MindMapCont
 
       const cleanText = trimmed
         .replace(/^root\s*/i, '')
-        .replace(/^[\(\[\{]{1,2}/, '')
-        .replace(/[\)\]\}]{1,2}$/, '')
+        .replace(/^[\(\[]{1,2}/, '')
+        .replace(/[\)\]]{1,2}$/, '')
         .replace(/^[-*]\s*/, '')
         .trim();
 
@@ -322,8 +352,8 @@ function parseMindMapFromText(rawText: string, safeDocName: string): MindMapCont
     const subMatch = line.match(/^(?:[-*•]\s+|\s{2,}[-*•]\s+)(.+)/);
 
     if (branchMatch && !line.startsWith('-') && !line.startsWith('*')) {
-      const cleanLabel = branchMatch[1].replace(/^\*{1,2}|\*{1,2}$/g, '').replace(/[:#]/g, '').trim();
-      if (cleanLabel.length > 2 && cleanLabel.length < 80) {
+      const cleanLabel = branchMatch[1].replace(/^\*{1,2}|\*{1,2}$/g, '').replace(/^#+\s*/, '').trim();
+      if (cleanLabel.length > 2 && cleanLabel.length < 120) {
         currentBranch = {
           id: `branch-${branches.length + 1}`,
           label: cleanLabel,
@@ -360,6 +390,19 @@ function parseMindMapFromText(rawText: string, safeDocName: string): MindMapCont
   }
 
   return {
+    id: 'node_central',
+    label: rootLabel,
+    type: 'box',
+    children: branches.map((b, idx) => ({
+      id: b.id || `box_${idx + 1}`,
+      label: b.label,
+      type: 'box',
+      children: (b.children || []).map((c: any, cIdx: number) => ({
+        id: c.id || `sub_box_${idx + 1}_${cIdx + 1}`,
+        label: c.label,
+        type: 'box'
+      }))
+    })),
     root: {
       id: 'root-node',
       label: rootLabel,
@@ -370,6 +413,7 @@ function parseMindMapFromText(rawText: string, safeDocName: string): MindMapCont
     branches: branches.map(b => ({
       title: b.label,
       description: b.details || '',
+      children: b.children || [],
       subBranches: (b.children || []).map(c => c.label)
     }))
   };
