@@ -220,103 +220,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       }
     }
 
-    // Enrichissement didactique d'excellence si le sujet concerne les Filtres Analogiques
-    const isAnalogFilters = /(filtre|analogique|bode|coupure|passe-bas|passe-haut)/i.test(safeTitle + ' ' + safeTheme + ' ' + safeOverview);
-    
-    if (isAnalogFilters) {
-      // Si les formules sont incomplètes ou contiennent du texte de remplissage générique
-      const hasFillerFormulas = formulas.some(f => isFillerText(f.how_to_derive) || isFillerText(f.when_to_use));
-      if (formulas.length < 2 || hasFillerFormulas) {
-        formulas = [
-          {
-            name: "Fonction de Transfert Canonique (Filtre Passe-Bas d'Ordre 1)",
-            latex: "\\underline{T}(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}} = \\dfrac{T_0}{1 + j\\dfrac{f}{f_0}}",
-            target_goal: "Quand le sujet demande d'établir la fonction de transfert canonique du filtre passe-bas, c'est cette forme que tu dois obtenir.",
-            when_to_use: "Quand le sujet demande d'établir la fonction de transfert canonique du filtre passe-bas, c'est cette forme que tu dois obtenir.",
-            variables: "$T_0$ : Gain statique sans unité (valeur en basse fréquence) • $\\omega_0$ : Pulsation de coupure à $-3\\text{ dB}$ en $\\text{rad/s}$ • $f_0 = \\dfrac{\\omega_0}{2\\pi}$ : Fréquence de coupure en $\\text{Hz}$.",
-            how_to_derive: "Appliquer le pont diviseur de tension sur la sortie : $\\underline{U}_s = \\underline{U}_e \\times \\dfrac{\\underline{Z}_C}{R + \\underline{Z}_C}$. Remplacer $\\underline{Z}_C$ par $\\dfrac{1}{jC\\omega}$, multiplier numérateur et dénominateur par $jC\\omega$ pour simplifier l'étage, puis identifier par identification : gain statique $T_0 = 1$ et pulsation de coupure $\\omega_0 = \\dfrac{1}{RC}$.",
-            demonstration_steps: [
-              "Appliquer le **Pont Diviseur de Tension** sur le dipôle de sortie : $\\underline{U}_s = \\underline{U}_e \\times \\dfrac{\\underline{Z}_C}{R + \\underline{Z}_C}$",
-              "Remplacer l'impédance du condensateur par son expression complexe : $\\underline{Z}_C = \\dfrac{1}{jC\\omega}$",
-              "Multiplier le numérateur et le dénominateur par $jC\\omega$ pour simplifier l'étage : $\\underline{T}(j\\omega) = \\dfrac{1}{1 + jRC\\omega}$",
-              "Identifier terme à terme avec la forme canonique : gain statique $T_0 = 1$ et pulsation de coupure $\\omega_0 = \\dfrac{1}{RC}$ (soit $f_0 = \\dfrac{1}{2\\pi RC}$)"
-            ],
-            exam_trap: "Attention aux unités : ne pas confondre la pulsation $\\omega$ (en $\\text{rad/s}$) et la fréquence $f$ (en $\\text{Hz}$) : $\\omega = 2\\pi f$ ! Attention aux unités de condensateurs : $1\\text{ nF} = 10^{-9}\\text{ F}$, $1\\ \\mu\\text{F} = 10^{-6}\\text{ F}$."
-          },
-          {
-            name: "Fonction de Transfert Canonique (Filtre Passe-Haut d'Ordre 1)",
-            latex: "\\underline{T}(j\\omega) = \\dfrac{T_0 \\cdot j\\dfrac{\\omega}{\\omega_0}}{1 + j\\dfrac{\\omega}{\\omega_0}}",
-            target_goal: "Quand le sujet demande d'éliminer la composante continue (bloqueur de continu) ou d'étudier un filtre passe-haut.",
-            when_to_use: "Quand le sujet demande d'éliminer la composante continue (bloqueur de continu) ou d'étudier un filtre passe-haut.",
-            variables: "$T_0$ : Gain asymptotique en haute fréquence sans unité • $\\omega_0$ : Pulsation de coupure en $\\text{rad/s}$ (avec $\\omega_0 = \\dfrac{1}{RC}$).",
-            how_to_derive: "Pont diviseur de tension appliqué à la résistance $R$ : $\\underline{U}_s = \\underline{U}_e \\times \\dfrac{R}{R + \\dfrac{1}{jC\\omega}} = \\underline{U}_e \\times \\dfrac{jRC\\omega}{1 + jRC\\omega}$, puis identifier $\\omega_0 = \\dfrac{1}{RC}$.",
-            demonstration_steps: [
-              "Appliquer le **Pont Diviseur de Tension** aux bornes de la résistance : $\\underline{U}_s = \\underline{U}_e \\times \\dfrac{R}{R + \\underline{Z}_C}$",
-              "Remplacer $\\underline{Z}_C$ par $\\dfrac{1}{jC\\omega}$ : $\\underline{T}(j\\omega) = \\dfrac{R}{R + \\dfrac{1}{jC\\omega}}$",
-              "Multiplier numérateur et dénominateur par $jC\\omega$ : $\\underline{T}(j\\omega) = \\dfrac{jRC\\omega}{1 + jRC\\omega}$",
-              "Poser $\\omega_0 = \\dfrac{1}{RC}$ pour obtenir la forme canonique officielle"
-            ],
-            exam_trap: "En très basse fréquence (BF), le condensateur se comporte comme un circuit ouvert, la tension de sortie s'annule : le continu est bloqué."
-          },
-          {
-            name: "Fonction de Transfert Canonique (Filtre Passe-Bande d'Ordre 2)",
-            latex: "\\underline{T}(j\\omega) = \\dfrac{T_0}{1 + jQ_0\\left(\\dfrac{\\omega}{\\omega_0} - \\dfrac{\\omega_0}{\\omega}\\right)}",
-            target_goal: "Sélectionner une bande de fréquence étroite autour d'une fréquence centrale $f_0$.",
-            when_to_use: "Sélectionner une bande de fréquence étroite autour d'une fréquence centrale $f_0$.",
-            variables: "$T_0$ : Gain maximal à la résonance $\\omega = \\omega_0$ • $Q_0$ : Facteur de qualité sans unité • $\\Delta\\omega = \\dfrac{\\omega_0}{Q_0}$ : Bande passante à $-3\\text{ dB}$.",
-            how_to_derive: "Appliquer la loi des mailles ou le théorème de Millman aux nœuds du quadripôle RLC, factoriser par $j\\omega$ et regrouper pour identifier la pulsation centrale $\\omega_0 = \\dfrac{1}{\\sqrt{LC}}$ et le facteur de qualité $Q_0$.",
-            demonstration_steps: [
-              "Écrire l'impédance totale du dipôle résonant : $\\underline{Z} = R + j\\left(L\\omega - \\dfrac{1}{C\\omega}\\right)$",
-              "À la résonance $\\omega_0 = \\dfrac{1}{\\sqrt{LC}}$, la partie imaginaire s'annule et le gain est maximal : $T_{max} = T_0$",
-              "Exprimer la bande passante à $-3\\text{ dB}$ : $\\Delta f = \\dfrac{f_0}{Q_0}$",
-              "Plus $Q_0$ est élevé, plus le filtre est sélectif"
-            ],
-            exam_trap: "Attention au calcul de la bande passante : $\\Delta f$ s'exprime en $\\text{Hz}$ alors que $\\Delta\\omega$ s'exprime en $\\text{rad/s}$ !"
-          }
-        ];
-      }
 
-      // 2. Si le tableau comparatif est manquant, garantir le tableau complet des 4 filtres
-      if (!comparisonTable) {
-        comparisonTable = {
-          headers: ["Type de Filtre", "Forme Canonique \\underline{T}(j\\omega)", "Pulsation de coupure", "Pente Bode (Gain)", "Comportement BF / HF"],
-          rows: [
-            ["Passe-Bas (Ordre 1)", "$$\\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$$", "$$\\omega_0 = \\dfrac{1}{RC}$$", "$$-20\\text{ dB/décade}$$", "Passe en BF (gain $T_0$), coupé en HF ($0$)"],
-            ["Passe-Haut (Ordre 1)", "$$\\dfrac{T_0\\,j\\dfrac{\\omega}{\\omega_0}}{1 + j\\dfrac{\\omega}{\\omega_0}}$$", "$$\\omega_0 = \\dfrac{1}{RC}$$", "$$+20\\text{ dB/décade}$$", "Bloqué en BF ($0$), passe en HF (gain $T_0$)"],
-            ["Passe-Bande (Ordre 2)", "$$\\dfrac{T_0}{1 + jQ_0\\left(\\dfrac{\\omega}{\\omega_0} - \\dfrac{\\omega_0}{\\omega}\\right)}$$", "$$\\Delta\\omega = \\dfrac{\\omega_0}{Q_0}$$", "$$\\pm 20\\text{ dB/décade}$$", "Atténue BF et HF, transmet autour de $\\omega_0$"],
-            ["Coupe-Bande (Notch)", "$$\\dfrac{T_0\\left(1 - \\left(\\dfrac{\\omega}{\\omega_0}\\right)^2\\right)}{1 + j\\dfrac{1}{Q_0}\\dfrac{\\omega}{\\omega_0} - \\left(\\dfrac{\\omega}{\\omega_0}\\right)^2}$$", "$$\\omega_0 = \\dfrac{1}{\\sqrt{LC}}$$", "$$0\\text{ dB partout}$$", "Transmet tout sauf la pulsation $\\omega_0$"]
-          ]
-        };
-      }
-
-      // 3. Si les pièges et astuces sont manquants, garantir les points de vigilance
-      if (trapsAndTips.length === 0) {
-        trapsAndTips.push(
-          {
-            type: 'trap',
-            title: 'CONFUSION ENTRE FRÉQUENCE ET PULSATION',
-            content: "Ne jamais confondre la pulsation $\\omega$ (en $\\text{rad/s}$) et la fréquence $f$ (en $\\text{Hz}$) ! La relation fondamentale obligatoire est toujours $\\omega = 2\\pi f$ (soit $f_0 = \\dfrac{\\omega_0}{2\\pi}$). Dans les calculs numériques de bande passante, oubliez ce facteur $2\\pi$ fausse immédiatement le résultat."
-          },
-          {
-            type: 'tip',
-            title: 'DÉFINITION STRICTE DE LA FRÉQUENCE DE COUPURE À -3 dB',
-            content: "À la pulsation de coupure $\\omega = \\omega_0$, le module de la fonction de transfert est divisé par $\\sqrt{2}$ ($|T| = \\dfrac{T_0}{\\sqrt{2}}$), ce qui correspond rigoureusement à une atténuation de $3\\text{ dB}$ du gain en tension : $G_{dB}(\\omega_0) = G_{max} - 20\\log_{10}(\\sqrt{2}) = G_{max} - 3{,}01\\text{ dB}$."
-          }
-        );
-      }
-
-      // 4. Si l'exemple pratique est manquant, garantir un cas concret résolu
-      if (!practicalExample) {
-        practicalExample = {
-          statement: "Soit un filtre passe-bas passif RC du premier ordre composé d'une résistance $R = 1\\text{ k}\\Omega$ et d'un condensateur $C = 100\\text{ nF}$. Déterminer sa fréquence de coupure à $-3\\text{ dB}$, puis calculer son gain en dB à une fréquence $f = 2\\text{ kHz}$.",
-          resolution_steps: [
-            "1. Calcul de la pulsation et de la fréquence de coupure : $\\omega_0 = \\dfrac{1}{RC} = \\dfrac{1}{10^3 \\times 100 \\times 10^{-9}} = 10^4\\text{ rad/s}$. La fréquence de coupure vaut donc $f_0 = \\dfrac{\\omega_0}{2\\pi} = \\dfrac{10^4}{2\\pi} \\approx 1591{,}5\\text{ Hz} \\approx 1{,}59\\text{ kHz}$.",
-            "2. Expression du gain en tension pour $f = 2\\text{ kHz}$ : $|\\underline{T}(f)| = \\dfrac{1}{\\sqrt{1 + \\left(\\dfrac{f}{f_0}\\right)^2}} = \\dfrac{1}{\\sqrt{1 + \\left(\\dfrac{2000}{1591{,}5}\\right)^2}} = \\dfrac{1}{\\sqrt{1 + 1{,}579}} = \\dfrac{1}{\\sqrt{2{,}579}} \\approx 0{,}622$.",
-            "3. Calcul en décibels : $G_{dB} = 20\\log_{10}(0{,}622) \\approx -4{,}12\\text{ dB}$. Le signal est donc déjà atténué de plus de $4\\text{ dB}$ car la fréquence imposée est supérieure à la fréquence de coupure."
-          ]
-        };
-      }
-    }
 
     // Points clés additionnels
     const rawKeyPoints = Array.isArray(raw?.keyPoints)
@@ -610,11 +514,11 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             </section>
           )}
 
-          {/* II. Formulaire & Méthodes de Calcul - Rédigé directement sur le fond de page comme un livre */}
+          {/* II. Formulaire, Règles & Méthodes - Rédigé directement sur le fond de page comme un livre */}
           {parsedSummary.formulas.length > 0 && (
             <section className="space-y-6 pt-4">
               <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
-                II. Formulaire & Méthodes de Calcul
+                II. Notions Clés, Formules & Règles Fondamentales
               </h2>
 
               <div className="space-y-8">
@@ -630,34 +534,36 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                       key={fidx}
                       className="space-y-3 pt-2"
                     >
-                      {/* En-tête de la formule - style titre de livre de cours */}
+                      {/* En-tête de la formule/règle - style titre de livre de cours */}
                       <div className="text-base sm:text-lg font-bold text-black flex items-center gap-2">
                         <span className="font-extrabold">{fidx + 1}.</span>
                         <span className="uppercase tracking-wide">
-                          <MathText text={formula.name || `Formule ${fidx + 1}`} inline={true} />
+                          <MathText text={formula.name || `Règle / Formule ${fidx + 1}`} inline={true} />
                         </span>
                       </div>
 
-                      {/* Formule mathématique centrée directement sur le fond de la page (sans boîte ni bordure) */}
-                      <div className="py-2 px-2 text-center overflow-x-auto text-xl sm:text-2xl font-bold text-black my-2">
-                        <MathText text={`$$ ${cleanedLatex} $$`} />
-                      </div>
+                      {/* Formule mathématique centrée directement sur le fond de la page (uniquement si LaTeX présent) */}
+                      {cleanedLatex && (
+                        <div className="py-2 px-2 text-center overflow-x-auto text-xl sm:text-2xl font-bold text-black my-2">
+                          <MathText text={`$$ ${cleanedLatex} $$`} />
+                        </div>
+                      )}
 
                       {/* Contenu pédagogique continu sur le fond de page */}
                       <div className="space-y-2.5 text-stone-900 text-base leading-relaxed pl-1 sm:pl-3">
-                        {/* 1. Objectif du calcul */}
+                        {/* 1. Objectif & Utilité */}
                         {hasObjective && (
                           <p className="text-stone-800">
-                            <strong className="font-bold text-black">🎯 Objectif du calcul : </strong>
+                            <strong className="font-bold text-black">🎯 Objectif & Utilité : </strong>
                             <MathText text={formula.target_goal || formula.when_to_use || ''} inline={true} />
                           </p>
                         )}
 
-                        {/* 2. Comment la DÉMONTRER à partir du schéma & des lois */}
+                        {/* 2. Démonstration, Logique ou Méthode pas à pas */}
                         {(hasSteps || hasDerivation) && (
                           <div className="space-y-1.5 pt-0.5">
                             <p className="font-bold text-black">
-                              🛠️ Comment la démontrer à partir du schéma & des lois :
+                              🛠️ Démonstration & Méthode d'application pas à pas :
                             </p>
                             {hasSteps ? (
                               <ol className="list-decimal pl-6 space-y-1 text-stone-800 font-normal">
@@ -675,24 +581,24 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                           </div>
                         )}
 
-                        {/* 3. Variables & Unités */}
+                        {/* 3. Variables, Unités ou Conditions */}
                         {formula.variables && (
                           <p className="text-stone-800">
-                            <strong className="font-bold text-black">📐 Variables & Unités : </strong>
+                            <strong className="font-bold text-black">📐 Variables, Unités ou Conditions : </strong>
                             <MathText text={formula.variables} inline={true} />
                           </p>
                         )}
 
-                        {/* 4. Piège à l'examen */}
+                        {/* 4. Piège classique à l'examen */}
                         {hasTraps && (
                           <p className="text-stone-800">
-                            <strong className="font-bold text-black">⚠️ Piège à l'examen : </strong>
+                            <strong className="font-bold text-black">⚠️ Piège classique à l'examen : </strong>
                             <MathText text={formula.exam_trap!} inline={true} />
                           </p>
                         )}
                       </div>
 
-                      {/* Séparation sobre de livre entre deux formules */}
+                      {/* Séparation sobre de livre entre deux formules/règles */}
                       {fidx < parsedSummary.formulas.length - 1 && (
                         <hr className="border-t border-stone-200 my-6" />
                       )}

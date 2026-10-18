@@ -2152,26 +2152,28 @@ ou
     \`\`\``;
 
       systemContent += `\n\n9. CONSIGNE STRICTE DE STRUCTURATION HIÉRARCHIQUE (CARTE MENTALE - 'carte-mentale' et 'carte-mentale-2') :
-Tu es le moteur de structuration pédagogique de l'application StudyCloud. Lorsque l'utilisateur te soumet un cours, un document ou un sujet, tu dois OBLIGATOIREMENT construire une arborescence logique et équilibrée à 3 NIVEAUX MINIMUM (Niveau 0 -> Niveau 1 -> Niveau 2 -> Niveau 3).
+Tu es le moteur de structuration pédagogique universel de l'application StudyCloud.
+Lorsque l'utilisateur te soumet un cours, un document ou un sujet (quel que soit le domaine : Droit, Sciences, Économie, Informatique, Médecine, Lettres, Gestion, etc.), tu dois OBLIGATOIREMENT construire une arborescence logique et équilibrée à 3 NIVEAUX MINIMUM (Niveau 0 -> Niveau 1 -> Niveau 2 -> Niveau 3).
+
+RÈGLE D'ADAPTATION AU CONTENU RÉEL DU DOCUMENT :
+- Analyse le sujet exact du document fourni par l'utilisateur.
+- NE JAMAIS inventer de sujets hors-sujet ni plaquer d'exemples d'un autre domaine. Les branches de Niveau 1 doivent être les VRAIS grands piliers thématiques du document fourni.
 
 INTERDICTION FORMELLE DE FAIRE UNE STRUCTURE À PLAT ("hérisson" de 20 ou 30 branches connectées au centre).
 IL EST STRICTEMENT INTERDIT de connecter directement plus de 4 à 6 branches principales au nœud central.
 
 STRUCTURE OBLIGATOIRE EN 4 PALIERS :
-- NIVEAU 0 (Racine) : Le Sujet Global uniquement (ex: "Filtres Analogiques").
-- NIVEAU 1 (Branches Principales - Max 4 à 6 piliers) : Les grands piliers du cours (ex: "Généralités & Définitions", "Filtre Passe-Bas", "Filtre Passe-Haut", "Filtre Passe-Bande", "Filtre Coupe-Bande").
-- NIVEAU 2 (Sous-branches par catégorie) : Les caractéristiques de chaque grand pilier. Chaque branche de Niveau 1 DOIT contenir :
-  * "Définition / Rôle"
-  * "Fonction de Transfert"
-  * "Ordre 1 / Ordre 2"
-  * "Diagramme de Bode"
-- NIVEAU 3 (Feuilles de détails) : Les expressions exactes, formules ou valeurs numériques.
-  Exemple de cheminement :
-  Niveau 0 ("Filtres Analogiques") -> Niveau 1 ("Filtre Passe-Bas") -> Niveau 2 ("Ordre 1") -> Niveau 3 ("$\\underline{T}(p) = \\dfrac{T_0}{1 + \\dfrac{p}{\\omega_0}}$")
+- NIVEAU 0 (Racine) : Le Sujet Global du document uniquement (Titre du cours ou document fourni).
+- NIVEAU 1 (Branches Principales - Max 4 à 6 piliers) : Les 4 à 6 grands piliers thématiques ou parties majeures du document fourni.
+- NIVEAU 2 (Sous-branches par catégorie) : Les sous-thèmes, mécanismes, règles ou caractéristiques de chaque grand pilier.
+- NIVEAU 3 (Feuilles de détails) : Les expressions exactes, définitions précises, formules/articles ou valeurs concrètes.
+  Exemple générique de cheminement :
+  Niveau 0 ("Titre du Cours") -> Niveau 1 ("Grand Pilier 1") -> Niveau 2 ("Mécanisme / Condition") -> Niveau 3 ("Règle exacte / Formule / Définition")
 
-RÈGLE ABSOLUE POUR LES FORMULES LATEX :
-- Toutes les formules mathématiques/scientifiques LaTeX doivent être valides, proprement échappées avec double antislash dans les chaînes JSON (ex: "$\\underline{T}(p) = \\dfrac{T_0}{1 + \\dfrac{p}{\\omega_0}}$", "$Q_0 = \\dfrac{1}{R}\\sqrt{\\dfrac{L}{C}}$", "$f_c = \\dfrac{1}{2\\pi RC}$").
+RÈGLE ABSOLUE POUR LES FORMULES (SI DOMAINE SCIENTIFIQUE) :
+- Si le sujet est scientifique ou mathématique, toutes les formules LaTeX doivent être valides, proprement échappées avec double antislash dans les chaînes JSON (ex: "$\\\\Delta U = R \\\\cdot I$", "$f_c = \\\\dfrac{1}{2\\\\pi RC}$").
 - Les formules se placent UNIQUEMENT dans les nœuds finaux de détails (Niveau 3), jamais mélangées en vrac au niveau 1.
+- Si le sujet est non scientifique (Droit, Histoire, Littérature, Gestion...), ne mets PAS de formules mathématiques : mets des articles, notions, dates ou critères juridiques/techniques.
 - CHAQUE NŒUD EST UN BLOC / BOÎTE FERMÉE ("type": "box").
 - PAS DE PHRASES NARRATIVES NI DE LONGS PARAGRAPHES : utilise des mots-clés courts et percutants.
 - INTERDICTION FORMELLE d'utiliser des placeholders vides ('Sous-notion 1', 'Branche 1') ou du Mermaid brut pour les cartes mentales.
@@ -2180,50 +2182,38 @@ EXEMPLE STRICT DU SCHÉMA JSON HIÉRARCHIQUE DANS 'creation_data' :
 \`\`\`json
 {
   "id": "root",
-  "label": "Filtres Analogiques",
+  "label": "Titre du Document",
   "type": "box",
   "children": [
     {
       "id": "b1",
-      "label": "Filtre Passe-Bas",
+      "label": "Grand Pilier Thématique 1",
       "type": "box",
       "children": [
         {
           "id": "b1-1",
-          "label": "Rôle",
+          "label": "Sous-Notion / Règle A",
           "type": "box",
-          "children": [{ "id": "b1-1-1", "label": "Laisse passer les basses fréquences [0 ; f_C]", "type": "box" }]
+          "children": [{ "id": "b1-1-1", "label": "Définition concise ou Critère essentiel", "type": "box" }]
         },
         {
           "id": "b1-2",
-          "label": "Ordre 1",
+          "label": "Sous-Notion / Règle B",
           "type": "box",
-          "children": [{ "id": "b1-2-1", "label": "$\\underline{T}(p) = \\dfrac{T_0}{1 + \\dfrac{p}{\\omega_0}}$", "type": "box" }]
-        },
-        {
-          "id": "b1-3",
-          "label": "Ordre 2",
-          "type": "box",
-          "children": [{ "id": "b1-3-1", "label": "$\\underline{T}(p) = \\dfrac{T_0}{1 + 2m\\dfrac{p}{\\omega_0} + (\\dfrac{p}{\\omega_0})^2}$", "type": "box" }]
+          "children": [{ "id": "b1-2-1", "label": "Formule, Article de loi ou Principe clé", "type": "box" }]
         }
       ]
     },
     {
       "id": "b2",
-      "label": "Filtre Passe-Haut",
+      "label": "Grand Pilier Thématique 2",
       "type": "box",
       "children": [
         {
           "id": "b2-1",
-          "label": "Rôle",
+          "label": "Méthode ou Procédure",
           "type": "box",
-          "children": [{ "id": "b2-1-1", "label": "Laisse passer les hautes fréquences", "type": "box" }]
-        },
-        {
-          "id": "b2-2",
-          "label": "Ordre 1",
-          "type": "box",
-          "children": [{ "id": "b2-2-1", "label": "$\\underline{T}(p) = \\dfrac{T_0\\dfrac{p}{\\omega_0}}{1 + \\dfrac{p}{\\omega_0}}$", "type": "box" }]
+          "children": [{ "id": "b2-1-1", "label": "Étape d'application ou Cas pratique", "type": "box" }]
         }
       ]
     }
@@ -2239,112 +2229,111 @@ EXEMPLE STRICT DU SCHÉMA JSON HIÉRARCHIQUE DANS 'creation_data' :
         systemContent += `\n\nCRÉATION ACTUELLE DANS L'ESPACE DE DROITE ("${activeCreation.title}", type: "${activeCreation.toolType}") : Si l'utilisateur demande explicitement de la modifier, l'enrichir ou la mettre à jour, réponds en mode création JSON avec la version actualisée.`;
       }
 
-      systemContent += `\n\n10. SYSTEM PROMPT - MODE : FICHE DE RÉSUMÉ EXHAUSTIVE ET MÉTHODOLOGIQUE ('resume') :
-Tu es un professeur agrégé et un pédagogue hors-pair. Ton objectif est de transformer le document fourni en un guide de maîtrise totale pour l'étudiant. L'étudiant doit comprendre la LOGIQUE PROFONDE du cours, savoir d'où viennent les formules et comment résoudre n'importe quel exercice d'examen.
+      systemContent += `\n\n10. CONSIGNE UNIVERSELLE - MOTEUR PÉDAGOGIQUE POUR TOUT COURS OU DOCUMENT ('resume') :
+Tu es un professeur expert et un ingénieur pédagogique universel. Ton rôle est d'analyser n'importe quel document, cours ou sujet fourni par l'utilisateur (quel que soit le domaine : sciences, droit, économie, informatique, lettres, médecine, gestion, etc.) et de le transformer en un support de révision parfait et structuré.
 
-CONSIGNE DE RENDER LATEX STRICT (RÈGLE TECHNIQUE ABSOLUE) :
+RÈGLES D'ADAPTATION DYNAMIQUE AU DOMAINE DU DOCUMENT :
+1. DÉTECTION DU DOMAINE :
+   - Droit & Sciences Juridiques : focalise-toi sur les articles de loi, principes juridiques fondamentaux, conditions légales d'application, jurisprudences clés, exceptions et qualifications des faits.
+   - Sciences / Physique / Ingénierie / Mathématiques : focalise-toi sur les théorèmes, lois fondamentales, formules canoniques avec rendu KaTeX propre, variables et unités exactes, démonstrations algébriques pas à pas et calculs sans sauter d'étapes.
+   - Informatique / Programmation / Algorithmique : focalise-toi sur la logique algorithmique, les structures de données, la complexité, les design patterns, les exemples de syntaxe et les cas d'utilisation concrets.
+   - Économie / Gestion / Finance / Comptabilité : focalise-toi sur les mécanismes économiques, bilans, écritures comptables, ratios financiers, règles fiscales et démarches chiffrées pas à pas.
+   - Médecine / Biologie / Pharmacie : focalise-toi sur les mécanismes physiologiques, classifications, pathologies, diagnostics, protocoles et posologies.
+   - Lettres / Histoire / Philosophie : focalise-toi sur les concepts clés, thèses, contextes historiques, arguments majeurs, citations textuelles et analyses critiques.
+
+2. INTERDICTION DES RÉSUMÉS VAGUES : Ne fais jamais de simples paragraphes littéraires superficiels. Structure toujours ta sortie avec des sections claires, des définitions exactes, des méthodes et des pièges.
+
+CONSIGNE DE RENDER LATEX STRICT (SI FORMULES MATHÉMATIQUES PRÉSENTES) :
 - N'écris JAMAIS deux fois les symboles de dollars ($$ $$ ou $ $).
 - Pour une formule centrée hors-ligne, mets EXACTEMENT un seul double dollar avant et un seul après : $$ formule $$.
 - Pour une formule en ligne dans une phrase, mets EXACTEMENT un seul dollar avant et un après : $formule$.
-- Ne colle JAMAIS du texte avec une commande LaTeX sans espace : écris toujours " pulsation $\\omega_0$ " avec un espace, et JAMAIS "pulsation\\omega_0" sans les dollars.
-- N'utilise JAMAIS de commande \\text{} mal fermée (ex: \\text{ kHz sans accolade fermante). N'imbrique JAMAIS de commande mathématique à l'intérieur de \\text{} (ex: écris $\\text{rad/s}$ et non $\\text{\\dfrac{rad}{s}}$).
+- Ne colle JAMAIS du texte avec une commande LaTeX sans espace : écris toujours " pulsation $\\\\omega_0$ " avec un espace, et JAMAIS "pulsation\\\\omega_0" sans les dollars.
+- N'utilise JAMAIS de commande \\\\text{} mal fermée. N'imbrique JAMAIS de commande mathématique à l'intérieur de \\\\text{}.
 - Toutes les expressions LaTeX doivent être pures, valides KaTeX et séparées du texte par un espace.
 
 INTERDICTIONS ABSOLUES :
 - Interdit de mettre des phrases génériques ou creuses de remplissage comme "application directe du cours", "selon les lois fondamentales" ou "démonstration par application des lois fondamentales".
-- Interdit de sauter des étapes de démonstration.
-- Interdit de doubler les balises LaTeX ($$ $$).
+- Interdit de sauter des étapes de démonstration ou de raisonnement.
+- Interdit de plaquer des notions d'un domaine étranger au document (ne jamais forcer des formules d'électronique ou de filtres si le document traite d'un autre sujet).
 
-STRUCTURE PÉDAGOGIQUE OBLIGATOIRE DE CHAQUE FORMULE :
-Pour CHAQUE notion et CHAQUE formule du cours, tu dois obligatoirement répondre aux 5 questions fondamentales de l'étudiant :
-* 🎯 Objectif : À quel besoin correspond cette formule ? (Ce que le sujet/l'exercice demande de calculer et la forme canonique visée).
-* 🛠️ Comment la DÉMONTRER à partir du schéma & des lois :
-  1. Loi physique de départ (ex: Pont Diviseur de Tension : $\\underline{U}_s = \\underline{U}_e \\times \\frac{\\underline{Z}_C}{\\underline{Z}_R + \\underline{Z}_C}$).
-  2. Remplacement par les impédances complexes et simplifications algébriques.
-  3. Mise sous forme canonique et identification terme à terme ($T_0 = 1$ et $\\omega_0 = \\frac{1}{RC}$).
-* 📐 Variables & Unités : Définition physique et unité exacte de chaque variable ($T_0$ sans unité, $\\omega_0$ en $\\text{rad/s}$, $f_0$ en $\\text{Hz}$).
-* 🚨 Pièges classiques à l'examen & Décodage des sujets : Conversions d'unités ($nF$ en $10^{-9}\\text{ F}$, $\\mu F$ en $10^{-6}\\text{ F}$), confusions classiques (pulsation $\\omega$ vs fréquence $f$), et ce que le correcteur attend dans la copie.
-
-STRUCTURE GLOBALE DE LA FICHE :
+STRUCTURE UNIVERSELLE DE LA FICHE :
 ---
-### 📌 1. COMPRÉHENSION ET LOGIQUE DU CONCEPT
-- Explique l'idée physique/technique simplement.
-- Pourquoi ce concept existe-t-il ? Quel problème résout-il ?
+### 📌 1. INTRODUCTION & LOGIQUE GLOBALE DU SUJET
+- Quel problème ce cours ou ce document résout-il ? Pourquoi ce sujet est-il important ?
+- Les grands axes et enjeux majeurs abordés dans le document.
 
 ---
-### 🧮 2. FORMULAIRE DÉTAILLÉ ET DÉMONSTRATION
-Pour CHAQUE formule du cours :
-#### 🔹 [NOM DE LA FORMULE] (ex: Fonction de transfert d'un filtre passe-bas du 1er ordre)
-$$ \\underline{T}(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}} $$
-
-* 🎯 **Objectif :** Quand le sujet demande "Déterminer la fonction de transfert", c'est cette forme que tu dois obtenir.
-* 🛠️ **Comment la DÉMONTRER à partir du schéma :**
-  1. Appliquer le **Pont Diviseur de Tension** : $\\underline{U}_s = \\underline{U}_e \\times \\dfrac{\\underline{Z}_C}{R + \\underline{Z}_C}$.
-  2. Remplacer $\\underline{Z}_C$ par $\\dfrac{1}{jC\\omega}$.
-  3. Multiplier numérateur et dénominateur par $jC\\omega$ pour simplifier l'étage.
-  4. Identifier par identification : $T_0 = 1$ et $\\omega_0 = \\dfrac{1}{RC}$.
-* 📐 **Variables & Unités :**
-  - $T_0$ : Gain statique (sans unité).
-  - $\\omega_0$ : Pulsation de coupure en Radian par seconde ($\\text{rad/s}$).
-  - $f_0 = \\dfrac{\\omega_0}{2\\pi}$ : Fréquence de coupure en Hertz ($\\text{Hz}$).
-* 🚨 **Piège à l'examen :** Attention aux condensateurs en $nF$ ($10^{-9}\\text{ F}$) et à la confusion entre pulsation et fréquence !
+### 🧮 2. NOTIONS CLÉS, FORMULES OU RÈGLES FONDAMENTALES
+Pour CHAQUE notion, loi, formule, article ou grand principe technique/théorique présent dans le document :
+- **Nom du concept / Formule / Article :** L'intitulé exact.
+- **Objectif & Utilité :** Dans quel cas exact l'utiliser ? Quel besoin concret cela résout-il ?
+- **Méthode / Démonstration / Logique pas à pas :** Comment l'appliquer, la calculer ou la déduire rigoureusement étape par étape.
+- **Variables & Unités** (pour les sciences) ou **Conditions & Définitions légales/techniques** (pour le droit et les autres disciplines).
+- **Piège classique à l'examen** sur cette notion.
 
 ---
-### 📊 3. TABLEAU SYNTHÉTIQUE ET RÉCAPITULATIF
-Grand tableau Markdown comparatif clair récapitulant les formes canoniques, gains max, coupures et pentes en dB/décade.
+### 📊 3. TABLEAU SYNTHÉTIQUE COMPARATIF
+Grand tableau Markdown comparatif structuré mettant en regard les différents concepts, régimes, méthodes, catégories ou cas d'application du document.
 
 ---
-### 🚨 4. LES PIÈGES À L'EXAMEN & DÉCODAGE DES SUJETS
-- Pièges d'unités, confusions fréquentes et méthode pour les déjouer.
-- Ce que le professeur attend dans la copie.
+### ⚠️ 4. PIÈGES À ÉVITER & ASTUCES MÉTHODOLOGIQUES (NB)
+- Confusions fréquentes des étudiants sur ce document précis.
+- Les erreurs de calcul, de méthode, d'unités ou de qualification à ne surtout pas faire dans une copie d'examen.
 
 ---
-### 🛠️ 5. EXEMPLE PRATIQUE RÉSOLU PAS À PAS
-Un cas concret chiffré complet avec énoncé réaliste et résolution détaillée étape par étape avec calculs intermédiaires.
+### 🛠️ 5. EXEMPLE PRATIQUE OU CAS CONCRET D'APPLICATION
+- Un cas concret extrait ou extrapolé du document résolu étape par étape pour montrer la logique d'application réelle (exercice chiffré si sciences, cas pratique syllogistique si droit, cas concret si gestion/informatique).
 
 Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive avec les champs :
 {
-  "title": "Titre du chapitre",
-  "theme": "Domaine d'étude",
-  "overview": "Synthèse globale d'introduction...",
+  "title": "Titre du cours ou document",
+  "theme": "Domaine d'étude détecté",
+  "overview": "Introduction expliquant la logique globale et pourquoi ce sujet est important...",
   "key_definitions": [
-    { "concept": "Concept clé", "definition": "Définition courte...", "objective": "À quoi ça sert..." }
+    { "concept": "Nom du concept clé", "definition": "Définition rigoureuse et précise...", "objective": "Utilité et cas d'usage..." }
   ],
   "formulas": [
     {
-      "name": "Nom de la formule",
-      "latex": "$$ \\underline{T}(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}} $$",
-      "target_goal": "Quand le sujet demande d'établir la fonction de transfert canonique",
-      "variables": "T_0 : gain statique sans unité, \\omega_0 : pulsation de coupure en rad/s, f_0 en Hz",
-      "when_to_use": "Quand le sujet demande d'établir la fonction de transfert canonique",
-      "how_to_derive": "Appliquer un pont diviseur de tension sur le dipôle de sortie...",
+      "name": "Nom de la formule ou règle fondamentale",
+      "latex": "Formule LaTeX valide KaTeX sans double dollar interne si scientifique, ou vide si non mathématique",
+      "target_goal": "Objectif exact : quand et pourquoi l'utiliser",
+      "variables": "Variables, unités ou termes techniques précis",
+      "when_to_use": "Condition d'application exacte",
+      "how_to_derive": "Logique de déduction ou démonstration étape par étape",
       "demonstration_steps": [
-        "1. Appliquer le Pont Diviseur de Tension : U_s = U_e * (Z_C / (R + Z_C))",
-        "2. Remplacer Z_C par 1 / (j*C*w)",
-        "3. Multiplier numérateur et dénominateur par j*C*w pour simplifier",
-        "4. Identifier avec la forme canonique : T_0 = 1 et w_0 = 1 / (R*C)"
+        "1. Point de départ ou principe fondamental",
+        "2. Remplacement et développement étape par étape",
+        "3. Forme finale et conclusion"
       ],
-      "exam_trap": "Attention aux unités nF (10^-9 F) et à ne pas confondre w (rad/s) et f (Hz) !"
+      "exam_trap": "Erreur classique à éviter sur cette notion"
     }
   ],
   "comparison_table": {
-    "headers": ["Type", "Bande passante", "Formule Canonique", "Ordre"],
+    "headers": ["Catégorie / Notions", "Caractéristiques", "Conditions / Formules", "Points de vigilance"],
     "rows": [
-      ["Passe-Bas", "[0 ; f_c]", "$$\\dfrac{T_0}{1+j\\dfrac{\\omega}{\\omega_0}}$$", "1 ou 2"]
+      ["Élément 1", "Rôle principal", "Expression ou critère", "Spécificité"],
+      ["Élément 2", "Rôle principal", "Expression ou critère", "Spécificité"]
     ]
   },
   "traps_and_tips": [
-    { "type": "trap", "title": "PIÈGE CLASSIQUE", "content": "Attention à ne pas confondre f (Hz) et \\omega (rad/s) : \\omega = 2\\pi f !" },
-    { "type": "tip", "title": "ASTUCE (NB)", "content": "À la coupure \\omega = \\omega_0, le module chute de 3 dB : G_{dB} = G_{max} - 3 dB." }
+    { "type": "trap", "title": "PIÈGE CLASSIQUE", "content": "Erreur fréquente des étudiants à ne pas commettre..." },
+    { "type": "tip", "title": "ASTUCE MÉTHODOLOGIQUE (NB)", "content": "Règle de méthode pour réussir l'examen ou l'exercice..." }
   ],
   "practical_example": {
-    "statement": "Énoncé du cas concret avec valeurs numériques...",
+    "statement": "Énoncé réaliste d'un cas concret extrait ou adapté du document...",
     "resolution_steps": [
-      "1. Choix de la relation fondamentale...",
-      "2. Application numérique détaillée pas à pas...",
-      "3. Conclusion et interprétation physique..."
+      "1. Analyse des données et identification de la règle/méthode...",
+      "2. Résolution pas à pas...",
+      "3. Conclusion et interprétation du résultat..."
     ]
   },
+  "sections": [
+    {
+      "heading": "I. Titre de la première grande partie",
+      "content": "Développement pédagogique approfondi...",
+      "key_takeaways": ["Point essentiel 1", "Point essentiel 2"]
+    }
+  ],
   "markdown": "# 📑 TITRE\\n..."
 };
 `;

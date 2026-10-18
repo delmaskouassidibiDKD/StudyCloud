@@ -213,25 +213,22 @@ Format JSON STRICT attendu :
     case "carte-mentale":
     case "carte-mentale-2":
       typeLabel = "Carte Mentale Hiérarchique";
-      jsonInstructions = `CONSIGNE STRICTE DE STRUCTURATION HIÉRARCHIQUE (CARTE MENTALE) :
-Tu dois STRICTEMENT respecter une arborescence à 3 niveaux minimum.
+      jsonInstructions = `CONSIGNE UNIVERSELLE DE STRUCTURATION HIÉRARCHIQUE (CARTE MENTALE) :
+Tu dois STRICTEMENT respecter une arborescence à 3 niveaux minimum adaptée au document fourni (Droit, Sciences, Informatique, Économie, Lettres, Médecine, etc.).
 IL EST STRICTEMENT INTERDIT de connecter directement plus de 4 à 6 branches principales au nœud central (pas de structure à plat ni de liste géante de fils au centre).
 
 STRUCTURE OBLIGATOIRE EN 4 PALIERS :
-- NIVEAU 0 (Racine) : Le Sujet Global uniquement (ex: "${docName}").
-- NIVEAU 1 (Branches Principales - Max 4 à 6 piliers) : Les grands piliers du cours (ex: "Généralités & Définitions", "Filtre Passe-Bas", "Filtre Passe-Haut", "Filtre Passe-Bande", "Filtre Coupe-Bande").
-- NIVEAU 2 (Sous-branches par catégorie) : Les caractéristiques de chaque grand pilier. Chaque branche de Niveau 1 DOIT contenir :
-  * "Définition / Rôle"
-  * "Fonction de Transfert"
-  * "Ordre 1 / Ordre 2"
-  * "Diagramme de Bode"
-- NIVEAU 3 (Feuilles de détails) : Les expressions exactes, formules ou valeurs numériques.
-  Exemple de cheminement :
-  Niveau 0 ("${docName}") -> Niveau 1 ("Filtre Passe-Bas") -> Niveau 2 ("Ordre 1") -> Niveau 3 ("$\\underline{T}(p) = \\dfrac{T_0}{1 + \\dfrac{p}{\\omega_0}}$")
+- NIVEAU 0 (Racine) : Le Sujet Global du document uniquement (ex: "${docName}").
+- NIVEAU 1 (Branches Principales - Max 4 à 6 piliers) : Les 4 à 6 grands piliers thématiques du document fourni.
+- NIVEAU 2 (Sous-branches par catégorie) : Les sous-thèmes, mécanismes, règles ou caractéristiques de chaque grand pilier.
+- NIVEAU 3 (Feuilles de détails) : Les expressions exactes, définitions précises, formules/articles ou valeurs concrètes.
+  Exemple générique de cheminement :
+  Niveau 0 ("Titre du Cours") -> Niveau 1 ("Grand Pilier 1") -> Niveau 2 ("Mécanisme / Condition") -> Niveau 3 ("Règle exacte / Formule / Définition")
 
-RÈGLE ABSOLUE POUR LES FORMULES LATEX :
-- Toutes les formules mathématiques/scientifiques LaTeX doivent être valides, proprement échappées avec double antislash dans les chaînes JSON (ex: "$\\underline{T}(p) = \\dfrac{T_0}{1 + \\dfrac{p}{\\omega_0}}$", "$Q_0 = \\dfrac{1}{R}\\sqrt{\\dfrac{L}{C}}$", "$f_c = \\dfrac{1}{2\\pi RC}$").
+RÈGLE ABSOLUE POUR LES FORMULES (SI DOMAINE SCIENTIFIQUE) :
+- Si le sujet est scientifique ou mathématique, toutes les formules LaTeX doivent être valides, proprement échappées avec double antislash dans les chaînes JSON (ex: "$\\\\Delta U = R \\\\cdot I$", "$f_c = \\\\dfrac{1}{2\\\\pi RC}$").
 - Les formules se placent UNIQUEMENT dans les nœuds finaux de détails (Niveau 3), jamais mélangées en vrac au niveau 1.
+- Si le sujet est non scientifique (Droit, Histoire, Littérature, Gestion...), ne mets PAS de formules mathématiques : mets des articles, notions, dates ou critères juridiques/techniques.
 - CHAQUE NŒUD EST UN BLOC / BOÎTE FERMÉE ("type": "box").
 - PAS DE PHRASES NARRATIVES NI DE LONGS PARAGRAPHES : mots-clés courts et percutants.
 
