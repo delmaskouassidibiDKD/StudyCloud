@@ -274,9 +274,15 @@ export function LeftMenu({
   const isCompact = panelWidth < 360;
 
   useEffect(() => {
-    const handleAutoPrompt = () => setIsAssistantOpen(true);
-    window.addEventListener('auto-prompt', handleAutoPrompt);
-    return () => window.removeEventListener('auto-prompt', handleAutoPrompt);
+    const handleOpenAssistant = () => setIsAssistantOpen(true);
+    window.addEventListener('auto-prompt', handleOpenAssistant);
+    window.addEventListener('open-assistant-chat', handleOpenAssistant);
+    window.addEventListener('studycloud-trigger-creation', handleOpenAssistant);
+    return () => {
+      window.removeEventListener('auto-prompt', handleOpenAssistant);
+      window.removeEventListener('open-assistant-chat', handleOpenAssistant);
+      window.removeEventListener('studycloud-trigger-creation', handleOpenAssistant);
+    };
   }, [setIsAssistantOpen]);
 
   // Réinitialisation de la session active du chat UNIQUEMENT quand on quitte l'Espace d'étude

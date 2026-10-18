@@ -1359,9 +1359,24 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimerRef = useRef<any>(null);
+  const watchdogTimerRef = useRef<any>(null);
   const isUserScrolledUpRef = useRef<boolean>(false);
   const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Nettoyage impératif lors du démontage pour éviter les timers orphelins
+  useEffect(() => {
+    return () => {
+      if (typingTimerRef.current) {
+        clearInterval(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
+      if (watchdogTimerRef.current) {
+        clearTimeout(watchdogTimerRef.current);
+        watchdogTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const handleScroll = () => {
     if (!scrollContainerRef.current) return;
@@ -1394,6 +1409,10 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     if (typingTimerRef.current) {
       clearInterval(typingTimerRef.current);
       typingTimerRef.current = null;
+    }
+    if (watchdogTimerRef.current) {
+      clearTimeout(watchdogTimerRef.current);
+      watchdogTimerRef.current = null;
     }
     if (activityTimerRef.current) {
       clearInterval(activityTimerRef.current);
@@ -1763,7 +1782,11 @@ Voici quelques exemples concrets sur lesquels vous pouvez lancer votre création
 [QUESTIONS_SUGGÉRÉES]
 ${suggestions.map(s => `- ${s}`).join('\n')}`;
 
-      // Animation machine à écrire pour l'interpellation
+      // Ouvrir immédiatement le menu de chat pour afficher l'interpellation
+      window.dispatchEvent(new CustomEvent('open-assistant-chat'));
+      window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
+
+      // Animation machine à écrire adaptative et protégée pour l'interpellation
       const aiMsgId = (Date.now() + 1).toString();
       const initialAiMsg: Message = {
         id: aiMsgId,
@@ -1779,39 +1802,85 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
         safeSetItem(`studycloud_conv_msgs_${currentConversationId}`, JSON.stringify([...updatedMessages, { ...initialAiMsg, text: interpellationText, isStreaming: false, model: currentModelDisplay }]));
       } catch {}
 
-      let index = 0;
-      const chunkSize = 4;
-      const tickSpeed = 16;
-      if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+      if (typingTimerRef.current) {
+        clearInterval(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
+      if (watchdogTimerRef.current) {
+        clearTimeout(watchdogTimerRef.current);
+        watchdogTimerRef.current = null;
+      }
 
-      typingTimerRef.current = setInterval(() => {
-        index += chunkSize;
-        if (index >= interpellationText.length) {
-          if (typingTimerRef.current) clearInterval(typingTimerRef.current);
-          setMessages(prev =>
-            prev.map(m =>
-              m.id === aiMsgId ? { ...m, text: interpellationText, isStreaming: false, model: currentModelDisplay } : m
-            )
-          );
-          setIsTyping(false);
-          StudyCloudAPI.saveAiMessage({
-            id: aiMsgId,
-            conversationId: currentConversationId,
-            role: 'assistant',
-            content: interpellationText,
-            metadata: { model: currentModelDisplay }
-          }).catch(() => {});
-        } else {
-          const partial = interpellationText.slice(0, index);
-          setMessages(prev =>
-            prev.map(m =>
-              m.id === aiMsgId ? { ...m, text: partial, model: currentModelDisplay } : m
-            )
-          );
+      let isInterpellationFinalized = false;
+      const finalizeInterpellation = () => {
+        if (isInterpellationFinalized) return;
+        isInterpellationFinalized = true;
+        if (typingTimerRef.current) {
+          clearInterval(typingTimerRef.current);
+          typingTimerRef.current = null;
         }
+        if (watchdogTimerRef.current) {
+          clearTimeout(watchdogTimerRef.current);
+          watchdogTimerRef.current = null;
+        }
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === aiMsgId ? { ...m, text: interpellationText, isStreaming: false, model: currentModelDisplay } : m
+          )
+        );
+        setIsTyping(false);
+        StudyCloudAPI.saveAiMessage({
+          id: aiMsgId,
+          conversationId: currentConversationId,
+          role: 'assistant',
+          content: interpellationText,
+          metadata: { model: currentModelDisplay }
+        }).catch(() => {});
+
+        window.dispatchEvent(new CustomEvent('open-assistant-chat'));
+        window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
 
         if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
           scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+      };
+
+      // Si le document est en arrière-plan ou masqué, finaliser immédiatement
+      if (typeof document !== 'undefined' && document.hidden) {
+        finalizeInterpellation();
+        return;
+      }
+
+      const tickSpeed = 16;
+      const targetDuration = Math.min(800, Math.max(250, interpellationText.length * 2));
+      const totalTicks = Math.max(1, Math.floor(targetDuration / tickSpeed));
+      const chunkSize = Math.max(8, Math.ceil(interpellationText.length / totalTicks));
+      let index = 0;
+
+      // Watchdog de sécurité absolue
+      watchdogTimerRef.current = setTimeout(() => {
+        finalizeInterpellation();
+      }, targetDuration + 500);
+
+      typingTimerRef.current = setInterval(() => {
+        try {
+          index += chunkSize;
+          if (index >= interpellationText.length) {
+            finalizeInterpellation();
+          } else {
+            const partial = interpellationText.slice(0, index);
+            setMessages(prev =>
+              prev.map(m =>
+                m.id === aiMsgId ? { ...m, text: partial, model: currentModelDisplay } : m
+              )
+            );
+          }
+
+          if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
+            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+          }
+        } catch (_err) {
+          finalizeInterpellation();
         }
       }, tickSpeed);
 
@@ -2659,43 +2728,92 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
         safeSetItem(`studycloud_conv_msgs_${currentConversationId}`, JSON.stringify([...updatedMessages, { ...initialAiMsg, text: fullResponseText, isStreaming: false, model: effectiveModelName }]));
       } catch {}
 
-      // 8. Animation machine à écrire
-      let index = 0;
-      const chunkSize = 3;
-      const tickSpeed = 16;
+      // 8. Animation machine à écrire adaptative, ultra-fluide et garantie sans blocage
+      if (typingTimerRef.current) {
+        clearInterval(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
+      if (watchdogTimerRef.current) {
+        clearTimeout(watchdogTimerRef.current);
+        watchdogTimerRef.current = null;
+      }
 
-      if (typingTimerRef.current) clearInterval(typingTimerRef.current);
-
-      typingTimerRef.current = setInterval(() => {
-        index += chunkSize;
-        if (index >= fullResponseText.length) {
-          if (typingTimerRef.current) clearInterval(typingTimerRef.current);
-          setMessages(prev =>
-            prev.map(m =>
-              m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName } : m
-            )
-          );
-          setIsTyping(false);
-          setRetryingMessageId(null);
-          // Sauvegarde Cloudflare D1 du message assistant complet
-          StudyCloudAPI.saveAiMessage({
-            id: aiMsgId,
-            conversationId: currentConversationId,
-            role: 'assistant',
-            content: fullResponseText,
-            metadata: { model: effectiveModelName }
-          }).catch(() => {});
-        } else {
-          const partial = fullResponseText.slice(0, index);
-          setMessages(prev =>
-            prev.map(m =>
-              m.id === aiMsgId ? { ...m, text: partial, model: effectiveModelName } : m
-            )
-          );
+      let isAiMsgFinalized = false;
+      const finalizeAiMessage = () => {
+        if (isAiMsgFinalized) return;
+        isAiMsgFinalized = true;
+        if (typingTimerRef.current) {
+          clearInterval(typingTimerRef.current);
+          typingTimerRef.current = null;
         }
+        if (watchdogTimerRef.current) {
+          clearTimeout(watchdogTimerRef.current);
+          watchdogTimerRef.current = null;
+        }
+
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName } : m
+          )
+        );
+        setIsTyping(false);
+        setRetryingMessageId(null);
+
+        // Sauvegarde Cloudflare D1 du message assistant complet
+        StudyCloudAPI.saveAiMessage({
+          id: aiMsgId,
+          conversationId: currentConversationId,
+          role: 'assistant',
+          content: fullResponseText,
+          metadata: { model: effectiveModelName }
+        }).catch(() => {});
+
+        // Notification d'ouverture automatique du chat quand la réponse est terminée ou qu'une demande a été traitée
+        window.dispatchEvent(new CustomEvent('open-assistant-chat'));
+        window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
 
         if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
           scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+      };
+
+      // Si le document est en arrière-plan ou masqué, ou si la réponse est très courte, finaliser immédiatement
+      if ((typeof document !== 'undefined' && document.hidden) || fullResponseText.length < 30) {
+        finalizeAiMessage();
+        return;
+      }
+
+      // Calcul dynamique de chunkSize : la totalité du message est rédigée en 1.0s maximum
+      const tickSpeed = 16;
+      const targetDurationMs = Math.min(1000, Math.max(300, fullResponseText.length * 2));
+      const totalTicks = Math.max(1, Math.floor(targetDurationMs / tickSpeed));
+      const chunkSize = Math.max(8, Math.ceil(fullResponseText.length / totalTicks));
+      let index = 0;
+
+      // Watchdog de sécurité absolue : force la finalisation après targetDurationMs + 600ms au maximum
+      watchdogTimerRef.current = setTimeout(() => {
+        finalizeAiMessage();
+      }, targetDurationMs + 600);
+
+      typingTimerRef.current = setInterval(() => {
+        try {
+          index += chunkSize;
+          if (index >= fullResponseText.length) {
+            finalizeAiMessage();
+          } else {
+            const partial = fullResponseText.slice(0, index);
+            setMessages(prev =>
+              prev.map(m =>
+                m.id === aiMsgId ? { ...m, text: partial, model: effectiveModelName } : m
+              )
+            );
+          }
+
+          if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
+            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+          }
+        } catch (_err) {
+          finalizeAiMessage();
         }
       }, tickSpeed);
 
@@ -2735,6 +2853,8 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
       const promptText = e.detail?.prompt || e.detail?.text;
       const reqType = e.detail?.requested_type || e.detail?.requestedType || e.detail?.toolType;
       if (promptText) {
+        window.dispatchEvent(new CustomEvent('open-assistant-chat'));
+        window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
         sendMessage(promptText, reqType);
       }
     };

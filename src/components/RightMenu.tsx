@@ -383,12 +383,15 @@ CONSIGNES STRICTES LATEX & ANTI-BUG :
     const promptToSend = card.getPrompt(resolvedDocName);
     const hasDoc = Boolean(resolvedDocName && resolvedDocName.trim().length > 0);
 
+    // Ouvrir immédiatement le menu de chat pour montrer en temps réel ce qui se passe
+    window.dispatchEvent(new CustomEvent('open-assistant-chat'));
+    window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
+
     // Cas spécial 'pdf' :
     // Selon la consigne :
     // "si c'est un fichier joint et qu'il demande un pdf tu analyse le fichier et tu lui propose des prompt ce qu'il peut faire en pdf ou lui même te dire ce qu'il veut voir dans le pdf , il faut toujours demander"
     // On bascule toujours dans le chat pour que l'IA engage la proposition interactive avec [QUESTIONS_SUGGÉRÉES]
     if (card.id === 'pdf') {
-      window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
       window.dispatchEvent(new CustomEvent('studycloud-trigger-creation', {
         detail: {
           prompt: promptToSend,
@@ -406,10 +409,6 @@ CONSIGNES STRICTES LATEX & ANTI-BUG :
       setIsGenerating(true);
       setGeneratingToolTitle(card.title);
       setLiveStatusText("J'analyse votre document avec attention...");
-      window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
-    } else {
-      // Pas de document : basculer sur le chat pour que l'IA interpelle l'utilisateur
-      window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
     }
 
     // Envoi du prompt à l'IA

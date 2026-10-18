@@ -836,6 +836,20 @@ export default function App() {
   });
   const [isRightFullscreen, setIsRightFullscreen] = useState(false);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+
+  // Ouverture automatique du chat assistant (au lancement d'un prompt, à la fin d'une réponse IA, etc.)
+  useEffect(() => {
+    const handleOpenChat = () => {
+      setIsAssistantOpen(true);
+      setMobilePreviewTab(1);
+    };
+    window.addEventListener('open-assistant-chat', handleOpenChat);
+    window.addEventListener('studycloud-trigger-creation', handleOpenChat);
+    return () => {
+      window.removeEventListener('open-assistant-chat', handleOpenChat);
+      window.removeEventListener('studycloud-trigger-creation', handleOpenChat);
+    };
+  }, []);
   
   // Navigation directe vers le vrai menu officiel de tarification intégré dans FoldersView (Image 5)
   const handleOpenAuthenticPricing = (tab: 'storage' | 'ai' | 'renewal' = 'ai') => {
