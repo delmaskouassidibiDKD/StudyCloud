@@ -1340,9 +1340,20 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
 };
 `;
 
+        const effectivePrompt = (userPrompt || "Bonjour !").trim();
+        const isContinuation = Boolean(
+          body.isContinuation ||
+          body.is_continuation ||
+          /^(?:oui\s*,?\s*)?(?:continue|la suite|poursuis|poursuivre|encha[îi]ne|suite\s+s'il\s+te\s+pla[îi]t)/i.test(effectivePrompt)
+        );
+
         if (docContent) {
-          systemPrompt += `\n\n[DOCUMENTS FOURNIS PAR L'ÉTUDIANT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 30000)}`;
-        } else {
+          if (!isContinuation) {
+            systemPrompt += `\n\n[DOCUMENTS FOURNIS PAR L'ÉTUDIANT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 30000)}`;
+          } else {
+            systemPrompt += `\n\n[DOCUMENT D'APPUI EN ARCHIVE DE RÉFÉRENCE - NE PAS RÉANALYSER DU DÉBUT] :\n${docContent.slice(0, 4000)}`;
+          }
+        } else if (!isContinuation) {
           systemPrompt += `\n\n[ATTENTION - AUCUN DOCUMENT FOURNI] : L'étudiant n'a joint aucun fichier de cours. Si sa demande porte sur une création (QCM, carte mentale, résumé, devoir, etc.) mais qu'il ne précise aucun sujet ni chapitre précis et que la conversation n'a pas abordé de matière : TU NE DOIS EN AUCUN CAS CRÉER DANS LE VIDE. Tu dois lui demander gentiment dans le chat de préciser la matière/le sujet ou de joindre son document, et terminer avec [QUESTIONS_SUGGÉRÉES] proposant 4 exemples concrets sous forme de boutons.`;
         }
         if (body.requested_type) {
@@ -1364,7 +1375,7 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
         };
 
         const rawHistory: Array<{ role: "user" | "assistant", content: string }> = [];
-        for (const h of history.slice(-8)) {
+        for (const h of history.slice(-20)) {
           if (h && (h.content || h.text)) {
             if (h.role === "system") continue;
             const role = (h.role === "assistant" || h.sender === "ai") ? "assistant" : "user";
@@ -1372,9 +1383,32 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
           }
         }
 
-        const effectivePrompt = (userPrompt || "Bonjour !").trim();
         if (rawHistory.length === 0 || rawHistory[rawHistory.length - 1].content !== effectivePrompt) {
           rawHistory.push({ role: "user", content: effectivePrompt });
+        }
+
+        if (isContinuation) {
+          const lastAssistant = rawHistory.slice().reverse().find(m => m.role === "assistant");
+          const stopExcerpt = lastAssistant ? lastAssistant.content.slice(-400) : "";
+
+          systemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
+[ORDRE DE CONTINUATION DIRECTE - STRICT ET NON NÉGOCIABLE] :
+L'étudiant a cliqué sur "Poursuivre la suite" pour continuer ta réponse précédente.
+Tu as DÉJÀ rédigé la première partie dans le message précédent (fin du message précédent : "...${stopExcerpt.replace(/\n+/g, ' ')}").
+
+CONSIGNES STRICTES DE CONTINUATION :
+1. INTERDICTION FORMELLE DE RECOMMENCER DU DÉBUT :
+   - Ne dis JAMAIS "Bonjour", ne présente pas le cours, ne réanalyse pas le document depuis le début.
+   - Ne répète AUCUNE des questions, formules ou explications déjà fournies plus haut.
+2. ENCHAÎNEMENT DIRECT ET IMMÉDIAT :
+   - Reprends EXACTEMENT là où s'arrête ton message précédent.
+   - Si tu t'es arrêté après la Question 2, commence DIRECTEMENT par "## Question 3 : ...".
+   - Si tu étais au milieu d'un calcul ou d'une démonstration, poursuis immédiatement les étapes suivantes.
+3. COMMENCE DIRECTEMENT PAR LE CONTENU UTILE :
+   - La toute première ligne de ta réponse doit être le titre ou la formule de la suite immédiate (ex: "## Question 3 : ..."). Zéro bavardage préliminaire.
+4. COHÉRENCE TOTALE :
+   - Utilise les mêmes notations, les mêmes variables et les résultats déjà établis précédemment sans les recalculer.
+══════════════════════════════════════════════════════════════════════════════`;
         }
 
         // Consolidation pour garantir l'alternance stricte user <-> assistant (crucial pour tous les modèles)

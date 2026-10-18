@@ -352,15 +352,45 @@ export async function sendChatMessageToAi(params: {
       // TENTATIVE DE SECOURS DIRECT GEMINI : Si une clé est disponible
       if (userGeminiApiKey && userGeminiApiKey.length > 10) {
         try {
-          const geminiPrompt = `${params.prompt || params.message || 'Bonjour'}${extractedDoc ? `\n\nContenu document support ("${extractedDocName}") :\n${extractedDoc.slice(0, 35000)}` : ''}`;
+          const isContinuation = Boolean(
+            params.isContinuation ||
+            params.is_continuation ||
+            /^(?:oui\s*,?\s*)?(?:continue|la suite|poursuis|poursuivre|encha[îi]ne|suite\s+s'il\s+te\s+pla[îi]t)/i.test(params.prompt || params.message || '')
+          );
+
+          let systemText = "Tu es Delmas IA, l'assistant d'étude officiel de StudyCloud. Réponds en français structuré avec rigueur pédagogique et formules LaTeX si nécessaire.";
+          if (isContinuation) {
+            systemText += "\n\n[ORDRE DE CONTINUATION DIRECTE] : L'étudiant demande de poursuivre la réponse précédente. Ne recommence pas du début, ne répète rien et commence directement par la suite utile (ex: numéro de question suivante ou calcul suivant).";
+          }
+
+          const geminiContents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+          const hist = Array.isArray(params.history) ? params.history : (Array.isArray(params.messages) ? params.messages : []);
+          for (const h of hist.slice(-10)) {
+            if (h && (h.content || h.text) && h.role !== 'system') {
+              geminiContents.push({
+                role: h.role === 'assistant' || h.sender === 'ai' ? 'model' : 'user',
+                parts: [{ text: String(h.content || h.text) }]
+              });
+            }
+          }
+
+          let currentTurnText = params.prompt || params.message || 'Bonjour';
+          if (extractedDoc && !isContinuation) {
+            currentTurnText += `\n\nContenu document support ("${extractedDocName}") :\n${extractedDoc.slice(0, 25000)}`;
+          }
+
+          if (geminiContents.length === 0 || geminiContents[geminiContents.length - 1].parts[0]?.text !== currentTurnText) {
+            geminiContents.push({ role: 'user', parts: [{ text: currentTurnText }] });
+          }
+
           const geminiResp = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${userGeminiApiKey}`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                system_instruction: { parts: [{ text: "Tu es Delmas IA, l'assistant d'étude officiel de StudyCloud. Réponds en français structuré avec rigueur pédagogique et formules LaTeX si nécessaire." }] },
-                contents: [{ role: 'user', parts: [{ text: geminiPrompt }] }],
+                system_instruction: { parts: [{ text: systemText }] },
+                contents: geminiContents,
                 generationConfig: { temperature: 0.3 }
               }),
               signal: AbortSignal.timeout(30000),

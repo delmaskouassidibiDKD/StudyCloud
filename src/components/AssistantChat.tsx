@@ -733,7 +733,8 @@ function extractSuggestedQuestions(content: string): { cleanText: string; questi
     const qLines = questionsBlock.split('\n');
     for (const line of qLines) {
       const qClean = line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').trim();
-      if (qClean && qClean.length > 5 && !qClean.toLowerCase().startsWith('cliquez') && !qClean.toLowerCase().startsWith('vous pouvez')) {
+      const isContinuationPhrase = /(?:calcul\s+est\s+vaste|voulez-vous\s+que\s+je\s+continue|souhaitez-vous\s+la\s+suite|continuer\s+avec\s+la\s+suite|continuer\s*\?)/i.test(qClean);
+      if (qClean && qClean.length > 5 && !isContinuationPhrase && !qClean.toLowerCase().startsWith('cliquez') && !qClean.toLowerCase().startsWith('vous pouvez')) {
         questions.push(qClean);
       }
     }
@@ -1727,7 +1728,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     }
   };
 
-  const sendMessage = async (textToSend: string, requestedTypeOverride?: string) => {
+  const sendMessage = async (textToSend: string, requestedTypeOverride?: string, options?: { isContinuation?: boolean }) => {
     if (!textToSend.trim()) return;
 
     // Incrément de l'ID unique de requête pour ce tour
@@ -2488,9 +2489,14 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
         systemContent += `\n\nCOMMANDE EXPLICITE DE CRÉATION DEPUIS LE MENU CRÉATION :\nL'étudiant a expressément sélectionné le format de création « ${explicitToolType} » pour le sujet/document d'étude.\nTu DOIS te placer dans la BRANCHE 2 (CRÉATION D'UN MODULE D'ÉTUDE) et répondre avec l'objet JSON strict de création ("decision": "creation", "mode": "creation", "creation_type": "${explicitToolType}", "creation_title": "...", "chat_response": "...", "creation_data": { ... }). Ne produis aucun monologue ni texte Markdown de discussion libre dans ce cas. Remplis directement toutes les données complètes de création.`;
       }
 
+      const isContinuation = Boolean(
+        options?.isContinuation ||
+        /^(?:oui\s*,?\s*)?(?:continue|la suite|poursuis|poursuivre|encha[îi]ne|suite\s+s'il\s+te\s+pla[îi]t)/i.test(userText)
+      );
+
       // 4. Préparation et sanitarisation de l'historique complet pour garantir une alternance user <-> assistant
       const sanitizedHistory: Array<{ role: string; content: string }> = [];
-      const recentMsgs = updatedMessages.slice(-12);
+      const recentMsgs = updatedMessages.slice(-20);
       for (let i = 0; i < recentMsgs.length; i++) {
         const m = recentMsgs[i];
         if (!m || !m.text) continue;
@@ -2509,10 +2515,38 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
         }
       }
 
+      let effectiveSystemContent = systemContent;
+      if (isContinuation) {
+        const lastAssistant = sanitizedHistory.slice().reverse().find(m => m.role === 'assistant');
+        const stopExcerpt = lastAssistant ? lastAssistant.content.slice(-400) : '';
+
+        effectiveSystemContent += `\n\n══════════════════════════════════════════════════════════════════════════════
+[ORDRE DE CONTINUATION DIRECTE - STRICT ET NON NÉGOCIABLE] :
+L'étudiant a cliqué sur "Poursuivre la suite" pour continuer ta réponse précédente.
+Tu as DÉJÀ rédigé la première partie dans le message précédent (fin du message précédent : "...${stopExcerpt.replace(/\n+/g, ' ')}").
+
+CONSIGNES STRICTES DE CONTINUATION :
+1. INTERDICTION FORMELLE DE RECOMMENCER DU DÉBUT :
+   - Ne dis JAMAIS "Bonjour", ne présente pas le cours, ne réanalyse pas le document depuis le début.
+   - Ne répète AUCUNE des questions, formules ou explications déjà fournies plus haut.
+2. ENCHAÎNEMENT DIRECT ET IMMÉDIAT :
+   - Reprends EXACTEMENT là où s'arrête ton message précédent.
+   - Si tu t'es arrêté après la Question 2, commence DIRECTEMENT par "## Question 3 : ...".
+   - Si tu étais au milieu d'un calcul ou d'une démonstration, poursuis immédiatement les étapes suivantes.
+3. COMMENCE DIRECTEMENT PAR LE CONTENU UTILE :
+   - La toute première ligne de ta réponse doit être le titre ou la formule de la suite immédiate (ex: "## Question 3 : ..."). Zéro bavardage préliminaire.
+4. COHÉRENCE TOTALE :
+   - Utilise les mêmes notations, les mêmes variables et les résultats déjà établis précédemment sans les recalculer.
+══════════════════════════════════════════════════════════════════════════════`;
+      }
+
       const chatHistory = [
-        { role: 'system', content: systemContent },
+        { role: 'system', content: effectiveSystemContent },
         ...sanitizedHistory,
       ];
+
+      // En mode continuation, on n'inonde pas l'IA avec les 30 000 caractères du document pour éviter qu'elle recommence du début ou bloque
+      const effectiveDocContent = isContinuation ? '' : attachedFileContent;
 
       // 5. Appel au moteur d'IA officiel StudyCloud (Workshop Backend / Robot Rouge)
       const selectedModelObj = availableModels.find(m => m.id === selectedModel || m.model_id === selectedModel);
@@ -2527,22 +2561,24 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
         conversationId: currentConversationId,
         model: selectedModel,
         selectedModel: selectedModel,
+        isContinuation,
+        is_continuation: isContinuation,
         apiKey: configuredToken || getGeminiApiKey() || undefined,
         apiToken: configuredToken || undefined,
         geminiApiKey: configuredToken || getGeminiApiKey() || undefined,
         requested_type: explicitToolType || undefined,
-        attachedFileId,
-        attachedFileName,
-        attachedFileContent,
-        attachedFileR2Key,
-        file_content: attachedFileContent,
-        fileContent: attachedFileContent,
-        documentContent: attachedFileContent,
-        documentText: attachedFileContent,
-        file_name: attachedFileName,
-        fileName: attachedFileName,
-        imageBase64: attachedImageBase64 || undefined,
-        audioBase64: attachedAudioBase64 || undefined,
+        attachedFileId: isContinuation ? undefined : attachedFileId,
+        attachedFileName: isContinuation ? undefined : attachedFileName,
+        attachedFileContent: effectiveDocContent,
+        attachedFileR2Key: isContinuation ? undefined : attachedFileR2Key,
+        file_content: effectiveDocContent,
+        fileContent: effectiveDocContent,
+        documentContent: effectiveDocContent,
+        documentText: effectiveDocContent,
+        file_name: isContinuation ? undefined : attachedFileName,
+        fileName: isContinuation ? undefined : attachedFileName,
+        imageBase64: isContinuation ? undefined : (attachedImageBase64 || undefined),
+        audioBase64: isContinuation ? undefined : (attachedAudioBase64 || undefined),
         signal: abortSignal,
         abortSignal,
       });
@@ -3409,20 +3445,31 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
 
                   {!msg.isStreaming && msg.text && !msg.isError && !isNetworkErrorMessage(msg) && (() => {
                     const isLastAssistant = msg.id === messages[messages.length - 1]?.id;
-                    const offersContinuation = isLastAssistant && /(voulez-vous|souhaitez-vous|veux-tu|on continue|continuer\s*\?|la suite\s*\?|je poursuis|dois-je continuer|on passe à la suite|continuer\s*:\s*oui)/i.test(msg.text);
-                    return offersContinuation ? (
+                    const offersContinuation = isLastAssistant && /(voulez-vous|souhaitez-vous|veux-tu|on continue|continuer\s*\?|la suite\s*\?|je poursuis|dois-je continuer|on passe à la suite|continuer\s*:\s*oui|calcul\s+est\s+vaste)/i.test(msg.text);
+                    if (!offersContinuation) return null;
+
+                    const lastHeadingMatches = [...msg.text.matchAll(/(?:^|\n)(#{1,3}\s+[^\n]+|Question\s+\d+|Exercice\s+\d+|[EÉ]tape\s+\d+|Partie\s+[A-Z0-9]+)/gi)];
+                    const lastHeading = lastHeadingMatches.length > 0 
+                      ? lastHeadingMatches[lastHeadingMatches.length - 1][1].trim().replace(/^#{1,3}\s*/, '') 
+                      : '';
+
+                    const continuePrompt = lastHeading 
+                      ? `Oui, continue s'il te plaît avec la suite exacte (tu t'es arrêté à « ${lastHeading} », enchaîne directement sans répéter le début).`
+                      : `Oui, continue s'il te plaît avec la suite exacte de ce que tu viens d'expliquer (enchaîne directement là où tu t'es arrêté, sans répéter ce qui a déjà été dit).`;
+
+                    return (
                       <div className="mt-3.5 mb-1 pl-1 flex items-center gap-2 flex-wrap animate-fadeIn">
                         <button
                           type="button"
-                          onClick={() => sendMessage("Oui, continue s'il te plaît avec la suite détaillée !")}
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs sm:text-sm font-bold shadow-md shadow-orange-500/25 active:scale-95 transition-all cursor-pointer border border-orange-400/40 group"
+                          onClick={() => sendMessage(continuePrompt, undefined, { isContinuation: true })}
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs sm:text-sm font-extrabold shadow-lg shadow-orange-500/30 active:scale-95 transition-all cursor-pointer border border-amber-300/40 group"
                         >
-                          <Sparkles className="w-3.5 h-3.5 text-yellow-200 animate-pulse" />
-                          <span>Oui, continuer la suite</span>
+                          <Sparkles className="w-4 h-4 text-yellow-100 animate-pulse" />
+                          <span>Poursuivre la suite exacte</span>
                           <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                         </button>
                       </div>
-                    ) : null;
+                    );
                   })()}
 
                   {!msg.isStreaming && msg.text && !msg.isError && !isNetworkErrorMessage(msg) && (

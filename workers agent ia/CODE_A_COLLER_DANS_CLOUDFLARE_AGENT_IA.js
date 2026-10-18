@@ -594,18 +594,40 @@ Formate tes réponses en Markdown soigné :
 - Formate toutes les formules mathématiques en LaTeX : $...$ en ligne ou $$...$$ en bloc séparé.
 - Sois encourageante, précise et didactique.`;
 
-  const messages = [{ role: "system", content: systemPrompt }];
+  const isContinuation = Boolean(
+    body.isContinuation ||
+    body.is_continuation ||
+    /^(?:oui\s*,?\s*)?(?:continue|la suite|poursuis|poursuivre|encha[îi]ne|suite\s+s'il\s+te\s+pla[îi]t)/i.test(userMessage)
+  );
 
-  // Historique récent
-  for (const h of history.slice(-6)) {
-    if (h.role && h.content) {
+  let finalSystemPrompt = systemPrompt;
+  const messages = [];
+
+  // Historique récent (20 messages pour une mémoire profonde de l'exercice)
+  for (const h of history.slice(-20)) {
+    if (h.role && h.content && h.role !== "system") {
       messages.push({ role: h.role, content: String(h.content) });
     }
   }
 
+  if (isContinuation) {
+    const lastAssistant = messages.slice().reverse().find(m => m.role === "assistant");
+    const stopExcerpt = lastAssistant ? lastAssistant.content.slice(-400) : "";
+
+    finalSystemPrompt += `\n\n[ORDRE DE CONTINUATION DIRECTE - STRICT ET NON NÉGOCIABLE] :
+L'étudiant demande de poursuivre ta réponse précédente (arrêtée vers : "...${stopExcerpt.replace(/\n+/g, ' ')}").
+1. INTERDICTION DE RECOMMENCER DU DÉBUT : Ne dis pas "Bonjour", ne présente pas le document et ne répète aucune formule ou question déjà traitée.
+2. ENCHAÎNEMENT DIRECT : Reprends immédiatement là où tu t'es arrêté (par exemple au numéro de la question suivante).
+3. COMMENCE DIRECTEMENT par le contenu utile sans phrase d'introduction.`;
+  }
+
+  messages.unshift({ role: "system", content: finalSystemPrompt });
+
   let finalPrompt = userMessage;
-  if (attachedFileContent.trim()) {
+  if (attachedFileContent.trim() && !isContinuation) {
     finalPrompt = `[Document joint: ${attachedFileName}]\n${attachedFileContent.slice(0, 10000)}\n\nQuestion de l'étudiant : ${userMessage || "Merci d'analyser ce document."}`;
+  } else if (isContinuation) {
+    finalPrompt = userMessage || "Continue directement avec la suite.";
   }
   messages.push({ role: "user", content: finalPrompt });
 

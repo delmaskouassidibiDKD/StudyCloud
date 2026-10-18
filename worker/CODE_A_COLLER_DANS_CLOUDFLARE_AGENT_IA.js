@@ -244,6 +244,12 @@ async function handleParallelChat(request, env, corsHeaders) {
   // ==========================================================================
   // 3. ASSEMBLAGE DU PROMPT UTILISATEUR ENRICHI SANS PERTE
   // ==========================================================================
+  const isContinuation = Boolean(
+    body.isContinuation ||
+    body.is_continuation ||
+    /^(?:oui\s*,?\s*)?(?:continue|la suite|poursuis|poursuivre|encha[îi]ne|suite\s+s'il\s+te\s+pla[îi]t)/i.test(message)
+  );
+
   let userPrompt = message || "Analyse les éléments fournis et réponds à ma demande.";
   let contextualPrefix = "";
 
@@ -253,12 +259,16 @@ async function handleParallelChat(request, env, corsHeaders) {
   if (audioTranscriptionText.trim()) {
     contextualPrefix += `[ENREGISTREMENT AUDIO TRANSCRIT PAR WHISPER ("${attachedFileName || "Audio"}")] :\n${audioTranscriptionText}\n\n`;
   }
-  if (attachedFileContent.trim()) {
+  if (attachedFileContent.trim() && !isContinuation) {
     contextualPrefix += `[DOCUMENT D'ÉTUDE ACADÉMIQUE JOINT ("${attachedFileName || "Document source"}")] :\n${attachedFileContent.slice(0, 30000)}\n\n`;
+  } else if (attachedFileContent.trim() && isContinuation) {
+    contextualPrefix += `[DOCUMENT D'APPUI EN ARCHIVE DE RÉFÉRENCE - NE PAS RÉANALYSER DU DÉBUT] :\n${attachedFileContent.slice(0, 4000)}\n\n`;
   }
 
-  if (contextualPrefix) {
+  if (contextualPrefix && !isContinuation) {
     userPrompt = `${contextualPrefix}Consigne / Demande de l'étudiant : ${message || "Analyse ce document et explique-moi les notions clés."}`;
+  } else if (isContinuation) {
+    userPrompt = message || "Poursuis la suite exacte là où tu t'es arrêté.";
   }
 
   // ==========================================================================
@@ -391,7 +401,7 @@ ou
      -> Pose des questions de clarification pédagogiques et propose 3 à 4 options d'angles d'attaque claires sous [QUESTIONS_SUGGÉRÉES].`;
 
   const rawHistory = [];
-  for (const h of history.slice(-6)) {
+  for (const h of history.slice(-20)) {
     if (h.role && h.content && h.role !== "system") {
       rawHistory.push({ role: h.role === "assistant" ? "assistant" : "user", content: String(h.content).trim() });
     }
@@ -400,6 +410,30 @@ ou
   const effectivePrompt = (userPrompt || "Bonjour !").trim();
   if (rawHistory.length === 0 || rawHistory[rawHistory.length - 1].content !== effectivePrompt) {
     rawHistory.push({ role: "user", content: effectivePrompt });
+  }
+
+  if (isContinuation) {
+    const lastAssistant = rawHistory.slice().reverse().find(m => m.role === "assistant");
+    const stopExcerpt = lastAssistant ? lastAssistant.content.slice(-400) : "";
+
+    systemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
+[ORDRE DE CONTINUATION DIRECTE - STRICT ET NON NÉGOCIABLE] :
+L'étudiant a cliqué sur "Poursuivre la suite" pour continuer ta réponse précédente.
+Tu as DÉJÀ rédigé la première partie dans le message précédent (fin du message précédent : "...${stopExcerpt.replace(/\n+/g, ' ')}").
+
+CONSIGNES STRICTES DE CONTINUATION :
+1. INTERDICTION FORMELLE DE RECOMMENCER DU DÉBUT :
+   - Ne dis JAMAIS "Bonjour", ne présente pas le cours, ne réanalyse pas le document depuis le début.
+   - Ne répète AUCUNE des questions, formules ou explications déjà fournies plus haut.
+2. ENCHAÎNEMENT DIRECT ET IMMÉDIAT :
+   - Reprends EXACTEMENT là où s'arrête ton message précédent.
+   - Si tu t'es arrêté après la Question 2, commence DIRECTEMENT par "## Question 3 : ...".
+   - Si tu étais au milieu d'un calcul ou d'une démonstration, poursuis immédiatement les étapes suivantes.
+3. COMMENCE DIRECTEMENT PAR LE CONTENU UTILE :
+   - La toute première ligne de ta réponse doit être le titre ou la formule de la suite immédiate (ex: "## Question 3 : ..."). Zéro bavardage préliminaire.
+4. COHÉRENCE TOTALE :
+   - Utilise les mêmes notations, les mêmes variables et les résultats déjà établis précédemment sans les recalculer.
+══════════════════════════════════════════════════════════════════════════════`;
   }
 
   const messages = [{ role: "system", content: systemPrompt }];

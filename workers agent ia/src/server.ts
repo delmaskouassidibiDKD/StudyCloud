@@ -1181,7 +1181,12 @@ export default {
         }
 
         const message = body.message || body.prompt || "Bonjour !";
-        const rawHistory = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
+        const isContinuation = Boolean(
+          body.isContinuation ||
+          body.is_continuation ||
+          /^(?:oui\s*,?\s*)?(?:continue|la suite|poursuis|poursuivre|encha[îi]ne|suite\s+s'il\s+te\s+pla[îi]t)/i.test(message)
+        );
+        const rawHistory = (Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : [])).slice(-20);
         const docText = body.attachedFileContent || body.documentText || body.fileContent || "";
         const workersai = createWorkersAI({ binding: env.AI });
 
@@ -1221,9 +1226,9 @@ Tu réponds sous la forme d'un objet JSON strict :
 - Si plusieurs documents sont fournis et que la demande n'indique pas sur quel document précis travailler :
   Demande à l'étudiant sur quel document il souhaite se concentrer ou s'il préfère une synthèse globale croisée, et termine par [QUESTIONS_SUGGÉRÉES] avec les options cliquables.
 - Si la demande est vague ou non ciblée, pose des questions de clarification et propose des suggestions concrètes.
-${docText ? `DOCUMENT FOURNI PAR L'ÉTUDIANT :\n"""\n${docText.slice(0, 15000)}\n"""` : "\n\nAUCUN DOCUMENT FOURNI : Si l'étudiant demande une création mais sans document ni sujet précis, ne crée rien dans le vide. Demande-lui de préciser le sujet ou de joindre son cours, et termine par [QUESTIONS_SUGGÉRÉES] avec 4 exemples concrets."}`;
+${docText && !isContinuation ? `DOCUMENT FOURNI PAR L'ÉTUDIANT :\n"""\n${docText.slice(0, 15000)}\n"""` : (docText && isContinuation ? `DOCUMENT SOURCE EN ARCHIVE :\n"""\n${docText.slice(0, 3000)}\n"""` : "\n\nAUCUN DOCUMENT FOURNI : Si l'étudiant demande une création mais sans document ni sujet précis, ne crée rien dans le vide. Demande-lui de préciser le sujet ou de joindre son cours, et termine par [QUESTIONS_SUGGÉRÉES] avec 4 exemples concrets.")}`;
 
-        const system = customSystem || defaultSystem;
+        let system = customSystem || defaultSystem;
 
         const messages = [
           ...rawHistory.filter((h: any) => h.role !== "system").map((h: any) => ({
@@ -1232,6 +1237,18 @@ ${docText ? `DOCUMENT FOURNI PAR L'ÉTUDIANT :\n"""\n${docText.slice(0, 15000)}\
           })),
           { role: "user" as const, content: message }
         ];
+
+        if (isContinuation) {
+          const lastAssistant = messages.slice().reverse().find(m => m.role === "assistant");
+          const stopExcerpt = lastAssistant ? String(lastAssistant.content).slice(-400) : "";
+
+          system += `\n\n[ORDRE DE CONTINUATION DIRECTE - STRICT ET NON NÉGOCIABLE] :
+L'étudiant a cliqué sur "Poursuivre la suite" pour continuer ta réponse précédente.
+Tu as DÉJÀ rédigé la première partie dans le message précédent (fin du message précédent : "...${stopExcerpt.replace(/\n+/g, ' ')}").
+1. INTERDICTION DE RECOMMENCER DU DÉBUT : Ne dis pas "Bonjour", ne présente pas le document et ne répète aucune formule ou question déjà traitée.
+2. ENCHAÎNEMENT DIRECT : Reprends immédiatement là où tu t'es arrêté (par exemple au numéro de la question suivante).
+3. COMMENCE DIRECTEMENT par le contenu utile sans phrase d'introduction.`;
+        }
 
         const textResult = await generateText({
           model: workersai(PRIMARY_MODEL),
