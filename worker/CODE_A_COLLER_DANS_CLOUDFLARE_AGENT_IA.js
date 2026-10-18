@@ -390,16 +390,32 @@ ou
    - Si la demande est vague ou imprécise (ex: "fais un résumé", "aide-moi", "crée un qcm" sans précision du chapitre ou du sujet souhaité) :
      -> Pose des questions de clarification pédagogiques et propose 3 à 4 options d'angles d'attaque claires sous [QUESTIONS_SUGGÉRÉES].`;
 
-  const messages = [{ role: "system", content: systemPrompt }];
-
-  // Historique récent
+  const rawHistory = [];
   for (const h of history.slice(-6)) {
     if (h.role && h.content && h.role !== "system") {
-      messages.push({ role: h.role === "assistant" ? "assistant" : "user", content: String(h.content) });
+      rawHistory.push({ role: h.role === "assistant" ? "assistant" : "user", content: String(h.content).trim() });
     }
   }
 
-  messages.push({ role: "user", content: userPrompt });
+  const effectivePrompt = (userPrompt || "Bonjour !").trim();
+  if (rawHistory.length === 0 || rawHistory[rawHistory.length - 1].content !== effectivePrompt) {
+    rawHistory.push({ role: "user", content: effectivePrompt });
+  }
+
+  const messages = [{ role: "system", content: systemPrompt }];
+  for (const item of rawHistory) {
+    if (!item.content) continue;
+    const prev = messages[messages.length - 1];
+    if (prev && prev.role !== "system" && prev.role === item.role) {
+      if (item.role === "user") {
+        prev.content = `${item.content}`;
+      } else {
+        prev.content = `${prev.content}\n\n${item.content}`;
+      }
+    } else {
+      messages.push({ role: item.role, content: item.content });
+    }
+  }
 
   // Mode Streaming SSE
   if (wantStream) {

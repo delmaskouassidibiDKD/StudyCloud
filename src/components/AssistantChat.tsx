@@ -1400,6 +1400,11 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const isUserScrolledUpRef = useRef<boolean>(false);
   const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const currentRequestIdRef = useRef<number>(0);
+  const messagesRef = useRef<Message[]>(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   // Nettoyage impératif lors du démontage pour éviter les timers orphelins
   useEffect(() => {
@@ -1436,7 +1441,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   };
 
   // Annuler / interrompre immédiatement la tâche IA en cours
-  const handleCancelTask = () => {
+  // switchingToNewTask: si vrai, une nouvelle tâche prend immédiatement le relais, ne pas éteindre le loader ni déclarer annulé globalement
+  const handleCancelTask = (switchingToNewTask = false) => {
     if (abortControllerRef.current) {
       try {
         abortControllerRef.current.abort();
@@ -1455,12 +1461,17 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       clearInterval(activityTimerRef.current);
       activityTimerRef.current = null;
     }
-    setIsWaitingServer(false);
-    setIsTyping(false);
-    setRetryingMessageId(null);
-    window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
-      detail: { isLoading: false, isCancelled: true }
-    }));
+
+    if (!switchingToNewTask) {
+      currentRequestIdRef.current = 0;
+      setIsWaitingServer(false);
+      setIsTyping(false);
+      setRetryingMessageId(null);
+      window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
+        detail: { isLoading: false, isCancelled: true }
+      }));
+    }
+
     setMessages(prev => {
       const last = prev[prev.length - 1];
       if (last && last.sender === 'ai' && last.isStreaming) {
@@ -1719,9 +1730,12 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const sendMessage = async (textToSend: string, requestedTypeOverride?: string) => {
     if (!textToSend.trim()) return;
 
-    // Si une tâche IA est déjà en cours, on l'interrompt pour exécuter immédiatement la nouvelle tâche
+    // Incrément de l'ID unique de requête pour ce tour
+    const thisRequestId = ++currentRequestIdRef.current;
+
+    // Si une tâche IA est déjà en cours, on l'interrompt proprement pour enchaîner directement sur la nouvelle
     if (isTyping || isWaitingServer) {
-      handleCancelTask();
+      handleCancelTask(true);
     }
 
     // Réinitialise le défilement pour suivre le nouveau prompt
@@ -1737,7 +1751,9 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     const newUserMsg: Message = { id: newUserMsgId, text: userText, sender: 'user' };
     
     // Ajout immédiat du message utilisateur à la liste et au cache local
-    const updatedMessages = [...messages, newUserMsg];
+    const baseMessages = messagesRef.current.length > 0 ? messagesRef.current : messages;
+    const updatedMessages = [...baseMessages, newUserMsg];
+    messagesRef.current = updatedMessages;
     setMessages(updatedMessages);
     try {
       safeSetItem(`studycloud_conv_msgs_${currentConversationId}`, JSON.stringify(updatedMessages));
@@ -2472,13 +2488,30 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
         systemContent += `\n\nCOMMANDE EXPLICITE DE CRÉATION DEPUIS LE MENU CRÉATION :\nL'étudiant a expressément sélectionné le format de création « ${explicitToolType} » pour le sujet/document d'étude.\nTu DOIS te placer dans la BRANCHE 2 (CRÉATION D'UN MODULE D'ÉTUDE) et répondre avec l'objet JSON strict de création ("decision": "creation", "mode": "creation", "creation_type": "${explicitToolType}", "creation_title": "...", "chat_response": "...", "creation_data": { ... }). Ne produis aucun monologue ni texte Markdown de discussion libre dans ce cas. Remplis directement toutes les données complètes de création.`;
       }
 
-      // 4. Préparation de l'historique complet pour alimenter le RAG conversationnel
+      // 4. Préparation et sanitarisation de l'historique complet pour garantir une alternance user <-> assistant
+      const sanitizedHistory: Array<{ role: string; content: string }> = [];
+      const recentMsgs = updatedMessages.slice(-12);
+      for (let i = 0; i < recentMsgs.length; i++) {
+        const m = recentMsgs[i];
+        if (!m || !m.text) continue;
+        const role = m.sender === 'user' ? 'user' : 'assistant';
+        const lastInHistory = sanitizedHistory[sanitizedHistory.length - 1];
+
+        if (lastInHistory && lastInHistory.role === role) {
+          if (role === 'user') {
+            // L'étudiant a enchaîné ou interrompu une consigne par une nouvelle : on retient la consigne active
+            lastInHistory.content = m.text;
+          } else {
+            lastInHistory.content = `${lastInHistory.content}\n\n${m.text}`;
+          }
+        } else {
+          sanitizedHistory.push({ role, content: m.text });
+        }
+      }
+
       const chatHistory = [
         { role: 'system', content: systemContent },
-        ...updatedMessages.slice(-12).map(m => ({
-          role: m.sender === 'user' ? 'user' : 'assistant',
-          content: m.text,
-        })),
+        ...sanitizedHistory,
       ];
 
       // 5. Appel au moteur d'IA officiel StudyCloud (Workshop Backend / Robot Rouge)
@@ -2514,11 +2547,14 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
         abortSignal,
       });
 
-      if (abortSignal.aborted) {
-        setIsWaitingServer(false);
-        setIsTyping(false);
-        setRetryingMessageId(null);
-        window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { isLoading: false, isCancelled: true } }));
+      // Si cette requête a été annulée ou supplantée par une nouvelle consigne plus récente
+      if (abortSignal.aborted || currentRequestIdRef.current !== thisRequestId) {
+        if (currentRequestIdRef.current === thisRequestId) {
+          setIsWaitingServer(false);
+          setIsTyping(false);
+          setRetryingMessageId(null);
+          window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { isLoading: false, isCancelled: true } }));
+        }
         return;
       }
 
@@ -2839,7 +2875,7 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
 
       let isAiMsgFinalized = false;
       const finalizeAiMessage = () => {
-        if (isAiMsgFinalized) return;
+        if (isAiMsgFinalized || currentRequestIdRef.current !== thisRequestId) return;
         isAiMsgFinalized = true;
         if (typingTimerRef.current) {
           clearInterval(typingTimerRef.current);
@@ -2855,8 +2891,10 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
             m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName } : m
           )
         );
-        setIsTyping(false);
-        setRetryingMessageId(null);
+        if (currentRequestIdRef.current === thisRequestId) {
+          setIsTyping(false);
+          setRetryingMessageId(null);
+        }
 
         // Sauvegarde Cloudflare D1 du message assistant complet
         StudyCloudAPI.saveAiMessage({
@@ -2896,6 +2934,10 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
 
       typingTimerRef.current = setInterval(() => {
         try {
+          if (currentRequestIdRef.current !== thisRequestId) {
+            if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+            return;
+          }
           index += chunkSize;
           if (index >= fullResponseText.length) {
             finalizeAiMessage();
@@ -2917,6 +2959,9 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
       }, tickSpeed);
 
     } catch (err: any) {
+      if (currentRequestIdRef.current !== thisRequestId) {
+        return;
+      }
       setRetryingMessageId(null);
       if (err?.name === 'AbortError' || err?.message?.includes('aborted')) {
         setIsWaitingServer(false);

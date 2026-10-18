@@ -1363,15 +1363,35 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
           "gpt-4o-mini": "OpenAI GPT-4o Mini",
         };
 
-        const simpleMessages: Array<{ role: "user" | "assistant", content: string }> = [];
+        const rawHistory: Array<{ role: "user" | "assistant", content: string }> = [];
         for (const h of history.slice(-8)) {
           if (h && (h.content || h.text)) {
             if (h.role === "system") continue;
             const role = (h.role === "assistant" || h.sender === "ai") ? "assistant" : "user";
-            simpleMessages.push({ role, content: String(h.content || h.text) });
+            rawHistory.push({ role, content: String(h.content || h.text).trim() });
           }
         }
-        simpleMessages.push({ role: "user", content: userPrompt || "Bonjour !" });
+
+        const effectivePrompt = (userPrompt || "Bonjour !").trim();
+        if (rawHistory.length === 0 || rawHistory[rawHistory.length - 1].content !== effectivePrompt) {
+          rawHistory.push({ role: "user", content: effectivePrompt });
+        }
+
+        // Consolidation pour garantir l'alternance stricte user <-> assistant (crucial pour tous les modèles)
+        const simpleMessages: Array<{ role: "user" | "assistant", content: string }> = [];
+        for (const item of rawHistory) {
+          if (!item.content) continue;
+          const prev = simpleMessages[simpleMessages.length - 1];
+          if (prev && prev.role === item.role) {
+            if (item.role === "user") {
+              prev.content = `${item.content}`;
+            } else {
+              prev.content = `${prev.content}\n\n${item.content}`;
+            }
+          } else {
+            simpleMessages.push({ role: item.role, content: item.content });
+          }
+        }
 
         let answerText = "";
         let effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
@@ -1403,15 +1423,25 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
               const cfData: any = await cfRes.json();
               const msg = cfData?.choices?.[0]?.message;
               const finishReason = cfData?.choices?.[0]?.finish_reason;
-              const rawAns = msg?.content || msg?.reasoning_content || "";
-              answerText = stripAiReasoningScratchpad(rawAns);
-              effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
+              const rawContent = msg?.content ? String(msg.content).trim() : "";
+              let rawAns = rawContent;
+              if (!rawAns && msg?.reasoning_content) {
+                const rc = String(msg.reasoning_content).trim();
+                if (rc && !/^(?:The user is|Let's think|I need to|Actually|Waitcheck)/i.test(rc)) {
+                  rawAns = rc;
+                }
+              }
 
-              // Protection anti-coupure brutale pour le texte normal (ne pas altérer un bloc JSON de création)
-              const isCreationJson = answerText.includes('"decision"') || answerText.includes('"creation_data"') || answerText.trim().endsWith("}") || answerText.trim().endsWith("```");
-              if (!isCreationJson && (finishReason === "length" || (answerText && !/[.!?:;\n]$/.test(answerText.trim()) && !answerText.trim().endsWith("$$")))) {
-                answerText = answerText.trim().replace(/\s+[a-zA-ZÀ-ÿ0-9_-]+$/, "");
-                answerText += "\n\n*(Le calcul est vaste et dense. Voulez-vous que je continue avec la suite exacte ?)*";
+              if (rawAns) {
+                answerText = stripAiReasoningScratchpad(rawAns);
+                effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
+
+                // Protection anti-coupure brutale pour le texte normal (ne pas altérer un bloc JSON de création)
+                const isCreationJson = answerText.includes('"decision"') || answerText.includes('"creation_data"') || answerText.trim().endsWith("}") || answerText.trim().endsWith("```");
+                if (!isCreationJson && (finishReason === "length" || (answerText && !/[.!?:;\n]$/.test(answerText.trim()) && !answerText.trim().endsWith("$$")))) {
+                  answerText = answerText.trim().replace(/\s+[a-zA-ZÀ-ÿ0-9_-]+$/, "");
+                  answerText += "\n\n*(Le calcul est vaste et dense. Voulez-vous que je continue avec la suite exacte ?)*";
+                }
               }
             } else {
               const errTxt = await cfRes.text();
