@@ -281,8 +281,8 @@ export function RightMenu({
       ),
       toolType: 'resume',
       getPrompt: (doc) => doc
-        ? `Rédige une Fiche de Résumé complète et structurée sur « ${doc} ».`
-        : "Rédige une Fiche de Résumé complète et structurée."
+        ? `Génère une Fiche de Résumé complète, technique et rigoureusement structurée à partir du cours « ${doc} ». Inclus les notions clés avec définitions, le formulaire exhaustif en KaTeX avec fractions verticales, un tableau comparatif, les pièges d'examen et un exemple pratique résolu pas-à-pas.`
+        : "Génère une Fiche de Résumé complète, technique et rigoureusement structurée avec notions fondamentales, formulaire KaTeX, tableau comparatif, pièges d'examen et exemple résolu pas-à-pas."
     },
     {
       id: 'pdf',

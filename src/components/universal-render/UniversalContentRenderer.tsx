@@ -210,17 +210,19 @@ export function UniversalContentRenderer({ item, onClose }: UniversalContentRend
     }
   };
 
+  const isWhiteDoc = ['resume', 'summary'].includes(detectedType);
+
   return (
-    <div className="w-full h-full flex flex-col bg-transparent text-zinc-100 overflow-hidden relative">
+    <div className={`w-full h-full flex flex-col ${isWhiteDoc ? 'bg-white text-stone-900' : 'bg-transparent text-zinc-100'} overflow-hidden relative`}>
       {/* Barre d'en-tête de la création avec bouton de fermeture */}
-      <div className="w-full flex items-center justify-between px-4 py-2 bg-[#1a1c22]/90 backdrop-blur-md border-b border-zinc-800/80 shrink-0 z-10">
+      <div className={`w-full flex items-center justify-between px-4 py-2 ${isWhiteDoc ? 'bg-white border-b border-stone-200 text-stone-900' : 'bg-[#1a1c22]/90 border-b border-zinc-800/80 text-zinc-100'} backdrop-blur-md shrink-0 z-10`}>
         <div className="flex items-center gap-2 min-w-0">
-          <Sparkles className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-          <span className="text-xs font-bold text-zinc-200 truncate">
+          <Sparkles className={`w-3.5 h-3.5 ${isWhiteDoc ? 'text-indigo-600' : 'text-orange-400'} shrink-0`} />
+          <span className={`text-xs font-bold ${isWhiteDoc ? 'text-stone-900' : 'text-zinc-200'} truncate`}>
             {title}
           </span>
           {detectedType && (
-            <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700/80 shrink-0">
+            <span className={`text-[9px] uppercase font-mono px-1.5 py-0.2 rounded ${isWhiteDoc ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-zinc-800 text-zinc-400 border border-zinc-700/80'} shrink-0`}>
               {detectedType}
             </span>
           )}
@@ -230,7 +232,7 @@ export function UniversalContentRenderer({ item, onClose }: UniversalContentRend
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer shrink-0"
+            className={`p-1 rounded-lg ${isWhiteDoc ? 'text-stone-500 hover:text-stone-900 hover:bg-stone-100' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'} transition-colors cursor-pointer shrink-0`}
             title="Fermer la création"
           >
             <X className="w-4 h-4" />

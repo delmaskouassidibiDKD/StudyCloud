@@ -710,7 +710,7 @@ function parseSummaryFromText(rawText: string, safeDocName: string): SummaryCont
     comparison_table,
     traps_and_tips: traps_and_tips.length > 0 ? traps_and_tips : undefined,
     practical_example,
-    markdown: rawText,
+    markdown: (!rawText.startsWith('```') && !rawText.startsWith('{') && rawText.length > 50) ? rawText : '',
     rules,
     tags: ['Révision', 'Fiche Pédagogique', safeDocName.split('.')[0] || 'Cours'],
   };
@@ -1216,6 +1216,7 @@ export function parseOrBuildAiCreation(
             content: fallbackDevoir
           };
         }
+        case 'resume':
         case 'summary': {
           const rawOverview = dataObj.overview || dataObj.summary || '';
           const isCompanion = typeof rawOverview === 'string' && /^(?:j'ai\s+con[çc]u|j'ai\s+cr[ée][ée]|voici\s+votre|✨|\*\(Le calcul)/i.test(rawOverview.trim());

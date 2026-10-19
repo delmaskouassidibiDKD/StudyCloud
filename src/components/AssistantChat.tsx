@@ -2555,6 +2555,9 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
         if (explicitToolType === 'exercices-ecrits') {
           systemContent += `\nPOUR CE MODULE D'EXERCICES ÉCRITS : Tu DOIS OBLIGATOIREMENT générer EXACTEMENT 8 à 10 exercices ou questions progressives avec barème totalisant 20 points, énoncés rigoureux et corrigé pas-à-pas. ZÉRO coupure.`;
         }
+        if (explicitToolType === 'resume') {
+          systemContent += `\nPOUR CE MODULE DE FICHE DE RÉSUMÉ ('resume') : Tu DOIS OBLIGATOIREMENT fournir dans 'creation_data' l'intégralité des notions clés ('key_definitions'), toutes les formules majeures avec KaTeX et démonstrations ('formulas'), le tableau comparatif ('comparison_table'), les pièges et astuces ('traps_and_tips'), l'exemple résolu pas-à-pas ('practical_example') et les sections rédigées ('sections'). ZÉRO coupure.`;
+        }
       }
 
       const isContinuation = Boolean(
