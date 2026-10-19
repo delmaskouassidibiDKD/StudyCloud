@@ -1105,7 +1105,10 @@ RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
 
 3. GESTION DES EXERCICES LONGS ET DÉCOUPAGE PÉDAGOGIQUE INTELLIGENT (ZÉRO COUPURE BRUTALE) :
    - Tu dois TOUT FAIRE et résoudre le sujet avec une rigueur absolue.
-   - SI L'EXERCICE OU LA DÉMONSTRATION EST PARTICULIÈREMENT LONGUE OU DENSE (plusieurs questions successives, gros calculs) :
+   - ATTENTION FORMELLE SUR LES CRÉATIONS DE MODULES :
+     Cette règle de découpage en cours d'explication s'applique UNIQUEMENT aux échanges libres et calculs dans le chat.
+     LORSQUE TU CRÉES UN MODULE PÉDAGOGIQUE ('creation_type': 'exercices-ecrits', 'devoir-complet', 'resume', 'pdf', 'questionnaire'), TU DOIS IMPÉRATIVEMENT GÉNÉRER L'INTÉGRALITÉ DES 8 À 10 QUESTIONS ET DU CONTENU EN UNE SEULE FOIS DANS L'OBJET JSON. IL EST STRICTEMENT INTERDIT DE TE COUPER OU DE DEMANDER DE POURSUIVRE LORS D'UNE CRÉATION DE MODULE.
+   - SI L'EXERCICE OU LA DÉMONSTRATION EST PARTICULIÈREMENT LONGUE OU DENSE (en mode discussion libre dans le chat) :
      * Résous méthodiquement les étapes ou questions en cours jusqu'au bout, avec leurs résultats intermédiaires encadrés dans \\boxed{...}.
      * NE TE COUPE JAMAIS EN PLEIN MILIEU d'une équation ou d'une phrase !
      * Si une étape/question importante est achevée et que la suite risque d'être trop lourde ou volumineuse pour un seul message, ARRÊTE-TOI AU BON MOMENT à la fin de cette étape propre.
@@ -1338,6 +1341,52 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
   "markdown": "# 📑 TITRE\\n..."
 };
 `;
+
+        systemPrompt += `\n\n11. RÈGLE STRICTE ET ABSOLUE : SÉRIE D'EXERCICES ÉCRITS D'APPLICATION ('exercices-ecrits') :
+Tu es le moteur pédagogique officiel d'exercices d'application de StudyCloud.
+Ton rôle est d'analyser en profondeur le document fourni pour générer une épreuve d'exercices complète, technique, rigoureuse et ancrée dans le cours.
+
+RÈGLES DE GÉNÉRATION ABSOLUES :
+1. QUANTITÉ STRICTE : Tu dois obligatoirement générer EXACTEMENT 8 à 10 exercices ou questions d'application progressives et détaillées (JAMAIS seulement 2 ou 3 questions, JAMAIS de questions vagues ou de simples résumés).
+2. ANALYSE DU COURS ET RIGUEUR SCIENTIFIQUE / TECHNIQUE :
+   - Analyse méticuleusement les formules, théorèmes, lois, schémas, fonctions de transfert et valeurs numériques réelles présentes dans le document ou PDF fourni.
+   - Crée des questions sur-mesure exigeant de vrais calculs, des démonstrations algébriques, des études de cas limites, des applications numériques précises avec unités.
+   - Toutes les formules mathématiques/physiques doivent être écrites avec KaTeX ($...$ ou $$...$$) avec \\dfrac{}{}.
+3. BARÈME CLAIR TOTALISANT 20 POINTS :
+   - Attribue un barème précis pour chaque question (par exemple 2 points par question pour 10 questions, ou 2.5 pts pour 8 questions, total = 20 points).
+4. INTERDICTION FORMELLE DE COUPER OU DEMANDER DE POURSUIVRE :
+   - Tu NE DOIS EN AUCUN CAS couper ta réponse en demandant "Voulez-vous que je poursuive ?" ni afficher du bavardage ("J'ai conçu...").
+   - Tu génères l'intégralité des 8 à 10 questions D'UN SEUL BLOC dans l'objet JSON.
+5. FORMAT DE SORTIE OBLIGATOIRE DANS 'creation_data' :
+{
+  "title": "Titre explicite de la série d'exercices (ex: Exercices d'Application : Filtres Analogiques du 1er et 2nd Ordre)",
+  "context": "Énoncé complet et mise en situation détaillée du problème, présentant le système, les équations directrices et les paramètres avec KaTeX...",
+  "questions": [
+    {
+      "id": "q_1",
+      "number": 1,
+      "text": "Énoncé précis et technique de la question 1 avec formules KaTeX...",
+      "points": 2,
+      "sampleAnswer": "Correction détaillée pas à pas de la question 1..."
+    },
+    {
+      "id": "q_2",
+      "number": 2,
+      "text": "Énoncé précis et technique de la question 2 avec formules KaTeX...",
+      "points": 2,
+      "sampleAnswer": "Correction détaillée pas à pas de la question 2..."
+    }
+  ],
+  "correction": {
+    "steps": "Résolution détaillée étape par étape de toutes les questions avec démonstrations...",
+    "examples": [
+      "Exemple concret 1 d'application directe de la méthode...",
+      "Exemple concret 2 sur un cas piège d'examen..."
+    ]
+  }
+}
+`;
+
 
         const effectivePrompt = (userPrompt || "Bonjour !").trim();
         const isContinuation = Boolean(

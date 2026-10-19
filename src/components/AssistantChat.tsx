@@ -2457,6 +2457,51 @@ Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive ave
 };
 `;
 
+      systemContent += `\n\n10.bis RÈGLE STRICTE ET ABSOLUE : SÉRIE D'EXERCICES ÉCRITS D'APPLICATION ('exercices-ecrits') :
+Tu es le moteur pédagogique officiel d'exercices d'application de StudyCloud.
+Ton rôle est d'analyser en profondeur le document fourni pour générer une épreuve d'exercices complète, technique, rigoureuse et ancrée dans le cours.
+
+RÈGLES DE GÉNÉRATION ABSOLUES :
+1. QUANTITÉ STRICTE : Tu dois obligatoirement générer EXACTEMENT 8 à 10 exercices ou questions d'application progressives et détaillées (JAMAIS seulement 2 ou 3 questions, JAMAIS de questions vagues ou de simples résumés).
+2. ANALYSE DU COURS ET RIGUEUR SCIENTIFIQUE / TECHNIQUE :
+   - Analyse méticuleusement les formules, théorèmes, lois, schémas, fonctions de transfert et valeurs numériques réelles présentes dans le document ou PDF fourni.
+   - Crée des questions sur-mesure exigeant de vrais calculs, des démonstrations algébriques, des études de cas limites, des applications numériques précises avec unités.
+   - Toutes les formules mathématiques/physiques doivent être écrites avec KaTeX ($...$ ou $$...$$) avec \\dfrac{}{}.
+3. BARÈME CLAIR TOTALISANT 20 POINTS :
+   - Attribue un barème précis pour chaque question (par exemple 2 points par question pour 10 questions, ou 2.5 pts pour 8 questions, total = 20 points).
+4. INTERDICTION FORMELLE DE COUPER OU DEMANDER DE POURSUIVRE :
+   - Tu NE DOIS EN AUCUN CAS couper ta réponse en demandant "Voulez-vous que je poursuive ?" ni afficher du bavardage ("J'ai conçu...").
+   - Tu génères l'intégralité des 8 à 10 questions D'UN SEUL BLOC dans l'objet JSON.
+5. FORMAT DE SORTIE OBLIGATOIRE DANS 'creation_data' :
+{
+  "title": "Titre explicite de la série d'exercices (ex: Exercices d'Application : Filtres Analogiques du 1er et 2nd Ordre)",
+  "context": "Énoncé complet et mise en situation détaillée du problème, présentant le système, les équations directrices et les paramètres avec KaTeX...",
+  "questions": [
+    {
+      "id": "q_1",
+      "number": 1,
+      "text": "Énoncé précis et technique de la question 1 avec formules KaTeX...",
+      "points": 2,
+      "sampleAnswer": "Correction détaillée pas à pas de la question 1..."
+    },
+    {
+      "id": "q_2",
+      "number": 2,
+      "text": "Énoncé précis et technique de la question 2 avec formules KaTeX...",
+      "points": 2,
+      "sampleAnswer": "Correction détaillée pas à pas de la question 2..."
+    }
+  ],
+  "correction": {
+    "steps": "Résolution détaillée étape par étape de toutes les questions avec démonstrations...",
+    "examples": [
+      "Exemple concret 1 d'application directe de la méthode...",
+      "Exemple concret 2 sur un cas piège d'examen..."
+    ]
+  }
+}
+`;
+
       systemContent += `\n\n11. RÈGLE STRICTE ET SPÉCIALE : GÉNÉRATION DE DOCUMENTS PDF ('pdf') ET GESTION DES FICHIERS JOINTS :
 Tu disposes d'un moteur officiel de génération et téléchargement de documents PDF ('pdf').
 Tu dois appliquer rigoureusement les 3 CAS suivants :
@@ -2507,6 +2552,9 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
 
       if (isExplicitOverride && explicitToolType && (docNames.length > 0 || hasPromptSubject || hasConversationContext)) {
         systemContent += `\n\nCOMMANDE EXPLICITE DE CRÉATION DEPUIS LE MENU CRÉATION :\nL'étudiant a expressément sélectionné le format de création « ${explicitToolType} » pour le sujet/document d'étude.\nTu DOIS te placer dans la BRANCHE 2 (CRÉATION D'UN MODULE D'ÉTUDE) et répondre avec l'objet JSON strict de création ("decision": "creation", "mode": "creation", "creation_type": "${explicitToolType}", "creation_title": "...", "chat_response": "...", "creation_data": { ... }). Ne produis aucun monologue ni texte Markdown de discussion libre dans ce cas. Remplis directement toutes les données complètes de création.`;
+        if (explicitToolType === 'exercices-ecrits') {
+          systemContent += `\nPOUR CE MODULE D'EXERCICES ÉCRITS : Tu DOIS OBLIGATOIREMENT générer EXACTEMENT 8 à 10 exercices ou questions progressives avec barème totalisant 20 points, énoncés rigoureux et corrigé pas-à-pas. ZÉRO coupure.`;
+        }
       }
 
       const isContinuation = Boolean(

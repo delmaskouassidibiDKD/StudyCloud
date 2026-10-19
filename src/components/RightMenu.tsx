@@ -337,8 +337,8 @@ export function RightMenu({
       ),
       toolType: 'exercices-ecrits',
       getPrompt: (doc) => doc
-        ? `Conçois une série d'Exercices Écrits d'application avec énoncé pas à pas et correction guidée détaillée sur « ${doc} ».`
-        : "Conçois une série d'Exercices Écrits d'application avec énoncé pas à pas et correction guidée détaillée."
+        ? `Conçois une épreuve d'Exercices Écrits complète de 8 à 10 exercices/problèmes progressifs et détaillés basés sur le cours « ${doc} », avec barème sur 20 points, énoncés rigoureux et corrigé pas-à-pas.`
+        : "Conçois une épreuve d'Exercices Écrits complète de 8 à 10 exercices/problèmes progressifs et détaillés avec barème sur 20 points, énoncés rigoureux et corrigé pas-à-pas."
     },
     {
       id: 'devoir-complet',

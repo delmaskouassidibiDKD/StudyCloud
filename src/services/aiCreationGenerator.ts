@@ -888,6 +888,40 @@ function parseFlashcardsFromText(rawText: string, safeDocName: string): { flashc
  * Extraction dynamique d'Exercices Écrits à partir du texte brut de l'IA
  */
 function parseExercicesFromText(rawText: string, safeDocName: string): any {
+  // 0. Si rawText contient un JSON complet, l'extraire et le parser prioritairement avec safeJsonParse
+  const jsonMatch = rawText.match(/(?:```|""")(?:json)?\s*([\s\S]*?)\s*(?:```|""")/i) || rawText.match(/(\{[\s\S]*\})/);
+  if (jsonMatch) {
+    try {
+      const parsed = safeJsonParse(jsonMatch[1] || jsonMatch[0]);
+      if (parsed) {
+        const cd = parsed.creation_data || parsed.written_exercise || parsed;
+        const qList = Array.isArray(cd.questions) ? cd.questions : Array.isArray(cd.exercises) ? cd.exercises : Array.isArray(cd.exercices) ? cd.exercices : [];
+        if (qList.length > 0) {
+          return {
+            written_exercise: {
+              title: sanitizeText(parsed.creation_title || cd.title) || `Série d'Exercices Écrits : ${safeDocName}`,
+              context: sanitizeText(cd.context || cd.enonce || cd.description || `Énoncé d'application et de réflexion basé sur le cours « ${safeDocName} ».`),
+              questions: qList.map((q: any, idx: number) => ({
+                id: q.id || `q_${idx + 1}`,
+                number: typeof q.number === 'number' ? q.number : idx + 1,
+                text: typeof q === 'string' ? sanitizeText(q) : sanitizeText(q.text || q.question || q.enonce || `Question ${idx + 1}`),
+                points: Number(q.points) || Math.round((20 / qList.length) * 10) / 10,
+                sampleAnswer: typeof q === 'object' ? sanitizeText(q.sampleAnswer || q.reponse || q.correction || q.answer || '') : ''
+              })),
+              correction: cd.correction || {
+                steps: `Correction détaillée pas à pas issue du cours « ${safeDocName} ».`,
+                examples: [
+                  `Exemple concret 1 : Cas pratique d'application directe des concepts de « ${safeDocName} ».`,
+                  `Exemple concret 2 : Cas particulier et vérification des hypothèses limites.`
+                ]
+              }
+            }
+          };
+        }
+      }
+    } catch {}
+  }
+
   let context = '';
   let correctionSteps = '';
   const examples: string[] = [];
@@ -903,7 +937,7 @@ function parseExercicesFromText(rawText: string, safeDocName: string): any {
   const contextLines: string[] = [];
 
   for (const line of lines) {
-    const qMatch = line.match(/^(?:(?:\*{1,2}|#{1,4}\s*)?(?:Question|Exercice|Partie)\s*(\d+)[:\.\)]\s*(?:\*{1,2})?|(\d+)[\.\)]\s+)(.*)/i);
+    const qMatch = line.match(/^(?:(?:\*{1,2}|#{1,4}\s*)?(?:Question|Exercice|Partie|Probl[èe]me)\s*(\d+)[:\.\)]\s*(?:\*{1,2})?|(\d+)[\.\)]\s+)(.*)/i);
     if (qMatch) {
       const qNum = parseInt(qMatch[1] || qMatch[2] || String(questions.length + 1), 10);
       const qText = (qMatch[3] || qMatch[0] || '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim();
@@ -913,7 +947,7 @@ function parseExercicesFromText(rawText: string, safeDocName: string): any {
         text: qText || `Question ${questions.length + 1}`,
       });
     } else if (questions.length === 0) {
-      if (!line.startsWith('#') && !line.toLowerCase().startsWith('titre')) {
+      if (!line.startsWith('#') && !line.toLowerCase().startsWith('titre') && !line.toLowerCase().startsWith('j\'ai') && !line.toLowerCase().startsWith('voici')) {
         contextLines.push(line);
       }
     }
@@ -921,17 +955,48 @@ function parseExercicesFromText(rawText: string, safeDocName: string): any {
 
   context = contextLines.slice(0, 5).join('\n\n').trim() || `Exercice d'application et de réflexion basé sur le cours "${safeDocName}".`;
 
+  // Si aucune question n'a été détectée, produire une vraie série progressive de 8 questions
   if (questions.length === 0) {
     questions.push(
       {
         id: 'q_1',
         number: 1,
-        text: `Analyser les notions fondamentales et formules présentées dans "${safeDocName}".`,
+        text: `Définir les hypothèses fondamentales et les lois directrices régissant le système présenté dans "${safeDocName}".`,
       },
       {
         id: 'q_2',
         number: 2,
-        text: 'Appliquer la méthode de résolution aux cas concrets dérivés du document.',
+        text: `Établir la relation algébrique exacte ou l'équation caractéristique en détaillant chaque étape de calcul.`,
+      },
+      {
+        id: 'q_3',
+        number: 3,
+        text: `Mettre l'expression sous forme canonique et identifier les pulsations, facteurs de qualité ou coefficients caractéristiques.`,
+      },
+      {
+        id: 'q_4',
+        number: 4,
+        text: `Mener l'étude asymptotique aux régimes limites et en déduire le comportement fréquentiel ou temporel.`,
+      },
+      {
+        id: 'q_5',
+        number: 5,
+        text: `Calculer la valeur critique ou la pulsation de coupure et expliciter la condition d'atténuation à -3 dB.`,
+      },
+      {
+        id: 'q_6',
+        number: 6,
+        text: `Effectuer l'application numérique pas à pas avec vérification dimensionnelle et précision des unités.`,
+      },
+      {
+        id: 'q_7',
+        number: 7,
+        text: `Tracer ou analyser les allures des courbes caractéristiques (diagramme de Bode ou réponse indicielle).`,
+      },
+      {
+        id: 'q_8',
+        number: 8,
+        text: `Proposer une analyse critique des performances et une solution concrète d'ajustement des paramètres.`,
       }
     );
   }

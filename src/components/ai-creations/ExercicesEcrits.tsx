@@ -16,7 +16,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { MathText } from '../MathText';
-import { gradeExamPaper } from '../../services/api';
+import { gradeExamPaper, safeJsonParse } from '../../services/api';
 
 export interface QuestionData {
   id: string;
@@ -37,31 +37,85 @@ export interface NormalizedExercise {
   isTemplate: boolean;
 }
 
-// Gabarit neutre par défaut lorsque aucun exercice n'a encore été généré
+// Nettoie le contexte pour retirer tout bavardage préliminaire de l'IA
+function cleanExerciseContext(ctx?: string): string {
+  if (!ctx) return "";
+  let cleaned = ctx
+    .replace(/(?:```|""")(?:json)?[\s\S]*?(?:```|""")/gi, '')
+    .replace(/^(?:j'ai\s+con[çc]u|voici\s+votre|j'ai\s+cr[ée][ée]|je\s+vous\s+propose)[^\n]*\n*/i, '')
+    .replace(/(?:voulez-vous\s+que\s+je\s+continue|souhaitez-vous\s+la\s+suite)[^\n]*$/i, '')
+    .trim();
+  if (cleaned.startsWith('{') && cleaned.endsWith('}')) return "";
+  return cleaned;
+}
+
+// Gabarit pédagogique par défaut avec 8 questions progressives totalisant 20 points
 const EMPTY_TEMPLATE_EXERCISE: NormalizedExercise = {
-  title: "Exercice Pratique & Résolution de Problème",
-  context: "Espace d'énoncé et de contexte : cet espace s'étire automatiquement selon la longueur de votre sujet, de votre mise en situation ou de vos équations mathématiques en LaTeX (ex : $H(j\\omega) = \\frac{1}{1 + j\\frac{\\omega}{\\omega_0}}$). Demandez à l'IA dans le chat de concevoir un exercice écrit sur votre cours !",
+  title: "Série d'Exercices Écrits & Application Pratique",
+  context: "Mise en situation d'entraînement : cet espace s'étire automatiquement selon la longueur de votre sujet, de vos données expérimentales et de vos formules mathématiques en KaTeX (ex : $\\underline{H}(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$). Demandez à l'IA dans le chat de concevoir une série d'exercices sur votre cours !",
   questions: [
     {
       id: 'q_1',
       number: 1,
-      points: 10,
-      text: "Première question : Analyse théorique, modélisation ou démonstration (avec rendu KaTeX pour toutes les formules : $\\frac{a}{b}$, $\\sqrt{2}$, etc.).",
-      sampleAnswer: "Démonstration théorique détaillée avec pose des hypothèses et résolution analytique."
+      points: 2.5,
+      text: "Énoncer les hypothèses de base et définir les grandeurs fondamentales intervenant dans le système.",
+      sampleAnswer: "Identification rigoureuse des conditions initiales, des grandeurs physiques et du modèle théorique directeur."
     },
     {
       id: 'q_2',
       number: 2,
-      points: 10,
-      text: "Deuxième question : Application numérique, calculs détaillés ou interprétation des résultats.",
-      sampleAnswer: "Calcul numérique étape par étape avec vérification des unités et conclusion argumentée."
+      points: 2.5,
+      text: "Établir l'équation directrice ou la fonction de transfert analytique en détaillant chaque étape.",
+      sampleAnswer: "Application des théorèmes généraux et dérivation algébrique sans omission d'étapes."
+    },
+    {
+      id: 'q_3',
+      number: 3,
+      points: 2.5,
+      text: "Mettre l'expression sous forme canonique et identifier les paramètres caractéristiques ($T_0$, $\\omega_0$, $Q$, etc.).",
+      sampleAnswer: "Factorisation par les termes directeurs et identification directe des grandeurs remarquables."
+    },
+    {
+      id: 'q_4',
+      number: 4,
+      points: 2.5,
+      text: "Mener l'étude asymptotique du comportement aux basses et hautes fréquences.",
+      sampleAnswer: "Calcul des limites mathématiques quand la variable tend vers 0 et vers l'infini avec conclusions physiques."
+    },
+    {
+      id: 'q_5',
+      number: 5,
+      points: 2.5,
+      text: "Déterminer la pulsation de coupure à $-3\\text{ dB}$ et expliciter la condition d'égalité correspondante.",
+      sampleAnswer: "Résolution de l'égalité $|\\underline{H}(j\\omega_c)| = \\dfrac{|\\underline{H}|_{max}}{\\sqrt{2}}$ et calcul de $\\omega_c$."
+    },
+    {
+      id: 'q_6',
+      number: 6,
+      points: 2.5,
+      text: "Effectuer l'application numérique détaillée avec les valeurs données et vérifier l'homogénéité des unités.",
+      sampleAnswer: "Remplacement pas à pas avec précision des unités du Système International et arrondi adapté."
+    },
+    {
+      id: 'q_7',
+      number: 7,
+      points: 2.5,
+      text: "Tracer l'allure du diagramme de Bode (gain en décibels et phase) ou le graphe de réponse temporelle.",
+      sampleAnswer: "Construction des asymptotes, positionnement de la pulsation caractéristique et tracé de la courbe réelle."
+    },
+    {
+      id: 'q_8',
+      number: 8,
+      points: 2.5,
+      text: "Conclure sur le domaine de validité du modèle et proposer une optimisation pour répondre au cahier des charges.",
+      sampleAnswer: "Analyse critique des performances, comparaison aux exigences et proposition de réglage des paramètres."
     }
   ],
   correction: {
-    steps: "La résolution officielle étape par étape détaillant les démonstrations théoriques et les calculs s'affichera ici après la soumission de votre copie.",
+    steps: "La résolution officielle détaillée pas à pas de chaque question s'affichera ici après la soumission de votre copie.",
     examples: [
-      "Exemple 1 : Premier cas concret distinct illustrant la notion en situation réelle.",
-      "Exemple 2 : Deuxième exemple concret distinct ancrant la compréhension."
+      "Exemple 1 : Cas concret d'application en laboratoire avec mesures réelles.",
+      "Exemple 2 : Cas particulier d'examen avec méthode de vérification rapide."
     ]
   },
   isTemplate: true
@@ -75,15 +129,25 @@ function normalizeWrittenExercise(input: any, fallbackTitle?: string): Normalize
     };
   }
 
-  // 1. Déballage éventuel de wrappers (creation_data, written_exercise, etc.)
-  const root = input?.written_exercise || input?.creation_data?.written_exercise || input?.creation_data || input;
+  // 0. Déballage récursif d'une chaîne JSON ou de wrappers imbriqués
+  let actualData = input;
+  if (typeof actualData === 'string') {
+    const trimmed = actualData.trim();
+    if (trimmed.includes('{') || trimmed.includes('"""json') || trimmed.includes('```json') || trimmed.includes('"questions"') || trimmed.includes('"exercises"')) {
+      const parsed = safeJsonParse(trimmed);
+      if (parsed) actualData = parsed;
+    }
+  }
+
+  const root = actualData?.written_exercise || actualData?.creation_data?.written_exercise || actualData?.creation_data || actualData;
 
   if (root?.written_exercise) {
     return normalizeWrittenExercise(root.written_exercise, fallbackTitle);
   }
 
-  const title = root?.title || fallbackTitle || "Exercice Pratique d'Application";
-  const context = root?.context || root?.enonce || root?.description || root?.overview || "";
+  const title = root?.title || fallbackTitle || "Épreuve d'Exercices Écrits d'Application";
+  const rawContext = root?.context || root?.enonce || root?.description || root?.overview || "";
+  const context = cleanExerciseContext(rawContext) || (fallbackTitle ? `Énoncé d'application et de réflexion basé sur le cours « ${fallbackTitle} ».` : "");
 
   // 2. Normalisation des questions
   let rawQuestions: any[] = [];
@@ -92,6 +156,8 @@ function normalizeWrittenExercise(input: any, fallbackTitle?: string): Normalize
     rawQuestions = root.questions;
   } else if (Array.isArray(root?.exercises) || Array.isArray(root?.exercices)) {
     rawQuestions = root.exercises || root.exercices;
+  } else if (Array.isArray(root?.problem_sections)) {
+    rawQuestions = root.problem_sections.flatMap((sec: any) => sec.questions || [sec]);
   }
 
   let questions: QuestionData[] = [];
@@ -117,32 +183,78 @@ function normalizeWrittenExercise(input: any, fallbackTitle?: string): Normalize
     });
   }
 
+  // Si aucune question n'a pu être extraite, générer une série académique complète de 8 questions
   if (questions.length === 0) {
+    const subjectName = fallbackTitle || "ce cours";
     questions = [
       {
         id: 'q_1',
         number: 1,
-        text: "Analyser la situation proposée et résoudre le problème posé avec rigueur.",
-        points: 10,
-        sampleAnswer: "Résolution analytique complète avec application des théorèmes directeurs."
+        text: `Définir les notions fondamentales et préciser les hypothèses physiques/théoriques posées dans le cours « ${subjectName} ».`,
+        points: 2.5,
+        sampleAnswer: "Définition rigoureuse avec rappel des conventions et cadre théorique."
       },
       {
         id: 'q_2',
         number: 2,
-        text: "Mener l'application numérique et justifier les résultats obtenus.",
-        points: 10,
-        sampleAnswer: "Application numérique pas à pas avec précision des unités."
+        text: `Établir l'expression analytique directrice ou la formule générale reliant les grandeurs étudiées.`,
+        points: 2.5,
+        sampleAnswer: "Démonstration algébrique étape par étape justifiée par les théorèmes fondamentaux."
+      },
+      {
+        id: 'q_3',
+        number: 3,
+        text: `Mettre l'expression sous forme canonique et identifier les pulsations, gains ou constantes caractéristiques.`,
+        points: 2.5,
+        sampleAnswer: "Identification méthodique des paramètres canoniques et comparaison aux formes de référence."
+      },
+      {
+        id: 'q_4',
+        number: 4,
+        text: `Étudier le comportement asymptotique aux régimes limites (basses fréquences, hautes fréquences ou temps infini).`,
+        points: 2.5,
+        sampleAnswer: "Calcul des limites exactes avec équivalents mathématiques et interprétation physique."
+      },
+      {
+        id: 'q_5',
+        number: 5,
+        text: `Calculer la valeur critique ou la pulsation de coupure et expliciter la condition d'atténuation.`,
+        points: 2.5,
+        sampleAnswer: "Application de la définition formelle de coupure et résolution méthodique."
+      },
+      {
+        id: 'q_6',
+        number: 6,
+        text: `Mener l'application numérique avec précision en indiquant les étapes intermédiaires et les unités adaptées.`,
+        points: 2.5,
+        sampleAnswer: "Calcul numérique détaillé avec conformité dimensionnelle et respect des chiffres significatifs."
+      },
+      {
+        id: 'q_7',
+        number: 7,
+        text: `Tracer ou décrire qualitativement les courbes représentatives (diagramme de Bode, réponse indicielle).`,
+        points: 2.5,
+        sampleAnswer: "Description des asymptotes, des pentes en dB/décade et du point remarquable à la fréquence caractéristique."
+      },
+      {
+        id: 'q_8',
+        number: 8,
+        text: `Proposer une analyse critique du résultat obtenu et expliquer comment compenser ou ajuster les paramètres du système.`,
+        points: 2.5,
+        sampleAnswer: "Synthèse argumentée avec proposition d'ajustement conforme au cahier des charges."
       }
     ];
   }
 
   // 3. Répartition rigoureuse des points sur 20 au total
   const qCount = questions.length;
-  const basePts = Math.floor(20 / qCount);
-  const remainder = 20 - basePts * qCount;
+  const basePts = Math.floor((20 / qCount) * 10) / 10;
+  const distributedPts = basePts * qCount;
+  const remainder = Math.round((20 - distributedPts) * 10) / 10;
+
   questions = questions.map((q, idx) => ({
     ...q,
-    points: q.points > 0 ? q.points : basePts + (idx < remainder ? 1 : 0)
+    points: q.points > 0 ? q.points : basePts + (idx === 0 ? remainder : 0)
   }));
 
   // 4. Normalisation de la correction (steps + 2 examples)
@@ -171,7 +283,7 @@ function normalizeWrittenExercise(input: any, fallbackTitle?: string): Normalize
     context,
     questions,
     correction: {
-      steps: steps || "Correction officielle étape par étape avec démonstration complète des formules.",
+      steps: steps || "Correction officielle détaillée étape par étape avec démonstration rigoureuse des formules.",
       examples: examples.length > 0 ? examples : [
         "Exemple 1 : Application directe en situation expérimentale standard.",
         "Exemple 2 : Cas particulier et vérification des hypothèses limites."
@@ -463,14 +575,13 @@ export default function ExercicesEcrits({ data, title }: { data?: any; title?: s
   };
 
   return (
-    <div id="module-exercices-ecrits" className="w-full pb-28 min-h-full bg-stone-100/60">
+    <div id="module-exercices-ecrits" className="w-full min-h-full bg-slate-100/70 flex flex-col pb-24 font-sans">
       {/* 
-        Barre d'outils FIXE (sticky) discrète en haut lors du défilement
-        PAS de bouton correction prématuré !
+        Barre d'outils FIXE (sticky top-0) collée immédiatement au sommet sans espace vide
       */}
       <div
         id="exercices-fixed-toolbar"
-        className="sticky top-[53px] sm:top-[57px] z-20 w-full bg-[#23252a]/95 backdrop-blur-md border-b border-zinc-700/60 px-3 sm:px-6 py-2 sm:py-2.5 transition-all text-white shadow-sm"
+        className="sticky top-0 z-30 w-full bg-[#1e293b]/95 backdrop-blur-md border-b border-slate-700/80 px-4 sm:px-6 md:px-8 py-2.5 transition-all text-white shadow-md shrink-0"
       >
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
           {/* Titre et statut */}
@@ -498,11 +609,11 @@ export default function ExercicesEcrits({ data, title }: { data?: any; title?: s
                 type="button"
                 disabled={isGrading}
                 onClick={handleSubmitForGrading}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
                 title="Soumettre vos réponses pour correction"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Soumettre</span>
+                <span>Soumettre la copie</span>
               </button>
             ) : (
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-950/80 border border-emerald-600 text-emerald-300 text-xs font-bold">
@@ -559,8 +670,8 @@ export default function ExercicesEcrits({ data, title }: { data?: any; title?: s
         FEUILLE D'EXERCICE ACADÉMIQUE STANDARD CENTRÉE (Format Concours / Université)
         Taille compacte et proportionnée : les questions sont directement visibles !
       */}
-      <div className="w-full flex justify-center py-5 sm:py-7 px-3 sm:px-6">
-        <div className="w-full max-w-3xl bg-white rounded-xl sm:rounded-2xl shadow-xl border border-stone-300 text-stone-900 p-5 sm:p-8 md:p-10 space-y-6">
+      <div className="flex-1 w-full flex justify-center py-4 sm:py-6 px-3 sm:px-6">
+        <div className="w-full max-w-4xl bg-white rounded-xl sm:rounded-2xl shadow-xl border border-stone-300 text-stone-900 p-5 sm:p-8 md:p-10 space-y-6">
 
           {/* En-tête officiel proportionné (compact, sobre, académique) */}
           <header className="border-b-2 border-stone-800 pb-4 space-y-2.5">
