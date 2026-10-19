@@ -1469,7 +1469,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       setIsTyping(false);
       setRetryingMessageId(null);
       window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
-        detail: { isLoading: false, isCancelled: true }
+        detail: { phase: 'idle', isLoading: false, isCancelled: true, resetToPrompts: true }
       }));
     }
 
@@ -1768,6 +1768,9 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       setIsWaitingServer(false);
       setIsTyping(false);
       setRetryingMessageId(null);
+      window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
+        detail: { phase: 'idle', isLoading: false, isError: true, resetToPrompts: true }
+      }));
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         text: "Veuillez vérifier que votre appareil est bien connecté à Internet (Wi-Fi ou données mobiles).",
@@ -1823,7 +1826,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       setIsWaitingServer(false);
       setRetryingMessageId(null);
       window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
-        detail: { isLoading: false, isCreation: false }
+        detail: { phase: 'idle', isLoading: false, isCreation: false, resetToPrompts: true }
       }));
       window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
 
@@ -1990,21 +1993,38 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
     }
     const effectiveRequestedType = requestedTypeOverride || (isCreationIntent ? (detectedFormat as any) : undefined);
     const isExplicitCreationRequest = Boolean(effectiveRequestedType);
-    const initialLiveStatus = getLiveAiActivity(userText, initialDocNames, 0, effectiveRequestedType);
+    const initialLiveStatus = isExplicitCreationRequest ? "Réflexion en cours..." : getLiveAiActivity(userText, initialDocNames, 0, effectiveRequestedType);
     setAiActivityText(initialLiveStatus);
     if (isExplicitCreationRequest) {
       window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
-        detail: { statusText: initialLiveStatus, isLoading: true, isCreation: true, prompt: userText, toolType: effectiveRequestedType }
+        detail: {
+          phase: 'thinking',
+          isThinking: true,
+          statusText: "Réflexion en cours...",
+          isLoading: true,
+          isCreation: false,
+          prompt: userText,
+          toolType: effectiveRequestedType
+        }
       }));
     }
     activityTimerRef.current = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - startTimestamp) / 1000);
-      const liveStatus = getLiveAiActivity(userText, initialDocNames, elapsed, effectiveRequestedType);
-      setAiActivityText(liveStatus);
       if (isExplicitCreationRequest) {
         window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
-          detail: { statusText: liveStatus, isLoading: true, isCreation: true, prompt: userText, toolType: effectiveRequestedType }
+          detail: {
+            phase: 'thinking',
+            isThinking: true,
+            statusText: "Réflexion en cours...",
+            isLoading: true,
+            isCreation: false,
+            prompt: userText,
+            toolType: effectiveRequestedType
+          }
         }));
+      } else {
+        const elapsed = Math.floor((Date.now() - startTimestamp) / 1000);
+        const liveStatus = getLiveAiActivity(userText, initialDocNames, elapsed, effectiveRequestedType);
+        setAiActivityText(liveStatus);
       }
     }, 1000);
 
@@ -2589,7 +2609,7 @@ CONSIGNES STRICTES DE CONTINUATION :
           setIsWaitingServer(false);
           setIsTyping(false);
           setRetryingMessageId(null);
-          window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { isLoading: false, isCancelled: true } }));
+          window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCancelled: true, resetToPrompts: true } }));
         }
         return;
       }
@@ -2615,6 +2635,16 @@ CONSIGNES STRICTES DE CONTINUATION :
       let companionChatMessage = '';
 
       if (aiResult.creation_data) {
+        window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
+          detail: {
+            phase: 'creating',
+            isCreating: true,
+            isLoading: true,
+            isCreation: true,
+            statusText: "Création en cours...",
+            toolType: aiResult.creation_type || explicitToolType
+          }
+        }));
         let normType = normalizeCreationType(aiResult.creation_type || explicitToolType || 'questionnaire');
         if (explicitToolType && (explicitToolType.includes('vrai') || explicitToolType.includes('faux'))) {
           normType = explicitToolType.includes('test') ? 'vrai-ou-faux-test' : 'vrai-ou-faux';
@@ -2809,10 +2839,20 @@ CONSIGNES STRICTES DE CONTINUATION :
       if (creationParsed && (!allDocs || allDocs.length === 0) && !hasPromptSubject && !hasConversationContext) {
         creationParsed = null;
         fullResponseText = `Pour que je puisse concevoir votre **création**, merci de me préciser sur quel cours ou sujet elle doit porter, ou de joindre votre fichier de cours (PDF, Word, photo d'exercice).\n\n[QUESTIONS_SUGGÉRÉES]\n- Questionnaire Test noté sur les Lois de Newton en Physique\n- Vrai ou Faux Test sur la Génétique et l'ADN en SVT\n- Carte Mentale 2 sur les Fonctions et Dérivées en Mathématiques\n- Devoir Complet d'examen officiel sur la Thermodynamique`;
-        window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { isLoading: false, isCreation: false } }));
+        window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCreation: false, resetToPrompts: true } }));
       }
 
       if (creationParsed && creationParsed.content) {
+        window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
+          detail: {
+            phase: 'creating',
+            isCreating: true,
+            isLoading: true,
+            isCreation: true,
+            statusText: "Création en cours...",
+            toolType: creationParsed.toolType || explicitToolType
+          }
+        }));
         let effectiveToolType = creationParsed.toolType || explicitToolType || 'questionnaire';
         if (effectiveToolType === 'vrai-ou-faux' || effectiveToolType === 'vrai-ou-faux-test') {
           const rawAffs = Array.isArray(creationParsed.content)
@@ -2862,7 +2902,7 @@ CONSIGNES STRICTES DE CONTINUATION :
 
         setActiveCreation(newCreation);
         window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
-        window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { isLoading: false } }));
+        window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false } }));
         window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
 
         // Nettoyage radical du texte pour la discussion : JAMAIS de JSON brut !
@@ -2876,7 +2916,7 @@ CONSIGNES STRICTES DE CONTINUATION :
         // BRANCHE DISCUSSION SIMPLE DANS LE CHAT : Réponse directe sans rien déranger dans l'espace création
         const cleaned = cleanChatText(aiResult.chat_response || rawResponseText);
         fullResponseText = stripAiReasoningScratchpad(cleaned) || "✨ Votre demande a été traitée avec succès.";
-        window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { isLoading: false } }));
+        window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCreation: false, resetToPrompts: true } }));
       }
 
       const effectiveModelName = aiResult.model || currentModelDisplay;
@@ -3008,7 +3048,7 @@ CONSIGNES STRICTES DE CONTINUATION :
       setIsWaitingServer(false);
       setIsTyping(false);
       window.dispatchEvent(new CustomEvent('ai-creation-error', { detail: { error: err.message } }));
-      window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { isLoading: false, isError: true } }));
+      window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isError: true, resetToPrompts: true } }));
       
       const isNetwork = isNetworkError(err);
       const isFriendlyMsg = err.message && (err.message.includes("StudyCloud") || err.message.includes("disponible"));

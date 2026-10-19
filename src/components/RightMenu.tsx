@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Maximize, Minimize, ArrowLeftRight, X, Menu, ChevronRight, History } from 'lucide-react';
+import { Maximize, Minimize, ArrowLeftRight, X, Menu, ChevronRight, History, Sparkles, Brain } from 'lucide-react';
 import { UniversalContentRenderer } from './universal-render/UniversalContentRenderer';
 import DotField from './DotField';
 import MagicRings from './MagicRings';
+
+export type CreationPhase = 'idle' | 'thinking' | 'creating';
 
 interface RightMenuProps {
   isRightFullscreen: boolean;
@@ -87,7 +89,9 @@ export function RightMenu({
       }
     } catch {}
   }, [activeCreation]);
-  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+
+  const [creationPhase, setCreationPhase] = useState<CreationPhase>('idle');
+  const isGenerating = creationPhase === 'creating';
   const [generatingToolTitle, setGeneratingToolTitle] = useState<string>('');
   const [liveStatusText, setLiveStatusText] = useState<string>('Je prépare votre support avec soin...');
   const [isRightDrawerOpen, setIsRightDrawerOpen] = useState<boolean>(false);
@@ -358,6 +362,13 @@ export function RightMenu({
 
   // Déclenchement de la création lors de l'appui sur une carte
   const handleSelectCard = (card: CreationProposalCard) => {
+    // 0. Si pas de connexion Internet : le menu reste normal avec les 12 prompts
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setCreationPhase('idle');
+      setActiveCreation(null);
+      return;
+    }
+
     const promptToSend = card.getPrompt(resolvedDocName);
     const hasDoc = Boolean(resolvedDocName && resolvedDocName.trim().length > 0);
 
@@ -366,10 +377,10 @@ export function RightMenu({
     window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
 
     // Cas spécial 'pdf' :
-    // Selon la consigne :
-    // "si c'est un fichier joint et qu'il demande un pdf tu analyse le fichier et tu lui propose des prompt ce qu'il peut faire en pdf ou lui même te dire ce qu'il veut voir dans le pdf , il faut toujours demander"
-    // On bascule toujours dans le chat pour que l'IA engage la proposition interactive avec [QUESTIONS_SUGGÉRÉES]
+    // On bascule dans le chat pour que l'IA engage la proposition interactive avec [QUESTIONS_SUGGÉRÉES]
     if (card.id === 'pdf') {
+      setActiveCreation(null);
+      setCreationPhase('idle');
       window.dispatchEvent(new CustomEvent('studycloud-trigger-creation', {
         detail: {
           prompt: promptToSend,
@@ -382,12 +393,28 @@ export function RightMenu({
       return;
     }
 
-    // Si un document est présent, on peut démarrer l'animation de création
-    if (hasDoc) {
-      setIsGenerating(true);
-      setGeneratingToolTitle(card.title);
-      setLiveStatusText("J'analyse votre document avec attention...");
+    // Si aucun document n'est ouvert : mode conversation (les 12 cartes restent affichées)
+    if (!hasDoc) {
+      setActiveCreation(null);
+      setCreationPhase('idle');
+      window.dispatchEvent(new CustomEvent('studycloud-trigger-creation', {
+        detail: {
+          prompt: promptToSend,
+          toolType: undefined,
+          isCreation: false,
+          hasDocument: hasDoc,
+          source: 'right-menu-cards'
+        }
+      }));
+      return;
     }
+
+    // Si un document est présent : passage immédiat en phase "thinking" (Réflexion en cours...)
+    // CE N'EST PAS ENCORE LA CRÉATION ! C'est l'IA qui décidera d'activer l'écran de chargement de création habituel.
+    setActiveCreation(null);
+    setCreationPhase('thinking');
+    setGeneratingToolTitle(card.title);
+    setLiveStatusText("Réflexion en cours...");
 
     // Envoi du prompt à l'IA
     window.dispatchEvent(new CustomEvent('studycloud-trigger-creation', {
@@ -403,7 +430,8 @@ export function RightMenu({
 
   // Annulation manuelle de la création
   const handleCancelGeneration = () => {
-    setIsGenerating(false);
+    setCreationPhase('idle');
+    setActiveCreation(null);
     window.dispatchEvent(new CustomEvent('studycloud-cancel-creation'));
   };
 
@@ -412,7 +440,7 @@ export function RightMenu({
     const handleCreationReady = (e: any) => {
       const creation = e.detail?.creation || e.detail;
       if (creation) {
-        setIsGenerating(false);
+        setCreationPhase('idle');
         setActiveCreation(creation);
         setCreationsHistory((prev) => {
           const exists = prev.some((c) => (c.id && c.id === creation.id) || (c.title && c.title === creation.title));
@@ -427,7 +455,7 @@ export function RightMenu({
     const handleOpenCreation = (e: any) => {
       const creation = e.detail?.creation || e.detail?.item || e.detail;
       if (creation) {
-        setIsGenerating(false);
+        setCreationPhase('idle');
         setActiveCreation(creation);
         setCreationsHistory((prev) => {
           const exists = prev.some((c) => (c.id && c.id === creation.id) || (c.title && c.title === creation.title));
@@ -441,31 +469,66 @@ export function RightMenu({
 
     const handleClearCreation = () => {
       setActiveCreation(null);
-      setIsGenerating(false);
+      setCreationPhase('idle');
     };
 
     const handleCreationStatus = (e: any) => {
-      // Activer l'animation de création UNIQUEMENT s'il s'agit explicitement d'une création
-      if (e.detail?.isLoading === true && (e.detail?.isCreation || e.detail?.toolType)) {
-        setIsGenerating(true);
-        if (e.detail?.toolType) {
-          const matched = proposalCards.find(c => c.toolType === e.detail.toolType || c.id === e.detail.toolType);
+      const detail = e.detail || {};
+
+      // 1. Réinitialisation explicite vers les 12 prompts (IA ne crée pas / pose question / répond en chat / erreur / annulation)
+      if (detail.resetToPrompts || detail.isError || detail.isCancelled) {
+        setCreationPhase('idle');
+        setActiveCreation(null);
+        return;
+      }
+
+      // 2. Si le chargement est terminé sans création
+      if (detail.isLoading === false) {
+        setCreationPhase('idle');
+        return;
+      }
+
+      // 3. Phase de réflexion de l'IA ("Réflexion en cours...")
+      if (detail.phase === 'thinking' || detail.isThinking) {
+        setCreationPhase('thinking');
+        if (detail.toolType) {
+          const matched = proposalCards.find(c => c.toolType === detail.toolType || c.id === detail.toolType);
           if (matched) {
             setGeneratingToolTitle(matched.title);
-          } else if (CREATION_NAME_MAP[e.detail.toolType]) {
-            setGeneratingToolTitle(CREATION_NAME_MAP[e.detail.toolType]);
+          } else if (CREATION_NAME_MAP[detail.toolType]) {
+            setGeneratingToolTitle(CREATION_NAME_MAP[detail.toolType]);
           }
         }
-      } else if (e.detail?.isLoading === false) {
-        setIsGenerating(false);
+        setLiveStatusText(detail.statusText || "Réflexion en cours...");
+        return;
       }
-      if (e.detail?.statusText) {
-        setLiveStatusText(e.detail.statusText);
+
+      // 4. Phase de création active déclenchée par l'IA ("Création en cours...")
+      if (detail.phase === 'creating' || detail.isCreating || (detail.isLoading === true && (detail.isCreation || detail.toolType))) {
+        setCreationPhase('creating');
+        if (detail.toolType) {
+          const matched = proposalCards.find(c => c.toolType === detail.toolType || c.id === detail.toolType);
+          if (matched) {
+            setGeneratingToolTitle(matched.title);
+          } else if (CREATION_NAME_MAP[detail.toolType]) {
+            setGeneratingToolTitle(CREATION_NAME_MAP[detail.toolType]);
+          }
+        }
+        if (detail.statusText) {
+          setLiveStatusText(detail.statusText);
+        }
+        return;
       }
     };
 
     const handleCreationError = () => {
-      setIsGenerating(false);
+      setCreationPhase('idle');
+      setActiveCreation(null);
+    };
+
+    const handleOffline = () => {
+      setCreationPhase('idle');
+      setActiveCreation(null);
     };
 
     window.addEventListener('ai-creation-ready', handleCreationReady as any);
@@ -473,6 +536,7 @@ export function RightMenu({
     window.addEventListener('studycloud-clear-creation', handleClearCreation as any);
     window.addEventListener('ai-creation-status-update', handleCreationStatus as any);
     window.addEventListener('ai-creation-error', handleCreationError as any);
+    window.addEventListener('offline', handleOffline);
 
     return () => {
       window.removeEventListener('ai-creation-ready', handleCreationReady as any);
@@ -480,8 +544,9 @@ export function RightMenu({
       window.removeEventListener('studycloud-clear-creation', handleClearCreation as any);
       window.removeEventListener('ai-creation-status-update', handleCreationStatus as any);
       window.removeEventListener('ai-creation-error', handleCreationError as any);
+      window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [proposalCards]);
 
   // Fermeture du menu latéral avec la touche Échap
   useEffect(() => {
@@ -529,7 +594,15 @@ export function RightMenu({
       )}
 
       {/* Barre d'outils supérieure : Bouton Zoom jaune à gauche, Titre au milieu sans logo étoiles, Bouton 3 traits à droite */}
-      <div className={`w-full relative flex items-center justify-between px-3 py-1.5 ${isGenerating ? 'bg-black border-zinc-900' : activeCreation ? 'bg-[#1a1c22]/90 border-zinc-700/60' : 'bg-[#120F17]/90 border-purple-900/30'} border-b shrink-0 z-30 shadow-xs backdrop-blur-sm transition-colors`}>
+      <div className={`w-full relative flex items-center justify-between px-3 py-1.5 ${
+        creationPhase === 'creating'
+          ? 'bg-black border-zinc-900'
+          : creationPhase === 'thinking'
+          ? 'bg-[#0f0c1b]/95 border-purple-900/40'
+          : activeCreation
+          ? 'bg-[#1a1c22]/90 border-zinc-700/60'
+          : 'bg-[#120F17]/90 border-purple-900/30'
+      } border-b shrink-0 z-30 shadow-xs backdrop-blur-sm transition-colors`}>
         {/* Côté gauche : Bouton Zoom jaune */}
         <div className="flex items-center gap-2">
           <button
@@ -544,7 +617,12 @@ export function RightMenu({
 
         {/* Centre : Titre repoussé vers le milieu, sans logo étoile */}
         <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none text-xs sm:text-[13px] font-semibold text-zinc-200 select-none max-w-[55%] truncate text-center">
-          {isGenerating ? (
+          {creationPhase === 'thinking' ? (
+            <span className="text-purple-300 truncate font-medium flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+              Réflexion en cours...
+            </span>
+          ) : creationPhase === 'creating' ? (
             <span className="text-purple-400 truncate font-medium">
               {getCreationBadgeLabel(generatingToolTitle)}
             </span>
@@ -602,7 +680,7 @@ export function RightMenu({
         </div>
 
         {/* Grille des cartes carrées proposées par l'IA (2 par ligne comme sur l'Image 2) */}
-        {!activeCreation && !isGenerating && (
+        {!activeCreation && creationPhase === 'idle' && (
           <div className="absolute inset-0 z-10 overflow-y-auto px-4 py-6 flex flex-col items-center justify-center custom-scrollbar animate-fadeIn select-none">
             {/* Titre spontané écrit par l'IA */}
             <div className="w-full max-w-[420px] mb-4 text-left">
@@ -640,8 +718,59 @@ export function RightMenu({
           </div>
         )}
 
+        {/* ÉCRAN DE RÉFLEXION EN COURS (L'IA RÉFLÉCHIT ET ANALYSE AVANT DE CRÉER) */}
+        {creationPhase === 'thinking' && (
+          <div className="absolute inset-0 z-30 bg-[#0c0a13]/95 backdrop-blur-md flex flex-col items-center justify-center overflow-hidden animate-fadeIn select-none p-6 text-center">
+            <div className="relative flex flex-col items-center max-w-sm w-full px-6 py-8 rounded-3xl bg-[#161320]/85 border border-purple-500/25 shadow-[0_0_50px_rgba(168,85,247,0.18)]">
+              {/* Effet d'aura lumineuse pulsante */}
+              <div className="absolute -top-10 -bottom-10 left-1/2 -translate-x-1/2 w-48 bg-purple-600/20 rounded-full blur-3xl pointer-events-none animate-pulse" />
+
+              {/* Icône d'intelligence avec pulsation douce */}
+              <div className="relative mb-4 flex items-center justify-center">
+                <div className="absolute w-20 h-20 bg-purple-500/25 rounded-full blur-xl animate-pulse" />
+                <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-tr from-purple-600/30 to-indigo-500/20 border border-purple-400/40 flex items-center justify-center shadow-inner">
+                  <Sparkles className="w-7 h-7 text-purple-300 animate-pulse" />
+                </div>
+              </div>
+
+              {/* Badge discret de l'action ciblée */}
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/15 border border-purple-500/30 mb-3">
+                <Brain className="w-3.5 h-3.5 text-purple-300" />
+                <span className="text-[11px] font-bold text-purple-200 uppercase tracking-wider">
+                  {generatingToolTitle || "Studio IA"}
+                </span>
+              </div>
+
+              {/* Titre : Réflexion en cours */}
+              <h3 className="text-base sm:text-lg font-bold text-white mb-2 flex items-center gap-2">
+                <span>Réflexion en cours</span>
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:-0.3s]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:-0.15s]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" />
+                </span>
+              </h3>
+
+              {/* Sous-texte explicatif */}
+              <p className="text-xs sm:text-sm text-zinc-300/90 leading-relaxed max-w-xs mb-5">
+                L'IA analyse votre document et décide de la meilleure création pédagogique...
+              </p>
+
+              {/* Bouton Annuler */}
+              <button
+                type="button"
+                onClick={handleCancelGeneration}
+                className="pointer-events-auto flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-zinc-900/90 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs font-medium border border-zinc-800 hover:border-zinc-700 transition-colors cursor-pointer active:scale-95 shadow-xs"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Annuler</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ÉCRAN NOIR PENDANT LA CRÉATION AVEC ANIMATION MAGICRINGS ET DIALOGUE EN DIRECT DE L'IA */}
-        {isGenerating && (
+        {creationPhase === 'creating' && (
           <div className="absolute inset-0 z-30 bg-black flex flex-col items-center justify-center overflow-hidden animate-fadeIn">
             <div style={{ width: '100%', height: '500px', position: 'relative' }}>
               <MagicRings
@@ -682,7 +811,7 @@ export function RightMenu({
 
                   {/* Statut dynamique en temps réel */}
                   <p className="text-sm sm:text-base font-semibold text-white tracking-wide leading-relaxed animate-pulse">
-                    {liveStatusText || "Je prépare votre support avec soin..."}
+                    {liveStatusText || "Création en cours..."}
                   </p>
 
                   {/* Bouton Annuler au centre */}
@@ -701,7 +830,7 @@ export function RightMenu({
         )}
 
         {/* Si une création est active : UniversalContentRenderer au premier plan avec transparence élégante */}
-        {activeCreation && (
+        {activeCreation && creationPhase === 'idle' && (
           <div className="absolute inset-0 z-20 overflow-hidden flex flex-col bg-[#14121b]/80 backdrop-blur-sm animate-fadeIn">
             <UniversalContentRenderer
               item={activeCreation}
