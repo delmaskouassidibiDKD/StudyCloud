@@ -1142,7 +1142,15 @@ export function parseOrBuildAiCreation(
               keyPoints: Array.isArray(dataObj.keyPoints)
                 ? dataObj.keyPoints.map(sanitizeText)
                 : (Array.isArray(dataObj.key_points) ? dataObj.key_points.map(sanitizeText) : []),
-              key_definitions: Array.isArray(dataObj.key_definitions) ? dataObj.key_definitions : (Array.isArray(dataObj.definitions) ? dataObj.definitions : []),
+              key_definitions: (Array.isArray(dataObj.key_definitions) ? dataObj.key_definitions : (Array.isArray(dataObj.definitions) ? dataObj.definitions : []))
+                .map((d: any) => typeof d === 'string'
+                  ? { concept: 'Notion clé', definition: d, objective: '' }
+                  : {
+                      concept: sanitizeText(d?.concept || d?.term || d?.notion || d?.title || 'Notion clé'),
+                      definition: sanitizeText(d?.definition || d?.desc || d?.description || d?.explication || ''),
+                      objective: sanitizeText(d?.objective || d?.application || d?.objectif || ''),
+                    }
+                ),
               formulas: Array.isArray(dataObj.formulas)
                 ? dataObj.formulas.map((f: any) => ({
                     name: sanitizeText(f.name || f.title || 'Formule clé'),
@@ -1157,8 +1165,26 @@ export function parseOrBuildAiCreation(
                 : [],
               comparison_table: dataObj.comparison_table || null,
               traps_and_tips: Array.isArray(dataObj.traps_and_tips) ? dataObj.traps_and_tips : [],
-              practical_example: dataObj.practical_example || null,
-              sections: Array.isArray(dataObj.sections) ? dataObj.sections : [],
+              practical_example: dataObj.practical_example && typeof dataObj.practical_example === 'object'
+                ? {
+                    statement: sanitizeText(dataObj.practical_example.statement || dataObj.practical_example.enonce || ''),
+                    resolution_steps: (Array.isArray(dataObj.practical_example.resolution_steps)
+                      ? dataObj.practical_example.resolution_steps
+                      : (Array.isArray(dataObj.practical_example.steps) ? dataObj.practical_example.steps : [])
+                    ).map((s: any) => typeof s === 'string' ? s : String(s?.text || s || '')),
+                  }
+                : null,
+              sections: Array.isArray(dataObj.sections)
+                ? dataObj.sections.map((sec: any, sidx: number) => ({
+                    number: sec?.number || `${sidx + 1}`,
+                    heading: sanitizeText(sec?.heading || sec?.section_title || sec?.title || `Section ${sidx + 1}`),
+                    body: sanitizeText(sec?.body || sec?.content || sec?.texte || ''),
+                    points: (Array.isArray(sec?.points)
+                      ? sec.points
+                      : (Array.isArray(sec?.keyPoints) ? sec.keyPoints : [])
+                    ).map(sanitizeText),
+                  }))
+                : [],
               markdown: dataObj.markdown || (typeof dataObj.text === 'string' ? dataObj.text : ''),
               rules: Array.isArray(dataObj.rules) ? dataObj.rules.map(sanitizeText) : [],
               tags: Array.isArray(dataObj.tags) ? dataObj.tags.map(sanitizeText) : ['Révision', safeDocName],

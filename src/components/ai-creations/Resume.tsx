@@ -20,11 +20,15 @@ interface ResumeProps {
   sourceFileName?: string;
 }
 
-function cleanFormulaLatex(latex?: string): string {
+function cleanFormulaLatex(latex?: any): string {
   if (!latex) return '';
-  return latex
-    .replace(/(?<!\\)\$/g, '')
-    .trim();
+  const str =
+    typeof latex === 'string'
+      ? latex
+      : typeof latex === 'object' && latex.latex
+      ? String(latex.latex)
+      : String(latex);
+  return str.replace(/(?<!\\)\$/g, '').trim();
 }
 
 function isFillerText(str?: string): boolean {
@@ -59,11 +63,18 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
         : '';
 
     // Détection d'un titre et d'un thème propre
-    let safeTitle =
+    const rawTitleCandidate =
       raw?.title ||
       data?.title ||
       title ||
-      (sourceFileName ? sourceFileName.replace(/\.[^/.]+$/, '') : 'Fiche de Résumé');
+      (sourceFileName ? String(sourceFileName).replace(/\.[^/.]+$/, '') : 'Fiche de Résumé');
+
+    let safeTitle =
+      typeof rawTitleCandidate === 'string'
+        ? rawTitleCandidate
+        : typeof rawTitleCandidate === 'object' && rawTitleCandidate?.title
+        ? String(rawTitleCandidate.title)
+        : 'Fiche de Résumé';
 
     // Nettoyage des préfixes redondants
     safeTitle = safeTitle.replace(/^Fiche de R[ée]sum[ée]\s*:\s*/i, '').trim();
@@ -73,11 +84,12 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       raw?.domaine ||
       data?.theme ||
       safeTitle;
+    safeTheme = typeof safeTheme === 'string' ? safeTheme : String(safeTheme || safeTitle);
 
     if (rawMarkdown) {
       const titleMatch = rawMarkdown.match(/^#\s*📑?\s*\[?([^\]\n]+)\]?/m);
       if (titleMatch && titleMatch[1]) {
-        safeTitle = titleMatch[1].replace(/^Fiche de R[ée]sum[ée]\s*:\s*/i, '').trim();
+        safeTitle = String(titleMatch[1] || '').replace(/^Fiche de R[ée]sum[ée]\s*:\s*/i, '').trim();
       }
       const themeMatch = rawMarkdown.match(/\((?:Domaine|Thème)\s*[:–—\-]?\s*([^\)]+)\)/i);
       if (themeMatch && themeMatch[1]) {
@@ -93,31 +105,108 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
     const isCompanion = typeof rawOverview === 'string' && /^(?:j'ai\s+con[çc]u|j'ai\s+cr[ée][ée]|voici\s+votre|✨|\*\(Le calcul)/i.test(rawOverview.trim());
     const safeOverview = isCompanion ? '' : rawOverview;
 
-    // 1. Notions Clés & Définitions
-    const rawKeyDefs: SummaryKeyDefinition[] = Array.isArray(raw?.key_definitions)
+    // 1. Notions Clés & Définitions - Normalisation ultra-défensive
+    const candidateDefs = Array.isArray(raw?.key_definitions)
       ? raw.key_definitions
+      : Array.isArray(raw?.definitions)
+      ? raw.definitions
+      : Array.isArray(raw?.notions)
+      ? raw.notions
+      : Array.isArray(data?.key_definitions)
+      ? data.key_definitions
+      : Array.isArray(data?.definitions)
+      ? data.definitions
       : [];
 
-    const rawDefs = Array.isArray(raw?.definitions) ? raw.definitions : [];
-    if (rawKeyDefs.length === 0 && rawDefs.length > 0) {
-      rawDefs.forEach((d: any) => {
+    const rawKeyDefs: SummaryKeyDefinition[] = [];
+    candidateDefs.forEach((d: any) => {
+      if (!d) return;
+      if (typeof d === 'string') {
+        const trimmed = d.replace(/^[-*•\d\.\s]+/, '').trim();
+        if (!trimmed) return;
+        const splitIdx = trimmed.search(/[:–—]/);
+        if (splitIdx > 0) {
+          rawKeyDefs.push({
+            concept: trimmed.slice(0, splitIdx).replace(/^\*{1,2}|\*{1,2}$/g, '').trim() || 'Notion clé',
+            definition: trimmed.slice(splitIdx + 1).trim(),
+            objective: '',
+          });
+        } else {
+          rawKeyDefs.push({
+            concept: 'Notion clé',
+            definition: trimmed,
+            objective: '',
+          });
+        }
+      } else if (typeof d === 'object') {
+        const concept =
+          d.concept ??
+          d.term ??
+          d.notion ??
+          d.title ??
+          d.titre ??
+          d.name ??
+          d.key ??
+          'Notion clé';
+        const definition =
+          d.definition ??
+          d.desc ??
+          d.description ??
+          d.explication ??
+          d.meaning ??
+          d.value ??
+          '';
+        const objective =
+          d.objective ??
+          d.application ??
+          d.objectif ??
+          d.utilite ??
+          '';
         rawKeyDefs.push({
-          concept: d.term || d.concept || 'Notion clé',
-          definition: d.definition || d.desc || '',
-          objective: d.objective || d.application || '',
+          concept: typeof concept === 'string' ? concept : String(concept ?? 'Notion clé'),
+          definition: typeof definition === 'string' ? definition : String(definition ?? ''),
+          objective: typeof objective === 'string' ? objective : String(objective ?? ''),
         });
-      });
+      }
+    });
+
+    if (rawKeyDefs.length === 0 && rawMarkdown) {
+      const defLines = rawMarkdown.match(/(?:^|\n)\s*[-*•]\s*\*{1,2}([^*:\n]+)\*{1,2}\s*[:–—\-]\s*([^\n]+)/g);
+      if (defLines) {
+        for (const line of defLines) {
+          const m = line.match(/(?:^|\n)\s*[-*•]\s*\*{1,2}([^*:\n]+)\*{1,2}\s*[:–—\-]\s*([^\n]+)/);
+          if (m) {
+            const c = m[1].trim();
+            const def = m[2].trim();
+            if (c && def) {
+              rawKeyDefs.push({ concept: c, definition: def, objective: '' });
+            }
+          }
+        }
+      }
     }
 
     // 2. Formulaire & Méthodologie
-    let formulas: SummaryFormula[] = Array.isArray(raw?.formulas) ? raw.formulas : [];
+    const rawFormulas = Array.isArray(raw?.formulas) ? raw.formulas : Array.isArray(data?.formulas) ? data.formulas : [];
+    let formulas: SummaryFormula[] = rawFormulas.map((f: any, idx: number) => ({
+      name: typeof f?.name === 'string' ? f.name : String(f?.nom || f?.title || `Formule ${idx + 1}`),
+      latex: cleanFormulaLatex(f?.latex || f?.formula || ''),
+      target_goal: typeof f?.target_goal === 'string' ? f.target_goal : (typeof f?.when_to_use === 'string' ? f.when_to_use : undefined),
+      when_to_use: typeof f?.when_to_use === 'string' ? f.when_to_use : (typeof f?.target_goal === 'string' ? f.target_goal : undefined),
+      variables: typeof f?.variables === 'string' ? f.variables : (Array.isArray(f?.variables) ? f.variables.join(', ') : undefined),
+      how_to_derive: isFillerText(f?.how_to_derive) ? undefined : (typeof f?.how_to_derive === 'string' ? f.how_to_derive : undefined),
+      demonstration_steps: Array.isArray(f?.demonstration_steps)
+        ? f.demonstration_steps.map((s: any) => typeof s === 'string' ? s : String(s?.text || s || ''))
+        : undefined,
+      exam_trap: typeof f?.exam_trap === 'string' ? f.exam_trap : (typeof f?.trap === 'string' ? f.trap : undefined),
+    }));
 
     if (formulas.length === 0 && rawMarkdown) {
       const formulaRegex =
         /(?:####?\s*🔹?\s*([^\n$]+)\n+)?(?:\*\s*\*\*Formule\s*:\*\*\s*)?(\$\$[\s\S]*?\$\$)/g;
       const fMatches = rawMarkdown.matchAll(formulaRegex);
       for (const m of fMatches) {
-        const detectedName = m[1]?.replace(/^[\s#*🔹\-\d\.]+/g, '').trim();
+        const detectedName = m[1] ? String(m[1]).replace(/^[\s#*🔹\-\d\.]+/g, '').trim() : '';
         const rawLatex = m[2].trim();
         const cleanLatex = cleanFormulaLatex(rawLatex);
         if (cleanLatex && !formulas.some((f) => cleanFormulaLatex(f.latex) === cleanLatex)) {
@@ -130,12 +219,22 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
     }
 
     // 3. Tableau Synthétique
-    let comparisonTable: SummaryComparisonTable | null =
-      raw?.comparison_table &&
-      Array.isArray(raw.comparison_table.headers) &&
-      Array.isArray(raw.comparison_table.rows)
-        ? raw.comparison_table
-        : null;
+    let comparisonTable: SummaryComparisonTable | null = null;
+    const rawTable = raw?.comparison_table || data?.comparison_table;
+    if (
+      rawTable &&
+      Array.isArray(rawTable.headers) &&
+      Array.isArray(rawTable.rows)
+    ) {
+      comparisonTable = {
+        headers: rawTable.headers.map((h: any) => typeof h === 'string' ? h : String(h ?? '')),
+        rows: rawTable.rows.map((row: any) =>
+          Array.isArray(row)
+            ? row.map((cell: any) => typeof cell === 'string' ? cell : String(cell ?? ''))
+            : [String(row ?? '')]
+        ),
+      };
+    }
 
     if (!comparisonTable && rawMarkdown) {
       const tableLines = rawMarkdown
@@ -163,9 +262,16 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
     }
 
     // 4. Blocs d'Attention (Pièges & Remarques NB)
-    const trapsAndTips: SummaryTrapOrTip[] = Array.isArray(raw?.traps_and_tips)
+    const rawTraps = Array.isArray(raw?.traps_and_tips)
       ? raw.traps_and_tips
+      : Array.isArray(data?.traps_and_tips)
+      ? data.traps_and_tips
       : [];
+    const trapsAndTips: SummaryTrapOrTip[] = rawTraps.map((tt: any) => ({
+      type: tt?.type === 'trap' || /pi[èe]ge/i.test(tt?.type || tt?.title || '') ? 'trap' : 'tip',
+      title: typeof tt?.title === 'string' ? tt.title : String(tt?.title || ''),
+      content: typeof tt?.content === 'string' ? tt.content : String(tt?.content || tt?.description || tt?.text || ''),
+    }));
 
     if (trapsAndTips.length === 0 && rawMarkdown) {
       const calloutMatches = rawMarkdown.matchAll(
@@ -200,10 +306,25 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
     }
 
     // 5. Exemple Pratique d'Application
-    let practicalExample: SummaryPracticalExample | null =
-      raw?.practical_example && typeof raw.practical_example.statement === 'string'
-        ? raw.practical_example
-        : null;
+    let practicalExample: SummaryPracticalExample | null = null;
+    const rawPe = raw?.practical_example || data?.practical_example;
+    if (rawPe && typeof rawPe === 'object') {
+      const statement =
+        typeof rawPe.statement === 'string'
+          ? rawPe.statement
+          : String(rawPe.enonce || rawPe.statement || 'Mini-cas d\'application concrète.');
+      const rawSteps = Array.isArray(rawPe.resolution_steps)
+        ? rawPe.resolution_steps
+        : Array.isArray(rawPe.steps)
+        ? rawPe.steps
+        : [];
+      const resolution_steps = rawSteps
+        .map((s: any) => (typeof s === 'string' ? s : String(s?.text || s?.step || s || '')))
+        .filter(Boolean);
+      if (statement || resolution_steps.length > 0) {
+        practicalExample = { statement, resolution_steps };
+      }
+    }
 
     if (!practicalExample && rawMarkdown) {
       const exMatch = rawMarkdown.match(
@@ -224,37 +345,36 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       }
     }
 
-
-
     // Points clés additionnels
-    const rawKeyPoints = Array.isArray(raw?.keyPoints)
-      ? raw.keyPoints
-      : Array.isArray(raw?.key_points)
-      ? raw.key_points
-      : Array.isArray(data?.keyPoints)
-      ? data.keyPoints
-      : [];
+    const rawKeyPoints = (
+      Array.isArray(raw?.keyPoints)
+        ? raw.keyPoints
+        : Array.isArray(raw?.key_points)
+        ? raw.key_points
+        : Array.isArray(data?.keyPoints)
+        ? data.keyPoints
+        : []
+    ).map((kp: any) => typeof kp === 'string' ? kp : String(kp || ''));
 
     // Sections rédigées de cours
     const rawSections = raw?.sections || data?.sections;
     const sections = Array.isArray(rawSections)
       ? rawSections.map((sec: any, idx: number) => ({
           number: sec.number || idx + 1,
-          heading:
-            sec.section_title ||
-            sec.sectionTitle ||
-            sec.heading ||
-            sec.title ||
-            sec.titre ||
-            `Section ${idx + 1}`,
-          body: sec.content || sec.body || sec.texte || '',
-          points: Array.isArray(sec.points)
+          heading: typeof (sec.section_title || sec.sectionTitle || sec.heading || sec.title || sec.titre) === 'string'
+            ? (sec.section_title || sec.sectionTitle || sec.heading || sec.title || sec.titre)
+            : `Section ${idx + 1}`,
+          body: typeof (sec.content || sec.body || sec.texte) === 'string'
+            ? (sec.content || sec.body || sec.texte)
+            : String(sec.content || sec.body || sec.texte || ''),
+          points: (Array.isArray(sec.points)
             ? sec.points
             : Array.isArray(sec.keyPoints)
             ? sec.keyPoints
             : Array.isArray(sec.key_takeaways)
             ? sec.key_takeaways
-            : [],
+            : []
+          ).map((p: any) => typeof p === 'string' ? p : String(p || '')),
         }))
       : [];
 
@@ -304,10 +424,10 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
     if (parsedSummary.keyDefinitions.length > 0) {
       out += `I. NOTIONS FONDAMENTALES & DÉFINITIONS :\n`;
       parsedSummary.keyDefinitions.forEach((kd) => {
-        const c = kd.concept.replace(/[:\s]+$/, '');
-        const d = kd.definition.replace(/^[:\s]+/, '');
+        const c = String(kd?.concept || 'Notion').replace(/[:\s]+$/, '');
+        const d = String(kd?.definition || '').replace(/^[:\s]+/, '');
         out += `• ${c} : ${d}`;
-        if (kd.objective) out += ` (Objectif : ${kd.objective})`;
+        if (kd?.objective) out += ` (Objectif : ${String(kd.objective)})`;
         out += `\n`;
       });
       out += `\n`;
@@ -380,7 +500,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${(docTitle || 'Resume').replace(/[^a-zA-Z0-9_-]/g, '_')}.txt`;
+    link.download = `${String(docTitle || 'Resume').replace(/[^a-zA-Z0-9_-]/g, '_')}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -479,8 +599,10 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
               {parsedSummary.keyDefinitions.length > 0 ? (
                 <ul className="space-y-3 pl-1">
                   {parsedSummary.keyDefinitions.map((kd, kidx) => {
-                    const cleanConcept = kd.concept.replace(/[:\s]+$/, '').trim();
-                    const cleanDef = kd.definition.replace(/^[:\s]+/, '').trim();
+                    const cleanConcept = String(kd?.concept || 'Notion clé').replace(/[:\s]+$/, '').trim();
+                    const cleanDef = String(kd?.definition || '').replace(/^[:\s]+/, '').trim();
+                    const rawObj = kd?.objective ? String(kd.objective) : '';
+                    const cleanObj = rawObj ? rawObj.replace(/^[:\s]+/, '').trim() : '';
                     return (
                       <li key={kidx} className="flex items-start gap-2.5 text-stone-900 text-base sm:text-lg leading-relaxed">
                         <span className="text-stone-500 font-bold mt-1 text-sm">•</span>
@@ -492,10 +614,10 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                           <span className="text-stone-900">
                             <MathText text={cleanDef} inline={true} />
                           </span>
-                          {kd.objective && (
+                          {cleanObj && (
                             <div className="text-stone-600 text-sm italic pt-0.5">
                               <span className="font-semibold not-italic text-stone-700">Objectif : </span>
-                              <MathText text={kd.objective.replace(/^[:\s]+/, '')} inline={true} />
+                              <MathText text={cleanObj} inline={true} />
                             </div>
                           )}
                         </div>
@@ -704,11 +826,14 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                     Résolution détaillée pas à pas :
                   </p>
                   <ol className="space-y-2 list-decimal pl-6 text-stone-900 text-base leading-relaxed">
-                    {parsedSummary.practicalExample.resolution_steps.map((step, sidx) => (
-                      <li key={sidx} className="pl-1">
-                        <MathText text={step.replace(/^\s*\d+[\.\-\)]\s*/, '')} inline={true} />
-                      </li>
-                    ))}
+                    {parsedSummary.practicalExample.resolution_steps.map((step, sidx) => {
+                      const stepStr = typeof step === 'string' ? step : String(step || '');
+                      return (
+                        <li key={sidx} className="pl-1">
+                          <MathText text={stepStr.replace(/^\s*\d+[\.\-\)]\s*/, '') || stepStr} inline={true} />
+                        </li>
+                      );
+                    })}
                   </ol>
                 </div>
               </div>
@@ -718,31 +843,34 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
           {/* Sections détaillées de cours complémentaires */}
           {parsedSummary.sections.length > 0 && (
             <div className="space-y-8 pt-4">
-              {parsedSummary.sections.map((sec, sidx) => (
-                <section key={sidx} className="space-y-3">
-                  <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
-                    {sec.number ? `${sec.number}. ` : ''}
-                    <MathText text={sec.heading.replace(/^\s*\d+[\.\-\)]\s*/, '') || sec.heading} inline={true} />
-                  </h2>
+              {parsedSummary.sections.map((sec, sidx) => {
+                const headingText = String(sec?.heading || `Section ${sidx + 1}`);
+                return (
+                  <section key={sidx} className="space-y-3">
+                    <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
+                      {sec.number ? `${sec.number}. ` : ''}
+                      <MathText text={headingText.replace(/^\s*\d+[\.\-\)]\s*/, '') || headingText} inline={true} />
+                    </h2>
 
-                  <div className="text-stone-900 leading-relaxed text-base sm:text-lg whitespace-pre-line font-normal">
-                    <MathText text={sec.body} />
-                  </div>
+                    <div className="text-stone-900 leading-relaxed text-base sm:text-lg whitespace-pre-line font-normal">
+                      <MathText text={sec.body} />
+                    </div>
 
-                  {sec.points && sec.points.length > 0 && (
-                    <ul className="space-y-2 pl-2">
-                      {sec.points.map((pt: string, pidx: number) => (
-                        <li key={pidx} className="flex items-start gap-2 text-stone-900 text-base sm:text-lg leading-relaxed">
-                          <span className="text-stone-500 font-bold mt-1 text-sm">•</span>
-                          <div className="flex-1">
-                            <MathText text={pt} inline={true} />
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-              ))}
+                    {sec.points && sec.points.length > 0 && (
+                      <ul className="space-y-2 pl-2">
+                        {sec.points.map((pt: string, pidx: number) => (
+                          <li key={pidx} className="flex items-start gap-2 text-stone-900 text-base sm:text-lg leading-relaxed">
+                            <span className="text-stone-500 font-bold mt-1 text-sm">•</span>
+                            <div className="flex-1">
+                              <MathText text={pt} inline={true} />
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                );
+              })}
             </div>
           )}
 

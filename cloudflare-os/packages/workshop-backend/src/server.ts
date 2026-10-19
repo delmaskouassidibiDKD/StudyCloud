@@ -897,6 +897,9 @@ export default {
         }
       }
 
+      return cleaned;
+    }
+
     // Helper universel et robuste pour extraire et désérialiser du JSON avec formules KaTeX et antislashs
     function safeJsonParse<T = any>(rawText: string): T | null {
       if (!rawText || typeof rawText !== "string") return null;
@@ -1241,6 +1244,7 @@ EXEMPLE STRICT DU SCHÉMA JSON HIÉRARCHIQUE DANS 'creation_data' :
   ]
 }
 \`\`\`
+`;
 
         systemPrompt += `\n\n10. CONSIGNE UNIVERSELLE - MOTEUR PÉDAGOGIQUE POUR TOUT COURS OU DOCUMENT ('resume') :
 Tu es un professeur expert et un ingénieur pédagogique universel. Ton rôle est d'analyser n'importe quel document, cours ou sujet fourni par l'utilisateur (quel que soit le domaine : sciences, droit, économie, informatique, lettres, médecine, gestion, etc.) et de le transformer en un support de révision parfait et structuré.
@@ -1757,17 +1761,133 @@ CONSIGNES STRICTES DE CONTINUATION :
                     ? rawParsed
                     : (typeof payloadData === "object" && payloadData !== null ? payloadData : rawParsed);
 
+                  const sanitizeStr = (val: any, fallback = ""): string => {
+                    if (val === null || val === undefined) return fallback;
+                    if (typeof val === "string") return val.trim();
+                    if (typeof val === "number" || typeof val === "boolean") return String(val);
+                    if (typeof val === "object") {
+                      return String(val.text || val.texte || val.content || val.desc || val.description || val.value || fallback).trim();
+                    }
+                    return String(val).trim();
+                  };
+
+                  // 1. Définitions fondamentales 100% sécurisées
+                  const rawDefs = Array.isArray(resObj.key_definitions)
+                    ? resObj.key_definitions
+                    : Array.isArray(resObj.definitions)
+                    ? resObj.definitions
+                    : Array.isArray(resObj.notions)
+                    ? resObj.notions
+                    : [];
+
+                  const cleanDefs = rawDefs.map((d: any) => {
+                    if (!d) return { concept: "Notion clé", definition: "", objective: "" };
+                    if (typeof d === "string") {
+                      const trimmed = d.replace(/^[-*•\d\.\s]+/, "").trim();
+                      const splitIdx = trimmed.search(/[:–—]/);
+                      if (splitIdx > 0) {
+                        return {
+                          concept: trimmed.slice(0, splitIdx).replace(/^\*{1,2}|\*{1,2}$/g, "").trim() || "Notion clé",
+                          definition: trimmed.slice(splitIdx + 1).trim(),
+                          objective: ""
+                        };
+                      }
+                      return { concept: "Notion clé", definition: trimmed, objective: "" };
+                    }
+                    return {
+                      concept: sanitizeStr(d.concept || d.term || d.terme || d.notion || d.title || d.titre || d.name || d.key, "Notion clé"),
+                      definition: sanitizeStr(d.definition || d.desc || d.description || d.explication || d.explanation || d.meaning || d.content, ""),
+                      objective: sanitizeStr(d.objective || d.application || d.objectif || d.utilite || d.role || d.goal, "")
+                    };
+                  });
+
+                  // 2. Formules et règles fondamentales
+                  const rawFormulas = Array.isArray(resObj.formulas) ? resObj.formulas : [];
+                  const cleanFormulas = rawFormulas.map((f: any, idx: number) => {
+                    const demoSteps = Array.isArray(f?.demonstration_steps)
+                      ? f.demonstration_steps.map((s: any) => sanitizeStr(s))
+                      : Array.isArray(f?.steps)
+                      ? f.steps.map((s: any) => sanitizeStr(s))
+                      : [];
+                    return {
+                      name: sanitizeStr(f?.name || f?.nom || f?.title || f?.titre, `Formule clé ${idx + 1}`),
+                      latex: sanitizeStr(f?.latex || f?.formula || f?.formule || f?.equation, ""),
+                      target_goal: sanitizeStr(f?.target_goal || f?.when_to_use || f?.goal || f?.objectif, ""),
+                      when_to_use: sanitizeStr(f?.when_to_use || f?.target_goal || f?.condition, ""),
+                      variables: Array.isArray(f?.variables) ? f.variables.map((v: any) => sanitizeStr(v)).join(", ") : sanitizeStr(f?.variables, ""),
+                      how_to_derive: sanitizeStr(f?.how_to_derive || f?.demonstration || f?.methode, ""),
+                      demonstration_steps: demoSteps,
+                      exam_trap: sanitizeStr(f?.exam_trap || f?.trap || f?.piege, "")
+                    };
+                  });
+
+                  // 3. Tableau comparatif
+                  let cleanTable = null;
+                  const rawTable = resObj.comparison_table;
+                  if (rawTable && typeof rawTable === "object") {
+                    const headers = Array.isArray(rawTable.headers)
+                      ? rawTable.headers.map((h: any) => sanitizeStr(h))
+                      : ["Notions / Éléments", "Caractéristiques", "Conditions / Formules", "Points de vigilance"];
+                    const rows = Array.isArray(rawTable.rows)
+                      ? rawTable.rows.map((r: any) => Array.isArray(r) ? r.map((c: any) => sanitizeStr(c)) : [sanitizeStr(r)])
+                      : [];
+                    if (rows.length > 0) {
+                      cleanTable = { headers, rows };
+                    }
+                  }
+
+                  // 4. Pièges & Astuces
+                  const rawTraps = Array.isArray(resObj.traps_and_tips) ? resObj.traps_and_tips : [];
+                  const cleanTraps = rawTraps.map((tt: any) => ({
+                    type: tt?.type === "tip" || /astuce|nb|conseil/i.test(tt?.type || tt?.title || "") ? "tip" : "trap",
+                    title: sanitizeStr(tt?.title || tt?.titre, tt?.type === "tip" ? "ASTUCE (NB)" : "PIÈGE CLASSIQUE"),
+                    content: sanitizeStr(tt?.content || tt?.contenu || tt?.description || tt?.texte || tt?.text, "")
+                  }));
+
+                  // 5. Cas concret ou exemple pratique
+                  let cleanPe = null;
+                  const rawPe = resObj.practical_example || resObj.practicalExample;
+                  if (rawPe && typeof rawPe === "object") {
+                    const rawSteps = Array.isArray(rawPe.resolution_steps)
+                      ? rawPe.resolution_steps
+                      : Array.isArray(rawPe.steps)
+                      ? rawPe.steps
+                      : [];
+                    cleanPe = {
+                      statement: sanitizeStr(rawPe.statement || rawPe.enonce || rawPe.texte || rawPe.sujet, "Mini-cas d'application concrète."),
+                      resolution_steps: rawSteps.map((s: any) => sanitizeStr(s))
+                    };
+                  }
+
+                  // 6. Sections développées
+                  const rawSections = Array.isArray(resObj.sections) ? resObj.sections : [];
+                  const cleanSections = rawSections.map((sec: any, sidx: number) => {
+                    const rawPts = Array.isArray(sec?.points)
+                      ? sec.points
+                      : Array.isArray(sec?.keyPoints)
+                      ? sec.keyPoints
+                      : Array.isArray(sec?.key_takeaways)
+                      ? sec.key_takeaways
+                      : [];
+                    return {
+                      number: sanitizeStr(sec?.number || sec?.num || `${sidx + 1}`),
+                      heading: sanitizeStr(sec?.heading || sec?.section_title || sec?.sectionTitle || sec?.title || sec?.titre, `Section ${sidx + 1}`),
+                      body: sanitizeStr(sec?.body || sec?.content || sec?.texte || sec?.text, ""),
+                      points: rawPts.map((p: any) => sanitizeStr(p))
+                    };
+                  });
+
                   creationData = {
-                    title: resObj.title || rawParsed.creation_title || docName || "Fiche de Résumé",
-                    theme: resObj.theme || resObj.domaine || "",
-                    overview: typeof resObj.overview === "string" ? resObj.overview : (typeof resObj.summary === "string" ? resObj.summary : ""),
-                    key_definitions: Array.isArray(resObj.key_definitions) ? resObj.key_definitions : (Array.isArray(resObj.definitions) ? resObj.definitions : []),
-                    formulas: Array.isArray(resObj.formulas) ? resObj.formulas : [],
-                    comparison_table: resObj.comparison_table || null,
-                    traps_and_tips: Array.isArray(resObj.traps_and_tips) ? resObj.traps_and_tips : [],
-                    practical_example: resObj.practical_example || null,
-                    sections: Array.isArray(resObj.sections) ? resObj.sections : [],
-                    markdown: typeof resObj.markdown === "string" ? resObj.markdown : ""
+                    title: sanitizeStr(resObj.title || rawParsed.creation_title || docName, "Fiche de Résumé"),
+                    theme: sanitizeStr(resObj.theme || resObj.domaine, ""),
+                    overview: sanitizeStr(resObj.overview || resObj.summary || resObj.description, ""),
+                    key_definitions: cleanDefs,
+                    formulas: cleanFormulas,
+                    comparison_table: cleanTable,
+                    traps_and_tips: cleanTraps,
+                    practical_example: cleanPe,
+                    sections: cleanSections,
+                    markdown: sanitizeStr(resObj.markdown || resObj.content || resObj.text, "")
                   };
                 } else {
                   creationData = (typeof payloadData === "object" && payloadData !== null) ? payloadData : rawParsed;
