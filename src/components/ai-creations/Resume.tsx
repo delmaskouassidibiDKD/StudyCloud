@@ -4,6 +4,15 @@ import {
   Check,
   Download,
   FileText,
+  BookOpen,
+  BookmarkCheck,
+  Calculator,
+  AlertTriangle,
+  Lightbulb,
+  Sparkles,
+  Table as TableIcon,
+  CheckCircle2,
+  Target,
 } from 'lucide-react';
 import { MathText } from '../MathText';
 import {
@@ -13,6 +22,7 @@ import {
   SummaryPracticalExample,
   SummaryKeyDefinition,
 } from './types';
+import { safeJsonParse } from '../../services/api';
 
 interface ResumeProps {
   data?: any;
@@ -36,22 +46,99 @@ function isFillerText(str?: string): boolean {
   return /^(?:application directe du cours|selon les lois fondamentales|d[eé]monstration par application des lois fondamentales|selon le cours|application du cours|n\/a)$/i.test(str.trim());
 }
 
+/**
+ * Nettoie le markdown pour s'assurer qu'aucun bloc JSON brut ne fuite vers MathText
+ */
+function cleanMarkdown(md: string): string {
+  if (!md) return '';
+  let cleaned = md
+    .replace(/(?:```|""")(?:json)?[\s\S]*?(?:```|""")/gi, '')
+    .trim();
+  if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
+    return '';
+  }
+  if (cleaned.includes('"decision"') || cleaned.includes('"creation_type"')) {
+    cleaned = cleaned.replace(/\{[\s\S]*\}/g, '').trim();
+  }
+  return cleaned;
+}
+
+/**
+ * Extrait récursivement le JSON structuré d'un texte ou d'un objet enveloppé
+ */
+function extractStructuredSummary(input: any): any {
+  if (!input) return {};
+
+  if (typeof input === 'string') {
+    const trimmed = input.trim();
+    if (
+      trimmed.includes('{') ||
+      trimmed.includes('"""json') ||
+      trimmed.includes('```json') ||
+      trimmed.includes('"decision"') ||
+      trimmed.includes('"creation_data"') ||
+      trimmed.includes('"key_definitions"') ||
+      trimmed.includes('"formulas"')
+    ) {
+      const parsed = safeJsonParse(trimmed);
+      if (parsed && typeof parsed === 'object') {
+        return extractStructuredSummary(parsed);
+      }
+    }
+    return input;
+  }
+
+  if (typeof input === 'object') {
+    if (input.creation_data) {
+      const cd = typeof input.creation_data === 'string' ? safeJsonParse(input.creation_data) : input.creation_data;
+      if (cd && typeof cd === 'object') {
+        return extractStructuredSummary(cd);
+      }
+    }
+
+    if (input.summary && typeof input.summary === 'object') {
+      return extractStructuredSummary(input.summary);
+    }
+    if (input.data && typeof input.data === 'object') {
+      return extractStructuredSummary(input.data);
+    }
+
+    const stringCandidates = [input.content, input.response, input.text, input.markdown];
+    for (const cand of stringCandidates) {
+      if (typeof cand === 'string') {
+        const trimmed = cand.trim();
+        if (
+          trimmed.includes('{') ||
+          trimmed.includes('"""json') ||
+          trimmed.includes('```json') ||
+          trimmed.includes('"decision"') ||
+          trimmed.includes('"creation_data"') ||
+          trimmed.includes('"key_definitions"') ||
+          trimmed.includes('"formulas"')
+        ) {
+          const parsed = safeJsonParse(trimmed);
+          if (parsed && typeof parsed === 'object') {
+            return extractStructuredSummary(parsed);
+          }
+        }
+      }
+    }
+
+    return input;
+  }
+
+  return input;
+}
+
 export default function Resume({ data, title, sourceFileName }: ResumeProps) {
   const [copied, setCopied] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
 
   // Normalisation unifiée et robuste des données (support JSON structuré, Markdown et enrichissement didactique)
   const parsedSummary = useMemo(() => {
-    const raw: any =
-      data?.summary && typeof data.summary === 'object' && !Array.isArray(data.summary)
-        ? data.summary
-        : data?.content && typeof data.content === 'object' && !Array.isArray(data.content)
-        ? data.content
-        : data?.creation_data && typeof data.creation_data === 'object' && !Array.isArray(data.creation_data)
-        ? data.creation_data
-        : data || {};
+    const raw: any = extractStructuredSummary(data);
 
-    const rawMarkdown: string =
+    let rawMarkdown: string =
       typeof raw?.markdown === 'string'
         ? raw.markdown
         : typeof raw?.text === 'string'
@@ -61,6 +148,8 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
         : typeof data?.markdown === 'string'
         ? data.markdown
         : '';
+
+    rawMarkdown = cleanMarkdown(rawMarkdown);
 
     // Détection d'un titre et d'un thème propre
     const rawTitleCandidate =
@@ -484,6 +573,10 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       });
     }
 
+    if (!parsedSummary.overview && !parsedSummary.keyDefinitions.length && !parsedSummary.formulas.length && parsedSummary.markdown) {
+      out += `${parsedSummary.markdown}\n`;
+    }
+
     return out;
   }, [parsedSummary]);
 
@@ -510,18 +603,17 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
   };
 
   return (
-    <div id="module-resume" className="w-full min-h-full bg-white flex flex-col font-sans">
+    <div id="module-resume" className="w-full min-h-full bg-slate-50/50 flex flex-col font-sans">
       {/* 
-        1. BANDE HORIZONTALE D'ACTIONS :
-        Colle directement à la barre supérieure (top-0, aucun espace vide, pleine largeur)
+        1. BANDE HORIZONTALE D'ACTIONS STICKY
       */}
       <div
         id="resume-sticky-actions"
-        className="sticky top-0 z-30 w-full px-4 sm:px-6 md:px-8 py-2.5 bg-white border-b border-stone-200 flex items-center justify-between gap-3 shadow-xs shrink-0"
+        className="sticky top-0 z-30 w-full px-4 sm:px-6 md:px-8 py-2.5 bg-white/95 backdrop-blur-md border-b border-stone-200 flex items-center justify-between gap-3 shadow-xs shrink-0"
       >
         <div className="flex items-center gap-2 text-stone-800 text-xs sm:text-sm font-bold min-w-0">
-          <FileText className="w-4 h-4 text-stone-900 shrink-0" />
-          <span className="truncate">Fiche de Résumé</span>
+          <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+          <span className="truncate">Fiche de Résumé Synthétique</span>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -529,7 +621,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
           <button
             id="btn-copy-resume"
             onClick={handleCopy}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-stone-300 bg-white hover:bg-stone-100 text-stone-800 text-xs sm:text-sm font-semibold transition-all shadow-xs active:scale-95 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-stone-300 bg-white hover:bg-stone-50 text-stone-800 text-xs sm:text-sm font-semibold transition-all shadow-xs active:scale-95 cursor-pointer"
             title="Copier l'intégralité du texte"
           >
             {copied ? (
@@ -549,12 +641,12 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
           <button
             id="btn-download-resume"
             onClick={handleDownload}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs sm:text-sm font-semibold transition-all shadow-xs active:scale-95 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold transition-all shadow-xs active:scale-95 cursor-pointer"
             title="Télécharger la fiche"
           >
             {downloaded ? (
               <>
-                <Check className="w-4 h-4 text-emerald-400" />
+                <Check className="w-4 h-4 text-emerald-300" />
                 <span className="font-bold">Téléchargé !</span>
               </>
             ) : (
@@ -568,68 +660,87 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       </div>
 
       {/* 
-        2. ZONE DE RÉDACTION : PAGE BLANCHE ET ÉCRITURE EN NOIR
-        Avec encadrés de couleur clairs (Bleu pour formules, Jaune/Orange pour pièges, Vert pour méthodes)
+        2. ZONE PRINCIPALE DE LECTURE : STRUCTURE PÉDAGOGIQUE COLORÉE & ÉLÉGANTE
       */}
-      <div className="flex-1 w-full bg-white px-4 sm:px-8 md:px-12 py-8">
+      <div className="flex-1 w-full px-4 sm:px-8 md:px-12 py-8">
         <article id="resume-document-content" className="w-full max-w-4xl mx-auto space-y-8 text-stone-900">
-          {/* 
-            LE THÈME BIEN EN HAUT AU MILIEU ET ENCADRÉ (PAS GROS)
-          */}
-          <div className="w-full flex justify-center pt-1 pb-4">
-            <div className="inline-block px-5 py-1.5 rounded border border-stone-800 text-stone-900 font-extrabold text-xs sm:text-sm tracking-widest uppercase text-center bg-stone-50 shadow-2xs">
-              <MathText text={docTitle || docTheme} inline={true} />
+          
+          {/* En-tête avec badge thématique dégradé et titre percutant */}
+          <header className="w-full text-center space-y-3 pt-2 pb-4">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-sm uppercase">
+              <Sparkles className="w-4 h-4 text-amber-200 animate-pulse" />
+              <MathText text={docTheme || docTitle} inline={true} />
             </div>
-          </div>
 
-          {/* Vue d'ensemble / Introduction du chapitre */}
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-stone-950 tracking-tight px-4 leading-tight">
+              <MathText text={docTitle} inline={true} />
+            </h1>
+          </header>
+
+          {/* Vue d'ensemble / Synthèse Globale du Chapitre */}
           {docOverview && (
-            <div className="text-stone-900 text-base sm:text-lg leading-relaxed font-normal">
-              <MathText text={docOverview} />
+            <div className="rounded-2xl bg-gradient-to-br from-indigo-50/90 via-purple-50/40 to-blue-50/50 border border-indigo-200/80 p-5 sm:p-6 shadow-xs space-y-2.5">
+              <div className="flex items-center gap-2 text-indigo-700 font-black text-xs sm:text-sm uppercase tracking-wider">
+                <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span>Synthèse Globale & Objectifs du Chapitre</span>
+              </div>
+              <div className="text-stone-800 text-base sm:text-lg leading-relaxed font-normal">
+                <MathText text={docOverview} />
+              </div>
             </div>
           )}
 
-          {/* I. Notions Clés & Définitions - Sans deux-points isolés sur une ligne */}
+          {/* I. Notions Clés & Définitions */}
           {(parsedSummary.keyDefinitions.length > 0 || parsedSummary.keyPoints.length > 0) && (
             <section className="space-y-4 pt-2">
-              <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
-                I. Notions Fondamentales & Définitions
-              </h2>
+              <div className="flex items-center gap-3 pb-3 border-b-2 border-indigo-200">
+                <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
+                  I
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight">
+                  Notions Fondamentales & Définitions
+                </h2>
+              </div>
 
               {parsedSummary.keyDefinitions.length > 0 ? (
-                <ul className="space-y-3 pl-1">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {parsedSummary.keyDefinitions.map((kd, kidx) => {
                     const cleanConcept = String(kd?.concept || 'Notion clé').replace(/[:\s]+$/, '').trim();
                     const cleanDef = String(kd?.definition || '').replace(/^[:\s]+/, '').trim();
                     const rawObj = kd?.objective ? String(kd.objective) : '';
                     const cleanObj = rawObj ? rawObj.replace(/^[:\s]+/, '').trim() : '';
+
                     return (
-                      <li key={kidx} className="flex items-start gap-2.5 text-stone-900 text-base sm:text-lg leading-relaxed">
-                        <span className="text-stone-500 font-bold mt-1 text-sm">•</span>
-                        <div className="flex-1">
-                          <span className="font-extrabold text-black">
+                      <div
+                        key={kidx}
+                        className="bg-white rounded-xl border border-stone-200/90 hover:border-indigo-300 shadow-xs hover:shadow-md transition-all p-4 border-l-4 border-l-indigo-600 flex flex-col justify-between space-y-2.5"
+                      >
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2 text-indigo-950 font-black text-base sm:text-lg">
+                            <BookmarkCheck className="w-4 h-4 text-indigo-600 shrink-0" />
                             <MathText text={cleanConcept} inline={true} />
-                          </span>
-                          <span className="text-stone-700 font-bold"> : </span>
-                          <span className="text-stone-900">
+                          </div>
+                          <div className="text-stone-700 text-sm sm:text-base leading-relaxed">
                             <MathText text={cleanDef} inline={true} />
-                          </span>
-                          {cleanObj && (
-                            <div className="text-stone-600 text-sm italic pt-0.5">
-                              <span className="font-semibold not-italic text-stone-700">Objectif : </span>
-                              <MathText text={cleanObj} inline={true} />
-                            </div>
-                          )}
+                          </div>
                         </div>
-                      </li>
+                        {cleanObj && (
+                          <div className="pt-1">
+                            <span className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-150 rounded-lg px-2.5 py-1 text-xs font-semibold">
+                              <Target className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                              <span>Objectif : <MathText text={cleanObj} inline={true} /></span>
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
-                </ul>
+                </div>
               ) : (
                 <ul className="space-y-2.5 pl-1">
                   {parsedSummary.keyPoints.map((kp, kidx) => (
-                    <li key={kidx} className="flex items-start gap-2 text-stone-900 text-base sm:text-lg leading-relaxed">
-                      <span className="text-stone-500 font-bold mt-1 text-sm">•</span>
+                    <li key={kidx} className="flex items-start gap-2.5 text-stone-900 text-base leading-relaxed bg-white p-3 rounded-xl border border-stone-200">
+                      <span className="text-indigo-600 font-bold mt-1 text-sm">•</span>
                       <div className="flex-1">
                         <MathText text={kp} inline={true} />
                       </div>
@@ -640,14 +751,19 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             </section>
           )}
 
-          {/* II. Formulaire, Règles & Méthodes - Rédigé directement sur le fond de page comme un livre */}
+          {/* II. Formulaire, Règles & Méthodes de Calcul */}
           {parsedSummary.formulas.length > 0 && (
             <section className="space-y-6 pt-4">
-              <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
-                II. Notions Clés, Formules & Règles Fondamentales
-              </h2>
+              <div className="flex items-center gap-3 pb-3 border-b-2 border-blue-200">
+                <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
+                  II
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight">
+                  Formules, Lois & Règles Fondamentales
+                </h2>
+              </div>
 
-              <div className="space-y-8">
+              <div className="space-y-6">
                 {parsedSummary.formulas.map((formula, fidx) => {
                   const cleanedLatex = cleanFormulaLatex(formula.latex);
                   const hasObjective = Boolean(formula.target_goal || (!isFillerText(formula.when_to_use) ? formula.when_to_use : null));
@@ -658,75 +774,89 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                   return (
                     <div
                       key={fidx}
-                      className="space-y-3 pt-2"
+                      className="bg-white rounded-2xl border border-stone-200/90 shadow-xs hover:shadow-md transition-all p-5 sm:p-6 space-y-4"
                     >
-                      {/* En-tête de la formule/règle - style titre de livre de cours */}
-                      <div className="text-base sm:text-lg font-bold text-black flex items-center gap-2">
-                        <span className="font-extrabold">{fidx + 1}.</span>
-                        <span className="uppercase tracking-wide">
-                          <MathText text={formula.name || `Règle / Formule ${fidx + 1}`} inline={true} />
-                        </span>
+                      {/* En-tête avec badge et titre */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-3">
+                        <div className="flex items-center gap-2.5">
+                          <span className="px-2.5 py-0.5 rounded-full bg-blue-600 text-white text-xs font-black uppercase tracking-wider shadow-2xs">
+                            #{fidx + 1}
+                          </span>
+                          <h3 className="text-base sm:text-lg font-black text-stone-900">
+                            <MathText text={formula.name || `Formule ${fidx + 1}`} inline={true} />
+                          </h3>
+                        </div>
+                        {formula.target_goal && (
+                          <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200/60 rounded-full px-3 py-0.5">
+                            Formule Clé
+                          </span>
+                        )}
                       </div>
 
-                      {/* Formule mathématique centrée directement sur le fond de la page (uniquement si LaTeX présent) */}
+                      {/* Encadré de Formule LaTeX Bleu Vibrant */}
                       {cleanedLatex && (
-                        <div className="py-2 px-2 text-center overflow-x-auto text-xl sm:text-2xl font-bold text-black my-2">
-                          <MathText text={`$$ ${cleanedLatex} $$`} />
+                        <div className="py-3.5 px-4 rounded-xl bg-gradient-to-r from-blue-50/90 via-indigo-50/60 to-blue-50/90 border-2 border-blue-300 text-center overflow-x-auto shadow-inner my-2">
+                          <div className="text-xl sm:text-2xl font-bold text-blue-950 inline-block">
+                            <MathText text={`$$ ${cleanedLatex} $$`} />
+                          </div>
                         </div>
                       )}
 
-                      {/* Contenu pédagogique continu sur le fond de page */}
-                      <div className="space-y-2.5 text-stone-900 text-base leading-relaxed pl-1 sm:pl-3">
-                        {/* 1. Objectif & Utilité */}
-                        {hasObjective && (
-                          <p className="text-stone-800">
-                            <strong className="font-bold text-black">🎯 Objectif & Utilité : </strong>
-                            <MathText text={formula.target_goal || formula.when_to_use || ''} inline={true} />
-                          </p>
-                        )}
+                      {/* Objectif & Application */}
+                      {hasObjective && (
+                        <div className="bg-blue-50/60 border-l-4 border-blue-500 rounded-r-xl p-3 text-sm text-stone-800">
+                          <strong className="font-bold text-blue-950">🎯 Objectif & Utilité : </strong>
+                          <MathText text={formula.target_goal || formula.when_to_use || ''} inline={true} />
+                        </div>
+                      )}
 
-                        {/* 2. Démonstration, Logique ou Méthode pas à pas */}
-                        {(hasSteps || hasDerivation) && (
-                          <div className="space-y-1.5 pt-0.5">
-                            <p className="font-bold text-black">
-                              🛠️ Démonstration & Méthode d'application pas à pas :
-                            </p>
-                            {hasSteps ? (
-                              <ol className="list-decimal pl-6 space-y-1 text-stone-800 font-normal">
-                                {formula.demonstration_steps!.map((step, sidx) => (
-                                  <li key={sidx} className="pl-1">
+                      {/* Démonstration ou Méthode pas à pas */}
+                      {(hasSteps || hasDerivation) && (
+                        <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-4 space-y-2.5">
+                          <p className="font-bold text-stone-900 text-sm flex items-center gap-2">
+                            <span>🛠️ Démonstration & Méthode d'application pas à pas :</span>
+                          </p>
+                          {hasSteps ? (
+                            <ol className="space-y-2">
+                              {formula.demonstration_steps!.map((step, sidx) => (
+                                <li key={sidx} className="flex items-start gap-2.5 text-stone-800 text-sm sm:text-base leading-relaxed">
+                                  <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
+                                    {sidx + 1}
+                                  </span>
+                                  <div className="flex-1">
                                     <MathText text={step} inline={true} />
-                                  </li>
-                                ))}
-                              </ol>
-                            ) : (
-                              <div className="pl-4 text-stone-800">
-                                <MathText text={formula.how_to_derive!} inline={true} />
-                              </div>
-                            )}
-                          </div>
-                        )}
+                                  </div>
+                                </li>
+                              ))}
+                            </ol>
+                          ) : (
+                            <div className="text-stone-800 text-sm sm:text-base leading-relaxed pl-2">
+                              <MathText text={formula.how_to_derive!} inline={true} />
+                            </div>
+                          )}
+                        </div>
+                      )}
 
-                        {/* 3. Variables, Unités ou Conditions */}
-                        {formula.variables && (
-                          <p className="text-stone-800">
-                            <strong className="font-bold text-black">📐 Variables, Unités ou Conditions : </strong>
+                      {/* Variables & Unités */}
+                      {formula.variables && (
+                        <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-3 text-sm text-stone-800 flex items-start gap-2.5">
+                          <span className="text-amber-600 text-base shrink-0">📐</span>
+                          <div>
+                            <strong className="font-bold text-amber-950">Variables, Unités & Conditions : </strong>
                             <MathText text={formula.variables} inline={true} />
-                          </p>
-                        )}
+                          </div>
+                        </div>
+                      )}
 
-                        {/* 4. Piège classique à l'examen */}
-                        {hasTraps && (
-                          <p className="text-stone-800">
-                            <strong className="font-bold text-black">⚠️ Piège classique à l'examen : </strong>
+                      {/* Piège classique pour cette formule */}
+                      {hasTraps && (
+                        <div className="bg-rose-50/80 border border-rose-200 rounded-xl p-3 text-sm text-rose-950 flex items-start gap-2.5">
+                          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                          <div>
+                            <strong className="font-bold text-rose-900">Piège classique à l'examen : </strong>
                             <MathText text={formula.exam_trap!} inline={true} />
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Séparation sobre de livre entre deux formules/règles */}
-                      {fidx < parsedSummary.formulas.length - 1 && (
-                        <hr className="border-t border-stone-200 my-6" />
+                          </div>
+                        </div>
                       )}
                     </div>
                   );
@@ -735,32 +865,37 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             </section>
           )}
 
-          {/* III. Tableau Synthétique Comparatif Obligatoire */}
+          {/* III. Tableau Synthétique Comparatif */}
           {parsedSummary.comparisonTable && (
             <section className="space-y-4 pt-4">
-              <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
-                III. Tableau Synthétique Comparatif
-              </h2>
+              <div className="flex items-center gap-3 pb-3 border-b-2 border-purple-200">
+                <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
+                  III
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight">
+                  Tableau Synthétique Comparatif
+                </h2>
+              </div>
 
-              <div className="w-full overflow-x-auto my-3 rounded-lg border border-stone-300 shadow-2xs">
+              <div className="w-full overflow-x-auto rounded-2xl border border-purple-200/90 shadow-xs bg-white">
                 <table className="w-full text-left border-collapse text-xs sm:text-sm">
                   <thead>
-                    <tr className="bg-stone-100 border-b border-stone-300 text-stone-900 font-extrabold">
+                    <tr className="bg-gradient-to-r from-purple-700 via-indigo-700 to-purple-800 text-white font-extrabold">
                       {parsedSummary.comparisonTable.headers.map((h, hidx) => (
-                        <th key={hidx} className="py-3 px-3.5 uppercase tracking-wide">
+                        <th key={hidx} className="py-3.5 px-4 uppercase tracking-wider text-xs">
                           <MathText text={h} inline={true} />
                         </th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-stone-200">
+                  <tbody className="divide-y divide-purple-100">
                     {parsedSummary.comparisonTable.rows.map((row, ridx) => (
                       <tr
                         key={ridx}
-                        className={ridx % 2 === 0 ? 'bg-white' : 'bg-stone-50/70'}
+                        className={ridx % 2 === 0 ? 'bg-white hover:bg-purple-50/40' : 'bg-purple-50/20 hover:bg-purple-50/50 transition-colors'}
                       >
                         {row.map((cell, cidx) => (
-                          <td key={cidx} className="py-3 px-3.5 text-stone-900 font-medium leading-relaxed">
+                          <td key={cidx} className="py-3 px-4 text-stone-900 font-medium leading-relaxed">
                             <MathText text={cell} inline={true} />
                           </td>
                         ))}
@@ -772,26 +907,63 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             </section>
           )}
 
-          {/* IV. Pièges à Éviter & Astuces Méthodologiques (NB) - Sans bloc coloré ni trait vertical */}
+          {/* IV. Pièges à Éviter & Astuces Méthodologiques (NB) */}
           {parsedSummary.trapsAndTips.length > 0 && (
             <section className="space-y-4 pt-4">
-              <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
-                IV. Pièges à Éviter & Astuces Méthodologiques (NB)
-              </h2>
+              <div className="flex items-center gap-3 pb-3 border-b-2 border-amber-200">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
+                  IV
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight">
+                  Pièges à Éviter & Astuces Méthodologiques (NB)
+                </h2>
+              </div>
 
-              <div className="space-y-4 pt-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {parsedSummary.trapsAndTips.map((item, tidx) => {
                   const isTrap = item.type === 'trap' || /pi[èe]ge/i.test(item.title || '');
-                  return (
-                    <div key={tidx} className="space-y-1 text-base text-stone-900 leading-relaxed pl-1 sm:pl-3">
-                      <p className="font-bold text-black flex items-center gap-2">
-                        <span>{isTrap ? '⚠️ PIÈGE CLASSIQUE :' : '💡 ASTUCE MÉTHODOLOGIQUE (NB) :'}</span>
-                        {item.title && !/^(pi[èe]ge|astuce)/i.test(item.title) && (
-                          <span className="font-semibold text-stone-800">{item.title}</span>
-                        )}
-                      </p>
-                      <div className="pl-6 text-stone-800 font-normal">
-                        <MathText text={item.content} inline={true} />
+                  return isTrap ? (
+                    <div
+                      key={tidx}
+                      className="bg-gradient-to-br from-rose-50/90 via-white to-rose-50/40 border-2 border-rose-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-2 flex flex-col justify-between"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-600 text-white text-xs font-black uppercase tracking-wider shadow-2xs">
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            PIÈGE CLASSIQUE
+                          </span>
+                          {item.title && !/^(pi[èe]ge|astuce)/i.test(item.title) && (
+                            <span className="font-extrabold text-rose-950 text-sm">
+                              {item.title}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-rose-950 text-sm sm:text-base leading-relaxed">
+                          <MathText text={item.content} inline={true} />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      key={tidx}
+                      className="bg-gradient-to-br from-amber-50/90 via-white to-amber-50/40 border-2 border-amber-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-2 flex flex-col justify-between"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-600 text-white text-xs font-black uppercase tracking-wider shadow-2xs">
+                            <Lightbulb className="w-3.5 h-3.5" />
+                            ASTUCE (NB)
+                          </span>
+                          {item.title && !/^(pi[èe]ge|astuce)/i.test(item.title) && (
+                            <span className="font-extrabold text-amber-950 text-sm">
+                              {item.title}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-amber-950 text-sm sm:text-base leading-relaxed">
+                          <MathText text={item.content} inline={true} />
+                        </div>
                       </div>
                     </div>
                   );
@@ -800,37 +972,46 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             </section>
           )}
 
-          {/* V. Exemple Pratique d'Application - Rédigé directement sur le fond de page */}
+          {/* V. Exemple Pratique d'Application Résolu */}
           {parsedSummary.practicalExample && (
             <section className="space-y-4 pt-4">
-              <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
-                V. Exemple Pratique d'Application
-              </h2>
-
-              <div className="space-y-3 pt-1 text-base text-stone-900 leading-relaxed pl-1 sm:pl-3">
-                <div className="space-y-1">
-                  <p className="font-bold text-black">
-                    🛠️ Cas concret résolu étape par étape
-                  </p>
+              <div className="flex items-center gap-3 pb-3 border-b-2 border-emerald-200">
+                <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
+                  V
                 </div>
+                <h2 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight">
+                  Exemple Pratique Résolu Pas à Pas
+                </h2>
+              </div>
 
-                <div className="space-y-1 pl-4">
-                  <p className="font-bold text-black">Énoncé :</p>
-                  <div className="italic text-stone-800">
+              <div className="bg-gradient-to-br from-emerald-50/60 via-white to-teal-50/40 border-2 border-emerald-200/90 rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
+                {/* Énoncé */}
+                <div className="bg-white border border-emerald-200/80 rounded-xl p-4 shadow-2xs space-y-1.5">
+                  <div className="flex items-center gap-2 text-emerald-900 font-black text-xs sm:text-sm uppercase tracking-wider">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Énoncé du problème</span>
+                  </div>
+                  <div className="text-stone-800 text-sm sm:text-base leading-relaxed italic pl-1">
                     <MathText text={parsedSummary.practicalExample.statement} inline={true} />
                   </div>
                 </div>
 
-                <div className="space-y-2 pt-1 pl-4">
-                  <p className="font-bold text-black text-sm uppercase tracking-wide">
-                    Résolution détaillée pas à pas :
+                {/* Étapes de résolution */}
+                <div className="space-y-3 pt-1">
+                  <p className="font-black text-stone-900 text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2">
+                    <span>🔍 Résolution détaillée étape par étape :</span>
                   </p>
-                  <ol className="space-y-2 list-decimal pl-6 text-stone-900 text-base leading-relaxed">
+                  <ol className="space-y-2.5">
                     {parsedSummary.practicalExample.resolution_steps.map((step, sidx) => {
                       const stepStr = typeof step === 'string' ? step : String(step || '');
                       return (
-                        <li key={sidx} className="pl-1">
-                          <MathText text={stepStr.replace(/^\s*\d+[\.\-\)]\s*/, '') || stepStr} inline={true} />
+                        <li key={sidx} className="flex items-start gap-3 bg-white/80 border border-emerald-150 rounded-xl p-3 shadow-2xs text-stone-800 text-sm sm:text-base leading-relaxed">
+                          <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
+                            {sidx + 1}
+                          </span>
+                          <div className="flex-1">
+                            <MathText text={stepStr.replace(/^\s*\d+[\.\-\)]\s*/, '') || stepStr} inline={true} />
+                          </div>
                         </li>
                       );
                     })}
@@ -842,25 +1023,25 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
 
           {/* Sections détaillées de cours complémentaires */}
           {parsedSummary.sections.length > 0 && (
-            <div className="space-y-8 pt-4">
+            <div className="space-y-6 pt-4">
               {parsedSummary.sections.map((sec, sidx) => {
                 const headingText = String(sec?.heading || `Section ${sidx + 1}`);
                 return (
-                  <section key={sidx} className="space-y-3">
-                    <h2 className="text-xl sm:text-2xl font-extrabold text-black pb-2 border-b border-stone-200">
+                  <div key={sidx} className="bg-white rounded-2xl border border-stone-200 p-5 space-y-3 shadow-xs">
+                    <h3 className="text-lg sm:text-xl font-black text-stone-900 pb-2 border-b border-stone-100">
                       {sec.number ? `${sec.number}. ` : ''}
                       <MathText text={headingText.replace(/^\s*\d+[\.\-\)]\s*/, '') || headingText} inline={true} />
-                    </h2>
+                    </h3>
 
-                    <div className="text-stone-900 leading-relaxed text-base sm:text-lg whitespace-pre-line font-normal">
+                    <div className="text-stone-800 leading-relaxed text-sm sm:text-base whitespace-pre-line font-normal">
                       <MathText text={sec.body} />
                     </div>
 
                     {sec.points && sec.points.length > 0 && (
-                      <ul className="space-y-2 pl-2">
+                      <ul className="space-y-2 pl-2 pt-1">
                         {sec.points.map((pt: string, pidx: number) => (
-                          <li key={pidx} className="flex items-start gap-2 text-stone-900 text-base sm:text-lg leading-relaxed">
-                            <span className="text-stone-500 font-bold mt-1 text-sm">•</span>
+                          <li key={pidx} className="flex items-start gap-2 text-stone-700 text-sm sm:text-base leading-relaxed">
+                            <span className="text-indigo-600 font-bold mt-1 text-sm">•</span>
                             <div className="flex-1">
                               <MathText text={pt} inline={true} />
                             </div>
@@ -868,15 +1049,15 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                         ))}
                       </ul>
                     )}
-                  </section>
+                  </div>
                 );
               })}
             </div>
           )}
 
-          {/* Rendu Markdown complet de repli si la fiche a été rédigée sous forme textuelle */}
-          {parsedSummary.markdown && parsedSummary.sections.length === 0 && parsedSummary.formulas.length === 0 && (
-            <div className="space-y-6 pt-4 text-stone-900 leading-relaxed text-base sm:text-lg">
+          {/* Rendu Markdown propre de repli (uniquement si aucune formule/section et si markdown assaini) */}
+          {parsedSummary.markdown && parsedSummary.sections.length === 0 && parsedSummary.formulas.length === 0 && parsedSummary.keyDefinitions.length === 0 && (
+            <div className="bg-white rounded-2xl border border-stone-200 p-6 shadow-xs space-y-4 text-stone-800 leading-relaxed text-base">
               <MathText text={parsedSummary.markdown} />
             </div>
           )}
@@ -885,7 +1066,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
           {!hasDynamicData && (
             <div
               id="resume-empty-card"
-              className="w-full text-center py-16 space-y-4"
+              className="w-full text-center py-16 space-y-4 bg-white rounded-2xl border border-stone-200 shadow-xs"
             >
               <FileText className="w-12 h-12 text-stone-400 mx-auto" />
               <div className="space-y-2">

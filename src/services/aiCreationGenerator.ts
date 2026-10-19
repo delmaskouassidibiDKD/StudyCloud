@@ -524,6 +524,28 @@ function parseInfographicFromText(rawText: string, safeDocName: string): Infogra
  * Extraction dynamique d'une Fiche de Résumé à partir du texte de l'IA (5 blocs pédagogiques)
  */
 function parseSummaryFromText(rawText: string, safeDocName: string): SummaryContent {
+  // Si le texte est en fait un bloc JSON complet, le désérialiser directement
+  const parsedJson = safeJsonParse(rawText);
+  if (parsedJson && typeof parsedJson === 'object') {
+    const d = parsedJson.creation_data || parsedJson.summary || parsedJson;
+    if (d && (d.overview || d.key_definitions || d.definitions || d.formulas || d.comparison_table || d.traps_and_tips || d.practical_example || d.sections)) {
+      return {
+        overview: typeof d.overview === 'string' && !/^(?:j'ai\s+con[çc]u|j'ai\s+cr[ée][ée]|voici\s+votre|✨)/i.test(d.overview.trim()) ? d.overview : `Synthèse approfondie de "${safeDocName}".`,
+        keyPoints: Array.isArray(d.keyPoints) ? d.keyPoints : (Array.isArray(d.key_points) ? d.key_points : []),
+        key_definitions: Array.isArray(d.key_definitions) ? d.key_definitions : (Array.isArray(d.definitions) ? d.definitions.map((x: any) => ({ concept: x.term || x.concept || 'Notion', definition: x.definition || '', objective: x.objective || '' })) : undefined),
+        definitions: Array.isArray(d.definitions) ? d.definitions : undefined,
+        formulas: Array.isArray(d.formulas) ? d.formulas : undefined,
+        comparison_table: d.comparison_table || undefined,
+        traps_and_tips: Array.isArray(d.traps_and_tips) ? d.traps_and_tips : undefined,
+        practical_example: d.practical_example || undefined,
+        sections: Array.isArray(d.sections) ? d.sections : undefined,
+        markdown: typeof d.markdown === 'string' && !d.markdown.includes('{"decision":') && !d.markdown.includes('"""json') ? d.markdown : '',
+        rules: Array.isArray(d.rules) ? d.rules : [],
+        tags: ['Révision', 'Fiche Pédagogique', safeDocName.split('.')[0] || 'Cours'],
+      };
+    }
+  }
+
   const paragraphs = rawText.split('\n\n').map(p => p.trim()).filter(p => p.length > 15);
   const validParagraphs = paragraphs.filter(p =>
     !/^(?:j'ai\s+con[çc]u|j'ai\s+cr[ée][ée]|voici\s+votre|✨|\*\(Le calcul)/i.test(p) &&
@@ -986,13 +1008,14 @@ export function parseOrBuildAiCreation(
   if (tagMatch) {
     rawJsonCandidate = tagMatch[1].trim();
   } else {
-    const jsonBlockMatch = cleanText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    const jsonBlockMatch = cleanText.match(/(?:```|""")(?:json)?\s*([\s\S]*?)\s*(?:```|""")/i);
     if (jsonBlockMatch) {
       rawJsonCandidate = jsonBlockMatch[1].trim();
     } else {
-      const objMatch = cleanText.match(/(\{[\s\S]*\})/);
-      if (objMatch) {
-        rawJsonCandidate = objMatch[1].trim();
+      const firstBrace = cleanText.indexOf('{');
+      const lastBrace = cleanText.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        rawJsonCandidate = cleanText.substring(firstBrace, lastBrace + 1);
       }
     }
   }

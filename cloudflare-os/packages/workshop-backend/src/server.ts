@@ -905,9 +905,9 @@ export default {
       if (!rawText || typeof rawText !== "string") return null;
 
       let cleaned = rawText.trim();
-      const jsonMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-      if (jsonMatch) {
-        cleaned = jsonMatch[1].trim();
+      const codeBlockMatch = cleaned.match(/(?:```|""")(?:json)?\s*([\s\S]*?)\s*(?:```|""")/i);
+      if (codeBlockMatch) {
+        cleaned = codeBlockMatch[1].trim();
       } else {
         const firstBrace = cleaned.indexOf("{");
         const lastBrace = cleaned.lastIndexOf("}");
@@ -916,22 +916,17 @@ export default {
         }
       }
 
-      const latexCommands = "dfrac|frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end|boxed|bm|boldsymbol|log|ln|lg|exp|cos|sin|tan|arctan|arccos|arcsin|dB|max|min|sup|inf|quad|qquad|rm|bf|cal|bb|mathbb|mathbf|mathcal|vert|Vert|langle|rangle";
-      const latexRegex = new RegExp(`(?<!\\\\)\\\\(${latexCommands})\\b`, "gi");
-      let preProcessed = cleaned.replace(latexRegex, "\\\\$1");
-      preProcessed = preProcessed.replace(/(?<!\\)\\u(?![0-9a-fA-F]{4})/gi, "\\\\u");
-
       try {
-        return JSON.parse(preProcessed);
+        return JSON.parse(cleaned);
       } catch (_e) {}
 
       let sanitized = "";
       let inString = false;
       let escaped = false;
 
-      for (let i = 0; i < preProcessed.length; i++) {
-        const char = preProcessed[i];
-        const code = preProcessed.charCodeAt(i);
+      for (let i = 0; i < cleaned.length; i++) {
+        const char = cleaned[i];
+        const code = cleaned.charCodeAt(i);
 
         if (char === '"' && !escaped) {
           inString = !inString;
@@ -946,19 +941,19 @@ export default {
           } else if (code < 32) {
             sanitized += " ";
           } else if (char === "\\") {
-            const sub = preProcessed.slice(i + 1);
-            const isLatex = new RegExp(`^(${latexCommands})\\b`, "i").test(sub);
-            const next = preProcessed[i + 1];
-            const isHexU = next === "u" && /^[0-9a-fA-F]{4}/.test(preProcessed.slice(i + 2, i + 6));
+            const next = cleaned[i + 1];
+            const isHexU = next === "u" && /^[0-9a-fA-F]{4}/.test(cleaned.slice(i + 2, i + 6));
+            const isValidJsonEscape = ['"', "\\", "/", "b", "f", "n", "r", "t"].includes(next) || isHexU;
 
-            if (isLatex) {
-              sanitized += "\\\\";
-            } else if (next && ['"', "\\", "/"].includes(next)) {
-              sanitized += "\\";
-            } else if (isHexU) {
-              sanitized += "\\";
-            } else if (next && ["b", "f", "n", "r", "t"].includes(next) && !/^(?:frac|dfrac|beta|tau|theta|text|times|rho|right|rightarrow)\b/i.test(sub)) {
-              sanitized += "\\";
+            if (isValidJsonEscape) {
+              const sub = cleaned.slice(i + 1);
+              const isLatexKeyword = /^(?:text|textbf|textit|frac|dfrac|beta|tau|theta|times|rho|right|rightarrow|to|left|leftarrow|partial|pi|omega|sum|int|lim|sqrt|alpha|gamma|delta|epsilon|lambda|mu|nu|sigma|phi|psi)\b/i.test(sub);
+
+              if (isLatexKeyword) {
+                sanitized += "\\\\";
+              } else {
+                sanitized += "\\";
+              }
             } else {
               sanitized += "\\\\";
             }
@@ -1639,11 +1634,11 @@ CONSIGNES STRICTES DE CONTINUATION :
         let creationData: any = null;
         let companionChatText: string = answerText;
 
-        const jsonMatch = answerText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || answerText.match(/(\{[\s\S]*\})/);
+        const jsonMatch = answerText.match(/(?:```|""")(?:json)?\s*([\s\S]*?)\s*(?:```|""")/i) || answerText.match(/(\{[\s\S]*\})/);
         if (jsonMatch) {
           try {
-            const rawTextCandidate = jsonMatch[1] || jsonMatch[0];
-            const rawParsed = safeJsonParse(rawTextCandidate);
+            const rawTextCandidate = jsonMatch[1] || jsonMatch[0] || answerText;
+            const rawParsed = safeJsonParse(rawTextCandidate) || safeJsonParse(answerText);
             if (rawParsed && typeof rawParsed === "object") {
               const payloadData = (rawParsed.creation_data && typeof rawParsed.creation_data === "object")
                 ? rawParsed.creation_data
