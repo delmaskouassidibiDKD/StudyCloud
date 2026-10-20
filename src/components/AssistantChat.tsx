@@ -1260,7 +1260,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const [isModelsLoading, setIsModelsLoading] = useState<boolean>(() => getCachedActiveModels().length === 0);
 
   const [selectedModel, setSelectedModel] = useState<string>(() => {
-    return safeGetItem('studycloud_selected_ai_model', '@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+    const cached = safeGetItem('studycloud_selected_ai_model', 'gemini-2.0-flash');
+    return (cached === 'gemini-3.8-flash' || cached === 'gemini-2.5-flash') ? 'gemini-2.0-flash' : cached;
   });
 
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
@@ -1296,7 +1297,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             const cleaned = active.map((m: any) => {
               let id = m.id || m.model_id;
               if (id === '@cf/meta/llama-3.3-70b-instruct') id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
-              if (id === 'gemini-2.0-flash' || id === 'gemini-2.5-flash') id = 'gemini-3.8-flash';
+              if (id === 'gemini-3.8-flash' || id === 'gemini-2.5-flash') id = 'gemini-2.0-flash';
               
               // Priorité absolue au surnom personnalisé configuré
               const cleanNick = (m.nickname && typeof m.nickname === 'string') ? stripWorkerAi(m.nickname) : '';
@@ -1320,7 +1321,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             if (!currentExists && res.config?.default_model) {
               let def = res.config.default_model;
               if (def === '@cf/meta/llama-3.3-70b-instruct') def = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
-              if (def === 'gemini-2.0-flash' || def === 'gemini-2.5-flash') def = 'gemini-3.8-flash';
+              if (def === 'gemini-3.8-flash' || def === 'gemini-2.5-flash') def = 'gemini-2.0-flash';
               const defExists = cleaned.some((m: any) => m.id === def || m.model_id === def);
               if (defExists) {
                 setSelectedModel(def);

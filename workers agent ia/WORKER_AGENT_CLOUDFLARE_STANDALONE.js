@@ -391,8 +391,10 @@ async function handleCreationRequest(request, env, corsHeaders) {
     }
   }
 
-  // Tentative B : Fallback Google Gemini si configuré (env.GEMINI_API_KEY ou body.geminiApiKey)
-  const geminiKey = (env && env.GEMINI_API_KEY) || body.geminiApiKey || "";
+  // Tentative B : Fallback Google Gemini si configuré (env.STUDYCLOUD_GEMINI_1 ou body.geminiApiKey)
+  const geminiKey = (env && (env.STUDYCLOUD_GEMINI_1 || env['studyCloud-Gemini-1'] || env['StudyCloud-cloud-1'] || env.GEMINI_API_KEY)) ||
+    (typeof process !== 'undefined' && process.env ? (process.env.STUDYCLOUD_GEMINI_1 || process.env['studyCloud-Gemini-1']) : "") ||
+    body.geminiApiKey || "";
   if (!creationData && geminiKey) {
     try {
       const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
@@ -521,7 +523,9 @@ Réponds EXCLUSIVEMENT avec un objet JSON respectant cette structure exacte :
   }
 
   // Tentative B : Fallback Gemini
-  const geminiKey = (env && env.GEMINI_API_KEY) || body.geminiApiKey || "";
+  const geminiKey = (env && (env.STUDYCLOUD_GEMINI_1 || env['studyCloud-Gemini-1'] || env['StudyCloud-cloud-1'] || env.GEMINI_API_KEY)) ||
+    (typeof process !== 'undefined' && process.env ? (process.env.STUDYCLOUD_GEMINI_1 || process.env['studyCloud-Gemini-1']) : "") ||
+    body.geminiApiKey || "";
   if (!gradeResult && geminiKey) {
     try {
       const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
@@ -654,7 +658,9 @@ L'étudiant demande de poursuivre ta réponse précédente (arrêtée vers : "..
   }
 
   // Tentative B : Fallback Gemini
-  const geminiKey = (env && env.GEMINI_API_KEY) || body.geminiApiKey || "";
+  const geminiKey = (env && (env.STUDYCLOUD_GEMINI_1 || env['studyCloud-Gemini-1'] || env['StudyCloud-cloud-1'] || env.GEMINI_API_KEY)) ||
+    (typeof process !== 'undefined' && process.env ? (process.env.STUDYCLOUD_GEMINI_1 || process.env['studyCloud-Gemini-1']) : "") ||
+    body.geminiApiKey || "";
   if (!aiText && geminiKey) {
     try {
       const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {

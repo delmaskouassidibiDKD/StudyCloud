@@ -982,10 +982,15 @@ async function handleCreationRequest(request: Request, env: Env, corsHeaders: Re
       response_format: { type: "json_object" }
     });
   } catch (err: any) {
-    const geminiKey = body.geminiApiKey || (env as any).GEMINI_API_KEY;
+    const geminiKey = body.geminiApiKey || 
+      (env as any)?.STUDYCLOUD_GEMINI_1 || 
+      (env as any)?.['studyCloud-Gemini-1'] || 
+      (env as any)?.['StudyCloud-cloud-1'] || 
+      (env as any)?.GEMINI_API_KEY ||
+      (typeof process !== 'undefined' && process.env ? (process.env.STUDYCLOUD_GEMINI_1 || process.env['studyCloud-Gemini-1']) : undefined);
     if (geminiKey) {
       try {
-        const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+        const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

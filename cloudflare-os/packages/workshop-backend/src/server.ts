@@ -857,6 +857,230 @@ class PublicApiImpl extends RpcTarget implements PublicApi {
   }
 }
 
+/**
+ * Détecte le type MIME d'un flux Base64 / Data URI
+ */
+function detectMediaMimeType(dataUri: string, defaultType: string): string {
+  const match = dataUri.match(/^data:([^;]+);base64,/i);
+  if (match && match[1]) return match[1].toLowerCase();
+  return defaultType;
+}
+
+/**
+ * Upload d'un fichier lourd vers le Google AI File API (resumable)
+ */
+async function uploadMediaToGeminiFileApi(
+  apiKey: string,
+  rawBase64: string,
+  mimeType: string,
+  displayName: string = "fichier_multimodal"
+): Promise<{ fileUri: string; mimeType: string } | null> {
+  try {
+    const cleanBase64 = rawBase64.replace(/^data:[^;]+;base64,/i, "").trim();
+    const binaryStr = atob(cleanBase64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+
+    // 1. Démarrage de l'upload résumable
+    const initRes = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`, {
+      method: "POST",
+      headers: {
+        "X-Goog-Upload-Protocol": "resumable",
+        "X-Goog-Upload-Command": "start",
+        "X-Goog-Upload-Header-Content-Length": String(bytes.length),
+        "X-Goog-Upload-Header-Content-Type": mimeType,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        file: { display_name: displayName }
+      }),
+    });
+
+    if (!initRes.ok) return null;
+
+    const uploadUrl = initRes.headers.get("x-goog-upload-url");
+    if (!uploadUrl) return null;
+
+    // 2. Envoi du flux binaire
+    const uploadRes = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Length": String(bytes.length),
+        "X-Goog-Upload-Offset": "0",
+        "X-Goog-Upload-Command": "upload, finalize",
+      },
+      body: bytes,
+    });
+
+    if (!uploadRes.ok) return null;
+
+    const fileInfo: any = await uploadRes.json();
+    let file = fileInfo?.file;
+    if (!file || !file.uri) return null;
+
+    // 3. Attente si traitement asynchrone (ex: vidéos longues)
+    if (file.state === "PROCESSING") {
+      for (let poll = 0; poll < 6; poll++) {
+        await new Promise(r => setTimeout(r, 1500));
+        const checkRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/${file.name}?key=${apiKey}`);
+        if (checkRes.ok) {
+          const checkData: any = await checkRes.json();
+          if (checkData.state === "ACTIVE") {
+            file = checkData;
+            break;
+          }
+          if (checkData.state === "FAILED") return null;
+        }
+      }
+    }
+
+    return { fileUri: file.uri, mimeType: file.mimeType || mimeType };
+  } catch (_uploadErr) {
+    return null;
+  }
+}
+
+/**
+ * Prépare une partie multimodale pour Gemini :
+ * Utilise Google AI File API pour les fichiers lourds (>10 Mo Base64),
+ * sinon le format standard inlineData Base64.
+ */
+async function prepareGeminiMediaPart(
+  apiKey: string,
+  mediaDataUri: string,
+  defaultMime: string,
+  displayName: string
+): Promise<any> {
+  const cleanBase64 = mediaDataUri.replace(/^data:[^;]+;base64,/i, "").trim();
+  if (!cleanBase64) return null;
+  const mimeType = detectMediaMimeType(mediaDataUri, defaultMime);
+
+  // Si le média est lourd (>10 Mo Base64) ou si vidéo, tentative File API
+  const isHeavy = cleanBase64.length > 10 * 1024 * 1024 || mimeType.startsWith("video/");
+  if (isHeavy && apiKey) {
+    try {
+      const fileResult = await uploadMediaToGeminiFileApi(apiKey, cleanBase64, mimeType, displayName);
+      if (fileResult && fileResult.fileUri) {
+        return {
+          fileData: {
+            mimeType: fileResult.mimeType,
+            fileUri: fileResult.fileUri,
+          }
+        };
+      }
+    } catch (_e) {}
+  }
+
+  // Format standard inlineData Base64
+  return {
+    inlineData: {
+      mimeType,
+      data: cleanBase64,
+    }
+  };
+}
+
+/**
+ * Exécute l'appel multimodal complet vers Google Gemini 2.0 Flash
+ */
+async function executeGemini20FlashMultimodal(params: {
+  apiKey: string;
+  systemPrompt: string;
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  effectivePrompt: string;
+  docContent?: string;
+  docName?: string;
+  imageBase64?: string;
+  audioBase64?: string;
+  videoBase64?: string;
+  videoUrl?: string;
+}): Promise<string> {
+  const { apiKey, systemPrompt, messages, effectivePrompt, docContent, docName, imageBase64, audioBase64, videoBase64, videoUrl } = params;
+
+  const contents: any[] = [];
+
+  // Messages historiques
+  const historyTurns = messages.slice(0, -1);
+  for (const m of historyTurns) {
+    contents.push({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }],
+    });
+  }
+
+  // Dernier tour utilisateur (avec tous les médias multimodaux)
+  const lastUserParts: any[] = [];
+
+  // 1. Images (JPG, PNG, WebP...)
+  if (imageBase64 && imageBase64.trim().length > 30) {
+    const imgPart = await prepareGeminiMediaPart(apiKey, imageBase64, "image/jpeg", "image_etudiant");
+    if (imgPart) lastUserParts.push(imgPart);
+  }
+
+  // 2. Audio (MP3, WAV...)
+  if (audioBase64 && audioBase64.trim().length > 30) {
+    const audioPart = await prepareGeminiMediaPart(apiKey, audioBase64, "audio/mp3", "audio_etudiant");
+    if (audioPart) lastUserParts.push(audioPart);
+  }
+
+  // 3. Vidéo (MP4, WebM...)
+  if (videoBase64 && videoBase64.trim().length > 30) {
+    const videoPart = await prepareGeminiMediaPart(apiKey, videoBase64, "video/mp4", "video_etudiant");
+    if (videoPart) lastUserParts.push(videoPart);
+  }
+
+  // 4. URL Vidéo si disponible
+  if (videoUrl && videoUrl.trim()) {
+    lastUserParts.push({ text: `[VIDÉO FOURNIE EN LIGNE] : ${videoUrl.trim()}` });
+  }
+
+  // 5. Document d'étude
+  if (docContent && docContent.trim()) {
+    lastUserParts.push({
+      text: `[DOCUMENTS FOURNIS PAR L'ÉTUDIANT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 40000)}`
+    });
+  }
+
+  // 6. Texte de la question
+  lastUserParts.push({ text: effectivePrompt });
+
+  contents.push({
+    role: "user",
+    parts: lastUserParts,
+  });
+
+  const reqBody: any = {
+    contents,
+    generationConfig: {
+      temperature: 0.7,
+      maxOutputTokens: 8192,
+    }
+  };
+
+  if (systemPrompt && systemPrompt.trim()) {
+    reqBody.systemInstruction = {
+      parts: [{ text: systemPrompt }]
+    };
+  }
+
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(reqBody),
+  });
+
+  if (res.ok) {
+    const data: any = await res.json();
+    return data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
+  } else {
+    const errText = await res.text().catch(() => "");
+    logger.warn("Gemini 2.0 Flash generateContent error", { status: res.status, error: errText });
+    return "";
+  }
+}
+
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext) {
     let url = new URL(req.url);
@@ -1040,7 +1264,7 @@ export default {
       try {
         const body: any = await req.json().catch(() => ({}));
         const userPrompt = String(body.message || body.prompt || "").trim();
-        let targetModel = String(body.model || body.requested_model || "@cf/meta/llama-3.3-70b-instruct-fp8-fast").trim();
+        let targetModel = String(body.model || body.requested_model || "gemini-2.0-flash").trim();
         const history = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
         const docContent = String(body.attachedFileContent || body.file_content || body.documentContent || "").trim();
         const docName = String(body.attachedFileName || body.file_name || "").trim();
@@ -1065,16 +1289,36 @@ export default {
 
         if (targetModel.includes("llama-3.3") && !targetModel.includes("fp8-fast")) {
           targetModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-        } else if (targetModel.includes("gemini") && !targetModel.includes("3.8") && !targetModel.includes("2.5")) {
-          targetModel = "gemini-3.8-flash";
+        } else if (targetModel.includes("gemini") || targetModel === "gemini-3.8-flash" || targetModel === "gemini-2.5-flash") {
+          targetModel = "gemini-2.0-flash";
         } else if (targetModel.includes("claude-3-5")) {
           targetModel = "claude-sonnet-4-5";
         }
 
-        const rawApiKey = String(body.apiKey || body.apiToken || "").trim();
-        const leakedKey = ["AIzaSyDKct", "AYvG5MuOLsrGGe", "NAVg-OgdIkmu85s"].join("");
-        const hasValidUserGeminiKey = rawApiKey.startsWith("AIzaSy") && rawApiKey !== leakedKey && rawApiKey.length > 25;
+        const rawApiKey = String(body.apiKey || body.apiToken || body.geminiApiKey || "").trim();
+        const candidateKeys = [
+          (env as any)?.STUDYCLOUD_GEMINI_1,
+          (env as any)?.['studyCloud-Gemini-1'],
+          (env as any)?.['StudyCloud-Gemini-1'],
+          (env as any)?.['STUDYCLOUD-GEMINI-1'],
+          (env as any)?.['StudyCloud-cloud-1'],
+          (env as any)?.['studyCloud-cloud-1'],
+          (env as any)?.STUDYCLOUD_CLOUD_1,
+          (env as any)?.GEMINI_API_KEY,
+          (typeof process !== "undefined" && process.env) ? process.env.STUDYCLOUD_GEMINI_1 : undefined,
+          (typeof process !== "undefined" && process.env) ? process.env['studyCloud-Gemini-1'] : undefined,
+          (typeof process !== "undefined" && process.env) ? process.env.GEMINI_API_KEY : undefined,
+        ];
+        let cloudflareGeminiSecret = "";
+        for (const k of candidateKeys) {
+          if (k && typeof k === "string" && k.trim().length > 15) {
+            cloudflareGeminiSecret = k.trim();
+            break;
+          }
+        }
+        const hasValidUserGeminiKey = rawApiKey.startsWith("AIzaSy") && rawApiKey.length > 25;
         const fallbackGeminiKey = ["AIzaSyA", "K6XU4uK5R-wVjH", "gB2Z-p5kM8mK9eXQ"].join("");
+        const geminiKeyToUse = (hasValidUserGeminiKey ? rawApiKey : "") || cloudflareGeminiSecret || fallbackGeminiKey;
 
         const effectivePrompt = (userPrompt || "Bonjour !").trim();
         const isContinuation = Boolean(
@@ -1111,14 +1355,13 @@ export default {
         }
 
         const friendlyNameMap: Record<string, string> = {
+          "gemini-2.0-flash": "Google Gemini 2.0 Flash",
           "@cf/moonshotai/kimi-k2.7-code": "Kimi K2.7 Code",
           "@cf/zai-org/glm-5.3-flash": "GLM 5.3 Flash",
           "@cf/deepseek-ai/deepseek-v4-pro-0813": "DeepSeek V4 Pro",
           "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b": "DeepSeek R1 32B",
           "@cf/meta/llama-3.3-70b-instruct-fp8-fast": "Llama 3.3 70B (Fast)",
           "@cf/meta/llama-3.3-70b-instruct": "Llama 3.3 70B (Fast)",
-          "gemini-3.8-flash": "Google Gemini 3.8 Flash",
-          "gemini-3.6-flash": "Google Gemini 3.6 Flash",
           "claude-3-5-sonnet-20241022": "Claude 3.5 Sonnet",
           "claude-sonnet-4-5": "Claude Sonnet 4.5",
           "gpt-4o-mini": "OpenAI GPT-4o Mini",
@@ -1184,12 +1427,38 @@ CONSIGNES STRICTES DE CONTINUATION :
         const cfToken = ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join("");
 
         // ══════════════════════════════════════════════════════════════════════════════
-        // BRANCHE 1 : LE CHEF D'ÉQUIPE (LLAMA 3.3 70B FAST)
+        // BRANCHE 1 : MODÈLE UNIVERSEL PAR DÉFAUT (GOOGLE GEMINI 2.0 FLASH MULTIMODAL)
         // ══════════════════════════════════════════════════════════════════════════════
-        // Si Llama 3.3 est sélectionné, il déploie ses capacités de Chef d'équipe :
-        // il consulte Whisper pour l'audio, Llama 3.2 Vision pour l'image, Gemini 2.5 pour la vidéo,
-        // et DeepSeek R1 pour les calculs lourds, puis il synthétise tout.
-        if (isChefModel(targetModel)) {
+        // Traite nativement toutes les requêtes : textes simples, images (JPG, PNG, WebP),
+        // audios (MP3, WAV), vidéos (MP4, WebM) avec Base64 et Google AI File API.
+        // Utilise la clé secrète Cloudflare STUDYCLOUD_GEMINI_1.
+        if ((targetModel === "gemini-2.0-flash" || targetModel.includes("gemini")) && geminiKeyToUse) {
+          try {
+            const gText = await executeGemini20FlashMultimodal({
+              apiKey: geminiKeyToUse,
+              systemPrompt,
+              messages: simpleMessages,
+              effectivePrompt,
+              docContent,
+              docName,
+              imageBase64,
+              audioBase64,
+              videoBase64,
+              videoUrl,
+            });
+            if (gText) {
+              answerText = stripAiReasoningScratchpad(gText);
+              effectiveModelUsed = "Google Gemini 2.0 Flash";
+            }
+          } catch (g20Err) {
+            logger.warn("Gemini 2.0 Flash multimodal call exception", { error: g20Err });
+          }
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════════
+        // BRANCHE 2 : CHEF D'ÉQUIPE MULTI-IA (SI LLAMA EST SÉLECTIONNÉ SPÉCIFIQUEMENT)
+        // ══════════════════════════════════════════════════════════════════════════════
+        if (!answerText && isChefModel(targetModel)) {
           try {
             const orchResult = await orchestrateMultiAgentTeam({
               targetModel,
@@ -1204,7 +1473,7 @@ CONSIGNES STRICTES DE CONTINUATION :
               videoUrl,
               cfToken,
               accountId,
-              geminiKey: hasValidUserGeminiKey ? rawApiKey : fallbackGeminiKey,
+              geminiKey: geminiKeyToUse,
               requestedType: body.requested_type,
             });
 
@@ -1218,12 +1487,10 @@ CONSIGNES STRICTES DE CONTINUATION :
         }
 
         // ══════════════════════════════════════════════════════════════════════════════
-        // BRANCHE 2 : MODÈLE INDIVIDUEL SPÉCIFIQUE (SI CHOISI PAR L'UTILISATEUR)
+        // BRANCHE 3 : MODÈLES WORKERS SPECIFIQUES (KIMI, GLM, DEEPSEEK...)
         // ══════════════════════════════════════════════════════════════════════════════
-        // Si l'utilisateur choisit un autre modèle (Gemini, DeepSeek, Claude...),
-        // ce modèle s'exécute SEUL DE MANIÈRE INDIVIDUELLE sans délégation.
         if (!answerText) {
-          // 2.a Modèles Cloudflare Workers AI spécifiques (ex: Kimi, GLM, DeepSeek)
+          // 3.a Modèles Cloudflare Workers AI spécifiques
           if (targetModel.startsWith("@cf/")) {
             try {
               const cfMessages: any[] = [];
@@ -1254,37 +1521,6 @@ CONSIGNES STRICTES DE CONTINUATION :
               }
             } catch (cfErr) {
               logger.warn("Cloudflare Workers AI specific model exception", { model: targetModel, error: cfErr });
-            }
-          }
-
-          // 2.b Modèles Google Gemini individuels
-          if (!answerText && (targetModel.includes("gemini") || targetModel.includes("google"))) {
-            const geminiKeyToUse = hasValidUserGeminiKey ? rawApiKey : fallbackGeminiKey;
-            try {
-              const contents: any[] = [];
-              for (const m of simpleMessages) {
-                contents.push({
-                  role: m.role === "assistant" ? "model" : "user",
-                  parts: [{ text: m.content }],
-                });
-              }
-              const geminiReqBody: any = { contents };
-              if (systemPrompt) {
-                geminiReqBody.systemInstruction = { parts: [{ text: systemPrompt }] };
-              }
-              const gModelId = targetModel.includes("3.6") ? "gemini-3.6-flash" : "gemini-3.8-flash";
-              const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${gModelId}:generateContent?key=${geminiKeyToUse}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(geminiReqBody),
-              });
-              if (geminiRes.ok) {
-                const gData: any = await geminiRes.json();
-                answerText = gData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
-                effectiveModelUsed = friendlyNameMap[targetModel] || "Google Gemini 3.8 Flash";
-              }
-            } catch (gErr) {
-              logger.warn("Google Gemini call exception", { error: gErr });
             }
           }
 
@@ -1376,6 +1612,28 @@ CONSIGNES STRICTES DE CONTINUATION :
               logger.error("Cloudflare Workers AI fallback exception", { error: cfErr });
             }
           }
+        }
+
+        // Secours résilient Google Gemini 2.0 Flash Multimodal
+        if (!answerText && geminiKeyToUse) {
+          try {
+            const fallbackGText = await executeGemini20FlashMultimodal({
+              apiKey: geminiKeyToUse,
+              systemPrompt,
+              messages: simpleMessages,
+              effectivePrompt,
+              docContent,
+              docName,
+              imageBase64,
+              audioBase64,
+              videoBase64,
+              videoUrl,
+            });
+            if (fallbackGText) {
+              answerText = stripAiReasoningScratchpad(fallbackGText);
+              effectiveModelUsed = "Google Gemini 2.0 Flash (Secours)";
+            }
+          } catch (_eFallbackG) {}
         }
 
         // Secours final gracieux

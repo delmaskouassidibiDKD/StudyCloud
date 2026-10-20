@@ -168,8 +168,10 @@ async function handleParallelChat(request, env, corsHeaders) {
   const audioTranscript = body.audioTranscript || body.audioText || "";
   const history = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
   const wantStream = Boolean(body.stream || request.headers.get("accept")?.includes("text/event-stream"));
-  const requestedType = body.requested_type || body.requestedType || body.toolType || body.type || "";
-  const geminiApiKey = body.geminiApiKey || request.headers.get("x-gemini-api-key") || (env && env.GEMINI_API_KEY) || "";
+  const geminiApiKey = body.geminiApiKey || 
+    request.headers.get("x-gemini-api-key") || 
+    (env && (env.STUDYCLOUD_GEMINI_1 || env['studyCloud-Gemini-1'] || env['StudyCloud-cloud-1'] || env.GEMINI_API_KEY)) || 
+    (typeof process !== 'undefined' && process.env ? (process.env.STUDYCLOUD_GEMINI_1 || process.env['studyCloud-Gemini-1']) : "") || "";
 
   if (!message.trim() && !attachedFileContent.trim() && !imageBase64.trim() && !audioBase64.trim()) {
     return errorResponse("Veuillez fournir un message, un document ou une image à analyser.", 400, corsHeaders);

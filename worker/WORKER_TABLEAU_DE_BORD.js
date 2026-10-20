@@ -240,9 +240,9 @@ async function ensureStorageTables(db) {
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS robot_rouge_global_config (
         id TEXT PRIMARY KEY DEFAULT 'default',
-        default_model TEXT DEFAULT 'gemini-3.8-flash',
+        default_model TEXT DEFAULT 'gemini-2.0-flash',
         fallback_model TEXT DEFAULT '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-        default_provider TEXT DEFAULT 'google',
+        default_provider TEXT DEFAULT 'cloudflare',
         openai_api_key TEXT DEFAULT '',
         anthropic_api_key TEXT DEFAULT '',
         gemini_api_key TEXT DEFAULT '',
@@ -252,14 +252,14 @@ async function ensureStorageTables(db) {
         welcome_credits INTEGER DEFAULT 50,
         is_maintenance INTEGER DEFAULT 0,
         edge_router_url TEXT DEFAULT 'https://router.delmaskouassidibi.workers.dev',
-        allowed_models_json TEXT DEFAULT '["gemini-3.8-flash","@cf/meta/llama-3.3-70b-instruct-fp8-fast","gpt-4o-mini","claude-sonnet-4-5"]',
+        allowed_models_json TEXT DEFAULT '["gemini-2.0-flash","@cf/meta/llama-3.3-70b-instruct-fp8-fast"]',
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run().catch(() => {});
 
-    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN default_model TEXT DEFAULT 'gemini-3.8-flash'").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN default_model TEXT DEFAULT 'gemini-2.0-flash'").run(); } catch (e) {}
     try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN fallback_model TEXT DEFAULT '@cf/meta/llama-3.3-70b-instruct-fp8-fast'").run(); } catch (e) {}
-    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN default_provider TEXT DEFAULT 'google'").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN default_provider TEXT DEFAULT 'cloudflare'").run(); } catch (e) {}
     try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN openai_api_key TEXT DEFAULT ''").run(); } catch (e) {}
     try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN anthropic_api_key TEXT DEFAULT ''").run(); } catch (e) {}
     try { await db.prepare("ALTER TABLE robot_rouge_global_config ADD COLUMN gemini_api_key TEXT DEFAULT ''").run(); } catch (e) {}
@@ -275,19 +275,23 @@ async function ensureStorageTables(db) {
       INSERT OR IGNORE INTO robot_rouge_global_config (
         id, default_model, fallback_model, default_provider, system_instructions, cost_per_request, welcome_credits, is_maintenance, edge_router_url
       ) VALUES (
-        'default', 'gemini-3.8-flash', '@cf/meta/llama-3.3-70b-instruct-fp8-fast', 'google',
+        'default', 'gemini-2.0-flash', '@cf/meta/llama-3.3-70b-instruct-fp8-fast', 'cloudflare',
         'Tu es l''assistant d''étude IA officiel de StudyCloud (Robot Rouge). Sois pédagogique, précis, encourageant et clair. Utilise le format Markdown et LaTeX pour les formules mathématiques.',
         1, 50, 0, 'https://router.delmaskouassidibi.workers.dev'
       )
     `).run().catch(() => {});
 
-    // Migration automatique vers Gemini 3.8 Flash et Llama 3.3 FP8 Fast pour toute base de données existante
+    // Configuration automatique de Google Gemini 2.0 Flash (Worker natif avec clé Cloudflare STUDYCLOUD_GEMINI_1)
     try {
-      await db.prepare("UPDATE robot_rouge_global_config SET default_model = 'gemini-3.8-flash' WHERE default_model = 'gemini-2.0-flash' OR default_model = 'gemini-2.5-flash' OR default_model = '@cf/meta/llama-3.3-70b-instruct'").run();
-      await db.prepare("UPDATE robot_rouge_global_config SET fallback_model = '@cf/meta/llama-3.3-70b-instruct-fp8-fast' WHERE fallback_model = '@cf/meta/llama-3.3-70b-instruct'").run();
-      await db.prepare("UPDATE robot_rouge_global_config SET fallback_model = 'gemini-3.8-flash' WHERE fallback_model = 'gemini-2.0-flash' OR fallback_model = 'gemini-2.5-flash'").run();
-      await db.prepare("UPDATE robot_rouge_models SET model_id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast', id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name = 'Llama 3.3 70B (Fast)' WHERE model_id = '@cf/meta/llama-3.3-70b-instruct' OR id = '@cf/meta/llama-3.3-70b-instruct'").run();
-      await db.prepare("UPDATE robot_rouge_models SET model_id = 'gemini-3.8-flash', id = 'gemini-3.8-flash', name = 'Google Gemini 3.8 Flash' WHERE model_id = 'gemini-2.0-flash' OR model_id = 'gemini-2.5-flash' OR id = 'gemini-2.0-flash' OR id = 'gemini-2.5-flash'").run();
+      await db.prepare("UPDATE robot_rouge_global_config SET default_model = 'gemini-2.0-flash' WHERE default_model = 'gemini-3.8-flash' OR default_model = 'gemini-2.5-flash' OR default_model = '@cf/meta/llama-3.3-70b-instruct'").run().catch(() => {});
+      await db.prepare("UPDATE robot_rouge_global_config SET fallback_model = '@cf/meta/llama-3.3-70b-instruct-fp8-fast' WHERE fallback_model = '@cf/meta/llama-3.3-70b-instruct'").run().catch(() => {});
+      
+      // Suppression définitive des modèles non-workers qui demandent une clé client individuelle (Claude, OpenAI)
+      await db.prepare("DELETE FROM robot_rouge_models WHERE provider IN ('anthropic', 'openai') OR model_id LIKE '%claude%' OR model_id LIKE '%gpt%' OR id LIKE '%claude%' OR id LIKE '%gpt%'").run().catch(() => {});
+      // Nettoyage de l'ancien alias gemini-3.8-flash
+      await db.prepare("DELETE FROM robot_rouge_models WHERE id = 'gemini-3.8-flash' OR model_id = 'gemini-3.8-flash'").run().catch(() => {});
+
+      await db.prepare("UPDATE robot_rouge_models SET model_id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast', id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name = 'Llama 3.3 70B (Fast)' WHERE model_id = '@cf/meta/llama-3.3-70b-instruct' OR id = '@cf/meta/llama-3.3-70b-instruct'").run().catch(() => {});
 
       // Nettoyage automatique et définitif de tout résidu "Workers AI" en base D1 pour ne jamais l'afficher aux utilisateurs
       await db.prepare("UPDATE robot_rouge_models SET name = 'Llama 3.3 70B (Fast)' WHERE id LIKE '%llama%' OR model_id LIKE '%llama%'").run().catch(() => {});
@@ -322,13 +326,27 @@ async function ensureStorageTables(db) {
       )
     `).run().catch(() => {});
 
-    // Initialisation automatique des modèles si la table est vide
+    // Initialisation automatique des modèles Workers uniquement (aucun modèle nécessitant une clé client)
     try {
+      // Insertion ou mise à jour immédiate de Gemini 2.0 Flash comme Worker modèle officiel
+      await db.prepare(`
+        INSERT INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window, output_limit) 
+        VALUES ('gemini-2.0-flash', 'cloudflare', 'Google Gemini 2.0 Flash (Worker)', 'gemini-2.0-flash', 1, 1, 1048576, 8192)
+        ON CONFLICT(id) DO UPDATE SET
+          name = 'Google Gemini 2.0 Flash (Worker)',
+          model_id = 'gemini-2.0-flash',
+          provider = 'cloudflare',
+          is_default = 1,
+          is_active = 1,
+          context_window = 1048576,
+          output_limit = 8192
+      `).run().catch(() => {});
+
       const existingCount = await db.prepare("SELECT COUNT(*) as cnt FROM robot_rouge_models").first();
-      if (!existingCount || Number(existingCount.cnt) === 0) {
+      if (!existingCount || Number(existingCount.cnt) <= 1) {
         await db.batch([
           db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
-            VALUES ('@cf/meta/llama-3.3-70b-instruct-fp8-fast', 'cloudflare', 'Llama 3.3 70B (Fast)', '@cf/meta/llama-3.3-70b-instruct-fp8-fast', 1, 1, 131072)`),
+            VALUES ('@cf/meta/llama-3.3-70b-instruct-fp8-fast', 'cloudflare', 'Llama 3.3 70B (Fast)', '@cf/meta/llama-3.3-70b-instruct-fp8-fast', 0, 1, 131072)`),
           db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
             VALUES ('@cf/moonshotai/kimi-k2.7-code', 'cloudflare', 'Kimi K2.7 Code', '@cf/moonshotai/kimi-k2.7-code', 0, 1, 262144)`),
           db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
@@ -336,20 +354,9 @@ async function ensureStorageTables(db) {
           db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
             VALUES ('@cf/deepseek-ai/deepseek-v4-pro-0813', 'cloudflare', 'DeepSeek V4 Pro 0813', '@cf/deepseek-ai/deepseek-v4-pro-0813', 0, 1, 1048576)`),
           db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
-            VALUES ('gemini-3.8-flash', 'google', 'Google Gemini 3.8 Flash', 'gemini-3.8-flash', 0, 1, 1048576)`),
-          db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
-            VALUES ('gemini-2.0-flash', 'google', 'Google Gemini 3.8 Flash (Auto-migré)', 'gemini-3.8-flash', 0, 1, 1048576)`),
-          db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
-            VALUES ('claude-3-5-sonnet-20241022', 'anthropic', 'Claude 3.5 Sonnet', 'claude-3-5-sonnet-20241022', 0, 1, 200000)`),
-          db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
-            VALUES ('gpt-4o-mini', 'openai', 'OpenAI GPT-4o Mini', 'gpt-4o-mini', 0, 1, 128000)`)
+            VALUES ('@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', 'cloudflare', 'DeepSeek R1 32B', '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', 0, 1, 131072)`)
         ]).catch(() => {});
       }
-      try {
-        await db.prepare(`INSERT OR IGNORE INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window) 
-          VALUES ('gemini-3.8-flash', 'google', 'Google Gemini 3.8 Flash', 'gemini-3.8-flash', 0, 1, 1048576)`).run();
-        await db.prepare(`UPDATE robot_rouge_models SET api_token = (SELECT api_token FROM robot_rouge_models WHERE id = 'gemini-2.0-flash') WHERE id = 'gemini-3.8-flash' AND (api_token IS NULL OR api_token = '')`).run();
-      } catch (eG38) {}
     } catch (eInitModels) {}
 
     // 1. Colonnes indispensables sur 'users' (garantit qu'aucun SELECT ne plantera)
@@ -5013,14 +5020,13 @@ function renderDashboardHtml(data) {
               id="robot-default-model" 
               class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition cursor-pointer"
             >
-              <option value="gemini-3.8-flash" ${rc.default_model === 'gemini-3.8-flash' || rc.default_model === 'gemini-2.0-flash' || !rc.default_model || rc.default_model === '@cf/meta/llama-3.3-70b-instruct' ? 'selected' : ''}>⚡ Google Gemini 3.8 Flash (Recommandé • Ultra-rapide & Fiable)</option>
-              <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast" ${rc.default_model === '@cf/meta/llama-3.3-70b-instruct-fp8-fast' ? 'selected' : ''}>🚀 Llama 3.3 70B Fast</option>
-              <option value="claude-3-5-sonnet-20241022" ${rc.default_model === 'claude-3-5-sonnet-20241022' ? 'selected' : ''}>🧠 Anthropic Claude 3.5 Sonnet (Raisonnement avancé & Code)</option>
-              <option value="gpt-4o" ${rc.default_model === 'gpt-4o' ? 'selected' : ''}>💎 OpenAI GPT-4o (Référence mondiale)</option>
-              <option value="gpt-4o-mini" ${rc.default_model === 'gpt-4o-mini' ? 'selected' : ''}>✨ OpenAI GPT-4o Mini (Économique & Réactif)</option>
-              <option value="@cf/moonshotai/kimi-k2.7-code" ${rc.default_model === '@cf/moonshotai/kimi-k2.7-code' ? 'selected' : ''}>🔬 Kimi K2.7 Code</option>
+              <option value="gemini-2.0-flash" ${rc.default_model === 'gemini-2.0-flash' || !rc.default_model || rc.default_model === 'gemini-3.8-flash' ? 'selected' : ''}>⚡ Google Gemini 2.0 Flash (Worker • Secret Cloudflare STUDYCLOUD_GEMINI_1)</option>
+              <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast" ${rc.default_model === '@cf/meta/llama-3.3-70b-instruct-fp8-fast' || rc.default_model === '@cf/meta/llama-3.3-70b-instruct' ? 'selected' : ''}>🚀 Llama 3.3 70B Fast (Worker)</option>
+              <option value="@cf/moonshotai/kimi-k2.7-code" ${rc.default_model === '@cf/moonshotai/kimi-k2.7-code' ? 'selected' : ''}>🔬 Kimi K2.7 Code (Worker)</option>
+              <option value="@cf/deepseek-ai/deepseek-v4-pro-0813" ${rc.default_model === '@cf/deepseek-ai/deepseek-v4-pro-0813' ? 'selected' : ''}>🤖 DeepSeek V4 Pro (Worker)</option>
+              <option value="@cf/deepseek-ai/deepseek-r1-distill-qwen-32b" ${rc.default_model === '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b' ? 'selected' : ''}>🧠 DeepSeek R1 32B (Worker)</option>
             </select>
-            <p class="text-[10px] text-slate-400">Ce modèle sera utilisé automatiquement dès qu'un étudiant utilise le Robot Rouge.</p>
+            <p class="text-[10px] text-slate-400">Ce modèle Worker sera utilisé automatiquement dès qu'un étudiant utilise StudyCloud.</p>
           </div>
 
           <!-- Modèle de Secours -->
@@ -5030,10 +5036,10 @@ function renderDashboardHtml(data) {
               id="robot-fallback-model" 
               class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition cursor-pointer"
             >
-              <option value="gemini-3.8-flash" ${rc.fallback_model === 'gemini-3.8-flash' || rc.fallback_model === 'gemini-2.0-flash' || !rc.fallback_model ? 'selected' : ''}>⚡ Google Gemini 3.8 Flash (Haut quota & zéro coupure)</option>
-              <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast" ${rc.fallback_model === '@cf/meta/llama-3.3-70b-instruct-fp8-fast' || rc.fallback_model === '@cf/meta/llama-3.3-70b-instruct' ? 'selected' : ''}>🚀 Llama 3.3 70B Fast</option>
-              <option value="gpt-4o-mini" ${rc.fallback_model === 'gpt-4o-mini' ? 'selected' : ''}>✨ OpenAI GPT-4o Mini</option>
-              <option value="@cf/moonshotai/kimi-k2.7-code" ${rc.fallback_model === '@cf/moonshotai/kimi-k2.7-code' ? 'selected' : ''}>🔬 Kimi K2.7 Code</option>
+              <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast" ${rc.fallback_model === '@cf/meta/llama-3.3-70b-instruct-fp8-fast' || rc.fallback_model === '@cf/meta/llama-3.3-70b-instruct' || !rc.fallback_model ? 'selected' : ''}>🚀 Llama 3.3 70B Fast (Edge Worker)</option>
+              <option value="gemini-2.0-flash" ${rc.fallback_model === 'gemini-2.0-flash' || rc.fallback_model === 'gemini-3.8-flash' ? 'selected' : ''}>⚡ Google Gemini 2.0 Flash (Worker)</option>
+              <option value="@cf/deepseek-ai/deepseek-r1-distill-qwen-32b" ${rc.fallback_model === '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b' ? 'selected' : ''}>🧠 DeepSeek R1 32B (Worker)</option>
+              <option value="@cf/moonshotai/kimi-k2.7-code" ${rc.fallback_model === '@cf/moonshotai/kimi-k2.7-code' ? 'selected' : ''}>🔬 Kimi K2.7 Code (Worker)</option>
             </select>
             <p class="text-[10px] text-slate-400">Si le fournisseur principal est temporairement indisponible, le Robot bascule instantanément sur ce secours.</p>
           </div>
@@ -5069,7 +5075,7 @@ function renderDashboardHtml(data) {
           <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
             <div class="flex items-center gap-2 text-white font-bold text-xs sm:text-sm">
               <span class="text-base">🔐</span>
-              <span>Coffre-Fort des Clés API (Réservé à l'Administrateur)</span>
+              <span>Coffre-Fort des Clés des Modèles Workers</span>
             </div>
             <span class="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
               100% Invisible pour les étudiants
@@ -5077,61 +5083,26 @@ function renderDashboardHtml(data) {
           </div>
 
           <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 leading-relaxed">
-            💡 <strong>Protection totale :</strong> Vos clés sont enregistrées de façon privée dans votre base Cloudflare D1. Les étudiants utilisent le Robot Rouge sans rien savoir ni configurer.
+            💡 <strong>Modèles Workers :</strong> Votre modèle Gemini 2.0 Flash est alimenté directement par la variable secrète Cloudflare <code>STUDYCLOUD_GEMINI_1</code>. Tous les autres modèles tournent nativement sur Cloudflare Workers.
           </div>
 
           <!-- Clé Google Gemini -->
           <div class="space-y-1">
             <div class="flex items-center justify-between">
-              <label class="text-[11px] font-bold text-slate-300">Clé API Google Gemini (Pour Gemini 2.0 Flash)</label>
-              <span id="badge-key-gemini" class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">${rc.gemini_api_key ? '✓ Configurée' : 'Non renseignée'}</span>
+              <label class="text-[11px] font-bold text-slate-300">Clé API Google Gemini (STUDYCLOUD_GEMINI_1)</label>
+              <span id="badge-key-gemini" class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">${rc.gemini_api_key ? '✓ Personnalisée D1' : '✓ Secret Cloudflare (STUDYCLOUD_GEMINI_1)'}</span>
             </div>
             <div class="relative">
               <input 
                 type="password" 
                 id="robot-gemini-key" 
                 value="${safeAttr(rc.gemini_api_key, '')}"
-                placeholder="AIzaSy..." 
+                placeholder="Laisser vide pour utiliser le Secret Cloudflare STUDYCLOUD_GEMINI_1..." 
                 class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-10 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition font-mono"
               >
               <button type="button" onclick="toggleSecretVisibility('robot-gemini-key')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer text-xs">👁️</button>
             </div>
-          </div>
-
-          <!-- Clé OpenAI -->
-          <div class="space-y-1">
-            <div class="flex items-center justify-between">
-              <label class="text-[11px] font-bold text-slate-300">Clé API OpenAI (Pour GPT-4o / GPT-4o-mini)</label>
-              <span id="badge-key-openai" class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">${rc.openai_api_key ? '✓ Configurée' : 'Non renseignée'}</span>
-            </div>
-            <div class="relative">
-              <input 
-                type="password" 
-                id="robot-openai-key" 
-                value="${safeAttr(rc.openai_api_key, '')}"
-                placeholder="sk-proj-..." 
-                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-10 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition font-mono"
-              >
-              <button type="button" onclick="toggleSecretVisibility('robot-openai-key')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer text-xs">👁️</button>
-            </div>
-          </div>
-
-          <!-- Clé Anthropic -->
-          <div class="space-y-1">
-            <div class="flex items-center justify-between">
-              <label class="text-[11px] font-bold text-slate-300">Clé API Anthropic (Pour Claude 3.5 Sonnet)</label>
-              <span id="badge-key-anthropic" class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">${rc.anthropic_api_key ? '✓ Configurée' : 'Non renseignée'}</span>
-            </div>
-            <div class="relative">
-              <input 
-                type="password" 
-                id="robot-anthropic-key" 
-                value="${safeAttr(rc.anthropic_api_key, '')}"
-                placeholder="sk-ant-api03-..." 
-                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-10 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition font-mono"
-              >
-              <button type="button" onclick="toggleSecretVisibility('robot-anthropic-key')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer text-xs">👁️</button>
-            </div>
+            <p class="text-[10px] text-slate-400">Par défaut, le Worker utilise automatiquement la variable secrète <strong>STUDYCLOUD_GEMINI_1</strong> déployée sur Cloudflare.</p>
           </div>
 
           <!-- Token Cloudflare AI -->
@@ -5307,37 +5278,15 @@ function renderDashboardHtml(data) {
         >
           <option value="">Choisir un modèle d'IA...</option>
           
-          <optgroup label="Cloudflare Edge AI">
-            <option value="@cf/moonshotai/kimi-k2.7-code">Kimi K2.7 Code</option>
-            <option value="@cf/zai-org/glm-5.2">GLM 5.2</option>
-            <option value="@cf/zai-org/glm-5.3-flash">GLM 5.3 Flash</option>
-            <option value="@cf/deepseek-ai/deepseek-v4-pro-0813">DeepSeek V4 Pro 0813</option>
-            <option value="@cf/meta/llama-3.3-70b-instruct">Llama 3.3 70B Instruct</option>
-            <option value="other-cloudflare">Autre Cloudflare...</option>
-          </optgroup>
-
-          <optgroup label="Anthropic">
-            <option value="claude-opus-5-5">Claude Opus 5.5</option>
-            <option value="claude-sonnet-5-5">Claude Sonnet 5.5</option>
-            <option value="claude-fable-5-1">Claude Fable 5.1</option>
-            <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
-            <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-            <option value="other-anthropic">Autre Anthropic...</option>
-          </optgroup>
-
-          <optgroup label="OpenAI">
-            <option value="gpt-6.1-sol">GPT-6.1 Sol</option>
-            <option value="gpt-6-luna">GPT-6 Luna</option>
-            <option value="gpt-6-astra">GPT-6 Astra</option>
-            <option value="gpt-4o">GPT-4o</option>
-            <option value="gpt-4o-mini">GPT-4o Mini</option>
-            <option value="other-openai">Autre OpenAI...</option>
-          </optgroup>
-
-          <optgroup label="Google">
-            <option value="gemini-3.8-flash">Gemini 3.8 Flash (Recommandé • Actif)</option>
-            <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
-            <option value="other-google">Autre Google...</option>
+          <optgroup label="Modèles Workers Cloudflare">
+            <option value="gemini-2.0-flash">⚡ Google Gemini 2.0 Flash (Worker • Secret Cloudflare STUDYCLOUD_GEMINI_1)</option>
+            <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast">Llama 3.3 70B Fast (Worker)</option>
+            <option value="@cf/moonshotai/kimi-k2.7-code">Kimi K2.7 Code (Worker)</option>
+            <option value="@cf/zai-org/glm-5.2">GLM 5.2 (Worker)</option>
+            <option value="@cf/zai-org/glm-5.3-flash">GLM 5.3 Flash (Worker)</option>
+            <option value="@cf/deepseek-ai/deepseek-v4-pro-0813">DeepSeek V4 Pro (Worker)</option>
+            <option value="@cf/deepseek-ai/deepseek-r1-distill-qwen-32b">DeepSeek R1 32B (Worker)</option>
+            <option value="other-cloudflare">Autre Worker Cloudflare...</option>
           </optgroup>
 
           <optgroup label="Personnalisé">
@@ -12727,10 +12676,10 @@ function renderDashboardHtml(data) {
 
     function detectProviderFromId(val) {
       if (!val) return 'custom';
-      if (val.startsWith('@cf/') || val.includes('cloudflare')) return 'cloudflare';
+      if (val === 'gemini-2.0-flash' || val.startsWith('@cf/') || val.includes('cloudflare')) return 'cloudflare';
       if (val.includes('claude') || val.includes('anthropic')) return 'anthropic';
       if (val.includes('gpt') || val.includes('openai')) return 'openai';
-      if (val.includes('gemini') || val.includes('google')) return 'google';
+      if (val.includes('gemini') || val.includes('google')) return 'cloudflare';
       return 'custom';
     }
 
@@ -12747,32 +12696,11 @@ function renderDashboardHtml(data) {
 
       if (prov === 'cloudflare') {
         if (icon) icon.textContent = '☁️';
-        if (name) name.textContent = 'Cloudflare Edge AI';
-        if (desc) desc.textContent = 'Réseau Edge Mondial Cloudflare (Inférence ultra-rapide)';
-        if (badge) { badge.textContent = 'Cloudflare'; badge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30'; }
-        if (tokLabel) tokLabel.textContent = 'Token API Cloudflare';
-        if (tokInput) tokInput.placeholder = 'cf_ai_... ou jeton API Cloudflare';
-      } else if (prov === 'anthropic') {
-        if (icon) icon.textContent = '🧠';
-        if (name) name.textContent = 'Anthropic Claude';
-        if (desc) desc.textContent = 'Raisonnement supérieur, code complexe et pédagogie';
-        if (badge) { badge.textContent = 'Anthropic'; badge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30'; }
-        if (tokLabel) tokLabel.textContent = 'Clé API Anthropic (sk-ant-...)';
-        if (tokInput) tokInput.placeholder = 'sk-ant-api03-...';
-      } else if (prov === 'openai') {
-        if (icon) icon.textContent = '⚡';
-        if (name) name.textContent = 'OpenAI';
-        if (desc) desc.textContent = 'Modèles GPT-4o, Sol, Luna et Astra';
-        if (badge) { badge.textContent = 'OpenAI'; badge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'; }
-        if (tokLabel) tokLabel.textContent = 'Clé API OpenAI (sk-...)';
-        if (tokInput) tokInput.placeholder = 'sk-proj-...';
-      } else if (prov === 'google') {
-        if (icon) icon.textContent = '💎';
-        if (name) name.textContent = 'Google Gemini';
-        if (desc) desc.textContent = 'Gemini Flash & Pro (Haute vitesse & Multimodal)';
-        if (badge) { badge.textContent = 'Google AI'; badge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30'; }
-        if (tokLabel) tokLabel.textContent = 'Clé API Google Gemini (AIzaSy...)';
-        if (tokInput) tokInput.placeholder = 'AIzaSy...';
+        if (name) name.textContent = 'Worker Cloudflare AI';
+        if (desc) desc.textContent = 'Modèle Worker natif Cloudflare (Variable STUDYCLOUD_GEMINI_1)';
+        if (badge) { badge.textContent = 'Worker'; badge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30'; }
+        if (tokLabel) tokLabel.textContent = 'Token API Cloudflare (Optionnel)';
+        if (tokInput) tokInput.placeholder = 'cf_ai_... ou laisser vide';
       } else {
         if (icon) icon.textContent = '⚙️';
         if (name) name.textContent = 'Modèle Personnalisé';
@@ -12797,29 +12725,15 @@ function renderDashboardHtml(data) {
       const outInput = document.getElementById('form-model-output');
 
       const presetMap = {
+        'gemini-2.0-flash': { name: 'Google Gemini 2.0 Flash (Worker)', id: 'gemini-2.0-flash', prov: 'cloudflare', ctx: 1048576, out: 8192 },
+        '@cf/meta/llama-3.3-70b-instruct-fp8-fast': { name: 'Llama 3.3 70B Fast', id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', prov: 'cloudflare', ctx: 131072, out: 8192 },
         '@cf/moonshotai/kimi-k2.7-code': { name: 'Kimi K2.7 Code', id: '@cf/moonshotai/kimi-k2.7-code', prov: 'cloudflare', ctx: 262144, out: 8192 },
         '@cf/zai-org/glm-5.2': { name: 'GLM 5.2', id: '@cf/zai-org/glm-5.2', prov: 'cloudflare', ctx: 131072, out: 4096 },
         '@cf/zai-org/glm-5.3-flash': { name: 'GLM 5.3 Flash', id: '@cf/zai-org/glm-5.3-flash', prov: 'cloudflare', ctx: 131072, out: 4096 },
         '@cf/deepseek-ai/deepseek-v4-pro-0813': { name: 'DeepSeek V4 Pro', id: '@cf/deepseek-ai/deepseek-v4-pro-0813', prov: 'cloudflare', ctx: 131072, out: 8192 },
-        '@cf/meta/llama-3.3-70b-instruct': { name: 'Llama 3.3 70B Instruct', id: '@cf/meta/llama-3.3-70b-instruct', prov: 'cloudflare', ctx: 131072, out: 8192 },
+        '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b': { name: 'DeepSeek R1 32B', id: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', prov: 'cloudflare', ctx: 131072, out: 8192 },
+        '@cf/meta/llama-3.3-70b-instruct': { name: 'Llama 3.3 70B Instruct', id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', prov: 'cloudflare', ctx: 131072, out: 8192 },
         'other-cloudflare': { name: 'Modèle Cloudflare Edge', id: '@cf/', prov: 'cloudflare', ctx: 131072, out: 4096 },
-        'claude-opus-5-5': { name: 'Claude Opus 5.5', id: 'claude-opus-5-5', prov: 'anthropic', ctx: 200000, out: 8192 },
-        'claude-sonnet-5-5': { name: 'Claude Sonnet 5.5', id: 'claude-sonnet-5-5', prov: 'anthropic', ctx: 200000, out: 8192 },
-        'claude-fable-5-1': { name: 'Claude Fable 5.1', id: 'claude-fable-5-1', prov: 'anthropic', ctx: 200000, out: 8192 },
-        'claude-haiku-4-5': { name: 'Claude Haiku 4.5', id: 'claude-haiku-4-5', prov: 'anthropic', ctx: 200000, out: 4096 },
-        'claude-3-5-sonnet-20241022': { name: 'Claude 3.5 Sonnet', id: 'claude-3-5-sonnet-20241022', prov: 'anthropic', ctx: 200000, out: 8192 },
-        'other-anthropic': { name: 'Modèle Anthropic', id: 'claude-', prov: 'anthropic', ctx: 200000, out: 8192 },
-        'gpt-6.1-sol': { name: 'GPT-6.1 Sol', id: 'gpt-6.1-sol', prov: 'openai', ctx: 128000, out: 8192 },
-        'gpt-6-luna': { name: 'GPT-6 Luna', id: 'gpt-6-luna', prov: 'openai', ctx: 128000, out: 8192 },
-        'gpt-6-astra': { name: 'GPT-6 Astra', id: 'gpt-6-astra', prov: 'openai', ctx: 128000, out: 8192 },
-        'gpt-4o': { name: 'GPT-4o (Omni)', id: 'gpt-4o', prov: 'openai', ctx: 128000, out: 4096 },
-        'gpt-4o-mini': { name: 'GPT-4o Mini', id: 'gpt-4o-mini', prov: 'openai', ctx: 128000, out: 4096 },
-        'other-openai': { name: 'Modèle OpenAI', id: 'gpt-', prov: 'openai', ctx: 128000, out: 4096 },
-        'gemini-3.8-flash': { name: 'Gemini 3.8 Flash', id: 'gemini-3.8-flash', prov: 'google', ctx: 1000000, out: 8192 },
-        'gemini-3.6-flash': { name: 'Gemini 3.6 Flash', id: 'gemini-3.6-flash', prov: 'google', ctx: 1000000, out: 8192 },
-        'gemini-2.0-flash': { name: 'Gemini 2.0 Flash', id: 'gemini-2.0-flash', prov: 'google', ctx: 1000000, out: 8192 },
-        'gemini-1.5-pro': { name: 'Gemini 1.5 Pro', id: 'gemini-1.5-pro', prov: 'google', ctx: 2000000, out: 8192 },
-        'other-google': { name: 'Modèle Google Gemini', id: 'gemini-', prov: 'google', ctx: 1000000, out: 8192 },
         'custom-model': { name: 'Modèle Personnalisé', id: '', prov: 'custom', ctx: 32768, out: 4096 }
       };
 
@@ -12954,11 +12868,12 @@ function renderDashboardHtml(data) {
           custom: 'bg-purple-500/20 text-purple-300 border-purple-500/30'
         };
 
-        const icon = provIcons[m.provider] || '🤖';
-        const pName = provNames[m.provider] || m.provider;
-        const bCol = provBadgeColors[m.provider] || 'bg-slate-700 text-slate-300 border-slate-600';
+        const isGemini2 = (m.id === 'gemini-2.0-flash' || m.model_id === 'gemini-2.0-flash' || (m.id && m.id.includes('gemini')));
+        const icon = isGemini2 ? '⚡' : (provIcons[m.provider] || '🤖');
+        const pName = isGemini2 ? 'Worker Cloudflare' : (provNames[m.provider] || m.provider);
+        const bCol = isGemini2 ? 'bg-orange-500/20 text-orange-300 border-orange-500/30' : (provBadgeColors[m.provider] || 'bg-slate-700 text-slate-300 border-slate-600');
         const hasKey = m.api_token && m.api_token.length > 5;
-        const keySnippet = hasKey ? '••••••••' + m.api_token.slice(-4) : (m.provider === 'cloudflare' ? 'Binding Edge natif' : 'Non renseignée');
+        const keySnippet = isGemini2 ? '✓ Secret Cloudflare (STUDYCLOUD_GEMINI_1)' : (hasKey ? '••••••••' + m.api_token.slice(-4) : (m.provider === 'cloudflare' ? 'Binding Edge natif' : 'Non renseignée'));
         const isActive = (m.is_active === 1 || m.is_active === true || m.is_active === '1' || m.is_active === undefined);
         const nickname = m.nickname || '';
         const safeModelId = escapeHtml(m.id || '');
@@ -12999,7 +12914,7 @@ function renderDashboardHtml(data) {
         html += '<div class="space-y-1 pt-1 text-[11px] text-slate-400">' +
             '<div class="flex items-center justify-between">' +
               '<span class="text-[10px] text-slate-500">Clé d&#39;authentification :</span>' +
-              '<span class="font-mono text-[10px] ' + (hasKey ? 'text-emerald-400' : 'text-slate-400') + '">' + (hasKey ? '🔐 ' + keySnippet : keySnippet) + '</span>' +
+              '<span class="font-mono text-[10px] ' + (isGemini2 || hasKey ? 'text-emerald-400' : 'text-slate-400') + '">' + ((isGemini2 || hasKey) ? '🔐 ' + keySnippet : keySnippet) + '</span>' +
             '</div>';
 
         if (m.context_window) {
@@ -14952,7 +14867,7 @@ export default {
 
         const isPublic = path.includes('/public');
         const resConfig = isPublic ? {
-          default_model: cfg.default_model || 'gemini-3.8-flash',
+          default_model: cfg.default_model || 'gemini-2.0-flash',
           fallback_model: cfg.fallback_model || '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
           is_maintenance: cfg.is_maintenance,
           system_instructions: cfg.system_instructions,
@@ -14963,12 +14878,13 @@ export default {
 
         let modelsList = [];
         try {
-          const mRes = await db.prepare("SELECT * FROM robot_rouge_models WHERE is_active = 1 ORDER BY is_default DESC, created_at ASC").all();
+          const mRes = await db.prepare("SELECT * FROM robot_rouge_models WHERE is_active = 1 AND provider NOT IN ('anthropic', 'openai') AND id NOT LIKE '%claude%' AND id NOT LIKE '%gpt%' ORDER BY is_default DESC, created_at ASC").all();
           modelsList = (mRes && mRes.results) ? mRes.results : [];
           // Normaliser les modèles pour éviter les erreurs 5007 et 404, et nettoyer toute mention de Workers AI
           modelsList = modelsList.map(m => {
             let modelId = m.model_id;
             let id = m.id;
+            let provider = m.provider;
             let name = (m.name || id)
               .replace(/\s*\(?\s*workers?\s*ai\s*\)?/gi, '')
               .replace(/\bworkers?\s*ai\b/gi, '')
@@ -14984,20 +14900,24 @@ export default {
               id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
               name = 'Llama 3.3 70B (Fast)';
             }
-            if (modelId === 'gemini-2.0-flash' || modelId === 'gemini-2.5-flash') {
-              modelId = 'gemini-3.8-flash';
-              id = 'gemini-3.8-flash';
-              name = 'Google Gemini 3.8 Flash';
+            if (modelId === 'gemini-3.8-flash' || modelId === 'gemini-2.5-flash' || modelId === 'gemini-2.0-flash') {
+              modelId = 'gemini-2.0-flash';
+              id = 'gemini-2.0-flash';
+              provider = 'cloudflare';
+              if (!nickname && (name.includes('3.8') || name.includes('Auto-migré') || !name.includes('2.0'))) {
+                name = 'Google Gemini 2.0 Flash (Worker)';
+              }
             }
             return {
               ...m,
               id,
               model_id: modelId,
+              provider,
               name,
               nickname
             };
           });
-          const gIdx = modelsList.findIndex(m => m.model_id === 'gemini-3.8-flash' || m.id === 'gemini-3.8-flash');
+          const gIdx = modelsList.findIndex(m => m.model_id === 'gemini-2.0-flash' || m.id === 'gemini-2.0-flash');
           if (gIdx > 0) {
             const [g] = modelsList.splice(gIdx, 1);
             modelsList.unshift(g);
@@ -15037,7 +14957,7 @@ export default {
               welcome_credits = excluded.welcome_credits,
               updated_at = CURRENT_TIMESTAMP
           `).bind(
-            (b.default_model === 'gemini-2.0-flash' || b.default_model === 'gemini-2.5-flash' ? 'gemini-3.8-flash' : (b.default_model === '@cf/meta/llama-3.3-70b-instruct' ? '@cf/meta/llama-3.3-70b-instruct-fp8-fast' : (b.default_model || 'gemini-3.8-flash'))),
+            (b.default_model === 'gemini-3.8-flash' || b.default_model === 'gemini-2.5-flash' ? 'gemini-2.0-flash' : (b.default_model === '@cf/meta/llama-3.3-70b-instruct' ? '@cf/meta/llama-3.3-70b-instruct-fp8-fast' : (b.default_model || 'gemini-2.0-flash'))),
             (b.fallback_model === '@cf/meta/llama-3.3-70b-instruct' ? '@cf/meta/llama-3.3-70b-instruct-fp8-fast' : (b.fallback_model || '@cf/meta/llama-3.3-70b-instruct-fp8-fast')),
             b.edge_router_url || 'https://router.delmaskouassidibi.workers.dev',
             b.is_maintenance ? 1 : 0,
@@ -15053,16 +14973,10 @@ export default {
           // Synchroniser les clés dans robot_rouge_models
           try {
             if (b.gemini_api_key && b.gemini_api_key.trim() !== '') {
-              await db.prepare("UPDATE robot_rouge_models SET api_token = ? WHERE provider = 'google'").bind(b.gemini_api_key.trim()).run().catch(() => {});
+              await db.prepare("UPDATE robot_rouge_models SET api_token = ? WHERE provider = 'google' OR id = 'gemini-2.0-flash'").bind(b.gemini_api_key.trim()).run().catch(() => {});
             }
             if (b.cf_ai_token && b.cf_ai_token.trim() !== '') {
               await db.prepare("UPDATE robot_rouge_models SET api_token = ? WHERE provider = 'cloudflare'").bind(b.cf_ai_token.trim()).run().catch(() => {});
-            }
-            if (b.anthropic_api_key && b.anthropic_api_key.trim() !== '') {
-              await db.prepare("UPDATE robot_rouge_models SET api_token = ? WHERE provider = 'anthropic'").bind(b.anthropic_api_key.trim()).run().catch(() => {});
-            }
-            if (b.openai_api_key && b.openai_api_key.trim() !== '') {
-              await db.prepare("UPDATE robot_rouge_models SET api_token = ? WHERE provider = 'openai'").bind(b.openai_api_key.trim()).run().catch(() => {});
             }
           } catch (errSyncModels) {}
 
@@ -15095,20 +15009,37 @@ export default {
       // ----------------------------------------------------------------------
       if (request.method === 'GET' && path === '/api/admin/robot-rouge-models') {
         try {
-          const res = await db.prepare("SELECT * FROM robot_rouge_models ORDER BY is_default DESC, created_at ASC").all();
-          const cleanModels = (res?.results || []).map(m => ({
-            ...m,
-            name: (m.name || m.id || '')
+          const res = await db.prepare("SELECT * FROM robot_rouge_models WHERE provider NOT IN ('anthropic', 'openai') AND id NOT LIKE '%claude%' AND id NOT LIKE '%gpt%' ORDER BY is_default DESC, created_at ASC").all();
+          const cleanModels = (res?.results || []).map(m => {
+            let id = m.id;
+            let modelId = m.model_id;
+            let provider = m.provider;
+            let name = (m.name || id)
               .replace(/\s*\(?\s*workers?\s*ai\s*\)?/gi, '')
               .replace(/\bworkers?\s*ai\b/gi, '')
               .replace(/\s{2,}/g, ' ')
-              .trim(),
-            nickname: (m.nickname || '')
-              .replace(/\s*\(?\s*workers?\s*ai\s*\)?/gi, '')
-              .replace(/\bworkers?\s*ai\b/gi, '')
-              .replace(/\s{2,}/g, ' ')
-              .trim()
-          }));
+              .trim();
+            if (id === 'gemini-3.8-flash' || id === 'gemini-2.5-flash' || id === 'gemini-2.0-flash') {
+              id = 'gemini-2.0-flash';
+              modelId = 'gemini-2.0-flash';
+              provider = 'cloudflare';
+              if (name.includes('3.8') || !name.includes('2.0')) {
+                name = 'Google Gemini 2.0 Flash (Worker)';
+              }
+            }
+            return {
+              ...m,
+              id,
+              model_id: modelId,
+              provider,
+              name,
+              nickname: (m.nickname || '')
+                .replace(/\s*\(?\s*workers?\s*ai\s*\)?/gi, '')
+                .replace(/\bworkers?\s*ai\b/gi, '')
+                .replace(/\s{2,}/g, ' ')
+                .trim()
+            };
+          });
           return new Response(JSON.stringify({ success: true, models: cleanModels }), {
             status: 200,
             headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
