@@ -9,6 +9,9 @@ if (typeof window !== 'undefined' && !(pdfjsLib as any).GlobalWorkerOptions?.wor
 }
 
 const textCache = new Map<string, string>();
+const imageBase64Cache = new Map<string, string>();
+const audioBase64Cache = new Map<string, string>();
+const videoBase64Cache = new Map<string, string>();
 
 /**
  * Extrait le contenu textuel intégral d'un document (PDF, Word DOCX, TXT, MD, Code, etc.)
@@ -19,7 +22,33 @@ export async function extractDocumentText(item: any): Promise<string> {
   if (!item) return '';
 
   const cacheKey = item.id || item.name || item.url || item.file_url || item.r2_key || item.r2Key || '';
+
+  // Synchronisation des pièces multimédias déjà en mémoire si fournies
+  if (cacheKey && typeof item === 'object') {
+    if (item.imageBase64 && !imageBase64Cache.has(cacheKey)) {
+      imageBase64Cache.set(cacheKey, item.imageBase64);
+    }
+    if (item.audioBase64 && !audioBase64Cache.has(cacheKey)) {
+      audioBase64Cache.set(cacheKey, item.audioBase64);
+    }
+    if (item.videoBase64 && !videoBase64Cache.has(cacheKey)) {
+      videoBase64Cache.set(cacheKey, item.videoBase64);
+    }
+  }
+
   if (cacheKey && textCache.has(cacheKey)) {
+    // RESTAURATION CRUCIALE : Réinjecter les b64 sur le document pour les tours suivants (message 2, 3...)
+    if (typeof item === 'object') {
+      if (!item.imageBase64 && imageBase64Cache.has(cacheKey)) {
+        item.imageBase64 = imageBase64Cache.get(cacheKey);
+      }
+      if (!item.audioBase64 && audioBase64Cache.has(cacheKey)) {
+        item.audioBase64 = audioBase64Cache.get(cacheKey);
+      }
+      if (!item.videoBase64 && videoBase64Cache.has(cacheKey)) {
+        item.videoBase64 = videoBase64Cache.get(cacheKey);
+      }
+    }
     const cached = textCache.get(cacheKey);
     if (cached && cached.trim().length > 30) {
       return cached;
@@ -211,6 +240,9 @@ export async function extractDocumentText(item: any): Promise<string> {
         if (typeof item === 'object') {
           item.imageBase64 = dataUrl;
         }
+        if (cacheKey) {
+          imageBase64Cache.set(cacheKey, dataUrl);
+        }
       }
 
       const imgDesc = `[Image haute résolution : "${item.name || 'Image'}" (transmise avec perception visuelle complète)]`;
@@ -243,6 +275,9 @@ export async function extractDocumentText(item: any): Promise<string> {
       if (b64 && typeof item === 'object') {
         item.audioBase64 = b64;
       }
+      if (b64 && cacheKey) {
+        audioBase64Cache.set(cacheKey, b64);
+      }
 
       const audioDesc = `[Fichier Audio / Cours oral joint : "${item.name || 'Audio'}" (indexé pour transcription Whisper)]`;
       if (cacheKey) textCache.set(cacheKey, audioDesc);
@@ -274,6 +309,9 @@ export async function extractDocumentText(item: any): Promise<string> {
 
       if (b64 && typeof item === 'object') {
         item.videoBase64 = b64;
+      }
+      if (b64 && cacheKey) {
+        videoBase64Cache.set(cacheKey, b64);
       }
       if (targetUrl && typeof item === 'object') {
         item.videoUrl = targetUrl;

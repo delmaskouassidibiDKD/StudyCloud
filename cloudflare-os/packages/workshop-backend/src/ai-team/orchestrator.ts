@@ -98,9 +98,9 @@ export async function orchestrateMultiAgentTeam(
       if (exp.expert === 'whisper-audio') {
         successfulExperts.push('👂 Whisper Audio');
         expertReports.push(`[RAPPORT EXPERT AUDIO (Whisper)] :\n${exp.content}`);
-      } else if (exp.expert === 'deepseek-vision' || exp.expert === 'llama-vision') {
-        successfulExperts.push('👁️ DeepSeek V4.1 Vision (OCR)');
-        expertReports.push(`[RAPPORT EXPERT VISION & EXTRACTION (DeepSeek V4.1 Flash Vision)] :\n${exp.content}`);
+      } else if (exp.expert === 'llama-vision' || exp.expert === 'deepseek-vision') {
+        successfulExperts.push('👁️ Llama 3.2 Vision (OCR)');
+        expertReports.push(`[RAPPORT EXPERT VISION & EXTRACTION OCR (Llama 3.2 Vision)] :\n${exp.content}`);
       } else if (exp.expert === 'gemini-video') {
         successfulExperts.push('🎬 Gemini 2.5 Flash Vidéo');
         expertReports.push(`[RAPPORT EXPERT VIDÉO (Gemini 2.5 Flash)] :\n${exp.content}`);
@@ -112,19 +112,50 @@ export async function orchestrateMultiAgentTeam(
   }
 
   // 4. SYNTHÈSE DU CHEF D'ÉQUIPE (Llama 3.3 70B Fast)
-  let enrichedSystemPrompt = systemPrompt;
+  // LE CHEF D'ÉQUIPE CONSERVE SON IDENTITÉ ET SES CONSIGNES MULTI-AGENTS EN PERMANENCE
+  // (sur le 1er message, le 2ème message, le 3ème message, et pour toute la discussion)
+  const chefDirectiveHeader = `══════════════════════════════════════════════════════════════════════════════
+[CHEF D'ÉQUIPE MULTI-AGENTS STUDYCLOUD - CONSIGNES SUPRÊMES DU LEADER] :
+Tu es le CHEF D'ÉQUIPE MULTI-IA OFFICIEL de StudyCloud (Llama 3.3 70B Fast).
+Tu es à la tête d'une équipe d'agents IA experts spécialisés :
+- 👁️ Expert Vision & Transcription OCR (Llama 3.2 Vision)
+- 👂 Expert Transcription Audio (Whisper)
+- 🎬 Expert Compréhension Vidéo (Gemini 2.5 Flash)
+- 🧮 Expert Raisonnement Algébrique & Calculs (DeepSeek R1)
+
+CONSIGNES STRICTES ET NON NÉGOCIABLES DU CHEF D'ÉQUIPE :
+1. AFFIRMATION DE TON RÔLE DE CHEF :
+   - Tu diriges les opérations avec clarté, leadership pédagogique et rigueur d'excellence.
+   - Ton ton est bienveillant, direct et structuré.
+2. INTERDICTION FORMELLE DE DIRE QUE TU NE PEUX PAS VOIR LES IMAGES :
+   - IL EST STRICTEMENT INTERDIT d'écrire "je ne peux pas voir les images directement", "comme je suis une IA je n'ai pas d'yeux", ou de demander à l'étudiant "pouvez-vous me décrire ce que contient l'image ?" ou "pouvez-vous transcrire le texte" !
+   - Ton équipe dispose d'un Expert Vision dédié. Si un rapport d'expert vision est joint ci-dessous ou si l'image/l'exercice a été extrait dans les messages précédents de la conversation, exploite immédiatement ces données pour répondre et résoudre l'exercice de l'élève.
+   - Si l'élève te demande la suite ("LIMAGE ENVOYER", "fais la suite", "la question 2", etc.), résous immédiatement ce qui est demandé à partir des données de l'image déjà connues dans la conversation.
+3. RÈGLE DES FRACTIONS ET FORMULES LATEX :
+   - TOUTE fraction mathématique ou physique DOIT IMPÉRATIVEMENT être rédigée avec \\dfrac{numérateur}{dénominateur}. JAMAIS de slash '/'.
+   - Encadre chaque résultat final majeur avec \\boxed{...} dans un bloc centré $$ \\boxed{...} $$.
+══════════════════════════════════════════════════════════════════════════════`;
+
+  let enrichedSystemPrompt = `${chefDirectiveHeader}\n\n${systemPrompt}`;
 
   if (expertReports.length > 0) {
     enrichedSystemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
-[CONSULTATION MULTI-AGENTS - RAPPORTS TRANSMIS AU CHEF D'ÉQUIPE] :
-En tant que Chef d'équipe, tes experts spécialisés ont scanné et analysé avec succès les fichiers multimédias et calculs de l'étudiant :
+[RAPPORTS D'EXPERTS TRANSMIS AU CHEF D'ÉQUIPE POUR CETTE DEMANDE] :
+Tes experts spécialisés viennent de scanner et décoder les fichiers ou calculs de l'étudiant :
 ${expertReports.join('\n\n')}
 
-DIRECTIVES STRICTES DU CHEF D'ÉQUIPE :
-1. Les fichiers de l'étudiant (images, graphiques, audio, calculs) ONT DÉJÀ ÉTÉ VUS ET DÉCODÉS dans le rapport ci-dessus.
-2. TU NE DOIS EN AUCUN CAS DIRE "je ne peux pas voir les images", "comme je suis une IA je n'ai pas de vision", ou "peux-tu me décrire l'image".
-3. Réponds immédiatement et précisément à la demande de l'élève en exploitant fidèlement l'analyse transmise par ton Expert Vision.
-4. Fais preuve de pédagogie, de bienveillance et de précision scientifique en décrivant, expliquant ou résolvant ce qui a été vu.
+MISSION DU CHEF :
+Exploite fidèlement ces données spécialisées pour produire la réponse finale la plus claire, rigoureuse et pédagogique possible pour l'étudiant.
+══════════════════════════════════════════════════════════════════════════════`;
+  } else if (!imageBase64 && (
+    (docName && /\.(png|jpe?g|webp|gif|bmp)$/i.test(docName)) ||
+    (docContent && docContent.includes('[Image haute résolution')) ||
+    userPrompt.toLowerCase().includes('image')
+  )) {
+    enrichedSystemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
+[RAPPEL CONTEXTUEL DE L'IMAGE AU CHEF D'ÉQUIPE] :
+L'étudiant fait référence à l'image / document "${docName || "Image de cours"}" dans la discussion.
+Si l'image ou l'exercice a déjà été extrait ou analysé dans les messages précédents de la conversation, poursuis l'explication ou la résolution sans redemander l'image et SANS JAMAIS dire que tu ne peux pas la voir.
 ══════════════════════════════════════════════════════════════════════════════`;
   }
 

@@ -1210,6 +1210,11 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const activityTimerRef = useRef<any>(null);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [isExtractingDoc, setIsExtractingDoc] = useState(false);
+
+  // Mémorisation persistante des pièces jointes multimédias pour toute la session de discussion
+  const lastActiveImageBase64Ref = useRef<string>('');
+  const lastActiveAudioBase64Ref = useRef<string>('');
+  const lastActiveVideoBase64Ref = useRef<string>('');
   
   // Barre de propositions collée au clavier
   const [showProposalBar, setShowProposalBar] = useState(true);
@@ -2094,10 +2099,35 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
       const attachedFileId = docIds.join(',');
       const attachedFileR2Key = docR2Keys.join(',');
       const mainDocName = docChoice.targetedDoc ? (docChoice.targetedDoc.name || docChoice.targetedDoc.title) : (docNames[0] || activePreviewItem?.name || 'Document d\'étude');
-      const attachedImageBase64 = targetDocs.find(d => d.imageBase64)?.imageBase64 || activePreviewItem?.imageBase64 || '';
-      const attachedAudioBase64 = targetDocs.find(d => d.audioBase64)?.audioBase64 || activePreviewItem?.audioBase64 || '';
-      const attachedVideoBase64 = targetDocs.find(d => d.videoBase64)?.videoBase64 || activePreviewItem?.videoBase64 || '';
+      let attachedImageBase64 = targetDocs.find(d => d.imageBase64)?.imageBase64 || activePreviewItem?.imageBase64 || '';
+      let attachedAudioBase64 = targetDocs.find(d => d.audioBase64)?.audioBase64 || activePreviewItem?.audioBase64 || '';
+      let attachedVideoBase64 = targetDocs.find(d => d.videoBase64)?.videoBase64 || activePreviewItem?.videoBase64 || '';
       const attachedVideoUrl = targetDocs.find(d => d.videoUrl)?.videoUrl || activePreviewItem?.videoUrl || '';
+
+      const hasActiveImageDoc = targetDocs.some(d => {
+        const n = (d.name || d.title || '').toLowerCase();
+        return n.endsWith('.jpg') || n.endsWith('.jpeg') || n.endsWith('.png') || n.endsWith('.webp') || d.type?.includes('image');
+      }) || (activePreviewItem && (
+        (activePreviewItem.name || '').toLowerCase().match(/\.(jpg|jpeg|png|webp)$/i) || activePreviewItem.type?.includes('image')
+      ));
+
+      if (attachedImageBase64) {
+        lastActiveImageBase64Ref.current = attachedImageBase64;
+      } else if (hasActiveImageDoc && lastActiveImageBase64Ref.current) {
+        attachedImageBase64 = lastActiveImageBase64Ref.current;
+      }
+
+      if (attachedAudioBase64) {
+        lastActiveAudioBase64Ref.current = attachedAudioBase64;
+      } else if (lastActiveAudioBase64Ref.current) {
+        attachedAudioBase64 = lastActiveAudioBase64Ref.current;
+      }
+
+      if (attachedVideoBase64) {
+        lastActiveVideoBase64Ref.current = attachedVideoBase64;
+      } else if (lastActiveVideoBase64Ref.current) {
+        attachedVideoBase64 = lastActiveVideoBase64Ref.current;
+      }
 
       // Sauvegarde immédiate Cloudflare D1 du message utilisateur
       StudyCloudAPI.saveAiMessage({

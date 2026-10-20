@@ -87,9 +87,12 @@ export async function callWhisperExpert(
   }
 }
 
+// Cache en mémoire des extractions OCR pour accélérer les tours de conversation suivants
+const visionOcrCache = new Map<string, string>();
+
 /**
- * Expert Vision & Extraction : Décrit et extrait les exercices et manuscrits
- * via DeepSeek V4.1 Flash 552B (Cloudflare-hébergé) avec fallback Llama 3.2 Vision.
+ * Expert Vision & Extraction OCR : Analyse et extrait les exercices, devoirs, manuscrits
+ * et schémas via Llama 3.2 11B Vision Instruct (100% Cloudflare Workers AI sans clé externe).
  */
 export async function callVisionExpert(
   imageBase64: string,
@@ -103,49 +106,38 @@ export async function callVisionExpert(
 
     if (!rawB64 || rawB64.length < 20) {
       return {
-        expert: 'deepseek-vision',
+        expert: 'llama-vision',
         status: 'failed',
         summary: 'Base64 image vide ou invalide',
         content: '',
       };
     }
 
-    const promptVision = "Tu es l'Expert Vision et OCR de l'équipe pédagogique StudyCloud. Analyse minutieusement cette image de cours ou d'exercice : 1) Extrais l'intégralité de l'énoncé textuel mot à mot avec tous les chiffres, questions et formules mathématiques en LaTeX standard ($...$). 2) Si c'est un exercice ou un devoir, fournis la résolution complète et détaillée étape par étape avec toutes les explications pédagogiques. 3) Si c'est un schéma ou circuit, décris fidèlement chaque composant et connexion.";
-
-    // 1. PRIORITÉ : DeepSeek V4.1 Flash (Modèle géant 552B MoE Cloudflare-hébergé)
-    try {
-      const dsUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/deepseek-ai/deepseek-v4.1-flash-1017`;
-      const dsRes = await fetch(dsUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${cfToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt: promptVision,
-          image: rawB64,
-          max_tokens: 4096,
-        }),
-      });
-
-      if (dsRes.ok) {
-        const dsData: any = await dsRes.json();
-        const dsContent = dsData?.result?.choices?.[0]?.text || dsData?.result?.response || '';
-        if (dsContent.trim()) {
-          return {
-            expert: 'deepseek-vision',
-            status: 'success',
-            summary: 'Exercice et image analysés par DeepSeek V4.1 Flash Vision',
-            content: dsContent.trim(),
-          };
-        }
-      }
-    } catch (_dsErr) {
-      // Poursuite vers le secours
+    // Vérification du cache OCR en mémoire (pour les tours de conversation 2, 3...)
+    const cacheKey = `${rawB64.length}_${rawB64.slice(0, 80)}`;
+    if (visionOcrCache.has(cacheKey)) {
+      const cachedContent = visionOcrCache.get(cacheKey)!;
+      return {
+        expert: 'llama-vision',
+        status: 'success',
+        summary: 'Image et exercice extraits par Llama 3.2 Vision (Cache instantané)',
+        content: cachedContent,
+      };
     }
 
-    // 2. SECOURS : Llama 3.2 11B Vision (Cloudflare Workers AI)
+    const promptVision = `Tu es l'Expert Vision et Transcription OCR de l'équipe pédagogique StudyCloud.
+Analyse minutieusement cette image de cours, d'exercice ou de devoir :
+1. TRANSCRIPTION RIGUREUSE ET INTÉGRALE :
+   - Extrais tout le texte visible mot à mot, sans rien omettre.
+   - Transcris tous les chiffres, numéros de questions, énoncés et formules mathématiques en syntaxe LaTeX standard ($...$ pour les formules en ligne, $$...$$ pour les équations en bloc).
+2. DÉMARCHE ET CORRIGÉ PÉDAGOGIQUE COMPLET :
+   - Pour chaque question ou exercice présent sur l'image, fournis la résolution détaillée pas à pas.
+   - Explique chaque étape, théorème ou loi physique utilisé.
+3. SCHÉMAS, CIRCUITS ET DIAGRAMMES :
+   - Si l'image comporte un schéma, un graphique ou un circuit électronique, décris avec précision tous les composants, leurs valeurs, les liaisons et le comportement attendu.`;
+
     const runUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/meta/llama-3.2-11b-vision-instruct`;
+
     let runRes = await fetch(runUrl, {
       method: 'POST',
       headers: {
@@ -159,6 +151,7 @@ export async function callVisionExpert(
       }),
     });
 
+    // Gestion automatique des conditions de licence Meta si nécessaire
     if (runRes.status === 403) {
       const errText = await runRes.text();
       if (errText.includes('agree')) {
@@ -184,26 +177,27 @@ export async function callVisionExpert(
       const runData: any = await runRes.json();
       const runContent = runData?.result?.response || runData?.response || '';
       if (runContent.trim()) {
+        visionOcrCache.set(cacheKey, runContent.trim());
         return {
-          expert: 'deepseek-vision',
+          expert: 'llama-vision',
           status: 'success',
-          summary: 'Image analysée par Llama 3.2 Vision (Secours)',
+          summary: 'Image et exercice décodés par Llama 3.2 Vision (100% Cloudflare)',
           content: runContent.trim(),
         };
       }
     }
 
     return {
-      expert: 'deepseek-vision',
+      expert: 'llama-vision',
       status: 'failed',
-      summary: 'Échec analyse visuelle',
+      summary: 'Échec analyse visuelle Llama 3.2 Vision',
       content: '',
     };
   } catch (err: any) {
     return {
-      expert: 'deepseek-vision',
+      expert: 'llama-vision',
       status: 'failed',
-      summary: `Erreur Vision: ${err?.message}`,
+      summary: `Erreur Llama Vision: ${err?.message}`,
       content: '',
     };
   }
