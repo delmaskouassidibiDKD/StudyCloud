@@ -50,6 +50,7 @@ import {
 } from './studyAgentService';
 export { getStudyAgentUrl, setStudyAgentUrl };
 import { parseOrBuildAiCreation } from './aiCreationGenerator';
+import { callGoogleGenAi } from './geminiGenAiService';
 
 // URL du Worker Cloudflare Workshop Backend (Moteur IA déployé pour StudyCloud)
 export const getAiWorkerUrl = (): string => {
@@ -316,6 +317,50 @@ export async function sendChatMessageToAi(params: {
     videoUrl: params.videoUrl,
   };
 
+  // 1. Appel direct via le SDK officiel @google/genai si une clé Gemini est disponible et que le modèle ciblé est Gemini (ou Power Mode)
+  if (userGeminiApiKey && userGeminiApiKey.length > 20 && (params.model === 'gemini-2.0-flash' || isPowerMode || params.engine === 'gemini')) {
+    try {
+      const isContinuation = Boolean(
+        params.isContinuation ||
+        params.is_continuation ||
+        /^(?:oui\s*,?\s*)?(?:continue|la suite|poursuis|poursuivre|encha[îi]ne|suite\s+s'il\s+te\s+pla[îi]t)/i.test(params.prompt || params.message || '')
+      );
+
+      const sysMsg = (Array.isArray(params.history) ? params.history : (Array.isArray(params.messages) ? params.messages : [])).find((m: any) => m.role === 'system')?.content;
+      let systemText = sysMsg || "Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Gemini / Delmas IA). Réponds en français structuré avec rigueur pédagogique et formules LaTeX si nécessaire.";
+      if (isContinuation) {
+        systemText += "\n\n[ORDRE DE CONTINUATION DIRECTE] : L'étudiant demande de poursuivre la réponse précédente. Ne recommence pas du début, ne répète rien et commence directement par la suite utile (ex: numéro de question suivante ou calcul suivant).";
+      }
+
+      const gText = await callGoogleGenAi({
+        apiKey: userGeminiApiKey,
+        model: 'gemini-2.0-flash',
+        systemPrompt: systemText,
+        userPrompt: params.prompt || params.message || 'Bonjour !',
+        history: params.history || params.messages,
+        docContent: isContinuation ? undefined : extractedDoc,
+        docName: isContinuation ? undefined : extractedDocName,
+        imageBase64: params.imageBase64,
+        audioBase64: params.audioBase64,
+        videoBase64: params.videoBase64,
+        temperature: 0.7,
+      });
+
+      if (gText) {
+        return {
+          response: gText,
+          success: true,
+          model: 'Google Gemini 2.0 Flash (@google/genai SDK)',
+          chat_response: gText,
+          raw_response: gText,
+          rawResponse: gText,
+        };
+      }
+    } catch (sdkErr: any) {
+      console.warn('[StudyCloud AI] Échec appel direct @google/genai SDK, repli sur Worker backend:', sdkErr);
+    }
+  }
+
   // Appel vers le Neurone d'Agent StudyCloud (Durable Objects & Llama 70B) :
   let response: Response;
   const fetchSignal = params.signal || params.abortSignal;
@@ -375,65 +420,31 @@ export async function sendChatMessageToAi(params: {
             systemText += "\n\n[ORDRE DE CONTINUATION DIRECTE] : L'étudiant demande de poursuivre la réponse précédente. Ne recommence pas du début, ne répète rien et commence directement par la suite utile (ex: numéro de question suivante ou calcul suivant).";
           }
 
-          const geminiContents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
-          const hist = Array.isArray(params.history) ? params.history : (Array.isArray(params.messages) ? params.messages : []);
-          for (const h of hist.slice(-10)) {
-            if (h && (h.content || h.text) && h.role !== 'system') {
-              geminiContents.push({
-                role: h.role === 'assistant' || h.sender === 'ai' ? 'model' : 'user',
-                parts: [{ text: String(h.content || h.text) }]
-              });
-            }
-          }
+          const gText = await callGoogleGenAi({
+            apiKey: userGeminiApiKey,
+            model: 'gemini-2.0-flash',
+            systemPrompt: systemText,
+            userPrompt: params.prompt || params.message || 'Bonjour',
+            history: params.history || params.messages,
+            docContent: isContinuation ? undefined : extractedDoc,
+            docName: isContinuation ? undefined : extractedDocName,
+            imageBase64: params.imageBase64,
+            audioBase64: params.audioBase64,
+            videoBase64: params.videoBase64,
+            temperature: 0.3,
+          });
 
-          let currentTurnText = params.prompt || params.message || 'Bonjour';
-          if (extractedDoc && !isContinuation) {
-            currentTurnText += `\n\nContenu document support ("${extractedDocName}") :\n${extractedDoc.slice(0, 25000)}`;
+          if (gText) {
+            return {
+              success: true,
+              response: gText,
+              chat_response: gText,
+              model: 'Google Gemini 2.0 Flash (@google/genai SDK)',
+            };
           }
-
-          const userTurnParts: any[] = [];
-          if (params.imageBase64 && typeof params.imageBase64 === 'string' && params.imageBase64.length > 50) {
-            const rawBase64 = params.imageBase64.replace(/^data:[^;]+;base64,/i, '').trim();
-            const mimeType = params.imageBase64.includes('image/png') ? 'image/png' : (params.imageBase64.includes('image/webp') ? 'image/webp' : 'image/jpeg');
-            if (rawBase64) {
-              userTurnParts.push({
-                inlineData: {
-                  mimeType,
-                  data: rawBase64,
-                }
-              });
-            }
-          }
-          userTurnParts.push({ text: currentTurnText });
-
-          geminiContents.push({ role: 'user', parts: userTurnParts });
-
-          const geminiResp = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${userGeminiApiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                system_instruction: { parts: [{ text: systemText }] },
-                contents: geminiContents,
-                generationConfig: { temperature: 0.3 }
-              }),
-              signal: AbortSignal.timeout(30000),
-            }
-          );
-          if (geminiResp.ok) {
-            const geminiData = await geminiResp.json();
-            const gText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            if (gText) {
-              return {
-                success: true,
-                response: gText,
-                chat_response: gText,
-                model: 'Google Gemini (Secours Automatique)',
-              };
-            }
-          }
-        } catch (_gErr) {}
+        } catch (_gErr) {
+          console.warn('[StudyCloud AI] Échec secours Gemini SDK:', _gErr);
+        }
       }
 
       // Si aucune clé Gemini n'est configurée, afficher un message d'orientation bienveillant et clair
@@ -761,36 +772,27 @@ export async function generateDirectAiCreation(params: {
     }
   } catch (_rootErr) {}
 
-  // 4. TENTATIVE : Gemini direct si une clé est configurée
+  // 4. TENTATIVE : Gemini direct via le SDK officiel @google/genai
   if (userGeminiApiKey && userGeminiApiKey.length > 10) {
     try {
-      const candidateModels = ['gemini-2.5-flash', 'gemini-1.5-flash'];
-      for (const model of candidateModels) {
-        try {
-          const geminiResp = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${userGeminiApiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                system_instruction: { parts: [{ text: `Tu es un expert pédagogique StudyCloud. Génère un(e) ${params.toolType} au format JSON strict.` }] },
-                contents: [{ role: 'user', parts: [{ text: params.prompt }] }],
-                generationConfig: { temperature: 0.3, responseMimeType: 'application/json' },
-              }),
-              signal: AbortSignal.timeout(30000),
-            }
-          );
-          if (geminiResp.ok) {
-            const geminiData = await geminiResp.json();
-            const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            if (rawText && rawText.length > 30) {
-              const parsed = safeJsonParse(rawText);
-              return finalizeCreation(parsed?.creation_data || parsed, rawText, `Gemini Direct (${model})`);
-            }
-          }
-        } catch (_mErr) {}
+      const gText = await callGoogleGenAi({
+        apiKey: userGeminiApiKey,
+        model: 'gemini-2.0-flash',
+        systemPrompt: `Tu es un expert pédagogique de premier plan pour StudyCloud. Conçois le module d'apprentissage interactif demandé (${params.toolType}) rigoureusement au format JSON strict selon les spécifications.`,
+        userPrompt: params.prompt || `Génère le module ${params.toolType} sur "${params.docName}"`,
+        docContent: params.docContent,
+        docName: params.docName,
+        responseMimeType: 'application/json',
+        temperature: 0.2,
+      });
+
+      if (gText && gText.length > 30) {
+        const parsed = safeJsonParse(gText);
+        return finalizeCreation(parsed?.creation_data || parsed, gText, 'Google Gemini 2.0 Flash (@google/genai SDK)');
       }
-    } catch (_gErr) {}
+    } catch (_gErr) {
+      console.warn('[StudyCloud] Échec création Gemini via SDK @google/genai:', _gErr);
+    }
   }
 
   // 5. FILET DE SÉCURITÉ GARANTI 100% SANS ÉCHEC : parseOrBuildAiCreation local instantané

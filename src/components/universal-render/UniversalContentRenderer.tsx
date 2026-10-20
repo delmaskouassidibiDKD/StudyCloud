@@ -33,8 +33,10 @@ const DiagramRenderer = safeLazy(() => import('./renderers/DiagramRenderer'));
 const TextCodeRenderer = safeLazy(() => import('./renderers/TextCodeRenderer'));
 const AiPedagogyRenderer = safeLazy(() => import('./renderers/AiPedagogyRenderer'));
 
-class StudioErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
+class StudioErrorBoundary extends React.Component {
+  props!: { children?: React.ReactNode };
   state = { hasError: false, error: null as Error | null };
+  setState!: (state: any) => void;
 
   static getDerivedStateFromError(error: Error) {
     return { hasError: true, error };
