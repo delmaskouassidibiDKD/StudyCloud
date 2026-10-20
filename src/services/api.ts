@@ -391,9 +391,22 @@ export async function sendChatMessageToAi(params: {
             currentTurnText += `\n\nContenu document support ("${extractedDocName}") :\n${extractedDoc.slice(0, 25000)}`;
           }
 
-          if (geminiContents.length === 0 || geminiContents[geminiContents.length - 1].parts[0]?.text !== currentTurnText) {
-            geminiContents.push({ role: 'user', parts: [{ text: currentTurnText }] });
+          const userTurnParts: any[] = [];
+          if (params.imageBase64 && typeof params.imageBase64 === 'string' && params.imageBase64.length > 50) {
+            const rawBase64 = params.imageBase64.replace(/^data:[^;]+;base64,/i, '').trim();
+            const mimeType = params.imageBase64.includes('image/png') ? 'image/png' : (params.imageBase64.includes('image/webp') ? 'image/webp' : 'image/jpeg');
+            if (rawBase64) {
+              userTurnParts.push({
+                inlineData: {
+                  mimeType,
+                  data: rawBase64,
+                }
+              });
+            }
           }
+          userTurnParts.push({ text: currentTurnText });
+
+          geminiContents.push({ role: 'user', parts: userTurnParts });
 
           const geminiResp = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${userGeminiApiKey}`,

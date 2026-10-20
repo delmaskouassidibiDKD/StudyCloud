@@ -1740,7 +1740,85 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     }
   };
 
+  // État de chargement et de traitement des fichiers sélectionnés (cercle qui tourne tant que tous ne sont pas prêts)
+  const [processingDocIds, setProcessingDocIds] = useState<Set<string>>(new Set());
+  const [readyDocIds, setReadyDocIds] = useState<Set<string>>(new Set());
+
+  // Pré-traitement automatique et asynchrone dès qu'un fichier est sélectionné ou ouvert
+  useEffect(() => {
+    const docsToProcess: any[] = [];
+    if (resolvedActiveItem && (resolvedActiveItem.id || resolvedActiveItem.name || resolvedActiveItem.url)) {
+      docsToProcess.push(resolvedActiveItem);
+    }
+    if (Array.isArray(attachedResources)) {
+      for (const res of attachedResources) {
+        if (res && (res.id || res.name || res.url)) {
+          docsToProcess.push(res);
+        }
+      }
+    }
+
+    if (docsToProcess.length === 0) {
+      setProcessingDocIds(new Set());
+      return;
+    }
+
+    let isMounted = true;
+
+    docsToProcess.forEach(async (doc) => {
+      const docKey = String(doc.id || doc.name || doc.title || '');
+      if (!docKey) return;
+
+      // Si le document a déjà une imageBase64 prête en mémoire
+      if (doc.imageBase64 && typeof doc.imageBase64 === 'string' && doc.imageBase64.length > 50) {
+        lastActiveImageBase64Ref.current = doc.imageBase64;
+        if (isMounted) setReadyDocIds(prev => new Set(prev).add(docKey));
+        return;
+      }
+
+      // Marquer le fichier comme en cours de traitement (cercle qui tourne sur le fichier)
+      if (isMounted) setProcessingDocIds(prev => new Set(prev).add(docKey));
+
+      try {
+        await extractDocumentText(doc);
+        if (doc.imageBase64) {
+          lastActiveImageBase64Ref.current = doc.imageBase64;
+        }
+        if (isMounted) {
+          setReadyDocIds(prev => new Set(prev).add(docKey));
+        }
+      } catch (err) {
+        console.warn('[AssistantChat] Erreur pré-traitement du fichier:', doc.name, err);
+      } finally {
+        if (isMounted) {
+          setProcessingDocIds(prev => {
+            const next = new Set(prev);
+            next.delete(docKey);
+            return next;
+          });
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [resolvedActiveItem?.id, resolvedActiveItem?.name, resolvedActiveItem?.url, attachedResources]);
+
+  const isAnyFileProcessing = processingDocIds.size > 0 || isExtractingDoc;
+
   const handleRemoveAttachment = async (res: any) => {
+    const resKey = String(res.id || res.name || res.title || '');
+    setProcessingDocIds(prev => {
+      const next = new Set(prev);
+      next.delete(resKey);
+      return next;
+    });
+    setReadyDocIds(prev => {
+      const next = new Set(prev);
+      next.delete(resKey);
+      return next;
+    });
     setAttachedResources?.((prev: any[]) => prev.filter((r: any) => r.id !== res.id));
     if (currentUserId && res.id) {
       await removeAiAttachment({
@@ -1753,6 +1831,10 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
   const sendMessage = async (textToSend: string, requestedTypeOverride?: string, options?: { isContinuation?: boolean }) => {
     if (!textToSend.trim()) return;
+    if (isAnyFileProcessing) {
+      // Verrouillage strict : tous les fichiers doivent avoir fini d'être traités
+      return;
+    }
 
     // Incrément de l'ID unique de requête pour ce tour
     const thisRequestId = ++currentRequestIdRef.current;
@@ -2100,12 +2182,19 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
       const attachedFileId = docIds.join(',');
       const attachedFileR2Key = docR2Keys.join(',');
       const mainDocName = docChoice.targetedDoc ? (docChoice.targetedDoc.name || docChoice.targetedDoc.title) : (docNames[0] || activePreviewItem?.name || 'Document d\'étude');
-      let attachedImageBase64 = targetDocs.find(d => d.imageBase64)?.imageBase64 || activePreviewItem?.imageBase64 || '';
+      let attachedImageBase64 = targetDocs.find(d => d.imageBase64)?.imageBase64 || 
+        allDocs.find(d => d.imageBase64)?.imageBase64 || 
+        (activePreviewItem as any)?.imageBase64 || 
+        lastActiveImageBase64Ref.current || 
+        '';
       let attachedAudioBase64 = targetDocs.find(d => d.audioBase64)?.audioBase64 || activePreviewItem?.audioBase64 || '';
       let attachedVideoBase64 = targetDocs.find(d => d.videoBase64)?.videoBase64 || activePreviewItem?.videoBase64 || '';
       const attachedVideoUrl = targetDocs.find(d => d.videoUrl)?.videoUrl || activePreviewItem?.videoUrl || '';
 
       const hasActiveImageDoc = targetDocs.some(d => {
+        const n = (d.name || d.title || '').toLowerCase();
+        return n.endsWith('.jpg') || n.endsWith('.jpeg') || n.endsWith('.png') || n.endsWith('.webp') || d.type?.includes('image');
+      }) || allDocs.some(d => {
         const n = (d.name || d.title || '').toLowerCase();
         return n.endsWith('.jpg') || n.endsWith('.jpeg') || n.endsWith('.png') || n.endsWith('.webp') || d.type?.includes('image');
       }) || (activePreviewItem && (
@@ -3219,17 +3308,20 @@ CONSIGNES STRICTES DE CONTINUATION :
   }, []);
 
   const handleSend = () => {
+    if (isAnyFileProcessing || isTyping || isWaitingServer) return;
     sendMessage(inputValue);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      if (isAnyFileProcessing || isTyping || isWaitingServer) return;
       handleSend();
     }
   };
 
   const handleQuickAction = (toolType: AiCreationType) => {
+    if (isAnyFileProcessing || isTyping || isWaitingServer) return;
     const docName = activePreviewItem?.name || 'ce document';
     let prompt = '';
     switch (toolType) {
@@ -3772,18 +3864,35 @@ CONSIGNES STRICTES DE CONTINUATION :
           <form
             onSubmit={(e) => {
               e.preventDefault();
+              if (isAnyFileProcessing || isTyping || isWaitingServer) return;
               handleSend();
             }}
             className="relative flex flex-col gap-2 bg-[#282a2f] rounded-[22.5px] p-3 sm:p-3.5 transition-all w-full h-full"
           >
+          {isAnyFileProcessing && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-orange-500/15 border border-orange-500/30 rounded-xl text-orange-200 text-xs animate-fadeIn select-none mb-1">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-400 shrink-0" />
+              <span className="font-medium text-[11px] sm:text-xs">
+                L'IA analyse votre document et prépare l'image, veuillez patienter avant d'envoyer...
+              </span>
+            </div>
+          )}
+
           <textarea
             ref={textareaRef}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Posez votre question ou collez votre cours..."
+            disabled={isAnyFileProcessing}
+            placeholder={
+              isAnyFileProcessing
+                ? "L'IA analyse votre document, veuillez patienter..."
+                : "Posez votre question ou collez votre cours..."
+            }
             rows={3}
-            className="w-full bg-transparent text-white placeholder-zinc-400 text-sm outline-none resize-none overflow-y-auto select-text"
+            className={`w-full bg-transparent text-white placeholder-zinc-400 text-sm outline-none resize-none overflow-y-auto select-text transition-opacity ${
+              isAnyFileProcessing ? 'opacity-60 cursor-not-allowed' : ''
+            }`}
           />
 
           <div className="flex items-center justify-between pt-0.5">
@@ -3795,49 +3904,91 @@ CONSIGNES STRICTES DE CONTINUATION :
                  </div>
                )}
 
-               {resolvedActiveName && (
-                 <div className="flex items-center gap-1.5 px-2.5 py-1 bg-orange-500/10 border border-orange-500/40 rounded-lg max-w-[160px] sm:max-w-[210px] shrink-0" title="Document ouvert à l'écran (sélectionné en orange)">
-                   <div className="shrink-0 flex items-center justify-center">
-                     <FileIconBadge fileName={resolvedActiveName} size={16} />
+               {resolvedActiveName && (() => {
+                 const activeKey = String(resolvedActiveItem?.id || resolvedActiveItem?.name || resolvedActiveItem?.title || resolvedActiveName || '');
+                 const isActiveProcessing = isExtractingDoc || resolvedActiveItem?.isExtracting || processingDocIds.has(activeKey);
+                 const isActiveReady = readyDocIds.has(activeKey) || Boolean(resolvedActiveItem?.imageBase64 || lastActiveImageBase64Ref.current);
+
+                 return (
+                   <div 
+                     className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg max-w-[160px] sm:max-w-[210px] shrink-0 border transition-all ${
+                       isActiveProcessing
+                         ? 'bg-amber-500/20 border-amber-500/60 shadow-sm'
+                         : 'bg-orange-500/10 border-orange-500/40'
+                     }`} 
+                     title={isActiveProcessing ? "Analyse et conversion de l'image en cours..." : "Document ouvert à l'écran (sélectionné en orange)"}
+                   >
+                     <div className="shrink-0 flex items-center justify-center">
+                       <FileIconBadge fileName={resolvedActiveName} size={16} />
+                     </div>
+                     <span className="text-[10px] sm:text-[11px] font-bold text-orange-300 truncate">
+                       {resolvedActiveName}
+                     </span>
+                     <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-orange-500/25 text-orange-400 shrink-0">
+                       Actif
+                     </span>
+                     {isActiveProcessing ? (
+                       <span className="flex items-center gap-1 text-[10px] font-bold text-amber-400 ml-0.5 shrink-0" title="Chargement et conversion...">
+                         <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400 shrink-0" />
+                       </span>
+                     ) : isActiveReady ? (
+                       <span className="text-emerald-400 text-xs ml-0.5 shrink-0" title="Prêt pour l'IA">
+                         <Check className="w-3.5 h-3.5 text-emerald-400" />
+                       </span>
+                     ) : null}
                    </div>
-                   <span className="text-[10px] sm:text-[11px] font-bold text-orange-300 truncate">
-                     {resolvedActiveName}
-                   </span>
-                   <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-orange-500/25 text-orange-400 shrink-0">
-                     Actif
-                   </span>
-                   {(resolvedActiveItem?.isExtracting || isExtractingDoc) && (
-                     <Loader2 className="w-3 h-3 animate-spin text-orange-400 ml-1 shrink-0" />
-                   )}
-                 </div>
-               )}
+                 );
+               })()}
                
-               {attachedResources.map(res => (
-                 <div key={res.id} className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-500/10 border border-blue-500/40 rounded-lg max-w-[160px] sm:max-w-[210px] shrink-0" title="Document joint (sélectionné en bleu)">
-                   <div className="shrink-0 flex items-center justify-center">
-                     <FileIconBadge fileName={res.name} size={16} />
+               {attachedResources.map(res => {
+                 const resKey = String(res.id || res.name || res.title || '');
+                 const isResProcessing = res.isExtracting || processingDocIds.has(resKey);
+                 const isResReady = readyDocIds.has(resKey) || Boolean(res.imageBase64);
+
+                 return (
+                   <div 
+                     key={res.id || res.name} 
+                     className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg max-w-[160px] sm:max-w-[210px] shrink-0 border transition-all ${
+                       isResProcessing 
+                         ? 'bg-blue-500/20 border-blue-400/80 shadow-sm' 
+                         : 'bg-blue-500/10 border-blue-500/40'
+                     }`} 
+                     title={isResProcessing ? "Traitement et extraction en cours..." : "Document joint (sélectionné en bleu)"}
+                   >
+                     <div className="shrink-0 flex items-center justify-center">
+                       <FileIconBadge fileName={res.name} size={16} />
+                     </div>
+                     <span className="text-[10px] sm:text-[11px] font-bold text-blue-300 truncate">
+                       {res.name}
+                     </span>
+                     {isResProcessing ? (
+                       <span className="flex items-center gap-1 text-[10px] font-bold text-blue-300 ml-1 shrink-0" title="Chargement en cours...">
+                         <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400 shrink-0" />
+                       </span>
+                     ) : (
+                       <>
+                         {isResReady && (
+                           <span className="text-emerald-400 text-xs mr-0.5 shrink-0" title="Prêt pour l'IA">
+                             <Check className="w-3.5 h-3.5 text-emerald-400" />
+                           </span>
+                         )}
+                         <button 
+                           type="button"
+                           onClick={(e) => {
+                             e.preventDefault();
+                             e.stopPropagation();
+                             handleRemoveAttachment(res);
+                           }}
+                           className="ml-1 text-blue-400 hover:text-white p-0.5 rounded-full hover:bg-blue-700/50 transition-colors cursor-pointer"
+                           title="Retirer ce document"
+                         >
+                           <X className="w-3 h-3" />
+                         </button>
+                       </>
+                     )}
                    </div>
-                   <span className="text-[10px] sm:text-[11px] font-bold text-blue-300 truncate">
-                     {res.name}
-                   </span>
-                   {res.isExtracting ? (
-                     <Loader2 className="w-3 h-3 animate-spin text-blue-400 ml-1 shrink-0" />
-                   ) : (
-                     <button 
-                       type="button"
-                       onClick={(e) => {
-                         e.preventDefault();
-                         e.stopPropagation();
-                         handleRemoveAttachment(res);
-                       }}
-                       className="ml-1 text-blue-400 hover:text-white p-0.5 rounded-full hover:bg-blue-700/50 transition-colors cursor-pointer"
-                       title="Retirer ce document"
-                     >
-                       <X className="w-3 h-3" />
-                     </button>
-                   )}
-                 </div>
-               ))}
+                 );
+               })}
             </div>
 
             {isTyping || isWaitingServer ? (
@@ -3850,10 +4001,20 @@ CONSIGNES STRICTES DE CONTINUATION :
                 <Square className="w-3.5 h-3.5 fill-current text-rose-400" />
                 <span>Arrêter</span>
               </button>
+            ) : isAnyFileProcessing ? (
+              <button
+                type="button"
+                disabled={true}
+                className="self-end px-3 py-2 font-semibold rounded-full flex items-center gap-1.5 transition-all shadow-md cursor-not-allowed shrink-0 bg-zinc-700/80 text-zinc-400 text-xs border border-zinc-600 select-none"
+                title="L'IA analyse le fichier... Veuillez patienter"
+              >
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-400" />
+                <span className="text-xs">Chargement...</span>
+              </button>
             ) : (
               <button
                 type="submit"
-                disabled={!inputValue.trim()}
+                disabled={!inputValue.trim() || isAnyFileProcessing}
                 className="self-end p-2.5 font-bold rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0 bg-[#70a5ff] hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-slate-950"
                 title="Envoyer"
               >

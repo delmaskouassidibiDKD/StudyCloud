@@ -55,6 +55,22 @@ export async function extractDocumentText(item: any): Promise<string> {
     }
   }
 
+  // 0. Si l'élément a déjà un dataUrl ou imageBase64 en mémoire
+  const directDataUrl = (item.imageBase64 && typeof item.imageBase64 === 'string') 
+    ? item.imageBase64 
+    : (typeof item.url === 'string' && item.url.startsWith('data:image/') ? item.url : null) 
+    || (typeof item.previewUrl === 'string' && item.previewUrl.startsWith('data:image/') ? item.previewUrl : null)
+    || (typeof item.base64 === 'string' ? (item.base64.startsWith('data:') ? item.base64 : `data:image/jpeg;base64,${item.base64}`) : null);
+
+  if (directDataUrl) {
+    if (typeof item === 'object') item.imageBase64 = directDataUrl;
+    if (cacheKey) imageBase64Cache.set(cacheKey, directDataUrl);
+    const imgDesc = `[Image haute résolution : "${item.name || 'Image'}" (transmise avec perception visuelle complète)]`;
+    if (cacheKey) textCache.set(cacheKey, imgDesc);
+    if (typeof item === 'object') item.textContent = imgDesc;
+    return imgDesc;
+  }
+
   // Si l'élément possède déjà un texte extrait de qualité
   if (item.textContent && typeof item.textContent === 'string' && item.textContent.trim().length > 30) {
     textCache.set(cacheKey, item.textContent.trim());
@@ -217,13 +233,27 @@ export async function extractDocumentText(item: any): Promise<string> {
     ) {
       let b64 = '';
       try {
-        const bytes = new Uint8Array(arrayBuffer);
-        let binary = '';
-        const len = bytes.byteLength;
-        for (let i = 0; i < len; i++) {
-          binary += String.fromCharCode(bytes[i]);
+        if (typeof Blob !== 'undefined' && typeof FileReader !== 'undefined') {
+          const blob = new Blob([arrayBuffer]);
+          b64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const res = reader.result as string;
+              resolve(res.split(',')[1] || '');
+            };
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(blob);
+          });
         }
-        b64 = window.btoa(binary);
+        if (!b64) {
+          const bytes = new Uint8Array(arrayBuffer);
+          let binary = '';
+          const chunkSize = 0x8000;
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any);
+          }
+          b64 = window.btoa(binary);
+        }
       } catch (bErr) {
         console.warn('[Extractor] Erreur conversion base64 image:', bErr);
       }
