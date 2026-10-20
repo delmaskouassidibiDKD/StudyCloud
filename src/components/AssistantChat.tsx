@@ -2111,9 +2111,11 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
         (activePreviewItem.name || '').toLowerCase().match(/\.(jpg|jpeg|png|webp)$/i) || activePreviewItem.type?.includes('image')
       ));
 
+      const refersToImageOrExercise = /(image|photo|exercice|question|sch[eé]ma|figure|page|feuille|document|tableau|nonc[eé]|sujet|r[eé]so|corr|calcul|formule)/i.test(userText);
+
       if (attachedImageBase64) {
         lastActiveImageBase64Ref.current = attachedImageBase64;
-      } else if (hasActiveImageDoc && lastActiveImageBase64Ref.current) {
+      } else if (lastActiveImageBase64Ref.current && (hasActiveImageDoc || refersToImageOrExercise || targetDocs.length === 0)) {
         attachedImageBase64 = lastActiveImageBase64Ref.current;
       }
 
@@ -2270,6 +2272,12 @@ ou
 > **Note :** Ta note de vigilance ici.
    Ils seront ainsi isolés dans un encadré distinct bleu ciel sans jamais se mélanger aux calculs.
 - DANS LES CRÉATIONS (Questionnaires, QCM, Cartes, Exercices) : Toute formule dans l'énoncé et dans CHAQUE option de réponse DOIT impérativement être entourée de dollars, par exemple : "$T(j\\omega) = \\dfrac{T_0}{1 + j\\dfrac{\\omega}{\\omega_0}}$".
+
+6.bis RÉSOLUTION COMPLÈTE ET DIRECTE DES EXERCICES SUR IMAGES ET DOCUMENTS (ANTI-SURVOL & ZÉRO FUITE D'OUTILS) :
+   - Quand l'étudiant demande de résoudre un exercice (qu'il provienne d'une image, d'un devoir ou d'un document) :
+     * IL EST STRICTEMENT INTERDIT de te contenter de lister des étapes théoriques ou d'expliquer la méthode de loin sans résoudre ("Étape 1 : poser la formule...").
+     * TU DOIS RÉSOUDRE EFFECTIVEMENT ET COMPLÈTEMENT CHAQUE QUESTION : énonce la formule, remplace par les vraies valeurs numériques de l'exercice, mène le calcul jusqu'au bout et encadre impérativement le résultat final avec unité : $$ \\boxed{\\text{Résultat avec unité}} $$.
+     * IL EST FORMELLEMENT INTERDIT de mentionner des termes techniques internes tels que "outil de vision", "expert vision", "rapport OCR", etc. Parle directement à l'étudiant comme un professeur qui a sa feuille d'exercice sous les yeux ("Sur ton image...", "Pour l'exercice 1 :", etc.).
 
 7. RÈGLE FONDAMENTALE DE DÉCISION — OBLIGATION D'UN SUJET D'ÉTUDE POUR TOUTE CRÉATION :
    - IL EST STRICTEMENT INTERDIT de concevoir ou créer un module d'apprentissage (QCM, carte mentale, résumé, devoir, flashcards, exercices, infographie, etc.) « DANS LE VIDE », sans sujet, sans cours, ou sans contexte !
@@ -2722,6 +2730,13 @@ CONSIGNES STRICTES DE CONTINUATION :
       setRetryingMessageId(null);
 
       let fullResponseText = aiResult.response || rawResponseText;
+      fullResponseText = fullResponseText
+        .replace(/(?:grâce à|via|selon|d'après|avec)\s+l'outil\s+de\s+vision/gi, "d'après votre document")
+        .replace(/l'outil\s+de\s+vision\s+(?:a\s+extrait|montre|indique|permet\s+de)/gi, "l'image montre")
+        .replace(/vous\s+pouvez\s+utiliser\s+l'outil\s+de\s+vision\s*(?:pour[^.\n]*)?[.]?/gi, "")
+        .replace(/l'outil\s+de\s+vision/gi, "l'image")
+        .replace(/expert\s+vision/gi, "l'analyse visuelle")
+        .replace(/rapport\s+(?:ocr|vision|d'extraction)/gi, "énoncé de l'exercice");
 
       // 6. L'IA CHEF D'ORCHESTRE AUTONOME : DÉCISION DE L'IA ENTRE CHAT ET CRÉATION
       const hasCreationClues = Boolean(

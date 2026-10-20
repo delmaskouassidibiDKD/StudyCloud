@@ -44,7 +44,7 @@ export async function callWhisperExpert(
         'Authorization': `Bearer ${cfToken}`,
         'Content-Type': 'application/octet-stream',
       },
-      body: bytes.buffer,
+      body: bytes as any,
     });
 
     // Tentative 2 : Si échec octet-stream, essai avec JSON { audio: [...] }
@@ -97,7 +97,8 @@ const visionOcrCache = new Map<string, string>();
 export async function callVisionExpert(
   imageBase64: string,
   cfToken: string,
-  accountId: string
+  accountId: string,
+  userPrompt?: string
 ): Promise<ExpertReport> {
   try {
     const rawB64 = imageBase64.includes('base64,')
@@ -113,28 +114,36 @@ export async function callVisionExpert(
       };
     }
 
+    const studentDemand = (userPrompt || '').trim();
+
     // Vérification du cache OCR en mémoire (pour les tours de conversation 2, 3...)
-    const cacheKey = `${rawB64.length}_${rawB64.slice(0, 80)}`;
+    const cacheKey = `${rawB64.length}_${rawB64.slice(0, 80)}_${studentDemand.slice(0, 40)}`;
     if (visionOcrCache.has(cacheKey)) {
       const cachedContent = visionOcrCache.get(cacheKey)!;
       return {
         expert: 'llama-vision',
         status: 'success',
-        summary: 'Image et exercice extraits par Llama 3.2 Vision (Cache instantané)',
+        summary: 'Image et exercice résolus par le modèle Vision (Cache instantané)',
         content: cachedContent,
       };
     }
 
-    const promptVision = `Tu es l'Expert Vision et Transcription OCR de l'équipe pédagogique StudyCloud.
-Analyse minutieusement cette image de cours, d'exercice ou de devoir :
-1. TRANSCRIPTION RIGUREUSE ET INTÉGRALE :
-   - Extrais tout le texte visible mot à mot, sans rien omettre.
-   - Transcris tous les chiffres, numéros de questions, énoncés et formules mathématiques en syntaxe LaTeX standard ($...$ pour les formules en ligne, $$...$$ pour les équations en bloc).
-2. DÉMARCHE ET CORRIGÉ PÉDAGOGIQUE COMPLET :
-   - Pour chaque question ou exercice présent sur l'image, fournis la résolution détaillée pas à pas.
-   - Explique chaque étape, théorème ou loi physique utilisé.
-3. SCHÉMAS, CIRCUITS ET DIAGRAMMES :
-   - Si l'image comporte un schéma, un graphique ou un circuit électronique, décris avec précision tous les composants, leurs valeurs, les liaisons et le comportement attendu.`;
+    const promptVision = `Tu es le professeur tuteur spécialiste en analyse d'images et résolution d'exercices de StudyCloud.
+CONSIGNE DIRECTE DE L'ÉTUDIANT : "${studentDemand || "Résous complètement l'exercice présent sur cette image."}"
+
+DIRECTIVES STRICTES ET OBLIGATOIRES :
+1. TRANSCRIPTION EXACTE DE L'ÉNONCÉ ET DES VALEURS :
+   - Extrais avec exactitude tout le texte, les numéros de questions, toutes les valeurs numériques avec leurs unités, et toutes les formules mathématiques en LaTeX standard ($...$ en ligne, $$...$$ en bloc).
+2. RÉSOLUTION COMPLÈTE ET CORRIGÉ DÉTAILLÉ (INTERDICTION DE SE LIMITER AUX ÉTAPES) :
+   - RÉSOUD COMPLÈTEMENT ET TOTALEMENT chaque question ou exercice présent sur l'image.
+   - Ne te contente JAMAIS de lister des étapes abstraites ou de donner des conseils généraux sans calculer !
+   - Pour chaque question :
+     * Rappelle la formule de départ.
+     * Pose l'application numérique avec TOUTES les valeurs de l'énoncé.
+     * Effectue le calcul mathématique/physique complet jusqu'à la valeur numérique finale.
+     * Encadre le résultat final avec \\boxed{...} et ses unités.
+3. SCHÉMAS, CIRCUITS ET FIGURES :
+   - Si l'image comporte un schéma ou circuit, décris fidèlement chaque composant, valeur et liaison.`;
 
     const runUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/meta/llama-3.2-11b-vision-instruct`;
 
@@ -147,7 +156,7 @@ Analyse minutieusement cette image de cours, d'exercice ou de devoir :
       body: JSON.stringify({
         prompt: promptVision,
         image: rawB64,
-        max_tokens: 3000,
+        max_tokens: 4096,
       }),
     });
 
@@ -167,7 +176,7 @@ Analyse minutieusement cette image de cours, d'exercice ou de devoir :
           body: JSON.stringify({
             prompt: promptVision,
             image: rawB64,
-            max_tokens: 3000,
+            max_tokens: 4096,
           }),
         });
       }
@@ -181,7 +190,7 @@ Analyse minutieusement cette image de cours, d'exercice ou de devoir :
         return {
           expert: 'llama-vision',
           status: 'success',
-          summary: 'Image et exercice décodés par Llama 3.2 Vision (100% Cloudflare)',
+          summary: 'Image et exercice résolus par le modèle Vision',
           content: runContent.trim(),
         };
       }

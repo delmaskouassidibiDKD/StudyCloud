@@ -917,6 +917,15 @@ export default {
         }
       }
 
+      // Nettoyage impératif de toute fuite d'outils internes (outil de vision, expert vision, rapport OCR, etc.)
+      cleaned = cleaned
+        .replace(/(?:grâce à|via|selon|d'après|avec)\s+l'outil\s+de\s+vision/gi, "d'après votre document")
+        .replace(/l'outil\s+de\s+vision\s+(?:a\s+extrait|montre|indique|permet\s+de)/gi, "l'image montre")
+        .replace(/vous\s+pouvez\s+utiliser\s+l'outil\s+de\s+vision\s*(?:pour[^.\n]*)?[.]?/gi, "")
+        .replace(/l'outil\s+de\s+vision/gi, "l'image")
+        .replace(/expert\s+vision/gi, "l'analyse visuelle")
+        .replace(/rapport\s+(?:ocr|vision|d'extraction)/gi, "énoncé de l'exercice");
+
       return cleaned;
     }
 
@@ -1035,10 +1044,24 @@ export default {
         const history = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
         const docContent = String(body.attachedFileContent || body.file_content || body.documentContent || "").trim();
         const docName = String(body.attachedFileName || body.file_name || "").trim();
-        const imageBase64 = String(body.imageBase64 || "").trim();
+        let imageBase64 = String(body.imageBase64 || "").trim();
         const audioBase64 = String(body.audioBase64 || "").trim();
         const videoBase64 = String(body.videoBase64 || "").trim();
         const videoUrl = String(body.videoUrl || "").trim();
+
+        // Récupération multi-tours de l'image si elle n'est pas ré-émise mais présente dans l'historique
+        if (!imageBase64 && Array.isArray(history)) {
+          for (let i = history.length - 1; i >= 0; i--) {
+            const h = history[i];
+            if (h && typeof h === "object") {
+              const candidate = h.imageBase64 || h.metadata?.imageBase64 || h.image || h.image_base64;
+              if (candidate && typeof candidate === "string" && candidate.length > 50) {
+                imageBase64 = candidate;
+                break;
+              }
+            }
+          }
+        }
 
         if (targetModel.includes("llama-3.3") && !targetModel.includes("fp8-fast")) {
           targetModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";

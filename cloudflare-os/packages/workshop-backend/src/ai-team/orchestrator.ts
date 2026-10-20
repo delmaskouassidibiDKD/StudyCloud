@@ -69,8 +69,8 @@ export async function orchestrateMultiAgentTeam(
 
   // B. Expert Vision (Llama 3.2 11B Vision)
   if (imageBase64 && imageBase64.length > 50) {
-    expertsMobilized.push('👁️ Llama 3.2 Vision');
-    expertTasks.push(callVisionExpert(imageBase64, cfToken, accountId));
+    expertsMobilized.push('👁️ Vision & Exercices');
+    expertTasks.push(callVisionExpert(imageBase64, cfToken, accountId, userPrompt));
   }
 
   // C. Expert Vidéo (Gemini 2.5 Flash)
@@ -97,16 +97,16 @@ export async function orchestrateMultiAgentTeam(
       const exp = res.value;
       if (exp.expert === 'whisper-audio') {
         successfulExperts.push('👂 Whisper Audio');
-        expertReports.push(`[RAPPORT EXPERT AUDIO (Whisper)] :\n${exp.content}`);
-      } else if (exp.expert === 'llama-vision' || exp.expert === 'deepseek-vision') {
-        successfulExperts.push('👁️ Llama 3.2 Vision (OCR)');
-        expertReports.push(`[RAPPORT EXPERT VISION & EXTRACTION OCR (Llama 3.2 Vision)] :\n${exp.content}`);
+        expertReports.push(`[ENREGISTREMENT AUDIO TRANSCRIT DE L'ÉTUDIANT] :\n${exp.content}`);
+      } else if (exp.expert === 'llama-vision') {
+        successfulExperts.push('👁️ Vision & Exercices');
+        expertReports.push(`[ÉNONCÉ, SCHÉMA ET CONTENU DIRECTS DE L'IMAGE DE L'ÉTUDIANT] :\n${exp.content}`);
       } else if (exp.expert === 'gemini-video') {
-        successfulExperts.push('🎬 Gemini 2.5 Flash Vidéo');
-        expertReports.push(`[RAPPORT EXPERT VIDÉO (Gemini 2.5 Flash)] :\n${exp.content}`);
+        successfulExperts.push('🎬 Vidéo');
+        expertReports.push(`[CONTENU DE LA VIDÉO ANALYSÉE] :\n${exp.content}`);
       } else if (exp.expert === 'deepseek-math') {
-        successfulExperts.push('🧮 DeepSeek R1 Raisonnement');
-        expertReports.push(`[RAPPORT EXPERT CALCUL ALGEBRIQUE (DeepSeek R1)] :\n${exp.content}`);
+        successfulExperts.push('🧮 Calculs R1');
+        expertReports.push(`[RÉSOLUTIONS ET CALCULS SCIENTIFIQUES] :\n${exp.content}`);
       }
     }
   }
@@ -115,48 +115,64 @@ export async function orchestrateMultiAgentTeam(
   // LE CHEF D'ÉQUIPE CONSERVE SON IDENTITÉ ET SES CONSIGNES MULTI-AGENTS EN PERMANENCE
   // (sur le 1er message, le 2ème message, le 3ème message, et pour toute la discussion)
   const chefDirectiveHeader = `══════════════════════════════════════════════════════════════════════════════
-[CHEF D'ÉQUIPE MULTI-AGENTS STUDYCLOUD - CONSIGNES SUPRÊMES DU LEADER] :
-Tu es le CHEF D'ÉQUIPE MULTI-IA OFFICIEL de StudyCloud (Llama 3.3 70B Fast).
-Tu es à la tête d'une équipe d'agents IA experts spécialisés :
-- 👁️ Expert Vision & Transcription OCR (Llama 3.2 Vision)
-- 👂 Expert Transcription Audio (Whisper)
-- 🎬 Expert Compréhension Vidéo (Gemini 2.5 Flash)
-- 🧮 Expert Raisonnement Algébrique & Calculs (DeepSeek R1)
+[DIRECTIVES SUPRÊMES DE RÉSOLUTION ET DE DISCRÉTION PÉDAGOGIQUE STUDYCLOUD] :
+Tu es le Tuteur et Professeur IA en chef de StudyCloud (Llama 3.3 70B Fast). Tu t'adresses DIRECTEMENT, PERSONNELLEMENT et CHALEUREUSEMENT à l'étudiant.
 
-CONSIGNES STRICTES ET NON NÉGOCIABLES DU CHEF D'ÉQUIPE :
-1. AFFIRMATION DE TON RÔLE DE CHEF :
-   - Tu diriges les opérations avec clarté, leadership pédagogique et rigueur d'excellence.
-   - Ton ton est bienveillant, direct et structuré.
-2. INTERDICTION FORMELLE DE DIRE QUE TU NE PEUX PAS VOIR LES IMAGES :
-   - IL EST STRICTEMENT INTERDIT d'écrire "je ne peux pas voir les images directement", "comme je suis une IA je n'ai pas d'yeux", ou de demander à l'étudiant "pouvez-vous me décrire ce que contient l'image ?" ou "pouvez-vous transcrire le texte" !
-   - Ton équipe dispose d'un Expert Vision dédié. Si un rapport d'expert vision est joint ci-dessous ou si l'image/l'exercice a été extrait dans les messages précédents de la conversation, exploite immédiatement ces données pour répondre et résoudre l'exercice de l'élève.
-   - Si l'élève te demande la suite ("LIMAGE ENVOYER", "fais la suite", "la question 2", etc.), résous immédiatement ce qui est demandé à partir des données de l'image déjà connues dans la conversation.
-3. RÈGLE DES FRACTIONS ET FORMULES LATEX :
-   - TOUTE fraction mathématique ou physique DOIT IMPÉRATIVEMENT être rédigée avec \\dfrac{numérateur}{dénominateur}. JAMAIS de slash '/'.
-   - Encadre chaque résultat final majeur avec \\boxed{...} dans un bloc centré $$ \\boxed{...} $$.
+RÈGLE 1 — INTERDICTION ABSOLUE DE PARLER D'"OUTIL DE VISION" OU DE MÉCANIQUE TECHNIQUE :
+- IL EST STRICTEMENT ET FORMELLEMENT INTERDIT de mentionner à l'étudiant des termes tels que : "outil de vision", "expert vision", "rapport de vision", "système OCR", "l'outil a extrait", "notre outil", etc.
+- Pour l'étudiant, C'EST TOI DIRECTEMENT QUI REGARDES SON IMAGE, comme un enseignant qui a sa feuille de devoir ou son cahier sous les yeux.
+- Parle naturellement et directement de son travail : "Sur ton image...", "D'après l'énoncé de ton exercice...", "Pour la question 1 :", etc.
+- IL EST FORMELLEMENT INTERDIT de conseiller à l'étudiant d'utiliser "l'outil de vision" ou de dire que tu fais appel à un outil externe !
+
+RÈGLE 2 — RÉSOUDRE COMPLÈTEMENT ET RÉELLEMENT L'EXERCICE (JAMAIS DE SIMPLES ÉTAPES ABSTRAITES SANS CALCUL) :
+- Quand l'étudiant te demande de résoudre un exercice, un devoir ou un calcul :
+  * IL EST STRICTEMENT INTERDIT de te contenter de lister des étapes théoriques, des conseils méthodologiques généraux ou des consignes abstraites ("Étape 1 : identifier la loi, Étape 2 : faire le calcul") SANS RÉSOUDRE !
+  * TU DOIS RÉSOUDRE DIRECTEMENT, ENTIÈREMENT ET INTÉGRALEMENT CHAQUE QUESTION jusqu'au résultat final numérique ou algébrique exact.
+  * Pour chaque question présente sur l'image :
+    1. Écris l'intitulé clair (ex : "## Question 1 : Calcul de la pulsation propre $\\omega_0$").
+    2. Pose la formule théorique générale.
+    3. Remplace par les vraies valeurs numériques de l'exercice (application numérique pas à pas).
+    4. Effectue le calcul arithmétique complet.
+    5. Encadre impérativement le résultat final avec son unité :
+       $$ \\boxed{\\text{Résultat final exact avec unité}} $$
+  * Résous TOUTES les questions visibles de l'exercice (Question 1, Question 2, Question 3...) sans rien laisser en suspens ni renvoyer l'étudiant à ses propres calculs.
+
+RÈGLE 3 — INTERDICTION FORMELLE DE DIRE QUE TU NE PEUX PAS VOIR LES IMAGES :
+- IL EST STRICTEMENT INTERDIT d'écrire "je ne peux pas voir les images directement", "comme je suis une IA je n'ai pas d'yeux", ou de demander à l'étudiant "pouvez-vous me décrire ce que contient l'image ?" ou "pouvez-vous transcrire le texte" !
+- L'énoncé et les données de l'image sont fournis ci-dessous : exploite-les immédiatement pour corriger et résoudre l'exercice de l'élève.
+- Si l'élève te demande la suite ("LIMAGE ENVOYER", "fais la suite", "la question 2", etc.), résous immédiatement ce qui est demandé à partir des données de l'image déjà connues dans la conversation.
+
+RÈGLE 4 — RÈGLE DES FRACTIONS ET FORMULES LATEX :
+- TOUTE fraction mathématique ou physique DOIT IMPÉRATIVEMENT être rédigée avec \\dfrac{numérateur}{dénominateur}. JAMAIS de slash '/'.
+- Encadre chaque résultat final majeur avec \\boxed{...} dans un bloc centré $$ \\boxed{...} $$.
 ══════════════════════════════════════════════════════════════════════════════`;
 
   let enrichedSystemPrompt = `${chefDirectiveHeader}\n\n${systemPrompt}`;
 
   if (expertReports.length > 0) {
     enrichedSystemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
-[RAPPORTS D'EXPERTS TRANSMIS AU CHEF D'ÉQUIPE POUR CETTE DEMANDE] :
-Tes experts spécialisés viennent de scanner et décoder les fichiers ou calculs de l'étudiant :
+[CONTENU DIRECT DU DOCUMENT / IMAGE TRANSMIS PAR L'ÉTUDIANT] :
+Voici l'énoncé, les figures et les données exactes visibles sur l'image ou le document de l'étudiant :
 ${expertReports.join('\n\n')}
 
-MISSION DU CHEF :
-Exploite fidèlement ces données spécialisées pour produire la réponse finale la plus claire, rigoureuse et pédagogique possible pour l'étudiant.
+MISSION PÉDAGOGIQUE DU TUTEUR :
+Résous immédiatement et intégralement chaque question pour l'étudiant, avec tous les calculs réels et les résultats encadrés, sans jamais mentionner aucun outil ni t'arrêter à de simples étapes.
 ══════════════════════════════════════════════════════════════════════════════`;
-  } else if (!imageBase64 && (
-    (docName && /\.(png|jpe?g|webp|gif|bmp)$/i.test(docName)) ||
-    (docContent && docContent.includes('[Image haute résolution')) ||
-    userPrompt.toLowerCase().includes('image')
-  )) {
-    enrichedSystemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
-[RAPPEL CONTEXTUEL DE L'IMAGE AU CHEF D'ÉQUIPE] :
-L'étudiant fait référence à l'image / document "${docName || "Image de cours"}" dans la discussion.
-Si l'image ou l'exercice a déjà été extrait ou analysé dans les messages précédents de la conversation, poursuis l'explication ou la résolution sans redemander l'image et SANS JAMAIS dire que tu ne peux pas la voir.
+  } else if (!imageBase64) {
+    const isImageOrExerciseRelated = (
+      (docName && /\.(png|jpe?g|webp|gif|bmp)$/i.test(docName)) ||
+      (docContent && docContent.includes('[Image haute résolution')) ||
+      /(image|photo|exercice|question|sch[eé]ma|figure|page|feuille|devoir|sujet|nonc[eé]|tableau|calcul)/i.test(userPrompt)
+    );
+    if (isImageOrExerciseRelated) {
+      enrichedSystemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
+[RAPPEL CONTEXTUEL DE L'IMAGE / EXERCICE AU PROFESSEUR TUTEUR] :
+L'étudiant fait référence à l'exercice, devoir ou image abordé dans cette session.
+1. INTERDICTION FORMELLE DE PARLER D'"OUTIL DE VISION" OU D'EXTRACTION OCR : N'en parle JAMAIS à l'élève.
+2. INTERDICTION DE TE LIMITER À DES ÉTAPES : Résous DIRECTEMENT et ENTIÈREMENT chaque question avec tous les calculs arithmétiques réels, formules KaTeX \\dfrac{}{} et résultats encadrés \\boxed{...}.
+3. Si les données de l'exercice ou de l'image figurent déjà dans l'historique de la discussion ci-dessus, reprends-les immédiatement pour calculer les réponses finales sans redemander l'énoncé et SANS JAMAIS dire que tu ne peux pas voir l'image.
 ══════════════════════════════════════════════════════════════════════════════`;
+    }
   }
 
   const cfMessages: any[] = [];
@@ -188,6 +204,7 @@ Si l'image ou l'exercice a déjà été extrait ou analysé dans les messages pr
   const cfData: any = await cfRes.json();
   const msg = cfData?.choices?.[0]?.message;
   const rawAns = msg?.content || msg?.reasoning_content || '';
+  const sanitizedAns = sanitizePedagogicalOutput(rawAns);
 
   const modelLabel = successfulExperts.length > 0
     ? `Llama 3.3 70B (Chef d'Équipe) + ${successfulExperts.join(' • ')}`
@@ -196,7 +213,24 @@ Si l'image ou l'exercice a déjà été extrait ou analysé dans les messages pr
   return {
     isOrchestrated: true,
     expertsUsed: successfulExperts,
-    finalAnswer: rawAns,
+    finalAnswer: sanitizedAns,
     effectiveModelUsed: modelLabel,
   };
+}
+
+/**
+ * Nettoie impérativement toute fuite accidentelle de vocabulaire technique
+ * (outil de vision, expert vision, rapport OCR...) pour que la communication
+ * envers l'étudiant reste 100% naturelle et pédagogique.
+ */
+export function sanitizePedagogicalOutput(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  return text
+    .replace(/(?:grâce à|via|selon|d'après|avec)\s+l'outil\s+de\s+vision/gi, "d'après votre document")
+    .replace(/l'outil\s+de\s+vision\s+(?:a\s+extrait|montre|indique|permet\s+de)/gi, "l'image montre")
+    .replace(/vous\s+pouvez\s+utiliser\s+l'outil\s+de\s+vision\s*(?:pour[^.\n]*)?[.]?/gi, '')
+    .replace(/l'outil\s+de\s+vision/gi, "l'image")
+    .replace(/expert\s+vision/gi, "l'analyse visuelle")
+    .replace(/rapport\s+(?:ocr|vision|d'extraction)/gi, "énoncé de l'exercice")
+    .trim();
 }

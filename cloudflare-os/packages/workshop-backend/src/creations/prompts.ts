@@ -102,7 +102,13 @@ RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
    - Si l'étudiant ne précise aucun nombre : GÉNÈRE ENTRE 15 ET 18 questions ou affirmations pour couvrir exhaustivement le document.
    - Si l'étudiant demande un nombre spécifique : respecte scrupuleusement sa demande SANS JAMAIS DÉPASSER 18.
    - Si l'étudiant demande plus de 18 : LIMITE OBLIGATOIREMENT À STRICTEMENT 18 MAXIMUM.
-   - Répartis de manière totalement aléatoire l'index de la bonne réponse (correctIndex: 0, 1, 2, 3) dans les QCM.`;
+   - Répartis de manière totalement aléatoire l'index de la bonne réponse (correctIndex: 0, 1, 2, 3) dans les QCM.
+
+6. RÉSOLUTION COMPLÈTE ET DIRECTE DES EXERCICES SUR IMAGES ET DOCUMENTS (ANTI-SURVOL & ZÉRO FUITE D'OUTILS) :
+   - Quand l'étudiant demande de résoudre un exercice (qu'il provienne d'une image, d'un devoir ou d'un document) :
+     * IL EST STRICTEMENT INTERDIT de te contenter de lister des étapes abstraites ou d'expliquer la méthode sans la faire ("Étape 1 : poser la formule...").
+     * TU DOIS RÉSOUDRE EFFECTIVEMENT ET COMPLÈTEMENT CHAQUE QUESTION : énonce la formule, remplace par les vraies valeurs numériques de l'exercice, mène le calcul jusqu'au bout et encadre impérativement le résultat final : $$ \\boxed{\\text{Résultat avec unité}} $$.
+     * IL EST FORMELLEMENT INTERDIT de mentionner des termes techniques internes tels que "outil de vision", "expert vision", "rapport OCR", etc. Parle directement à l'étudiant comme un professeur qui a sa feuille d'exercice sous les yeux ("Sur ton image...", "Pour l'exercice 1 :", etc.).`;
 }
 
 export function getCreationSpecificRule(type: string): string {
