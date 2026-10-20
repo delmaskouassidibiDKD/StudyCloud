@@ -306,6 +306,10 @@ export async function sendChatMessageToAi(params: {
     attachedFileName: extractedDocName,
     file_name: extractedDocName,
     fileName: extractedDocName,
+    imageBase64: params.imageBase64,
+    audioBase64: params.audioBase64,
+    videoBase64: params.videoBase64,
+    videoUrl: params.videoUrl,
   };
 
   // Appel vers le Neurone d'Agent StudyCloud (Durable Objects & Llama 70B) :

@@ -250,14 +250,36 @@ export async function extractDocumentText(item: any): Promise<string> {
       return audioDesc;
     }
 
-    // Cas 6 : Fichiers Vidéo
+    // Cas 6 : Fichiers Vidéo (MP4, WebM, MOV) -> Encodage pour l'Expert Vidéo Gemini 2.5 Flash
     if (
       fileName.endsWith('.mp4') ||
       fileName.endsWith('.webm') ||
       fileName.endsWith('.mov') ||
       item.type?.includes('video')
     ) {
-      const vidDesc = `[Fichier Vidéo d'apprentissage joint : "${item.name || 'Vidéo'}"]`;
+      let b64 = '';
+      if (arrayBuffer.byteLength <= 25 * 1024 * 1024) {
+        try {
+          const bytes = new Uint8Array(arrayBuffer);
+          let binary = '';
+          const len = bytes.byteLength;
+          for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          b64 = window.btoa(binary);
+        } catch (bErr) {
+          console.warn('[Extractor] Erreur conversion base64 video:', bErr);
+        }
+      }
+
+      if (b64 && typeof item === 'object') {
+        item.videoBase64 = b64;
+      }
+      if (targetUrl && typeof item === 'object') {
+        item.videoUrl = targetUrl;
+      }
+
+      const vidDesc = `[Fichier Vidéo d'apprentissage joint : "${item.name || 'Vidéo'}" (transmis à l'Expert Vidéo Gemini 2.5 Flash)]`;
       if (cacheKey) textCache.set(cacheKey, vidDesc);
       if (typeof item === 'object') item.textContent = vidDesc;
       return vidDesc;

@@ -1236,6 +1236,20 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     return [];
   };
 
+  // Vérifie si le modèle est le Chef d'équipe désigné (Llama 3.3 70B) doté de capacités multi-agents
+  const isChefModelId = (id?: string): boolean => {
+    if (!id) return true;
+    const m = id.toLowerCase();
+    return (
+      m.includes('llama-3.3') ||
+      m.includes('llama') ||
+      m === 'default' ||
+      m.includes('chef') ||
+      m.includes('multi-ia') ||
+      m.includes('multi-agent')
+    );
+  };
+
   // Modèles IA actifs uniquement (aucun modèle désactivé n'apparaît même brièvement)
   const [availableModels, setAvailableModels] = useState<Array<{ id: string; name: string; nickname?: string; rawName?: string; provider: string; model_id?: string }>>(() => getCachedActiveModels());
   const [isModelsLoading, setIsModelsLoading] = useState<boolean>(() => getCachedActiveModels().length === 0);
@@ -1331,9 +1345,12 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       if (found.nickname && found.nickname.trim() !== '') {
         return stripWorkerAi(found.nickname);
       }
+      if (isChefModelId(found.id || found.model_id)) {
+        return 'Llama 3.3 (Chef Multi-IA)';
+      }
       return stripWorkerAi(found.name).replace(/Instruct/i, '').replace(/Google /i, '').trim();
     }
-    if (selectedModel.includes('llama')) return 'Llama 3.3 70B';
+    if (isChefModelId(selectedModel)) return 'Llama 3.3 (Chef Multi-IA)';
     if (selectedModel.includes('gemini')) return 'Gemini Flash';
     if (selectedModel.includes('deepseek')) return 'DeepSeek R1';
     if (selectedModel.includes('kimi')) return 'Kimi K2.7 Code';
@@ -2079,6 +2096,8 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
       const mainDocName = docChoice.targetedDoc ? (docChoice.targetedDoc.name || docChoice.targetedDoc.title) : (docNames[0] || activePreviewItem?.name || 'Document d\'étude');
       const attachedImageBase64 = targetDocs.find(d => d.imageBase64)?.imageBase64 || activePreviewItem?.imageBase64 || '';
       const attachedAudioBase64 = targetDocs.find(d => d.audioBase64)?.audioBase64 || activePreviewItem?.audioBase64 || '';
+      const attachedVideoBase64 = targetDocs.find(d => d.videoBase64)?.videoBase64 || activePreviewItem?.videoBase64 || '';
+      const attachedVideoUrl = targetDocs.find(d => d.videoUrl)?.videoUrl || activePreviewItem?.videoUrl || '';
 
       // Sauvegarde immédiate Cloudflare D1 du message utilisateur
       StudyCloudAPI.saveAiMessage({
@@ -2650,6 +2669,8 @@ CONSIGNES STRICTES DE CONTINUATION :
         fileName: isContinuation ? undefined : attachedFileName,
         imageBase64: isContinuation ? undefined : (attachedImageBase64 || undefined),
         audioBase64: isContinuation ? undefined : (attachedAudioBase64 || undefined),
+        videoBase64: isContinuation ? undefined : (attachedVideoBase64 || undefined),
+        videoUrl: isContinuation ? undefined : (attachedVideoUrl || undefined),
         signal: abortSignal,
         abortSignal,
       });
@@ -3224,18 +3245,24 @@ CONSIGNES STRICTES DE CONTINUATION :
               type="button"
               onClick={() => setIsModelDropdownOpen(prev => !prev)}
               className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white active:scale-95 shrink-0 shadow-xs"
-              title="Changer de modèle IA"
+              title={isChefModelId(selectedModel) ? "Chef Multi-IA (Orchestre l'équipe : Audio, Vision, Vidéo, Maths)" : "Modèle individuel autonome"}
             >
-              <span className="max-w-[110px] sm:max-w-[140px] truncate">{currentModelDisplay}</span>
+              {isChefModelId(selectedModel) && (
+                <span className="text-[10px] px-1 py-0.2 rounded-full bg-orange-500/20 text-orange-400 font-extrabold border border-orange-500/30 flex items-center shrink-0">
+                  👑
+                </span>
+              )}
+              <span className="max-w-[110px] sm:max-w-[150px] truncate">{currentModelDisplay}</span>
               <ChevronDown className={`w-3 h-3 text-zinc-400 transition-transform ${isModelDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {isModelDropdownOpen && (
-              <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-60 sm:w-68 bg-[#181a20] border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-50 animate-fadeIn backdrop-blur-md">
-                <div className="px-3 py-1.5 border-b border-zinc-800/80 text-[10px] font-black text-zinc-400 uppercase tracking-wider">
+              <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-72 sm:w-80 bg-[#181a20] border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-50 animate-fadeIn backdrop-blur-md">
+                <div className="px-3 py-1.5 border-b border-zinc-800/80 text-[10px] font-black text-zinc-400 uppercase tracking-wider flex items-center justify-between">
                   <span>Modèles IA</span>
+                  <span className="text-[9px] text-zinc-500 font-normal">Espace d'étude</span>
                 </div>
-                <div className="max-h-64 overflow-y-auto py-1">
+                <div className="max-h-72 overflow-y-auto py-1">
                   {isModelsLoading && availableModels.length === 0 ? (
                     <div className="px-3 py-3 text-center text-xs text-zinc-400 flex items-center justify-center gap-2">
                       <div className="w-3 h-3 rounded-full border-2 border-orange-500 border-t-transparent animate-spin" />
@@ -3247,11 +3274,15 @@ CONSIGNES STRICTES DE CONTINUATION :
                     </div>
                   ) : (
                     availableModels.map((m) => {
+                      const modelIdStr = m.id || m.model_id || '';
                       const isSelected = selectedModel === m.id || selectedModel === m.model_id;
+                      const isChef = isChefModelId(modelIdStr);
                       const providerColor =
                         m.provider === 'google' ? 'bg-blue-400' :
                         m.provider === 'cloudflare' ? 'bg-orange-400' :
                         m.provider === 'anthropic' ? 'bg-amber-400' : 'bg-emerald-400';
+                      const displayName = stripWorkerAi(m.nickname || m.name || m.model_id || m.id);
+
                       return (
                         <button
                           key={m.id || m.model_id}
@@ -3260,15 +3291,39 @@ CONSIGNES STRICTES DE CONTINUATION :
                             setSelectedModel(m.id || m.model_id);
                             setIsModelDropdownOpen(false);
                           }}
-                          className={`w-full flex items-center justify-between px-3 py-2 text-left text-xs transition-colors cursor-pointer ${
+                          className={`w-full flex flex-col gap-1 px-3 py-2 text-left text-xs transition-colors cursor-pointer border-b border-zinc-800/40 last:border-b-0 ${
                             isSelected ? 'bg-orange-500/15 text-orange-400 font-bold' : 'text-zinc-300 hover:bg-zinc-800/80 hover:text-white'
                           }`}
                         >
-                          <div className="flex items-center gap-2 truncate pr-2">
-                            <span className={`w-2 h-2 rounded-full shrink-0 ${providerColor}`} />
-                            <span className="truncate">{stripWorkerAi(m.nickname || m.name || m.model_id || m.id)}</span>
+                          <div className="w-full flex items-center justify-between">
+                            <div className="flex items-center gap-2 truncate pr-2">
+                              <span className={`w-2 h-2 rounded-full shrink-0 ${providerColor}`} />
+                              <span className="truncate font-semibold">{displayName}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {isChef ? (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-orange-500/25 text-orange-300 font-extrabold border border-orange-500/40 flex items-center gap-0.5 shadow-xs">
+                                  👑 Chef Multi-IA
+                                </span>
+                              ) : (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 font-medium border border-zinc-700">
+                                  Solo
+                                </span>
+                              )}
+                              {isSelected && <Check className="w-3.5 h-3.5 text-orange-400 shrink-0 ml-0.5" />}
+                            </div>
                           </div>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
+                          <div className="text-[10px] pl-4 font-normal">
+                            {isChef ? (
+                              <span className="text-orange-400/80">
+                                Orchestre : Audio Whisper • Vision Llama • Vidéo Gemini • Maths R1
+                              </span>
+                            ) : (
+                              <span className="text-zinc-500">
+                                Modèle autonome individuel (utilisé seul)
+                              </span>
+                            )}
+                          </div>
                         </button>
                       );
                     })
@@ -3406,6 +3461,11 @@ CONSIGNES STRICTES DE CONTINUATION :
               <span className="text-[11px] font-semibold text-zinc-300 tracking-wide">
                 {currentModelDisplay}
               </span>
+              {isChefModelId(selectedModel) && (
+                <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-orange-500/25 text-orange-300 font-extrabold border border-orange-500/40">
+                  👑 Chef Multi-IA
+                </span>
+              )}
             </div>
 
             {/* Titre spontané et fluide envoyé en temps réel par l'IA */}
@@ -3452,9 +3512,14 @@ CONSIGNES STRICTES DE CONTINUATION :
                       <span className="text-xs font-bold text-orange-500/90 tracking-wide uppercase">Assistant StudyCloud</span>
                       {(msg.model || currentModelDisplay) && (
                         <span 
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800/95 border border-zinc-700 text-[10px] font-bold text-orange-400 shadow-xs"
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold shadow-xs ${
+                            isChefModelId(msg.model || selectedModel)
+                              ? 'bg-orange-500/15 border-orange-500/30 text-orange-300'
+                              : 'bg-zinc-800/95 border-zinc-700 text-zinc-300'
+                          }`}
                           title={`Modèle ayant généré cette réponse : ${stripWorkerAi(msg.model || currentModelDisplay)}`}
                         >
+                          {isChefModelId(msg.model || selectedModel) && <span className="text-[10px]">👑</span>}
                           <span>{stripWorkerAi(msg.model || currentModelDisplay)}</span>
                         </span>
                       )}

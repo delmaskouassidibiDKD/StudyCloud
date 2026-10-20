@@ -34,6 +34,10 @@ import { serveSiteLogo, SITE_LOGO_PATH } from "./site-logo.js";
 import { createWorkshopLogger } from "./observability";
 import { retryOnDoReset, wrapDoStubForTelemetry } from "./do-retry";
 
+import { getBasePedagogicalRules, getCreationSpecificRule } from "./creations/prompts.js";
+import { validateAndFormatCreation } from "./creations/validator.js";
+import { isChefModel, orchestrateMultiAgentTeam } from "./ai-team/orchestrator.js";
+
 const logger = createWorkshopLogger("workshop.server");
 
 // Set once we've asked the AdminSettings DO to install the bundled blueprints (see the
@@ -1011,14 +1015,18 @@ export default {
       try {
         const body: any = await req.json().catch(() => ({}));
         const userPrompt = String(body.message || body.prompt || "").trim();
-        let targetModel = String(body.model || body.requested_model || "gemini-3.8-flash").trim();
+        let targetModel = String(body.model || body.requested_model || "@cf/meta/llama-3.3-70b-instruct-fp8-fast").trim();
         const history = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
         const docContent = String(body.attachedFileContent || body.file_content || body.documentContent || "").trim();
         const docName = String(body.attachedFileName || body.file_name || "").trim();
+        const imageBase64 = String(body.imageBase64 || "").trim();
+        const audioBase64 = String(body.audioBase64 || "").trim();
+        const videoBase64 = String(body.videoBase64 || "").trim();
+        const videoUrl = String(body.videoUrl || "").trim();
 
         if (targetModel.includes("llama-3.3") && !targetModel.includes("fp8-fast")) {
           targetModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-        } else if (targetModel.includes("gemini") && !targetModel.includes("3.8")) {
+        } else if (targetModel.includes("gemini") && !targetModel.includes("3.8") && !targetModel.includes("2.5")) {
           targetModel = "gemini-3.8-flash";
         } else if (targetModel.includes("claude-3-5")) {
           targetModel = "claude-sonnet-4-5";
@@ -1027,344 +1035,7 @@ export default {
         const rawApiKey = String(body.apiKey || body.apiToken || "").trim();
         const leakedKey = ["AIzaSyDKct", "AYvG5MuOLsrGGe", "NAVg-OgdIkmu85s"].join("");
         const hasValidUserGeminiKey = rawApiKey.startsWith("AIzaSy") && rawApiKey !== leakedKey && rawApiKey.length > 25;
-
-        // Système autonome cognitif : C'est l'IA qui décide selon la causerie si elle discute ou si elle crée un module
-        let systemPrompt = `Tu es Delmas IA, l'intelligence pédagogique centrale et autonome de StudyCloud (Robot Rouge).
-Tu es directement connectée à l'espace d'étude et à l'espace de création interactif de l'étudiant.
-Tu analyses l'ensemble de la causerie, du dialogue et du contexte pour déterminer en toute autonomie et intelligence le mode d'action et la forme de restitution les plus adaptés :
-
-1. BRANCHE DISCUSSION NATURELLE DANS LE CHAT (Mode par défaut) :
-Si l'étudiant discute, échange, pose une question de cours, demande des explications, une formule, une méthode, une démonstration, ou échange de manière générale :
--> Tu réponds DIRECTEMENT ET NATURELLEMENT DANS LE CHAT en français fluide, structuré et bienveillant (titres, listes à puces, clarté).
--> Formules mathématiques et scientifiques rédigées en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc).
--> RÈGLE ABSOLUE : N'inclus STRICTEMENT AUCUN objet JSON dans cette réponse. Parle directement à l'étudiant.
-
-2. BRANCHE CRÉATION AUTONOME D'UN MODULE D'APPRENTISSAGE (Espace Création à droite) :
-Si tu juges, au vu de la causerie ou de la demande de l'étudiant, qu'il a besoin d'un support interactif complet (s'entraîner, tester ses acquis, mémoriser, synthétiser ou structurer son cours) :
-C'EST TOI, L'IA, QUI DÉCIDES DU DESIGN ET DU TYPE DE MODULE LE PLUS ADAPTÉ :
-- 'questionnaire' : Quiz interactif à choix multiples (QCM) (questions avec choices A/B/C/D, correct, explanation).
-- 'carte-mentale' : Mindmap visuelle arborescente (thème central root, main branches, sub-branches).
-- 'carte-memoire' : Flashcards interactives de mémorisation (recto: notion/question, verso: synthèse/réponse).
-- 'resume' : Fiche de synthèse structurée (overview, key_points, definitions, rules).
-- 'vrai-ou-faux' : Test interactif Vrai ou Faux avec justifications pédagogiques.
-- 'exercices-ecrits' : Série d'exercices d'application avec énoncés et corrigés pas-à-pas.
-- 'devoir-complet' : Sujet d'évaluation complet avec barème et parties détaillées.
-- 'infographie' : Fiche visuelle synthétique avec chiffres clés, étapes et repères.
-- 'pdf' : Polycopié de cours exhaustif avec sections et contenus structurés.
-
-- 'carte-mentale-2' : Carte Conceptuelle structurée en colonnes / piliers avec blocs hiérarchiques et formules LaTeX.
-
-RÈGLE ABSOLUE DE SORTIE (STRICTE) POUR LES CRÉATIONS :
-- NE RÉPONDS JAMAIS EN AFFICHANT DU CODE JSON BRUT DANS LE CHAT TEXTUEL DESTINÉ À L'HUMAIN.
-- Ta réponse DOIT ÊTRE UNIQUEMENT l'objet JSON strict, commençant par \`\`\`json et se terminant par \`\`\`. AUCUN texte narratif avant ou après le bloc JSON.
-- Le champ "chat_response" doit être une courte phrase amicale et humaine pour le chat (ex: "Voici votre carte mentale conceptuelle structurée dans l'espace Création !").
-- Toutes les données techniques, branches, questions ou formules se trouvent EXCLUSIVEMENT dans le champ "creation_data".
-
-DANS CE CAS DE CRÉATION EXCLUSIVEMENT :
-Tu produis OBLIGATOIREMENT ET UNIQUEMENT une réponse sous forme d'objet JSON strict :
-\`\`\`json
-{
-  "decision": "creation",
-  "mode": "creation",
-  "creation_type": "questionnaire" | "carte-mentale" | "carte-mentale-2" | "carte-memoire" | "resume" | "vrai-ou-faux" | "exercices-ecrits" | "devoir-complet" | "infographie" | "pdf",
-  "creation_title": "Titre explicite et valorisant du module créé",
-  "chat_response": "Un message amical et court d'une seule phrase pour le chat (ex: J'ai conçu votre carte conceptuelle dans l'espace Création à droite !)",
-  "creation_data": {
-    // Les données exhaustives et complètes adaptées au module choisi
-  }
-}
-\`\`\`
-RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
-0. LANGUE FRANÇAISE STRICTE ET ZÉRO MONOLOGUE INTERNE (ANTI-SCRATCHPAD) :
-   - TU RÉPONDS EXCLUSIVEMENT ET TOTALEMENT EN FRANÇAIS SOIGNÉ, CLAIR ET PÉDAGOGIQUE.
-   - IL EST STRICTEMENT INTERDIT D'ÉCRIRE EN ANGLAIS ET D'AFFICHER UN MONOLOGUE DE RÉFLEXION INTERNE, DU BRAINSTORMING OU UN BROUILLON ('Let's think', 'Waitcheck', 'The figure caption text', 'Hmm', 'Actually', etc.).
-   - NE DIVAGUE PAS. DONNE DIRECTEMENT LA RÉPONSE PÉDAGOGIQUE COMPLÈTE ET STRUCTURÉE POUR L'ÉTUDIANT.
-   - AÈRE AU MAXIMUM : GRANDS TITRES (#, ##, ###), DOUBLES SAUTS DE LIGNE ENTRE CHAQUE ÉTAPE, ET FORMULES ISOLÉES EN BLOC $$ ... $$.
-
-1. INTERDICTION FORMELLE D'ÉCRIRE DES FRACTIONS AVEC LE SLASH '/' :
-   - IL EST STRICTEMENT INTERDIT d'écrire des fractions sous la forme a/b ou 1/√(LC) ou A0 = -R2/R1 ou (1/Q0)(p/w0).
-   - TOUTE fraction mathématique ou scientifique DOIT IMPÉRATIVEMENT être écrite sous forme de vraie fraction verticale avec \\dfrac{numérateur}{dénominateur} :
-     * Le numérateur en haut,
-     * La barre horizontale nette au milieu,
-     * Le dénominateur en bas.
-   - Exemples obligatoires :
-     * JAMAIS : w0 = 1/√(LC)  --> TOUJOURS : $$ \\omega_0 = \\dfrac{1}{\\sqrt{LC}} $$
-     * JAMAIS : f0 = 1/(2π√(LC)) --> TOUJOURS : $$ f_0 = \\dfrac{1}{2\\pi \\sqrt{LC}} $$
-     * JAMAIS : Q0 = Lw0/R1 --> TOUJOURS : $$ Q_0 = \\dfrac{L\\omega_0}{R_1} = \\dfrac{1}{R_1 C \\omega_0} = \\dfrac{1}{R_1}\\sqrt{\\dfrac{L}{C}} $$
-     * JAMAIS : A0 = -R2/R1 --> TOUJOURS : $$ A_0 = -\\dfrac{R_2}{R_1} $$
-     * JAMAIS : T(p) = -R2 C p / [...] --> TOUJOURS : $$ T(p) = \\dfrac{-R_2 C p}{1 + \\dfrac{1}{Q_0}\\dfrac{p}{\\omega_0} + \\left(\\dfrac{p}{\\omega_0}\\right)^2} $$
-   - Utilise TOUJOURS les lettres grecques correctes : \\omega_0 (jamais w0), \\pi (jamais pi), \\tau, \\alpha, \\beta, \\Omega.
-
-2. STRUCTURE AÉRÉE, GRANDS TITRES ET COULEURS :
-   - Structure TOUJOURS ta réponse avec des grands titres clairs (# Grand Titre pour le sujet, ## Titre pour chaque question ou étape majeure, ### Sous-titre pour les sous-étapes).
-   - Sépare clairement chaque question ou étape de calcul (ex: ## Question 5 : Expressions canoniques de A₀, f₀, Q₀).
-   - Fais de VRAIS sauts de ligne doubles entre chaque paragraphe ou étape pour que le texte ne soit JAMAIS compacté ni groupé.
-   - Pour chaque formule majeure, écris-la isolée sur sa propre ligne entre doubles dollars $$ ... $$ pour qu'elle s'affiche en grand, centrée et aérée.
-   - Encadre systématiquement le résultat final de chaque question avec \\boxed{...} dans un bloc centré $$ \\boxed{...} $$.
-   - Souligne les concepts essentiels avec \\underline{...} ou du gras **...**.
-
-3. GESTION DES EXERCICES LONGS ET DÉCOUPAGE PÉDAGOGIQUE INTELLIGENT (ZÉRO COUPURE BRUTALE) :
-   - Tu dois TOUT FAIRE et résoudre le sujet avec une rigueur absolue.
-   - ATTENTION FORMELLE SUR LES CRÉATIONS DE MODULES :
-     Cette règle de découpage en cours d'explication s'applique UNIQUEMENT aux échanges libres et calculs dans le chat.
-     LORSQUE TU CRÉES UN MODULE PÉDAGOGIQUE ('creation_type': 'exercices-ecrits', 'devoir-complet', 'resume', 'pdf', 'questionnaire'), TU DOIS IMPÉRATIVEMENT GÉNÉRER L'INTÉGRALITÉ DES 8 À 10 QUESTIONS ET DU CONTENU EN UNE SEULE FOIS DANS L'OBJET JSON. IL EST STRICTEMENT INTERDIT DE TE COUPER OU DE DEMANDER DE POURSUIVRE LORS D'UNE CRÉATION DE MODULE.
-   - SI L'EXERCICE OU LA DÉMONSTRATION EST PARTICULIÈREMENT LONGUE OU DENSE (en mode discussion libre dans le chat) :
-     * Résous méthodiquement les étapes ou questions en cours jusqu'au bout, avec leurs résultats intermédiaires encadrés dans \\boxed{...}.
-     * NE TE COUPE JAMAIS EN PLEIN MILIEU d'une équation ou d'une phrase !
-     * Si une étape/question importante est achevée et que la suite risque d'être trop lourde ou volumineuse pour un seul message, ARRÊTE-TOI AU BON MOMENT à la fin de cette étape propre.
-     * Demande alors clairement à l'étudiant : "Voulez-vous que je poursuive avec la question suivante / la suite de la démonstration ?"
-   - SI L'ÉTUDIANT RÉPOND "OUI", "CONTINUE", OU DEMANDE LA SUITE :
-     * Enchaîne IMMÉDIATEMENT avec la suite exacte (les questions suivantes ou la seconde partie de la démonstration), sans répéter ce qui a déjà été expliqué.
-
-4. SCHÉMAS, CIRCUITS ET DESSINS VECTORIELS (DESSINER SI NÉCESSAIRE) :
-   - Si la résolution ou l'explication concerne un circuit électronique (ex: AOP, filtre RLC, quadripôle, pont diviseur), un repère géométrique, un signal ou un schéma bloc :
-     DESSINE-LE DIRECTEMENT sous forme de schéma vectoriel SVG propre et net dans un bloc de code \`\`\`svg ... \`\`\` :
-     * Utilise une balise <svg viewBox="0 0 550 250" xmlns="http://www.w3.org/2000/svg" className="w-full">
-     * Style moderne et sombre : fond sombre (#0d0f17) ou transparent, traits en orange (#f97316) ou cyan (#38bdf8), textes lisibles en blanc (#f3f4f6) avec font-size adaptée.
-     * Indique clairement les composants (Ve, Vs, R1, R2, C, L, noeuds, masse GND, entrées + et - de l'AOP).
-
-5. DÉCISION AUTONOME SUR LES QUESTIONS SUGGÉRÉES (PROPOSITIONS SOUS FORME DE CARTES BOUTONS) :
-   - À la fin d'un problème, exercice, démonstration ou situation, C'EST TOI L'IA QUI DÉCIDES AUTONOMEMENT s'il est pertinent de suggérer des questions de prolongement ou d'approfondissement à l'étudiant.
-   - Si tu juges pertinent d'en proposer (et uniquement quand la situation s'y prête bien), ajoute à la toute fin de ta réponse le bloc :
-[QUESTIONS_SUGGÉRÉES]
-- Question ou piste de calcul 1
-- Question ou piste de calcul 2
-- Question ou piste de calcul 3
-   Ces questions seront automatiquement transformées en boutons carrés cliquables pour l'étudiant. Si la situation ne nécessite aucun prolongement, ne mets pas ce bloc.
-
-6. STRUCTURATION STRICTE, ALINÉAS ET SÉPARATION DES COMMENTAIRES :
-   - NE CONFONDS JAMAIS les commentaires avec les calculs ou les explications théoriques !
-   - EXPLICATIONS : Rédige des phrases claires et aérées avec de grands titres (#, ##, ###).
-   - ALINÉAS : Pour les sous-questions ou sous-étapes, utilise systématiquement des alinéas avec 'a) ', 'b) ', 'c) ' ou '1) ', '2) ' pour que chaque étape soit bien indentée et aérée.
-   - CALCULS PURS : Isole chaque formule majeure dans un bloc centré $$ ... $$ avec \\dfrac{}{} et le résultat final encadré dans $$ \\boxed{...} $$.
-   - COMMENTAIRES ET REMARQUES : Mets TOUJOURS tes commentaires, observations physiques, astuces ou conseils sous la forme :
-> **Remarque :** Ton commentaire méthodologique ici.
-ou
-> **Note :** Ta note de vigilance ici.
-6.bis GESTION MULTI-DOCUMENTS & DEMANDES IMPRÉCISES :
-   - Si l'étudiant a joint plusieurs documents distincts et que sa demande est générale ou non ciblée sur un fichier précis :
-     -> Ne choisis pas un document au hasard et ne produis pas de création confuse à l'aveugle.
-     -> Présente brièvement les documents joints et demande-lui clairement dans le chat sur quel document ou quel chapitre il souhaite se concentrer, ou s'il préfère une synthèse globale croisée de l'ensemble des documents.
-     -> Termine OBLIGATOIREMENT par le bloc [QUESTIONS_SUGGÉRÉES] proposant chaque document en bouton cliquable direct.
-   - Si la demande est vague ou imprécise (ex: "fais un résumé", "aide-moi", "crée un qcm" sans précision du chapitre ou du sujet souhaité) :
-     -> Pose des questions de clarification pédagogiques et propose 3 à 4 options d'angles d'attaque claires sous [QUESTIONS_SUGGÉRÉES].
-
-7. RÈGLES STRICTES SUR LE NOMBRE ET LE FORMAT DES QUESTIONNAIRES ET VRAI OU FAUX (18 MAXIMUM) :
-- QUANTITÉ STRICTE DE QUESTIONS / AFFIRMATIONS :
-  * Si l'étudiant ne précise aucun nombre exact : GÉNÈRE LE MAXIMUM POSSIBLE pour couvrir exhaustivement le document ou le cours (entre 15 et 18 questions ou affirmations).
-  * Si l'étudiant demande un nombre spécifique : respecte scrupuleusement sa demande SANS JAMAIS DÉPASSER 18.
-  * Si l'étudiant demande plus de 18 (par exemple 20, 25, 30, 50, etc.) : TU DOIS OBLIGATOIREMENT LIMITER À STRICTEMENT 18 MAXIMUM. Ne crée JAMAIS plus de 18 items.
-  * Cette règle est ABSOLUE pour les questionnaires ('questionnaire', 'questionnaire-test') et pour les vrai ou faux ('vrai-ou-faux', 'vrai-ou-faux-test').
-- POSITION ALÉATOIRE DANS LES QCM ('questionnaire') : "correct_index" DOIT ÊTRE ALÉATOIREMENT DISTRIBUÉ (0, 1, 2, 3), ne place JAMAIS la bonne réponse toujours en première ou deuxième position.
-- DIVERSITÉ : Ne pose pas toujours les mêmes questions d'introduction. Explore tout le document, intègre des calculs chiffrés réels ($...$), des problèmes d'application et des cas limites.
-- FORMAT STRICT ET OBLIGATOIRE POUR VRAI OU FAUX ('vrai-ou-faux', 'vrai-ou-faux-test') :
-  * Équilibre rigoureusement environ 50% de VRAI et 50% de FAUX avec justifications approfondies.
-  * Structure JSON obligatoire dans 'creation_data' :
-    \`\`\`json
-    {
-      "affirmations": [
-        {
-          "id": 1,
-          "statement": "Énoncé précis de l'affirmation scientifique avec KaTeX ($...$)",
-          "is_true": true,
-          "explanation": "Justification pédagogique détaillée démontrant rigoureusement pourquoi c'est vrai ou faux."
-        }
-      ]
-    }
-    \`\`\`
-
-8. CONSIGNE UNIVERSELLE DE STRUCTURATION HIÉRARCHIQUE (CARTE MENTALE - 'carte-mentale' et 'carte-mentale-2') :
-Tu es le moteur de structuration pédagogique universel de l'application StudyCloud.
-Lorsque l'utilisateur te soumet un cours, un document ou un sujet (quel que soit le domaine : Droit, Sciences, Économie, Informatique, Médecine, Lettres, Gestion, etc.), tu dois OBLIGATOIREMENT construire une arborescence logique et équilibrée à 3 NIVEAUX MINIMUM (Niveau 0 -> Niveau 1 -> Niveau 2 -> Niveau 3).
-
-RÈGLE D'ADAPTATION AU CONTENU RÉEL DU DOCUMENT :
-- Analyse le sujet exact du document fourni par l'utilisateur.
-- NE JAMAIS inventer de sujets hors-sujet ni plaquer d'exemples d'un autre domaine. Les branches de Niveau 1 doivent être les VRAIS grands piliers thématiques du document fourni.
-
-INTERDICTION FORMELLE DE FAIRE UNE STRUCTURE À PLAT ("hérisson" de 20 ou 30 branches connectées au centre).
-IL EST STRICTEMENT INTERDIT de connecter directement plus de 4 à 6 branches principales au nœud central.
-
-STRUCTURE OBLIGATOIRE EN 4 PALIERS :
-- NIVEAU 0 (Racine) : Le Sujet Global du document uniquement (Titre du cours ou document fourni).
-- NIVEAU 1 (Branches Principales - Max 4 à 6 piliers) : Les 4 à 6 grands piliers thématiques ou parties majeures du document fourni.
-- NIVEAU 2 (Sous-branches par catégorie) : Les sous-thèmes, mécanismes, règles ou caractéristiques de chaque grand pilier.
-- NIVEAU 3 (Feuilles de détails) : Les expressions exactes, définitions précises, formules/articles ou valeurs concrètes.
-  Exemple générique de cheminement :
-  Niveau 0 ("Titre du Cours") -> Niveau 1 ("Grand Pilier 1") -> Niveau 2 ("Mécanisme / Condition") -> Niveau 3 ("Règle exacte / Formule / Définition")
-
-RÈGLE ABSOLUE POUR LES FORMULES (SI DOMAINE SCIENTIFIQUE) :
-- Si le sujet est scientifique ou mathématique, toutes les formules LaTeX doivent être valides, proprement échappées avec double antislash dans les chaînes JSON (ex: "$\\Delta U = R \\cdot I$", "$f_c = \\dfrac{1}{2\\pi RC}$").
-- Les formules se placent UNIQUEMENT dans les nœuds finaux de détails (Niveau 3), jamais mélangées en vrac au niveau 1.
-- Si le sujet est non scientifique (Droit, Histoire, Littérature, Gestion...), ne mets PAS de formules mathématiques : mets des articles, notions, dates ou critères juridiques/techniques.
-- CHAQUE NŒUD EST UN BLOC / BOÎTE FERMÉE ("type": "box").
-- PAS DE PHRASES NARRATIVES NI DE LONGS PARAGRAPHES : utilise des mots-clés courts et percutants.
-- INTERDICTION FORMELLE d'utiliser des placeholders vides ('Sous-notion 1', 'Branche 1') ou du Mermaid brut pour les cartes mentales.
-
-EXEMPLE STRICT DU SCHÉMA JSON HIÉRARCHIQUE DANS 'creation_data' :
-\`\`\`json
-{
-  "id": "root",
-  "label": "Titre du Document",
-  "type": "box",
-  "children": [
-    {
-      "id": "b1",
-      "label": "Grand Pilier Thématique 1",
-      "type": "box",
-      "children": [
-        {
-          "id": "b1-1",
-          "label": "Sous-Notion / Règle A",
-          "type": "box",
-          "children": [{ "id": "b1-1-1", "label": "Définition concise ou Critère essentiel", "type": "box" }]
-        },
-        {
-          "id": "b1-2",
-          "label": "Sous-Notion / Règle B",
-          "type": "box",
-          "children": [{ "id": "b1-2-1", "label": "Formule, Article de loi ou Principe clé", "type": "box" }]
-        }
-      ]
-    },
-    {
-      "id": "b2",
-      "label": "Grand Pilier Thématique 2",
-      "type": "box",
-      "children": [
-        {
-          "id": "b2-1",
-          "label": "Méthode ou Procédure",
-          "type": "box",
-          "children": [{ "id": "b2-1-1", "label": "Étape d'application ou Cas pratique", "type": "box" }]
-        }
-      ]
-    }
-  ]
-}
-\`\`\`
-`;
-
-        systemPrompt += `\n\n10. RÈGLE STRICTE ET ABSOLUE : FICHE DE RÉSUMÉ & SYNTHÈSE DU COURS ('resume') :
-Tu es le professeur expert et l'ingénieur pédagogique officiel de StudyCloud pour la Fiche de Résumé.
-Ton rôle est d'analyser en profondeur le document ou cours fourni pour concevoir une fiche de synthèse riche, technique, exhaustive et parfaitement structurée.
-
-RÈGLES DE GÉNÉRATION ABSOLUES :
-1. ANALYSE DU COURS ET RIGUEUR :
-   - Extrais et analyse précisément toutes les notions clés, définitions exactes, théorèmes, lois, formules canoniques, variables et unités réelles présentes dans le document.
-   - Si le document est scientifique/technique (ex: filtres électroniques, physique, maths), TOUTES les formules doivent être écrites avec KaTeX ($...$ ou $$...$$) en utilisant obligatoirement \\dfrac{numérateur}{dénominateur} (JAMAIS de slash / pour les fractions).
-2. CONTENU MASSIF ET STRUCTURÉ (AUCUN RÉSUMÉ COURT OU SUPERFICIEL) :
-   - 'overview' : 3 à 5 phrases denses expliquant la problématique du cours, les objectifs fondamentaux et la logique globale.
-   - 'key_definitions' : Au moins 5 à 8 définitions techniques et rigoureuses issues directement du cours avec concept, definition et objective.
-   - 'formulas' : Au moins 4 à 8 formules / lois majeures avec démonstration étape par étape ('demonstration_steps'), variables, unités, conditions d'application et pièges d'examen.
-   - 'comparison_table' : Un tableau comparatif complet ('headers' et 'rows') confrontant les différents types, régimes, méthodes ou cas d'application.
-   - 'traps_and_tips' : 4 à 6 pièges d'examen ('trap') et astuces méthodologiques ('tip') cruciaux.
-   - 'practical_example' : Un problème ou cas concret résolu étape par étape avec calculs détaillés.
-   - 'sections' : 2 à 4 grandes parties de cours approfondies avec sous-points.
-3. INTERDICTION FORMELLE DE COUPER OU DE BAVARDER :
-   - Tu NE DOIS EN AUCUN CAS couper ta réponse en demandant "Voulez-vous que je poursuive ?" ni afficher du bavardage ("J'ai conçu...").
-   - Tu génères l'intégralité de la fiche D'UN SEUL BLOC dans l'objet JSON strict 'creation_data'.
-4. FORMAT DE SORTIE OBLIGATOIRE DANS 'creation_data' :
-{
-  "title": "Titre explicite et valorisant du cours (ex: Fiche de Synthèse : Filtres Analogiques Actifs et Passifs)",
-  "theme": "Domaine précis (ex: Électronique Analogique / Traitement du Signal)",
-  "overview": "Synthèse globale approfondie du chapitre, problématiques résolues et enjeux clés...",
-  "key_definitions": [
-    {
-      "concept": "Nom exact de la notion",
-      "definition": "Définition scientifique, juridique ou technique rigoureuse...",
-      "objective": "Utilité et cas d'usage précis"
-    }
-  ],
-  "formulas": [
-    {
-      "name": "Intitulé précis de la relation ou loi",
-      "latex": "\\\\omega_0 = \\\\dfrac{1}{\\\\sqrt{LC}}",
-      "target_goal": "Objectif exact et calcul visé",
-      "variables": "Variables, unités et conditions",
-      "when_to_use": "Quand et comment appliquer cette règle",
-      "how_to_derive": "Principe de déduction algébrique",
-      "demonstration_steps": [
-        "1. Point de départ théorique...",
-        "2. Développement et substitution pas à pas...",
-        "3. Expression canonique finale encadrée"
-      ],
-      "exam_trap": "Erreur classique commise par les étudiants à l'examen"
-    }
-  ],
-  "comparison_table": {
-    "headers": ["Type / Catégorie", "Comportement", "Formule clé", "Points de vigilance"],
-    "rows": [
-      ["Élément A", "Rôle principal", "Formule ou critère", "Spécificité"],
-      ["Élément B", "Rôle principal", "Formule ou critère", "Spécificité"]
-    ]
-  },
-  "traps_and_tips": [
-    { "type": "trap", "title": "PIÈGE CLASSIQUE", "content": "Erreur fréquente des étudiants à ne pas commettre..." },
-    { "type": "tip", "title": "ASTUCE MÉTHODOLOGIQUE (NB)", "content": "Règle de méthode pour réussir l'examen ou l'exercice..." }
-  ],
-  "practical_example": {
-    "statement": "Énoncé complet d'un exercice d'application concrète extrait ou inspiré du document...",
-    "resolution_steps": [
-      "1. Analyse des données de départ...",
-      "2. Résolution pas à pas avec formules...",
-      "3. Conclusion et vérification du résultat"
-    ]
-  },
-  "sections": [
-    {
-      "heading": "I. Titre de la première grande partie",
-      "body": "Développement pédagogique approfondi...",
-      "points": ["Point clé 1", "Point clé 2"]
-    }
-  ]
-}
-`;
-
-        systemPrompt += `\n\n11. RÈGLE STRICTE ET ABSOLUE : SÉRIE D'EXERCICES ÉCRITS D'APPLICATION ('exercices-ecrits') :
-Tu es le moteur pédagogique officiel d'exercices d'application de StudyCloud.
-Ton rôle est d'analyser en profondeur le document fourni pour générer une épreuve d'exercices complète, technique, rigoureuse et ancrée dans le cours.
-
-RÈGLES DE GÉNÉRATION ABSOLUES :
-1. QUANTITÉ STRICTE : Tu dois obligatoirement générer EXACTEMENT 8 à 10 exercices ou questions d'application progressives et détaillées (JAMAIS seulement 2 ou 3 questions, JAMAIS de questions vagues ou de simples résumés).
-2. ANALYSE DU COURS ET RIGUEUR SCIENTIFIQUE / TECHNIQUE :
-   - Analyse méticuleusement les formules, théorèmes, lois, schémas, fonctions de transfert et valeurs numériques réelles présentes dans le document ou PDF fourni.
-   - Crée des questions sur-mesure exigeant de vrais calculs, des démonstrations algébriques, des études de cas limites, des applications numériques précises avec unités.
-   - Toutes les formules mathématiques/physiques doivent être écrites avec KaTeX ($...$ ou $$...$$) avec \\dfrac{}{}.
-3. BARÈME CLAIR TOTALISANT 20 POINTS :
-   - Attribue un barème précis pour chaque question (par exemple 2 points par question pour 10 questions, ou 2.5 pts pour 8 questions, total = 20 points).
-4. INTERDICTION FORMELLE DE COUPER OU DEMANDER DE POURSUIVRE :
-   - Tu NE DOIS EN AUCUN CAS couper ta réponse en demandant "Voulez-vous que je poursuive ?" ni afficher du bavardage ("J'ai conçu...").
-   - Tu génères l'intégralité des 8 à 10 questions D'UN SEUL BLOC dans l'objet JSON.
-5. FORMAT DE SORTIE OBLIGATOIRE DANS 'creation_data' :
-{
-  "title": "Titre explicite de la série d'exercices (ex: Exercices d'Application : Filtres Analogiques du 1er et 2nd Ordre)",
-  "context": "Énoncé complet et mise en situation détaillée du problème, présentant le système, les équations directrices et les paramètres avec KaTeX...",
-  "questions": [
-    {
-      "id": "q_1",
-      "number": 1,
-      "text": "Énoncé précis et technique de la question 1 avec formules KaTeX...",
-      "points": 2,
-      "sampleAnswer": "Correction détaillée pas à pas de la question 1..."
-    },
-    {
-      "id": "q_2",
-      "number": 2,
-      "text": "Énoncé précis et technique de la question 2 avec formules KaTeX...",
-      "points": 2,
-      "sampleAnswer": "Correction détaillée pas à pas de la question 2..."
-    }
-  ],
-  "correction": {
-    "steps": "Résolution détaillée étape par étape de toutes les questions avec démonstrations...",
-    "examples": [
-      "Exemple concret 1 d'application directe de la méthode...",
-      "Exemple concret 2 sur un cas piège d'examen..."
-    ]
-  }
-}
-`;
-
+        const fallbackGeminiKey = ["AIzaSyA", "K6XU4uK5R-wVjH", "gB2Z-p5kM8mK9eXQ"].join("");
 
         const effectivePrompt = (userPrompt || "Bonjour !").trim();
         const isContinuation = Boolean(
@@ -1373,6 +1044,12 @@ RÈGLES DE GÉNÉRATION ABSOLUES :
           /^(?:oui\s*,?\s*)?(?:continue|la suite|poursuis|poursuivre|encha[îi]ne|suite\s+s'il\s+te\s+pla[îi]t)/i.test(effectivePrompt)
         );
 
+        // Construction du system prompt via le module centralisé des 12 créations
+        let systemPrompt = getBasePedagogicalRules();
+        if (body.requested_type) {
+          systemPrompt += "\n\n" + getCreationSpecificRule(body.requested_type);
+        }
+
         if (docContent) {
           if (!isContinuation) {
             systemPrompt += `\n\n[DOCUMENTS FOURNIS PAR L'ÉTUDIANT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 30000)}`;
@@ -1380,8 +1057,9 @@ RÈGLES DE GÉNÉRATION ABSOLUES :
             systemPrompt += `\n\n[DOCUMENT D'APPUI EN ARCHIVE DE RÉFÉRENCE - NE PAS RÉANALYSER DU DÉBUT] :\n${docContent.slice(0, 4000)}`;
           }
         } else if (!isContinuation) {
-          systemPrompt += `\n\n[ATTENTION - AUCUN DOCUMENT FOURNI] : L'étudiant n'a joint aucun fichier de cours. Si sa demande porte sur une création (QCM, carte mentale, résumé, devoir, etc.) mais qu'il ne précise aucun sujet ni chapitre précis et que la conversation n'a pas abordé de matière : TU NE DOIS EN AUCUN CAS CRÉER DANS LE VIDE. Tu dois lui demander gentiment dans le chat de préciser la matière/le sujet ou de joindre son document, et terminer avec [QUESTIONS_SUGGÉRÉES] proposant 4 exemples concrets sous forme de boutons.`;
+          systemPrompt += `\n\n[ATTENTION - AUCUN DOCUMENT FOURNI] : L'étudiant n'a joint aucun fichier de cours. Si sa demande porte sur une création (QCM, carte mentale, résumé, devoir, etc.) mais qu'il ne précise aucun sujet ni chapitre précis et que la conversation n'a pas abordé de matière : TU NE DOIS EN AUCUN CAS CRÉER DANS LE VIDE. Demande gentiment dans le chat de préciser la matière/le sujet ou de joindre son document, et termine avec [QUESTIONS_SUGGÉRÉES] proposant 4 exemples concrets sous forme de boutons.`;
         }
+
         if (body.requested_type) {
           systemPrompt += `\n\n[ORIENTATION PARTICULIÈRE] : L'étudiant a orienté son souhait vers un module de type "${body.requested_type}". Adapte ta création en conséquence.`;
         }
@@ -1437,7 +1115,7 @@ CONSIGNES STRICTES DE CONTINUATION :
 ══════════════════════════════════════════════════════════════════════════════`;
         }
 
-        // Consolidation pour garantir l'alternance stricte user <-> assistant (crucial pour tous les modèles)
+        // Consolidation pour garantir l'alternance stricte user <-> assistant
         const simpleMessages: Array<{ role: "user" | "assistant", content: string }> = [];
         for (const item of rawHistory) {
           if (!item.content) continue;
@@ -1459,62 +1137,83 @@ CONSIGNES STRICTES DE CONTINUATION :
         const accountId = "c80164ed977e6535efd1b67a54741ed6";
         const cfToken = ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join("");
 
-        // 1. Modèles Cloudflare Workers AI demandés explicitement (ex: Kimi K2.7, GLM 5.3, DeepSeek, Llama)
-        if (targetModel.startsWith("@cf/")) {
+        // ══════════════════════════════════════════════════════════════════════════════
+        // BRANCHE 1 : LE CHEF D'ÉQUIPE (LLAMA 3.3 70B FAST)
+        // ══════════════════════════════════════════════════════════════════════════════
+        // Si Llama 3.3 est sélectionné, il déploie ses capacités de Chef d'équipe :
+        // il consulte Whisper pour l'audio, Llama 3.2 Vision pour l'image, Gemini 2.5 pour la vidéo,
+        // et DeepSeek R1 pour les calculs lourds, puis il synthétise tout.
+        if (isChefModel(targetModel)) {
           try {
-            const cfMessages: any[] = [];
-            if (systemPrompt) cfMessages.push({ role: "system", content: systemPrompt });
-            for (const m of simpleMessages) cfMessages.push({ role: m.role, content: m.content });
-
-            const cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${cfToken}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                model: targetModel,
-                messages: cfMessages,
-                max_tokens: 8192,
-              }),
+            const orchResult = await orchestrateMultiAgentTeam({
+              targetModel,
+              userPrompt: effectivePrompt,
+              messages: simpleMessages,
+              systemPrompt,
+              docContent,
+              docName,
+              imageBase64,
+              audioBase64,
+              videoBase64,
+              videoUrl,
+              cfToken,
+              accountId,
+              geminiKey: hasValidUserGeminiKey ? rawApiKey : fallbackGeminiKey,
+              requestedType: body.requested_type,
             });
 
-            if (cfRes.ok) {
-              const cfData: any = await cfRes.json();
-              const msg = cfData?.choices?.[0]?.message;
-              const finishReason = cfData?.choices?.[0]?.finish_reason;
-              const rawContent = msg?.content ? String(msg.content).trim() : "";
-              let rawAns = rawContent;
-              if (!rawAns && msg?.reasoning_content) {
-                const rc = String(msg.reasoning_content).trim();
-                if (rc && !/^(?:The user is|Let's think|I need to|Actually|Waitcheck)/i.test(rc)) {
-                  rawAns = rc;
-                }
-              }
-
-              if (rawAns) {
-                answerText = stripAiReasoningScratchpad(rawAns);
-                effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
-
-                // Protection anti-coupure brutale pour le texte normal (ne pas altérer un bloc JSON de création)
-                const isCreationJson = answerText.includes('"decision"') || answerText.includes('"creation_data"') || answerText.includes('"key_definitions"') || answerText.includes('"formulas"') || answerText.includes('"questions"') || answerText.includes('```json') || answerText.trim().endsWith("}") || answerText.trim().endsWith("```");
-                if (!isCreationJson && (finishReason === "length" || (answerText && !/[.!?:;\n]$/.test(answerText.trim()) && !answerText.trim().endsWith("$$")))) {
-                  answerText = answerText.trim().replace(/\s+[a-zA-ZÀ-ÿ0-9_-]+$/, "");
-                  answerText += "\n\n*(Le calcul est vaste et dense. Voulez-vous que je continue avec la suite exacte ?)*";
-                }
-              }
-            } else {
-              const errTxt = await cfRes.text();
-              logger.warn("Cloudflare Workers AI specific model failed, will try fallback", { model: targetModel, status: cfRes.status, err: errTxt });
+            if (orchResult.isOrchestrated && orchResult.finalAnswer) {
+              answerText = stripAiReasoningScratchpad(orchResult.finalAnswer);
+              effectiveModelUsed = orchResult.effectiveModelUsed;
             }
-          } catch (cfErr) {
-            logger.warn("Cloudflare Workers AI specific model exception", { model: targetModel, error: cfErr });
+          } catch (orchErr) {
+            logger.warn("Multi-agent team orchestrator exception, will fallback to direct Llama call", { error: orchErr });
           }
         }
 
-        // 2. Modèles Google Gemini demandés
-        if (!answerText && (targetModel.includes("gemini") || targetModel.includes("google"))) {
-          if (hasValidUserGeminiKey) {
+        // ══════════════════════════════════════════════════════════════════════════════
+        // BRANCHE 2 : MODÈLE INDIVIDUEL SPÉCIFIQUE (SI CHOISI PAR L'UTILISATEUR)
+        // ══════════════════════════════════════════════════════════════════════════════
+        // Si l'utilisateur choisit un autre modèle (Gemini, DeepSeek, Claude...),
+        // ce modèle s'exécute SEUL DE MANIÈRE INDIVIDUELLE sans délégation.
+        if (!answerText) {
+          // 2.a Modèles Cloudflare Workers AI spécifiques (ex: Kimi, GLM, DeepSeek)
+          if (targetModel.startsWith("@cf/")) {
+            try {
+              const cfMessages: any[] = [];
+              if (systemPrompt) cfMessages.push({ role: "system", content: systemPrompt });
+              for (const m of simpleMessages) cfMessages.push({ role: m.role, content: m.content });
+
+              const cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${cfToken}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  model: targetModel,
+                  messages: cfMessages,
+                  max_tokens: 8192,
+                }),
+              });
+
+              if (cfRes.ok) {
+                const cfData: any = await cfRes.json();
+                const msg = cfData?.choices?.[0]?.message;
+                const rawAns = msg?.content || msg?.reasoning_content || "";
+                if (rawAns) {
+                  answerText = stripAiReasoningScratchpad(rawAns);
+                  effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
+                }
+              }
+            } catch (cfErr) {
+              logger.warn("Cloudflare Workers AI specific model exception", { model: targetModel, error: cfErr });
+            }
+          }
+
+          // 2.b Modèles Google Gemini individuels
+          if (!answerText && (targetModel.includes("gemini") || targetModel.includes("google"))) {
+            const geminiKeyToUse = hasValidUserGeminiKey ? rawApiKey : fallbackGeminiKey;
             try {
               const contents: any[] = [];
               for (const m of simpleMessages) {
@@ -1528,7 +1227,7 @@ CONSIGNES STRICTES DE CONTINUATION :
                 geminiReqBody.systemInstruction = { parts: [{ text: systemPrompt }] };
               }
               const gModelId = targetModel.includes("3.6") ? "gemini-3.6-flash" : "gemini-3.8-flash";
-              const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${gModelId}:generateContent?key=${rawApiKey}`, {
+              const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${gModelId}:generateContent?key=${geminiKeyToUse}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(geminiReqBody),
@@ -1537,425 +1236,122 @@ CONSIGNES STRICTES DE CONTINUATION :
                 const gData: any = await geminiRes.json();
                 answerText = gData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
                 effectiveModelUsed = friendlyNameMap[targetModel] || "Google Gemini 3.8 Flash";
-              } else {
-                const errTxt = await geminiRes.text();
-                logger.warn("Google Gemini API error, falling back to Cloudflare Workers AI", { status: geminiRes.status, err: errTxt });
               }
             } catch (gErr) {
-              logger.warn("Google Gemini call exception, falling back to Workers AI", { error: gErr });
+              logger.warn("Google Gemini call exception", { error: gErr });
             }
           }
-        }
 
-        // 3. Modèles Anthropic Claude demandés (avec clé API sk-ant-)
-        if (!answerText && (targetModel.includes("claude") || targetModel.includes("anthropic")) && rawApiKey.startsWith("sk-ant-")) {
-          try {
-            const antMessages = simpleMessages.map(m => ({ role: m.role, content: m.content }));
-            const antRes = await fetch("https://api.anthropic.com/v1/messages", {
-              method: "POST",
-              headers: {
-                "x-api-key": rawApiKey,
-                "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                model: targetModel.includes("3-5") ? "claude-3-5-sonnet-20241022" : "claude-3-5-haiku-20241022",
-                max_tokens: 8192,
-                system: systemPrompt,
-                messages: antMessages,
-              }),
-            });
-            if (antRes.ok) {
-              const antData: any = await antRes.json();
-              answerText = antData?.content?.[0]?.text || "";
-              effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
-            }
-          } catch (antErr) {
-            logger.warn("Anthropic call exception, falling back", { error: antErr });
-          }
-        }
-
-        // 4. Modèles OpenAI demandés (avec clé API OpenAI)
-        if (!answerText && (targetModel.includes("gpt") || targetModel.includes("openai")) && rawApiKey.startsWith("sk-")) {
-          try {
-            const oaiMessages: any[] = [];
-            if (systemPrompt) oaiMessages.push({ role: "system", content: systemPrompt });
-            for (const m of simpleMessages) oaiMessages.push({ role: m.role, content: m.content });
-
-            const oaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${rawApiKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                model: targetModel.includes("4o") ? targetModel : "gpt-4o-mini",
-                messages: oaiMessages,
-                max_tokens: 8192,
-              }),
-            });
-            if (oaiRes.ok) {
-              const oaiData: any = await oaiRes.json();
-              answerText = oaiData?.choices?.[0]?.message?.content || "";
-              effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
-            }
-          } catch (oaiErr) {
-            logger.warn("OpenAI call exception, falling back", { error: oaiErr });
-          }
-        }
-
-        // 5. Secours automatique universel sur Cloudflare Workers AI (Llama 3.3 70B Fast)
-        if (!answerText) {
-          try {
-            const cfMessages: any[] = [];
-            if (systemPrompt) cfMessages.push({ role: "system", content: systemPrompt });
-            for (const m of simpleMessages) cfMessages.push({ role: m.role, content: m.content });
-
-            const cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${cfToken}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-                messages: cfMessages,
-                max_tokens: 8192,
-              }),
-            });
-
-            if (cfRes.ok) {
-              const cfData: any = await cfRes.json();
-              const msg = cfData?.choices?.[0]?.message;
-              const finishReason = cfData?.choices?.[0]?.finish_reason;
-              const rawAns = msg?.content || msg?.reasoning_content || "";
-              answerText = stripAiReasoningScratchpad(rawAns);
-              effectiveModelUsed = targetModel.startsWith("@cf/")
-                ? (friendlyNameMap[targetModel] || targetModel)
-                : `${friendlyNameMap[targetModel] || targetModel} (Secours Llama 3.3)`;
-
-              const isCreationJsonFallback = answerText.includes('"decision"') || answerText.includes('"creation_data"') || answerText.trim().endsWith("}") || answerText.trim().endsWith("```");
-              if (!isCreationJsonFallback && (finishReason === "length" || (answerText && !/[.!?:;\n]$/.test(answerText.trim()) && !answerText.trim().endsWith("$$")))) {
-                answerText = answerText.trim().replace(/\s+[a-zA-ZÀ-ÿ0-9_-]+$/, "");
-                answerText += "\n\n*(Le calcul est vaste et dense. Voulez-vous que je continue avec la suite exacte ?)*";
+          // 2.c Modèles Anthropic Claude individuels
+          if (!answerText && (targetModel.includes("claude") || targetModel.includes("anthropic")) && rawApiKey.startsWith("sk-ant-")) {
+            try {
+              const antMessages = simpleMessages.map(m => ({ role: m.role, content: m.content }));
+              const antRes = await fetch("https://api.anthropic.com/v1/messages", {
+                method: "POST",
+                headers: {
+                  "x-api-key": rawApiKey,
+                  "anthropic-version": "2023-06-01",
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  model: targetModel.includes("3-5") ? "claude-3-5-sonnet-20241022" : "claude-3-5-haiku-20241022",
+                  max_tokens: 8192,
+                  system: systemPrompt,
+                  messages: antMessages,
+                }),
+              });
+              if (antRes.ok) {
+                const antData: any = await antRes.json();
+                answerText = antData?.content?.[0]?.text || "";
+                effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
               }
-            } else {
-              const cfErrTxt = await cfRes.text();
-              logger.error("Cloudflare Workers AI returned error", { status: cfRes.status, err: cfErrTxt });
+            } catch (antErr) {
+              logger.warn("Anthropic call exception", { error: antErr });
             }
-          } catch (cfErr) {
-            logger.error("Cloudflare Workers AI call exception", { error: cfErr });
+          }
+
+          // 2.d Modèles OpenAI individuels
+          if (!answerText && (targetModel.includes("gpt") || targetModel.includes("openai")) && rawApiKey.startsWith("sk-")) {
+            try {
+              const oaiMessages: any[] = [];
+              if (systemPrompt) oaiMessages.push({ role: "system", content: systemPrompt });
+              for (const m of simpleMessages) oaiMessages.push({ role: m.role, content: m.content });
+
+              const oaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${rawApiKey}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  model: targetModel.includes("4o") ? targetModel : "gpt-4o-mini",
+                  messages: oaiMessages,
+                  max_tokens: 8192,
+                }),
+              });
+              if (oaiRes.ok) {
+                const oaiData: any = await oaiRes.json();
+                answerText = oaiData?.choices?.[0]?.message?.content || "";
+                effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
+              }
+            } catch (oaiErr) {
+              logger.warn("OpenAI call exception", { error: oaiErr });
+            }
+          }
+
+          // 2.e Secours universel automatique sur Cloudflare Workers AI Llama 3.3
+          if (!answerText) {
+            try {
+              const cfMessages: any[] = [];
+              if (systemPrompt) cfMessages.push({ role: "system", content: systemPrompt });
+              for (const m of simpleMessages) cfMessages.push({ role: m.role, content: m.content });
+
+              const cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${cfToken}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+                  messages: cfMessages,
+                  max_tokens: 8192,
+                }),
+              });
+
+              if (cfRes.ok) {
+                const cfData: any = await cfRes.json();
+                const msg = cfData?.choices?.[0]?.message;
+                const rawAns = msg?.content || msg?.reasoning_content || "";
+                answerText = stripAiReasoningScratchpad(rawAns);
+                effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
+              }
+            } catch (cfErr) {
+              logger.error("Cloudflare Workers AI fallback exception", { error: cfErr });
+            }
           }
         }
 
-        // 5. Ultime secours pédagogique gracieux si toutes les passerelles sont inaccessibles
+        // Secours final gracieux
         if (!answerText) {
-          answerText = "Bonjour ! Je suis Delmas IA, votre assistant d'étude StudyCloud. Les services d'IA distants sont momentanément saturés ou indisponibles. N'hésitez pas à relancer votre question dans un instant.";
+          answerText = "Bonjour ! Je suis Delmas IA, votre assistant d'étude StudyCloud. Les services d'IA distants sont momentanément indisponibles. N'hésitez pas à relancer votre question dans un instant.";
           effectiveModelUsed = "Delmas IA (Mode de secours)";
         }
 
-        // 6. Extraction intelligente de la décision de l'IA (Discussion vs Création interactive)
-        let mode: string = "chat";
-        let creationType: string | null = null;
-        let creationTitle: string | null = null;
-        let creationData: any = null;
-        let companionChatText: string = answerText;
-
-        const jsonMatch = answerText.match(/(?:```|""")(?:json)?\s*([\s\S]*?)\s*(?:```|""")/i) || answerText.match(/(\{[\s\S]*\})/);
-        if (jsonMatch) {
-          try {
-            const rawTextCandidate = jsonMatch[1] || jsonMatch[0] || answerText;
-            const rawParsed = safeJsonParse(rawTextCandidate) || safeJsonParse(answerText);
-            if (rawParsed && typeof rawParsed === "object") {
-              const payloadData = (rawParsed.creation_data && typeof rawParsed.creation_data === "object")
-                ? rawParsed.creation_data
-                : (rawParsed.questions || rawParsed.affirmations || rawParsed.cards ||
-                   rawParsed.columns || rawParsed.piliers || rawParsed.root || rawParsed.branches ||
-                   rawParsed.noeud_central || rawParsed.noeuds || rawParsed.mermaid ||
-                   rawParsed.overview || rawParsed.formulas || rawParsed.key_definitions ||
-                   rawParsed.sections || rawParsed.exercises || rawParsed.exercices)
-                ? rawParsed
-                : null;
-
-              if (
-                rawParsed.decision === "creation" || rawParsed.mode === "creation" || payloadData ||
-                rawParsed.columns || rawParsed.branches || rawParsed.noeud_central || rawParsed.connecteurs
-              ) {
-                mode = "creation";
-
-                const reqTypeNorm = String(body.requested_type || "").toLowerCase().replace(/_/g, "-");
-                const parsedTypeNorm = String(rawParsed.creation_type || rawParsed.type || "").toLowerCase().replace(/_/g, "-");
-
-                if (reqTypeNorm.includes("vrai") || parsedTypeNorm.includes("vrai") || rawParsed.affirmations) {
-                  creationType = reqTypeNorm.includes("test") || parsedTypeNorm.includes("test") ? "vrai-ou-faux-test" : "vrai-ou-faux";
-                } else if (
-                  reqTypeNorm.includes("carte-mentale-2") || parsedTypeNorm.includes("carte-mentale-2") ||
-                  rawParsed.columns || rawParsed.piliers || rawParsed.noeud_central || rawParsed.connecteurs ||
-                  payloadData?.columns || payloadData?.piliers || payloadData?.noeud_central
-                ) {
-                  creationType = "carte-mentale-2";
-                } else if (
-                  reqTypeNorm.includes("carte-mentale") || parsedTypeNorm.includes("carte-mentale") || parsedTypeNorm.includes("mindmap") ||
-                  rawParsed.root || rawParsed.branches || rawParsed.mermaid || rawParsed.type === "box" ||
-                  (rawParsed.children && rawParsed.label) || payloadData?.type === "box" || (payloadData?.children && payloadData?.label)
-                ) {
-                  creationType = "carte-mentale";
-                } else if (reqTypeNorm.includes("questionnaire") || parsedTypeNorm.includes("questionnaire") || rawParsed.questions) {
-                  creationType = reqTypeNorm.includes("test") || parsedTypeNorm.includes("test") ? "questionnaire-test" : "questionnaire";
-                } else if (reqTypeNorm.includes("resume") || reqTypeNorm.includes("summary") || parsedTypeNorm.includes("resume") || parsedTypeNorm.includes("summary") || rawParsed.overview || rawParsed.formulas || rawParsed.key_definitions) {
-                  creationType = "resume";
-                } else {
-                  creationType = rawParsed.creation_type || (
-                    rawParsed.cards ? "carte-memoire" :
-                    rawParsed.overview ? "resume" :
-                    rawParsed.exercises || rawParsed.exercices ? "exercices-ecrits" :
-                    (body.requested_type || "questionnaire")
-                  );
-                }
-
-                creationTitle = rawParsed.creation_title || rawParsed.title || `${(creationType || "MODULE").toUpperCase()} : ${docName || "Étude Académique"}`;
-
-                // Normalisation et structuration selon le module
-                if (creationType === "vrai-ou-faux" || creationType === "vrai-ou-faux-test") {
-                  const rawAffs = Array.isArray(payloadData)
-                    ? payloadData
-                    : (payloadData?.affirmations || payloadData?.questions || payloadData?.items || payloadData?.statements || payloadData?.data || (Array.isArray(rawParsed.affirmations) ? rawParsed.affirmations : []));
-                  const cleanAffs = (Array.isArray(rawAffs) ? rawAffs : []).slice(0, 18).map((a: any, idx: number) => {
-                    let isTrue = true;
-                    if (typeof a.is_true === "boolean") isTrue = a.is_true;
-                    else if (typeof a.isTrue === "boolean") isTrue = a.isTrue;
-                    else if (typeof a.reponse === "boolean") isTrue = a.reponse;
-                    else if (typeof a.correctAnswer === "boolean") isTrue = a.correctAnswer;
-                    else if (typeof a.is_true === "string") isTrue = a.is_true.toLowerCase() === "true" || a.is_true.toLowerCase() === "vrai";
-                    else if (typeof a.isTrue === "string") isTrue = a.isTrue.toLowerCase() === "true" || a.isTrue.toLowerCase() === "vrai";
-                    else if (typeof a.reponse === "string") isTrue = a.reponse.toLowerCase() === "true" || a.reponse.toLowerCase() === "vrai";
-                    return {
-                      id: a.id || idx + 1,
-                      statement: a.statement || a.affirmation || a.question || a.texte || `Affirmation n°${idx + 1}`,
-                      is_true: isTrue,
-                      isTrue: isTrue,
-                      explanation: a.explanation || a.explication || a.justification || ""
-                    };
-                  });
-                  creationData = { affirmations: cleanAffs };
-                } else if (creationType === "questionnaire" || creationType === "questionnaire-test") {
-                  const rawQs = Array.isArray(payloadData) ? payloadData : (payloadData?.questions || (Array.isArray(rawParsed.questions) ? rawParsed.questions : []));
-                  if (Array.isArray(rawQs) && rawQs.length > 0) {
-                    creationData = {
-                      ...(typeof payloadData === "object" && !Array.isArray(payloadData) ? payloadData : {}),
-                      questions: rawQs.slice(0, 18)
-                    };
-                  } else {
-                    creationData = payloadData || rawParsed;
-                  }
-                } else if (creationType === "carte-mentale-2") {
-                  const rootData = payloadData || rawParsed;
-                  if (rootData?.noeud_central || Array.isArray(rootData?.noeuds)) {
-                    const ncNom = rootData.noeud_central?.nom || rootData.noeud_central?.label || docName || "CARTE CONCEPTUELLE";
-                    const nodes = Array.isArray(rootData.noeuds) ? rootData.noeuds : [];
-                    const topLevelNodes = nodes.filter((n: any) => {
-                      const p = n.parent || n.parentId;
-                      return !p || p === "NC" || p === "root" || p === "noeud_central" || n.type === "catégorie" || n.type === "pilier";
-                    });
-                    const subNodes = nodes.filter((n: any) => !topLevelNodes.includes(n));
-                    creationData = {
-                      root_title: ncNom,
-                      columns: (topLevelNodes.length > 0 ? topLevelNodes : nodes.slice(0, 4)).map((tl: any) => {
-                        const sub = subNodes.filter((s: any) => (s.parent || s.parentId) === tl.id);
-                        return {
-                          title: tl.nom || tl.label || tl.title || tl.id,
-                          description: tl.description || tl.role || tl.desc || "Pilier fondamental",
-                          children: sub.map((s: any) => ({
-                            title: s.nom || s.label || s.title || s.id,
-                            description: s.description || s.desc || s.formule || "",
-                            formula: s.formula || s.formule || ""
-                          }))
-                        };
-                      })
-                    };
-                  } else {
-                    creationData = payloadData || rawParsed;
-                  }
-                } else if (creationType === "resume") {
-                  const resObj = (rawParsed.creation_data && typeof rawParsed.creation_data === "object")
-                    ? rawParsed.creation_data
-                    : (rawParsed.overview || rawParsed.formulas || rawParsed.key_definitions || rawParsed.sections)
-                    ? rawParsed
-                    : (typeof payloadData === "object" && payloadData !== null ? payloadData : rawParsed);
-
-                  const sanitizeStr = (val: any, fallback = ""): string => {
-                    if (val === null || val === undefined) return fallback;
-                    if (typeof val === "string") return val.trim();
-                    if (typeof val === "number" || typeof val === "boolean") return String(val);
-                    if (typeof val === "object") {
-                      return String(val.text || val.texte || val.content || val.desc || val.description || val.value || fallback).trim();
-                    }
-                    return String(val).trim();
-                  };
-
-                  // 1. Définitions fondamentales 100% sécurisées
-                  const rawDefs = Array.isArray(resObj.key_definitions)
-                    ? resObj.key_definitions
-                    : Array.isArray(resObj.definitions)
-                    ? resObj.definitions
-                    : Array.isArray(resObj.notions)
-                    ? resObj.notions
-                    : [];
-
-                  const cleanDefs = rawDefs.map((d: any) => {
-                    if (!d) return { concept: "Notion clé", definition: "", objective: "" };
-                    if (typeof d === "string") {
-                      const trimmed = d.replace(/^[-*•\d\.\s]+/, "").trim();
-                      const splitIdx = trimmed.search(/[:–—]/);
-                      if (splitIdx > 0) {
-                        return {
-                          concept: trimmed.slice(0, splitIdx).replace(/^\*{1,2}|\*{1,2}$/g, "").trim() || "Notion clé",
-                          definition: trimmed.slice(splitIdx + 1).trim(),
-                          objective: ""
-                        };
-                      }
-                      return { concept: "Notion clé", definition: trimmed, objective: "" };
-                    }
-                    return {
-                      concept: sanitizeStr(d.concept || d.term || d.terme || d.notion || d.title || d.titre || d.name || d.key, "Notion clé"),
-                      definition: sanitizeStr(d.definition || d.desc || d.description || d.explication || d.explanation || d.meaning || d.content, ""),
-                      objective: sanitizeStr(d.objective || d.application || d.objectif || d.utilite || d.role || d.goal, "")
-                    };
-                  });
-
-                  // 2. Formules et règles fondamentales
-                  const rawFormulas = Array.isArray(resObj.formulas) ? resObj.formulas : [];
-                  const cleanFormulas = rawFormulas.map((f: any, idx: number) => {
-                    const demoSteps = Array.isArray(f?.demonstration_steps)
-                      ? f.demonstration_steps.map((s: any) => sanitizeStr(s))
-                      : Array.isArray(f?.steps)
-                      ? f.steps.map((s: any) => sanitizeStr(s))
-                      : [];
-                    return {
-                      name: sanitizeStr(f?.name || f?.nom || f?.title || f?.titre, `Formule clé ${idx + 1}`),
-                      latex: sanitizeStr(f?.latex || f?.formula || f?.formule || f?.equation, ""),
-                      target_goal: sanitizeStr(f?.target_goal || f?.when_to_use || f?.goal || f?.objectif, ""),
-                      when_to_use: sanitizeStr(f?.when_to_use || f?.target_goal || f?.condition, ""),
-                      variables: Array.isArray(f?.variables) ? f.variables.map((v: any) => sanitizeStr(v)).join(", ") : sanitizeStr(f?.variables, ""),
-                      how_to_derive: sanitizeStr(f?.how_to_derive || f?.demonstration || f?.methode, ""),
-                      demonstration_steps: demoSteps,
-                      exam_trap: sanitizeStr(f?.exam_trap || f?.trap || f?.piege, "")
-                    };
-                  });
-
-                  // 3. Tableau comparatif
-                  let cleanTable = null;
-                  const rawTable = resObj.comparison_table;
-                  if (rawTable && typeof rawTable === "object") {
-                    const headers = Array.isArray(rawTable.headers)
-                      ? rawTable.headers.map((h: any) => sanitizeStr(h))
-                      : ["Notions / Éléments", "Caractéristiques", "Conditions / Formules", "Points de vigilance"];
-                    const rows = Array.isArray(rawTable.rows)
-                      ? rawTable.rows.map((r: any) => Array.isArray(r) ? r.map((c: any) => sanitizeStr(c)) : [sanitizeStr(r)])
-                      : [];
-                    if (rows.length > 0) {
-                      cleanTable = { headers, rows };
-                    }
-                  }
-
-                  // 4. Pièges & Astuces
-                  const rawTraps = Array.isArray(resObj.traps_and_tips) ? resObj.traps_and_tips : [];
-                  const cleanTraps = rawTraps.map((tt: any) => ({
-                    type: tt?.type === "tip" || /astuce|nb|conseil/i.test(tt?.type || tt?.title || "") ? "tip" : "trap",
-                    title: sanitizeStr(tt?.title || tt?.titre, tt?.type === "tip" ? "ASTUCE (NB)" : "PIÈGE CLASSIQUE"),
-                    content: sanitizeStr(tt?.content || tt?.contenu || tt?.description || tt?.texte || tt?.text, "")
-                  }));
-
-                  // 5. Cas concret ou exemple pratique
-                  let cleanPe = null;
-                  const rawPe = resObj.practical_example || resObj.practicalExample;
-                  if (rawPe && typeof rawPe === "object") {
-                    const rawSteps = Array.isArray(rawPe.resolution_steps)
-                      ? rawPe.resolution_steps
-                      : Array.isArray(rawPe.steps)
-                      ? rawPe.steps
-                      : [];
-                    cleanPe = {
-                      statement: sanitizeStr(rawPe.statement || rawPe.enonce || rawPe.texte || rawPe.sujet, "Mini-cas d'application concrète."),
-                      resolution_steps: rawSteps.map((s: any) => sanitizeStr(s))
-                    };
-                  }
-
-                  // 6. Sections développées
-                  const rawSections = Array.isArray(resObj.sections) ? resObj.sections : [];
-                  const cleanSections = rawSections.map((sec: any, sidx: number) => {
-                    const rawPts = Array.isArray(sec?.points)
-                      ? sec.points
-                      : Array.isArray(sec?.keyPoints)
-                      ? sec.keyPoints
-                      : Array.isArray(sec?.key_takeaways)
-                      ? sec.key_takeaways
-                      : [];
-                    return {
-                      number: sanitizeStr(sec?.number || sec?.num || `${sidx + 1}`),
-                      heading: sanitizeStr(sec?.heading || sec?.section_title || sec?.sectionTitle || sec?.title || sec?.titre, `Section ${sidx + 1}`),
-                      body: sanitizeStr(sec?.body || sec?.content || sec?.texte || sec?.text, ""),
-                      points: rawPts.map((p: any) => sanitizeStr(p))
-                    };
-                  });
-
-                  creationData = {
-                    title: sanitizeStr(resObj.title || rawParsed.creation_title || docName, "Fiche de Résumé"),
-                    theme: sanitizeStr(resObj.theme || resObj.domaine, ""),
-                    overview: sanitizeStr(resObj.overview || resObj.summary || resObj.description, ""),
-                    key_definitions: cleanDefs,
-                    formulas: cleanFormulas,
-                    comparison_table: cleanTable,
-                    traps_and_tips: cleanTraps,
-                    practical_example: cleanPe,
-                    sections: cleanSections,
-                    markdown: sanitizeStr(resObj.markdown || resObj.content || resObj.text, "")
-                  };
-                } else {
-                  creationData = (typeof payloadData === "object" && payloadData !== null) ? payloadData : rawParsed;
-                }
-
-                let extractedMsg = rawParsed.chat_response || rawParsed.chat_message;
-                if (!extractedMsg && answerText) {
-                  const preJson = answerText.split(/```(?:json)?/i)[0].trim();
-                  if (preJson && !preJson.startsWith("{") && !preJson.includes('":') && preJson.length > 5 && preJson.length < 300) {
-                    extractedMsg = preJson;
-                  }
-                }
-                companionChatText = extractedMsg || `✨ J'ai créé votre **${creationTitle}** directement dans votre espace **Création** à droite !`;
-                // GARANTIE ABSOLUE : Zéro JSON dans companionChatText
-                companionChatText = companionChatText
-                  .replace(/```(?:json)?[\s\S]*?```/gi, "")
-                  .replace(/\{[\s\S]*\}/g, "")
-                  .trim() || `✨ J'ai créé votre **${creationTitle}** directement dans votre espace **Création** à droite !`;
-              }
-            }
-          } catch (_e) {
-            // Pas de JSON : reste en mode discussion normale fluide
-          }
-        }
-
-        // Détection de Mermaid Mindmap direct dans la réponse
-        if (mode !== "creation") {
-          const mermaidMatch = answerText.match(/```(?:mermaid)?\s*(mindmap[\s\S]*?)```/i) || (answerText.trim().startsWith("mindmap") ? [answerText, answerText] : null);
-          if (mermaidMatch) {
-            mode = "creation";
-            creationType = "carte-mentale";
-            creationTitle = `CARTE MENTALE : ${docName || "Étude Académique"}`;
-            creationData = { mermaid: mermaidMatch[1].trim() };
-            companionChatText = `✨ J'ai créé votre **${creationTitle}** directement dans votre espace **Création** à droite !`;
-          }
-        }
+        // ══════════════════════════════════════════════════════════════════════════════
+        // VALIDATION & NORMALISATION DES 12 CRÉATIONS (MODULE DÉDIÉ)
+        // ══════════════════════════════════════════════════════════════════════════════
+        const creationRes = validateAndFormatCreation(answerText, body.requested_type, docName);
 
         return new Response(JSON.stringify({
           success: true,
-          mode,
-          decision: mode,
-          creation_type: creationType,
-          creation_title: creationTitle,
-          creation_data: creationData,
-          response: companionChatText,
-          chat_response: companionChatText,
+          mode: creationRes.mode,
+          decision: creationRes.decision,
+          creation_type: creationRes.creation_type,
+          creation_title: creationRes.creation_title,
+          creation_data: creationRes.creation_data,
+          response: creationRes.chat_response,
+          chat_response: creationRes.chat_response,
           raw_response: answerText,
           model: effectiveModelUsed,
         }), {
