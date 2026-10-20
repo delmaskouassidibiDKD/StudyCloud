@@ -67,9 +67,11 @@ export { UserDirectoryDurableObject };
 export { UserDurableObject, GatekeeperConnectCallbackImpl };
 
 // Re-export entrypoint types from overseer.ts.
-export { OverseerDurableObject, GatekeeperLoopback, GatekeeperHookLoopback,
-    CodeModeTailLoopback, AgentSpawnerGatekeeper, GadgetTailLoopback,
-    AgentSelfLoopback };
+export {
+  OverseerDurableObject, GatekeeperLoopback, GatekeeperHookLoopback,
+  CodeModeTailLoopback, AgentSpawnerGatekeeper, GadgetTailLoopback,
+  AgentSelfLoopback
+};
 
 // Re-export service-binding entrypoint for external channel integrations.
 export { ExternalMessageGateway };
@@ -88,8 +90,8 @@ type Env = Cloudflare.Env & {
 @validateRpc()
 class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
   constructor(private ctx: ExecutionContext, private env: Env,
-      userId: DurableObjectId,
-      private abortSession: (reason: Error) => void) {
+    userId: DurableObjectId,
+    private abortSession: (reason: Error) => void) {
     super();
 
     this.#userId = userId;
@@ -155,7 +157,7 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
   async searchUsers(query: string, excludeIds: string[]): Promise<UserDirectoryRecord[]> {
     if (!(await this.#userSearchEnabled())) return [];
     return retryOnDoReset(() => this.ctx.exports.UserDirectoryDurableObject.getByName("")
-        .searchUsers(query, [this.#userId.name!, ...excludeIds]));
+      .searchUsers(query, [this.#userId.name!, ...excludeIds]));
   }
   changePassword(oldHash: Uint8Array, newHash: Uint8Array): Promise<void> {
     return this.#user.changePassword(oldHash, newHash);
@@ -167,10 +169,10 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
     return retryOnDoReset(() => this.#user.listModels());
   }
   addModel(profile: AiChatAuthorInfo, config: RedactedAiModelConfig,
-           copySecretsFrom?: string): Promise<void> {
+    copySecretsFrom?: string): Promise<void> {
     return this.#user.addModel(profile, config, copySecretsFrom);
   }
-  getModelConfig(id: string): Promise<{profile: AiChatAuthorInfo, config: RedactedAiModelConfig}> {
+  getModelConfig(id: string): Promise<{ profile: AiChatAuthorInfo, config: RedactedAiModelConfig }> {
     return retryOnDoReset(() => this.#user.getModelConfig(id));
   }
   updateModel(profile: AiChatAuthorInfo, config: RedactedAiModelConfig): Promise<void> {
@@ -191,7 +193,7 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
   }
 
   subscribeToNotifications(
-      subscriber: RpcStub<NotificationSubscriber>): Promise<RpcStub<{}>> {
+    subscriber: RpcStub<NotificationSubscriber>): Promise<RpcStub<{}>> {
     return this.#user.subscribeToNotifications(subscriber);
   }
 
@@ -266,8 +268,8 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
   }
 
   async #openGadgetInternal(id: string, shareKey?: string,
-                            configureObservers?: RpcStub<ObserverConfigCallback>)
-      : Promise<NativeRpcStub<Overseer>> {
+    configureObservers?: RpcStub<ObserverConfigCallback>)
+    : Promise<NativeRpcStub<Overseer>> {
     let userId = this.#userId.toString();
     let profileId = this.#userId.name!;
     let overseerId;
@@ -319,8 +321,8 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
   }
 
   async openGadget(id: string, shareKey?: string,
-                   configureObservers?: RpcStub<ObserverConfigCallback>)
-      : Promise<RpcStub<Overseer>> {
+    configureObservers?: RpcStub<ObserverConfigCallback>)
+    : Promise<RpcStub<Overseer>> {
     // @ts-expect-error Cap'n Web RPC stubs and native RPC stubs are compatible but the type
     //     system doesn't know this.
     return this.#openGadgetInternal(id, shareKey, configureObservers);
@@ -353,7 +355,7 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
   async listOutputFormats(): Promise<OutputFormatOffer[]> {
     let offers = await listFormatOffers(this.env, await readAdminConfig(this.env));
     // Neither the agent's hint nor the binding details are part of what a user is offered here.
-    return offers.map(({agentHint: _agentHint, bindings: _bindings, ...offer}) => offer);
+    return offers.map(({ agentHint: _agentHint, bindings: _bindings, ...offer }) => offer);
   }
 
   listGatekeeperVendors(filter?: GatekeeperVendorFilter): Promise<GatekeeperVendorInfo[]> {
@@ -369,7 +371,7 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
   }
 
   ensureAccountResources(accountId: number, resourceUrlPatterns: string[])
-      : Promise<ConnectFlowStart | null> {
+    : Promise<ConnectFlowStart | null> {
     return this.#user.ensureAccountResources(accountId, resourceUrlPatterns);
   }
 
@@ -382,8 +384,8 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
   }
 
   subscribeConnectedAccounts(
-      subscriber: RpcStub<ConnectedAccountsSubscriber>, filter?: ConnectedAccountsFilter)
-      : Promise<RpcStub<{}>> {
+    subscriber: RpcStub<ConnectedAccountsSubscriber>, filter?: ConnectedAccountsFilter)
+    : Promise<RpcStub<{}>> {
     return this.#user.subscribeConnectedAccounts(subscriber, filter);
   }
 
@@ -396,8 +398,8 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
   }
 
   startResourceConfigurator(
-      accountId: number,
-      resourceUrlPattern: string) {
+    accountId: number,
+    resourceUrlPattern: string) {
     return this.#user.startResourceConfigurator(accountId, resourceUrlPattern);
   }
 
@@ -427,7 +429,7 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
 
   async listFeaturedBlueprints(): Promise<BlueprintPublicInfo[]> {
     return (await listFeaturedBlueprintsFromKv(this.env)).map(
-        blueprint => publicBlueprintInfo(blueprint.id, blueprint.metadata));
+      blueprint => publicBlueprintInfo(blueprint.id, blueprint.metadata));
   }
 
   async addBlueprintToLibrary(blueprintId: string): Promise<void> {
@@ -498,8 +500,8 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
     //    this metadata describes, so that it is the code the bindings assigned below belong to.
     let overseerDo = this.overseers.get(this.overseers.idFromString(id));
     await overseerDo.initializeFromBlueprint(blueprintId, kvRecord.metadata,
-        deploymentOutputForBlueprint(await readAdminConfig(this.env), blueprintId,
-            sanitizeBlueprintOutput(kvRecord.metadata.output)));
+      deploymentOutputForBlueprint(await readAdminConfig(this.env), blueprintId,
+        sanitizeBlueprintOutput(kvRecord.metadata.output)));
 
     // 4. Create gatekeepers from assignments and bind them into the workspace's (only) gadget.
     let metadata = await overseerResult.getMetadata();
@@ -569,7 +571,7 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
           let id = createdIds.get(target.name);
           if (id === undefined) {
             throw new Error(`Agent spawner binding "${bindingName}" references binding ` +
-                `"${target.name}", which was not assigned.`);
+              `"${target.name}", which was not assigned.`);
           }
           env[envName] = id;
         }
@@ -612,12 +614,12 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
     // appear in the nav even before the user opens a gadget — in a single round trip.
     let accounts = await this.#user.listProvidedAccounts();
     return accounts
-        .filter((account: (typeof accounts)[number]) => account.description.providesUi)
-        .map((account: (typeof accounts)[number]) => ({
-          id: account.vendorId,
-          title: account.description.providesUi!.title,
-          icon: account.description.providesUi!.icon,
-        }));
+      .filter((account: (typeof accounts)[number]) => account.description.providesUi)
+      .map((account: (typeof accounts)[number]) => ({
+        id: account.vendorId,
+        title: account.description.providesUi!.title,
+        icon: account.description.providesUi!.icon,
+      }));
   }
 
   async getGatekeeperApp(id: string): Promise<GatekeeperUiFrame | null> {
@@ -650,7 +652,7 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
 
 async function serveBlueprintScreenshot(env: Env, blueprintId: string): Promise<Response> {
   let object = await env.BLUEPRINT_CONTENT.get(`${BLUEPRINT_SCREENSHOT_R2_PREFIX}${blueprintId}`);
-  if (!object) return new Response("Not Found", {status: 404});
+  if (!object) return new Response("Not Found", { status: 404 });
 
   let contentType = object.httpMetadata?.contentType;
   if (contentType !== "image/jpeg" && contentType !== "image/png") {
@@ -685,20 +687,20 @@ class PublicApiImpl extends RpcTarget implements PublicApi {
   users: DurableObjectNamespace<UserDurableObject>;
 
   constructor(private ctx: ExecutionContext, private env: Env,
-      private abortSession: (reason: Error) => void,
-      private accessPayload?: JWTPayload) {
+    private abortSession: (reason: Error) => void,
+    private accessPayload?: JWTPayload) {
     super();
     this.users = this.ctx.exports.UserDurableObject;
   }
 
-  async ping(): Promise<void> {}
+  async ping(): Promise<void> { }
 
   async getServerConfig(): Promise<ServerConfig> {
     return getServerConfig(this.env);
   }
 
   async startGatekeeperLogin(vendorId: string)
-      : Promise<{ url: string; nonce: string; attempt: RpcStub<LoginAttempt> }> {
+    : Promise<{ url: string; nonce: string; attempt: RpcStub<LoginAttempt> }> {
     if (!getAuthGatekeeperAllowlist(this.env).includes(vendorId)) {
       throw new Error(`Sign-in via "${vendorId}" is not enabled on this deployment.`);
     }
@@ -718,7 +720,7 @@ class PublicApiImpl extends RpcTarget implements PublicApi {
     // while it is still running instead of reporting it expired.
     await pending.begin();
     const callback = this.ctx.exports.LoginConnectCallbackImpl(
-        { props: { pendingId: pendingId.toString(), vendorId } });
+      { props: { pendingId: pendingId.toString(), vendorId } });
     // For most providers, sign-in needs only minimal scopes to verify the user's email (the grant is
     // transient); capability scopes are requested later via an explicit connectAccount. Cloudflare is
     // the exception: signing in with Cloudflare also links AI Gateway billing, so it requests and
@@ -766,7 +768,7 @@ class PublicApiImpl extends RpcTarget implements PublicApi {
     let userId = this.users.idFromName(email);
     let signupsEnabled = (await readAdminConfig(this.env)).signupsEnabled;
     let accountCreated =
-        await this.users.get(userId).authenticateFromCfAccess(email, signupsEnabled);
+      await this.users.get(userId).authenticateFromCfAccess(email, signupsEnabled);
     if (accountCreated) {
       recordAnalytics(this.ctx, this.env, {
         event_name: "account_created",
@@ -806,7 +808,7 @@ class PublicApiImpl extends RpcTarget implements PublicApi {
   }
 
   async createAccount(username: string, displayName: string, passwordHash: Uint8Array)
-      : Promise<string | null> {
+    : Promise<string | null> {
     if (this.env.CF_ACCESS_AUD) {
       throw new Error("This deployment requires Cloudflare Access authentication.");
     }
@@ -862,9 +864,23 @@ export default {
     // Support CORS pour les appels de l'espace d'étude StudyCloud
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization, x-user-id",
     };
+
+    function getD1Database(): D1Database | null {
+      return (
+        (env as any).DB ||
+        (env as any).MON_D1_STUDYCLOUD ||
+        (env as any)['MON_D1-STUDYCLOUD'] ||
+        (env as any)['MY-D1-STUDYCLOUD'] ||
+        (env as any).MY_D1_STUDYCLOUD ||
+        (env as any)['d1-studycloud'] ||
+        (env as any).d1 ||
+        (env as any).DATABASE ||
+        null
+      );
+    }
 
     if (req.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders });
@@ -896,7 +912,7 @@ export default {
       if (frenchOrHeadingIdx > 0 && frenchOrHeadingIdx < 1500) {
         const preamble = cleaned.slice(0, frenchOrHeadingIdx);
         if (/\b(?:think|wait|circuit|maybe|suggests|removes|removing|leaving|replaces|sistor|op-amp|inverting|feedback|series|parallel|branch|figure|caption|infer)\b/i.test(preamble) &&
-            !/\b(?:bonjour|voici|étudiant|question|résolution|exercice)\b/i.test(preamble)) {
+          !/\b(?:bonjour|voici|étudiant|question|résolution|exercice)\b/i.test(preamble)) {
           cleaned = cleaned.slice(frenchOrHeadingIdx).trim();
         }
       }
@@ -922,7 +938,7 @@ export default {
 
       try {
         return JSON.parse(cleaned);
-      } catch (_e) {}
+      } catch (_e) { }
 
       let sanitized = "";
       let inString = false;
@@ -979,7 +995,7 @@ export default {
 
       try {
         return JSON.parse(sanitized);
-      } catch (_e2) {}
+      } catch (_e2) { }
 
       let openBraces = 0;
       let openBrackets = 0;
@@ -1062,6 +1078,13 @@ export default {
 
         if (body.requested_type) {
           systemPrompt += `\n\n[ORIENTATION PARTICULIÈRE] : L'étudiant a orienté son souhait vers un module de type "${body.requested_type}". Adapte ta création en conséquence.`;
+        }
+
+        const isNewConversation = (!history || history.length === 0);
+        if (isNewConversation) {
+          systemPrompt += `\n\n[NOUVELLE CONVERSATION] : L'étudiant démarre une nouvelle discussion thématique. Accueille-le chaleureusement et concentre-toi sur son nouveau sujet d'étude ou sa nouvelle question sans préjuger des sujets passés.`;
+        } else {
+          systemPrompt += `\n\n[CONVERSATION EN COURS] : Cette discussion contient déjà des échanges passés. Maintiens la continuité et la cohérence pédagogique avec les réponses précédentes de cette même session.`;
         }
 
         const friendlyNameMap: Record<string, string> = {
@@ -1376,6 +1399,343 @@ CONSIGNES STRICTES DE CONTINUATION :
       }
     }
 
+    // ══════════════════════════════════════════════════════════════════════════════
+    // GESTION DE L'HISTORIQUE DES CONVERSATIONS & MESSAGES (CLOUDFLARE D1)
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    // 1. Liste des conversations de l'utilisateur (Historique Récent)
+    if (url.pathname === "/api/ai/conversations" && req.method === "GET") {
+      try {
+        const userId = url.searchParams.get("userId") || req.headers.get("x-user-id") || "default-user";
+        const db = getD1Database();
+        if (!db) {
+          return new Response(JSON.stringify({ success: true, data: [] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          });
+        }
+
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS conversations (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        `).run().catch(() => {});
+
+        const { results } = await db.prepare(
+          "SELECT id, user_id, title, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY updated_at DESC, created_at DESC"
+        ).bind(userId).all();
+
+        return new Response(JSON.stringify({
+          success: true,
+          data: results || []
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      } catch (err: any) {
+        logger.error("Erreur GET /api/ai/conversations", { error: err });
+        return new Response(JSON.stringify({ success: false, error: err?.message || String(err), data: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+    }
+
+    // 2. Création ou mise à jour du titre d'une conversation
+    if (url.pathname === "/api/ai/conversations" && req.method === "POST") {
+      try {
+        const body: any = await req.json().catch(() => ({}));
+        const id = String(body.id || `conv-${Date.now()}`).trim();
+        const userId = String(body.userId || req.headers.get("x-user-id") || "default-user").trim();
+        const title = String(body.title || "Nouvelle discussion").trim();
+
+        const db = getD1Database();
+        if (db) {
+          await db.prepare(`
+            CREATE TABLE IF NOT EXISTS conversations (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              title TEXT NOT NULL,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run().catch(() => {});
+
+          await db.prepare(`
+            INSERT INTO conversations (id, user_id, title, created_at, updated_at)
+            VALUES (?, ?, ?, datetime('now'), datetime('now'))
+            ON CONFLICT(id) DO UPDATE SET title = excluded.title, updated_at = datetime('now')
+          `).bind(id, userId, title).run();
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          data: { id, title }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      } catch (err: any) {
+        logger.error("Erreur POST /api/ai/conversations", { error: err });
+        return new Response(JSON.stringify({ success: false, error: err?.message || String(err) }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+    }
+
+    // 3. Suppression d'une conversation et de tous ses messages
+    if (url.pathname === "/api/ai/conversations" && req.method === "DELETE") {
+      try {
+        const id = url.searchParams.get("id");
+        if (!id) {
+          return new Response(JSON.stringify({ success: false, error: "ID manquant" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          });
+        }
+
+        const db = getD1Database();
+        if (db) {
+          await Promise.all([
+            db.prepare("DELETE FROM messages WHERE conversation_id = ?").bind(id).run().catch(() => {}),
+            db.prepare("DELETE FROM ai_creations WHERE conversation_id = ?").bind(id).run().catch(() => {}),
+            db.prepare("DELETE FROM conversations WHERE id = ?").bind(id).run().catch(() => {}),
+          ]);
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          message: "Conversation supprimée avec succès"
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      } catch (err: any) {
+        logger.error("Erreur DELETE /api/ai/conversations", { error: err });
+        return new Response(JSON.stringify({ success: false, error: err?.message || String(err) }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+    }
+
+    // 4. Liste chronologique des messages d'une conversation
+    if (url.pathname === "/api/ai/messages" && req.method === "GET") {
+      try {
+        const conversationId = url.searchParams.get("conversationId") || url.searchParams.get("id");
+        if (!conversationId) {
+          return new Response(JSON.stringify({ success: true, data: [] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          });
+        }
+
+        const db = getD1Database();
+        if (!db) {
+          return new Response(JSON.stringify({ success: true, data: [] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          });
+        }
+
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS messages (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            metadata TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        `).run().catch(() => {});
+
+        const { results } = await db.prepare(
+          "SELECT id, conversation_id, role, content, metadata, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC"
+        ).bind(conversationId).all();
+
+        return new Response(JSON.stringify({
+          success: true,
+          data: results || []
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      } catch (err: any) {
+        logger.error("Erreur GET /api/ai/messages", { error: err });
+        return new Response(JSON.stringify({ success: false, error: err?.message || String(err), data: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+    }
+
+    // 5. Sauvegarde d'un message individuel (User ou Assistant)
+    if (url.pathname === "/api/ai/messages" && req.method === "POST") {
+      try {
+        const body: any = await req.json().catch(() => ({}));
+        const conversationId = String(body.conversationId || body.conversation_id || "").trim();
+        if (!conversationId) {
+          return new Response(JSON.stringify({ success: false, error: "conversationId manquant" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          });
+        }
+
+        const id = String(body.id || `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`).trim();
+        const role = String(body.role || "user").trim();
+        const content = String(body.content || "").trim();
+        const metadata = typeof body.metadata === "object" ? JSON.stringify(body.metadata) : (body.metadata || null);
+
+        const db = getD1Database();
+        if (db) {
+          await db.prepare(`
+            CREATE TABLE IF NOT EXISTS messages (
+              id TEXT PRIMARY KEY,
+              conversation_id TEXT NOT NULL,
+              role TEXT NOT NULL,
+              content TEXT NOT NULL,
+              metadata TEXT,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run().catch(() => {});
+
+          await db.prepare(`
+            INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(id) DO UPDATE SET content = excluded.content, metadata = excluded.metadata
+          `).bind(id, conversationId, role, content, metadata).run();
+
+          // Met à jour l'horodatage de la conversation parente
+          await db.prepare(
+            "UPDATE conversations SET updated_at = datetime('now') WHERE id = ?"
+          ).bind(conversationId).run().catch(() => {});
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          data: { id }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      } catch (err: any) {
+        logger.error("Erreur POST /api/ai/messages", { error: err });
+        return new Response(JSON.stringify({ success: false, error: err?.message || String(err) }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+    }
+
+    // 6. Récupération des créations associées à la conversation
+    if (url.pathname === "/api/ai/creations" && req.method === "GET") {
+      try {
+        const conversationId = url.searchParams.get("conversationId");
+        if (!conversationId) {
+          return new Response(JSON.stringify({ success: true, data: [] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          });
+        }
+
+        const db = getD1Database();
+        if (!db) {
+          return new Response(JSON.stringify({ success: true, data: [] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          });
+        }
+
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS ai_creations (
+            id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL,
+            message_id TEXT,
+            type TEXT NOT NULL,
+            title TEXT,
+            content TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        `).run().catch(() => {});
+
+        const { results } = await db.prepare(
+          "SELECT id, conversation_id, message_id, type, title, content, created_at FROM ai_creations WHERE conversation_id = ? ORDER BY created_at DESC"
+        ).bind(conversationId).all();
+
+        return new Response(JSON.stringify({
+          success: true,
+          data: results || []
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ success: false, error: err?.message || String(err), data: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+    }
+
+    // 7. Enregistrement d'une création issue de la conversation
+    if (url.pathname === "/api/ai/creations" && req.method === "POST") {
+      try {
+        const body: any = await req.json().catch(() => ({}));
+        const conversationId = String(body.conversationId || body.conversation_id || "").trim();
+        if (!conversationId) {
+          return new Response(JSON.stringify({ success: false, error: "conversationId manquant" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          });
+        }
+
+        const id = String(body.id || `crea-${Date.now()}`).trim();
+        const messageId = body.messageId ? String(body.messageId).trim() : null;
+        const type = String(body.type || "module").trim();
+        const title = body.title ? String(body.title).trim() : null;
+        const content = typeof body.content === "object" ? JSON.stringify(body.content) : String(body.content || "");
+
+        const db = getD1Database();
+        if (db) {
+          await db.prepare(`
+            CREATE TABLE IF NOT EXISTS ai_creations (
+              id TEXT PRIMARY KEY,
+              conversation_id TEXT NOT NULL,
+              message_id TEXT,
+              type TEXT NOT NULL,
+              title TEXT,
+              content TEXT NOT NULL,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run().catch(() => {});
+
+          await db.prepare(`
+            INSERT INTO ai_creations (id, conversation_id, message_id, type, title, content, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(id) DO UPDATE SET content = excluded.content, title = excluded.title
+          `).bind(id, conversationId, messageId, type, title, content).run();
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          data: { id }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ success: false, error: err?.message || String(err) }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+    }
+
     if (url.pathname === SITE_LOGO_PATH) {
       return serveSiteLogo(req, env.BLUEPRINT_CONTENT);
     }
@@ -1402,20 +1762,20 @@ CONSIGNES STRICTES DE CONTINUATION :
       if (!bundledBlueprintInstallStarted) {
         bundledBlueprintInstallStarted = true;
         ctx.waitUntil(ctx.exports.AdminSettings.getByName("").ensureBundledBlueprintsInstalled()
-            .then((complete: boolean) => {
-              // A partial install resolves rather than throwing, and nothing else will call the DO
-              // from here, so clearing this is the whole retry: one bad archive would otherwise
-              // leave the deployment half-provisioned for as long as the isolate lives.
-              if (!complete) bundledBlueprintInstallStarted = false;
-            })
-            .catch((err: unknown) => {
-              // Likewise let the next request try again. The DO coalesces concurrent callers, so a
-              // retry costs one comparison once it succeeds.
-              bundledBlueprintInstallStarted = false;
-              logger.warn("failed to install bundled blueprints", {
-                event: "formats.install.trigger.failed", error: err,
-              });
-            }));
+          .then((complete: boolean) => {
+            // A partial install resolves rather than throwing, and nothing else will call the DO
+            // from here, so clearing this is the whole retry: one bad archive would otherwise
+            // leave the deployment half-provisioned for as long as the isolate lives.
+            if (!complete) bundledBlueprintInstallStarted = false;
+          })
+          .catch((err: unknown) => {
+            // Likewise let the next request try again. The DO coalesces concurrent callers, so a
+            // retry costs one comparison once it succeeds.
+            bundledBlueprintInstallStarted = false;
+            logger.warn("failed to install bundled blueprints", {
+              event: "formats.install.trigger.failed", error: err,
+            });
+          }));
       }
 
       let accessPayload: JWTPayload | undefined;
@@ -1445,11 +1805,11 @@ CONSIGNES STRICTES DE CONTINUATION :
       };
 
       return await newWorkersRpcResponse(req,
-          new PublicApiImpl(ctx, env, abortSession, accessPayload),
-          { abortSignal: abortController.signal });
+        new PublicApiImpl(ctx, env, abortSession, accessPayload),
+        { abortSignal: abortController.signal });
     }
 
-    return new Response("Not Found", {status: 404});
+    return new Response("Not Found", { status: 404 });
   }
 } satisfies ExportedHandler<Env>;
 
@@ -1466,7 +1826,7 @@ type ExtendedRpcSessionOptions = RpcSessionOptions & {
 // Clone of newWorkersRpcResponse() from Cap'n Web, except the `options` has been extended with
 // `abortSignal`.
 async function newWorkersRpcResponse(
-    request: Request, localMain: any, options?: ExtendedRpcSessionOptions) {
+  request: Request, localMain: any, options?: ExtendedRpcSessionOptions) {
   if (request.method === "POST") {
     let response = await newHttpBatchRpcResponse(request, localMain, options);
     // Since we're exposing the same API over WebSocket, too, and WebSocket always allows
@@ -1483,7 +1843,7 @@ async function newWorkersRpcResponse(
 }
 
 function newWorkersWebSocketRpcResponse(
-    request: Request, localMain?: any, options?: ExtendedRpcSessionOptions): Response {
+  request: Request, localMain?: any, options?: ExtendedRpcSessionOptions): Response {
   if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
     return new Response("This endpoint only accepts WebSocket requests.", { status: 400 });
   }

@@ -37,6 +37,26 @@
     {
       "binding": "BLUEPRINT_CONTENT",
       "bucket_name": "gadgets-blueprint-content"
+    },
+    {
+      "binding": "BUCKET",
+      "bucket_name": "r2-studycloud"
+    },
+    {
+      "binding": "MON_R2_STUDYCLOUD",
+      "bucket_name": "r2-studycloud"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "d1-studycloud",
+      "database_id": "5b047896-ddac-4da5-9aec-2afb9ca87b76"
+    },
+    {
+      "binding": "MON_D1_STUDYCLOUD",
+      "database_name": "d1-studycloud",
+      "database_id": "5b047896-ddac-4da5-9aec-2afb9ca87b76"
     }
   ],
   "worker_loaders": [
