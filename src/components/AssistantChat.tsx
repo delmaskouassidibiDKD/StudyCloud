@@ -2679,7 +2679,11 @@ CONSIGNES STRICTES DE CONTINUATION :
 
       // 5. Appel au moteur d'IA officiel StudyCloud (Workshop Backend / Robot Rouge)
       const selectedModelObj = availableModels.find(m => m.id === selectedModel || m.model_id === selectedModel);
-      const configuredToken = selectedModelObj?.api_token;
+      const rawConfiguredToken = selectedModelObj?.api_token;
+      // Pour les modèles Worker Cloudflare (Gemini 2.0 Flash) ou clés compromises, ne pas envoyer de token obsolète
+      const isWorkerModel = selectedModel === 'gemini-2.0-flash' || selectedModelObj?.provider === 'cloudflare';
+      const isDeadKey = Boolean(rawConfiguredToken && (rawConfiguredToken.startsWith('AIzaSyDKct') || rawConfiguredToken.length < 25));
+      const configuredToken = (isWorkerModel || isDeadKey) ? undefined : rawConfiguredToken;
 
       const aiResult = await sendChatMessageToAi({
         messages: chatHistory,

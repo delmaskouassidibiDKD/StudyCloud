@@ -1316,9 +1316,11 @@ export default {
             break;
           }
         }
-        const hasValidUserGeminiKey = rawApiKey.startsWith("AIzaSy") && rawApiKey.length > 25;
+        const isKnownDeadKey = rawApiKey.startsWith("AIzaSyDKct");
+        const hasValidUserGeminiKey = !isKnownDeadKey && rawApiKey.startsWith("AIzaSy") && rawApiKey.length > 25;
         const fallbackGeminiKey = ["AIzaSyA", "K6XU4uK5R-wVjH", "gB2Z-p5kM8mK9eXQ"].join("");
-        const geminiKeyToUse = (hasValidUserGeminiKey ? rawApiKey : "") || cloudflareGeminiSecret || fallbackGeminiKey;
+        // On priorise toujours le secret Cloudflare d'environnement (STUDYCLOUD_GEMINI_1) pour les workers
+        const geminiKeyToUse = cloudflareGeminiSecret || (hasValidUserGeminiKey ? rawApiKey : "") || fallbackGeminiKey;
 
         const effectivePrompt = (userPrompt || "Bonjour !").trim();
         const isContinuation = Boolean(

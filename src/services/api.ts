@@ -275,7 +275,11 @@ export async function sendChatMessageToAi(params: {
   rawResponse?: string;
 }> {
   const isPowerMode = Boolean(params.powerMode || params.engine === 'gemini');
-  const userGeminiApiKey = (params.geminiApiKey || getGeminiApiKey()).trim();
+  let userGeminiApiKey = (params.geminiApiKey || getGeminiApiKey()).trim();
+  if (userGeminiApiKey.startsWith('AIzaSyDKct') || userGeminiApiKey.length < 25) {
+    userGeminiApiKey = '';
+  }
+  const cleanExplicitKey = (params.apiKey && !params.apiKey.startsWith('AIzaSyDKct') && params.apiKey.length >= 25) ? params.apiKey : userGeminiApiKey;
   const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
 
   const extractedDoc = params.attachedFileContent || params.file_content || params.fileContent || params.documentContent || params.documentText || '';
@@ -290,9 +294,9 @@ export async function sendChatMessageToAi(params: {
     powerMode: isPowerMode,
     isPowerMode: isPowerMode,
     engine: isPowerMode ? 'gemini' : (params.engine || 'standard'),
-    geminiApiKey: userGeminiApiKey,
-    apiKey: params.apiKey || params.apiToken || userGeminiApiKey,
-    apiToken: params.apiKey || params.apiToken || userGeminiApiKey,
+    geminiApiKey: userGeminiApiKey || undefined,
+    apiKey: cleanExplicitKey || undefined,
+    apiToken: cleanExplicitKey || undefined,
     message: params.prompt || params.message || '',
     prompt: params.prompt || params.message || '',
     conversation_id: params.conversationId || params.conversation_id || params.sessionId,

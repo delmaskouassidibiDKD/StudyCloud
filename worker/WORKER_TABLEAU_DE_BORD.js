@@ -330,17 +330,20 @@ async function ensureStorageTables(db) {
     try {
       // Insertion ou mise à jour immédiate de Gemini 2.0 Flash comme Worker modèle officiel
       await db.prepare(`
-        INSERT INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window, output_limit) 
-        VALUES ('gemini-2.0-flash', 'cloudflare', 'Google Gemini 2.0 Flash (Worker)', 'gemini-2.0-flash', 1, 1, 1048576, 8192)
+        INSERT INTO robot_rouge_models (id, provider, name, model_id, is_default, is_active, context_window, output_limit, api_token) 
+        VALUES ('gemini-2.0-flash', 'cloudflare', 'Google Gemini 2.0 Flash (Worker)', 'gemini-2.0-flash', 1, 1, 1048576, 8192, '')
         ON CONFLICT(id) DO UPDATE SET
           name = 'Google Gemini 2.0 Flash (Worker)',
           model_id = 'gemini-2.0-flash',
           provider = 'cloudflare',
+          api_token = '',
           is_default = 1,
           is_active = 1,
           context_window = 1048576,
           output_limit = 8192
       `).run().catch(() => {});
+      await db.prepare("UPDATE robot_rouge_models SET api_token = '' WHERE id = 'gemini-2.0-flash' OR provider = 'cloudflare' OR api_token LIKE 'AIzaSyDKct%'").run().catch(() => {});
+      await db.prepare("UPDATE robot_rouge_global_config SET gemini_api_key = '' WHERE gemini_api_key LIKE 'AIzaSyDKct%'").run().catch(() => {});
 
       const existingCount = await db.prepare("SELECT COUNT(*) as cnt FROM robot_rouge_models").first();
       if (!existingCount || Number(existingCount.cnt) <= 1) {
@@ -12558,24 +12561,35 @@ function renderDashboardHtml(data) {
 
       const start = Date.now();
       try {
-        const edgeUrl = document.getElementById('robot-edge-url')?.value || 'https://router.delmaskouassidibi.workers.dev';
-        const cleanEdgeUrl = edgeUrl.endsWith('/') ? edgeUrl.slice(0, -1) : edgeUrl;
-        const res = await fetch(cleanEdgeUrl + '/api/generate', {
+        const edgeUrl = document.getElementById('robot-edge-url')?.value || 'https://workshop-backend.delmaskouassidibi.workers.dev';
+        let targetUrl = edgeUrl.trim().replace(/\/+$/, '');
+        if (targetUrl.includes('router.delmaskouassidibi.workers.dev')) {
+          targetUrl = 'https://workshop-backend.delmaskouassidibi.workers.dev';
+        }
+        const endpoint = targetUrl.includes('/api/ai/chat') ? targetUrl : (targetUrl + '/api/ai/chat');
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({
+            message: prompt,
             prompt: prompt,
-            model: document.getElementById('robot-default-model')?.value,
+            model: document.getElementById('robot-default-model')?.value || 'gemini-2.0-flash',
             system_instructions: document.getElementById('robot-system-instructions')?.value
           })
         });
+        clearTimeout(timeoutId);
 
         const elapsed = Date.now() - start;
         if (resLatency) resLatency.textContent = elapsed + ' ms';
 
         if (res.ok) {
           const data = await res.json();
-          const answer = data.text || data.response || data.content || JSON.stringify(data);
+          const answer = data.response || data.chat_response || data.text || data.content || JSON.stringify(data);
           if (resOutput) resOutput.textContent = answer;
           showToast('✓ Réponse générée en ' + elapsed + 'ms');
         } else {
@@ -14914,7 +14928,8 @@ export default {
               model_id: modelId,
               provider,
               name,
-              nickname
+              nickname,
+              api_token: (id === 'gemini-2.0-flash' || provider === 'cloudflare' || isPublic) ? '' : (m.api_token || '')
             };
           });
           const gIdx = modelsList.findIndex(m => m.model_id === 'gemini-2.0-flash' || m.id === 'gemini-2.0-flash');
