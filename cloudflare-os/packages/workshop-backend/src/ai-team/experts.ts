@@ -96,66 +96,57 @@ export async function callVisionExpert(
   accountId: string
 ): Promise<ExpertReport> {
   try {
-    const cleanB64 = imageBase64.startsWith('data:')
-      ? imageBase64
-      : `data:image/jpeg;base64,${imageBase64.trim()}`;
+    const rawB64 = imageBase64.includes('base64,')
+      ? imageBase64.split('base64,')[1].trim()
+      : imageBase64.trim();
 
-    // Tentative 1 : OpenAI-compatible Chat Completions avec image_url
-    const chatUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`;
-    const res = await fetch(chatUrl, {
+    if (!rawB64 || rawB64.length < 20) {
+      return {
+        expert: 'llama-vision',
+        status: 'failed',
+        summary: 'Base64 image vide ou invalide',
+        content: '',
+      };
+    }
+
+    const runUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/meta/llama-3.2-11b-vision-instruct`;
+    const promptVision = "Tu es l'Expert Vision de l'équipe pédagogique StudyCloud. Décris précisément et exhaustivement tout ce que tu vois dans cette image de cours : tout le texte visible, énoncés, exercices, questions, schémas techniques, équations et formules mathématiques en LaTeX standard ($...$), tableaux, graphiques et annotations manuscrites. Ne dis jamais que tu ne peux pas voir, analyse méticuleusement l'image fournie.";
+
+    // Tentative 1 : Envoi direct du Base64 à Cloudflare Workers AI Run
+    let runRes = await fetch(runUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${cfToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: '@cf/meta/llama-3.2-11b-vision-instruct',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: 'Tu es l\'Expert Vision de l\'équipe pédagogique StudyCloud. Analyse méticuleusement cette image de cours (schéma technique, équations manuscrites, graphique ou exercice). Retranscris fidèlement tout le texte, formules mathématiques en LaTeX standard ($...$) et composants électroniques visibles.',
-              },
-              {
-                type: 'image_url',
-                image_url: { url: cleanB64 },
-              },
-            ],
-          },
-        ],
+        prompt: promptVision,
+        image: rawB64,
         max_tokens: 3000,
       }),
     });
 
-    if (res.ok) {
-      const data: any = await res.json();
-      const content = data?.choices?.[0]?.message?.content || '';
-      if (content.trim()) {
-        return {
-          expert: 'llama-vision',
-          status: 'success',
-          summary: 'Image analysée par Llama 3.2 Vision',
-          content: content.trim(),
-        };
+    // Si erreur 403 (Model agreement required), auto-acceptation des termes Meta puis rejeu immédiat
+    if (runRes.status === 403) {
+      const errText = await runRes.text();
+      if (errText.includes('agree')) {
+        await fetch(runUrl, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${cfToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: 'agree' }),
+        }).catch(() => {});
+
+        runRes = await fetch(runUrl, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${cfToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: promptVision,
+            image: rawB64,
+            max_tokens: 3000,
+          }),
+        });
       }
     }
-
-    // Tentative 2 : Endpoint /ai/run avec tableau d'octets
-    const runUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/meta/llama-3.2-11b-vision-instruct`;
-    const bytes = base64ToUint8Array(imageBase64);
-    const runRes = await fetch(runUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${cfToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        prompt: 'Décris minutieusement toutes les équations et composants visibles dans cette image.',
-        image: Array.from(bytes.slice(0, 1500000)),
-      }),
-    });
 
     if (runRes.ok) {
       const runData: any = await runRes.json();
@@ -164,8 +155,37 @@ export async function callVisionExpert(
         return {
           expert: 'llama-vision',
           status: 'success',
-          summary: 'Image analysée par Llama 3.2 Vision (Run)',
+          summary: 'Image analysée par Llama 3.2 Vision',
           content: runContent.trim(),
+        };
+      }
+    }
+
+    // Tentative 2 : Format array d'octets de secours
+    const bytes = base64ToUint8Array(rawB64);
+    const subBytes = Array.from(bytes.slice(0, 500000));
+    const runRes2 = await fetch(runUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${cfToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        prompt: promptVision,
+        image: subBytes,
+        max_tokens: 3000,
+      }),
+    });
+
+    if (runRes2.ok) {
+      const runData2: any = await runRes2.json();
+      const runContent2 = runData2?.result?.response || runData2?.response || '';
+      if (runContent2.trim()) {
+        return {
+          expert: 'llama-vision',
+          status: 'success',
+          summary: 'Image analysée par Llama 3.2 Vision (Bytes)',
+          content: runContent2.trim(),
         };
       }
     }
@@ -173,7 +193,7 @@ export async function callVisionExpert(
     return {
       expert: 'llama-vision',
       status: 'failed',
-      summary: 'Échec analyse visuelle',
+      summary: 'Échec analyse visuelle Llama Vision',
       content: '',
     };
   } catch (err: any) {

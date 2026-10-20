@@ -90,17 +90,22 @@ export async function orchestrateMultiAgentTeam(
   // 3. EXÉCUTION PARALLÈLE DES EXPERTS SPÉCIALISÉS
   const expertResults = await Promise.allSettled(expertTasks);
   const expertReports: string[] = [];
+  const successfulExperts: string[] = [];
 
   for (const res of expertResults) {
     if (res.status === 'fulfilled' && res.value && res.value.status === 'success' && res.value.content) {
       const exp = res.value;
       if (exp.expert === 'whisper-audio') {
+        successfulExperts.push('👂 Whisper Audio');
         expertReports.push(`[RAPPORT EXPERT AUDIO (Whisper)] :\n${exp.content}`);
       } else if (exp.expert === 'llama-vision') {
+        successfulExperts.push('👁️ Llama 3.2 Vision');
         expertReports.push(`[RAPPORT EXPERT VISION (Llama 3.2 Vision)] :\n${exp.content}`);
       } else if (exp.expert === 'gemini-video') {
+        successfulExperts.push('🎬 Gemini 2.5 Flash Vidéo');
         expertReports.push(`[RAPPORT EXPERT VIDÉO (Gemini 2.5 Flash)] :\n${exp.content}`);
       } else if (exp.expert === 'deepseek-math') {
+        successfulExperts.push('🧮 DeepSeek R1 Raisonnement');
         expertReports.push(`[RAPPORT EXPERT CALCUL ALGEBRIQUE (DeepSeek R1)] :\n${exp.content}`);
       }
     }
@@ -112,12 +117,14 @@ export async function orchestrateMultiAgentTeam(
   if (expertReports.length > 0) {
     enrichedSystemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
 [CONSULTATION MULTI-AGENTS - RAPPORTS TRANSMIS AU CHEF D'ÉQUIPE] :
-En tant que Chef d'équipe, tes experts spécialisés ont analysé les fichiers multimédias et calculs complexes de l'étudiant :
+En tant que Chef d'équipe, tes experts spécialisés ont scanné et analysé avec succès les fichiers multimédias et calculs de l'étudiant :
 ${expertReports.join('\n\n')}
 
-MISSION DU CHEF D'ÉQUIPE :
-Intègre harmonieusement ces données d'experts dans ta réponse finale.
-Ne dis pas de jargon technique aux étudiants : parle avec fluidité, pédagogie et bienveillance en t'appuyant sur ces éléments réels.
+DIRECTIVES STRICTES DU CHEF D'ÉQUIPE :
+1. Les fichiers de l'étudiant (images, graphiques, audio, calculs) ONT DÉJÀ ÉTÉ VUS ET DÉCODÉS dans le rapport ci-dessus.
+2. TU NE DOIS EN AUCUN CAS DIRE "je ne peux pas voir les images", "comme je suis une IA je n'ai pas de vision", ou "peux-tu me décrire l'image".
+3. Réponds immédiatement et précisément à la demande de l'élève en exploitant fidèlement l'analyse transmise par ton Expert Vision.
+4. Fais preuve de pédagogie, de bienveillance et de précision scientifique en décrivant, expliquant ou résolvant ce qui a été vu.
 ══════════════════════════════════════════════════════════════════════════════`;
   }
 
@@ -151,13 +158,13 @@ Ne dis pas de jargon technique aux étudiants : parle avec fluidité, pédagogie
   const msg = cfData?.choices?.[0]?.message;
   const rawAns = msg?.content || msg?.reasoning_content || '';
 
-  const modelLabel = expertsMobilized.length > 0
-    ? `Llama 3.3 70B (Chef d'Équipe) + ${expertsMobilized.join(', ')}`
+  const modelLabel = successfulExperts.length > 0
+    ? `Llama 3.3 70B (Chef d'Équipe) + ${successfulExperts.join(' • ')}`
     : "Llama 3.3 70B (Chef d'Équipe Multi-IA)";
 
   return {
     isOrchestrated: true,
-    expertsUsed: expertsMobilized,
+    expertsUsed: successfulExperts,
     finalAnswer: rawAns,
     effectiveModelUsed: modelLabel,
   };
