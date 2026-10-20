@@ -90,9 +90,9 @@ export function HomePageContent({ prompt }: HomeSearch) {
                 if (id === "@cf/meta/llama-3.3-70b-instruct") {
                   id = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
                   name = "Llama 3.3 70B Instruct (Workers AI)";
-                } else if (id === "gemini-2.0-flash" || id === "gemini-2.5-flash") {
-                  id = "gemini-3.8-flash";
-                  name = "Google Gemini 3.8 Flash";
+                } else if (id === "gemini-2.0-flash" || id === "gemini-2.5-flash" || id === "gemini-3.8-flash" || id.includes("gemini")) {
+                  id = "gemini-2.0-flash";
+                  name = "Google Gemini 2.0 Flash";
                 }
                 return {
                   id,
@@ -100,7 +100,7 @@ export function HomePageContent({ prompt }: HomeSearch) {
                   type: "agent" as const,
                 };
               });
-              const gIdx = finalModels.findIndex(m => m.id === "gemini-3.8-flash");
+              const gIdx = finalModels.findIndex(m => m.id === "gemini-2.0-flash");
               if (gIdx > 0) {
                 const [g] = finalModels.splice(gIdx, 1);
                 finalModels.unshift(g);
@@ -109,7 +109,7 @@ export function HomePageContent({ prompt }: HomeSearch) {
             if (cfg.default_model) {
               let dm = cfg.default_model;
               if (dm === "@cf/meta/llama-3.3-70b-instruct") dm = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-              if (dm === "gemini-2.0-flash" || dm === "gemini-2.5-flash") dm = "gemini-3.8-flash";
+              if (dm === "gemini-2.0-flash" || dm === "gemini-2.5-flash" || dm === "gemini-3.8-flash" || dm.includes("gemini")) dm = "gemini-2.0-flash";
               defaultModelId = dm;
             }
           }
@@ -133,7 +133,7 @@ export function HomePageContent({ prompt }: HomeSearch) {
       // 3. Catalogue de secours officiel (garantit qu'aucun étudiant ne voit jamais 'No agent' par erreur)
       if (finalModels.length === 0) {
         finalModels = [
-          { id: "gemini-3.8-flash", name: "Google Gemini 3.8 Flash", type: "agent" },
+          { id: "gemini-2.0-flash", name: "Google Gemini 2.0 Flash", type: "agent" },
           { id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", name: "Llama 3.3 70B Instruct (Workers AI)", type: "agent" },
           { id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5 (Anthropic)", type: "agent" },
           { id: "gpt-4o-mini", name: "OpenAI GPT-4o Mini", type: "agent" },

@@ -510,21 +510,21 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
         if (id === "@cf/meta/llama-3.3-70b-instruct") {
           id = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
           name = "Llama 3.3 70B Instruct (Workers AI)";
-        } else if (id === "gemini-2.0-flash" || id === "gemini-2.5-flash" || id.includes("gemini-2.0")) {
-          id = "gemini-3.8-flash";
-          name = "Google Gemini 3.8 Flash";
+        } else if (id === "gemini-2.0-flash" || id === "gemini-2.5-flash" || id === "gemini-3.8-flash" || id.includes("gemini")) {
+          id = "gemini-2.0-flash";
+          name = "Google Gemini 2.0 Flash";
         } else if (id.includes("claude-3-5")) {
           id = "claude-sonnet-4-5";
           name = "Claude Sonnet 4.5";
         }
         return { ...m, id, name };
       });
-      const gIndex = result.findIndex(m => m.id === "gemini-3.8-flash");
+      const gIndex = result.findIndex(m => m.id === "gemini-2.0-flash");
       if (gIndex > 0) {
         const [g] = result.splice(gIndex, 1);
         result.unshift(g);
       } else if (gIndex === -1) {
-        result.unshift({ id: "gemini-3.8-flash", name: "Google Gemini 3.8 Flash", type: "agent" });
+        result.unshift({ id: "gemini-2.0-flash", name: "Google Gemini 2.0 Flash", type: "agent" });
       }
       return result;
     }
@@ -540,9 +540,9 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
             if (id === "@cf/meta/llama-3.3-70b-instruct") {
               id = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
               name = "Llama 3.3 70B Instruct (Workers AI)";
-            } else if (id === "gemini-2.0-flash" || id === "gemini-2.5-flash" || id.includes("gemini-2.0")) {
-              id = "gemini-3.8-flash";
-              name = "Google Gemini 3.8 Flash";
+            } else if (id === "gemini-2.0-flash" || id === "gemini-2.5-flash" || id === "gemini-3.8-flash" || id.includes("gemini")) {
+              id = "gemini-2.0-flash";
+              name = "Google Gemini 2.0 Flash";
             } else if (id.includes("claude-3-5")) {
               id = "claude-sonnet-4-5";
               name = "Claude Sonnet 4.5";
@@ -553,13 +553,13 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
               type: "agent" as const,
             };
           });
-          // Place gemini-3.8-flash first as robust default
-          const gIndex = list.findIndex((m: any) => m.id === "gemini-3.8-flash");
+          // Place gemini-2.0-flash first as robust default
+          const gIndex = list.findIndex((m: any) => m.id === "gemini-2.0-flash");
           if (gIndex > 0) {
             const [g] = list.splice(gIndex, 1);
             list.unshift(g);
           } else if (gIndex === -1) {
-            list.unshift({ id: "gemini-3.8-flash", name: "Google Gemini 3.8 Flash", type: "agent" });
+            list.unshift({ id: "gemini-2.0-flash", name: "Google Gemini 2.0 Flash", type: "agent" });
           }
           return list;
         }
@@ -567,7 +567,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     } catch (e) {}
 
     return [
-      { id: "gemini-3.8-flash", name: "Google Gemini 3.8 Flash", type: "agent" },
+      { id: "gemini-2.0-flash", name: "Google Gemini 2.0 Flash", type: "agent" },
       { id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", name: "Llama 3.3 70B Instruct (Workers AI)", type: "agent" },
       { id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5 (Anthropic)", type: "agent" },
       { id: "gpt-4o-mini", name: "OpenAI GPT-4o Mini", type: "agent" },
@@ -997,9 +997,9 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     }
 
     let modelTarget = matchedModel?.model_id || id;
-    if (provider === "google" && (modelTarget.includes("gemini-2.0") || modelTarget.includes("gemini-2.5") || modelTarget === "gemini-2.0-flash")) {
-      modelTarget = "gemini-3.8-flash";
-      displayName = "Google Gemini 3.8 Flash";
+    if (provider === "google" && (modelTarget.includes("gemini-2.0") || modelTarget.includes("gemini-2.5") || modelTarget.includes("gemini-3.8") || modelTarget === "gemini-2.0-flash")) {
+      modelTarget = "gemini-2.0-flash";
+      displayName = "Google Gemini 2.0 Flash";
     }
     if (modelTarget === "@cf/meta/llama-3.3-70b-instruct") {
       modelTarget = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";

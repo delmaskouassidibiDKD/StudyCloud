@@ -1458,6 +1458,40 @@ CONSIGNES STRICTES DE CONTINUATION :
         }
 
         // ══════════════════════════════════════════════════════════════════════════════
+        // SECOURS VISION : CLOUDFLARE WORKERS AI LLAMA 3.2 11B VISION INSTRUCT
+        // ══════════════════════════════════════════════════════════════════════════════
+        // Si l'étudiant a envoyé une image et que Gemini est indisponible,
+        // on ne bascule JAMAIS vers un modèle texte aveugle : on utilise le modèle Vision de Cloudflare !
+        if (!answerText && imageBase64 && imageBase64.trim().length > 30) {
+          try {
+            const rawB64 = imageBase64.replace(/^data:[^;]+;base64,/i, "").trim();
+            const bytes = Array.from(Buffer.from(rawB64, "base64"));
+            const visionPrompt = `${systemPrompt ? systemPrompt + "\n\n" : ""}${docContent ? "[DOCUMENT D'APPUI] : " + docContent.slice(0, 5000) + "\n\n" : ""}${effectivePrompt}`;
+            const cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/meta/llama-3.2-11b-vision-instruct`, {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${cfToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                prompt: visionPrompt,
+                image: bytes,
+              }),
+            });
+            if (cfRes.ok) {
+              const vData: any = await cfRes.json();
+              const rawAns = vData?.result?.response || vData?.response || "";
+              if (rawAns) {
+                answerText = stripAiReasoningScratchpad(rawAns);
+                effectiveModelUsed = "Cloudflare Llama 3.2 11B Vision";
+              }
+            }
+          } catch (visErr) {
+            logger.warn("Cloudflare Vision fallback exception", { error: visErr });
+          }
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════════
         // BRANCHE 2 : CHEF D'ÉQUIPE MULTI-IA (SI LLAMA EST SÉLECTIONNÉ SPÉCIFIQUEMENT)
         // ══════════════════════════════════════════════════════════════════════════════
         if (!answerText && isChefModel(targetModel)) {
