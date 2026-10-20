@@ -88,7 +88,8 @@ export async function callWhisperExpert(
 }
 
 /**
- * Expert Vision : Décrit et extrait les schémas/manuscrits via Llama 3.2 Vision (Cloudflare Workers AI)
+ * Expert Vision & Extraction : Décrit et extrait les exercices et manuscrits
+ * via DeepSeek V4.1 Flash 552B (Cloudflare-hébergé) avec fallback Llama 3.2 Vision.
  */
 export async function callVisionExpert(
   imageBase64: string,
@@ -102,17 +103,49 @@ export async function callVisionExpert(
 
     if (!rawB64 || rawB64.length < 20) {
       return {
-        expert: 'llama-vision',
+        expert: 'deepseek-vision',
         status: 'failed',
         summary: 'Base64 image vide ou invalide',
         content: '',
       };
     }
 
-    const runUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/meta/llama-3.2-11b-vision-instruct`;
-    const promptVision = "Tu es l'Expert Vision de l'équipe pédagogique StudyCloud. Décris précisément et exhaustivement tout ce que tu vois dans cette image de cours : tout le texte visible, énoncés, exercices, questions, schémas techniques, équations et formules mathématiques en LaTeX standard ($...$), tableaux, graphiques et annotations manuscrites. Ne dis jamais que tu ne peux pas voir, analyse méticuleusement l'image fournie.";
+    const promptVision = "Tu es l'Expert Vision et OCR de l'équipe pédagogique StudyCloud. Analyse minutieusement cette image de cours ou d'exercice : 1) Extrais l'intégralité de l'énoncé textuel mot à mot avec tous les chiffres, questions et formules mathématiques en LaTeX standard ($...$). 2) Si c'est un exercice ou un devoir, fournis la résolution complète et détaillée étape par étape avec toutes les explications pédagogiques. 3) Si c'est un schéma ou circuit, décris fidèlement chaque composant et connexion.";
 
-    // Tentative 1 : Envoi direct du Base64 à Cloudflare Workers AI Run
+    // 1. PRIORITÉ : DeepSeek V4.1 Flash (Modèle géant 552B MoE Cloudflare-hébergé)
+    try {
+      const dsUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/deepseek-ai/deepseek-v4.1-flash-1017`;
+      const dsRes = await fetch(dsUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${cfToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: promptVision,
+          image: rawB64,
+          max_tokens: 4096,
+        }),
+      });
+
+      if (dsRes.ok) {
+        const dsData: any = await dsRes.json();
+        const dsContent = dsData?.result?.choices?.[0]?.text || dsData?.result?.response || '';
+        if (dsContent.trim()) {
+          return {
+            expert: 'deepseek-vision',
+            status: 'success',
+            summary: 'Exercice et image analysés par DeepSeek V4.1 Flash Vision',
+            content: dsContent.trim(),
+          };
+        }
+      }
+    } catch (_dsErr) {
+      // Poursuite vers le secours
+    }
+
+    // 2. SECOURS : Llama 3.2 11B Vision (Cloudflare Workers AI)
+    const runUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/meta/llama-3.2-11b-vision-instruct`;
     let runRes = await fetch(runUrl, {
       method: 'POST',
       headers: {
@@ -126,7 +159,6 @@ export async function callVisionExpert(
       }),
     });
 
-    // Si erreur 403 (Model agreement required), auto-acceptation des termes Meta puis rejeu immédiat
     if (runRes.status === 403) {
       const errText = await runRes.text();
       if (errText.includes('agree')) {
@@ -153,54 +185,25 @@ export async function callVisionExpert(
       const runContent = runData?.result?.response || runData?.response || '';
       if (runContent.trim()) {
         return {
-          expert: 'llama-vision',
+          expert: 'deepseek-vision',
           status: 'success',
-          summary: 'Image analysée par Llama 3.2 Vision',
+          summary: 'Image analysée par Llama 3.2 Vision (Secours)',
           content: runContent.trim(),
         };
       }
     }
 
-    // Tentative 2 : Format array d'octets de secours
-    const bytes = base64ToUint8Array(rawB64);
-    const subBytes = Array.from(bytes.slice(0, 500000));
-    const runRes2 = await fetch(runUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${cfToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        prompt: promptVision,
-        image: subBytes,
-        max_tokens: 3000,
-      }),
-    });
-
-    if (runRes2.ok) {
-      const runData2: any = await runRes2.json();
-      const runContent2 = runData2?.result?.response || runData2?.response || '';
-      if (runContent2.trim()) {
-        return {
-          expert: 'llama-vision',
-          status: 'success',
-          summary: 'Image analysée par Llama 3.2 Vision (Bytes)',
-          content: runContent2.trim(),
-        };
-      }
-    }
-
     return {
-      expert: 'llama-vision',
+      expert: 'deepseek-vision',
       status: 'failed',
-      summary: 'Échec analyse visuelle Llama Vision',
+      summary: 'Échec analyse visuelle',
       content: '',
     };
   } catch (err: any) {
     return {
-      expert: 'llama-vision',
+      expert: 'deepseek-vision',
       status: 'failed',
-      summary: `Erreur Llama Vision: ${err?.message}`,
+      summary: `Erreur Vision: ${err?.message}`,
       content: '',
     };
   }

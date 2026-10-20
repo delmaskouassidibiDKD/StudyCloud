@@ -3316,7 +3316,7 @@ CONSIGNES STRICTES DE CONTINUATION :
                           <div className="text-[10px] pl-4 font-normal">
                             {isChef ? (
                               <span className="text-orange-400/80">
-                                Orchestre : Audio Whisper • Vision Llama • Vidéo Gemini • Maths R1
+                                Orchestre : Audio Whisper • Vision DeepSeek V4.1 • Vidéo • Maths R1
                               </span>
                             ) : (
                               <span className="text-zinc-500">

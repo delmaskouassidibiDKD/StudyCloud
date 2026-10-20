@@ -98,9 +98,9 @@ export async function orchestrateMultiAgentTeam(
       if (exp.expert === 'whisper-audio') {
         successfulExperts.push('👂 Whisper Audio');
         expertReports.push(`[RAPPORT EXPERT AUDIO (Whisper)] :\n${exp.content}`);
-      } else if (exp.expert === 'llama-vision') {
-        successfulExperts.push('👁️ Llama 3.2 Vision');
-        expertReports.push(`[RAPPORT EXPERT VISION (Llama 3.2 Vision)] :\n${exp.content}`);
+      } else if (exp.expert === 'deepseek-vision' || exp.expert === 'llama-vision') {
+        successfulExperts.push('👁️ DeepSeek V4.1 Vision (OCR)');
+        expertReports.push(`[RAPPORT EXPERT VISION & EXTRACTION (DeepSeek V4.1 Flash Vision)] :\n${exp.content}`);
       } else if (exp.expert === 'gemini-video') {
         successfulExperts.push('🎬 Gemini 2.5 Flash Vidéo');
         expertReports.push(`[RAPPORT EXPERT VIDÉO (Gemini 2.5 Flash)] :\n${exp.content}`);
