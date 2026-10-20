@@ -47,6 +47,8 @@ interface Attachment {
   file: File;
   preview: string;
   mediaType: string;
+  status: "processing" | "ready" | "error";
+  dataUri?: string;
 }
 
 function createAttachment(file: File): Attachment {
@@ -54,7 +56,8 @@ function createAttachment(file: File): Attachment {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     file,
     preview: URL.createObjectURL(file),
-    mediaType: file.type || "application/octet-stream"
+    mediaType: file.type || "application/octet-stream",
+    status: "processing"
   };
 }
 
@@ -390,7 +393,28 @@ function Chat() {
   const addFiles = useCallback((files: FileList | File[]) => {
     const images = Array.from(files).filter((f) => f.type.startsWith("image/"));
     if (images.length === 0) return;
-    setAttachments((prev) => [...prev, ...images.map(createAttachment)]);
+    const newAttachments = images.map(createAttachment);
+    setAttachments((prev) => [...prev, ...newAttachments]);
+
+    // Traitement asynchrone immédiat (lecture DataURI, validation)
+    for (const att of newAttachments) {
+      void (async () => {
+        try {
+          const dataUri = await fileToDataUri(att.file);
+          setAttachments((prev) =>
+            prev.map((item) =>
+              item.id === att.id ? { ...item, status: "ready", dataUri } : item
+            )
+          );
+        } catch {
+          setAttachments((prev) =>
+            prev.map((item) =>
+              item.id === att.id ? { ...item, status: "error" } : item
+            )
+          );
+        }
+      })();
+    }
   }, []);
 
   const removeAttachment = useCallback((id: string) => {
@@ -400,6 +424,8 @@ function Chat() {
       return prev.filter((a) => a.id !== id);
     });
   }, []);
+
+  const isProcessingAttachments = attachments.some((a) => a.status === "processing");
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -444,7 +470,8 @@ function Chat() {
 
   const send = useCallback(async () => {
     const text = input.trim();
-    if ((!text && attachments.length === 0) || isStreaming) return;
+    const isProcessing = attachments.some((a) => a.status === "processing");
+    if ((!text && attachments.length === 0) || isStreaming || isProcessing) return;
     setInput("");
 
     const parts: Array<
@@ -454,7 +481,7 @@ function Chat() {
     if (text) parts.push({ type: "text", text });
 
     for (const att of attachments) {
-      const dataUri = await fileToDataUri(att.file);
+      const dataUri = att.dataUri || (await fileToDataUri(att.file));
       parts.push({ type: "file", mediaType: att.mediaType, url: dataUri });
     }
 
@@ -869,27 +896,120 @@ function Chat() {
           />
 
           {attachments.length > 0 && (
-            <div className="flex gap-2 mb-2 flex-wrap">
-              {attachments.map((att) => (
-                <div
-                  key={att.id}
-                  className="relative group rounded-lg border border-kumo-line bg-kumo-control overflow-hidden"
-                >
-                  <img
-                    src={att.preview}
-                    alt={att.file.name}
-                    className="h-16 w-16 object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeAttachment(att.id)}
-                    className="absolute top-0.5 right-0.5 rounded-full bg-kumo-contrast/80 text-kumo-inverse p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                    aria-label={`Remove ${att.file.name}`}
+            <div className="flex flex-col gap-1.5 mb-2">
+              {isProcessingAttachments ? (
+                <div className="flex items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-300">
+                  <svg
+                    className="h-3.5 w-3.5 shrink-0 animate-spin text-amber-400"
+                    viewBox="0 0 24 24"
+                    fill="none"
                   >
-                    <XIcon size={10} />
-                  </button>
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="9"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                    />
+                    <path
+                      className="opacity-95"
+                      fill="currentColor"
+                      d="M12 3a9 9 0 0 1 9 9h-2.5a6.5 6.5 0 0 0-6.5-6.5V3z"
+                    />
+                  </svg>
+                  <span className="flex-1 font-medium">
+                    Traitement et analyse de {attachments.length > 1 ? `vos ${attachments.length} fichiers` : "votre fichier"} en cours... ({attachments.filter((a) => a.status === "ready").length}/{attachments.length} prêt{attachments.length > 1 ? "s" : ""})
+                  </span>
+                  <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300">
+                    Envoi bloqué
+                  </span>
                 </div>
-              ))}
+              ) : (
+                <div className="flex items-center gap-1.5 px-1 text-xs font-medium text-emerald-400">
+                  <CheckCircleIcon size={14} weight="fill" className="text-emerald-400" />
+                  <span>Tous les fichiers sont prêts pour l'envoi</span>
+                </div>
+              )}
+              <div className="flex gap-2 flex-wrap">
+                {attachments.map((att) => (
+                  <div
+                    key={att.id}
+                    className="relative group rounded-lg border border-kumo-line bg-kumo-control overflow-hidden h-16 w-16"
+                  >
+                    <img
+                      src={att.preview}
+                      alt={att.file.name}
+                      className="h-full w-full object-cover"
+                    />
+
+                    {/* Cercle qui tourne pendant le traitement du fichier */}
+                    {att.status === "processing" && (
+                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/65 backdrop-blur-[1px] p-1 text-center select-none">
+                        <svg
+                          className="h-5 w-5 animate-spin text-white drop-shadow"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="9"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                          />
+                          <path
+                            className="opacity-95"
+                            fill="currentColor"
+                            d="M12 3a9 9 0 0 1 9 9h-2.5a6.5 6.5 0 0 0-6.5-6.5V3z"
+                          />
+                        </svg>
+                        <span className="mt-1 text-[8px] font-bold text-white uppercase tracking-wider leading-none">
+                          Analyse...
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Coche verte de succès une fois le fichier prêt */}
+                    {att.status === "ready" && (
+                      <div
+                        className="absolute bottom-1 right-1 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white shadow ring-1 ring-white/60"
+                        title="Fichier prêt pour l'envoi"
+                      >
+                        <svg
+                          className="h-2.5 w-2.5"
+                          viewBox="0 0 12 12"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <polyline points="2.5 6 5 8.5 9.5 3.5" />
+                        </svg>
+                      </div>
+                    )}
+
+                    {/* Badge d'erreur si échec */}
+                    {att.status === "error" && (
+                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-red-950/80 p-1 text-center text-white">
+                        <XCircleIcon size={16} weight="fill" className="text-red-400" />
+                        <span className="mt-0.5 text-[8.5px] font-semibold text-red-200">Échec</span>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(att.id)}
+                      className="absolute top-0.5 right-0.5 z-20 rounded-full bg-kumo-contrast/80 text-kumo-inverse p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label={`Remove ${att.file.name}`}
+                    >
+                      <XIcon size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -901,7 +1021,7 @@ function Chat() {
               aria-label="Attach images"
               icon={<PaperclipIcon size={18} />}
               onClick={() => fileInputRef.current?.click()}
-              disabled={!connected || isStreaming}
+              disabled={!connected || isStreaming || isProcessingAttachments}
               className="mb-0.5"
             />
             <InputArea
@@ -911,6 +1031,7 @@ function Chat() {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
+                  if (isProcessingAttachments) return;
                   send();
                 }
               }}
@@ -921,11 +1042,13 @@ function Chat() {
               }}
               onPaste={handlePaste}
               placeholder={
-                attachments.length > 0
-                  ? "Add a message or send images..."
-                  : "Send a message..."
+                isProcessingAttachments
+                  ? "Analyse et traitement de vos fichiers par l'IA en cours... Veuillez patienter..."
+                  : attachments.length > 0
+                    ? "Ajoutez un message ou envoyez les images..."
+                    : "Envoyez un message..."
               }
-              disabled={!connected || isStreaming}
+              disabled={!connected || isStreaming || isProcessingAttachments}
               rows={1}
               className="flex-1 ring-0! focus:ring-0! shadow-none! bg-transparent! outline-none! resize-none max-h-40"
             />
@@ -945,10 +1068,35 @@ function Chat() {
                 variant="primary"
                 shape="square"
                 aria-label="Send message"
+                title={isProcessingAttachments ? "Traitement des fichiers en cours... Patientez avant d'envoyer" : "Envoyer le message"}
                 disabled={
-                  (!input.trim() && attachments.length === 0) || !connected
+                  (!input.trim() && attachments.length === 0) || !connected || isProcessingAttachments
                 }
-                icon={<PaperPlaneRightIcon size={18} />}
+                icon={
+                  isProcessingAttachments ? (
+                    <svg
+                      className="h-4 w-4 animate-spin text-white"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="9"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                      />
+                      <path
+                        className="opacity-95"
+                        fill="currentColor"
+                        d="M12 3a9 9 0 0 1 9 9h-2.5a6.5 6.5 0 0 0-6.5-6.5V3z"
+                      />
+                    </svg>
+                  ) : (
+                    <PaperPlaneRightIcon size={18} />
+                  )
+                }
                 className="mb-0.5"
               />
             )}

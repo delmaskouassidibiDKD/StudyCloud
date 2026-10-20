@@ -647,6 +647,9 @@ export const ChatComposer = ({
   const hasUnreadyAttachment = pendingAttachments.some(
     (attachment) => attachment.uploadState !== "ready",
   );
+  const isUploadingAttachments = pendingAttachments.some(
+    (attachment) => attachment.uploadState === "uploading",
+  );
   const canSend = !isSending && !isAgentActive && !isBlocked &&
     (inputValue.trim().length > 0 || selectedSlashCommand !== null || hasReadyAttachment) &&
     !hasUnreadyAttachment && !isCreatingResource;
@@ -738,6 +741,13 @@ export const ChatComposer = ({
             />
             <textarea
               value={inputValue}
+              placeholder={
+                isUploadingAttachments
+                  ? "Analyse et traitement de vos fichiers par l'IA en cours... Veuillez patienter..."
+                  : isBlocked
+                    ? "Action requise avant de continuer..."
+                    : (newChat ? "Comment puis-je vous aider aujourd'hui ?" : "Écrivez votre message...")
+              }
               role="combobox"
               aria-autocomplete="list"
               aria-expanded={slashCommandPicker.open}
@@ -863,6 +873,13 @@ export const ChatComposer = ({
                 // Enter sends message (unless Shift is held)
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
+                  if (isUploadingAttachments) {
+                    toasts.add({
+                      title: "Veuillez patienter : l'IA est en train d'analyser vos fichiers.",
+                      variant: "warning",
+                    });
+                    return;
+                  }
                   if (!isAgentActive && !isBlocked) submitMessage();
                   return;
                 }
@@ -979,20 +996,43 @@ export const ChatComposer = ({
                   disabled={!canSend}
                   tone="primary"
                   className="!h-10 !w-10 disabled:cursor-not-allowed disabled:opacity-30 sm:!h-8 sm:!w-8"
-                  aria-label="Envoyer le message"
+                  aria-label={isUploadingAttachments ? "Traitement des fichiers en cours..." : "Envoyer le message"}
+                  title={isUploadingAttachments ? "Traitement des fichiers en cours... Patientez avant d'envoyer" : "Envoyer le message"}
                 >
-                  {/* Arrow-up icon */}
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                  >
-                    <line x1="12" y1="19" x2="12" y2="5" />
-                    <polyline points="5 12 12 5 19 12" />
-                  </svg>
+                  {isUploadingAttachments ? (
+                    <svg
+                      className="h-4 w-4 animate-spin text-white"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="9"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                      />
+                      <path
+                        className="opacity-95"
+                        fill="currentColor"
+                        d="M12 3a9 9 0 0 1 9 9h-2.5a6.5 6.5 0 0 0-6.5-6.5V3z"
+                      />
+                    </svg>
+                  ) : (
+                    /* Arrow-up icon */
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                    >
+                      <line x1="12" y1="19" x2="12" y2="5" />
+                      <polyline points="5 12 12 5 19 12" />
+                    </svg>
+                  )}
                 </WorkshopIconButton>
               )}
           </div>
