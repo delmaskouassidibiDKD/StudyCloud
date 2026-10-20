@@ -343,6 +343,8 @@ export async function sendChatMessageToAi(params: {
         imageBase64: params.imageBase64,
         audioBase64: params.audioBase64,
         videoBase64: params.videoBase64,
+        videoUrl: params.videoUrl,
+        mediaBlob: params.mediaBlob,
         temperature: 0.7,
       });
 
@@ -431,6 +433,8 @@ export async function sendChatMessageToAi(params: {
             imageBase64: params.imageBase64,
             audioBase64: params.audioBase64,
             videoBase64: params.videoBase64,
+            videoUrl: params.videoUrl,
+            mediaBlob: params.mediaBlob,
             temperature: 0.3,
           });
 

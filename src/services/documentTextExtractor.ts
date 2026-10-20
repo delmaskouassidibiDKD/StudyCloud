@@ -281,7 +281,7 @@ export async function extractDocumentText(item: any): Promise<string> {
       return imgDesc;
     }
 
-    // Cas 5 : Fichiers Audio (MP3, WAV, M4A, OGG) -> Encodage Base64 pour Whisper
+    // Cas 5 : Fichiers Audio (MP3, WAV, M4A, OGG) -> Encodage Base64 pour Gemini
     if (
       fileName.endsWith('.mp3') ||
       fileName.endsWith('.wav') ||
@@ -291,31 +291,46 @@ export async function extractDocumentText(item: any): Promise<string> {
     ) {
       let b64 = '';
       try {
-        const bytes = new Uint8Array(arrayBuffer);
-        let binary = '';
-        const len = bytes.byteLength;
-        for (let i = 0; i < len; i++) {
-          binary += String.fromCharCode(bytes[i]);
+        if (typeof Blob !== 'undefined' && typeof FileReader !== 'undefined') {
+          const blob = new Blob([arrayBuffer]);
+          b64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const res = reader.result as string;
+              resolve(res.split(',')[1] || '');
+            };
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(blob);
+          });
         }
-        b64 = window.btoa(binary);
+        if (!b64) {
+          const bytes = new Uint8Array(arrayBuffer);
+          let binary = '';
+          const chunkSize = 0x8000;
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any);
+          }
+          b64 = window.btoa(binary);
+        }
       } catch (bErr) {
         console.warn('[Extractor] Erreur conversion base64 audio:', bErr);
       }
 
       if (b64 && typeof item === 'object') {
         item.audioBase64 = b64;
+        item.blob = new Blob([arrayBuffer]);
       }
       if (b64 && cacheKey) {
         audioBase64Cache.set(cacheKey, b64);
       }
 
-      const audioDesc = `[Fichier Audio / Cours oral joint : "${item.name || 'Audio'}" (indexé pour transcription Whisper)]`;
+      const audioDesc = `[Fichier Audio / Cours oral joint : "${item.name || 'Audio'}" (indexé pour écoute et analyse Gemini 2.0 Flash)]`;
       if (cacheKey) textCache.set(cacheKey, audioDesc);
       if (typeof item === 'object') item.textContent = audioDesc;
       return audioDesc;
     }
 
-    // Cas 6 : Fichiers Vidéo (MP4, WebM, MOV) -> Encodage pour l'Expert Vidéo Gemini 2.5 Flash
+    // Cas 6 : Fichiers Vidéo (MP4, WebM, MOV) -> Encodage pour Gemini 2.0 Flash
     if (
       fileName.endsWith('.mp4') ||
       fileName.endsWith('.webm') ||
@@ -323,31 +338,44 @@ export async function extractDocumentText(item: any): Promise<string> {
       item.type?.includes('video')
     ) {
       let b64 = '';
-      if (arrayBuffer.byteLength <= 25 * 1024 * 1024) {
+      if (arrayBuffer.byteLength <= 35 * 1024 * 1024) {
         try {
-          const bytes = new Uint8Array(arrayBuffer);
-          let binary = '';
-          const len = bytes.byteLength;
-          for (let i = 0; i < len; i++) {
-            binary += String.fromCharCode(bytes[i]);
+          if (typeof Blob !== 'undefined' && typeof FileReader !== 'undefined') {
+            const blob = new Blob([arrayBuffer]);
+            b64 = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const res = reader.result as string;
+                resolve(res.split(',')[1] || '');
+              };
+              reader.onerror = () => resolve('');
+              reader.readAsDataURL(blob);
+            });
           }
-          b64 = window.btoa(binary);
+          if (!b64) {
+            const bytes = new Uint8Array(arrayBuffer);
+            let binary = '';
+            const chunkSize = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+              binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any);
+            }
+            b64 = window.btoa(binary);
+          }
         } catch (bErr) {
           console.warn('[Extractor] Erreur conversion base64 video:', bErr);
         }
       }
 
-      if (b64 && typeof item === 'object') {
-        item.videoBase64 = b64;
+      if (typeof item === 'object') {
+        if (b64) item.videoBase64 = b64;
+        item.blob = new Blob([arrayBuffer]);
+        if (targetUrl) item.videoUrl = targetUrl;
       }
       if (b64 && cacheKey) {
         videoBase64Cache.set(cacheKey, b64);
       }
-      if (targetUrl && typeof item === 'object') {
-        item.videoUrl = targetUrl;
-      }
 
-      const vidDesc = `[Fichier Vidéo d'apprentissage joint : "${item.name || 'Vidéo'}" (transmis à l'Expert Vidéo Gemini 2.5 Flash)]`;
+      const vidDesc = `[Fichier Vidéo d'apprentissage joint : "${item.name || 'Vidéo'}" (transmis à Gemini 2.0 Flash pour analyse vidéo multimodale)]`;
       if (cacheKey) textCache.set(cacheKey, vidDesc);
       if (typeof item === 'object') item.textContent = vidDesc;
       return vidDesc;

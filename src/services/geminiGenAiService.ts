@@ -11,6 +11,7 @@ export interface GenerateGeminiOptions {
   imageBase64?: string;
   audioBase64?: string;
   videoBase64?: string;
+  videoUrl?: string;
   mediaBlob?: Blob;
   mimeType?: string;
   temperature?: number;
@@ -117,6 +118,13 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
         }
       });
     }
+  }
+
+  // D.bis URL de vidéo en ligne ou stockée
+  if (options.videoUrl && options.videoUrl.trim()) {
+    currentParts.push({
+      text: `[VIDÉO FOURNIE EN LIGNE / CLOUD : ${options.videoUrl.trim()}]`
+    });
   }
 
   // E. Document d'étude textuel associé

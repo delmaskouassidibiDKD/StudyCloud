@@ -2803,6 +2803,7 @@ CONSIGNES STRICTES DE CONTINUATION :
         audioBase64: isContinuation ? undefined : (attachedAudioBase64 || undefined),
         videoBase64: isContinuation ? undefined : (attachedVideoBase64 || undefined),
         videoUrl: isContinuation ? undefined : (attachedVideoUrl || undefined),
+        mediaBlob: isContinuation ? undefined : (targetDocs.find(d => d.blob)?.blob || (activePreviewItem as any)?.blob || undefined),
         signal: abortSignal,
         abortSignal,
       });
