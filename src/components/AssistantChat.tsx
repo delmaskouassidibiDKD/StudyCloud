@@ -4,7 +4,7 @@ import { DnaLogo } from './DnaLogo';
 import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
 import { MathText, stripAiReasoningScratchpad } from './MathText';
-import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey, safeJsonParse } from '../services/api';
+import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey, safeJsonParse, getWorkerApiUrl } from '../services/api';
 import { getFileBlob } from '../services/localFileStorage';
 
 // Helpers robustes et infaillibles de stockage local pour l'AssistantChat (garantis sans ReferenceError)
@@ -154,11 +154,20 @@ async function extractImageBase64FromItem(item: any): Promise<{ base64: string; 
   const name = String(item.name || item.title || item.fileName || '').toLowerCase();
   const type = String(item.type || item.mimeType || '').toLowerCase();
   const ext = String(item.extension || '').toLowerCase();
+  const category = String(item.category || item.fileType || item.file_category || '').toLowerCase();
   const isImage = Boolean(
     item.isImage ||
+    category.includes('image') ||
+    category.includes('photo') ||
     type.startsWith('image/') ||
     /\.(jpe?g|png|webp|gif|bmp|svg)$/i.test(name) ||
-    ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'svg'].includes(ext)
+    ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'svg'].includes(ext) ||
+    name.includes('whatsapp image') ||
+    name.includes('image') ||
+    name.includes('screenshot') ||
+    name.includes('capture') ||
+    item.imageUrl ||
+    item.thumbnail
   );
 
   if (!isImage) return null;
@@ -219,8 +228,12 @@ async function extractImageBase64FromItem(item: any): Promise<{ base64: string; 
   }
 
   // 4. URL accessible (blob:, http:, /api/cloud/...)
-  const targetUrl = item.url || item.fileUrl || item.previewUrl;
+  let targetUrl = item.url || item.fileUrl || item.previewUrl;
   if (typeof targetUrl === 'string' && targetUrl.trim()) {
+    if (targetUrl.startsWith('/')) {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      targetUrl = `${baseUrl}${targetUrl}`;
+    }
     try {
       const resp = await fetch(targetUrl);
       if (resp.ok) {
@@ -235,7 +248,18 @@ async function extractImageBase64FromItem(item: any): Promise<{ base64: string; 
 
   // 5. Capture d'écran instantanée via l'élément <img> actif dans le DOM
   try {
-    const imgEl = document.querySelector('img[src^="blob:"], img[src*="/api/cloud/"], img[alt*="' + (item.name || item.title || 'Image') + '"]') as HTMLImageElement;
+    const candidateImgs = Array.from(document.querySelectorAll('img')) as HTMLImageElement[];
+    const imgEl = candidateImgs.find(img =>
+      img.naturalWidth > 0 && (
+        img.src.startsWith('blob:') ||
+        img.src.includes('/api/cloud/') ||
+        img.src.includes('storage') ||
+        img.closest('.document-preview') !== null ||
+        img.closest('[data-testid="file-preview"]') !== null ||
+        (item.name && img.alt && img.alt.toLowerCase().includes(item.name.toLowerCase().slice(0, 15)))
+      )
+    ) || (document.querySelector('img[src^="blob:"], img[src*="/api/cloud/"], img[alt*="' + (item.name || item.title || 'Image') + '"]') as HTMLImageElement | null);
+
     if (imgEl && imgEl.naturalWidth > 0) {
       const canvas = document.createElement('canvas');
       canvas.width = Math.min(imgEl.naturalWidth, 1600);
@@ -2784,6 +2808,8 @@ CONSIGNES STRICTES DE CONTINUATION :
         apiToken: configuredToken || undefined,
         geminiApiKey: configuredToken || getGeminiApiKey() || undefined,
         requested_type: explicitToolType || undefined,
+        attachedFileName: mainDocName,
+        attachedFileContent: (resolvedActiveItem as any)?.content || (resolvedActiveItem as any)?.text || (resolvedActiveItem as any)?.rawText || '',
         imageBase64: activeImageInfo?.base64,
         mimeType: activeImageInfo?.mimeType,
         signal: abortSignal,

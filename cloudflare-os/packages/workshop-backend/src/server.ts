@@ -1137,8 +1137,13 @@ export default {
         const userPrompt = String(body.message || body.prompt || "").trim();
         let targetModel = String(body.model || body.requested_model || "gemini-2.0-flash").trim();
         const history = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
-        const imageBase64 = String(body.imageBase64 || "").trim();
+        const docContent = String(body.attachedFileContent || body.file_content || body.documentContent || body.docContent || "").trim();
+        const docName = String(body.attachedFileName || body.file_name || body.fileName || body.docName || "").trim();
+        let imageBase64 = String(body.imageBase64 || "").trim();
         const mimeType = String(body.mimeType || "").trim();
+        const audioBase64 = String(body.audioBase64 || "").trim();
+        const videoBase64 = String(body.videoBase64 || "").trim();
+        const videoUrl = String(body.videoUrl || "").trim();
 
         // Si une image est fournie, priorité absolue au modèle multimodal Gemini 2.0 Flash
         if (imageBase64 && imageBase64.length > 50) {
@@ -1477,17 +1482,13 @@ CONSIGNES STRICTES DE CONTINUATION :
         // Secours résilient Google Gemini 2.0 Flash Multimodal
         if (!answerText && geminiKeyToUse) {
           try {
-            const fallbackGText = await executeGemini20FlashMultimodal({
+            const fallbackGText = await executeGemini20Flash({
               apiKey: geminiKeyToUse,
               systemPrompt,
               messages: simpleMessages,
               effectivePrompt,
-              docContent,
-              docName,
               imageBase64,
-              audioBase64,
-              videoBase64,
-              videoUrl,
+              mimeType,
             });
             if (fallbackGText) {
               answerText = stripAiReasoningScratchpad(fallbackGText);
