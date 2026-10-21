@@ -858,19 +858,21 @@ class PublicApiImpl extends RpcTarget implements PublicApi {
 }
 
 /**
- * Exécute l'appel conversationnel pur vers Google Gemini 2.0 Flash
+ * Exécute l'appel multimodal vers Google Gemini 2.0 Flash selon le Google Cookbook officiel
  */
 async function executeGemini20Flash(params: {
   apiKey: string;
   systemPrompt: string;
   messages: Array<{ role: "user" | "assistant"; content: string }>;
   effectivePrompt: string;
+  imageBase64?: string;
+  mimeType?: string;
 }): Promise<string> {
-  const { apiKey, systemPrompt, messages, effectivePrompt } = params;
+  const { apiKey, systemPrompt, messages, effectivePrompt, imageBase64, mimeType } = params;
 
   const contents: any[] = [];
 
-  // Messages historiques
+  // Messages historiques : rôles stricts 'user' et 'model' selon Google Cookbook
   const historyTurns = messages.slice(0, -1);
   for (const m of historyTurns) {
     contents.push({
@@ -879,10 +881,32 @@ async function executeGemini20Flash(params: {
     });
   }
 
-  // Dernier tour utilisateur (purement textuel)
+  // Dernier tour utilisateur (multimodal selon la spécification Google Cookbook)
+  const currentParts: any[] = [];
+
+  if (imageBase64 && imageBase64.length > 50) {
+    const cleanBase64 = imageBase64.replace(/^data:[^;]+;base64,/i, "").trim();
+    let effectiveMime = mimeType || "image/jpeg";
+    if (imageBase64.includes("image/png")) effectiveMime = "image/png";
+    else if (imageBase64.includes("image/webp")) effectiveMime = "image/webp";
+    else if (imageBase64.includes("image/gif")) effectiveMime = "image/gif";
+    else if (imageBase64.includes("application/pdf")) effectiveMime = "application/pdf";
+
+    if (cleanBase64) {
+      currentParts.push({
+        inlineData: {
+          mimeType: effectiveMime,
+          data: cleanBase64,
+        }
+      });
+    }
+  }
+
+  currentParts.push({ text: effectivePrompt });
+
   contents.push({
     role: "user",
-    parts: [{ text: effectivePrompt }],
+    parts: currentParts,
   });
 
   const reqBody: any = {
@@ -1108,11 +1132,17 @@ export default {
 
     // Endpoint officiel de discussion IA pour l'espace d'étude StudyCloud (Robot Rouge)
     if (url.pathname === "/api/ai/chat" && req.method === "POST") {
-      try {
         const body: any = await req.json().catch(() => ({}));
         const userPrompt = String(body.message || body.prompt || "").trim();
         let targetModel = String(body.model || body.requested_model || "gemini-2.0-flash").trim();
         const history = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
+        const imageBase64 = String(body.imageBase64 || "").trim();
+        const mimeType = String(body.mimeType || "").trim();
+
+        // Si une image est fournie, priorité absolue au modèle multimodal Gemini 2.0 Flash
+        if (imageBase64 && imageBase64.length > 50) {
+          targetModel = "gemini-2.0-flash";
+        }
 
 
         if (targetModel.includes("llama-3.3") && !targetModel.includes("fp8-fast")) {
@@ -1257,9 +1287,9 @@ CONSIGNES STRICTES DE CONTINUATION :
         const cfToken = ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join("");
 
         // ══════════════════════════════════════════════════════════════════════════════
-        // BRANCHE 1 : MODÈLE UNIVERSEL PAR DÉFAUT (GOOGLE GEMINI 2.0 FLASH)
+        // BRANCHE 1 : MODÈLE UNIVERSEL PAR DÉFAUT (GOOGLE GEMINI 2.0 FLASH MULTIMODAL)
         // ══════════════════════════════════════════════════════════════════════════════
-        // Conversation textuelle pure (Prompt + Historique)
+        // Implémentation conforme au Google Cookbook officiel
         if ((targetModel === "gemini-2.0-flash" || targetModel.includes("gemini")) && geminiKeyToUse) {
           try {
             const gText = await executeGemini20Flash({
@@ -1267,6 +1297,8 @@ CONSIGNES STRICTES DE CONTINUATION :
               systemPrompt,
               messages: simpleMessages,
               effectivePrompt,
+              imageBase64,
+              mimeType,
             });
             if (gText) {
               answerText = stripAiReasoningScratchpad(gText);
@@ -1277,10 +1309,15 @@ CONSIGNES STRICTES DE CONTINUATION :
           }
         }
 
+        // Si une image était fournie et que Gemini n'a pas répondu, ne JAMAIS basculer sur un modèle aveugle
+        if (!answerText && imageBase64 && imageBase64.length > 50) {
+          answerText = "Désolé, je n'ai pas pu analyser votre image via Gemini. Veuillez vérifier la connexion ou la validité de la clé API.";
+        }
+
         // ══════════════════════════════════════════════════════════════════════════════
-        // BRANCHE 2 : CHEF D'ÉQUIPE MULTI-IA (SI LLAMA EST SÉLECTIONNÉ SPÉCIFIQUEMENT)
+        // BRANCHE 2 : CHEF D'ÉQUIPE MULTI-IA (SI LLAMA EST SÉLECTIONNÉ ET PAS D'IMAGE)
         // ══════════════════════════════════════════════════════════════════════════════
-        if (!answerText && isChefModel(targetModel)) {
+        if (!answerText && !imageBase64 && isChefModel(targetModel)) {
           try {
             const orchResult = await orchestrateMultiAgentTeam({
               targetModel,

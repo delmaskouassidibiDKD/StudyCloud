@@ -49,10 +49,30 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
     }
   }
 
-  // Tour utilisateur courant (texte pur)
+  // Tour utilisateur courant (multimodal selon la spécification Google Cookbook)
+  const currentParts: any[] = [];
+  if (options.imageBase64 && options.imageBase64.length > 50) {
+    const cleanBase64 = options.imageBase64.replace(/^data:[^;]+;base64,/i, '').trim();
+    let effectiveMime = options.mimeType || 'image/jpeg';
+    if (options.imageBase64.includes('image/png')) effectiveMime = 'image/png';
+    else if (options.imageBase64.includes('image/webp')) effectiveMime = 'image/webp';
+    else if (options.imageBase64.includes('image/gif')) effectiveMime = 'image/gif';
+    else if (options.imageBase64.includes('application/pdf')) effectiveMime = 'application/pdf';
+
+    if (cleanBase64) {
+      currentParts.push({
+        inlineData: {
+          mimeType: effectiveMime,
+          data: cleanBase64,
+        }
+      });
+    }
+  }
+  currentParts.push({ text: options.userPrompt || 'Bonjour !' });
+
   contents.push({
     role: 'user',
-    parts: [{ text: options.userPrompt || 'Bonjour !' }]
+    parts: currentParts,
   });
 
   // 3. Configuration de génération

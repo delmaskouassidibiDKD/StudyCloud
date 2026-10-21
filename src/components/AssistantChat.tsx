@@ -5,6 +5,8 @@ import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
 import { MathText, stripAiReasoningScratchpad } from './MathText';
 import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey, safeJsonParse } from '../services/api';
+import { safeGetItem, safeSetItem, safeLocalStorageRemove } from '../utils/safeStorage';
+import { getFileBlob } from '../services/localFileStorage';
 import { parseOrBuildAiCreation } from '../services/aiCreationGenerator';
 import { AiCreation, AiCreationType, ModuleId } from './ai-creations/types';
 
@@ -113,6 +115,118 @@ function cleanChatText(text: string): string {
     .trim();
 
   return clean;
+}
+
+/**
+ * Extrait instantanément (<25ms) le Base64 d'un document image ouvert ou sélectionné.
+ * Conforme à la spécification multimodale Google Gemini Cookbook.
+ */
+async function extractImageBase64FromItem(item: any): Promise<{ base64: string; mimeType: string } | null> {
+  if (!item) return null;
+
+  const name = String(item.name || item.title || item.fileName || '').toLowerCase();
+  const type = String(item.type || item.mimeType || '').toLowerCase();
+  const ext = String(item.extension || '').toLowerCase();
+  const isImage = Boolean(
+    item.isImage ||
+    type.startsWith('image/') ||
+    /\.(jpe?g|png|webp|gif|bmp|svg)$/i.test(name) ||
+    ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'svg'].includes(ext)
+  );
+
+  if (!isImage) return null;
+
+  let mimeType = type.startsWith('image/') ? type : 'image/jpeg';
+  if (name.endsWith('.png') || ext === 'png') mimeType = 'image/png';
+  else if (name.endsWith('.webp') || ext === 'webp') mimeType = 'image/webp';
+  else if (name.endsWith('.gif') || ext === 'gif') mimeType = 'image/gif';
+
+  // 1. Déjà présent en mémoire sous forme Base64
+  if (typeof item.base64 === 'string' && item.base64.length > 50) {
+    return { base64: item.base64, mimeType };
+  }
+  if (typeof item.imageBase64 === 'string' && item.imageBase64.length > 50) {
+    return { base64: item.imageBase64, mimeType };
+  }
+  if (typeof item.dataUrl === 'string' && item.dataUrl.startsWith('data:image')) {
+    return { base64: item.dataUrl, mimeType };
+  }
+
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') resolve(reader.result);
+        else reject(new Error('FileReader non-string'));
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  // 2. Blob ou File direct attaché
+  if (item.file instanceof Blob || item.file instanceof File) {
+    try {
+      const b64 = await blobToBase64(item.file);
+      return { base64: b64, mimeType: item.file.type || mimeType };
+    } catch {}
+  }
+  if (item.blob instanceof Blob) {
+    try {
+      const b64 = await blobToBase64(item.blob);
+      return { base64: b64, mimeType: item.blob.type || mimeType };
+    } catch {}
+  }
+
+  // 3. IndexedDB local via getFileBlob(item.id)
+  if (item.id) {
+    try {
+      const blob = await getFileBlob(item.id);
+      if (blob) {
+        const b64 = await blobToBase64(blob);
+        return { base64: b64, mimeType: blob.type || mimeType };
+      }
+    } catch (e) {
+      console.warn('[AssistantChat] Erreur lecture binaire IndexedDB:', e);
+    }
+  }
+
+  // 4. URL accessible (blob:, http:, /api/cloud/...)
+  const targetUrl = item.url || item.fileUrl || item.previewUrl;
+  if (typeof targetUrl === 'string' && targetUrl.trim()) {
+    try {
+      const resp = await fetch(targetUrl);
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const b64 = await blobToBase64(blob);
+        return { base64: b64, mimeType: blob.type || mimeType };
+      }
+    } catch (e) {
+      console.warn('[AssistantChat] Erreur lecture image URL:', e);
+    }
+  }
+
+  // 5. Capture d'écran instantanée via l'élément <img> actif dans le DOM
+  try {
+    const imgEl = document.querySelector('img[src^="blob:"], img[src*="/api/cloud/"], img[alt*="' + (item.name || item.title || 'Image') + '"]') as HTMLImageElement;
+    if (imgEl && imgEl.naturalWidth > 0) {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.min(imgEl.naturalWidth, 1600);
+      canvas.height = Math.round((canvas.width / imgEl.naturalWidth) * imgEl.naturalHeight);
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL(mimeType, 0.88);
+        if (dataUrl && dataUrl.length > 100) {
+          return { base64: dataUrl, mimeType };
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[AssistantChat] Erreur capture canvas:', e);
+  }
+
+  return null;
 }
 
 // Détermine dynamiquement ce que l'IA réalise en temps réel (à l'instant T) selon le contexte et le délai
@@ -1203,6 +1317,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     return [];
   });
   const [inputValue, setInputValue] = useState('');
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [isWaitingServer, setIsWaitingServer] = useState(false);
   const [retryingMessageId, setRetryingMessageId] = useState<string | null>(null);
@@ -2006,6 +2121,8 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
         if (r?.name && !initialDocNames.includes(r.name)) initialDocNames.push(r.name);
       }
     }
+    const docNames = initialDocNames;
+    const attachedFileName = resolvedActiveName || (Array.isArray(attachedResources) ? attachedResources.map((r: any) => r?.name).filter(Boolean).join(', ') : '');
     const effectiveRequestedType = requestedTypeOverride || (isCreationIntent ? (detectedFormat as any) : undefined);
     const isExplicitCreationRequest = Boolean(effectiveRequestedType);
     const initialLiveStatus = isExplicitCreationRequest ? "Réflexion en cours..." : getLiveAiActivity(userText, initialDocNames, 0, effectiveRequestedType);
@@ -2599,13 +2716,31 @@ CONSIGNES STRICTES DE CONTINUATION :
         ...sanitizedHistory,
       ];
 
-      // 5. Appel au moteur d'IA officiel StudyCloud (pure conversation textuelle)
+      // 5. Appel au moteur d'IA officiel StudyCloud (Multimodal Gemini 2.0 Flash conforme Google Cookbook)
       const selectedModelObj = availableModels.find(m => m.id === selectedModel || m.model_id === selectedModel);
       const rawConfiguredToken = selectedModelObj?.api_token;
       // Pour les modèles Worker Cloudflare (Gemini 2.0 Flash) ou clés compromises, ne pas envoyer de token obsolète
       const isWorkerModel = selectedModel === 'gemini-2.0-flash' || selectedModelObj?.provider === 'cloudflare';
       const isDeadKey = Boolean(rawConfiguredToken && (rawConfiguredToken.startsWith('AIzaSyDKct') || rawConfiguredToken.length < 25));
       const configuredToken = (isWorkerModel || isDeadKey) ? undefined : rawConfiguredToken;
+
+      // Résolution instantanée (<25ms) de l'image (si un document image est actif dans l'espace d'étude ou joint)
+      let activeImageInfo: { base64: string; mimeType: string } | null = null;
+      if (resolvedActiveItem) {
+        activeImageInfo = await extractImageBase64FromItem(resolvedActiveItem);
+      }
+      if (!activeImageInfo && Array.isArray(attachedResources) && attachedResources.length > 0) {
+        for (const res of attachedResources) {
+          const found = await extractImageBase64FromItem(res);
+          if (found) {
+            activeImageInfo = found;
+            break;
+          }
+        }
+      }
+
+      // Si une image est présente, priorité absolue au modèle multimodal Gemini 2.0 Flash
+      const effectiveModelToSend = activeImageInfo ? 'gemini-2.0-flash' : selectedModel;
 
       const aiResult = await sendChatMessageToAi({
         messages: chatHistory,
@@ -2614,14 +2749,16 @@ CONSIGNES STRICTES DE CONTINUATION :
         userId: currentUserId,
         sessionId: currentConversationId,
         conversationId: currentConversationId,
-        model: selectedModel,
-        selectedModel: selectedModel,
+        model: effectiveModelToSend,
+        selectedModel: effectiveModelToSend,
         isContinuation,
         is_continuation: isContinuation,
         apiKey: configuredToken || getGeminiApiKey() || undefined,
         apiToken: configuredToken || undefined,
         geminiApiKey: configuredToken || getGeminiApiKey() || undefined,
         requested_type: explicitToolType || undefined,
+        imageBase64: activeImageInfo?.base64,
+        mimeType: activeImageInfo?.mimeType,
         signal: abortSignal,
         abortSignal,
       });

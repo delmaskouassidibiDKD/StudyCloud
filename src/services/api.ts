@@ -261,6 +261,8 @@ export async function sendChatMessageToAi(params: {
   powerMode?: boolean;
   engine?: 'gemini' | 'standard' | string;
   geminiApiKey?: string;
+  imageBase64?: string;
+  mimeType?: string;
   [key: string]: any;
 }): Promise<{
   response: string;
@@ -300,6 +302,8 @@ export async function sendChatMessageToAi(params: {
     conversation_id: params.conversationId || params.conversation_id || params.sessionId,
     conversationId: params.conversationId || params.conversation_id || params.sessionId,
     history: params.history || params.messages,
+    imageBase64: params.imageBase64 || undefined,
+    mimeType: params.mimeType || undefined,
   };
 
   // 1. Appel direct via le SDK officiel @google/genai si une clé Gemini est disponible et que le modèle ciblé est Gemini (ou Power Mode)
@@ -323,6 +327,8 @@ export async function sendChatMessageToAi(params: {
         systemPrompt: systemText,
         userPrompt: params.prompt || params.message || 'Bonjour !',
         history: params.history || params.messages,
+        imageBase64: params.imageBase64,
+        mimeType: params.mimeType,
         temperature: 0.7,
       });
 
