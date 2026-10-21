@@ -5,8 +5,35 @@ import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
 import { MathText, stripAiReasoningScratchpad } from './MathText';
 import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey, safeJsonParse } from '../services/api';
-import { safeGetItem, safeSetItem, safeLocalStorageRemove } from '../utils/safeStorage';
 import { getFileBlob } from '../services/localFileStorage';
+
+// Helpers robustes et infaillibles de stockage local pour l'AssistantChat (garantis sans ReferenceError)
+const safeGetItem = (key: string, fallback: string = ''): string => {
+  if (typeof window === 'undefined' || !window.localStorage) return fallback;
+  try {
+    const val = localStorage.getItem(key);
+    return val !== null && val !== undefined ? val : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const safeSetItem = (key: string, value: string): boolean => {
+  if (typeof window === 'undefined' || !window.localStorage) return false;
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const safeLocalStorageRemove = (key: string): void => {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    localStorage.removeItem(key);
+  } catch {}
+};
 import { parseOrBuildAiCreation } from '../services/aiCreationGenerator';
 import { AiCreation, AiCreationType, ModuleId } from './ai-creations/types';
 
