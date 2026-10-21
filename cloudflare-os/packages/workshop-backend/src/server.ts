@@ -1106,6 +1106,19 @@ export default {
       );
     }
 
+    function getR2Bucket(): R2Bucket | null {
+      return (
+        (env as any).BUCKET ||
+        (env as any).MON_R2_STUDYCLOUD ||
+        (env as any)['MON_R2-STUDYCLOUD'] ||
+        (env as any)['MY-R2-STUDYCLOUD'] ||
+        (env as any).MY_R2_STUDYCLOUD ||
+        (env as any)['r2-studycloud'] ||
+        (env as any).r2 ||
+        null
+      );
+    }
+
     if (req.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders });
     }
@@ -1282,6 +1295,47 @@ export default {
               if (candidate && typeof candidate === "string" && candidate.length > 50) {
                 imageBase64 = candidate;
                 break;
+              }
+            }
+          }
+        }
+
+        // Récupération automatique et directe du fichier image depuis Cloudflare R2 si imageBase64 non fourni
+        if (!imageBase64) {
+          const r2Key = String(body.attachedFileR2Key || body.r2_key || body.r2Key || "").trim();
+          const bucket = getR2Bucket();
+          if (r2Key && bucket) {
+            try {
+              const obj = await bucket.get(r2Key);
+              if (obj) {
+                const buf = await obj.arrayBuffer();
+                const rawB64 = Buffer.from(buf).toString("base64");
+                const mime = obj.httpMetadata?.contentType || (r2Key.endsWith(".png") ? "image/png" : (r2Key.endsWith(".webp") ? "image/webp" : "image/jpeg"));
+                imageBase64 = `data:${mime};base64,${rawB64}`;
+                logger.info("Image R2 chargée avec succès côté Worker via r2Key", { r2Key, size: buf.byteLength });
+              }
+            } catch (r2Err) {
+              logger.warn("Erreur lecture R2 direct pour image", { r2Key, error: r2Err });
+            }
+          }
+          if (!imageBase64 && (body.attachedFileId || body.fileId)) {
+            const fileId = body.attachedFileId || body.fileId;
+            const db = getD1Database();
+            if (db && bucket) {
+              try {
+                const row: any = await db.prepare("SELECT r2_key, type, name FROM files WHERE id = ?").bind(fileId).first();
+                if (row?.r2_key) {
+                  const obj = await bucket.get(row.r2_key);
+                  if (obj) {
+                    const buf = await obj.arrayBuffer();
+                    const rawB64 = Buffer.from(buf).toString("base64");
+                    const mime = row.type || obj.httpMetadata?.contentType || (row.r2_key.endsWith(".png") ? "image/png" : "image/jpeg");
+                    imageBase64 = `data:${mime};base64,${rawB64}`;
+                    logger.info("Image R2 chargée depuis D1 avec succès", { fileId, r2Key: row.r2_key });
+                  }
+                }
+              } catch (dbErr) {
+                logger.warn("Erreur lecture D1/R2 pour image", { fileId, error: dbErr });
               }
             }
           }

@@ -514,7 +514,13 @@ export async function sendChatMessageToAi(params: {
     /"creation_data"/i.test(fullTextToInspect) ||
     /<creation/i.test(fullTextToInspect);
 
-  if (hasCreationClues) {
+  const promptText = String(params.prompt || params.message || '').trim();
+  const isPureChatQuery = !params.requested_type && (
+    /^(?:tu\s+vois|tu\s+peux\s+voir|est-ce\s+que\s+tu\s+vois|vois-tu|qu'est-ce\s+que\s+tu\s+vois|que\s+vois-tu|d[eé]cris|lis|peux-tu\s+lire|bonjour|salut|coucou)/i.test(promptText) ||
+    /^(?:tu\s+vois\s+l['’]image|tu\s+vois\s+limage|tu\s+la\s+vois|c'est\s+quoi\s+sur\s+l'image)/i.test(promptText.replace(/\s+/g, ' '))
+  );
+
+  if (hasCreationClues && !isPureChatQuery) {
     extractedMode = 'creation';
   }
 

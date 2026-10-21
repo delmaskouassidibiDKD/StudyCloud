@@ -6,7 +6,7 @@ import { FileIconBadge } from './FileIconBadge';
 import { MathText, stripAiReasoningScratchpad } from './MathText';
 import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey, safeJsonParse } from '../services/api';
 import { safeSetItem, safeGetItem, safeLocalStorageRemove } from '../utils/safeStorage';
-import { extractDocumentText } from '../services/documentTextExtractor';
+import { extractDocumentText, resolveImageBase64 } from '../services/documentTextExtractor';
 import { parseOrBuildAiCreation } from '../services/aiCreationGenerator';
 import { AiCreation, AiCreationType, ModuleId } from './ai-creations/types';
 
@@ -1783,6 +1783,11 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
       try {
         await extractDocumentText(doc);
+        const isImg = (doc.name || doc.title || '').toLowerCase().match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)$/i) || doc.type?.includes('image') || doc.isImage;
+        if (!doc.imageBase64 && isImg) {
+          const resolvedB64 = await resolveImageBase64(doc, docKey);
+          if (resolvedB64) doc.imageBase64 = resolvedB64;
+        }
         if (doc.imageBase64) {
           lastActiveImageBase64Ref.current = doc.imageBase64;
         }
@@ -2209,6 +2214,56 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
         lastActiveImageBase64Ref.current = attachedImageBase64;
       } else if (lastActiveImageBase64Ref.current && (hasActiveImageDoc || refersToImageOrExercise || targetDocs.length === 0)) {
         attachedImageBase64 = lastActiveImageBase64Ref.current;
+      }
+
+      // Secours immédiat : Si une image est active mais qu'attachedImageBase64 est vide
+      if (!attachedImageBase64 && (hasActiveImageDoc || refersToImageOrExercise)) {
+        const imageCandidate = targetDocs.find(d => {
+          const n = (d.name || d.title || '').toLowerCase();
+          return n.endsWith('.jpg') || n.endsWith('.jpeg') || n.endsWith('.png') || n.endsWith('.webp') || d.type?.includes('image') || d.isImage;
+        }) || allDocs.find(d => {
+          const n = (d.name || d.title || '').toLowerCase();
+          return n.endsWith('.jpg') || n.endsWith('.jpeg') || n.endsWith('.png') || n.endsWith('.webp') || d.type?.includes('image') || d.isImage;
+        }) || activePreviewItem;
+
+        if (imageCandidate) {
+          try {
+            const b64 = await resolveImageBase64(imageCandidate);
+            if (b64) {
+              attachedImageBase64 = b64;
+              lastActiveImageBase64Ref.current = b64;
+            }
+          } catch (e) {}
+        }
+
+        // Secours Canvas DOM : Récupération directe des pixels depuis la balise <img> du visualiseur central
+        if (!attachedImageBase64 && typeof document !== 'undefined') {
+          try {
+            const imgEls = Array.from(document.querySelectorAll('img')) as HTMLImageElement[];
+            const centerImg = imgEls.find(img => 
+              img.naturalWidth > 50 && 
+              !img.src.includes('avatar') && 
+              !img.src.includes('icon') &&
+              (img.className.includes('modern-image') || img.closest('.modern-image-viewer') !== null || img.naturalWidth > 150)
+            );
+            if (centerImg) {
+              const canvas = document.createElement('canvas');
+              canvas.width = centerImg.naturalWidth;
+              canvas.height = centerImg.naturalHeight;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(centerImg, 0, 0);
+                const domB64 = canvas.toDataURL('image/jpeg', 0.95);
+                if (domB64 && domB64.length > 100) {
+                  attachedImageBase64 = domB64;
+                  lastActiveImageBase64Ref.current = domB64;
+                }
+              }
+            }
+          } catch (domErr) {
+            console.warn('[AssistantChat] Erreur capture Canvas DOM de secours:', domErr);
+          }
+        }
       }
 
       if (attachedAudioBase64) {
@@ -3054,6 +3109,17 @@ CONSIGNES STRICTES DE CONTINUATION :
         creationParsed = null;
         fullResponseText = `Pour que je puisse concevoir votre **création**, merci de me préciser sur quel cours ou sujet elle doit porter, ou de joindre votre fichier de cours (PDF, Word, photo d'exercice).\n\n[QUESTIONS_SUGGÉRÉES]\n- Questionnaire Test noté sur les Lois de Newton en Physique\n- Vrai ou Faux Test sur la Génétique et l'ADN en SVT\n- Carte Mentale 2 sur les Fonctions et Dérivées en Mathématiques\n- Devoir Complet d'examen officiel sur la Thermodynamique`;
         window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCreation: false, resetToPrompts: true } }));
+      }
+      // RÈGLE ANTI-DÉTOURNEMENT POUR LES QUESTIONS CONVERSATIONNELLES OU D'OBSERVATION D'IMAGE :
+      // Si l'étudiant pose une question simple sur l'image ou entame un dialogue direct sans avoir explicitement demandé un format de création,
+      // on force le mode CHAT et on annule la création autonome !
+      const isPureConversationalOrVisionQuery = !isExplicitOverride && !explicitToolType && (
+        /^(?:tu\s+vois|tu\s+peux\s+voir|est-ce\s+que\s+tu\s+vois|vois-tu|qu'est-ce\s+que\s+tu\s+vois|que\s+vois-tu|d[eé]cris|lis|peux-tu\s+lire|tu\s+arrives\s+à\s+voir|bonjour|salut|coucou)/i.test(userText.trim()) ||
+        /^(?:tu\s+vois\s+l['’]image|tu\s+vois\s+limage|tu\s+la\s+vois|c'est\s+quoi\s+sur\s+l'image)/i.test(userText.trim().replace(/\s+/g, ' '))
+      );
+
+      if (isPureConversationalOrVisionQuery && creationParsed) {
+        creationParsed = null;
       }
 
       if (creationParsed && creationParsed.content) {
