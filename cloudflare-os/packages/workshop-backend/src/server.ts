@@ -1132,6 +1132,7 @@ export default {
 
     // Endpoint officiel de discussion IA pour l'espace d'étude StudyCloud (Robot Rouge)
     if (url.pathname === "/api/ai/chat" && req.method === "POST") {
+      try {
         const body: any = await req.json().catch(() => ({}));
         const userPrompt = String(body.message || body.prompt || "").trim();
         let targetModel = String(body.model || body.requested_model || "gemini-2.0-flash").trim();
