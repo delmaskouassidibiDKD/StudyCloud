@@ -923,20 +923,62 @@ async function executeGemini20Flash(params: {
     };
   }
 
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(reqBody),
-  });
+  // 1. Découverte dynamique des modèles supportés sur la clé de l'utilisateur
+  let dynamicModels: string[] = [];
+  try {
+    const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    if (listRes.ok) {
+      const listData: any = await listRes.json();
+      dynamicModels = (listData.models || [])
+        .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes("generateContent"))
+        .map((m: any) => String(m.name || "").replace(/^models\//, ""))
+        .filter(Boolean);
+    }
+  } catch (_eList) {}
 
-  if (res.ok) {
-    const data: any = await res.json();
-    return data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
-  } else {
-    const errText = await res.text().catch(() => "");
-    logger.warn("Gemini 2.0 Flash generateContent error", { status: res.status, error: errText });
-    return "";
+  const flashModels = dynamicModels.filter(m => m.includes("flash"));
+  const proModels = dynamicModels.filter(m => !m.includes("flash") && (m.includes("pro") || m.includes("gemini")));
+  const candidateModels = Array.from(new Set([
+    ...flashModels,
+    "gemini-3.8-flash",
+    ...proModels,
+    "gemini-2.5-flash",
+    "gemini-1.5-flash",
+  ]));
+
+  const modelErrors: string[] = [];
+  for (const mod of candidateModels) {
+    // Jusqu'à 2 tentatives pour absorber les pics temporaires (503 High Demand)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${apiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(reqBody),
+        });
+
+        if (res.ok) {
+          const data: any = await res.json();
+          const txt = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
+          if (txt) return txt;
+        } else {
+          const errText = await res.text().catch(() => "");
+          if (res.status === 503 && attempt === 0) {
+            // Pause brève de 600ms avant réessai du pic
+            await new Promise(r => setTimeout(r, 600));
+            continue;
+          }
+          modelErrors.push(`${mod}:${res.status}`);
+          break; // passer au modèle suivant
+        }
+      } catch (e: any) {
+        modelErrors.push(`${mod}:EXCEPTION:${e?.message || e}`);
+        break;
+      }
+    }
   }
+
+  throw new Error(`Modèles testés: ${candidateModels.slice(0, 4).join(", ")} (${modelErrors.join(", ")})`);
 }
 
 export default {
@@ -1145,16 +1187,15 @@ export default {
         const videoBase64 = String(body.videoBase64 || "").trim();
         const videoUrl = String(body.videoUrl || "").trim();
 
-        // Si une image est fournie, priorité absolue au modèle multimodal Gemini 2.0 Flash
+        // Si une image est fournie, priorité absolue au modèle multimodal Gemini Flash
         if (imageBase64 && imageBase64.length > 50) {
-          targetModel = "gemini-2.0-flash";
+          targetModel = "gemini-3.8-flash";
         }
-
 
         if (targetModel.includes("llama-3.3") && !targetModel.includes("fp8-fast")) {
           targetModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-        } else if (targetModel.includes("gemini") || targetModel === "gemini-3.8-flash" || targetModel === "gemini-2.5-flash") {
-          targetModel = "gemini-2.0-flash";
+        } else if (targetModel.includes("gemini")) {
+          targetModel = "gemini-3.8-flash";
         } else if (targetModel.includes("claude-3-5")) {
           targetModel = "claude-sonnet-4-5";
         }
@@ -1221,7 +1262,8 @@ export default {
         }
 
         const friendlyNameMap: Record<string, string> = {
-          "gemini-2.0-flash": "Google Gemini 2.0 Flash",
+          "gemini-3.8-flash": "Google Gemini Flash",
+          "gemini-2.0-flash": "Google Gemini Flash",
           "@cf/moonshotai/kimi-k2.7-code": "Kimi K2.7 Code",
           "@cf/zai-org/glm-5.3-flash": "GLM 5.3 Flash",
           "@cf/deepseek-ai/deepseek-v4-pro-0813": "DeepSeek V4 Pro",
@@ -1293,10 +1335,11 @@ CONSIGNES STRICTES DE CONTINUATION :
         const cfToken = ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join("");
 
         // ══════════════════════════════════════════════════════════════════════════════
-        // BRANCHE 1 : MODÈLE UNIVERSEL PAR DÉFAUT (GOOGLE GEMINI 2.0 FLASH MULTIMODAL)
+        // BRANCHE 1 : MODÈLE UNIVERSEL PAR DÉFAUT (GOOGLE GEMINI FLASH MULTIMODAL)
         // ══════════════════════════════════════════════════════════════════════════════
         // Implémentation conforme au Google Cookbook officiel
-        if ((targetModel === "gemini-2.0-flash" || targetModel.includes("gemini")) && geminiKeyToUse) {
+        let geminiErrorDetail = "";
+        if ((targetModel === "gemini-3.8-flash" || targetModel === "gemini-2.0-flash" || targetModel.includes("gemini")) && geminiKeyToUse) {
           try {
             const gText = await executeGemini20Flash({
               apiKey: geminiKeyToUse,
@@ -1308,16 +1351,17 @@ CONSIGNES STRICTES DE CONTINUATION :
             });
             if (gText) {
               answerText = stripAiReasoningScratchpad(gText);
-              effectiveModelUsed = "Google Gemini 2.0 Flash";
+              effectiveModelUsed = "Google Gemini Flash";
             }
-          } catch (g20Err) {
-            logger.warn("Gemini 2.0 Flash call exception", { error: g20Err });
+          } catch (g20Err: any) {
+            logger.warn("Gemini Flash call exception", { error: g20Err });
+            geminiErrorDetail = g20Err?.message || String(g20Err);
           }
         }
 
         // Si une image était fournie et que Gemini n'a pas répondu, ne JAMAIS basculer sur un modèle aveugle
         if (!answerText && imageBase64 && imageBase64.length > 50) {
-          answerText = "Désolé, je n'ai pas pu analyser votre image via Gemini. Veuillez vérifier la connexion ou la validité de la clé API.";
+          answerText = "Désolé, je n'ai pas pu analyser votre image via Gemini. " + (geminiErrorDetail ? `[Détail: ${geminiErrorDetail}]` : "");
         }
 
         // ══════════════════════════════════════════════════════════════════════════════
