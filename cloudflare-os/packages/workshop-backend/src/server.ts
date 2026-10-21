@@ -857,8 +857,20 @@ class PublicApiImpl extends RpcTarget implements PublicApi {
   }
 }
 
+function cleanTechnicalMediaJargon(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/^.*(?:j['’]ai bien re[çc]u les \d+ images cl[ée]s|clich[ée]s captur[ée]s au cours de la vid[ée]o).*$/gim, '')
+    .replace(/^.*voici une analyse d[ée]taill[ée]e de l['’][ée]volution des sc[èe]nes.*$/gim, '')
+    .replace(/^(?:#+\s*)?(?:\d+\.\s*)?Sc[èe]ne\s*[àa]\s*\d+(?:\.\d+)?s\s*:?/gim, '')
+    .replace(/^\s*[-*•]\s*Description\s+visuelle\s*:\s*/gim, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 /**
- * Exécute l'appel multimodal vers Google Gemini 2.0 Flash selon le Google Cookbook officiel
+ * Exécute l'appel multimodal vers Google Gemini Flash selon le Google Cookbook officiel
+ * Supporte nativement vidéos (avec audio), fichiers audios, images et documents.
  */
 async function executeGemini20Flash(params: {
   apiKey: string;
@@ -870,8 +882,11 @@ async function executeGemini20Flash(params: {
   videoBase64?: string;
   videoFrames?: Array<{ base64: string; mimeType?: string; timestamp?: number }>;
   videoMimeType?: string;
+  audioBase64?: string;
+  audioMimeType?: string;
+  mediaType?: string;
 }): Promise<string> {
-  const { apiKey, systemPrompt, messages, effectivePrompt, imageBase64, mimeType, videoBase64, videoFrames, videoMimeType } = params;
+  const { apiKey, systemPrompt, messages, effectivePrompt, imageBase64, mimeType, videoBase64, videoFrames, videoMimeType, audioBase64, audioMimeType } = params;
 
   const contents: any[] = [];
 
@@ -887,6 +902,46 @@ async function executeGemini20Flash(params: {
   // Dernier tour utilisateur (multimodal selon la spécification Google Cookbook)
   const currentParts: any[] = [];
 
+  // 1. Flux vidéo direct inline (contient automatiquement la vidéo et la piste sonore synchronisée)
+  if (videoBase64 && videoBase64.length > 50) {
+    const cleanVideoBase64 = videoBase64.replace(/^data:[^;]+;base64,/i, "").trim();
+    let effectiveVideoMime = videoMimeType || "video/mp4";
+    if (videoBase64.includes("video/webm")) effectiveVideoMime = "video/webm";
+    else if (videoBase64.includes("video/quicktime")) effectiveVideoMime = "video/quicktime";
+    else if (videoBase64.includes("video/ogg")) effectiveVideoMime = "video/ogg";
+    else if (videoBase64.includes("video/x-msvideo") || videoBase64.includes("video/avi")) effectiveVideoMime = "video/avi";
+
+    if (cleanVideoBase64.length < 28 * 1024 * 1024) {
+      currentParts.push({
+        inlineData: {
+          mimeType: effectiveVideoMime,
+          data: cleanVideoBase64,
+        }
+      });
+    }
+  }
+
+  // 2. Flux audio direct inline (fichiers audio, notes vocales, podcast, cours oral)
+  if (audioBase64 && audioBase64.length > 50) {
+    const cleanAudioBase64 = audioBase64.replace(/^data:[^;]+;base64,/i, "").trim();
+    let effectiveAudioMime = audioMimeType || "audio/mp3";
+    if (audioBase64.includes("audio/wav")) effectiveAudioMime = "audio/wav";
+    else if (audioBase64.includes("audio/ogg") || audioBase64.includes("audio/opus")) effectiveAudioMime = "audio/ogg";
+    else if (audioBase64.includes("audio/m4a") || audioBase64.includes("audio/x-m4a")) effectiveAudioMime = "audio/m4a";
+    else if (audioBase64.includes("audio/webm")) effectiveAudioMime = "audio/webm";
+    else if (audioBase64.includes("audio/aac")) effectiveAudioMime = "audio/aac";
+
+    if (cleanAudioBase64.length < 28 * 1024 * 1024) {
+      currentParts.push({
+        inlineData: {
+          mimeType: effectiveAudioMime,
+          data: cleanAudioBase64,
+        }
+      });
+    }
+  }
+
+  // 3. Image directe inline
   if (imageBase64 && imageBase64.length > 50) {
     const cleanBase64 = imageBase64.replace(/^data:[^;]+;base64,/i, "").trim();
     let effectiveMime = mimeType || "image/jpeg";
@@ -905,18 +960,11 @@ async function executeGemini20Flash(params: {
     }
   }
 
-  // Séquence chronologique d'images clés extraites de la vidéo (Recommandation Google Gemini Cookbook)
-  if (Array.isArray(videoFrames) && videoFrames.length > 0) {
-    currentParts.push({
-      text: `[Séquence visuelle chronologique de ${videoFrames.length} images clés capturées au cours de la vidéo pour analyse visuelle détaillée de chaque scène :]`
-    });
+  // 4. Frames vidéo (SEULEMENT si aucun flux videoBase64 direct n'a pu être fourni)
+  if ((!videoBase64 || videoBase64.length <= 50) && Array.isArray(videoFrames) && videoFrames.length > 0) {
     for (const f of videoFrames) {
       const fBase64 = String(f.base64 || "").replace(/^data:[^;]+;base64,/i, "").trim();
       if (fBase64) {
-        const ts = typeof f.timestamp === "number" ? Math.round(f.timestamp * 10) / 10 : null;
-        if (ts !== null) {
-          currentParts.push({ text: `[Scène vidéo à ${ts}s]` });
-        }
         currentParts.push({
           inlineData: {
             mimeType: f.mimeType || "image/jpeg",
@@ -924,25 +972,6 @@ async function executeGemini20Flash(params: {
           }
         });
       }
-    }
-  }
-
-  // Flux vidéo direct inline (si la vidéo fait moins de 25MB)
-  if (videoBase64 && videoBase64.length > 50) {
-    const cleanVideoBase64 = videoBase64.replace(/^data:[^;]+;base64,/i, "").trim();
-    let effectiveVideoMime = videoMimeType || "video/mp4";
-    if (videoBase64.includes("video/webm")) effectiveVideoMime = "video/webm";
-    else if (videoBase64.includes("video/quicktime")) effectiveVideoMime = "video/quicktime";
-    else if (videoBase64.includes("video/ogg")) effectiveVideoMime = "video/ogg";
-    else if (videoBase64.includes("video/x-msvideo") || videoBase64.includes("video/avi")) effectiveVideoMime = "video/avi";
-
-    if (cleanVideoBase64.length < 25 * 1024 * 1024) {
-      currentParts.push({
-        inlineData: {
-          mimeType: effectiveVideoMime,
-          data: cleanVideoBase64,
-        }
-      });
     }
   }
 
@@ -961,11 +990,27 @@ async function executeGemini20Flash(params: {
     }
   };
 
-  if (systemPrompt && systemPrompt.trim()) {
-    reqBody.systemInstruction = {
-      parts: [{ text: systemPrompt }]
-    };
-  }
+  let effectiveSystemPrompt = (systemPrompt || "").trim();
+  effectiveSystemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
+[DIRECTIVES MULTIMÉDIAS STRICTES - VIDÉO, AUDIO, IMAGE, DOCUMENT] :
+1. DÉTECTION DU TYPE DE CONTENU :
+   - VIDÉO : Si le document est une vidéo (WhatsApp, MP4, WebM, etc.), traite-le formellement comme une VIDÉO.
+   - AUDIO : Si le document est un fichier sonore (vocal WhatsApp, MP3, WAV, podcast, cours audio), traite-le formellement comme un ENREGISTREMENT AUDIO.
+   - IMAGE : Si le document est une image, photo ou scan, traite-le comme une IMAGE.
+   - DOCUMENT : Si le document est un fichier texte ou PDF, traite-le comme un DOCUMENT.
+
+2. STYLE NATUREL ET HUMAIN (STYLE OFFICIEL GOOGLE GEMINI) :
+   - INTERDICTION STRICTE DE JARGON TECHNIQUE : Ne mentionne JAMAIS de termes internes de traitement ou d'ingénierie (interdiction absolue de dire "j'ai reçu X images clés", "clichés capturés", "frames", "échantillons", ou de découper artificiellement la réponse par "Scène à X.Xs").
+   - Parle directement et naturellement comme le fait l'assistant Google Gemini officiel (ex: "Cette vidéo est un montage de type...", "Cette vidéo montre...", "Cet enregistrement audio présente...").
+
+3. ANALYSE GLOBALE HARMONIEUSE (VISUEL + AUDIO) :
+   - Pour une vidéo : Décris le contenu visuel (personnes, actions, décor, tenues, textes et incrustations à l'écran) ET intègre naturellement l'ambiance et la piste sonore (musique, paroles, voix, ce qui est dit).
+   - Pour un audio : Retranscris et synthétise ce qui est dit, les intervenants, le ton et les notions clés.
+══════════════════════════════════════════════════════════════════════════════`;
+
+  reqBody.systemInstruction = {
+    parts: [{ text: effectiveSystemPrompt }]
+  };
 
   // 1. Découverte dynamique des modèles supportés sur la clé de l'utilisateur
   let dynamicModels: string[] = [];
@@ -1004,7 +1049,7 @@ async function executeGemini20Flash(params: {
         if (res.ok) {
           const data: any = await res.json();
           const txt = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
-          if (txt) return txt;
+          if (txt) return cleanTechnicalMediaJargon(txt);
         } else {
           const errText = await res.text().catch(() => "");
           if (res.status === 503 && attempt === 0) {
@@ -1228,18 +1273,21 @@ export default {
         let imageBase64 = String(body.imageBase64 || "").trim();
         const mimeType = String(body.mimeType || "").trim();
         const audioBase64 = String(body.audioBase64 || "").trim();
+        const audioMimeType = String(body.audioMimeType || "").trim();
         const videoBase64 = String(body.videoBase64 || "").trim();
         const videoUrl = String(body.videoUrl || "").trim();
         const videoFrames = Array.isArray(body.videoFrames) ? body.videoFrames : [];
         const videoMimeType = String(body.videoMimeType || "").trim();
+        const mediaType = String(body.mediaType || "").trim();
 
         const hasMedia = Boolean(
           (imageBase64 && imageBase64.length > 50) ||
           (videoBase64 && videoBase64.length > 50) ||
+          (audioBase64 && audioBase64.length > 50) ||
           videoFrames.length > 0
         );
 
-        // Si une image ou une vidéo est fournie, priorité absolue au modèle multimodal Gemini Flash
+        // Si un média (vidéo, audio ou image) est fourni, priorité absolue au modèle multimodal Gemini Flash
         if (hasMedia) {
           targetModel = "gemini-3.8-flash";
         }
@@ -1403,9 +1451,12 @@ CONSIGNES STRICTES DE CONTINUATION :
               videoBase64,
               videoFrames,
               videoMimeType,
+              audioBase64,
+              audioMimeType,
+              mediaType,
             });
             if (gText) {
-              answerText = stripAiReasoningScratchpad(gText);
+              answerText = stripAiReasoningScratchpad(cleanTechnicalMediaJargon(gText));
               effectiveModelUsed = "Google Gemini Flash";
             }
           } catch (g20Err: any) {
@@ -1414,9 +1465,9 @@ CONSIGNES STRICTES DE CONTINUATION :
           }
         }
 
-        // Si un média (image ou vidéo) était fourni et que Gemini n'a pas répondu, ne JAMAIS basculer sur un modèle aveugle
+        // Si un média (vidéo, audio ou image) était fourni et que Gemini n'a pas répondu, ne JAMAIS basculer sur un modèle aveugle
         if (!answerText && hasMedia) {
-          answerText = "Désolé, je n'ai pas pu analyser votre document multimédia (image ou vidéo) via Gemini. " + (geminiErrorDetail ? `[Détail: ${geminiErrorDetail}]` : "");
+          answerText = "Désolé, je n'ai pas pu analyser votre document multimédia (vidéo, audio ou image) via Gemini. " + (geminiErrorDetail ? `[Détail: ${geminiErrorDetail}]` : "");
         }
 
         // ══════════════════════════════════════════════════════════════════════════════

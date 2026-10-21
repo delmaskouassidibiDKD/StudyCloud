@@ -18,13 +18,23 @@ export interface GenerateGeminiOptions {
   videoUrl?: string;
   mediaBlob?: Blob;
   mimeType?: string;
-  videoFrames?: Array<{ base64: string; mimeType?: string; timestamp?: number }>;
-  videoMimeType?: string;
+  audioMimeType?: string;
+  mediaType?: string;
+}
+
+function cleanTechnicalMediaJargon(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/^.*(?:j['’]ai bien re[çc]u les \d+ images cl[ée]s|clich[ée]s captur[ée]s au cours de la vid[ée]o).*$/gim, '')
+    .replace(/^.*voici une analyse d[ée]taill[ée]e de l['’][ée]volution des sc[èe]nes.*$/gim, '')
+    .replace(/^(?:#+\s*)?(?:\d+\.\s*)?Sc[èe]ne\s*[àa]\s*\d+(?:\.\d+)?s\s*:?/gim, '')
+    .replace(/^\s*[-*•]\s*Description\s+visuelle\s*:\s*/gim, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 /**
- * Service de discussion textuelle basé sur le SDK officiel @google/genai de Google.
- * Conversation textuelle pure (Prompt + Historique).
+ * Service de discussion textuelle et multimodale basé sur le SDK officiel @google/genai de Google.
  */
 export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<string> {
   const apiKey = (options.apiKey || '').trim();
@@ -53,6 +63,46 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
 
   // Tour utilisateur courant (multimodal selon la spécification Google Cookbook)
   const currentParts: any[] = [];
+
+  // 1. Flux vidéo direct inline (avec piste audio native)
+  if (options.videoBase64 && options.videoBase64.length > 50) {
+    const cleanVideoBase64 = options.videoBase64.replace(/^data:[^;]+;base64,/i, '').trim();
+    let effectiveVideoMime = options.videoMimeType || options.mimeType || 'video/mp4';
+    if (options.videoBase64.includes('video/webm')) effectiveVideoMime = 'video/webm';
+    else if (options.videoBase64.includes('video/quicktime')) effectiveVideoMime = 'video/quicktime';
+    else if (options.videoBase64.includes('video/ogg')) effectiveVideoMime = 'video/ogg';
+
+    if (cleanVideoBase64.length < 28 * 1024 * 1024) {
+      currentParts.push({
+        inlineData: {
+          mimeType: effectiveVideoMime,
+          data: cleanVideoBase64,
+        }
+      });
+    }
+  }
+
+  // 2. Flux audio direct inline
+  if (options.audioBase64 && options.audioBase64.length > 50) {
+    const cleanAudioBase64 = options.audioBase64.replace(/^data:[^;]+;base64,/i, '').trim();
+    let effectiveAudioMime = options.audioMimeType || 'audio/mp3';
+    if (options.audioBase64.includes('audio/wav')) effectiveAudioMime = 'audio/wav';
+    else if (options.audioBase64.includes('audio/ogg') || options.audioBase64.includes('audio/opus')) effectiveAudioMime = 'audio/ogg';
+    else if (options.audioBase64.includes('audio/m4a') || options.audioBase64.includes('audio/x-m4a')) effectiveAudioMime = 'audio/m4a';
+    else if (options.audioBase64.includes('audio/webm')) effectiveAudioMime = 'audio/webm';
+    else if (options.audioBase64.includes('audio/aac')) effectiveAudioMime = 'audio/aac';
+
+    if (cleanAudioBase64.length < 28 * 1024 * 1024) {
+      currentParts.push({
+        inlineData: {
+          mimeType: effectiveAudioMime,
+          data: cleanAudioBase64,
+        }
+      });
+    }
+  }
+
+  // 3. Image directe inline
   if (options.imageBase64 && options.imageBase64.length > 50) {
     const cleanBase64 = options.imageBase64.replace(/^data:[^;]+;base64,/i, '').trim();
     let effectiveMime = options.mimeType || 'image/jpeg';
@@ -71,17 +121,11 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
     }
   }
 
-  // Séquence chronologique d'images clés de la vidéo (Google Cookbook)
-  if (Array.isArray(options.videoFrames) && options.videoFrames.length > 0) {
-    currentParts.push({
-      text: `[Séquence visuelle chronologique de ${options.videoFrames.length} images clés extraites de la vidéo pour analyse de chaque scène :]`
-    });
+  // 4. Frames vidéo (si aucun flux vidéo direct n'a pu être fourni)
+  if ((!options.videoBase64 || options.videoBase64.length <= 50) && Array.isArray(options.videoFrames) && options.videoFrames.length > 0) {
     for (const f of options.videoFrames) {
       const fBase64 = String(f.base64 || '').replace(/^data:[^;]+;base64,/i, '').trim();
       if (fBase64) {
-        if (typeof f.timestamp === 'number') {
-          currentParts.push({ text: `[Scène vidéo à ${Math.round(f.timestamp * 10) / 10}s]` });
-        }
         currentParts.push({
           inlineData: {
             mimeType: f.mimeType || 'image/jpeg',
@@ -89,24 +133,6 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
           }
         });
       }
-    }
-  }
-
-  // Flux vidéo direct inline (si vidéo courte < 25MB)
-  if (options.videoBase64 && options.videoBase64.length > 50) {
-    const cleanVideoBase64 = options.videoBase64.replace(/^data:[^;]+;base64,/i, '').trim();
-    let effectiveVideoMime = options.videoMimeType || options.mimeType || 'video/mp4';
-    if (options.videoBase64.includes('video/webm')) effectiveVideoMime = 'video/webm';
-    else if (options.videoBase64.includes('video/quicktime')) effectiveVideoMime = 'video/quicktime';
-    else if (options.videoBase64.includes('video/ogg')) effectiveVideoMime = 'video/ogg';
-
-    if (cleanVideoBase64.length < 25 * 1024 * 1024) {
-      currentParts.push({
-        inlineData: {
-          mimeType: effectiveVideoMime,
-          data: cleanVideoBase64,
-        }
-      });
     }
   }
 
@@ -121,9 +147,26 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
   const config: any = {
     temperature: options.temperature ?? 0.7,
   };
-  if (options.systemPrompt && options.systemPrompt.trim()) {
-    config.systemInstruction = options.systemPrompt.trim();
-  }
+
+  let effectiveSystemPrompt = (options.systemPrompt || '').trim();
+  effectiveSystemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
+[DIRECTIVES MULTIMÉDIAS STRICTES - VIDÉO, AUDIO, IMAGE, DOCUMENT] :
+1. DÉTECTION DU TYPE DE CONTENU :
+   - VIDÉO : Si le document est une vidéo (WhatsApp, MP4, WebM, etc.), traite-le formellement comme une VIDÉO.
+   - AUDIO : Si le document est un fichier sonore (vocal WhatsApp, MP3, WAV, podcast, cours audio), traite-le formellement comme un ENREGISTREMENT AUDIO.
+   - IMAGE : Si le document est une image, photo ou scan, traite-le comme une IMAGE.
+   - DOCUMENT : Si le document est un fichier texte ou PDF, traite-le comme un DOCUMENT.
+
+2. STYLE NATUREL ET HUMAIN (STYLE OFFICIEL GOOGLE GEMINI) :
+   - INTERDICTION STRICTE DE JARGON TECHNIQUE : Ne mentionne JAMAIS de termes internes de traitement ou d'ingénierie (interdiction absolue de dire "j'ai reçu X images clés", "clichés capturés", "frames", "échantillons", ou de découper artificiellement la réponse par "Scène à X.Xs").
+   - Parle directement et naturellement comme le fait l'assistant Google Gemini officiel (ex: "Cette vidéo est un montage de type...", "Cette vidéo montre...", "Cet enregistrement audio présente...").
+
+3. ANALYSE GLOBALE HARMONIEUSE (VISUEL + AUDIO) :
+   - Pour une vidéo : Décris le contenu visuel (personnes, actions, décor, tenues, textes et incrustations à l'écran) ET intègre naturellement l'ambiance et la piste sonore (musique, paroles, voix, ce qui est dit).
+   - Pour un audio : Retranscris et synthétise ce qui est dit, les intervenants, le ton et les notions clés.
+══════════════════════════════════════════════════════════════════════════════`;
+
+  config.systemInstruction = effectiveSystemPrompt;
   if (options.maxOutputTokens) {
     config.maxOutputTokens = options.maxOutputTokens;
   }
@@ -138,5 +181,5 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
     config,
   });
 
-  return response.text || '';
+  return cleanTechnicalMediaJargon(response.text || '');
 }

@@ -465,32 +465,38 @@ async function extractVideoContentFromItem(item: any): Promise<{
     }
   }
 
-  if (targetBlob) {
-    const res = await extractFramesFromSource(targetBlob, mimeType);
-    if (res.frames.length > 0 || res.videoBase64) {
-      return {
-        videoFrames: res.frames,
-        videoBase64: res.videoBase64,
-        mimeType: targetBlob.type || mimeType,
-      };
-    }
-  }
-
   // 4. URL accessible (blob:, http:, /api/cloud/...)
   let targetUrl = item.videoUrl || item.url || item.fileUrl || item.previewUrl;
-  if (typeof targetUrl === 'string' && targetUrl.trim()) {
+  if (!targetBlob && typeof targetUrl === 'string' && targetUrl.trim()) {
     if (targetUrl.startsWith('/')) {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       targetUrl = `${baseUrl}${targetUrl}`;
     }
-    const res = await extractFramesFromSource(targetUrl, mimeType);
-    if (res.frames.length > 0) {
-      return {
-        videoFrames: res.frames,
-        videoBase64: res.videoBase64,
-        mimeType,
-      };
+    try {
+      const resp = await fetch(targetUrl);
+      if (resp.ok) {
+        targetBlob = await resp.blob();
+      }
+    } catch (e) {
+      console.warn('[AssistantChat] Erreur fetch blob vidéo:', e);
     }
+  }
+
+  // Si on a le blob vidéo (local ou distant), on extrait le Base64 direct (avec son audio) jusqu'à 28 Mo
+  let directVideoBase64: string | undefined = undefined;
+  if (targetBlob && targetBlob.size <= 28 * 1024 * 1024) {
+    try {
+      directVideoBase64 = await blobToBase64(targetBlob);
+    } catch {}
+  }
+
+  const res = await extractFramesFromSource(targetBlob || targetUrl, mimeType);
+  if (directVideoBase64 || res.frames.length > 0) {
+    return {
+      videoFrames: res.frames,
+      videoBase64: directVideoBase64 || res.videoBase64,
+      mimeType: (targetBlob?.type) || mimeType,
+    };
   }
 
   // 5. Capture directe depuis un élément <video> actif dans le DOM
@@ -528,6 +534,122 @@ async function extractVideoContentFromItem(item: any): Promise<{
     }
   } catch (e) {
     console.warn('[AssistantChat] Erreur capture vidéo DOM:', e);
+  }
+
+  return null;
+}
+
+/**
+ * Filtre anti-jargon technique pour garantir un langage humain et naturel comme Google Gemini
+ */
+function cleanTechnicalMediaJargon(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/^.*(?:j['’]ai bien re[çc]u les \d+ images cl[ée]s|clich[ée]s captur[ée]s au cours de la vid[ée]o).*$/gim, '')
+    .replace(/^.*voici une analyse d[ée]taill[ée]e de l['’][ée]volution des sc[èe]nes.*$/gim, '')
+    .replace(/^(?:#+\s*)?(?:\d+\.\s*)?Sc[èe]ne\s*[àa]\s*\d+(?:\.\d+)?s\s*:?/gim, '')
+    .replace(/^\s*[-*•]\s*Description\s+visuelle\s*:\s*/gim, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
+ * Détecte si un élément est une ressource audio (musique, note vocale, podcast, enregistrement)
+ */
+function isAudioItem(item: any): boolean {
+  if (!item) return false;
+  const name = String(item.name || item.title || item.fileName || '').toLowerCase();
+  const type = String(item.type || item.mimeType || '').toLowerCase();
+  const ext = String(item.extension || '').toLowerCase();
+  const category = String(item.category || item.fileType || item.file_category || '').toLowerCase();
+
+  return Boolean(
+    item.isAudio ||
+    category.includes('audio') ||
+    category === 'audio' ||
+    category === 'audios' ||
+    type.startsWith('audio/') ||
+    /\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|weba|oga)$/i.test(name) ||
+    ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'wma', 'opus', 'weba', 'oga'].includes(ext) ||
+    name.includes('whatsapp audio') ||
+    name.includes('vocal') ||
+    name.includes('voice') ||
+    name.includes('enregistrement') ||
+    item.audioUrl
+  );
+}
+
+/**
+ * Extrait le Base64 d'un fichier audio (MP3, WAV, M4A, OGG, Vocal WhatsApp, etc.)
+ */
+async function extractAudioContentFromItem(item: any): Promise<{
+  audioBase64: string;
+  mimeType: string;
+} | null> {
+  if (!item || !isAudioItem(item)) return null;
+
+  const name = String(item.name || item.title || item.fileName || '').toLowerCase();
+  const type = String(item.type || item.mimeType || '').toLowerCase();
+  let mimeType = type.startsWith('audio/') ? type : 'audio/mp3';
+  if (name.endsWith('.wav')) mimeType = 'audio/wav';
+  else if (name.endsWith('.ogg') || name.endsWith('.opus')) mimeType = 'audio/ogg';
+  else if (name.endsWith('.m4a') || name.endsWith('.aac')) mimeType = 'audio/m4a';
+  else if (name.endsWith('.webm') || name.endsWith('.weba')) mimeType = 'audio/webm';
+
+  if (typeof item.audioBase64 === 'string' && item.audioBase64.length > 50) {
+    return { audioBase64: item.audioBase64, mimeType };
+  }
+  if (typeof item.base64 === 'string' && item.base64.length > 50 && item.base64.startsWith('data:audio')) {
+    return { audioBase64: item.base64, mimeType };
+  }
+
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') resolve(reader.result);
+        else reject(new Error('FileReader non-string'));
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  let targetBlob: Blob | null = null;
+  if (item.file instanceof Blob || item.file instanceof File) {
+    targetBlob = item.file;
+  } else if (item.blob instanceof Blob) {
+    targetBlob = item.blob;
+  }
+
+  if (!targetBlob && item.id) {
+    try {
+      const b = await getFileBlob(item.id);
+      if (b) targetBlob = b;
+    } catch {}
+  }
+
+  if (!targetBlob) {
+    let targetUrl = item.audioUrl || item.url || item.fileUrl || item.previewUrl;
+    if (typeof targetUrl === 'string' && targetUrl.trim()) {
+      if (targetUrl.startsWith('/')) {
+        const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+        targetUrl = `${baseUrl}${targetUrl}`;
+      }
+      try {
+        const resp = await fetch(targetUrl);
+        if (resp.ok) {
+          targetBlob = await resp.blob();
+        }
+      } catch {}
+    }
+  }
+
+  if (targetBlob && targetBlob.size <= 28 * 1024 * 1024) {
+    try {
+      const b64 = await blobToBase64(targetBlob);
+      return { audioBase64: b64, mimeType: targetBlob.type || mimeType };
+    } catch {}
   }
 
   return null;
@@ -691,14 +813,26 @@ function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: numbe
     ]);
   }
 
-  // 11. Vidéo ou document visuel d'étude
+  // 11. Vidéo d'étude
   const isVideoOrVisual = mainDoc && (isVideoItem({ name: mainDoc }) || /\.(mp4|webm|mov|mkv|avi|flv|wmv|m4v|3gp|ogv|ts)$/i.test(mainDoc) || /vid[eé]o/i.test(mainDoc));
   if (isVideoOrVisual) {
     return pickReassuringStep([
-      `J'analyse la vidéo « ${mainDoc} » et ses différentes scènes...`,
-      "J'étudie la progression chronologique et les éléments visuels de la vidéo...",
-      "Je repère les moments et explications clés de votre vidéo...",
-      "Je rédige une analyse pédagogique claire de la vidéo...",
+      `J'analyse la vidéo « ${mainDoc} » et sa bande sonore...`,
+      "J'examine ce qui se passe et ce qui est dit dans la vidéo...",
+      "Je repère les éléments visuels et sonores essentiels...",
+      "Je rédige une analyse claire et complète de votre vidéo...",
+      "Votre réponse est bientôt prête..."
+    ]);
+  }
+
+  // 12. Audio d'étude (vocal, cours oral, podcast)
+  const isAudioDoc = mainDoc && (isAudioItem({ name: mainDoc }) || /\.(mp3|wav|ogg|m4a|aac|flac|wma|opus)$/i.test(mainDoc) || /audio|vocal/i.test(mainDoc));
+  if (isAudioDoc) {
+    return pickReassuringStep([
+      `J'écoute attentivement l'enregistrement « ${mainDoc} »...`,
+      "J'analyse les paroles et le discours prononcé...",
+      "Je repère les idées maîtresses et explications orales...",
+      "Je prépare une synthèse claire de votre document audio...",
       "Votre réponse est bientôt prête..."
     ]);
   }
@@ -3040,38 +3174,51 @@ CONSIGNES STRICTES DE CONTINUATION :
       const isDeadKey = Boolean(rawConfiguredToken && (rawConfiguredToken.startsWith('AIzaSyDKct') || rawConfiguredToken.length < 25));
       const configuredToken = (isWorkerModel || isDeadKey) ? undefined : rawConfiguredToken;
 
-      // Résolution multimédia instantanée (Image ou Vidéo active à l'écran ou jointe)
+      // Résolution multimédia instantanée (Vidéo, Audio ou Image active à l'écran ou jointe)
       let activeImageInfo: { base64: string; mimeType: string } | null = null;
       let activeVideoInfo: {
         videoBase64?: string;
         videoFrames: Array<{ base64: string; mimeType: string; timestamp: number }>;
         mimeType: string;
       } | null = null;
+      let activeAudioInfo: {
+        audioBase64: string;
+        mimeType: string;
+      } | null = null;
 
       if (resolvedActiveItem) {
-        activeImageInfo = await extractImageBase64FromItem(resolvedActiveItem);
-        if (!activeImageInfo) {
+        if (isVideoItem(resolvedActiveItem)) {
           activeVideoInfo = await extractVideoContentFromItem(resolvedActiveItem);
+        } else if (isAudioItem(resolvedActiveItem)) {
+          activeAudioInfo = await extractAudioContentFromItem(resolvedActiveItem);
+        } else {
+          activeImageInfo = await extractImageBase64FromItem(resolvedActiveItem);
         }
       }
-      if (!activeImageInfo && !activeVideoInfo && Array.isArray(attachedResources) && attachedResources.length > 0) {
+      if (!activeImageInfo && !activeVideoInfo && !activeAudioInfo && Array.isArray(attachedResources) && attachedResources.length > 0) {
         for (const res of attachedResources) {
-          const foundImg = await extractImageBase64FromItem(res);
-          if (foundImg) {
-            activeImageInfo = foundImg;
-            break;
-          }
-          const foundVid = await extractVideoContentFromItem(res);
-          if (foundVid) {
-            activeVideoInfo = foundVid;
-            break;
+          if (isVideoItem(res)) {
+            const foundVid = await extractVideoContentFromItem(res);
+            if (foundVid) { activeVideoInfo = foundVid; break; }
+          } else if (isAudioItem(res)) {
+            const foundAud = await extractAudioContentFromItem(res);
+            if (foundAud) { activeAudioInfo = foundAud; break; }
+          } else {
+            const foundImg = await extractImageBase64FromItem(res);
+            if (foundImg) { activeImageInfo = foundImg; break; }
           }
         }
       }
 
-      // Si une image ou une vidéo est présente, priorité absolue au modèle multimodal Gemini Flash
-      const hasVisualMedia = Boolean(activeImageInfo || (activeVideoInfo && (activeVideoInfo.videoFrames.length > 0 || activeVideoInfo.videoBase64)));
-      const effectiveModelToSend = hasVisualMedia ? 'gemini-2.0-flash' : selectedModel;
+      // Si un média (vidéo, audio ou image) est présent, priorité absolue au modèle multimodal Gemini Flash
+      const hasMedia = Boolean(
+        activeImageInfo ||
+        (activeVideoInfo && (activeVideoInfo.videoFrames.length > 0 || activeVideoInfo.videoBase64)) ||
+        (activeAudioInfo && activeAudioInfo.audioBase64)
+      );
+      const effectiveModelToSend = hasMedia ? 'gemini-2.0-flash' : selectedModel;
+
+      const detectedMediaType = activeVideoInfo ? 'video' : (activeAudioInfo ? 'audio' : (activeImageInfo ? 'image' : 'document'));
 
       const aiResult = await sendChatMessageToAi({
         messages: chatHistory,
@@ -3095,6 +3242,9 @@ CONSIGNES STRICTES DE CONTINUATION :
         videoBase64: activeVideoInfo?.videoBase64,
         videoFrames: activeVideoInfo?.videoFrames,
         videoMimeType: activeVideoInfo?.mimeType,
+        audioBase64: activeAudioInfo?.audioBase64,
+        audioMimeType: activeAudioInfo?.mimeType,
+        mediaType: detectedMediaType,
         signal: abortSignal,
         abortSignal,
       });
@@ -3116,12 +3266,12 @@ CONSIGNES STRICTES DE CONTINUATION :
       setRetryingMessageId(null);
 
       let fullResponseText = aiResult.response || rawResponseText;
-      fullResponseText = fullResponseText
+      fullResponseText = cleanTechnicalMediaJargon(fullResponseText)
         .replace(/(?:grâce à|via|selon|d'après|avec)\s+l'outil\s+de\s+vision/gi, "d'après votre document")
         .replace(/l'outil\s+de\s+vision\s+(?:a\s+extrait|montre|indique|permet\s+de)/gi, "l'analyse visuelle montre")
         .replace(/vous\s+pouvez\s+utiliser\s+l'outil\s+de\s+vision\s*(?:pour[^.\n]*)?[.]?/gi, "")
-        .replace(/l'outil\s+de\s+vision/gi, "l'analyse visuelle")
-        .replace(/expert\s+vision/gi, "l'analyse visuelle")
+        .replace(/l'outil\s+de\s+vision/gi, "l'analyse multimédia")
+        .replace(/expert\s+vision/gi, "l'analyse multimédia")
         .replace(/rapport\s+(?:ocr|vision|d'extraction)/gi, "énoncé");
 
       // 6. L'IA CHEF D'ORCHESTRE AUTONOME : DÉCISION DE L'IA ENTRE CHAT ET CRÉATION
