@@ -290,8 +290,8 @@ function gatewayNativeModel(config: AiModelConfig, gatewayUrl: string): Model<Ap
       };
     case "google": {
       let gModel = config.model;
-      if (gModel.includes("gemini-2.0") || gModel.includes("gemini-2.5") || gModel.includes("gemini-1.5") || gModel === "gemini-2.0-flash") {
-        gModel = "gemini-3.8-flash";
+      if (gModel.includes("gemini-2.0") || gModel.includes("gemini-2.5") || gModel.includes("gemini-1.5") || gModel.includes("gemini-3.8") || gModel === "gemini-2.0-flash") {
+        gModel = "gemini-2.0-flash";
       }
       return {
         id: gModel,
@@ -568,8 +568,8 @@ export function getModel(env: Cloudflare.Env, config: AiModelConfig,
                          options: ModelRoutingOptions = {}): ModelHandle {
   // Automatically migrate models to current active versions
   if (config.provider === "google" || (typeof config.model === "string" && config.model.includes("gemini"))) {
-    if (config.model.includes("2.0") || config.model.includes("2.5") || config.model.includes("1.5") || config.model === "gemini-2.0-flash") {
-      config = { ...config, model: "gemini-3.8-flash" };
+    if (config.model.includes("2.0") || config.model.includes("2.5") || config.model.includes("1.5") || config.model.includes("3.8") || config.model === "gemini-2.0-flash") {
+      config = { ...config, model: "gemini-2.0-flash" };
     }
   }
   if (config.provider === "cloudflare" || (typeof config.model === "string" && config.model.includes("llama-3.3"))) {

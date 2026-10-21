@@ -35,6 +35,8 @@ interface ConversationItem {
 export function stripWorkerAi(name?: string | null): string {
   if (!name || typeof name !== 'string') return '';
   return name
+    .replace(/3\.8\s*flash/gi, '2.0 Flash')
+    .replace(/2\.5\s*flash/gi, '2.0 Flash')
     .replace(/\s*\(?\s*workers?\s*ai\s*\)?/gi, '')
     .replace(/\s*\(?\s*cloudflare\s*\)?/gi, '')
     .replace(/\bworkers?\s*ai\b/gi, '')
