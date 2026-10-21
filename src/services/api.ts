@@ -263,6 +263,9 @@ export async function sendChatMessageToAi(params: {
   geminiApiKey?: string;
   imageBase64?: string;
   mimeType?: string;
+  videoBase64?: string;
+  videoFrames?: Array<{ base64: string; mimeType?: string; timestamp?: number }>;
+  videoMimeType?: string;
   [key: string]: any;
 }): Promise<{
   response: string;
@@ -304,6 +307,9 @@ export async function sendChatMessageToAi(params: {
     history: params.history || params.messages,
     imageBase64: params.imageBase64 || undefined,
     mimeType: params.mimeType || undefined,
+    videoBase64: params.videoBase64 || undefined,
+    videoFrames: params.videoFrames || undefined,
+    videoMimeType: params.videoMimeType || undefined,
   };
 
   // 1. Appel direct via le SDK officiel @google/genai si une clé Gemini est disponible et que le modèle ciblé est Gemini (ou Power Mode)
@@ -329,6 +335,9 @@ export async function sendChatMessageToAi(params: {
         history: params.history || params.messages,
         imageBase64: params.imageBase64,
         mimeType: params.mimeType,
+        videoBase64: params.videoBase64,
+        videoFrames: params.videoFrames,
+        videoMimeType: params.videoMimeType,
         temperature: 0.7,
       });
 

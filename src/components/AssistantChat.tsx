@@ -280,6 +280,259 @@ async function extractImageBase64FromItem(item: any): Promise<{ base64: string; 
   return null;
 }
 
+/**
+ * Détecte si un élément est une ressource vidéo.
+ */
+function isVideoItem(item: any): boolean {
+  if (!item) return false;
+  const name = String(item.name || item.title || item.fileName || '').toLowerCase();
+  const type = String(item.type || item.mimeType || '').toLowerCase();
+  const ext = String(item.extension || '').toLowerCase();
+  const category = String(item.category || item.fileType || item.file_category || '').toLowerCase();
+
+  return Boolean(
+    item.isVideo ||
+    category.includes('video') ||
+    category === 'videos' ||
+    type.startsWith('video/') ||
+    /\.(mp4|webm|mov|mkv|avi|flv|wmv|m4v|3gp|ogv|ts)$/i.test(name) ||
+    ['mp4', 'webm', 'mov', 'mkv', 'avi', 'flv', 'wmv', 'm4v', '3gp', 'ogv', 'ts'].includes(ext) ||
+    name.includes('whatsapp video') ||
+    name.startsWith('vid-') ||
+    item.videoUrl
+  );
+}
+
+/**
+ * Extrait les images clés temporelles (keyframes) et/ou le Base64 d'une vidéo
+ * pour l'analyse multimodale Gemini (conforme au Google Gemini Cookbook).
+ */
+async function extractVideoContentFromItem(item: any): Promise<{
+  videoBase64?: string;
+  videoFrames: Array<{ base64: string; mimeType: string; timestamp: number }>;
+  mimeType: string;
+} | null> {
+  if (!item || !isVideoItem(item)) return null;
+
+  const name = String(item.name || item.title || item.fileName || '').toLowerCase();
+  const type = String(item.type || item.mimeType || '').toLowerCase();
+  let mimeType = type.startsWith('video/') ? type : 'video/mp4';
+  if (name.endsWith('.webm')) mimeType = 'video/webm';
+  else if (name.endsWith('.mov')) mimeType = 'video/quicktime';
+  else if (name.endsWith('.avi')) mimeType = 'video/x-msvideo';
+
+  // 1. Si des frames sont déjà présentes en mémoire
+  if (Array.isArray(item.videoFrames) && item.videoFrames.length > 0) {
+    return {
+      videoFrames: item.videoFrames,
+      videoBase64: item.videoBase64 || item.base64,
+      mimeType,
+    };
+  }
+
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') resolve(reader.result);
+        else reject(new Error('FileReader non-string'));
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  // Helper pour extraire chronologiquement 4 à 6 images clés d'une vidéo via Canvas
+  const extractFramesFromSource = async (
+    source: Blob | string,
+    targetMime: string,
+    maxFrames = 6
+  ): Promise<{ frames: Array<{ base64: string; mimeType: string; timestamp: number }>; videoBase64?: string }> => {
+    return new Promise((resolve) => {
+      try {
+        const video = document.createElement('video');
+        video.muted = true;
+        video.playsInline = true;
+        video.crossOrigin = 'anonymous';
+        video.preload = 'auto';
+
+        const isBlob = source instanceof Blob;
+        const objectUrl = isBlob ? URL.createObjectURL(source) : source;
+        video.src = objectUrl;
+
+        const cleanup = () => {
+          if (isBlob) {
+            try { URL.revokeObjectURL(objectUrl); } catch {}
+          }
+          video.src = '';
+        };
+
+        const timeout = setTimeout(() => {
+          cleanup();
+          resolve({ frames: [] });
+        }, 8000); // 8s de timeout max
+
+        video.onloadedmetadata = async () => {
+          try {
+            const duration = video.duration || 1;
+            const frameCount = Math.min(maxFrames, Math.max(3, Math.floor(duration)));
+            const step = duration / (frameCount + 1);
+            const timestamps: number[] = [];
+            for (let i = 1; i <= frameCount; i++) {
+              timestamps.push(Math.round((i * step) * 10) / 10);
+            }
+
+            const frames: Array<{ base64: string; mimeType: string; timestamp: number }> = [];
+            const canvas = document.createElement('canvas');
+            const maxDim = 800; // Résolution optimale pour la vision Gemini Flash
+            const width = video.videoWidth || 640;
+            const height = video.videoHeight || 360;
+            const scale = Math.min(1, maxDim / Math.max(width, height));
+            canvas.width = Math.round(width * scale);
+            canvas.height = Math.round(height * scale);
+            const ctx = canvas.getContext('2d');
+
+            for (const t of timestamps) {
+              await new Promise<void>((resSeek) => {
+                const onSeeked = () => {
+                  video.removeEventListener('seeked', onSeeked);
+                  if (ctx) {
+                    try {
+                      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                      const b64 = canvas.toDataURL('image/jpeg', 0.82);
+                      if (b64 && b64.length > 100) {
+                        frames.push({
+                          base64: b64,
+                          mimeType: 'image/jpeg',
+                          timestamp: t,
+                        });
+                      }
+                    } catch (e) {
+                      console.warn('[extractVideoKeyframes] Erreur capture frame:', e);
+                    }
+                  }
+                  resSeek();
+                };
+                video.addEventListener('seeked', onSeeked);
+                video.currentTime = t;
+              });
+            }
+
+            // Si la vidéo fait moins de 10MB, on encode aussi le flux complet en base64
+            let directBase64: string | undefined = undefined;
+            if (isBlob && (source as Blob).size <= 10 * 1024 * 1024) {
+              try {
+                directBase64 = await blobToBase64(source as Blob);
+              } catch {}
+            }
+
+            clearTimeout(timeout);
+            cleanup();
+            resolve({ frames, videoBase64: directBase64 });
+          } catch (err) {
+            clearTimeout(timeout);
+            cleanup();
+            resolve({ frames: [] });
+          }
+        };
+
+        video.onerror = () => {
+          clearTimeout(timeout);
+          cleanup();
+          resolve({ frames: [] });
+        };
+      } catch {
+        resolve({ frames: [] });
+      }
+    });
+  };
+
+  // 2. Blob ou File direct attaché
+  let targetBlob: Blob | null = null;
+  if (item.file instanceof Blob || item.file instanceof File) {
+    targetBlob = item.file;
+  } else if (item.blob instanceof Blob) {
+    targetBlob = item.blob;
+  }
+
+  // 3. IndexedDB local via getFileBlob(item.id)
+  if (!targetBlob && item.id) {
+    try {
+      const b = await getFileBlob(item.id);
+      if (b) targetBlob = b;
+    } catch (e) {
+      console.warn('[AssistantChat] Erreur lecture vidéo IndexedDB:', e);
+    }
+  }
+
+  if (targetBlob) {
+    const res = await extractFramesFromSource(targetBlob, mimeType);
+    if (res.frames.length > 0 || res.videoBase64) {
+      return {
+        videoFrames: res.frames,
+        videoBase64: res.videoBase64,
+        mimeType: targetBlob.type || mimeType,
+      };
+    }
+  }
+
+  // 4. URL accessible (blob:, http:, /api/cloud/...)
+  let targetUrl = item.videoUrl || item.url || item.fileUrl || item.previewUrl;
+  if (typeof targetUrl === 'string' && targetUrl.trim()) {
+    if (targetUrl.startsWith('/')) {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      targetUrl = `${baseUrl}${targetUrl}`;
+    }
+    const res = await extractFramesFromSource(targetUrl, mimeType);
+    if (res.frames.length > 0) {
+      return {
+        videoFrames: res.frames,
+        videoBase64: res.videoBase64,
+        mimeType,
+      };
+    }
+  }
+
+  // 5. Capture directe depuis un élément <video> actif dans le DOM
+  try {
+    const candidateVideos = Array.from(document.querySelectorAll('video')) as HTMLVideoElement[];
+    const videoEl = candidateVideos.find(v =>
+      v.readyState >= 2 && (
+        v.src.startsWith('blob:') ||
+        v.src.includes('/api/cloud/') ||
+        v.closest('.document-preview') !== null ||
+        v.closest('[data-testid="file-preview"]') !== null ||
+        (item.name && v.title && v.title.toLowerCase().includes(item.name.toLowerCase().slice(0, 15)))
+      )
+    ) || document.querySelector('video');
+
+    if (videoEl && videoEl.readyState >= 2) {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.min(videoEl.videoWidth || 640, 1280);
+      canvas.height = Math.round((canvas.width / (videoEl.videoWidth || 640)) * (videoEl.videoHeight || 360));
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        if (dataUrl && dataUrl.length > 100) {
+          return {
+            videoFrames: [{
+              base64: dataUrl,
+              mimeType: 'image/jpeg',
+              timestamp: Math.round((videoEl.currentTime || 0) * 10) / 10,
+            }],
+            mimeType,
+          };
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[AssistantChat] Erreur capture vidéo DOM:', e);
+  }
+
+  return null;
+}
+
 // Détermine dynamiquement ce que l'IA réalise en temps réel (à l'instant T) selon le contexte et le délai
 // Rédigé avec des messages pédagogiques rassurants, fluides et sans jargon technique
 function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: number, requestedType?: string): string {
@@ -438,7 +691,19 @@ function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: numbe
     ]);
   }
 
-  // 11. Document d'étude ouvert ou joint
+  // 11. Vidéo ou document visuel d'étude
+  const isVideoOrVisual = mainDoc && (isVideoItem({ name: mainDoc }) || /\.(mp4|webm|mov|mkv|avi|flv|wmv|m4v|3gp|ogv|ts)$/i.test(mainDoc) || /vid[eé]o/i.test(mainDoc));
+  if (isVideoOrVisual) {
+    return pickReassuringStep([
+      `J'analyse la vidéo « ${mainDoc} » et ses différentes scènes...`,
+      "J'étudie la progression chronologique et les éléments visuels de la vidéo...",
+      "Je repère les moments et explications clés de votre vidéo...",
+      "Je rédige une analyse pédagogique claire de la vidéo...",
+      "Votre réponse est bientôt prête..."
+    ]);
+  }
+
+  // 12. Document d'étude ouvert ou joint
   if (hasDoc) {
     return pickReassuringStep([
       `Je m'appuie sur votre document « ${mainDoc} »...`,
@@ -2775,23 +3040,38 @@ CONSIGNES STRICTES DE CONTINUATION :
       const isDeadKey = Boolean(rawConfiguredToken && (rawConfiguredToken.startsWith('AIzaSyDKct') || rawConfiguredToken.length < 25));
       const configuredToken = (isWorkerModel || isDeadKey) ? undefined : rawConfiguredToken;
 
-      // Résolution instantanée (<25ms) de l'image (si un document image est actif dans l'espace d'étude ou joint)
+      // Résolution multimédia instantanée (Image ou Vidéo active à l'écran ou jointe)
       let activeImageInfo: { base64: string; mimeType: string } | null = null;
+      let activeVideoInfo: {
+        videoBase64?: string;
+        videoFrames: Array<{ base64: string; mimeType: string; timestamp: number }>;
+        mimeType: string;
+      } | null = null;
+
       if (resolvedActiveItem) {
         activeImageInfo = await extractImageBase64FromItem(resolvedActiveItem);
+        if (!activeImageInfo) {
+          activeVideoInfo = await extractVideoContentFromItem(resolvedActiveItem);
+        }
       }
-      if (!activeImageInfo && Array.isArray(attachedResources) && attachedResources.length > 0) {
+      if (!activeImageInfo && !activeVideoInfo && Array.isArray(attachedResources) && attachedResources.length > 0) {
         for (const res of attachedResources) {
-          const found = await extractImageBase64FromItem(res);
-          if (found) {
-            activeImageInfo = found;
+          const foundImg = await extractImageBase64FromItem(res);
+          if (foundImg) {
+            activeImageInfo = foundImg;
+            break;
+          }
+          const foundVid = await extractVideoContentFromItem(res);
+          if (foundVid) {
+            activeVideoInfo = foundVid;
             break;
           }
         }
       }
 
-      // Si une image est présente, priorité absolue au modèle multimodal Gemini 2.0 Flash
-      const effectiveModelToSend = activeImageInfo ? 'gemini-2.0-flash' : selectedModel;
+      // Si une image ou une vidéo est présente, priorité absolue au modèle multimodal Gemini Flash
+      const hasVisualMedia = Boolean(activeImageInfo || (activeVideoInfo && (activeVideoInfo.videoFrames.length > 0 || activeVideoInfo.videoBase64)));
+      const effectiveModelToSend = hasVisualMedia ? 'gemini-2.0-flash' : selectedModel;
 
       const aiResult = await sendChatMessageToAi({
         messages: chatHistory,
@@ -2812,6 +3092,9 @@ CONSIGNES STRICTES DE CONTINUATION :
         attachedFileContent: (resolvedActiveItem as any)?.content || (resolvedActiveItem as any)?.text || (resolvedActiveItem as any)?.rawText || '',
         imageBase64: activeImageInfo?.base64,
         mimeType: activeImageInfo?.mimeType,
+        videoBase64: activeVideoInfo?.videoBase64,
+        videoFrames: activeVideoInfo?.videoFrames,
+        videoMimeType: activeVideoInfo?.mimeType,
         signal: abortSignal,
         abortSignal,
       });
@@ -2835,11 +3118,11 @@ CONSIGNES STRICTES DE CONTINUATION :
       let fullResponseText = aiResult.response || rawResponseText;
       fullResponseText = fullResponseText
         .replace(/(?:grâce à|via|selon|d'après|avec)\s+l'outil\s+de\s+vision/gi, "d'après votre document")
-        .replace(/l'outil\s+de\s+vision\s+(?:a\s+extrait|montre|indique|permet\s+de)/gi, "l'image montre")
+        .replace(/l'outil\s+de\s+vision\s+(?:a\s+extrait|montre|indique|permet\s+de)/gi, "l'analyse visuelle montre")
         .replace(/vous\s+pouvez\s+utiliser\s+l'outil\s+de\s+vision\s*(?:pour[^.\n]*)?[.]?/gi, "")
-        .replace(/l'outil\s+de\s+vision/gi, "l'image")
+        .replace(/l'outil\s+de\s+vision/gi, "l'analyse visuelle")
         .replace(/expert\s+vision/gi, "l'analyse visuelle")
-        .replace(/rapport\s+(?:ocr|vision|d'extraction)/gi, "énoncé de l'exercice");
+        .replace(/rapport\s+(?:ocr|vision|d'extraction)/gi, "énoncé");
 
       // 6. L'IA CHEF D'ORCHESTRE AUTONOME : DÉCISION DE L'IA ENTRE CHAT ET CRÉATION
       const hasCreationClues = Boolean(

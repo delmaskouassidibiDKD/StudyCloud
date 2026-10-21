@@ -18,6 +18,8 @@ export interface GenerateGeminiOptions {
   videoUrl?: string;
   mediaBlob?: Blob;
   mimeType?: string;
+  videoFrames?: Array<{ base64: string; mimeType?: string; timestamp?: number }>;
+  videoMimeType?: string;
 }
 
 /**
@@ -68,6 +70,46 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
       });
     }
   }
+
+  // Séquence chronologique d'images clés de la vidéo (Google Cookbook)
+  if (Array.isArray(options.videoFrames) && options.videoFrames.length > 0) {
+    currentParts.push({
+      text: `[Séquence visuelle chronologique de ${options.videoFrames.length} images clés extraites de la vidéo pour analyse de chaque scène :]`
+    });
+    for (const f of options.videoFrames) {
+      const fBase64 = String(f.base64 || '').replace(/^data:[^;]+;base64,/i, '').trim();
+      if (fBase64) {
+        if (typeof f.timestamp === 'number') {
+          currentParts.push({ text: `[Scène vidéo à ${Math.round(f.timestamp * 10) / 10}s]` });
+        }
+        currentParts.push({
+          inlineData: {
+            mimeType: f.mimeType || 'image/jpeg',
+            data: fBase64,
+          }
+        });
+      }
+    }
+  }
+
+  // Flux vidéo direct inline (si vidéo courte < 25MB)
+  if (options.videoBase64 && options.videoBase64.length > 50) {
+    const cleanVideoBase64 = options.videoBase64.replace(/^data:[^;]+;base64,/i, '').trim();
+    let effectiveVideoMime = options.videoMimeType || options.mimeType || 'video/mp4';
+    if (options.videoBase64.includes('video/webm')) effectiveVideoMime = 'video/webm';
+    else if (options.videoBase64.includes('video/quicktime')) effectiveVideoMime = 'video/quicktime';
+    else if (options.videoBase64.includes('video/ogg')) effectiveVideoMime = 'video/ogg';
+
+    if (cleanVideoBase64.length < 25 * 1024 * 1024) {
+      currentParts.push({
+        inlineData: {
+          mimeType: effectiveVideoMime,
+          data: cleanVideoBase64,
+        }
+      });
+    }
+  }
+
   currentParts.push({ text: options.userPrompt || 'Bonjour !' });
 
   contents.push({

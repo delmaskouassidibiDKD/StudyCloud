@@ -867,8 +867,11 @@ async function executeGemini20Flash(params: {
   effectivePrompt: string;
   imageBase64?: string;
   mimeType?: string;
+  videoBase64?: string;
+  videoFrames?: Array<{ base64: string; mimeType?: string; timestamp?: number }>;
+  videoMimeType?: string;
 }): Promise<string> {
-  const { apiKey, systemPrompt, messages, effectivePrompt, imageBase64, mimeType } = params;
+  const { apiKey, systemPrompt, messages, effectivePrompt, imageBase64, mimeType, videoBase64, videoFrames, videoMimeType } = params;
 
   const contents: any[] = [];
 
@@ -897,6 +900,47 @@ async function executeGemini20Flash(params: {
         inlineData: {
           mimeType: effectiveMime,
           data: cleanBase64,
+        }
+      });
+    }
+  }
+
+  // Séquence chronologique d'images clés extraites de la vidéo (Recommandation Google Gemini Cookbook)
+  if (Array.isArray(videoFrames) && videoFrames.length > 0) {
+    currentParts.push({
+      text: `[Séquence visuelle chronologique de ${videoFrames.length} images clés capturées au cours de la vidéo pour analyse visuelle détaillée de chaque scène :]`
+    });
+    for (const f of videoFrames) {
+      const fBase64 = String(f.base64 || "").replace(/^data:[^;]+;base64,/i, "").trim();
+      if (fBase64) {
+        const ts = typeof f.timestamp === "number" ? Math.round(f.timestamp * 10) / 10 : null;
+        if (ts !== null) {
+          currentParts.push({ text: `[Scène vidéo à ${ts}s]` });
+        }
+        currentParts.push({
+          inlineData: {
+            mimeType: f.mimeType || "image/jpeg",
+            data: fBase64,
+          }
+        });
+      }
+    }
+  }
+
+  // Flux vidéo direct inline (si la vidéo fait moins de 25MB)
+  if (videoBase64 && videoBase64.length > 50) {
+    const cleanVideoBase64 = videoBase64.replace(/^data:[^;]+;base64,/i, "").trim();
+    let effectiveVideoMime = videoMimeType || "video/mp4";
+    if (videoBase64.includes("video/webm")) effectiveVideoMime = "video/webm";
+    else if (videoBase64.includes("video/quicktime")) effectiveVideoMime = "video/quicktime";
+    else if (videoBase64.includes("video/ogg")) effectiveVideoMime = "video/ogg";
+    else if (videoBase64.includes("video/x-msvideo") || videoBase64.includes("video/avi")) effectiveVideoMime = "video/avi";
+
+    if (cleanVideoBase64.length < 25 * 1024 * 1024) {
+      currentParts.push({
+        inlineData: {
+          mimeType: effectiveVideoMime,
+          data: cleanVideoBase64,
         }
       });
     }
@@ -1186,9 +1230,17 @@ export default {
         const audioBase64 = String(body.audioBase64 || "").trim();
         const videoBase64 = String(body.videoBase64 || "").trim();
         const videoUrl = String(body.videoUrl || "").trim();
+        const videoFrames = Array.isArray(body.videoFrames) ? body.videoFrames : [];
+        const videoMimeType = String(body.videoMimeType || "").trim();
 
-        // Si une image est fournie, priorité absolue au modèle multimodal Gemini Flash
-        if (imageBase64 && imageBase64.length > 50) {
+        const hasMedia = Boolean(
+          (imageBase64 && imageBase64.length > 50) ||
+          (videoBase64 && videoBase64.length > 50) ||
+          videoFrames.length > 0
+        );
+
+        // Si une image ou une vidéo est fournie, priorité absolue au modèle multimodal Gemini Flash
+        if (hasMedia) {
           targetModel = "gemini-3.8-flash";
         }
 
@@ -1348,6 +1400,9 @@ CONSIGNES STRICTES DE CONTINUATION :
               effectivePrompt,
               imageBase64,
               mimeType,
+              videoBase64,
+              videoFrames,
+              videoMimeType,
             });
             if (gText) {
               answerText = stripAiReasoningScratchpad(gText);
@@ -1359,15 +1414,15 @@ CONSIGNES STRICTES DE CONTINUATION :
           }
         }
 
-        // Si une image était fournie et que Gemini n'a pas répondu, ne JAMAIS basculer sur un modèle aveugle
-        if (!answerText && imageBase64 && imageBase64.length > 50) {
-          answerText = "Désolé, je n'ai pas pu analyser votre image via Gemini. " + (geminiErrorDetail ? `[Détail: ${geminiErrorDetail}]` : "");
+        // Si un média (image ou vidéo) était fourni et que Gemini n'a pas répondu, ne JAMAIS basculer sur un modèle aveugle
+        if (!answerText && hasMedia) {
+          answerText = "Désolé, je n'ai pas pu analyser votre document multimédia (image ou vidéo) via Gemini. " + (geminiErrorDetail ? `[Détail: ${geminiErrorDetail}]` : "");
         }
 
         // ══════════════════════════════════════════════════════════════════════════════
-        // BRANCHE 2 : CHEF D'ÉQUIPE MULTI-IA (SI LLAMA EST SÉLECTIONNÉ ET PAS D'IMAGE)
+        // BRANCHE 2 : CHEF D'ÉQUIPE MULTI-IA (SI LLAMA EST SÉLECTIONNÉ ET PAS DE MÉDIA)
         // ══════════════════════════════════════════════════════════════════════════════
-        if (!answerText && !imageBase64 && isChefModel(targetModel)) {
+        if (!answerText && !hasMedia && isChefModel(targetModel)) {
           try {
             const orchResult = await orchestrateMultiAgentTeam({
               targetModel,
