@@ -858,146 +858,15 @@ class PublicApiImpl extends RpcTarget implements PublicApi {
 }
 
 /**
- * Détecte le type MIME d'un flux Base64 / Data URI
+ * Exécute l'appel conversationnel pur vers Google Gemini 2.0 Flash
  */
-function detectMediaMimeType(dataUri: string, defaultType: string): string {
-  const match = dataUri.match(/^data:([^;]+);base64,/i);
-  if (match && match[1]) return match[1].toLowerCase();
-  return defaultType;
-}
-
-/**
- * Upload d'un fichier lourd vers le Google AI File API (resumable)
- */
-async function uploadMediaToGeminiFileApi(
-  apiKey: string,
-  rawBase64: string,
-  mimeType: string,
-  displayName: string = "fichier_multimodal"
-): Promise<{ fileUri: string; mimeType: string } | null> {
-  try {
-    const cleanBase64 = rawBase64.replace(/^data:[^;]+;base64,/i, "").trim();
-    const binaryStr = atob(cleanBase64);
-    const bytes = new Uint8Array(binaryStr.length);
-    for (let i = 0; i < binaryStr.length; i++) {
-      bytes[i] = binaryStr.charCodeAt(i);
-    }
-
-    // 1. Démarrage de l'upload résumable
-    const initRes = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`, {
-      method: "POST",
-      headers: {
-        "X-Goog-Upload-Protocol": "resumable",
-        "X-Goog-Upload-Command": "start",
-        "X-Goog-Upload-Header-Content-Length": String(bytes.length),
-        "X-Goog-Upload-Header-Content-Type": mimeType,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        file: { display_name: displayName }
-      }),
-    });
-
-    if (!initRes.ok) return null;
-
-    const uploadUrl = initRes.headers.get("x-goog-upload-url");
-    if (!uploadUrl) return null;
-
-    // 2. Envoi du flux binaire
-    const uploadRes = await fetch(uploadUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Length": String(bytes.length),
-        "X-Goog-Upload-Offset": "0",
-        "X-Goog-Upload-Command": "upload, finalize",
-      },
-      body: bytes,
-    });
-
-    if (!uploadRes.ok) return null;
-
-    const fileInfo: any = await uploadRes.json();
-    let file = fileInfo?.file;
-    if (!file || !file.uri) return null;
-
-    // 3. Attente si traitement asynchrone (ex: vidéos longues)
-    if (file.state === "PROCESSING") {
-      for (let poll = 0; poll < 6; poll++) {
-        await new Promise(r => setTimeout(r, 1500));
-        const checkRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/${file.name}?key=${apiKey}`);
-        if (checkRes.ok) {
-          const checkData: any = await checkRes.json();
-          if (checkData.state === "ACTIVE") {
-            file = checkData;
-            break;
-          }
-          if (checkData.state === "FAILED") return null;
-        }
-      }
-    }
-
-    return { fileUri: file.uri, mimeType: file.mimeType || mimeType };
-  } catch (_uploadErr) {
-    return null;
-  }
-}
-
-/**
- * Prépare une partie multimodale pour Gemini :
- * Utilise Google AI File API pour les fichiers lourds (>10 Mo Base64),
- * sinon le format standard inlineData Base64.
- */
-async function prepareGeminiMediaPart(
-  apiKey: string,
-  mediaDataUri: string,
-  defaultMime: string,
-  displayName: string
-): Promise<any> {
-  const cleanBase64 = mediaDataUri.replace(/^data:[^;]+;base64,/i, "").trim();
-  if (!cleanBase64) return null;
-  const mimeType = detectMediaMimeType(mediaDataUri, defaultMime);
-
-  // Si le média est lourd (>10 Mo Base64) ou si vidéo, tentative File API
-  const isHeavy = cleanBase64.length > 10 * 1024 * 1024 || mimeType.startsWith("video/");
-  if (isHeavy && apiKey) {
-    try {
-      const fileResult = await uploadMediaToGeminiFileApi(apiKey, cleanBase64, mimeType, displayName);
-      if (fileResult && fileResult.fileUri) {
-        return {
-          fileData: {
-            mimeType: fileResult.mimeType,
-            fileUri: fileResult.fileUri,
-          }
-        };
-      }
-    } catch (_e) {}
-  }
-
-  // Format standard inlineData Base64
-  return {
-    inlineData: {
-      mimeType,
-      data: cleanBase64,
-    }
-  };
-}
-
-/**
- * Exécute l'appel multimodal complet vers Google Gemini 2.0 Flash
- */
-async function executeGemini20FlashMultimodal(params: {
+async function executeGemini20Flash(params: {
   apiKey: string;
   systemPrompt: string;
   messages: Array<{ role: "user" | "assistant"; content: string }>;
   effectivePrompt: string;
-  docContent?: string;
-  docName?: string;
-  imageBase64?: string;
-  audioBase64?: string;
-  videoBase64?: string;
-  videoUrl?: string;
 }): Promise<string> {
-  const { apiKey, systemPrompt, messages, effectivePrompt, docContent, docName, imageBase64, audioBase64, videoBase64, videoUrl } = params;
+  const { apiKey, systemPrompt, messages, effectivePrompt } = params;
 
   const contents: any[] = [];
 
@@ -1010,45 +879,10 @@ async function executeGemini20FlashMultimodal(params: {
     });
   }
 
-  // Dernier tour utilisateur (avec tous les médias multimodaux)
-  const lastUserParts: any[] = [];
-
-  // 1. Images (JPG, PNG, WebP...)
-  if (imageBase64 && imageBase64.trim().length > 30) {
-    const imgPart = await prepareGeminiMediaPart(apiKey, imageBase64, "image/jpeg", "image_etudiant");
-    if (imgPart) lastUserParts.push(imgPart);
-  }
-
-  // 2. Audio (MP3, WAV...)
-  if (audioBase64 && audioBase64.trim().length > 30) {
-    const audioPart = await prepareGeminiMediaPart(apiKey, audioBase64, "audio/mp3", "audio_etudiant");
-    if (audioPart) lastUserParts.push(audioPart);
-  }
-
-  // 3. Vidéo (MP4, WebM...)
-  if (videoBase64 && videoBase64.trim().length > 30) {
-    const videoPart = await prepareGeminiMediaPart(apiKey, videoBase64, "video/mp4", "video_etudiant");
-    if (videoPart) lastUserParts.push(videoPart);
-  }
-
-  // 4. URL Vidéo si disponible
-  if (videoUrl && videoUrl.trim()) {
-    lastUserParts.push({ text: `[VIDÉO FOURNIE EN LIGNE] : ${videoUrl.trim()}` });
-  }
-
-  // 5. Document d'étude
-  if (docContent && docContent.trim()) {
-    lastUserParts.push({
-      text: `[DOCUMENTS FOURNIS PAR L'ÉTUDIANT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 40000)}`
-    });
-  }
-
-  // 6. Texte de la question
-  lastUserParts.push({ text: effectivePrompt });
-
+  // Dernier tour utilisateur (purement textuel)
   contents.push({
     role: "user",
-    parts: lastUserParts,
+    parts: [{ text: effectivePrompt }],
   });
 
   const reqBody: any = {
@@ -1279,67 +1113,7 @@ export default {
         const userPrompt = String(body.message || body.prompt || "").trim();
         let targetModel = String(body.model || body.requested_model || "gemini-2.0-flash").trim();
         const history = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
-        const docContent = String(body.attachedFileContent || body.file_content || body.documentContent || "").trim();
-        const docName = String(body.attachedFileName || body.file_name || "").trim();
-        let imageBase64 = String(body.imageBase64 || "").trim();
-        const audioBase64 = String(body.audioBase64 || "").trim();
-        const videoBase64 = String(body.videoBase64 || "").trim();
-        const videoUrl = String(body.videoUrl || "").trim();
 
-        // Récupération multi-tours de l'image si elle n'est pas ré-émise mais présente dans l'historique
-        if (!imageBase64 && Array.isArray(history)) {
-          for (let i = history.length - 1; i >= 0; i--) {
-            const h = history[i];
-            if (h && typeof h === "object") {
-              const candidate = h.imageBase64 || h.metadata?.imageBase64 || h.image || h.image_base64;
-              if (candidate && typeof candidate === "string" && candidate.length > 50) {
-                imageBase64 = candidate;
-                break;
-              }
-            }
-          }
-        }
-
-        // Récupération automatique et directe du fichier image depuis Cloudflare R2 si imageBase64 non fourni
-        if (!imageBase64) {
-          const r2Key = String(body.attachedFileR2Key || body.r2_key || body.r2Key || "").trim();
-          const bucket = getR2Bucket();
-          if (r2Key && bucket) {
-            try {
-              const obj = await bucket.get(r2Key);
-              if (obj) {
-                const buf = await obj.arrayBuffer();
-                const rawB64 = Buffer.from(buf).toString("base64");
-                const mime = obj.httpMetadata?.contentType || (r2Key.endsWith(".png") ? "image/png" : (r2Key.endsWith(".webp") ? "image/webp" : "image/jpeg"));
-                imageBase64 = `data:${mime};base64,${rawB64}`;
-                logger.info("Image R2 chargée avec succès côté Worker via r2Key", { r2Key, size: buf.byteLength });
-              }
-            } catch (r2Err) {
-              logger.warn("Erreur lecture R2 direct pour image", { r2Key, error: r2Err });
-            }
-          }
-          if (!imageBase64 && (body.attachedFileId || body.fileId)) {
-            const fileId = body.attachedFileId || body.fileId;
-            const db = getD1Database();
-            if (db && bucket) {
-              try {
-                const row: any = await db.prepare("SELECT r2_key, type, name FROM files WHERE id = ?").bind(fileId).first();
-                if (row?.r2_key) {
-                  const obj = await bucket.get(row.r2_key);
-                  if (obj) {
-                    const buf = await obj.arrayBuffer();
-                    const rawB64 = Buffer.from(buf).toString("base64");
-                    const mime = row.type || obj.httpMetadata?.contentType || (row.r2_key.endsWith(".png") ? "image/png" : "image/jpeg");
-                    imageBase64 = `data:${mime};base64,${rawB64}`;
-                    logger.info("Image R2 chargée depuis D1 avec succès", { fileId, r2Key: row.r2_key });
-                  }
-                }
-              } catch (dbErr) {
-                logger.warn("Erreur lecture D1/R2 pour image", { fileId, error: dbErr });
-              }
-            }
-          }
-        }
 
         if (targetModel.includes("llama-3.3") && !targetModel.includes("fp8-fast")) {
           targetModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
@@ -1483,65 +1257,23 @@ CONSIGNES STRICTES DE CONTINUATION :
         const cfToken = ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join("");
 
         // ══════════════════════════════════════════════════════════════════════════════
-        // BRANCHE 1 : MODÈLE UNIVERSEL PAR DÉFAUT (GOOGLE GEMINI 2.0 FLASH MULTIMODAL)
+        // BRANCHE 1 : MODÈLE UNIVERSEL PAR DÉFAUT (GOOGLE GEMINI 2.0 FLASH)
         // ══════════════════════════════════════════════════════════════════════════════
-        // Traite nativement toutes les requêtes : textes simples, images (JPG, PNG, WebP),
-        // audios (MP3, WAV), vidéos (MP4, WebM) avec Base64 et Google AI File API.
-        // Utilise la clé secrète Cloudflare STUDYCLOUD_GEMINI_1.
+        // Conversation textuelle pure (Prompt + Historique)
         if ((targetModel === "gemini-2.0-flash" || targetModel.includes("gemini")) && geminiKeyToUse) {
           try {
-            const gText = await executeGemini20FlashMultimodal({
+            const gText = await executeGemini20Flash({
               apiKey: geminiKeyToUse,
               systemPrompt,
               messages: simpleMessages,
               effectivePrompt,
-              docContent,
-              docName,
-              imageBase64,
-              audioBase64,
-              videoBase64,
-              videoUrl,
             });
             if (gText) {
               answerText = stripAiReasoningScratchpad(gText);
               effectiveModelUsed = "Google Gemini 2.0 Flash";
             }
           } catch (g20Err) {
-            logger.warn("Gemini 2.0 Flash multimodal call exception", { error: g20Err });
-          }
-        }
-
-        // ══════════════════════════════════════════════════════════════════════════════
-        // SECOURS VISION : CLOUDFLARE WORKERS AI LLAMA 3.2 11B VISION INSTRUCT
-        // ══════════════════════════════════════════════════════════════════════════════
-        // Si l'étudiant a envoyé une image et que Gemini est indisponible,
-        // on ne bascule JAMAIS vers un modèle texte aveugle : on utilise le modèle Vision de Cloudflare !
-        if (!answerText && imageBase64 && imageBase64.trim().length > 30) {
-          try {
-            const rawB64 = imageBase64.replace(/^data:[^;]+;base64,/i, "").trim();
-            const bytes = Array.from(Buffer.from(rawB64, "base64"));
-            const visionPrompt = `${systemPrompt ? systemPrompt + "\n\n" : ""}${docContent ? "[DOCUMENT D'APPUI] : " + docContent.slice(0, 5000) + "\n\n" : ""}${effectivePrompt}`;
-            const cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/meta/llama-3.2-11b-vision-instruct`, {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${cfToken}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                prompt: visionPrompt,
-                image: bytes,
-              }),
-            });
-            if (cfRes.ok) {
-              const vData: any = await cfRes.json();
-              const rawAns = vData?.result?.response || vData?.response || "";
-              if (rawAns) {
-                answerText = stripAiReasoningScratchpad(rawAns);
-                effectiveModelUsed = "Cloudflare Llama 3.2 11B Vision";
-              }
-            }
-          } catch (visErr) {
-            logger.warn("Cloudflare Vision fallback exception", { error: visErr });
+            logger.warn("Gemini 2.0 Flash call exception", { error: g20Err });
           }
         }
 

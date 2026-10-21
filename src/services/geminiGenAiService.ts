@@ -6,6 +6,10 @@ export interface GenerateGeminiOptions {
   systemPrompt?: string;
   userPrompt: string;
   history?: Array<{ role: string; content: string }>;
+  temperature?: number;
+  maxOutputTokens?: number;
+  responseMimeType?: string;
+  // Champs optionnels conservés pour compatibilité de signature sans transfert média
   docContent?: string;
   docName?: string;
   imageBase64?: string;
@@ -14,14 +18,11 @@ export interface GenerateGeminiOptions {
   videoUrl?: string;
   mediaBlob?: Blob;
   mimeType?: string;
-  temperature?: number;
-  maxOutputTokens?: number;
-  responseMimeType?: string;
 }
 
 /**
- * Service officiel basé sur le SDK @google/genai de Google.
- * Gère nativement gemini-2.0-flash et le multimodalisme (images, audios, vidéos, documents).
+ * Service de discussion textuelle basé sur le SDK officiel @google/genai de Google.
+ * Conversation textuelle pure (Prompt + Historique).
  */
 export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<string> {
   const apiKey = (options.apiKey || '').trim();
@@ -33,10 +34,9 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
   const ai = new GoogleGenAI({ apiKey });
   const modelName = options.model || 'gemini-2.0-flash';
 
-  // 2. Construction des contenus historiques et multimodaux
+  // 2. Construction de l'historique de discussion
   const contents: any[] = [];
 
-  // Traitement de l'historique conversationnel
   if (Array.isArray(options.history) && options.history.length > 0) {
     for (const h of options.history) {
       if (!h || !h.content) continue;
@@ -49,102 +49,13 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
     }
   }
 
-  // Tour utilisateur courant avec parties multimodales
-  const currentParts: any[] = [];
-
-  // A. Si un Blob lourd (vidéo, gros audio) est fourni, utilisation de ai.files.upload
-  if (options.mediaBlob && options.mediaBlob.size > 0) {
-    try {
-      const uploadResult = await ai.files.upload({
-        file: options.mediaBlob,
-        config: {
-          mimeType: options.mimeType || options.mediaBlob.type || 'application/octet-stream',
-        },
-      });
-      if (uploadResult) {
-        currentParts.push(uploadResult);
-      }
-    } catch (uploadErr) {
-      console.warn('[GeminiGenAiService] Téléversement via ai.files.upload échoué, repli sur inlineData:', uploadErr);
-    }
-  }
-
-  // B. Images (JPG, PNG, WebP) via inlineData Base64
-  if (options.imageBase64 && options.imageBase64.length > 50) {
-    const rawBase64 = options.imageBase64.replace(/^data:[^;]+;base64,/i, '').trim();
-    let mime = options.mimeType || 'image/jpeg';
-    if (options.imageBase64.includes('image/png')) mime = 'image/png';
-    else if (options.imageBase64.includes('image/webp')) mime = 'image/webp';
-    else if (options.imageBase64.includes('image/gif')) mime = 'image/gif';
-
-    if (rawBase64) {
-      currentParts.push({
-        inlineData: {
-          mimeType: mime,
-          data: rawBase64,
-        }
-      });
-    }
-  }
-
-  // C. Audio (MP3, WAV) via inlineData Base64
-  if (options.audioBase64 && options.audioBase64.length > 50) {
-    const rawAudio = options.audioBase64.replace(/^data:[^;]+;base64,/i, '').trim();
-    let mime = options.mimeType || 'audio/mp3';
-    if (options.audioBase64.includes('audio/wav')) mime = 'audio/wav';
-    else if (options.audioBase64.includes('audio/ogg')) mime = 'audio/ogg';
-
-    if (rawAudio) {
-      currentParts.push({
-        inlineData: {
-          mimeType: mime,
-          data: rawAudio,
-        }
-      });
-    }
-  }
-
-  // D. Vidéo (MP4, WebM) via inlineData si pas déjà gérée par ai.files
-  if (options.videoBase64 && options.videoBase64.length > 50 && !options.mediaBlob) {
-    const rawVideo = options.videoBase64.replace(/^data:[^;]+;base64,/i, '').trim();
-    let mime = options.mimeType || 'video/mp4';
-    if (options.videoBase64.includes('video/webm')) mime = 'video/webm';
-
-    if (rawVideo) {
-      currentParts.push({
-        inlineData: {
-          mimeType: mime,
-          data: rawVideo,
-        }
-      });
-    }
-  }
-
-  // D.bis URL de vidéo en ligne ou stockée
-  if (options.videoUrl && options.videoUrl.trim()) {
-    currentParts.push({
-      text: `[VIDÉO FOURNIE EN LIGNE / CLOUD : ${options.videoUrl.trim()}]`
-    });
-  }
-
-  // E. Document d'étude textuel associé
-  if (options.docContent && options.docContent.trim()) {
-    currentParts.push({
-      text: `[DOCUMENT FOURNI PAR L'ÉTUDIANT : "${options.docName || 'Document d\'étude'}"]\n${options.docContent.slice(0, 30000)}`
-    });
-  }
-
-  // F. Prompt de l'utilisateur
-  currentParts.push({
-    text: options.userPrompt || 'Bonjour !'
-  });
-
+  // Tour utilisateur courant (texte pur)
   contents.push({
     role: 'user',
-    parts: currentParts,
+    parts: [{ text: options.userPrompt || 'Bonjour !' }]
   });
 
-  // 3. Configuration du modèle
+  // 3. Configuration de génération
   const config: any = {
     temperature: options.temperature ?? 0.7,
   };

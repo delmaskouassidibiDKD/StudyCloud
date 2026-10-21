@@ -283,9 +283,6 @@ export async function sendChatMessageToAi(params: {
   const cleanExplicitKey = (params.apiKey && !params.apiKey.startsWith('AIzaSyDKct') && params.apiKey.length >= 25) ? params.apiKey : userGeminiApiKey;
   const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
 
-  const extractedDoc = params.attachedFileContent || params.file_content || params.fileContent || params.documentContent || params.documentText || '';
-  const extractedDocName = params.attachedFileName || params.file_name || params.fileName || '';
-
   const currentUserId = params.userId || localStorage.getItem('unifolder_user_id') || 'default-user';
 
   const payload = {
@@ -303,18 +300,6 @@ export async function sendChatMessageToAi(params: {
     conversation_id: params.conversationId || params.conversation_id || params.sessionId,
     conversationId: params.conversationId || params.conversation_id || params.sessionId,
     history: params.history || params.messages,
-    attachedFileContent: extractedDoc,
-    file_content: extractedDoc,
-    fileContent: extractedDoc,
-    documentContent: extractedDoc,
-    documentText: extractedDoc,
-    attachedFileName: extractedDocName,
-    file_name: extractedDocName,
-    fileName: extractedDocName,
-    imageBase64: params.imageBase64,
-    audioBase64: params.audioBase64,
-    videoBase64: params.videoBase64,
-    videoUrl: params.videoUrl,
   };
 
   // 1. Appel direct via le SDK officiel @google/genai si une clé Gemini est disponible et que le modèle ciblé est Gemini (ou Power Mode)
@@ -338,13 +323,6 @@ export async function sendChatMessageToAi(params: {
         systemPrompt: systemText,
         userPrompt: params.prompt || params.message || 'Bonjour !',
         history: params.history || params.messages,
-        docContent: isContinuation ? undefined : extractedDoc,
-        docName: isContinuation ? undefined : extractedDocName,
-        imageBase64: params.imageBase64,
-        audioBase64: params.audioBase64,
-        videoBase64: params.videoBase64,
-        videoUrl: params.videoUrl,
-        mediaBlob: params.mediaBlob,
         temperature: 0.7,
       });
 
@@ -428,13 +406,6 @@ export async function sendChatMessageToAi(params: {
             systemPrompt: systemText,
             userPrompt: params.prompt || params.message || 'Bonjour',
             history: params.history || params.messages,
-            docContent: isContinuation ? undefined : extractedDoc,
-            docName: isContinuation ? undefined : extractedDocName,
-            imageBase64: params.imageBase64,
-            audioBase64: params.audioBase64,
-            videoBase64: params.videoBase64,
-            videoUrl: params.videoUrl,
-            mediaBlob: params.mediaBlob,
             temperature: 0.3,
           });
 
