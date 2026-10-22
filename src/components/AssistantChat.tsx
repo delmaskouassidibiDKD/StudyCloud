@@ -2310,8 +2310,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     setShowProposalBar(true);
     safeSetItem('studycloud_current_conversation_id', newId);
     safeLocalStorageRemove(`studycloud_conv_msgs_${newId}`);
-    safeLocalStorageRemove(`studycloud_analyzed_media_${newId}`);
-    delete analyzedMediaPerConvRef.current[newId];
+    safeLocalStorageRemove(`studycloud_analyzed_media_${currentUserId}_${newId}`);
+    delete analyzedMediaPerConvRef.current[`${currentUserId}_${newId}`];
 
     // Initialisation D1
     StudyCloudAPI.createAiConversation({
@@ -2328,8 +2328,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       await StudyCloudAPI.deleteAiConversation(convId);
       setConversations(prev => prev.filter(c => c.id !== convId));
       safeLocalStorageRemove(`studycloud_conv_msgs_${convId}`);
-      safeLocalStorageRemove(`studycloud_analyzed_media_${convId}`);
-      delete analyzedMediaPerConvRef.current[convId];
+      safeLocalStorageRemove(`studycloud_analyzed_media_${currentUserId}_${convId}`);
+      delete analyzedMediaPerConvRef.current[`${currentUserId}_${convId}`];
       if (currentConversationId === convId) {
         handleStartNewConversation();
       }
@@ -2367,7 +2367,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     }
   };
 
-  const sendMessage = async (textToSend: string, requestedTypeOverride?: string, options?: { isContinuation?: boolean }) => {
+  const sendMessage = async (textToSend: string, requestedTypeOverride?: string, options?: { isContinuation?: boolean; forceReanalysis?: boolean }) => {
     if (!textToSend.trim()) return;
 
     // Incrément de l'ID unique de requête pour ce tour
@@ -2451,9 +2451,27 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       .sort()
       .join('|');
 
-    const sessionMediaSig = analyzedMediaPerConvRef.current[currentConversationId] || safeGetItem(`studycloud_analyzed_media_${currentConversationId}`);
-    // Le média est déjà analysé si la signature actuelle correspond exactement à celle déjà traitée dans cette conversation
-    const isMediaAlreadyAnalyzed = Boolean(currentMediaSignature && sessionMediaSig === currentMediaSignature);
+    // Clé unique liée au userId ET à la conversation active pour une isolation totale par utilisateur
+    const userSessionMediaKey = `studycloud_analyzed_media_${currentUserId}_${currentConversationId}`;
+    const convCacheKey = `${currentUserId}_${currentConversationId}`;
+    const sessionMediaSig = analyzedMediaPerConvRef.current[convCacheKey] || safeGetItem(userSessionMediaKey);
+
+    // Détection si l'utilisateur demande explicitement une réanalyse, un réexamen, ou une nouvelle inspection
+    const isExplicitReanalysisRequested = /(?:r[ée]-?analyse|r[ée]examine|re-?regarde|regarde\s+[àa]\s*nouveau|revois|refais\s+(?:l'|une\s+)?analyse|nouvelle\s+analyse|analyse\s+encore|inspecte\s+[àa]\s*nouveau|relis\s+attentivement|zoom\s+sur|v[ée]rifie\s+[àa]\s*nouveau|autre\s+analyse|analyse\s+compl[èe]te|scanne\s+[àa]\s*nouveau|re-?v[ée]rifie)/i.test(userText);
+
+    // Détection si la demande porte spécifiquement sur des détails visuels nécessitant une observation directe
+    const isVisualSpecificDetailRequested = /(?:sch[ée]ma|diagramme|circuit|figure|graphique|dessin|illustration|courbe|tableau\s+visuel|photo|planche)/i.test(userText) &&
+      /(?:d[ée]tail|zoom|pr[ée]cis|regarde|observe|montre|identifie|lis|d[ée]crit|explique\s+le\s+sch[ée]ma|r[ée]sous\s+avec|d'apr[èe]s\s+le\s+sch[ée]ma|dans\s+l'image|sur\s+la\s+photo)/i.test(userText);
+
+    // Si la situation ou la question nécessite une nouvelle analyse approfondie
+    const requiresFreshAnalysis = Boolean(
+      options?.forceReanalysis ||
+      isExplicitReanalysisRequested ||
+      isVisualSpecificDetailRequested
+    );
+
+    // Le média est considéré comme déjà analysé UNIQUEMENT si aucune nouvelle analyse n'est requise et que la signature correspond
+    const isMediaAlreadyAnalyzed = Boolean(!requiresFreshAnalysis && currentMediaSignature && sessionMediaSig === currentMediaSignature);
 
     const hasAttachedDoc = allDocs.length > 0;
     const detectedFormat = detectCreationFormat(userText, requestedTypeOverride);
@@ -2647,9 +2665,11 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
     const isExplicitCreationRequest = Boolean(effectiveRequestedType);
     const initialLiveStatus = isExplicitCreationRequest 
       ? "Réflexion en cours..." 
-      : (isMediaAlreadyAnalyzed 
-          ? "Je réfléchis à votre question..." 
-          : getLiveAiActivity(userText, initialDocNames, 0, effectiveRequestedType));
+      : (requiresFreshAnalysis && hasAttachedDoc
+          ? "Nouvelle analyse approfondie en cours..."
+          : (isMediaAlreadyAnalyzed 
+              ? "Je réfléchis à votre question..." 
+              : getLiveAiActivity(userText, initialDocNames, 0, effectiveRequestedType)));
     setAiActivityText(initialLiveStatus);
     if (isExplicitCreationRequest) {
       window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
@@ -2681,7 +2701,9 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
         const elapsed = Math.floor((Date.now() - startTimestamp) / 1000);
         const liveStatus = isMediaAlreadyAnalyzed
           ? (elapsed < 3 ? "Je réfléchis à votre question..." : "Je formule votre réponse...")
-          : getLiveAiActivity(userText, initialDocNames, elapsed, effectiveRequestedType);
+          : (requiresFreshAnalysis && hasAttachedDoc
+              ? (elapsed < 3 ? "Nouvelle analyse du document..." : "Je formule vos explications...")
+              : getLiveAiActivity(userText, initialDocNames, elapsed, effectiveRequestedType));
         setAiActivityText(liveStatus);
       }
     }, 1000);
@@ -3214,7 +3236,14 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
 
       let effectiveSystemContent = systemContent;
 
-      if (isMediaAlreadyAnalyzed && mainDocName) {
+      if (requiresFreshAnalysis && mainDocName) {
+        effectiveSystemContent += `\n\n══════════════════════════════════════════════════════════════════════════════
+[NOUVELLE ANALYSE APPROFONDIE DU FICHIER « ${mainDocName} » DEMANDÉE] :
+L'étudiant a formulé une consigne nécessitant une NOUVELLE analyse minutieuse (ou réexamen visuel ciblé) du document « ${mainDocName} ».
+Observe et inspecte à nouveau avec une attention maximale tous les éléments demandés (texte, formules, schémas, graphiques, figures ou audio/vidéo).
+Réponds précisément et rigoureusement avec bienveillance et clarté.
+══════════════════════════════════════════════════════════════════════════════`;
+      } else if (isMediaAlreadyAnalyzed && mainDocName) {
         effectiveSystemContent += `\n\n══════════════════════════════════════════════════════════════════════════════
 [SUITE DE DISCUSSION SUR LE FICHIER « ${mainDocName} » DÉJÀ ANALYSÉ] :
 Tu as DÉJÀ analysé et assimilé le document/média « ${mainDocName} » lors du premier tour de cette discussion.
@@ -3387,10 +3416,10 @@ CONSIGNES STRICTES DE CONTINUATION :
         return;
       }
 
-      // Marquer ce média comme analysé pour cette session de discussion
+      // Marquer ce média comme analysé pour cette session de discussion (lié à cet utilisateur)
       if (currentMediaSignature) {
-        analyzedMediaPerConvRef.current[currentConversationId] = currentMediaSignature;
-        safeSetItem(`studycloud_analyzed_media_${currentConversationId}`, currentMediaSignature);
+        analyzedMediaPerConvRef.current[convCacheKey] = currentMediaSignature;
+        safeSetItem(userSessionMediaKey, currentMediaSignature);
       }
 
       const fullAiText = (aiResult as any).raw_response || (aiResult as any).rawResponse || aiResult.response || "Désolé, je n'ai pas pu obtenir de réponse.";
@@ -3779,8 +3808,8 @@ CONSIGNES STRICTES DE CONTINUATION :
         }).catch(() => {});
 
         if (currentMediaSignature) {
-          analyzedMediaPerConvRef.current[currentConversationId] = currentMediaSignature;
-          safeSetItem(`studycloud_analyzed_media_${currentConversationId}`, currentMediaSignature);
+          analyzedMediaPerConvRef.current[convCacheKey] = currentMediaSignature;
+          safeSetItem(userSessionMediaKey, currentMediaSignature);
         }
 
         // Notification d'ouverture automatique du chat quand la réponse est terminée ou qu'une demande a été traitée
