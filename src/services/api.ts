@@ -273,6 +273,7 @@ export async function sendChatMessageToAi(params: {
   documentImages?: Array<{ base64: string; mimeType?: string; name?: string }>;
   pdfBase64?: string;
   mediaType?: string;
+  perceptionReport?: string;
   [key: string]: any;
 }): Promise<{
   response: string;
@@ -286,6 +287,7 @@ export async function sendChatMessageToAi(params: {
   creation_data?: any;
   raw_response?: string;
   rawResponse?: string;
+  perceptionReport?: string;
 }> {
   const isPowerMode = Boolean(params.powerMode || params.engine === 'gemini');
   let userGeminiApiKey = (params.geminiApiKey || getGeminiApiKey()).trim();
@@ -300,6 +302,7 @@ export async function sendChatMessageToAi(params: {
   const payload = {
     ...params,
     userId: currentUserId,
+    perceptionReport: params.perceptionReport || undefined,
     model: params.model || params.selectedModel || 'gemini-2.0-flash',
     powerMode: isPowerMode,
     isPowerMode: isPowerMode,
@@ -594,6 +597,7 @@ export async function sendChatMessageToAi(params: {
     creation_data: extractedCreationData || data.creation_data,
     raw_response: rawFull,
     rawResponse: rawFull,
+    perceptionReport: data.perceptionReport || undefined,
   };
 }
 

@@ -1369,10 +1369,12 @@ export default {
         // Si un média (vidéo, audio, document PDF/Word avec schémas, ou image) est fourni ET que le modèle sélectionné n'est pas Gemini :
         // Gemini Flash intervient en arrière-plan comme moteur de perception universel.
         // Il produit un dossier d'observation haute fidélité qui est transmis au modèle enseignant choisi (Agent Delmas, DeepSeek, Claude...).
-        let backgroundPerceptionReport = "";
-        if (hasMedia && !isSelectedGemini && geminiKeyToUse) {
-          try {
-            const perceptionSystemPrompt = `Tu es l'Expert de Perception Multimodale de l'équipe pédagogique StudyCloud.
+        let backgroundPerceptionReport = String(body.perceptionReport || "").trim();
+        if (!backgroundPerceptionReport && hasMedia && !isSelectedGemini) {
+          // 1. D'abord tenter Google Gemini Flash si une clé Gemini semble présente
+          if (geminiKeyToUse && !geminiKeyToUse.startsWith("AIzaSyDKct") && geminiKeyToUse.length > 25) {
+            try {
+              const perceptionSystemPrompt = `Tu es l'Expert de Perception Multimodale de l'équipe pédagogique StudyCloud.
 Ton rôle est d'analyser méticuleusement ce fichier (vidéo, audio, document PDF/Word avec schémas, ou image) pour fournir un dossier d'observation complet, rigoureux et fidèle au modèle enseignant principal.
 
 DIRECTIVES D'OBSERVATION STRICTES :
@@ -1389,29 +1391,99 @@ DIRECTIVES D'OBSERVATION STRICTES :
 4. OBJECTIVITÉ ET EXHAUSTIVITÉ :
    - Ne résous pas l'exercice toi-même : donne TOUTES les observations pour que le modèle enseignant principal puisse résoudre et répondre avec exactitude.`;
 
-            const gPerception = await executeGemini20Flash({
-              apiKey: geminiKeyToUse,
-              systemPrompt: perceptionSystemPrompt,
-              messages: [{ role: "user", content: `Analyse détaillée de ce fichier joint : ${(userPrompt || "Analyse ce document").trim()}` }],
-              effectivePrompt: `Analyse détaillée du fichier joint : ${(userPrompt || "Analyse ce document").trim()}`,
-              imageBase64,
-              mimeType,
-              videoBase64,
-              videoFrames,
-              videoMimeType,
-              audioBase64,
-              audioMimeType,
-              documentBase64,
-              documentMimeType,
-              documentImages,
-              mediaType,
-            });
+              const gPerception = await executeGemini20Flash({
+                apiKey: geminiKeyToUse,
+                systemPrompt: perceptionSystemPrompt,
+                messages: [{ role: "user", content: `Analyse détaillée de ce fichier joint : ${(userPrompt || "Analyse ce document").trim()}` }],
+                effectivePrompt: `Analyse détaillée du fichier joint : ${(userPrompt || "Analyse ce document").trim()}`,
+                imageBase64,
+                mimeType,
+                videoBase64,
+                videoFrames,
+                videoMimeType,
+                audioBase64,
+                audioMimeType,
+                documentBase64,
+                documentMimeType,
+                documentImages,
+                mediaType,
+              });
 
-            if (gPerception && gPerception.trim().length > 20) {
-              backgroundPerceptionReport = stripAiReasoningScratchpad(cleanTechnicalMediaJargon(gPerception.trim()));
+              if (gPerception && gPerception.trim().length > 20) {
+                backgroundPerceptionReport = stripAiReasoningScratchpad(cleanTechnicalMediaJargon(gPerception.trim()));
+              }
+            } catch (pErr) {
+              logger.warn("Background Gemini perception analysis failed", { error: pErr });
             }
-          } catch (pErr) {
-            logger.warn("Background Gemini perception analysis failed", { error: pErr });
+          }
+
+          // 2. Fallback universel Cloudflare Workers AI Vision si Gemini n'a pas répondu ou clé indisponible
+          if (!backgroundPerceptionReport) {
+            let targetImage = imageBase64;
+            if (!targetImage && Array.isArray(videoFrames) && videoFrames.length > 0) {
+              targetImage = videoFrames[0]?.base64 || "";
+            }
+            if (!targetImage && Array.isArray(documentImages) && documentImages.length > 0) {
+              targetImage = (typeof documentImages[0] === 'string' ? documentImages[0] : documentImages[0]?.base64) || "";
+            }
+
+            if (targetImage && targetImage.length > 50) {
+              try {
+                const cfVisionPrompt = `Tu es le moteur de perception visuelle officiel de StudyCloud.
+Analyse minutieusement cette image/document (« ${docName || "Image d'étude"} »).
+1. TEXTE ET ÉNONCÉ : Retranscris fidèlement l'intégralité du texte, chaque question, consigne et donnée numérique avec son unité.
+2. FORMULES : Écris toutes les formules mathématiques et physiques en KaTeX ($...$).
+3. SCHÉMAS / CIRCUITS / FIGURES : Décris précisément les composants, graphes, repères, courbes et liaisons.
+Donne une description exhaustive pour que le tuteur puisse résoudre et enseigner.`;
+
+                const cleanB64 = targetImage.replace(/^data:[^;]+;base64,/i, "").trim();
+                const binary = Uint8Array.from(atob(cleanB64), c => c.charCodeAt(0));
+                const runUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/meta/llama-3.2-11b-vision-instruct`;
+                let runRes = await fetch(runUrl, {
+                  method: "POST",
+                  headers: {
+                    "Authorization": `Bearer ${cfToken}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    prompt: cfVisionPrompt,
+                    image: Array.from(binary),
+                    max_tokens: 4096,
+                  }),
+                });
+
+                if (runRes.status === 403) {
+                  const errText = await runRes.text().catch(() => "");
+                  if (errText.includes("agree")) {
+                    await fetch(runUrl, {
+                      method: "POST",
+                      headers: { "Authorization": `Bearer ${cfToken}`, "Content-Type": "application/json" },
+                      body: JSON.stringify({ prompt: "agree" }),
+                    }).catch(() => {});
+
+                    runRes = await fetch(runUrl, {
+                      method: "POST",
+                      headers: { "Authorization": `Bearer ${cfToken}`, "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        prompt: cfVisionPrompt,
+                        image: Array.from(binary),
+                        max_tokens: 4096,
+                      }),
+                    });
+                  }
+                }
+
+                if (runRes.ok) {
+                  const runData: any = await runRes.json();
+                  const vContent = runData?.result?.response || runData?.response || "";
+                  if (vContent && vContent.trim().length > 15) {
+                    backgroundPerceptionReport = stripAiReasoningScratchpad(cleanTechnicalMediaJargon(vContent.trim()));
+                  }
+                }
+              } catch (cfvErr) {
+                logger.warn("Cloudflare Vision fallback failed", { error: cfvErr });
+              }
+            }
           }
         }
 
@@ -1459,8 +1531,9 @@ ${backgroundPerceptionReport}
 
 CONSIGNES STRICTES POUR LE TUTEUR :
 1. Tu as ces informations sous les yeux comme si tu regardais directement le document ou le cahier de l'élève.
-2. Réponds directement, chaleureusement et pédagogiquement à l'étudiant avec ton propre style et tes capacités de raisonnement.
-3. RÈGLE D'OR : Ne mentionne JAMAIS aucun outil technique externe (ne dis pas "d'après le rapport de perception", "l'outil d'analyse indique", "Gemini a extrait"). Parle naturellement : "Sur votre document...", "Dans l'exercice 1...", "Le schéma du circuit montre...".
+2. Si l'élève te demande si tu as vu son image, sa photo ou son document (ex: "Tu as vu mon image ?", "As-tu vu la photo ?"), réponds IMMÉDIATEMENT ET CHALEUREUSEMENT OUI en citant avec précision les éléments et données visibles dans ce dossier ! Ne dis JAMAIS que tu ne vois pas d'image.
+3. Réponds directement, chaleureusement et pédagogiquement à l'étudiant avec ton propre style et tes capacités de raisonnement.
+4. RÈGLE D'OR : Ne mentionne JAMAIS aucun outil technique externe (ne dis pas "d'après le rapport de perception", "l'outil d'analyse indique", "Gemini a extrait"). Parle naturellement : "Sur votre image...", "Dans l'exercice...", "Le schéma du circuit montre...".
 ══════════════════════════════════════════════════════════════════════════════`;
         }
 
@@ -1617,7 +1690,17 @@ CONSIGNES STRICTES DE CONTINUATION :
             try {
               const cfMessages: any[] = [];
               if (systemPrompt) cfMessages.push({ role: "system", content: systemPrompt });
-              for (const m of simpleMessages) cfMessages.push({ role: m.role, content: m.content });
+              for (let i = 0; i < simpleMessages.length; i++) {
+                const m = simpleMessages[i];
+                if (i === simpleMessages.length - 1 && m.role === "user" && backgroundPerceptionReport) {
+                  cfMessages.push({
+                    role: "user",
+                    content: `[DOSSIER DU DOCUMENT / FICHIER ANALYSÉ (« ${docName || "Document d'étude"} »)] :\n${backgroundPerceptionReport}\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
+                  });
+                } else {
+                  cfMessages.push({ role: m.role, content: m.content });
+                }
+              }
 
               const cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
                 method: "POST",
@@ -1776,6 +1859,7 @@ CONSIGNES STRICTES DE CONTINUATION :
           chat_response: creationRes.chat_response,
           raw_response: answerText,
           model: effectiveModelUsed,
+          perceptionReport: backgroundPerceptionReport || undefined,
         }), {
           status: 200,
           headers: {

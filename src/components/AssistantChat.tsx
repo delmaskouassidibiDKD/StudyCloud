@@ -1828,6 +1828,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   // Cache de signature des médias analysés par session de discussion (évite de ré-extraire et ré-envoyer 20 Mo à chaque question)
   const analyzedMediaPerConvRef = useRef<Record<string, string>>({});
   const cachedDocumentTextRef = useRef<Record<string, string>>({});
+  const cachedPerceptionReportsRef = useRef<Record<string, string>>({});
   // Barre de propositions collée au clavier
   const [showProposalBar, setShowProposalBar] = useState(true);
   
@@ -2461,8 +2462,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     const isExplicitReanalysisRequested = /(?:r[ée]-?analyse|r[ée]examine|re-?regarde|regarde\s+[àa]\s*nouveau|revois|refais\s+(?:l'|une\s+)?analyse|nouvelle\s+analyse|analyse\s+encore|inspecte\s+[àa]\s*nouveau|relis\s+attentivement|zoom\s+sur|v[ée]rifie\s+[àa]\s*nouveau|autre\s+analyse|analyse\s+compl[èe]te|scanne\s+[àa]\s*nouveau|re-?v[ée]rifie)/i.test(userText);
 
     // Détection si la demande porte spécifiquement sur des détails visuels nécessitant une observation directe
-    const isVisualSpecificDetailRequested = /(?:sch[ée]ma|diagramme|circuit|figure|graphique|dessin|illustration|courbe|tableau\s+visuel|photo|planche)/i.test(userText) &&
-      /(?:d[ée]tail|zoom|pr[ée]cis|regarde|observe|montre|identifie|lis|d[ée]crit|explique\s+le\s+sch[ée]ma|r[ée]sous\s+avec|d'apr[èe]s\s+le\s+sch[ée]ma|dans\s+l'image|sur\s+la\s+photo)/i.test(userText);
+    const isVisualSpecificDetailRequested = /(?:sch[ée]ma|diagramme|circuit|figure|graphique|dessin|illustration|courbe|tableau\s+visuel|photo|planche|image|fichier|document)/i.test(userText) &&
+      /(?:d[ée]tail|zoom|pr[ée]cis|regarde|observe|montre|identifie|lis|d[ée]crit|explique\s+le\s+sch[ée]ma|r[ée]sous\s+avec|d'apr[èe]s\s+le\s+sch[ée]ma|dans\s+l'image|sur\s+la\s+photo|as[- ]tu\s+vu|tu\s+as\s+vu|tu\s+vois|mon\s+image|ma\s+photo|mon\s+fichier|mon\s+document)/i.test(userText);
 
     // Si la situation ou la question nécessite une nouvelle analyse approfondie
     const requiresFreshAnalysis = Boolean(
@@ -2471,8 +2472,12 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       isVisualSpecificDetailRequested
     );
 
-    // Le média est considéré comme déjà analysé UNIQUEMENT si aucune nouvelle analyse n'est requise et que la signature correspond
-    const isMediaAlreadyAnalyzed = Boolean(!requiresFreshAnalysis && currentMediaSignature && sessionMediaSig === currentMediaSignature);
+    const existingPerception = (currentMediaSignature ? cachedPerceptionReportsRef.current[currentMediaSignature] : '') ||
+      (currentMediaSignature ? safeGetItem(`studycloud_perception_${currentMediaSignature}`) : '') ||
+      (currentMediaSignature ? cachedDocumentTextRef.current[currentMediaSignature] : '');
+
+    // Le média est considéré comme déjà analysé UNIQUEMENT si on possède déjà son dossier de perception
+    const isMediaAlreadyAnalyzed = Boolean(!requiresFreshAnalysis && currentMediaSignature && sessionMediaSig === currentMediaSignature && existingPerception);
 
     const hasAttachedDoc = allDocs.length > 0;
     const detectedFormat = detectCreationFormat(userText, requestedTypeOverride);
@@ -3248,11 +3253,13 @@ Réponds précisément et rigoureusement avec bienveillance et clarté.
         effectiveSystemContent += `\n\n══════════════════════════════════════════════════════════════════════════════
 [SUITE DE DISCUSSION SUR LE FICHIER « ${mainDocName} » DÉJÀ ANALYSÉ] :
 Tu as DÉJÀ analysé et assimilé le document/média « ${mainDocName} » lors du premier tour de cette discussion.
-L'étudiant poursuit maintenant la discussion avec une nouvelle question sur ce même document.
+Voici ce qui a été observé et extrait de ce fichier :
+${existingPerception}
 
 CONSIGNES STRICTES :
 1. RÉPONSE DIRECTE ET IMMÉDIATE :
    - Réponds directement, précisément et pédagogiquement à la question de l'étudiant.
+   - Si l'élève te demande si tu as vu son image, sa photo ou son document (ex: "Tu as vu mon image ?"), réponds OUI IMMÉDIATEMENT et cite les éléments précis visibles sur l'image ci-dessus ! Ne dis JAMAIS que tu ne vois pas d'image.
    - Ne dis JAMAIS "Bonjour", "D'après votre document", "J'ai bien reçu votre fichier", ou toute formule d'introduction robotique.
    - Ne réanalyse pas le document depuis le début.
 2. DIALOGUE NATUREL :
@@ -3392,6 +3399,7 @@ CONSIGNES STRICTES DE CONTINUATION :
         requested_type: explicitToolType || undefined,
         attachedFileName: mainDocName,
         attachedFileContent: resolvedAttachedText,
+        perceptionReport: existingPerception || undefined,
         imageBase64: activeImageInfo?.base64,
         mimeType: activeImageInfo?.mimeType,
         videoBase64: activeVideoInfo?.videoBase64,
@@ -3420,6 +3428,10 @@ CONSIGNES STRICTES DE CONTINUATION :
 
       // Marquer ce média comme analysé pour cette session de discussion (lié à cet utilisateur)
       if (currentMediaSignature) {
+        if (aiResult?.perceptionReport) {
+          cachedPerceptionReportsRef.current[currentMediaSignature] = aiResult.perceptionReport;
+          safeSetItem(`studycloud_perception_${currentMediaSignature}`, aiResult.perceptionReport);
+        }
         analyzedMediaPerConvRef.current[convCacheKey] = currentMediaSignature;
         safeSetItem(userSessionMediaKey, currentMediaSignature);
       }
@@ -3810,6 +3822,10 @@ CONSIGNES STRICTES DE CONTINUATION :
         }).catch(() => {});
 
         if (currentMediaSignature) {
+          if (aiResult?.perceptionReport) {
+            cachedPerceptionReportsRef.current[currentMediaSignature] = aiResult.perceptionReport;
+            safeSetItem(`studycloud_perception_${currentMediaSignature}`, aiResult.perceptionReport);
+          }
           analyzedMediaPerConvRef.current[convCacheKey] = currentMediaSignature;
           safeSetItem(userSessionMediaKey, currentMediaSignature);
         }
