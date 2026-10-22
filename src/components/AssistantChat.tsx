@@ -3265,6 +3265,19 @@ CONSIGNES STRICTES :
 2. DIALOGUE NATUREL :
    - Poursuis la discussion de manière fluide comme un professeur bienveillant qui est déjà en train de travailler sur le cours avec son élève.
 ══════════════════════════════════════════════════════════════════════════════`;
+      } else if (mainDocName) {
+        effectiveSystemContent += `\n\n══════════════════════════════════════════════════════════════════════════════
+[NOUVEAU DOCUMENT ATTACHÉ PAR L'ÉTUDIANT : « ${mainDocName} »] :
+L'étudiant vient d'attacher ou de changer de document pour travailler sur « ${mainDocName} ».
+CONSIGNES STRICTES :
+1. RUPTURE NETTE AVEC LES ANCIENS SUJETS OU ANCIENNES IMAGES :
+   - Concentre-toi EXCLUSIVEMENT sur ce nouveau document (« ${mainDocName} »).
+   - Ne mentionne plus aucune ancienne image ou ancien sujet évoqué plus haut dans l'historique.
+2. RÉPONSE DIRECTE ET IMMÉDIATE :
+   - Réponds directement et précisément à la question de l'élève à propos de ce document « ${mainDocName} ».
+   - Ne dis JAMAIS que tu ne vois pas d'image ou de document. Le document est actif à l'écran.
+   - Ne demande JAMAIS de renvoyer le document.
+══════════════════════════════════════════════════════════════════════════════`;
       }
 
       if (isContinuation) {

@@ -35,6 +35,8 @@ const textCache = new Map<string, string>();
 const imageBase64Cache = new Map<string, string>();
 const audioBase64Cache = new Map<string, string>();
 const videoBase64Cache = new Map<string, string>();
+const documentBase64Cache = new Map<string, string>();
+const documentImagesCache = new Map<string, Array<{ base64: string; mimeType: string; name?: string }>>();
 
 /**
  * Résout de manière exhaustive et infaillible l'image Base64 pour l'IA multimodale Gemini :
@@ -310,6 +312,14 @@ export async function extractDocumentText(item: any): Promise<string> {
       if (!item.videoBase64 && videoBase64Cache.has(cacheKey)) {
         item.videoBase64 = videoBase64Cache.get(cacheKey);
       }
+      if (!item.documentBase64 && documentBase64Cache.has(cacheKey)) {
+        const cachedDocB64 = documentBase64Cache.get(cacheKey);
+        item.documentBase64 = cachedDocB64;
+        item.pdfBase64 = cachedDocB64;
+      }
+      if ((!item.documentImages || item.documentImages.length === 0) && documentImagesCache.has(cacheKey)) {
+        item.documentImages = documentImagesCache.get(cacheKey);
+      }
     }
     if (!isImageFile || item.imageBase64) {
       const cached = textCache.get(cacheKey);
@@ -434,7 +444,46 @@ export async function extractDocumentText(item: any): Promise<string> {
         }
       }
 
-      // Si le PDF fait moins de 28 Mo, encodage Base64 direct pour vision native Gemini Flash (schémas, figures géométriques, équations, dessins, graphiques)
+      // 1. Rendu visuel Canvas haute résolution des premières pages (jusqu'à 3 pages)
+      // Permet aux moteurs multimodaux (Llama 3.2 Vision, Gemini Flash) d'observer directement les schémas, circuits, équations et figures
+      const docImages: Array<{ base64: string; mimeType: string; name: string }> = [];
+      if (typeof document !== 'undefined') {
+        const pagesToRender = Math.min(pdf.numPages, 3);
+        for (let pNum = 1; pNum <= pagesToRender; pNum++) {
+          try {
+            const p = await pdf.getPage(pNum);
+            const viewport = p.getViewport({ scale: 1.5 });
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(viewport.width);
+            canvas.height = Math.round(viewport.height);
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              await p.render({ canvasContext: ctx, viewport }).promise;
+              const pageDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+              if (pageDataUrl && pageDataUrl.length > 100) {
+                docImages.push({
+                  base64: pageDataUrl,
+                  mimeType: 'image/jpeg',
+                  name: `Page ${pNum} - ${item.name || 'Document'}`
+                });
+              }
+            }
+          } catch (renderErr) {
+            console.warn(`[Extractor] Erreur capture canvas page PDF ${pNum}:`, renderErr);
+          }
+        }
+      }
+
+      if (docImages.length > 0) {
+        if (typeof item === 'object') {
+          item.documentImages = docImages;
+        }
+        if (cacheKey) {
+          documentImagesCache.set(cacheKey, docImages);
+        }
+      }
+
+      // 2. Si le PDF fait moins de 28 Mo, encodage Base64 direct pour vision native Gemini Flash
       if (arrayBuffer.byteLength <= 28 * 1024 * 1024) {
         try {
           const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
@@ -444,6 +493,9 @@ export async function extractDocumentText(item: any): Promise<string> {
               item.pdfBase64 = b64;
               item.documentBase64 = b64;
               item.documentMimeType = 'application/pdf';
+            }
+            if (cacheKey) {
+              documentBase64Cache.set(cacheKey, b64);
             }
           }
         } catch (pdfB64Err) {
@@ -761,9 +813,12 @@ export async function extractDocumentText(item: any): Promise<string> {
 export async function extractDocumentDetails(item: any): Promise<ExtractedDocumentDetails> {
   const fileName = String(item?.name || item?.title || item?.fileName || '').toLowerCase();
   const textContent = await extractDocumentText(item);
-  const docBase64 = item?.documentBase64 || item?.pdfBase64 || undefined;
+  const cacheKey = item?.id || item?.name || item?.url || item?.file_url || item?.r2_key || item?.r2Key || '';
+  const docBase64 = item?.documentBase64 || item?.pdfBase64 || (cacheKey ? documentBase64Cache.get(cacheKey) : undefined);
   const docMime = item?.documentMimeType || (docBase64 ? 'application/pdf' : undefined);
-  const docImages = Array.isArray(item?.documentImages) ? item.documentImages : undefined;
+  const docImages = (Array.isArray(item?.documentImages) && item.documentImages.length > 0)
+    ? item.documentImages
+    : (cacheKey ? documentImagesCache.get(cacheKey) : undefined);
 
   let fileType: ExtractedDocumentDetails['fileType'] = 'document';
   if (fileName.endsWith('.pdf')) fileType = 'pdf';

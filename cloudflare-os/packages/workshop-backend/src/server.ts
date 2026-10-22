@@ -1065,10 +1065,12 @@ async function executeGemini20Flash(params: {
   const proModels = dynamicModels.filter(m => !m.includes("flash") && (m.includes("pro") || m.includes("gemini")));
   const candidateModels = Array.from(new Set([
     ...flashModels,
-    "gemini-3.8-flash",
-    ...proModels,
-    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-exp",
     "gemini-1.5-flash",
+    "gemini-1.5-flash-latest",
+    ...proModels,
+    "gemini-1.5-pro",
   ]));
 
   const modelErrors: string[] = [];
@@ -1485,6 +1487,10 @@ Donne une description exhaustive pour que le tuteur puisse résoudre et enseigne
               }
             }
           }
+
+          if (!backgroundPerceptionReport && docContent && docContent.trim().length > 10) {
+            backgroundPerceptionReport = docContent.trim();
+          }
         }
 
         const effectivePrompt = (userPrompt || "Bonjour !").trim();
@@ -1690,13 +1696,18 @@ CONSIGNES STRICTES DE CONTINUATION :
             try {
               const cfMessages: any[] = [];
               if (systemPrompt) cfMessages.push({ role: "system", content: systemPrompt });
+              const activeDocInfo = backgroundPerceptionReport || docContent;
               for (let i = 0; i < simpleMessages.length; i++) {
                 const m = simpleMessages[i];
-                if (i === simpleMessages.length - 1 && m.role === "user" && backgroundPerceptionReport) {
-                  cfMessages.push({
-                    role: "user",
-                    content: `[DOSSIER DU DOCUMENT / FICHIER ANALYSÉ (« ${docName || "Document d'étude"} »)] :\n${backgroundPerceptionReport}\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
-                  });
+                if (i === simpleMessages.length - 1 && m.role === "user") {
+                  if (activeDocInfo || docName) {
+                    cfMessages.push({
+                      role: "user",
+                      content: `[DOCUMENT / COURS ACTIF DE L'ÉTUDIANT : « ${docName || "Document d'étude"} »] :\n${activeDocInfo ? activeDocInfo.slice(0, 30000) : "Document d'étude joint par l'étudiant."}\n\n[CONSIGNE PÉDAGOGIQUE POUR LE TUTEUR] :\nL'étudiant travaille sur ce document (« ${docName || "Document d'étude"} ») et pose la question : « ${m.content} ».\nRéponds directement, chaleureusement et précisément à sa question en t'appuyant sur ce document.\nNe fais aucune référence aux éventuels anciens fichiers ou anciennes images de la discussion et ne demande jamais de renvoyer le fichier car tu as déjà tout ce qu'il faut sous les yeux.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
+                    });
+                  } else {
+                    cfMessages.push({ role: m.role, content: m.content });
+                  }
                 } else {
                   cfMessages.push({ role: m.role, content: m.content });
                 }
