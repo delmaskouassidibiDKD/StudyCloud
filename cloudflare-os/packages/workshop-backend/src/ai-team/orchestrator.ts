@@ -45,6 +45,8 @@ export async function orchestrateMultiAgentTeam(
     cfToken,
     accountId,
     geminiKey,
+    requestedType,
+    perceptionReport,
   } = input;
 
   // 1. VÉRIFICATION STRICTE : Seul Llama 3.3 a la capacité de Chef d'équipe
@@ -109,6 +111,12 @@ export async function orchestrateMultiAgentTeam(
         expertReports.push(`[RÉSOLUTIONS ET CALCULS SCIENTIFIQUES] :\n${exp.content}`);
       }
     }
+  }
+
+  // Intégration du dossier de perception multimédia Gemini en arrière-plan
+  if (perceptionReport && perceptionReport.trim()) {
+    successfulExperts.push('👁️ Gemini Perception Multimodale');
+    expertReports.push(`[DOSSIER DE PERCEPTION MULTIMODALE DU FICHIER / DOCUMENT EN ARRIÈRE-PLAN] :\n${perceptionReport.trim()}`);
   }
 
   // 4. SYNTHÈSE DU CHEF D'ÉQUIPE (Llama 3.3 70B Fast)
@@ -207,8 +215,8 @@ L'étudiant fait référence à l'exercice, devoir ou image abordé dans cette s
   const sanitizedAns = sanitizePedagogicalOutput(rawAns);
 
   const modelLabel = successfulExperts.length > 0
-    ? `Llama 3.3 70B (Chef d'Équipe) + ${successfulExperts.join(' • ')}`
-    : "Llama 3.3 70B (Chef d'Équipe Multi-IA)";
+    ? `Agent Delmas (Chef Multi-IA) + ${successfulExperts.join(' • ')}`
+    : "Agent Delmas (Chef Multi-IA)";
 
   return {
     isOrchestrated: true,

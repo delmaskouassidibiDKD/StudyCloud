@@ -1328,10 +1328,6 @@ export default {
           videoFrames.length > 0
         );
 
-        // Si un média (document avec vision/schémas, vidéo, audio ou image) est fourni, priorité absolue au modèle multimodal Gemini Flash
-        if (hasMedia) {
-          targetModel = "gemini-3.8-flash";
-        }
 
         if (targetModel.includes("llama-3.3") && !targetModel.includes("fp8-fast")) {
           targetModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
@@ -1368,6 +1364,57 @@ export default {
         // On priorise toujours le secret Cloudflare d'environnement (STUDYCLOUD_GEMINI_1) pour les workers
         const geminiKeyToUse = cloudflareGeminiSecret || (hasValidUserGeminiKey ? rawApiKey : "") || fallbackGeminiKey;
 
+        const isSelectedGemini = targetModel === "gemini-3.8-flash" || targetModel === "gemini-2.0-flash" || targetModel.includes("gemini");
+
+        // Si un média (vidéo, audio, document PDF/Word avec schémas, ou image) est fourni ET que le modèle sélectionné n'est pas Gemini :
+        // Gemini Flash intervient en arrière-plan comme moteur de perception universel.
+        // Il produit un dossier d'observation haute fidélité qui est transmis au modèle enseignant choisi (Agent Delmas, DeepSeek, Claude...).
+        let backgroundPerceptionReport = "";
+        if (hasMedia && !isSelectedGemini && geminiKeyToUse) {
+          try {
+            const perceptionSystemPrompt = `Tu es l'Expert de Perception Multimodale de l'équipe pédagogique StudyCloud.
+Ton rôle est d'analyser méticuleusement ce fichier (vidéo, audio, document PDF/Word avec schémas, ou image) pour fournir un dossier d'observation complet, rigoureux et fidèle au modèle enseignant principal.
+
+DIRECTIVES D'OBSERVATION STRICTES :
+1. ÉNONCÉ ET DONNÉES BRUTES :
+   - Retranscris fidèlement le texte intégral, les questions, les données numériques et leurs unités.
+   - Retranscris TOUTES les formules mathématiques et physiques avec KaTeX standard ($...$ ou $$...$$).
+2. SCHÉMAS, CIRCUITS, GRAPHES ET FIGURES GÉOMÉTRIQUES :
+   - Décris avec une précision absolue tous les éléments visuels :
+     * Circuits électroniques : nom des composants (R1, R2, C, L, AOP), valeurs chiffrées, noeuds, tensions Ve et Vs, bornes inverseuse (-) et non-inverseuse (+).
+     * Figures géométriques, repères et graphiques : axes, échelles, courbes, points remarquables, asymptotes, valeurs aux limites.
+     * Tableaux ou schémas blocs : entrées, sorties, relations de transfert.
+3. FLUX AUDIO OU VIDÉO :
+   - Retranscris fidèlement les paroles prononcées, les explications orales de l'enseignant et décris les scènes/actions clés.
+4. OBJECTIVITÉ ET EXHAUSTIVITÉ :
+   - Ne résous pas l'exercice toi-même : donne TOUTES les observations pour que le modèle enseignant principal puisse résoudre et répondre avec exactitude.`;
+
+            const gPerception = await executeGemini20Flash({
+              apiKey: geminiKeyToUse,
+              systemPrompt: perceptionSystemPrompt,
+              messages: [{ role: "user", content: `Analyse détaillée de ce fichier joint : ${(userPrompt || "Analyse ce document").trim()}` }],
+              effectivePrompt: `Analyse détaillée du fichier joint : ${(userPrompt || "Analyse ce document").trim()}`,
+              imageBase64,
+              mimeType,
+              videoBase64,
+              videoFrames,
+              videoMimeType,
+              audioBase64,
+              audioMimeType,
+              documentBase64,
+              documentMimeType,
+              documentImages,
+              mediaType,
+            });
+
+            if (gPerception && gPerception.trim().length > 20) {
+              backgroundPerceptionReport = stripAiReasoningScratchpad(cleanTechnicalMediaJargon(gPerception.trim()));
+            }
+          } catch (pErr) {
+            logger.warn("Background Gemini perception analysis failed", { error: pErr });
+          }
+        }
+
         const effectivePrompt = (userPrompt || "Bonjour !").trim();
         const isContinuation = Boolean(
           body.isContinuation ||
@@ -1402,6 +1449,21 @@ export default {
           systemPrompt += `\n\n[CONVERSATION EN COURS] : Cette discussion contient déjà des échanges passés. Maintiens la continuité et la cohérence pédagogique avec les réponses précédentes de cette même session.`;
         }
 
+        if (backgroundPerceptionReport) {
+          systemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
+[DOSSIER D'OBSERVATION DU FICHIER ANALYSÉ EN ARRIÈRE-PLAN PAR LE MOTEUR MULTIMODAL] :
+Ce document/média (« ${docName || "Document d'étude"} ») a été minutieusement scanné et observé en haute résolution par le moteur de perception multimédia.
+Voici le contenu exact, les schémas, les données et les formules observés :
+
+${backgroundPerceptionReport}
+
+CONSIGNES STRICTES POUR LE TUTEUR :
+1. Tu as ces informations sous les yeux comme si tu regardais directement le document ou le cahier de l'élève.
+2. Réponds directement, chaleureusement et pédagogiquement à l'étudiant avec ton propre style et tes capacités de raisonnement.
+3. RÈGLE D'OR : Ne mentionne JAMAIS aucun outil technique externe (ne dis pas "d'après le rapport de perception", "l'outil d'analyse indique", "Gemini a extrait"). Parle naturellement : "Sur votre document...", "Dans l'exercice 1...", "Le schéma du circuit montre...".
+══════════════════════════════════════════════════════════════════════════════`;
+        }
+
         const friendlyNameMap: Record<string, string> = {
           "gemini-3.8-flash": "Google Gemini Flash",
           "gemini-2.0-flash": "Google Gemini Flash",
@@ -1409,8 +1471,8 @@ export default {
           "@cf/zai-org/glm-5.3-flash": "GLM 5.3 Flash",
           "@cf/deepseek-ai/deepseek-v4-pro-0813": "DeepSeek V4 Pro",
           "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b": "DeepSeek R1 32B",
-          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": "Llama 3.3 70B (Fast)",
-          "@cf/meta/llama-3.3-70b-instruct": "Llama 3.3 70B (Fast)",
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": "Agent Delmas (Chef Multi-IA)",
+          "@cf/meta/llama-3.3-70b-instruct": "Agent Delmas (Chef Multi-IA)",
           "claude-3-5-sonnet-20241022": "Claude 3.5 Sonnet",
           "claude-sonnet-4-5": "Claude Sonnet 4.5",
           "gpt-4o-mini": "OpenAI GPT-4o Mini",
@@ -1476,11 +1538,11 @@ CONSIGNES STRICTES DE CONTINUATION :
         const cfToken = ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join("");
 
         // ══════════════════════════════════════════════════════════════════════════════
-        // BRANCHE 1 : MODÈLE UNIVERSEL PAR DÉFAUT (GOOGLE GEMINI FLASH MULTIMODAL)
+        // BRANCHE 1 : GOOGLE GEMINI FLASH MULTIMODAL (SI SÉLECTIONNÉ PAR L'UTILISATEUR)
         // ══════════════════════════════════════════════════════════════════════════════
         // Implémentation conforme au Google Cookbook officiel
         let geminiErrorDetail = "";
-        if ((targetModel === "gemini-3.8-flash" || targetModel === "gemini-2.0-flash" || targetModel.includes("gemini")) && geminiKeyToUse) {
+        if (isSelectedGemini && geminiKeyToUse) {
           try {
             const gText = await executeGemini20Flash({
               apiKey: geminiKeyToUse,
@@ -1509,15 +1571,15 @@ CONSIGNES STRICTES DE CONTINUATION :
           }
         }
 
-        // Si un média (vidéo, audio ou image) était fourni et que Gemini n'a pas répondu, ne JAMAIS basculer sur un modèle aveugle
-        if (!answerText && hasMedia) {
-          answerText = "Désolé, je n'ai pas pu analyser votre document multimédia (vidéo, audio ou image) via Gemini. " + (geminiErrorDetail ? `[Détail: ${geminiErrorDetail}]` : "");
+        // Si le modèle sélectionné était Gemini et qu'il n'a pas répondu
+        if (!answerText && isSelectedGemini) {
+          answerText = "Désolé, je n'ai pas pu obtenir de réponse via Gemini. " + (geminiErrorDetail ? `[Détail: ${geminiErrorDetail}]` : "");
         }
 
         // ══════════════════════════════════════════════════════════════════════════════
-        // BRANCHE 2 : CHEF D'ÉQUIPE MULTI-IA (SI LLAMA EST SÉLECTIONNÉ ET PAS DE MÉDIA)
+        // BRANCHE 2 : AGENT DELMAS (CHEF D'ÉQUIPE MULTI-IA LLAMA 3.3)
         // ══════════════════════════════════════════════════════════════════════════════
-        if (!answerText && !hasMedia && isChefModel(targetModel)) {
+        if (!answerText && isChefModel(targetModel)) {
           try {
             const orchResult = await orchestrateMultiAgentTeam({
               targetModel,
@@ -1534,6 +1596,7 @@ CONSIGNES STRICTES DE CONTINUATION :
               accountId,
               geminiKey: geminiKeyToUse,
               requestedType: body.requested_type,
+              perceptionReport: backgroundPerceptionReport,
             });
 
             if (orchResult.isOrchestrated && orchResult.finalAnswer) {

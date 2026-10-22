@@ -1853,13 +1853,14 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     return [];
   };
 
-  // Vérifie si le modèle est le Chef d'équipe désigné (Llama 3.3 70B) doté de capacités multi-agents
+  // Vérifie si le modèle est le Chef d'équipe désigné (Agent Delmas / Llama 3.3 70B) doté de capacités multi-agents
   const isChefModelId = (id?: string): boolean => {
     if (!id) return true;
     const m = id.toLowerCase();
     return (
       m.includes('llama-3.3') ||
       m.includes('llama') ||
+      m.includes('delmas') ||
       m === 'default' ||
       m.includes('chef') ||
       m.includes('multi-ia') ||
@@ -1964,11 +1965,11 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         return stripWorkerAi(found.nickname);
       }
       if (isChefModelId(found.id || found.model_id)) {
-        return 'Llama 3.3 (Chef Multi-IA)';
+        return 'Agent Delmas (Chef Multi-IA)';
       }
       return stripWorkerAi(found.name).replace(/Instruct/i, '').replace(/Google /i, '').trim();
     }
-    if (isChefModelId(selectedModel)) return 'Llama 3.3 (Chef Multi-IA)';
+    if (isChefModelId(selectedModel)) return 'Agent Delmas (Chef Multi-IA)';
     if (selectedModel.includes('gemini')) return 'Gemini Flash';
     if (selectedModel.includes('deepseek')) return 'DeepSeek R1';
     if (selectedModel.includes('kimi')) return 'Kimi K2.7 Code';
@@ -3360,9 +3361,10 @@ CONSIGNES STRICTES DE CONTINUATION :
         (activeAudioInfo && activeAudioInfo.audioBase64) ||
         (activeDocumentInfo && (activeDocumentInfo.documentBase64 || (activeDocumentInfo.documentImages && activeDocumentInfo.documentImages.length > 0)))
       );
-      const effectiveModelToSend = (hasMedia || isMediaAlreadyAnalyzed)
-        ? (selectedModel.includes('gemini') ? selectedModel : 'gemini-2.0-flash')
-        : selectedModel;
+      // Le modèle sélectionné par l'utilisateur répond directement dans son propre style.
+      // S'il y a un média joint (vidéo, audio, image ou document), Gemini Flash opérera en arrière-plan
+      // comme moteur de perception universel sur le serveur sans remplacer le modèle sélectionné.
+      const effectiveModelToSend = selectedModel;
 
       const detectedMediaType = activeVideoInfo ? 'video' : (activeAudioInfo ? 'audio' : (activeImageInfo ? 'image' : 'document'));
 
@@ -4007,7 +4009,7 @@ CONSIGNES STRICTES DE CONTINUATION :
               type="button"
               onClick={() => setIsModelDropdownOpen(prev => !prev)}
               className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white active:scale-95 shrink-0 shadow-xs"
-              title={isChefModelId(selectedModel) ? "Chef Multi-IA (Orchestre l'équipe : Audio, Vision, Vidéo, Maths)" : "Modèle individuel autonome"}
+              title={isChefModelId(selectedModel) ? "Agent Delmas (Chef Multi-IA : Orchestre l'équipe Gemini Perception, R1 Maths, DeepSeek)" : "Modèle individuel autonome"}
             >
               {isChefModelId(selectedModel) && (
                 <span className="text-[10px] px-1 py-0.2 rounded-full bg-orange-500/20 text-orange-400 font-extrabold border border-orange-500/30 flex items-center shrink-0">
@@ -4065,7 +4067,7 @@ CONSIGNES STRICTES DE CONTINUATION :
                             <div className="flex items-center gap-1.5 shrink-0">
                               {isChef ? (
                                 <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-orange-500/25 text-orange-300 font-extrabold border border-orange-500/40 flex items-center gap-0.5 shadow-xs">
-                                  👑 Chef Multi-IA
+                                  👑 Agent Delmas (Chef Multi-IA)
                                 </span>
                               ) : (
                                 <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 font-medium border border-zinc-700">
@@ -4078,7 +4080,7 @@ CONSIGNES STRICTES DE CONTINUATION :
                           <div className="text-[10px] pl-4 font-normal">
                             {isChef ? (
                               <span className="text-orange-400/80">
-                                Orchestre : Audio Whisper • Vision DeepSeek V4.1 • Vidéo • Maths R1
+                                Orchestre : Gemini Perception (Audio, Vision, Vidéo, Doc) • Maths R1
                               </span>
                             ) : (
                               <span className="text-zinc-500">
@@ -4225,7 +4227,7 @@ CONSIGNES STRICTES DE CONTINUATION :
               </span>
               {isChefModelId(selectedModel) && (
                 <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-orange-500/25 text-orange-300 font-extrabold border border-orange-500/40">
-                  👑 Chef Multi-IA
+                  👑 Agent Delmas (Chef Multi-IA)
                 </span>
               )}
             </div>

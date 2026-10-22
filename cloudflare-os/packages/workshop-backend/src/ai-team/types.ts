@@ -5,7 +5,7 @@
  */
 
 export interface ExpertReport {
-  expert: 'whisper-audio' | 'llama-vision' | 'gemini-video' | 'deepseek-math';
+  expert: 'whisper-audio' | 'llama-vision' | 'gemini-video' | 'deepseek-math' | 'gemini-perception';
   status: 'success' | 'skipped' | 'failed';
   summary: string;
   content: string;
@@ -26,6 +26,7 @@ export interface OrchestrationInput {
   accountId: string;
   geminiKey?: string;
   requestedType?: string;
+  perceptionReport?: string;
 }
 
 export interface OrchestrationResult {
