@@ -884,9 +884,12 @@ async function executeGemini20Flash(params: {
   videoMimeType?: string;
   audioBase64?: string;
   audioMimeType?: string;
+  documentBase64?: string;
+  documentMimeType?: string;
+  documentImages?: Array<{ base64: string; mimeType?: string; name?: string }>;
   mediaType?: string;
 }): Promise<string> {
-  const { apiKey, systemPrompt, messages, effectivePrompt, imageBase64, mimeType, videoBase64, videoFrames, videoMimeType, audioBase64, audioMimeType } = params;
+  const { apiKey, systemPrompt, messages, effectivePrompt, imageBase64, mimeType, videoBase64, videoFrames, videoMimeType, audioBase64, audioMimeType, documentBase64, documentMimeType, documentImages } = params;
 
   const contents: any[] = [];
 
@@ -941,7 +944,39 @@ async function executeGemini20Flash(params: {
     }
   }
 
-  // 3. Image directe inline
+  // 3. Document PDF direct inline (Vision et OCR natif multimodale de chaque page, graphiques, figures, schémas, tableaux)
+  if (documentBase64 && documentBase64.length > 50) {
+    const cleanDocBase64 = documentBase64.replace(/^data:[^;]+;base64,/i, "").trim();
+    let effectiveDocMime = documentMimeType || "application/pdf";
+    if (documentBase64.includes("application/pdf")) effectiveDocMime = "application/pdf";
+    if (cleanDocBase64.length < 28 * 1024 * 1024) {
+      currentParts.push({
+        inlineData: {
+          mimeType: effectiveDocMime,
+          data: cleanDocBase64,
+        }
+      });
+    }
+  }
+
+  // 4. Schémas et images extraits de documents (dessins, circuits, graphiques d'un fichier Word .docx)
+  if (Array.isArray(documentImages) && documentImages.length > 0) {
+    for (const dImg of documentImages) {
+      const rawImg = typeof dImg === 'string' ? dImg : (dImg.base64 || "");
+      const cleanImg = rawImg.replace(/^data:[^;]+;base64,/i, "").trim();
+      const mime = (typeof dImg === 'object' && dImg.mimeType) ? dImg.mimeType : "image/jpeg";
+      if (cleanImg && cleanImg.length < 28 * 1024 * 1024) {
+        currentParts.push({
+          inlineData: {
+            mimeType: mime,
+            data: cleanImg,
+          }
+        });
+      }
+    }
+  }
+
+  // 5. Image directe inline
   if (imageBase64 && imageBase64.length > 50) {
     const cleanBase64 = imageBase64.replace(/^data:[^;]+;base64,/i, "").trim();
     let effectiveMime = mimeType || "image/jpeg";
@@ -960,7 +995,7 @@ async function executeGemini20Flash(params: {
     }
   }
 
-  // 4. Frames vidéo (SEULEMENT si aucun flux videoBase64 direct n'a pu être fourni)
+  // 6. Frames vidéo (SEULEMENT si aucun flux videoBase64 direct n'a pu être fourni)
   if ((!videoBase64 || videoBase64.length <= 50) && Array.isArray(videoFrames) && videoFrames.length > 0) {
     for (const f of videoFrames) {
       const fBase64 = String(f.base64 || "").replace(/^data:[^;]+;base64,/i, "").trim();
@@ -997,15 +1032,16 @@ async function executeGemini20Flash(params: {
    - VIDÉO : Si le document est une vidéo (WhatsApp, MP4, WebM, etc.), traite-le formellement comme une VIDÉO.
    - AUDIO : Si le document est un fichier sonore (vocal WhatsApp, MP3, WAV, podcast, cours audio), traite-le formellement comme un ENREGISTREMENT AUDIO.
    - IMAGE : Si le document est une image, photo ou scan, traite-le comme une IMAGE.
-   - DOCUMENT : Si le document est un fichier texte ou PDF, traite-le comme un DOCUMENT.
+   - DOCUMENT (PDF, Word, etc.) : Si le document est un PDF, un fichier Word ou un texte, traite-le formellement comme un DOCUMENT. Analyse son contenu textuel ET observe attentivement tous ses éléments visuels (images, schémas, dessins, graphiques, figures géométriques, diagrammes, courbes, tableaux, formules manuscrites ou encadrées).
 
 2. STYLE NATUREL ET HUMAIN (STYLE OFFICIEL GOOGLE GEMINI) :
-   - INTERDICTION STRICTE DE JARGON TECHNIQUE : Ne mentionne JAMAIS de termes internes de traitement ou d'ingénierie (interdiction absolue de dire "j'ai reçu X images clés", "clichés capturés", "frames", "échantillons", ou de découper artificiellement la réponse par "Scène à X.Xs").
-   - Parle directement et naturellement comme le fait l'assistant Google Gemini officiel (ex: "Cette vidéo est un montage de type...", "Cette vidéo montre...", "Cet enregistrement audio présente...").
+   - INTERDICTION STRICTE DE JARGON TECHNIQUE : Ne mentionne JAMAIS de termes internes de traitement ou d'ingénierie (interdiction absolue de dire "j'ai reçu X images clés", "clichés capturés", "frames", "échantillons", "rapport ocr", ou de découper artificiellement la réponse par "Scène à X.Xs").
+   - Parle directement et naturellement comme le fait l'assistant Google Gemini officiel (ex: "Ce document présente...", "Dans ce document PDF, on observe...", "Cette vidéo montre...", "Cet enregistrement audio présente...").
 
-3. ANALYSE GLOBALE HARMONIEUSE (VISUEL + AUDIO) :
+3. ANALYSE GLOBALE HARMONIEUSE :
    - Pour une vidéo : Décris le contenu visuel (personnes, actions, décor, tenues, textes et incrustations à l'écran) ET intègre naturellement l'ambiance et la piste sonore (musique, paroles, voix, ce qui est dit).
    - Pour un audio : Retranscris et synthétise ce qui est dit, les intervenants, le ton et les notions clés.
+   - Pour un document (PDF, Word) : Intègre à la fois le texte du cours et l'analyse visuelle de TOUS les schémas, graphiques, illustrations ou figures présents. Si un schéma ou un dessin est présent (par exemple un circuit électrique, une cellule biologique, un graphique, un polygone, une courbe), décris-le précisément et intègre-le dans ton explication ou la résolution des exercices !
 ══════════════════════════════════════════════════════════════════════════════`;
 
   reqBody.systemInstruction = {
@@ -1278,16 +1314,21 @@ export default {
         const videoUrl = String(body.videoUrl || "").trim();
         const videoFrames = Array.isArray(body.videoFrames) ? body.videoFrames : [];
         const videoMimeType = String(body.videoMimeType || "").trim();
+        const documentBase64 = String(body.documentBase64 || body.pdfBase64 || "").trim();
+        const documentMimeType = String(body.documentMimeType || body.pdfMimeType || "").trim();
+        const documentImages = Array.isArray(body.documentImages) ? body.documentImages : [];
         const mediaType = String(body.mediaType || "").trim();
 
         const hasMedia = Boolean(
           (imageBase64 && imageBase64.length > 50) ||
           (videoBase64 && videoBase64.length > 50) ||
           (audioBase64 && audioBase64.length > 50) ||
+          (documentBase64 && documentBase64.length > 50) ||
+          documentImages.length > 0 ||
           videoFrames.length > 0
         );
 
-        // Si un média (vidéo, audio ou image) est fourni, priorité absolue au modèle multimodal Gemini Flash
+        // Si un média (document avec vision/schémas, vidéo, audio ou image) est fourni, priorité absolue au modèle multimodal Gemini Flash
         if (hasMedia) {
           targetModel = "gemini-3.8-flash";
         }
@@ -1453,6 +1494,9 @@ CONSIGNES STRICTES DE CONTINUATION :
               videoMimeType,
               audioBase64,
               audioMimeType,
+              documentBase64,
+              documentMimeType,
+              documentImages,
               mediaType,
             });
             if (gText) {

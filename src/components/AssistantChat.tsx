@@ -6,6 +6,7 @@ import { FileIconBadge } from './FileIconBadge';
 import { MathText, stripAiReasoningScratchpad } from './MathText';
 import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey, safeJsonParse, getWorkerApiUrl } from '../services/api';
 import { getFileBlob } from '../services/localFileStorage';
+import { extractDocumentDetails } from '../services/documentTextExtractor';
 
 // Helpers robustes et infaillibles de stockage local pour l'AssistantChat (garantis sans ReferenceError)
 const safeGetItem = (key: string, fallback: string = ''): string => {
@@ -655,6 +656,33 @@ async function extractAudioContentFromItem(item: any): Promise<{
   return null;
 }
 
+/**
+ * Détecte si un élément est un document d'étude (PDF, Word DOCX/DOC, PPTX, Excel, Texte, etc.)
+ */
+function isDocumentItem(item: any): boolean {
+  if (!item) return false;
+  const name = String(item.name || item.title || item.fileName || '').toLowerCase();
+  const type = String(item.type || item.mimeType || '').toLowerCase();
+  const ext = String(item.extension || '').toLowerCase();
+  const category = String(item.category || item.fileType || item.file_category || '').toLowerCase();
+
+  return Boolean(
+    item.isDocument ||
+    category.includes('doc') ||
+    category.includes('pdf') ||
+    category.includes('cours') ||
+    category.includes('fichier') ||
+    type.includes('pdf') ||
+    type.includes('word') ||
+    type.includes('officedocument') ||
+    type.includes('presentation') ||
+    type.includes('spreadsheet') ||
+    type.includes('text/') ||
+    /\.(pdf|docx?|txt|md|pptx?|xlsx?|csv|odt|rtf|json|py|js|ts|html|sql)$/i.test(name) ||
+    ['pdf', 'doc', 'docx', 'txt', 'md', 'pptx', 'ppt', 'xlsx', 'xls', 'csv', 'odt', 'rtf'].includes(ext)
+  );
+}
+
 // Détermine dynamiquement ce que l'IA réalise en temps réel (à l'instant T) selon le contexte et le délai
 // Rédigé avec des messages pédagogiques rassurants, fluides et sans jargon technique
 function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: number, requestedType?: string): string {
@@ -837,7 +865,19 @@ function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: numbe
     ]);
   }
 
-  // 12. Document d'étude ouvert ou joint
+  // 12. Document d'étude ouvert ou joint (PDF, Word, etc.)
+  const isDocFile = mainDoc && (isDocumentItem({ name: mainDoc }) || /\.(pdf|docx?|pptx?|xlsx?|txt|md)$/i.test(mainDoc));
+  if (isDocFile) {
+    return pickReassuringStep([
+      `J'examine attentivement votre document « ${mainDoc} »...`,
+      "J'analyse le texte et j'examine les schémas, dessins et graphiques...",
+      "Je repère les formules, figures géométriques et notions clés...",
+      "Je prépare une réponse complète intégrant le texte et les schémas...",
+      "Votre réponse est bientôt prête..."
+    ]);
+  }
+
+  // 13. Document général ouvert ou joint
   if (hasDoc) {
     return pickReassuringStep([
       `Je m'appuie sur votre document « ${mainDoc} »...`,
@@ -3174,7 +3214,7 @@ CONSIGNES STRICTES DE CONTINUATION :
       const isDeadKey = Boolean(rawConfiguredToken && (rawConfiguredToken.startsWith('AIzaSyDKct') || rawConfiguredToken.length < 25));
       const configuredToken = (isWorkerModel || isDeadKey) ? undefined : rawConfiguredToken;
 
-      // Résolution multimédia instantanée (Vidéo, Audio ou Image active à l'écran ou jointe)
+      // Résolution multimédia instantanée (Vidéo, Audio, Image ou Document PDF/Word actif à l'écran ou joint)
       let activeImageInfo: { base64: string; mimeType: string } | null = null;
       let activeVideoInfo: {
         videoBase64?: string;
@@ -3185,36 +3225,49 @@ CONSIGNES STRICTES DE CONTINUATION :
         audioBase64: string;
         mimeType: string;
       } | null = null;
+      let activeDocumentInfo: {
+        textContent: string;
+        documentBase64?: string;
+        documentMimeType?: string;
+        documentImages?: Array<{ base64: string; mimeType: string; name?: string }>;
+        fileName?: string;
+      } | null = null;
 
       if (resolvedActiveItem) {
         if (isVideoItem(resolvedActiveItem)) {
           activeVideoInfo = await extractVideoContentFromItem(resolvedActiveItem);
         } else if (isAudioItem(resolvedActiveItem)) {
           activeAudioInfo = await extractAudioContentFromItem(resolvedActiveItem);
+        } else if (isDocumentItem(resolvedActiveItem)) {
+          activeDocumentInfo = await extractDocumentDetails(resolvedActiveItem);
         } else {
           activeImageInfo = await extractImageBase64FromItem(resolvedActiveItem);
         }
       }
-      if (!activeImageInfo && !activeVideoInfo && !activeAudioInfo && Array.isArray(attachedResources) && attachedResources.length > 0) {
+      if (Array.isArray(attachedResources) && attachedResources.length > 0) {
         for (const res of attachedResources) {
-          if (isVideoItem(res)) {
+          if (!activeVideoInfo && isVideoItem(res)) {
             const foundVid = await extractVideoContentFromItem(res);
-            if (foundVid) { activeVideoInfo = foundVid; break; }
-          } else if (isAudioItem(res)) {
+            if (foundVid) activeVideoInfo = foundVid;
+          } else if (!activeAudioInfo && isAudioItem(res)) {
             const foundAud = await extractAudioContentFromItem(res);
-            if (foundAud) { activeAudioInfo = foundAud; break; }
-          } else {
+            if (foundAud) activeAudioInfo = foundAud;
+          } else if (!activeDocumentInfo && isDocumentItem(res)) {
+            const foundDoc = await extractDocumentDetails(res);
+            if (foundDoc) activeDocumentInfo = foundDoc;
+          } else if (!activeImageInfo) {
             const foundImg = await extractImageBase64FromItem(res);
-            if (foundImg) { activeImageInfo = foundImg; break; }
+            if (foundImg) activeImageInfo = foundImg;
           }
         }
       }
 
-      // Si un média (vidéo, audio ou image) est présent, priorité absolue au modèle multimodal Gemini Flash
+      // Si un média (vidéo, audio, image ou document PDF/Word avec schémas/visuel) est présent, priorité absolue au modèle multimodal Gemini Flash
       const hasMedia = Boolean(
         activeImageInfo ||
         (activeVideoInfo && (activeVideoInfo.videoFrames.length > 0 || activeVideoInfo.videoBase64)) ||
-        (activeAudioInfo && activeAudioInfo.audioBase64)
+        (activeAudioInfo && activeAudioInfo.audioBase64) ||
+        (activeDocumentInfo && (activeDocumentInfo.documentBase64 || (activeDocumentInfo.documentImages && activeDocumentInfo.documentImages.length > 0)))
       );
       const effectiveModelToSend = hasMedia ? 'gemini-2.0-flash' : selectedModel;
 
@@ -3236,7 +3289,7 @@ CONSIGNES STRICTES DE CONTINUATION :
         geminiApiKey: configuredToken || getGeminiApiKey() || undefined,
         requested_type: explicitToolType || undefined,
         attachedFileName: mainDocName,
-        attachedFileContent: (resolvedActiveItem as any)?.content || (resolvedActiveItem as any)?.text || (resolvedActiveItem as any)?.rawText || '',
+        attachedFileContent: activeDocumentInfo?.textContent || (resolvedActiveItem as any)?.content || (resolvedActiveItem as any)?.text || (resolvedActiveItem as any)?.rawText || '',
         imageBase64: activeImageInfo?.base64,
         mimeType: activeImageInfo?.mimeType,
         videoBase64: activeVideoInfo?.videoBase64,
@@ -3244,6 +3297,9 @@ CONSIGNES STRICTES DE CONTINUATION :
         videoMimeType: activeVideoInfo?.mimeType,
         audioBase64: activeAudioInfo?.audioBase64,
         audioMimeType: activeAudioInfo?.mimeType,
+        documentBase64: activeDocumentInfo?.documentBase64,
+        documentMimeType: activeDocumentInfo?.documentMimeType,
+        documentImages: activeDocumentInfo?.documentImages,
         mediaType: detectedMediaType,
         signal: abortSignal,
         abortSignal,

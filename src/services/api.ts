@@ -268,6 +268,10 @@ export async function sendChatMessageToAi(params: {
   videoMimeType?: string;
   audioBase64?: string;
   audioMimeType?: string;
+  documentBase64?: string;
+  documentMimeType?: string;
+  documentImages?: Array<{ base64: string; mimeType?: string; name?: string }>;
+  pdfBase64?: string;
   mediaType?: string;
   [key: string]: any;
 }): Promise<{
@@ -315,6 +319,9 @@ export async function sendChatMessageToAi(params: {
     videoMimeType: params.videoMimeType || undefined,
     audioBase64: params.audioBase64 || undefined,
     audioMimeType: params.audioMimeType || undefined,
+    documentBase64: params.documentBase64 || params.pdfBase64 || undefined,
+    documentMimeType: params.documentMimeType || (params.pdfBase64 ? 'application/pdf' : undefined),
+    documentImages: params.documentImages || undefined,
     mediaType: params.mediaType || undefined,
   };
 
@@ -346,6 +353,9 @@ export async function sendChatMessageToAi(params: {
         videoMimeType: params.videoMimeType,
         audioBase64: params.audioBase64,
         audioMimeType: params.audioMimeType,
+        documentBase64: params.documentBase64 || params.pdfBase64,
+        documentMimeType: params.documentMimeType,
+        documentImages: params.documentImages,
         mediaType: params.mediaType,
         temperature: 0.7,
       });

@@ -1,11 +1,34 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
+import JSZip from 'jszip';
+import * as XLSX from 'xlsx';
 import { getFileBlob, getFileBlobUrl } from './localFileStorage';
 import { getWorkerApiUrl, getAiWorkerUrl } from './api';
 
 // Configuration sécurisée du worker pdfjs
 if (typeof window !== 'undefined' && !(pdfjsLib as any).GlobalWorkerOptions?.workerSrc) {
   (pdfjsLib as any).GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
+}
+
+export const blobToBase64 = (blob: Blob): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') resolve(reader.result);
+      else reject(new Error('FileReader non-string'));
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+};
+
+export interface ExtractedDocumentDetails {
+  textContent: string;
+  documentBase64?: string;
+  documentMimeType?: string;
+  documentImages?: Array<{ base64: string; mimeType: string; name?: string }>;
+  fileName: string;
+  fileType: 'pdf' | 'docx' | 'text' | 'image' | 'video' | 'audio' | 'excel' | 'pptx' | 'document';
 }
 
 const textCache = new Map<string, string>();
@@ -380,7 +403,7 @@ export async function extractDocumentText(item: any): Promise<string> {
   }
 
   try {
-    // Cas 1 : Fichiers PDF (extraction intégrale jusqu'à 100 pages)
+    // Cas 1 : Fichiers PDF (extraction intégrale jusqu'à 100 pages + Vision haute résolution Gemini)
     if (fileName.endsWith('.pdf') || item.type?.includes('pdf') || item.extension?.toLowerCase() === 'pdf') {
       const typedarray = new Uint8Array(arrayBuffer);
       const loadingTask = (pdfjsLib as any).getDocument({
@@ -411,19 +434,138 @@ export async function extractDocumentText(item: any): Promise<string> {
         }
       }
 
-      const cleanResult = fullText.trim() || `[Document PDF ${item.name} : texte manuscrit ou scanné en image haute résolution]`;
+      // Si le PDF fait moins de 28 Mo, encodage Base64 direct pour vision native Gemini Flash (schémas, figures géométriques, équations, dessins, graphiques)
+      if (arrayBuffer.byteLength <= 28 * 1024 * 1024) {
+        try {
+          const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+          const b64 = await blobToBase64(blob);
+          if (b64) {
+            if (typeof item === 'object') {
+              item.pdfBase64 = b64;
+              item.documentBase64 = b64;
+              item.documentMimeType = 'application/pdf';
+            }
+          }
+        } catch (pdfB64Err) {
+          console.warn('[Extractor] Erreur encodage base64 PDF:', pdfB64Err);
+        }
+      }
+
+      const cleanResult = fullText.trim() || `[Document PDF ${item.name || 'Cours'} : scanné ou manuscrit haute résolution transmis pour vision complète]`;
       if (cacheKey) textCache.set(cacheKey, cleanResult);
       if (typeof item === 'object') item.textContent = cleanResult;
       return cleanResult;
     }
 
-    // Cas 2 : Fichiers Word (.docx)
+    // Cas 2 : Fichiers Word (.docx) avec extraction de texte et de TOUS les schémas/dessins intégrés
     if (fileName.endsWith('.docx') || item.type?.includes('wordprocessingml') || item.extension?.toLowerCase() === 'docx') {
       const res = await mammoth.extractRawText({ arrayBuffer });
-      const cleanResult = (res.value || '').trim() || `[Document Word ${item.name}]`;
+      let cleanResult = (res.value || '').trim() || `[Document Word ${item.name || 'Cours'}]`;
+
+      // Extraction des schémas, dessins et images intégrés au document Word (.docx) via JSZip
+      const docImages: Array<{ base64: string; mimeType: string; name: string }> = [];
+      try {
+        const zip = await JSZip.loadAsync(arrayBuffer);
+        const imageFiles = Object.keys(zip.files).filter(k => 
+          /^word\/media\/.+\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(k)
+        );
+        for (const imgKey of imageFiles.slice(0, 10)) { // Jusqu'à 10 schémas/images
+          try {
+            const file = zip.files[imgKey];
+            const imgBlob = await file.async('blob');
+            const b64 = await blobToBase64(imgBlob);
+            if (b64) {
+              const mime = imgKey.toLowerCase().endsWith('.png')
+                ? 'image/png'
+                : imgKey.toLowerCase().endsWith('.webp')
+                ? 'image/webp'
+                : 'image/jpeg';
+              docImages.push({ base64: b64, mimeType: mime, name: imgKey });
+            }
+          } catch {}
+        }
+        if (docImages.length > 0) {
+          if (typeof item === 'object') {
+            item.documentImages = docImages;
+          }
+          cleanResult += `\n\n[Schémas et illustrations du document Word : ${docImages.length} image(s)/schéma(s) extrait(s) et transmis à l'IA pour analyse visuelle complète]\n`;
+        }
+      } catch (zipErr) {
+        console.warn('[Extractor] Erreur extraction images Word .docx:', zipErr);
+      }
+
       if (cacheKey) textCache.set(cacheKey, cleanResult);
       if (typeof item === 'object') item.textContent = cleanResult;
       return cleanResult;
+    }
+
+    // Cas 2.bis : Fichiers PowerPoint (.pptx)
+    if (fileName.endsWith('.pptx') || item.type?.includes('presentationml') || item.extension?.toLowerCase() === 'pptx') {
+      let pptText = '';
+      const docImages: Array<{ base64: string; mimeType: string; name: string }> = [];
+      try {
+        const zip = await JSZip.loadAsync(arrayBuffer);
+        const slideFiles = Object.keys(zip.files).filter(k => /^ppt\/slides\/slide\d+\.xml$/.test(k));
+        slideFiles.sort((a, b) => {
+          const nA = parseInt(a.match(/slide(\d+)\.xml/)?.[1] || '0', 10);
+          const nB = parseInt(b.match(/slide(\d+)\.xml/)?.[1] || '0', 10);
+          return nA - nB;
+        });
+
+        for (let i = 0; i < slideFiles.length; i++) {
+          const rawXml = await zip.files[slideFiles[i]].async('string');
+          const matches = rawXml.match(/<a:t>([^<]*)<\/a:t>/g);
+          if (matches) {
+            const textItems = matches.map(m => m.replace(/<[^>]+>/g, '').trim()).filter(Boolean);
+            if (textItems.length > 0) {
+              pptText += `\n[--- Diapositive ${i + 1} ---]\n` + textItems.join('\n') + '\n';
+            }
+          }
+        }
+
+        const pptMedia = Object.keys(zip.files).filter(k => /^ppt\/media\/.+\.(png|jpe?g|webp|gif)$/i.test(k));
+        for (const imgKey of pptMedia.slice(0, 8)) {
+          try {
+            const file = zip.files[imgKey];
+            const imgBlob = await file.async('blob');
+            const b64 = await blobToBase64(imgBlob);
+            if (b64) {
+              docImages.push({ base64: b64, mimeType: imgKey.endsWith('.png') ? 'image/png' : 'image/jpeg', name: imgKey });
+            }
+          } catch {}
+        }
+        if (docImages.length > 0 && typeof item === 'object') {
+          item.documentImages = docImages;
+        }
+      } catch (pptErr) {
+        console.warn('[Extractor] Erreur lecture PowerPoint .pptx:', pptErr);
+      }
+
+      const cleanResult = pptText.trim() || `[Présentation PowerPoint : ${item.name || 'Cours'}]`;
+      if (cacheKey) textCache.set(cacheKey, cleanResult);
+      if (typeof item === 'object') item.textContent = cleanResult;
+      return cleanResult;
+    }
+
+    // Cas 2.ter : Fichiers Excel (.xlsx, .xls, .csv)
+    if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls') || item.type?.includes('spreadsheetml') || item.extension?.toLowerCase() === 'xlsx') {
+      try {
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        let excelText = '';
+        for (const sheetName of workbook.SheetNames.slice(0, 5)) {
+          const ws = workbook.Sheets[sheetName];
+          const csv = XLSX.utils.sheet_to_csv(ws);
+          if (csv && csv.trim()) {
+            excelText += `\n[--- Feuille Excel : "${sheetName}" ---]\n${csv.trim()}\n`;
+          }
+        }
+        const cleanResult = excelText.trim() || `[Tableau Excel : ${item.name || 'Données'}]`;
+        if (cacheKey) textCache.set(cacheKey, cleanResult);
+        if (typeof item === 'object') item.textContent = cleanResult;
+        return cleanResult;
+      } catch (xlErr) {
+        console.warn('[Extractor] Erreur lecture Excel:', xlErr);
+      }
     }
 
     // Cas 3 : Fichiers texte brut, Markdown, JSON, CSV, code
@@ -611,3 +753,35 @@ export async function extractDocumentText(item: any): Promise<string> {
 
   return `[Document: ${item.name || 'Fichier'}]`;
 }
+
+/**
+ * Extrait les détails complets d'un document (Texte intégral + Fichier Base64 pour PDF + Schémas et Dessins extraits pour Word)
+ * Prêt pour l'analyse visuelle et multimodale par Google Gemini Flash.
+ */
+export async function extractDocumentDetails(item: any): Promise<ExtractedDocumentDetails> {
+  const fileName = String(item?.name || item?.title || item?.fileName || '').toLowerCase();
+  const textContent = await extractDocumentText(item);
+  const docBase64 = item?.documentBase64 || item?.pdfBase64 || undefined;
+  const docMime = item?.documentMimeType || (docBase64 ? 'application/pdf' : undefined);
+  const docImages = Array.isArray(item?.documentImages) ? item.documentImages : undefined;
+
+  let fileType: ExtractedDocumentDetails['fileType'] = 'document';
+  if (fileName.endsWith('.pdf')) fileType = 'pdf';
+  else if (fileName.endsWith('.docx') || fileName.endsWith('.doc')) fileType = 'docx';
+  else if (fileName.endsWith('.pptx') || fileName.endsWith('.ppt')) fileType = 'pptx';
+  else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls') || fileName.endsWith('.csv')) fileType = 'excel';
+  else if (/\.(jpe?g|png|webp|gif|svg)$/i.test(fileName)) fileType = 'image';
+  else if (/\.(mp4|webm|mov|avi)$/i.test(fileName)) fileType = 'video';
+  else if (/\.(mp3|wav|ogg|m4a)$/i.test(fileName)) fileType = 'audio';
+  else if (/\.(txt|md|py|js|ts|json|sql)$/i.test(fileName)) fileType = 'text';
+
+  return {
+    textContent,
+    documentBase64: docBase64,
+    documentMimeType: docMime,
+    documentImages: docImages,
+    fileName: item?.name || item?.title || item?.fileName || 'Document',
+    fileType,
+  };
+}
+
