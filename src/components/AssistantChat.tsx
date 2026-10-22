@@ -683,6 +683,18 @@ function isDocumentItem(item: any): boolean {
   );
 }
 
+/**
+ * Génère une signature unique stable pour un fichier/média (pour détecter si le fichier est identique ou a changé)
+ */
+function getMediaItemSignature(item: any): string {
+  if (!item) return '';
+  const id = item.id || item._id || item.r2_key || item.r2Key || item.key || '';
+  const name = item.name || item.title || item.fileName || item.file?.name || '';
+  const size = item.size || item.fileSize || item.file?.size || item.blob?.size || '';
+  const lastMod = item.lastModified || item.file?.lastModified || '';
+  return `${id}::${name}::${size}::${lastMod}`.trim();
+}
+
 // Détermine dynamiquement ce que l'IA réalise en temps réel (à l'instant T) selon le contexte et le délai
 // Rédigé avec des messages pédagogiques rassurants, fluides et sans jargon technique
 function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: number, requestedType?: string): string {
@@ -1813,6 +1825,9 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const [retryingMessageId, setRetryingMessageId] = useState<string | null>(null);
   const [aiActivityText, setAiActivityText] = useState<string>('Je réfléchis...');
   const activityTimerRef = useRef<any>(null);
+  // Cache de signature des médias analysés par session de discussion (évite de ré-extraire et ré-envoyer 20 Mo à chaque question)
+  const analyzedMediaPerConvRef = useRef<Record<string, string>>({});
+  const cachedDocumentTextRef = useRef<Record<string, string>>({});
   // Barre de propositions collée au clavier
   const [showProposalBar, setShowProposalBar] = useState(true);
   
@@ -2295,6 +2310,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     setShowProposalBar(true);
     safeSetItem('studycloud_current_conversation_id', newId);
     safeLocalStorageRemove(`studycloud_conv_msgs_${newId}`);
+    safeLocalStorageRemove(`studycloud_analyzed_media_${newId}`);
+    delete analyzedMediaPerConvRef.current[newId];
 
     // Initialisation D1
     StudyCloudAPI.createAiConversation({
@@ -2311,6 +2328,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       await StudyCloudAPI.deleteAiConversation(convId);
       setConversations(prev => prev.filter(c => c.id !== convId));
       safeLocalStorageRemove(`studycloud_conv_msgs_${convId}`);
+      safeLocalStorageRemove(`studycloud_analyzed_media_${convId}`);
+      delete analyzedMediaPerConvRef.current[convId];
       if (currentConversationId === convId) {
         handleStartNewConversation();
       }
@@ -2424,6 +2443,17 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         }
       }
     }
+
+    // Signature stable des médias présents dans ce tour pour la session active
+    const currentMediaSignature = allDocs
+      .map(getMediaItemSignature)
+      .filter(sig => sig && sig !== '::::')
+      .sort()
+      .join('|');
+
+    const sessionMediaSig = analyzedMediaPerConvRef.current[currentConversationId] || safeGetItem(`studycloud_analyzed_media_${currentConversationId}`);
+    // Le média est déjà analysé si la signature actuelle correspond exactement à celle déjà traitée dans cette conversation
+    const isMediaAlreadyAnalyzed = Boolean(currentMediaSignature && sessionMediaSig === currentMediaSignature);
 
     const hasAttachedDoc = allDocs.length > 0;
     const detectedFormat = detectCreationFormat(userText, requestedTypeOverride);
@@ -2615,7 +2645,11 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
     const attachedFileName = resolvedActiveName || (Array.isArray(attachedResources) ? attachedResources.map((r: any) => r?.name).filter(Boolean).join(', ') : '');
     const effectiveRequestedType = requestedTypeOverride || (isCreationIntent ? (detectedFormat as any) : undefined);
     const isExplicitCreationRequest = Boolean(effectiveRequestedType);
-    const initialLiveStatus = isExplicitCreationRequest ? "Réflexion en cours..." : getLiveAiActivity(userText, initialDocNames, 0, effectiveRequestedType);
+    const initialLiveStatus = isExplicitCreationRequest 
+      ? "Réflexion en cours..." 
+      : (isMediaAlreadyAnalyzed 
+          ? "Je réfléchis à votre question..." 
+          : getLiveAiActivity(userText, initialDocNames, 0, effectiveRequestedType));
     setAiActivityText(initialLiveStatus);
     if (isExplicitCreationRequest) {
       window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
@@ -2645,7 +2679,9 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
         }));
       } else {
         const elapsed = Math.floor((Date.now() - startTimestamp) / 1000);
-        const liveStatus = getLiveAiActivity(userText, initialDocNames, elapsed, effectiveRequestedType);
+        const liveStatus = isMediaAlreadyAnalyzed
+          ? (elapsed < 3 ? "Je réfléchis à votre question..." : "Je formule votre réponse...")
+          : getLiveAiActivity(userText, initialDocNames, elapsed, effectiveRequestedType);
         setAiActivityText(liveStatus);
       }
     }, 1000);
@@ -3177,6 +3213,23 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
       }
 
       let effectiveSystemContent = systemContent;
+
+      if (isMediaAlreadyAnalyzed && mainDocName) {
+        effectiveSystemContent += `\n\n══════════════════════════════════════════════════════════════════════════════
+[SUITE DE DISCUSSION SUR LE FICHIER « ${mainDocName} » DÉJÀ ANALYSÉ] :
+Tu as DÉJÀ analysé et assimilé le document/média « ${mainDocName} » lors du premier tour de cette discussion.
+L'étudiant poursuit maintenant la discussion avec une nouvelle question sur ce même document.
+
+CONSIGNES STRICTES :
+1. RÉPONSE DIRECTE ET IMMÉDIATE :
+   - Réponds directement, précisément et pédagogiquement à la question de l'étudiant.
+   - Ne dis JAMAIS "Bonjour", "D'après votre document", "J'ai bien reçu votre fichier", ou toute formule d'introduction robotique.
+   - Ne réanalyse pas le document depuis le début.
+2. DIALOGUE NATUREL :
+   - Poursuis la discussion de manière fluide comme un professeur bienveillant qui est déjà en train de travailler sur le cours avec son élève.
+══════════════════════════════════════════════════════════════════════════════`;
+      }
+
       if (isContinuation) {
         const lastAssistant = sanitizedHistory.slice().reverse().find(m => m.role === 'assistant');
         const stopExcerpt = lastAssistant ? lastAssistant.content.slice(-400) : '';
@@ -3233,45 +3286,63 @@ CONSIGNES STRICTES DE CONTINUATION :
         fileName?: string;
       } | null = null;
 
-      if (resolvedActiveItem) {
-        if (isVideoItem(resolvedActiveItem)) {
-          activeVideoInfo = await extractVideoContentFromItem(resolvedActiveItem);
-        } else if (isAudioItem(resolvedActiveItem)) {
-          activeAudioInfo = await extractAudioContentFromItem(resolvedActiveItem);
-        } else if (isDocumentItem(resolvedActiveItem)) {
-          activeDocumentInfo = await extractDocumentDetails(resolvedActiveItem);
-        } else {
-          activeImageInfo = await extractImageBase64FromItem(resolvedActiveItem);
-        }
-      }
-      if (Array.isArray(attachedResources) && attachedResources.length > 0) {
-        for (const res of attachedResources) {
-          if (!activeVideoInfo && isVideoItem(res)) {
-            const foundVid = await extractVideoContentFromItem(res);
-            if (foundVid) activeVideoInfo = foundVid;
-          } else if (!activeAudioInfo && isAudioItem(res)) {
-            const foundAud = await extractAudioContentFromItem(res);
-            if (foundAud) activeAudioInfo = foundAud;
-          } else if (!activeDocumentInfo && isDocumentItem(res)) {
-            const foundDoc = await extractDocumentDetails(res);
-            if (foundDoc) activeDocumentInfo = foundDoc;
-          } else if (!activeImageInfo) {
-            const foundImg = await extractImageBase64FromItem(res);
-            if (foundImg) activeImageInfo = foundImg;
+      // NE RÉ-ANALYSER LE FICHIER QUE S'IL N'A PAS ENCORE ÉTÉ ANALYSÉ DANS CETTE CONVERSATION
+      // (Ou si l'utilisateur a changé de fichier pendant la discussion)
+      if (!isMediaAlreadyAnalyzed) {
+        if (resolvedActiveItem) {
+          if (isVideoItem(resolvedActiveItem)) {
+            activeVideoInfo = await extractVideoContentFromItem(resolvedActiveItem);
+          } else if (isAudioItem(resolvedActiveItem)) {
+            activeAudioInfo = await extractAudioContentFromItem(resolvedActiveItem);
+          } else if (isDocumentItem(resolvedActiveItem)) {
+            activeDocumentInfo = await extractDocumentDetails(resolvedActiveItem);
+          } else {
+            activeImageInfo = await extractImageBase64FromItem(resolvedActiveItem);
           }
+        }
+        if (Array.isArray(attachedResources) && attachedResources.length > 0) {
+          for (const res of attachedResources) {
+            if (!activeVideoInfo && isVideoItem(res)) {
+              const foundVid = await extractVideoContentFromItem(res);
+              if (foundVid) activeVideoInfo = foundVid;
+            } else if (!activeAudioInfo && isAudioItem(res)) {
+              const foundAud = await extractAudioContentFromItem(res);
+              if (foundAud) activeAudioInfo = foundAud;
+            } else if (!activeDocumentInfo && isDocumentItem(res)) {
+              const foundDoc = await extractDocumentDetails(res);
+              if (foundDoc) activeDocumentInfo = foundDoc;
+            } else if (!activeImageInfo) {
+              const foundImg = await extractImageBase64FromItem(res);
+              if (foundImg) activeImageInfo = foundImg;
+            }
+          }
+        }
+
+        // Mise en cache du texte brut extrait pour les tours de suivi légers
+        if (activeDocumentInfo?.textContent && currentMediaSignature) {
+          cachedDocumentTextRef.current[currentMediaSignature] = activeDocumentInfo.textContent;
         }
       }
 
-      // Si un média (vidéo, audio, image ou document PDF/Word avec schémas/visuel) est présent, priorité absolue au modèle multimodal Gemini Flash
+      // Si un média lourd est envoyé dans ce tour, priorité absolue au modèle multimodal Gemini Flash
       const hasMedia = Boolean(
         activeImageInfo ||
         (activeVideoInfo && (activeVideoInfo.videoFrames.length > 0 || activeVideoInfo.videoBase64)) ||
         (activeAudioInfo && activeAudioInfo.audioBase64) ||
         (activeDocumentInfo && (activeDocumentInfo.documentBase64 || (activeDocumentInfo.documentImages && activeDocumentInfo.documentImages.length > 0)))
       );
-      const effectiveModelToSend = hasMedia ? 'gemini-2.0-flash' : selectedModel;
+      const effectiveModelToSend = (hasMedia || isMediaAlreadyAnalyzed)
+        ? (selectedModel.includes('gemini') ? selectedModel : 'gemini-2.0-flash')
+        : selectedModel;
 
       const detectedMediaType = activeVideoInfo ? 'video' : (activeAudioInfo ? 'audio' : (activeImageInfo ? 'image' : 'document'));
+
+      const resolvedAttachedText = activeDocumentInfo?.textContent ||
+        (currentMediaSignature ? cachedDocumentTextRef.current[currentMediaSignature] : '') ||
+        (resolvedActiveItem as any)?.content ||
+        (resolvedActiveItem as any)?.text ||
+        (resolvedActiveItem as any)?.rawText ||
+        '';
 
       const aiResult = await sendChatMessageToAi({
         messages: chatHistory,
@@ -3289,7 +3360,7 @@ CONSIGNES STRICTES DE CONTINUATION :
         geminiApiKey: configuredToken || getGeminiApiKey() || undefined,
         requested_type: explicitToolType || undefined,
         attachedFileName: mainDocName,
-        attachedFileContent: activeDocumentInfo?.textContent || (resolvedActiveItem as any)?.content || (resolvedActiveItem as any)?.text || (resolvedActiveItem as any)?.rawText || '',
+        attachedFileContent: resolvedAttachedText,
         imageBase64: activeImageInfo?.base64,
         mimeType: activeImageInfo?.mimeType,
         videoBase64: activeVideoInfo?.videoBase64,
@@ -3314,6 +3385,12 @@ CONSIGNES STRICTES DE CONTINUATION :
           window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCancelled: true, resetToPrompts: true } }));
         }
         return;
+      }
+
+      // Marquer ce média comme analysé pour cette session de discussion
+      if (currentMediaSignature) {
+        analyzedMediaPerConvRef.current[currentConversationId] = currentMediaSignature;
+        safeSetItem(`studycloud_analyzed_media_${currentConversationId}`, currentMediaSignature);
       }
 
       const fullAiText = (aiResult as any).raw_response || (aiResult as any).rawResponse || aiResult.response || "Désolé, je n'ai pas pu obtenir de réponse.";
@@ -3700,6 +3777,11 @@ CONSIGNES STRICTES DE CONTINUATION :
           content: fullResponseText,
           metadata: { model: effectiveModelName }
         }).catch(() => {});
+
+        if (currentMediaSignature) {
+          analyzedMediaPerConvRef.current[currentConversationId] = currentMediaSignature;
+          safeSetItem(`studycloud_analyzed_media_${currentConversationId}`, currentMediaSignature);
+        }
 
         // Notification d'ouverture automatique du chat quand la réponse est terminée ou qu'une demande a été traitée
         window.dispatchEvent(new CustomEvent('open-assistant-chat'));
