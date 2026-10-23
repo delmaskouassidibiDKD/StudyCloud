@@ -807,7 +807,7 @@ export function getModelDirect(config: AiModelConfig, sessionAffinity?: string):
           name: catalog?.name ?? effectiveModel,
           api: "google-generative-ai",
           provider: "google",
-          baseUrl: config.apiUrl, // NEVER fallback to https://generativelanguage.googleapis.com/v1beta, @google/genai will append //models which causes 404
+          baseUrl: (config.apiUrl || undefined) as any, // NEVER fallback to https://generativelanguage.googleapis.com/v1beta, @google/genai will append //models which causes 404
           reasoning: catalog?.reasoning ?? true,
           input: catalog?.input ?? ["text", "image"],
           cost: catalog?.cost ?? ZERO_COST,

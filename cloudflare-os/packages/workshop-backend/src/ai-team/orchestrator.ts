@@ -13,14 +13,16 @@
  * ============================================================================
  */
 
-import { OrchestrationInput, OrchestrationResult, ExpertReport } from './types.js';
-import { callWhisperExpert, callVisionExpert, callVideoExpert, callMathExpert, callCodeExpert } from './experts.js';
+import { OrchestrationInput, OrchestrationResult, ExpertReport } from './types';
+import { callWhisperExpert, callVisionExpert, callVideoExpert, callMathExpert, callCodeExpert } from './experts';
 
 export function isChefModel(targetModel: string): boolean {
   if (!targetModel) return true;
   const m = targetModel.toLowerCase();
   return (
     m.includes('llama-3.3') ||
+    m.includes('llama') ||
+    m.includes('delmas') ||
     m === 'default' ||
     m.includes('chef') ||
     m.includes('multi-ia') ||

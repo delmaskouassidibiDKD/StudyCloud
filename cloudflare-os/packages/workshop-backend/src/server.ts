@@ -34,9 +34,9 @@ import { serveSiteLogo, SITE_LOGO_PATH } from "./site-logo.js";
 import { createWorkshopLogger } from "./observability";
 import { retryOnDoReset, wrapDoStubForTelemetry } from "./do-retry";
 
-import { getBasePedagogicalRules, getCreationSpecificRule } from "./creations/prompts.js";
-import { validateAndFormatCreation } from "./creations/validator.js";
-import { isChefModel, orchestrateMultiAgentTeam } from "./ai-team/orchestrator.js";
+import { getBasePedagogicalRules, getCreationSpecificRule } from "./creations/prompts";
+import { validateAndFormatCreation } from "./creations/validator";
+import { isChefModel, orchestrateMultiAgentTeam } from "./ai-team/orchestrator";
 
 const logger = createWorkshopLogger("workshop.server");
 
@@ -129,7 +129,7 @@ class AuthenticatedApiImpl extends RpcTarget implements AuthenticatedApi {
   #isAdmin(): boolean {
     let name = this.#userId.name;
     if (!name) return false;
-    let admins = this.env.ADMINS;
+    let admins: any = this.env.ADMINS;
 
     if (admins) {
       if (typeof admins === "string") {
@@ -1339,6 +1339,9 @@ export default {
           targetModel = "claude-sonnet-4-5";
         }
 
+        const accountId = "c80164ed977e6535efd1b67a54741ed6";
+        const cfToken = ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join("");
+
         const rawApiKey = String(body.apiKey || body.apiToken || body.geminiApiKey || "").trim();
         const candidateKeys = [
           (env as any)?.STUDYCLOUD_GEMINI_1,
@@ -1415,7 +1418,7 @@ DIRECTIVES D'OBSERVATION STRICTES :
                 backgroundPerceptionReport = stripAiReasoningScratchpad(cleanTechnicalMediaJargon(gPerception.trim()));
               }
             } catch (pErr) {
-              logger.warn("Background Gemini perception analysis failed", { error: pErr });
+              logger.warn("Background Gemini perception analysis failed", { event: "gemini_perception_error", error: pErr });
             }
           }
 
@@ -1483,7 +1486,7 @@ Donne une description exhaustive pour que le tuteur puisse résoudre et enseigne
                   }
                 }
               } catch (cfvErr) {
-                logger.warn("Cloudflare Vision fallback failed", { error: cfvErr });
+                logger.warn("Cloudflare Vision fallback failed", { event: "cloudflare_vision_error", error: cfvErr });
               }
             }
           }
@@ -1613,9 +1616,6 @@ CONSIGNES STRICTES DE CONTINUATION :
         let answerText = "";
         let effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
 
-        const accountId = "c80164ed977e6535efd1b67a54741ed6";
-        const cfToken = ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join("");
-
         // ══════════════════════════════════════════════════════════════════════════════
         // BRANCHE 1 : GOOGLE GEMINI FLASH MULTIMODAL (SI SÉLECTIONNÉ PAR L'UTILISATEUR)
         // ══════════════════════════════════════════════════════════════════════════════
@@ -1645,7 +1645,7 @@ CONSIGNES STRICTES DE CONTINUATION :
               effectiveModelUsed = "Google Gemini Flash";
             }
           } catch (g20Err: any) {
-            logger.warn("Gemini Flash call exception", { error: g20Err });
+            logger.warn("Gemini Flash call exception", { event: "gemini_flash_error", error: g20Err });
             geminiErrorDetail = g20Err?.message || String(g20Err);
           }
         }
@@ -1685,7 +1685,7 @@ CONSIGNES STRICTES DE CONTINUATION :
               effectiveModelUsed = orchResult.effectiveModelUsed;
             }
           } catch (orchErr) {
-            logger.warn("Multi-agent team orchestrator exception, will fallback to direct Llama call", { error: orchErr });
+            logger.warn("Multi-agent team orchestrator exception, will fallback to direct Llama call", { event: "orchestrator_error", error: orchErr });
           }
         }
 
@@ -1738,7 +1738,7 @@ CONSIGNES STRICTES DE CONTINUATION :
                 }
               }
             } catch (cfErr) {
-              logger.warn("Cloudflare Workers AI specific model exception", { model: targetModel, error: cfErr });
+              logger.warn("Cloudflare Workers AI specific model exception", { event: "workers_ai_error", modelId: targetModel, error: cfErr });
             }
           }
 
@@ -1766,7 +1766,7 @@ CONSIGNES STRICTES DE CONTINUATION :
                 effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
               }
             } catch (antErr) {
-              logger.warn("Anthropic call exception", { error: antErr });
+              logger.warn("Anthropic call exception", { event: "anthropic_error", error: antErr });
             }
           }
 
@@ -1795,7 +1795,7 @@ CONSIGNES STRICTES DE CONTINUATION :
                 effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
               }
             } catch (oaiErr) {
-              logger.warn("OpenAI call exception", { error: oaiErr });
+              logger.warn("OpenAI call exception", { event: "openai_error", error: oaiErr });
             }
           }
 
@@ -1827,7 +1827,7 @@ CONSIGNES STRICTES DE CONTINUATION :
                 effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
               }
             } catch (cfErr) {
-              logger.error("Cloudflare Workers AI fallback exception", { error: cfErr });
+              logger.error("Cloudflare Workers AI fallback exception", { event: "cloudflare_fallback_error", error: cfErr });
             }
           }
         }
@@ -1881,7 +1881,7 @@ CONSIGNES STRICTES DE CONTINUATION :
           },
         });
       } catch (err: any) {
-        logger.error("Erreur appel /api/ai/chat", { error: err });
+        logger.error("Erreur appel /api/ai/chat", { event: "chat_api_error", error: err });
         return new Response(JSON.stringify({
           success: false,
           error: err?.message || "Erreur lors de la génération de réponse IA",
@@ -1933,7 +1933,7 @@ CONSIGNES STRICTES DE CONTINUATION :
           headers: { "Content-Type": "application/json", ...corsHeaders },
         });
       } catch (err: any) {
-        logger.error("Erreur GET /api/ai/conversations", { error: err });
+        logger.error("Erreur GET /api/ai/conversations", { event: "get_conversations_error", error: err });
         return new Response(JSON.stringify({ success: false, error: err?.message || String(err), data: [] }), {
           status: 200,
           headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -1976,7 +1976,7 @@ CONSIGNES STRICTES DE CONTINUATION :
           headers: { "Content-Type": "application/json", ...corsHeaders },
         });
       } catch (err: any) {
-        logger.error("Erreur POST /api/ai/conversations", { error: err });
+        logger.error("Erreur POST /api/ai/conversations", { event: "post_conversations_error", error: err });
         return new Response(JSON.stringify({ success: false, error: err?.message || String(err) }), {
           status: 500,
           headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -2012,7 +2012,7 @@ CONSIGNES STRICTES DE CONTINUATION :
           headers: { "Content-Type": "application/json", ...corsHeaders },
         });
       } catch (err: any) {
-        logger.error("Erreur DELETE /api/ai/conversations", { error: err });
+        logger.error("Erreur DELETE /api/ai/conversations", { event: "delete_conversations_error", error: err });
         return new Response(JSON.stringify({ success: false, error: err?.message || String(err) }), {
           status: 500,
           headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -2062,7 +2062,7 @@ CONSIGNES STRICTES DE CONTINUATION :
           headers: { "Content-Type": "application/json", ...corsHeaders },
         });
       } catch (err: any) {
-        logger.error("Erreur GET /api/ai/messages", { error: err });
+        logger.error("Erreur GET /api/ai/messages", { event: "get_messages_error", error: err });
         return new Response(JSON.stringify({ success: false, error: err?.message || String(err), data: [] }), {
           status: 200,
           headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -2120,7 +2120,7 @@ CONSIGNES STRICTES DE CONTINUATION :
           headers: { "Content-Type": "application/json", ...corsHeaders },
         });
       } catch (err: any) {
-        logger.error("Erreur POST /api/ai/messages", { error: err });
+        logger.error("Erreur POST /api/ai/messages", { event: "post_messages_error", error: err });
         return new Response(JSON.stringify({ success: false, error: err?.message || String(err) }), {
           status: 500,
           headers: { "Content-Type": "application/json", ...corsHeaders },

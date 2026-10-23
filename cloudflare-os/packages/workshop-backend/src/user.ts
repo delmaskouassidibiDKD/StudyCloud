@@ -938,7 +938,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       return stored;
     }
 
-    let provider: AiModelProvider = "cloudflare";
+    let provider: any = "cloudflare";
     if (id.includes("gemini") || id.includes("google")) provider = "google";
     else if (id.includes("claude") || id.includes("anthropic")) provider = "anthropic";
     else if (id.includes("gpt") || id.includes("openai")) provider = "openai";

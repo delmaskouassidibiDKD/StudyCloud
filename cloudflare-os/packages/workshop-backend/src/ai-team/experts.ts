@@ -9,7 +9,7 @@
  * ============================================================================
  */
 
-import { ExpertReport } from './types.js';
+import { ExpertReport } from './types';
 
 function base64ToUint8Array(base64Str: string): Uint8Array {
   const clean = base64Str.replace(/^data:[^;]+;base64,/, '').trim();
