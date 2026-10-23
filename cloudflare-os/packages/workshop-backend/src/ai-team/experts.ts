@@ -231,8 +231,6 @@ export async function callVideoExpert(
 
   try {
     const cleanB64 = videoBase64.replace(/^data:[^;]+;base64,/, '').trim();
-    const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`;
-
     const parts: any[] = [];
     if (cleanB64) {
       parts.push({
@@ -253,25 +251,31 @@ ${videoUrl ? `Lien vidéo source : ${videoUrl}` : ''}
 Produis un rapport pédagogique complet et structuré en français.`,
     });
 
-    const res = await fetch(gUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts }],
-      }),
-    });
+    const candidateVideoModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+    for (const mod of candidateVideoModels) {
+      try {
+        const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${geminiKey}`;
+        const res = await fetch(gUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts }],
+          }),
+        });
 
-    if (res.ok) {
-      const data: any = await res.json();
-      const content = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join('\n') || '';
-      if (content.trim()) {
-        return {
-          expert: 'gemini-video',
-          status: 'success',
-          summary: 'Vidéo analysée par Gemini 2.5 Flash',
-          content: content.trim(),
-        };
-      }
+        if (res.ok) {
+          const data: any = await res.json();
+          const content = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join('\n') || '';
+          if (content.trim()) {
+            return {
+              expert: 'gemini-video',
+              status: 'success',
+              summary: 'Vidéo analysée par Gemini Flash',
+              content: content.trim(),
+            };
+          }
+        }
+      } catch {}
     }
 
     return {
@@ -347,6 +351,70 @@ export async function callMathExpert(
       expert: 'deepseek-math',
       status: 'failed',
       summary: `Erreur DeepSeek: ${err?.message}`,
+      content: '',
+    };
+  }
+}
+
+/**
+ * Expert Code & Algorithmique : Rédige, optimise et résout les exercices de programmation
+ * et d'algorithmes via Kimi K2.7 Code (@cf/moonshotai/kimi-k2.7-code).
+ */
+export async function callCodeExpert(
+  userPrompt: string,
+  context: string,
+  cfToken: string,
+  accountId: string
+): Promise<ExpertReport> {
+  try {
+    const chatUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`;
+    const res = await fetch(chatUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${cfToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: '@cf/moonshotai/kimi-k2.7-code',
+        messages: [
+          {
+            role: 'system',
+            content: 'Tu es l\'Expert Informatique, Algorithmes et Programmation de StudyCloud (Kimi K2.7 Code). Conçois le code optimal, propre, commenté et modulaire. Explique l\'algorithme, détaille la complexité en temps et en mémoire O(n), et propose des cas de tests concrets.',
+          },
+          {
+            role: 'user',
+            content: `Contexte du document/cours : ${context.slice(0, 6000)}\n\nDemande de programmation ou d'algorithme : ${userPrompt}`,
+          },
+        ],
+        max_tokens: 4096,
+      }),
+    });
+
+    if (res.ok) {
+      const data: any = await res.json();
+      const msg = data?.choices?.[0]?.message;
+      const content = msg?.content || msg?.reasoning_content || '';
+      if (content.trim()) {
+        return {
+          expert: 'kimi-code',
+          status: 'success',
+          summary: 'Code et algorithme résolus par Kimi K2.7 Code',
+          content: content.trim(),
+        };
+      }
+    }
+
+    return {
+      expert: 'kimi-code',
+      status: 'failed',
+      summary: 'Échec génération code Kimi',
+      content: '',
+    };
+  } catch (err: any) {
+    return {
+      expert: 'kimi-code',
+      status: 'failed',
+      summary: `Erreur Kimi Code: ${err?.message}`,
       content: '',
     };
   }

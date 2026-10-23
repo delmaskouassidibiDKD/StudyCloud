@@ -5,7 +5,7 @@
  */
 
 export interface ExpertReport {
-  expert: 'whisper-audio' | 'llama-vision' | 'gemini-video' | 'deepseek-math' | 'gemini-perception';
+  expert: 'whisper-audio' | 'llama-vision' | 'gemini-video' | 'deepseek-math' | 'gemini-perception' | 'kimi-code';
   status: 'success' | 'skipped' | 'failed';
   summary: string;
   content: string;
@@ -22,6 +22,8 @@ export interface OrchestrationInput {
   audioBase64?: string;
   videoBase64?: string;
   videoUrl?: string;
+  documentBase64?: string;
+  documentImages?: any[];
   cfToken: string;
   accountId: string;
   geminiKey?: string;

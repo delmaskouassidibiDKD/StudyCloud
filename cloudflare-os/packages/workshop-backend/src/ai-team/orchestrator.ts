@@ -14,7 +14,7 @@
  */
 
 import { OrchestrationInput, OrchestrationResult, ExpertReport } from './types.js';
-import { callWhisperExpert, callVisionExpert, callVideoExpert, callMathExpert } from './experts.js';
+import { callWhisperExpert, callVisionExpert, callVideoExpert, callMathExpert, callCodeExpert } from './experts.js';
 
 export function isChefModel(targetModel: string): boolean {
   if (!targetModel) return true;
@@ -42,6 +42,8 @@ export async function orchestrateMultiAgentTeam(
     audioBase64,
     videoBase64,
     videoUrl,
+    documentBase64,
+    documentImages,
     cfToken,
     accountId,
     geminiKey,
@@ -59,7 +61,7 @@ export async function orchestrateMultiAgentTeam(
     };
   }
 
-  // 2. DÉTECTION DES EXPERTS NÉCESSAIRES
+  // 2. DÉTECTION ET MOBILISATION DES EXPERTS DE L'ÉQUIPE
   const expertTasks: Promise<ExpertReport>[] = [];
   const expertsMobilized: string[] = [];
 
@@ -69,24 +71,36 @@ export async function orchestrateMultiAgentTeam(
     expertTasks.push(callWhisperExpert(audioBase64, cfToken, accountId));
   }
 
-  // B. Expert Vision (Llama 3.2 11B Vision)
-  if (imageBase64 && imageBase64.length > 50) {
-    expertsMobilized.push('👁️ Vision & Exercices');
+  // B. Expert Vision de secours (Llama 3.2 11B Vision) - si pas de rapport visuel complet
+  if (imageBase64 && imageBase64.length > 50 && (!perceptionReport || perceptionReport.length < 20)) {
+    expertsMobilized.push('👁️ Llama Vision');
     expertTasks.push(callVisionExpert(imageBase64, cfToken, accountId, userPrompt));
   }
 
-  // C. Expert Vidéo (Gemini 2.5 Flash)
+  // C. Expert Vidéo dédié
   const hasVideo = (videoBase64 && videoBase64.length > 100) || (videoUrl && videoUrl.length > 10);
   if (hasVideo && geminiKey) {
-    expertsMobilized.push('🎬 Gemini 2.5 Flash Vidéo');
+    expertsMobilized.push('🎬 Gemini Flash Vidéo');
     expertTasks.push(callVideoExpert(videoBase64 || '', videoUrl || '', geminiKey));
   }
 
-  // D. Expert Calcul & Démonstrations (DeepSeek R1)
-  const isHeavyMath = /(?:calcul|d[eé]montr|d[eé]riv[eé]|int[eé]gral|imp[eé]dance|fonction\s+de\s+transfert|filtre|quadrip[oô]le|matrice|diagonalis|laplace|fourier)/i.test(userPrompt);
-  if (isHeavyMath && (docContent || userPrompt.length > 30)) {
+  // Analyse contextuelle élargie (Prompt + Nom de doc + Contenu + Rapport de perception Gemini)
+  const combinedContext = `${userPrompt} ${docName || ''} ${(docContent || '').slice(0, 4000)} ${(perceptionReport || '').slice(0, 4000)}`;
+
+  // D. Expert Calcul & Démonstrations Algébriques (DeepSeek R1 Raisonnement 32B)
+  const isHeavyMathOrScience = /(?:calcul|d[eé]montr|d[eé]riv[eé]|int[eé]gral|imp[eé]dance|fonction\s+de\s+transfert|filtre|quadrip[oô]le|matrice|diagonalis|laplace|fourier|bode|pulsation|fr[eé]quence\s+de\s+coupure|th[eé]or[eè]me|ohm|amp[eè]re|volt|watt|r[eé]sistance|condensateur|bobine|aop|amplificateur|primitive|limite|suite|complexe|vecteur|diff[eé]rentiel|physique|chimie|m[eé]canique|r[eé]solution|exercice|valeur\s+num[eé]rique)/i.test(combinedContext);
+  if (isHeavyMathOrScience && (docContent || perceptionReport || userPrompt.length > 15)) {
     expertsMobilized.push('🧮 DeepSeek R1 Raisonnement');
-    expertTasks.push(callMathExpert(userPrompt, docContent || '', cfToken, accountId));
+    const mathContext = perceptionReport || docContent || '';
+    expertTasks.push(callMathExpert(userPrompt, mathContext, cfToken, accountId));
+  }
+
+  // E. Expert Programmation & Algorithmes (Kimi K2.7 Code)
+  const isCodeOrAlgorithm = /(?:code|programme|algorithme|python|script|javascript|typescript|c\+\+|java|html|css|sql|boucle|fonction|array|tableau|pile|file|arborescence|d[eé]bog|compiler|syntaxe|terminal|api|json|git|d[eé]veloppement)/i.test(combinedContext);
+  if (isCodeOrAlgorithm && (docContent || perceptionReport || userPrompt.length > 15)) {
+    expertsMobilized.push('💻 Kimi K2.7 Code');
+    const codeContext = perceptionReport || docContent || '';
+    expertTasks.push(callCodeExpert(userPrompt, codeContext, cfToken, accountId));
   }
 
   // 3. EXÉCUTION PARALLÈLE DES EXPERTS SPÉCIALISÉS
@@ -94,101 +108,86 @@ export async function orchestrateMultiAgentTeam(
   const expertReports: string[] = [];
   const successfulExperts: string[] = [];
 
+  // Intégration prioritaire du dossier de perception multimédia Gemini Flash (Images, Documents PDF/Word, Schémas, Audio/Vidéo)
+  if (perceptionReport && perceptionReport.trim().length > 15) {
+    successfulExperts.push('👁️ Gemini Flash (Perception Multimodale)');
+    expertReports.push(`[DOSSIER DE PERCEPTION MULTIMODALE DU FICHIER TRANSMIS PAR GEMINI FLASH] :\n${perceptionReport.trim()}`);
+  }
+
   for (const res of expertResults) {
     if (res.status === 'fulfilled' && res.value && res.value.status === 'success' && res.value.content) {
       const exp = res.value;
       if (exp.expert === 'whisper-audio') {
         successfulExperts.push('👂 Whisper Audio');
-        expertReports.push(`[ENREGISTREMENT AUDIO TRANSCRIT DE L'ÉTUDIANT] :\n${exp.content}`);
+        expertReports.push(`[ENREGISTREMENT AUDIO TRANSCRIT DE L'ÉTUDIANT (WHISPER)] :\n${exp.content}`);
       } else if (exp.expert === 'llama-vision') {
-        successfulExperts.push('👁️ Vision & Exercices');
-        expertReports.push(`[ÉNONCÉ, SCHÉMA ET CONTENU DIRECTS DE L'IMAGE DE L'ÉTUDIANT] :\n${exp.content}`);
+        successfulExperts.push('👁️ Llama Vision');
+        expertReports.push(`[ÉNONCÉ ET OBSERVATIONS DU SCHÉMA / IMAGE (LLAMA VISION)] :\n${exp.content}`);
       } else if (exp.expert === 'gemini-video') {
-        successfulExperts.push('🎬 Vidéo');
-        expertReports.push(`[CONTENU DE LA VIDÉO ANALYSÉE] :\n${exp.content}`);
+        successfulExperts.push('🎬 Gemini Vidéo');
+        expertReports.push(`[ANALYSE DE LA VIDÉO DE COURS (GEMINI FLASH)] :\n${exp.content}`);
       } else if (exp.expert === 'deepseek-math') {
-        successfulExperts.push('🧮 Calculs R1');
-        expertReports.push(`[RÉSOLUTIONS ET CALCULS SCIENTIFIQUES] :\n${exp.content}`);
+        successfulExperts.push('🧮 DeepSeek R1 Calcul');
+        expertReports.push(`[RÉSOLUTIONS, CALCULS ET DÉMONSTRATIONS PAS À PAS (DEEPSEEK R1)] :\n${exp.content}`);
+      } else if (exp.expert === 'kimi-code') {
+        successfulExperts.push('💻 Kimi K2.7 Code');
+        expertReports.push(`[SOLUTION ALGORITHMIQUE ET CODE SOURCE COMMENTÉ (KIMI CODE)] :\n${exp.content}`);
       }
     }
   }
 
-  // Intégration du dossier de perception multimédia Gemini en arrière-plan
-  if (perceptionReport && perceptionReport.trim()) {
-    successfulExperts.push('👁️ Gemini Perception Multimodale');
-    expertReports.push(`[DOSSIER DE PERCEPTION MULTIMODALE DU FICHIER / DOCUMENT EN ARRIÈRE-PLAN] :\n${perceptionReport.trim()}`);
-  }
-
   // 4. SYNTHÈSE DU CHEF D'ÉQUIPE (Llama 3.3 70B Fast)
   // LE CHEF D'ÉQUIPE CONSERVE SON IDENTITÉ ET SES CONSIGNES MULTI-AGENTS EN PERMANENCE
-  // (sur le 1er message, le 2ème message, le 3ème message, et pour toute la discussion)
   const chefDirectiveHeader = `══════════════════════════════════════════════════════════════════════════════
-[DIRECTIVES SUPRÊMES DE RÉSOLUTION ET DE DISCRÉTION PÉDAGOGIQUE STUDYCLOUD] :
-Tu es le Tuteur et Professeur IA en chef de StudyCloud (Llama 3.3 70B Fast). Tu t'adresses DIRECTEMENT, PERSONNELLEMENT et CHALEUREUSEMENT à l'étudiant.
+[DIRECTIVES SUPRÊMES DU CHEF D'ÉQUIPE STUDYCLOUD - AGENT DELMAS (LLAMA 3.3 70B)] :
+Tu es l'Agent Delmas, le Tuteur et Professeur IA en chef de StudyCloud. Tu t'adresses DIRECTEMENT, CHALEUREUSEMENT et PÉDAGOGIQUEMENT à l'étudiant.
 
-RÈGLE 1 — INTERDICTION ABSOLUE DE PARLER D'"OUTIL DE VISION" OU DE MÉCANIQUE TECHNIQUE :
-- IL EST STRICTEMENT ET FORMELLEMENT INTERDIT de mentionner à l'étudiant des termes tels que : "outil de vision", "expert vision", "rapport de vision", "système OCR", "l'outil a extrait", "notre outil", etc.
-- Pour l'étudiant, C'EST TOI DIRECTEMENT QUI REGARDES SON IMAGE, comme un enseignant qui a sa feuille de devoir ou son cahier sous les yeux.
-- Parle naturellement et directement de son travail : "Sur ton image...", "D'après l'énoncé de ton exercice...", "Pour la question 1 :", etc.
-- IL EST FORMELLEMENT INTERDIT de conseiller à l'étudiant d'utiliser "l'outil de vision" ou de dire que tu fais appel à un outil externe !
+RÈGLE 1 — CONFIDENTIALITÉ ABSOLUE DES OUTILS INTERNES :
+- Il est strictement interdit de mentionner des termes d'ingénierie interne tels que "outil de vision", "rapport OCR", "extraction brute" ou "appel aux experts".
+- Parle naturellement : "Sur ton schéma...", "Dans ton cours...", "L'énoncé de l'exercice indique...", "La fonction de transfert s'écrit...".
 
-RÈGLE 2 — RÉSOUDRE COMPLÈTEMENT ET RÉELLEMENT L'EXERCICE (JAMAIS DE SIMPLES ÉTAPES ABSTRAITES SANS CALCUL) :
-- Quand l'étudiant te demande de résoudre un exercice, un devoir ou un calcul :
-  * IL EST STRICTEMENT INTERDIT de te contenter de lister des étapes théoriques, des conseils méthodologiques généraux ou des consignes abstraites ("Étape 1 : identifier la loi, Étape 2 : faire le calcul") SANS RÉSOUDRE !
-  * TU DOIS RÉSOUDRE DIRECTEMENT, ENTIÈREMENT ET INTÉGRALEMENT CHAQUE QUESTION jusqu'au résultat final numérique ou algébrique exact.
-  * Pour chaque question présente sur l'image :
-    1. Écris l'intitulé clair (ex : "## Question 1 : Calcul de la pulsation propre $\\omega_0$").
-    2. Pose la formule théorique générale.
-    3. Remplace par les vraies valeurs numériques de l'exercice (application numérique pas à pas).
-    4. Effectue le calcul arithmétique complet.
-    5. Encadre impérativement le résultat final avec son unité :
-       $$ \\boxed{\\text{Résultat final exact avec unité}} $$
-  * Résous TOUTES les questions visibles de l'exercice (Question 1, Question 2, Question 3...) sans rien laisser en suspens ni renvoyer l'étudiant à ses propres calculs.
+RÈGLE 2 — RÉSOUDRE COMPLÈTEMENT ET RÉELLEMENT SANS RESTER AU STADE DES ÉTAPES :
+- Quand l'étudiant pose une question ou demande la résolution d'un exercice :
+  * Ne te limite JAMAIS à donner des conseils généraux ou des étapes vagues.
+  * Résous directement et entièrement chaque question avec calculs réels, formules KaTeX standard ($...$ en ligne, $$...$$ en bloc centré avec \\dfrac{}{}) et résultats finaux encadrés $$ \\boxed{\\text{Résultat}} $$.
 
-RÈGLE 3 — INTERDICTION FORMELLE DE DIRE QUE TU NE PEUX PAS VOIR LES IMAGES :
-- IL EST STRICTEMENT INTERDIT d'écrire "je ne peux pas voir les images directement", "comme je suis une IA je n'ai pas d'yeux", ou de demander à l'étudiant "pouvez-vous me décrire ce que contient l'image ?" ou "pouvez-vous transcrire le texte" !
-- L'énoncé et les données de l'image sont fournis ci-dessous : exploite-les immédiatement pour corriger et résoudre l'exercice de l'élève.
-- Si l'élève te demande la suite ("LIMAGE ENVOYER", "fais la suite", "la question 2", etc.), résous immédiatement ce qui est demandé à partir des données de l'image déjà connues dans la conversation.
-
-RÈGLE 4 — RÈGLE DES FRACTIONS ET FORMULES LATEX :
-- TOUTE fraction mathématique ou physique DOIT IMPÉRATIVEMENT être rédigée avec \\dfrac{numérateur}{dénominateur}. JAMAIS de slash '/'.
-- Encadre chaque résultat final majeur avec \\boxed{...} dans un bloc centré $$ \\boxed{...} $$.
+RÈGLE 3 — SYNTHÈSE PÉDAGOGIQUE PARFAITE :
+- Exploite harmonieusement les observations visuelles de Gemini Flash, les calculs précis de DeepSeek R1, les codes de Kimi et les transcriptions audio pour donner une réponse limpide et encourageante.
 ══════════════════════════════════════════════════════════════════════════════`;
 
   let enrichedSystemPrompt = `${chefDirectiveHeader}\n\n${systemPrompt}`;
 
   if (expertReports.length > 0) {
     enrichedSystemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
-[CONTENU DIRECT DU DOCUMENT / IMAGE TRANSMIS PAR L'ÉTUDIANT] :
-Voici l'énoncé, les figures et les données exactes visibles sur l'image ou le document de l'étudiant :
+[SYNTHÈSE DU DOCUMENT & DOSSIERS DES EXPERTS DE L'ÉQUIPE] :
+Voici les éléments précis observés, calculés et programmés pour ce cours ou cet exercice :
 ${expertReports.join('\n\n')}
 
-MISSION PÉDAGOGIQUE DU TUTEUR :
-Résous immédiatement et intégralement chaque question pour l'étudiant, avec tous les calculs réels et les résultats encadrés, sans jamais mentionner aucun outil ni t'arrêter à de simples étapes.
+MISSION DU PROFESSEUR EN CHEF :
+Rédige ta réponse pédagogique complète pour l'élève en t'appuyant sur ces données exactes.
 ══════════════════════════════════════════════════════════════════════════════`;
-  } else if (!imageBase64) {
-    const isImageOrExerciseRelated = (
-      (docName && /\.(png|jpe?g|webp|gif|bmp)$/i.test(docName)) ||
-      (docContent && docContent.includes('[Image haute résolution')) ||
-      /(image|photo|exercice|question|sch[eé]ma|figure|page|feuille|devoir|sujet|nonc[eé]|tableau|calcul)/i.test(userPrompt)
-    );
-    if (isImageOrExerciseRelated) {
-      enrichedSystemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
-[RAPPEL CONTEXTUEL DE L'IMAGE / EXERCICE AU PROFESSEUR TUTEUR] :
-L'étudiant fait référence à l'exercice, devoir ou image abordé dans cette session.
-1. INTERDICTION FORMELLE DE PARLER D'"OUTIL DE VISION" OU D'EXTRACTION OCR : N'en parle JAMAIS à l'élève.
-2. INTERDICTION DE TE LIMITER À DES ÉTAPES : Résous DIRECTEMENT et ENTIÈREMENT chaque question avec tous les calculs arithmétiques réels, formules KaTeX \\dfrac{}{} et résultats encadrés \\boxed{...}.
-3. Si les données de l'exercice ou de l'image figurent déjà dans l'historique de la discussion ci-dessus, reprends-les immédiatement pour calculer les réponses finales sans redemander l'énoncé et SANS JAMAIS dire que tu ne peux pas voir l'image.
-══════════════════════════════════════════════════════════════════════════════`;
-    }
   }
 
   const cfMessages: any[] = [];
   if (enrichedSystemPrompt) {
     cfMessages.push({ role: 'system', content: enrichedSystemPrompt });
   }
-  for (const m of messages) {
-    cfMessages.push({ role: m.role, content: m.content });
+
+  const activeDocInfo = perceptionReport || docContent;
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    if (i === messages.length - 1 && m.role === 'user') {
+      if (activeDocInfo || docName) {
+        cfMessages.push({
+          role: 'user',
+          content: `[DOCUMENT / COURS ACTIF DE L'ÉTUDIANT : « ${docName || "Document d'étude"} »] :\n${activeDocInfo ? activeDocInfo.slice(0, 25000) : "Document joint par l'étudiant."}\n\n[CONSIGNE PÉDAGOGIQUE POUR LE CHEF TUTEUR] :\nL'étudiant travaille activement sur ce cours (« ${docName || "Document d'étude"} ») et demande : « ${m.content} ».\nRéponds directement, chaleureusement et précisément à sa question en t'appuyant sur ce document et les dossiers de ton équipe.\nNe mentionne aucun ancien sujet de la conversation et ne demande jamais de renvoyer le document.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
+        });
+      } else {
+        cfMessages.push({ role: m.role, content: m.content });
+      }
+    } else {
+      cfMessages.push({ role: m.role, content: m.content });
+    }
   }
 
   const cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
@@ -215,7 +214,7 @@ L'étudiant fait référence à l'exercice, devoir ou image abordé dans cette s
   const sanitizedAns = sanitizePedagogicalOutput(rawAns);
 
   const modelLabel = successfulExperts.length > 0
-    ? `Agent Delmas (Chef Multi-IA) + ${successfulExperts.join(' • ')}`
+    ? `Agent Delmas (Chef Multi-IA) • ${successfulExperts.join(' • ')}`
     : "Agent Delmas (Chef Multi-IA)";
 
   return {

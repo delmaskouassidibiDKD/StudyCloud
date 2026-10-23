@@ -1676,6 +1676,8 @@ CONSIGNES STRICTES DE CONTINUATION :
               geminiKey: geminiKeyToUse,
               requestedType: body.requested_type,
               perceptionReport: backgroundPerceptionReport,
+              documentBase64,
+              documentImages,
             });
 
             if (orchResult.isOrchestrated && orchResult.finalAnswer) {
