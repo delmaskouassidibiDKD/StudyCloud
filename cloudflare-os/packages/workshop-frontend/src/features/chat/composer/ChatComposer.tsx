@@ -745,8 +745,12 @@ export const ChatComposer = ({
                 isUploadingAttachments
                   ? "Analyse et traitement de vos fichiers par l'IA en cours... Veuillez patienter..."
                   : isBlocked
-                    ? "Action requise avant de continuer..."
-                    : (newChat ? "Comment puis-je vous aider aujourd'hui ?" : "Écrivez votre message...")
+                    ? (blockedReason || "Action requise avant de continuer...")
+                    : isAgentActive
+                      ? "En attente de l'agent…"
+                      : newChat
+                        ? "Démarrer une nouvelle conversation…"
+                        : "Poser une question complémentaire…"
               }
               role="combobox"
               aria-autocomplete="list"
@@ -789,15 +793,6 @@ export const ChatComposer = ({
                 syncMirrorScroll(e.currentTarget);
               }}
               disabled={isBlocked}
-              placeholder={
-                isBlocked
-                  ? blockedReason
-                  : isAgentActive
-                    ? "En attente de l'agent…"
-                    : newChat
-                      ? "Démarrer une nouvelle conversation…"
-                      : "Poser une question complémentaire…"
-              }
               autoFocus={autoFocus}
               rows={minRows}
               onPaste={(e) => {
