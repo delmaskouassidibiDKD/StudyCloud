@@ -2251,30 +2251,71 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     loadConversationMessages(currentConversationId);
   }, [currentConversationId]);
 
-  // Synchronisation avec les créations actives du panneau droit UNIQUEMENT si issues du chat
+  // Synchronisation avec les créations actives du panneau droit et persistance D1
   useEffect(() => {
     const handleReady = (e: any) => {
-      if (e.detail?.creation && e.detail?.isFromChat) {
-        setActiveCreation(e.detail.creation);
+      const creation = e.detail?.creation;
+      if (!creation) return;
+
+      if (e.detail?.isFromChat) {
+        setActiveCreation(creation);
         StudyCloudAPI.saveAiCreationRecord({
-          id: e.detail.creation.id,
+          id: creation.id,
           conversationId: currentConversationId,
-          type: e.detail.creation.toolType,
-          title: e.detail.creation.title,
-          content: e.detail.creation.content,
+          type: creation.toolType,
+          title: creation.title,
+          content: creation.content,
         }).catch(() => {});
       }
+
+      // Sauvegarde systématique dans la table D1 ai_generated_contents
+      if (currentUserId && currentUserId !== 'default-user') {
+        StudyCloudAPI.saveAiContent({
+          id: creation.id,
+          userId: currentUserId,
+          fileId: creation.fileId || null,
+          toolType: creation.toolType || creation.type || 'creation',
+          title: creation.title || 'Création Studio',
+          contentJson: creation.content || creation.data,
+          sourceFileName: creation.sourceFileName || undefined,
+          isPinned: Boolean(creation.isPinned),
+        }).then(() => {
+          window.dispatchEvent(new CustomEvent('studycloud-creation-saved', { detail: { id: creation.id } }));
+        }).catch(err => {
+          console.warn('[AssistantChat] Erreur sauvegarde D1 (handleReady):', err);
+        });
+      }
     };
+
     const handleUpdate = (e: any) => {
-      if (e.detail?.updatedContent && activeCreation && e.detail?.isFromChat) {
+      if (e.detail?.updatedContent && activeCreation) {
         setActiveCreation(prev => prev ? { ...prev, content: e.detail.updatedContent } : null);
-        StudyCloudAPI.saveAiCreationRecord({
-          id: activeCreation.id,
-          conversationId: currentConversationId,
-          type: activeCreation.toolType,
-          title: activeCreation.title,
-          content: e.detail.updatedContent,
-        }).catch(() => {});
+        if (e.detail?.isFromChat) {
+          StudyCloudAPI.saveAiCreationRecord({
+            id: activeCreation.id,
+            conversationId: currentConversationId,
+            type: activeCreation.toolType,
+            title: activeCreation.title,
+            content: e.detail.updatedContent,
+          }).catch(() => {});
+        }
+
+        // Mise à jour dans la base D1
+        if (currentUserId && currentUserId !== 'default-user') {
+          StudyCloudAPI.saveAiContent({
+            id: activeCreation.id,
+            userId: currentUserId,
+            fileId: activeCreation.fileId || null,
+            toolType: activeCreation.toolType || activeCreation.type || 'creation',
+            title: activeCreation.title || 'Création Studio',
+            contentJson: e.detail.updatedContent,
+            sourceFileName: activeCreation.sourceFileName || undefined,
+          }).then(() => {
+            window.dispatchEvent(new CustomEvent('studycloud-creation-saved', { detail: { id: activeCreation.id } }));
+          }).catch(err => {
+            console.warn('[AssistantChat] Erreur mise à jour création D1:', err);
+          });
+        }
       }
     };
     window.addEventListener('ai-creation-ready', handleReady as any);
@@ -2283,7 +2324,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       window.removeEventListener('ai-creation-ready', handleReady as any);
       window.removeEventListener('ai-creation-update', handleUpdate as any);
     };
-  }, [activeCreation, currentConversationId]);
+  }, [activeCreation, currentConversationId, currentUserId]);
 
   // Nettoyage des timers d'animation et d'activité
   useEffect(() => {
@@ -3752,6 +3793,25 @@ CONSIGNES STRICTES DE CONTINUATION :
         };
 
         setActiveCreation(newCreation);
+
+        // Sauvegarde immédiate dans la base de données D1 liée à l'utilisateur
+        if (currentUserId && currentUserId !== 'default-user') {
+          StudyCloudAPI.saveAiContent({
+            id: newCreation.id,
+            userId: currentUserId,
+            fileId: activePreviewItem?.id || null,
+            toolType: effectiveToolType,
+            title: newCreation.title || 'Création Studio',
+            contentJson: newCreation.content,
+            sourceFileName: mainDocName || undefined,
+            isPinned: false,
+          }).then(() => {
+            window.dispatchEvent(new CustomEvent('studycloud-creation-saved', { detail: { id: newCreation.id } }));
+          }).catch(err => {
+            console.warn('[AssistantChat] Erreur sauvegarde D1 création générée:', err);
+          });
+        }
+
         window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
         window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false } }));
         window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));

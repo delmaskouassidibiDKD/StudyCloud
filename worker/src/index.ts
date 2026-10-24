@@ -14321,11 +14321,147 @@ a:hover{transform:translateY(-2px)}
       }
 
       // ----------------------------------------------------------------------
-      // 16. DÉLÉGATION TOTALE DE L'IA VERS LE WORKER IA DÉDIÉ
+      // 16. CONTENUS GÉNÉRÉS PAR L'IA (ai_generated_contents dans Cloudflare D1)
       // ----------------------------------------------------------------------
-      if (path.startsWith('/api/ai') || path.startsWith('/api/ai-contents')) {
+      if (path === '/api/ai-contents' || path.startsWith('/api/ai-contents/')) {
+        const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
+        if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
+
+        try {
+          await targetDb.prepare(`
+            CREATE TABLE IF NOT EXISTS ai_generated_contents (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              file_id TEXT,
+              tool_type TEXT NOT NULL,
+              title TEXT NOT NULL,
+              content_json TEXT NOT NULL DEFAULT '{}',
+              source_file_name TEXT,
+              is_pinned INTEGER DEFAULT 0,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+          await targetDb.prepare("CREATE INDEX IF NOT EXISTS idx_ai_contents_user ON ai_generated_contents(user_id)").run().catch(() => {});
+        } catch (tblErr) {
+          console.warn('[ai_generated_contents table init error]', tblErr);
+        }
+
+        // GET: Récupérer la liste des créations de l'utilisateur
+        if (method === 'GET') {
+          const userId = url.searchParams.get('userId') || request.headers.get('x-user-id');
+          if (!userId || userId === 'default-user') {
+            return jsonResponse({ success: true, data: [] }, 200, origin);
+          }
+          const toolType = url.searchParams.get('toolType');
+          const fileId = url.searchParams.get('fileId');
+
+          let query = 'SELECT * FROM ai_generated_contents WHERE user_id = ?';
+          const bindings: any[] = [userId];
+
+          if (toolType) {
+            query += ' AND tool_type = ?';
+            bindings.push(toolType);
+          }
+          if (fileId) {
+            query += ' AND file_id = ?';
+            bindings.push(fileId);
+          }
+
+          query += ' ORDER BY is_pinned DESC, created_at DESC';
+
+          const rows: any = await targetDb.prepare(query).bind(...bindings).all().catch(() => ({ results: [] }));
+          const items = (rows?.results || []).map((row: any) => {
+            let parsedContent = row.content_json;
+            if (typeof parsedContent === 'string') {
+              try {
+                parsedContent = JSON.parse(parsedContent);
+              } catch {}
+            }
+            return {
+              id: row.id,
+              userId: row.user_id,
+              fileId: row.file_id,
+              toolType: row.tool_type,
+              title: row.title,
+              content: parsedContent,
+              sourceFileName: row.source_file_name,
+              isPinned: Boolean(row.is_pinned),
+              createdAt: row.created_at,
+              updatedAt: row.updated_at,
+            };
+          });
+
+          return jsonResponse({ success: true, data: items }, 200, origin);
+        }
+
+        // POST: Enregistrer ou mettre à jour une création
+        if (method === 'POST') {
+          const body: any = await request.json().catch(() => null);
+          if (!body) return errorResponse('Corps de requête JSON manquant', 400, origin);
+
+          const userId = body.userId || request.headers.get('x-user-id');
+          if (!userId || userId === 'default-user') return errorResponse('userId requis', 400, origin);
+
+          const id = body.id || ('ai-' + Date.now());
+          const fileId = body.fileId || null;
+          const toolType = body.toolType || body.type || 'creation';
+          const title = body.title || 'Création sans titre';
+          const contentRaw = body.contentJson !== undefined ? body.contentJson : (body.content !== undefined ? body.content : {});
+          const contentJson = typeof contentRaw === 'string' ? contentRaw : JSON.stringify(contentRaw);
+          const sourceFileName = body.sourceFileName || body.source_file_name || null;
+          const isPinned = body.isPinned ? 1 : 0;
+
+          await targetDb.prepare(`
+            INSERT INTO ai_generated_contents (id, user_id, file_id, tool_type, title, content_json, source_file_name, is_pinned, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              title = excluded.title,
+              content_json = excluded.content_json,
+              tool_type = excluded.tool_type,
+              source_file_name = excluded.source_file_name,
+              is_pinned = excluded.is_pinned,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(id, userId, fileId, toolType, title, contentJson, sourceFileName, isPinned).run();
+
+          return jsonResponse({ success: true, data: { id } }, 200, origin);
+        }
+
+        // DELETE: Supprimer une création
+        if (method === 'DELETE') {
+          const urlParts = path.split('/');
+          const idFromPath = urlParts.length > 3 ? urlParts[3] : null;
+          const id = idFromPath || url.searchParams.get('id');
+          const userId = url.searchParams.get('userId') || request.headers.get('x-user-id');
+
+          if (!id) return errorResponse('ID de création requis', 400, origin);
+
+          if (userId && userId !== 'default-user') {
+            await targetDb.prepare('DELETE FROM ai_generated_contents WHERE id = ? AND user_id = ?').bind(id, userId).run();
+          } else {
+            await targetDb.prepare('DELETE FROM ai_generated_contents WHERE id = ?').bind(id).run();
+          }
+
+          return jsonResponse({ success: true, message: 'Création supprimée' }, 200, origin);
+        }
+
+        // PUT: Épingler / Désépingler
+        if (method === 'PUT' && path.endsWith('/pin')) {
+          const urlParts = path.split('/');
+          const id = urlParts[urlParts.length - 2];
+          const body: any = await request.json().catch(() => ({}));
+          const isPinned = body.isPinned ? 1 : 0;
+          await targetDb.prepare('UPDATE ai_generated_contents SET is_pinned = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(isPinned, id).run();
+          return jsonResponse({ success: true }, 200, origin);
+        }
+      }
+
+      // ----------------------------------------------------------------------
+      // DÉLÉGATION DES REQUÊTES D'INFÉRENCE LLM IA VERS LE WORKER IA DÉDIÉ
+      // ----------------------------------------------------------------------
+      if (path.startsWith('/api/ai/')) {
         return errorResponse(
-          "Toutes les fonctionnalités de l'IA StudyCloud sont désormais gérées exclusivement par le Worker IA dédié (https://studycloud-ai.delmaskouassidibi.workers.dev).",
+          "Toutes les fonctionnalités d'inférence LLM StudyCloud sont gérées par le Worker IA dédié.",
           404,
           origin
         );

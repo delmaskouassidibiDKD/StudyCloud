@@ -2024,13 +2024,13 @@ export const StudyCloudAPI = {
   },
 
   // --------------------------------------------------------------------------
-  // Contenus Générés par l'IA (Résumés, Cartes, Quiz, etc. - Worker IA Dédié)
+  // Contenus Générés par l'IA (Résumés, Cartes, Quiz, etc. - Base D1)
   // --------------------------------------------------------------------------
   async getAiContents(userId: string, toolType?: string, fileId?: string) {
     let endpoint = `/api/ai-contents?userId=${encodeURIComponent(userId)}`;
     if (toolType) endpoint += `&toolType=${encodeURIComponent(toolType)}`;
     if (fileId) endpoint += `&fileId=${encodeURIComponent(fileId)}`;
-    return aiRequest<{ success: boolean; data: any[] }>(endpoint);
+    return request<{ success: boolean; data: any[] }>(endpoint);
   },
 
   async saveAiContent(data: {
@@ -2043,18 +2043,20 @@ export const StudyCloudAPI = {
     sourceFileName?: string;
     isPinned?: boolean;
   }) {
-    return aiRequest<{ success: boolean; data: { id: string } }>('/api/ai-contents', {
+    return request<{ success: boolean; data: { id: string } }>('/api/ai-contents', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
 
-  async deleteAiContent(id: string) {
-    return aiRequest(`/api/ai-contents/${id}`, { method: 'DELETE' });
+  async deleteAiContent(id: string, userId?: string) {
+    let endpoint = `/api/ai-contents/${id}`;
+    if (userId) endpoint += `?userId=${encodeURIComponent(userId)}`;
+    return request<{ success: boolean }>(endpoint, { method: 'DELETE' });
   },
 
   async togglePinAiContent(id: string, isPinned: boolean) {
-    return aiRequest(`/api/ai-contents/${id}/pin`, {
+    return request<{ success: boolean }>(`/api/ai-contents/${id}/pin`, {
       method: 'PUT',
       body: JSON.stringify({ isPinned }),
     });
