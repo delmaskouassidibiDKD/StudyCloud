@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib';
 import html2canvas from 'html2canvas';
+import { toCanvas as htmlToImageToCanvas } from 'html-to-image';
 
 export interface StudyDocSection {
   heading: string;
@@ -86,6 +87,11 @@ function cleanLatexMathString(text: string): string {
     .replace(/\\right\./g, '')
     .replace(/\\quad/g, '  ')
     .replace(/\\qquad/g, '    ')
+    .replace(/\bto\s+infty\b/gi, ' -> inf')
+    .replace(/\bto\s+0\b/gi, ' -> 0')
+    .replace(/\binfty\b/gi, 'inf')
+    .replace(/_\{([^{}]+)\}/g, '_$1')
+    .replace(/\^\{([^{}]+)\}/g, '^$1')
     .replace(/\$\$/g, '')
     .replace(/\$/g, '')
     .replace(/\\[a-zA-Z]+/g, '')
@@ -1103,6 +1109,105 @@ function prepareClonedDocForHtml2Canvas(clonedDoc: Document, targetEl?: HTMLElem
 }
 
 /**
+ * Capture haute fidélité d'un élément DOM en canvas HTML.
+ * Utilise en priorité `html-to-image` pour un rendu natif browser SVG foreignObject (polices KaTeX 100% fidèles),
+ * avec repli automatique vers `html2canvas` si nécessaire.
+ */
+async function captureDomElementToCanvas(
+  target: HTMLElement,
+  options?: {
+    scale?: number;
+    backgroundColor?: string;
+  }
+): Promise<HTMLCanvasElement> {
+  if (typeof document !== 'undefined' && 'fonts' in document) {
+    try {
+      await (document as any).fonts.ready;
+    } catch {
+      // Continuer
+    }
+  }
+
+  const filterFn = (node: HTMLElement) => {
+    if (!node || !node.tagName) return true;
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'button') {
+      const txt = (node.textContent || '').trim();
+      if (
+        txt.includes('Télécharger') ||
+        txt.includes('Copier') ||
+        txt.includes('Imprimer') ||
+        txt.includes('Recommencer')
+      ) {
+        return false;
+      }
+    }
+    if (
+      node.classList &&
+      (node.classList.contains('no-print') ||
+        node.getAttribute('data-no-print') === 'true')
+    ) {
+      return false;
+    }
+    return true;
+  };
+
+  const scale = options?.scale || 2;
+  const bg = options?.backgroundColor || '#ffffff';
+
+  // 1. Essai prioritaire : html-to-image (moteur natif navigateur, polices et symboles KaTeX parfaits)
+  try {
+    const canvas = await htmlToImageToCanvas(target, {
+      pixelRatio: scale,
+      backgroundColor: bg,
+      filter: filterFn,
+      cacheBust: true,
+    });
+    if (canvas && canvas.width > 0 && canvas.height > 0) {
+      return canvas;
+    }
+  } catch (err1) {
+    console.warn('[PDF Export] html-to-image standard:', err1);
+  }
+
+  // 2. Deuxième essai html-to-image avec skipFonts (au cas où une police cross-origin bloque le fetch)
+  try {
+    const canvas = await htmlToImageToCanvas(target, {
+      pixelRatio: scale,
+      backgroundColor: bg,
+      filter: filterFn,
+      skipFonts: true,
+    });
+    if (canvas && canvas.width > 0 && canvas.height > 0) {
+      return canvas;
+    }
+  } catch (err2) {
+    console.warn('[PDF Export] html-to-image skipFonts:', err2);
+  }
+
+  // 3. Repli : html2canvas avec normalisation des couleurs oklch et filtres
+  const canvas = await html2canvas(target, {
+    scale: Math.min(scale, 1.8),
+    useCORS: true,
+    allowTaint: false,
+    backgroundColor: bg,
+    logging: false,
+    scrollX: 0,
+    scrollY: 0,
+    windowWidth: target.scrollWidth || 1024,
+    onclone: (clonedDoc) => {
+      const clonedTarget =
+        (target.id ? clonedDoc.getElementById(target.id) : null) ||
+        (clonedDoc.body.firstElementChild as HTMLElement);
+      prepareClonedDocForHtml2Canvas(clonedDoc, clonedTarget);
+    },
+    ignoreElements: (el) => !filterFn(el as HTMLElement),
+  });
+
+  return canvas;
+}
+
+/**
  * Capture fidèlement un élément HTML (avec formules KaTeX réelles, polices, couleurs et mises en page à l'identique de l'écran)
  * et le convertit en document PDF multi-pages A4 avec découpage intelligent évitant de couper les formules en deux.
  */
@@ -1117,15 +1222,6 @@ export async function exportHtmlElementToPdf(
     throw new Error(`Élément "${elementOrId}" introuvable pour export.`);
   }
 
-  // S'assurer que toutes les polices web (dont KaTeX) sont totalement chargées
-  if (typeof document !== 'undefined' && 'fonts' in document) {
-    try {
-      await (document as any).fonts.ready;
-    } catch {
-      // Ignorer si échec
-    }
-  }
-
   const orientation = options?.orientation || 'portrait';
   const isLandscape = orientation === 'landscape';
   const pageWidthPt = isLandscape ? 841.89 : 595.28;
@@ -1135,40 +1231,10 @@ export async function exportHtmlElementToPdf(
   const usableHeightPt = pageHeightPt - 2 * marginPt;
   const aspect = usableHeightPt / usableWidthPt;
 
-  // Capture de l'élément HTML rendu avec scale 1.8 pour un compromis parfait netteté / mémoire
-  const canvas = await html2canvas(target, {
-    scale: options?.scale || 1.8,
-    useCORS: true,
-    allowTaint: false,
+  // Capture de l'élément HTML rendu haute fidélité (KaTeX, Tailwind 4, couleurs réelles)
+  const canvas = await captureDomElementToCanvas(target, {
+    scale: options?.scale || 2,
     backgroundColor: '#ffffff',
-    logging: false,
-    scrollX: 0,
-    scrollY: 0,
-    windowWidth: target.scrollWidth || 1024,
-    onclone: (clonedDoc) => {
-      const clonedTarget =
-        typeof elementOrId === 'string'
-          ? clonedDoc.getElementById(elementOrId)
-          : clonedDoc.getElementById((elementOrId as HTMLElement).id) || (clonedDoc.body.firstElementChild as HTMLElement);
-
-      prepareClonedDocForHtml2Canvas(clonedDoc, clonedTarget);
-    },
-    ignoreElements: (el) => {
-      const isButtonWithAction =
-        el.tagName.toLowerCase() === 'button' &&
-        Boolean(
-          el.textContent?.includes('Télécharger') ||
-          el.textContent?.includes('Copier') ||
-          el.textContent?.includes('Imprimer') ||
-          el.textContent?.includes('Recommencer')
-        );
-
-      return Boolean(
-        el.classList.contains('no-print') ||
-        el.getAttribute('data-no-print') === 'true' ||
-        isButtonWithAction
-      );
-    },
   });
 
   const canvasWidth = canvas.width;
@@ -1320,17 +1386,7 @@ export async function exportPagesToPdf(
     const el = document.getElementById(pageId);
     if (!el) continue;
 
-    const canvas = await html2canvas(el, {
-      scale: 1.8,
-      useCORS: true,
-      allowTaint: false,
-      backgroundColor: '#ffffff',
-      logging: false,
-      onclone: (clonedDoc) => {
-        const clonedPage = clonedDoc.getElementById(pageId);
-        prepareClonedDocForHtml2Canvas(clonedDoc, clonedPage);
-      },
-    });
+    const canvas = await captureDomElementToCanvas(el, { scale: 2 });
 
     const imgData = canvas.toDataURL('image/png');
     const embeddedImg = await pdfDoc.embedPng(imgData);
@@ -1609,13 +1665,17 @@ export async function exportSvgToPdf(svgElementId: string, docTitle: string): Pr
 // EXPORT FICHE DE RÉSUMÉ (RESUME) VERS PDF
 // ============================================================================
 
-export async function exportResumePdf(summary: any): Promise<void> {
+export async function exportResumePdf(summary: any, targetElement?: HTMLElement | null): Promise<void> {
   // Rendu fidèle à l'identique de l'écran avec formules KaTeX réelles, couleurs et typographie
   if (typeof document !== 'undefined') {
-    const el = document.getElementById('resume-document-content');
+    const el =
+      targetElement ||
+      document.getElementById('resume-document-content') ||
+      document.querySelector('#resume-document-content') ||
+      document.getElementById('module-resume');
     if (el) {
       try {
-        await exportHtmlElementToPdf(el, summary.title || 'Fiche_Resume');
+        await exportHtmlElementToPdf(el as HTMLElement, summary.title || 'Fiche_Resume');
         return;
       } catch (domErr) {
         console.warn('[exportResumePdf] Échec capture DOM, repli vers export PDF vectoriel:', domErr);
@@ -1640,13 +1700,13 @@ export async function exportResumePdf(summary: any): Promise<void> {
       if (sec.body) {
         items.push({
           type: 'text',
-          text: sec.body,
+          text: cleanLatexMathString(sec.body),
         });
       }
       if (Array.isArray(sec.points) && sec.points.length > 0) {
         items.push({
           type: 'bullet',
-          points: sec.points,
+          points: sec.points.map((p: string) => cleanLatexMathString(p)),
         });
       }
     });
@@ -1663,8 +1723,8 @@ export async function exportResumePdf(summary: any): Promise<void> {
       items.push({
         type: 'box',
         title: kd.concept || 'Notion cle',
-        text: kd.definition || '',
-        points: kd.objective ? [`Objectif : ${kd.objective}`] : undefined,
+        text: cleanLatexMathString(kd.definition || ''),
+        points: kd.objective ? [`Objectif : ${cleanLatexMathString(kd.objective)}`] : undefined,
         bgColor: rgb(0.96, 0.97, 1.0),
         borderColor: rgb(0.80, 0.85, 0.95),
       });
@@ -1679,17 +1739,20 @@ export async function exportResumePdf(summary: any): Promise<void> {
     });
 
     summary.formulas.forEach((f: any, idx: number) => {
-      let bodyText = `Formule : ${f.latex || ''}`;
-      if (f.target_goal) bodyText += `\n\nObjectif : ${f.target_goal}`;
-      if (f.variables) bodyText += `\n\nVariables & Unites : ${f.variables}`;
-      if (f.when_to_use) bodyText += `\n\nConditions : ${f.when_to_use}`;
-      if (f.exam_trap) bodyText += `\n\nPiege d'examen : ${f.exam_trap}`;
+      const cleanFormula = cleanLatexMathString(f.latex || '');
+      let bodyText = `Formule : ${cleanFormula}`;
+      if (f.target_goal) bodyText += `\n\nObjectif : ${cleanLatexMathString(f.target_goal)}`;
+      if (f.variables) bodyText += `\n\nVariables & Unites : ${cleanLatexMathString(f.variables)}`;
+      if (f.when_to_use) bodyText += `\n\nConditions : ${cleanLatexMathString(f.when_to_use)}`;
+      if (f.exam_trap) bodyText += `\n\nPiege d'examen : ${cleanLatexMathString(f.exam_trap)}`;
 
       items.push({
         type: 'box',
         title: `[#${idx + 1}] ${f.name || `Formule ${idx + 1}`}`,
         text: bodyText,
-        points: Array.isArray(f.demonstration_steps) ? f.demonstration_steps : (f.how_to_derive ? [f.how_to_derive] : undefined),
+        points: Array.isArray(f.demonstration_steps)
+          ? f.demonstration_steps.map((s: string) => cleanLatexMathString(s))
+          : (f.how_to_derive ? [cleanLatexMathString(f.how_to_derive)] : undefined),
         bgColor: rgb(0.95, 0.98, 1.0),
         borderColor: rgb(0.70, 0.82, 0.95),
       });

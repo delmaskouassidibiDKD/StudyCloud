@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   Target,
   Loader2,
+  Printer,
 } from 'lucide-react';
 import { exportResumePdf } from '../../utils/exportStudyPdf';
 import { MathText } from '../MathText';
@@ -862,7 +863,8 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
     if (!parsedSummary.hasData || isExportingPdf) return;
     try {
       setIsExportingPdf(true);
-      await exportResumePdf(parsedSummary);
+      const contentEl = document.getElementById('resume-document-content');
+      await exportResumePdf(parsedSummary, contentEl);
       setDownloaded(true);
       setTimeout(() => setDownloaded(false), 2500);
     } catch (err) {
@@ -872,6 +874,10 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
     }
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
     <div id="module-resume" className="w-full min-h-full bg-white flex flex-col font-sans">
       {/* 
@@ -879,7 +885,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       */}
       <div
         id="resume-sticky-actions"
-        className="sticky top-0 z-30 w-full px-4 sm:px-6 md:px-8 py-2.5 bg-white/95 backdrop-blur-md border-b border-stone-200 flex items-center justify-between gap-3 shadow-xs shrink-0"
+        className="sticky top-0 z-30 w-full px-4 sm:px-6 md:px-8 py-2.5 bg-white/95 backdrop-blur-md border-b border-stone-200 flex items-center justify-between gap-3 shadow-xs shrink-0 no-print"
       >
         <div className="flex items-center gap-2 text-stone-800 text-xs sm:text-sm font-bold min-w-0">
           <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
@@ -905,6 +911,17 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                 <span>Copier le texte</span>
               </>
             )}
+          </button>
+
+          {/* Bouton Imprimer / Enregistrer en PDF natif */}
+          <button
+            id="btn-print-resume"
+            onClick={handlePrint}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-stone-300 bg-white hover:bg-stone-50 text-stone-800 text-xs sm:text-sm font-semibold transition-all shadow-xs active:scale-95 cursor-pointer"
+            title="Imprimer ou enregistrer au format PDF via votre navigateur"
+          >
+            <Printer className="w-4 h-4 text-stone-600" />
+            <span className="hidden sm:inline">Imprimer</span>
           </button>
 
           {/* Bouton Télécharger */}

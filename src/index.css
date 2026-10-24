@@ -785,5 +785,59 @@ p.brand-tagline,
   animation: rainbowBorderSpin 5s linear infinite;
 }
 
+/* Règles d'impression pour un export PDF et impression navigateur 100% fidèles */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 10mm;
+  }
+
+  /* Cacher la barre d'action, navigation, en-têtes d'interface, boutons et éléments non imprimables */
+  nav, aside, footer,
+  #resume-sticky-actions,
+  button,
+  .no-print,
+  [data-no-print="true"],
+  .sticky,
+  [class*="sticky"] {
+    display: none !important;
+  }
+
+  body, html, #root, .app-scroll-container {
+    background: #ffffff !important;
+    background-image: none !important;
+    color: #000000 !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #resume-document-content,
+  #exam-printable-full-content,
+  #module-exercices-ecrits,
+  #questionnaire-test-results-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Éviter de couper les formules et encadrés au milieu d'une page */
+  .katex-display,
+  .katex,
+  section,
+  article,
+  tr,
+  .rounded-2xl,
+  .rounded-xl {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+}
+
 
 
