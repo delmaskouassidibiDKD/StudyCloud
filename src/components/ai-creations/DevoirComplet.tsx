@@ -692,9 +692,9 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
           const el = document.getElementById(`exam-sheet-page-${p}`);
           if (el) {
             const c = await html2canvas(el, {
-              scale: 2,
+              scale: 1.8,
               useCORS: true,
-              allowTaint: true,
+              allowTaint: false,
               backgroundColor: '#ffffff',
               logging: false,
             });
@@ -709,8 +709,8 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
           const pageHeightPt = 841.89;
 
           for (const canvas of pageCanvases) {
-            const imgData = canvas.toDataURL('image/jpeg', 0.96);
-            const embeddedImg = await pdfDoc.embedJpg(imgData);
+            const imgData = canvas.toDataURL('image/png');
+            const embeddedImg = await pdfDoc.embedPng(imgData);
             const page = pdfDoc.addPage([pageWidthPt, pageHeightPt]);
             const drawAspect = canvas.height / canvas.width;
             const drawHeight = Math.min(pageHeightPt - 36, (pageWidthPt - 36) * drawAspect);
@@ -734,8 +734,15 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
           link.download = `${safeName}.pdf`;
           document.body.appendChild(link);
           link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
+
+          setTimeout(() => {
+            try {
+              document.body.removeChild(link);
+              URL.revokeObjectURL(url);
+            } catch {
+              // Ignorer
+            }
+          }, 4000);
 
           setDownloadedPdf(true);
           setTimeout(() => setDownloadedPdf(false), 2500);

@@ -121,8 +121,12 @@ export async function exportStudyDocumentPdf(doc: StudyDocumentData): Promise<vo
       }
     }
     if (pageIds.length > 0) {
-      await exportPagesToPdf(pageIds, doc.docTitle || 'Document_Etude');
-      return;
+      try {
+        await exportPagesToPdf(pageIds, doc.docTitle || 'Document_Etude');
+        return;
+      } catch (domErr) {
+        console.warn('[exportStudyDocumentPdf] Capture DOM échouée, repli vers export PDF vectoriel:', domErr);
+      }
     }
   }
 
@@ -963,7 +967,7 @@ export async function exportHtmlElementToPdf(
   const target = typeof elementOrId === 'string' ? document.getElementById(elementOrId) : elementOrId;
   if (!target) {
     console.error(`[PDF Export] Élément "${elementOrId}" introuvable.`);
-    return;
+    throw new Error(`Élément "${elementOrId}" introuvable pour export.`);
   }
 
   // S'assurer que toutes les polices web (dont KaTeX) sont totalement chargées
@@ -984,13 +988,15 @@ export async function exportHtmlElementToPdf(
   const usableHeightPt = pageHeightPt - 2 * marginPt;
   const aspect = usableHeightPt / usableWidthPt;
 
-  // Capture de l'élément HTML rendu avec scale 2 pour un résultat haute définition (300dpi)
+  // Capture de l'élément HTML rendu avec scale 1.8 pour un compromis parfait netteté / mémoire
   const canvas = await html2canvas(target, {
-    scale: options?.scale || 2,
+    scale: options?.scale || 1.8,
     useCORS: true,
-    allowTaint: true,
+    allowTaint: false,
     backgroundColor: '#ffffff',
     logging: false,
+    scrollX: 0,
+    scrollY: 0,
     windowWidth: target.scrollWidth || 1024,
     ignoreElements: (el) => {
       return (
@@ -1004,6 +1010,10 @@ export async function exportHtmlElementToPdf(
 
   const canvasWidth = canvas.width;
   const canvasHeight = canvas.height;
+  if (!canvasWidth || !canvasHeight) {
+    throw new Error('Canvas invalide lors de la capture.');
+  }
+
   const maxSliceHeightPx = Math.floor(canvasWidth * aspect);
 
   // Recherche des frontières d'éléments pour éviter de couper une formule ou une carte en deux
@@ -1076,8 +1086,8 @@ export async function exportHtmlElementToPdf(
       );
     }
 
-    const sliceJpg = sliceCanvas.toDataURL('image/jpeg', 0.96);
-    const embeddedImg = await pdfDoc.embedJpg(sliceJpg);
+    const slicePng = sliceCanvas.toDataURL('image/png');
+    const embeddedImg = await pdfDoc.embedPng(slicePng);
 
     const page = pdfDoc.addPage([pageWidthPt, pageHeightPt]);
     const drawWidthPt = usableWidthPt;
@@ -1111,8 +1121,16 @@ export async function exportHtmlElementToPdf(
   link.download = `${safeTitle}.pdf`;
   document.body.appendChild(link);
   link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+
+  // Laisser le temps au navigateur d'initier le téléchargement avant de détruire le blob
+  setTimeout(() => {
+    try {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch {
+      // Ignorer
+    }
+  }, 4000);
 }
 
 /**
@@ -1140,15 +1158,15 @@ export async function exportPagesToPdf(
     if (!el) continue;
 
     const canvas = await html2canvas(el, {
-      scale: 2,
+      scale: 1.8,
       useCORS: true,
-      allowTaint: true,
+      allowTaint: false,
       backgroundColor: '#ffffff',
       logging: false,
     });
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.96);
-    const embeddedImg = await pdfDoc.embedJpg(imgData);
+    const imgData = canvas.toDataURL('image/png');
+    const embeddedImg = await pdfDoc.embedPng(imgData);
     const page = pdfDoc.addPage([pageWidthPt, pageHeightPt]);
 
     const drawAspect = canvas.height / canvas.width;
@@ -1184,8 +1202,15 @@ export async function exportPagesToPdf(
   link.download = `${safeName}.pdf`;
   document.body.appendChild(link);
   link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+
+  setTimeout(() => {
+    try {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch {
+      // Ignorer
+    }
+  }, 4000);
 }
 
 // ============================================================================
@@ -1262,7 +1287,7 @@ export async function exportSvgToPdf(svgElementId: string, docTitle: string): Pr
     const availWidth = a4Width - margin * 2;
     const availHeight = a4Height - margin * 2 - 25;
 
-    const imgRatio = srcWidth / srcHeight;
+    const imgRatio = srcWidth / (srcHeight || 1);
     const availRatio = availWidth / availHeight;
 
     let renderW = availWidth;
@@ -1308,83 +1333,109 @@ export async function exportSvgToPdf(svgElementId: string, docTitle: string): Pr
     link.download = `${safeFilename}.pdf`;
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
 
-    setTimeout(() => URL.revokeObjectURL(downloadUrl), 2500);
+    setTimeout(() => {
+      try {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(downloadUrl);
+      } catch {
+        // Ignorer
+      }
+    }, 4000);
   };
 
-  // 1. Essai prioritaire via html2canvas pour conserver les foreignObject avec formules KaTeX réelles
   try {
-    const html2canvas = (await import('html2canvas')).default;
-    const target = (svgEl.parentElement as HTMLElement) || (svgEl as unknown as HTMLElement);
-    const canvas = await html2canvas(target, {
-      scale: 2,
-      backgroundColor: '#ffffff',
-      useCORS: true,
-      logging: false,
+    const clone = svgEl.cloneNode(true) as SVGSVGElement;
+
+    // Remplacement des foreignObject par des éléments <text> SVG purs pour empêcher Chrome de bloquer l'image
+    const foreignObjects = Array.from(clone.querySelectorAll('foreignObject'));
+    foreignObjects.forEach((fo) => {
+      const x = parseFloat(fo.getAttribute('x') || '0');
+      const y = parseFloat(fo.getAttribute('y') || '0');
+      const w = parseFloat(fo.getAttribute('width') || '100');
+      const h = parseFloat(fo.getAttribute('height') || '40');
+      const rawText = (fo.textContent || '').trim().replace(/\s+/g, ' ');
+
+      const textEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      textEl.setAttribute('x', String(x + w / 2));
+      textEl.setAttribute('y', String(y + h / 2));
+      textEl.setAttribute('text-anchor', 'middle');
+      textEl.setAttribute('dominant-baseline', 'central');
+      textEl.setAttribute('fill', '#0F172A');
+      textEl.setAttribute('font-family', 'sans-serif');
+      textEl.setAttribute('font-weight', '600');
+      textEl.setAttribute('font-size', '12px');
+      textEl.textContent = rawText.slice(0, 60);
+
+      fo.parentNode?.replaceChild(textEl, fo);
     });
-    const pngDataUrl = canvas.toDataURL('image/png');
-    await renderA4LandscapePdf(pngDataUrl, canvas.width, canvas.height);
-    return;
-  } catch (canvasErr) {
-    console.warn('[exportSvgToPdf] html2canvas fallback vers XMLSerializer:', canvasErr);
-  }
 
-  // 2. Repli XMLSerializer + Image
-  const clone = svgEl.cloneNode(true) as SVGSVGElement;
+    let width = 1400;
+    let height = 900;
 
-  let width = 1400;
-  let height = 900;
+    if (svgEl.viewBox?.baseVal && svgEl.viewBox.baseVal.width > 0 && svgEl.viewBox.baseVal.height > 0) {
+      width = svgEl.viewBox.baseVal.width;
+      height = svgEl.viewBox.baseVal.height;
+    } else if (svgEl.clientWidth > 0 && svgEl.clientHeight > 0) {
+      width = svgEl.clientWidth;
+      height = svgEl.clientHeight;
+    }
 
-  if (svgEl.viewBox?.baseVal && svgEl.viewBox.baseVal.width > 0 && svgEl.viewBox.baseVal.height > 0) {
-    width = svgEl.viewBox.baseVal.width;
-    height = svgEl.viewBox.baseVal.height;
-  } else if (svgEl.clientWidth > 0 && svgEl.clientHeight > 0) {
-    width = svgEl.clientWidth;
-    height = svgEl.clientHeight;
-  }
+    clone.setAttribute('width', String(width));
+    clone.setAttribute('height', String(height));
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.style.backgroundColor = '#ffffff';
 
-  clone.setAttribute('width', String(width));
-  clone.setAttribute('height', String(height));
-  clone.style.backgroundColor = '#ffffff';
+    const svgString = new XMLSerializer().serializeToString(clone);
+    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    const svgUrl = URL.createObjectURL(svgBlob);
 
-  const svgString = new XMLSerializer().serializeToString(clone);
-  const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-  const svgUrl = URL.createObjectURL(svgBlob);
+    await new Promise<void>((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
 
-  return new Promise<void>((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
+      img.onload = async () => {
+        try {
+          const scale = 2;
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(800, width * scale);
+          canvas.height = Math.max(600, height * scale);
+          const ctx = canvas.getContext('2d');
+          if (!ctx) throw new Error('Cannot get canvas 2d context');
 
-    img.onload = async () => {
-      try {
-        const scale = 2;
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.max(800, width * scale);
-        canvas.height = Math.max(600, height * scale);
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('Cannot get canvas 2d context');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          URL.revokeObjectURL(svgUrl);
 
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const pngDataUrl = canvas.toDataURL('image/png');
+          await renderA4LandscapePdf(pngDataUrl, width, height);
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      };
+
+      img.onerror = () => {
         URL.revokeObjectURL(svgUrl);
+        reject(new Error("Erreur de conversion de l'image SVG vers le Canvas"));
+      };
 
-        const pngDataUrl = canvas.toDataURL('image/png');
-        await renderA4LandscapePdf(pngDataUrl, width, height);
-        resolve();
-      } catch (err) {
-        reject(err);
-      }
-    };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(svgUrl);
-      reject(new Error("Erreur de conversion de l'image SVG vers le Canvas"));
-    };
-
-    img.src = svgUrl;
-  });
+      img.src = svgUrl;
+    });
+  } catch (svgErr) {
+    console.warn('[exportSvgToPdf] Capture SVG directe échouée, repli vers export PDF vectoriel:', svgErr);
+    await buildMultiPagePdfDocument({
+      title: docTitle || 'Carte Mentale',
+      subtitle: 'Arborescence & Cartographie Conceptuelle',
+      themeBadge: 'CARTE MENTALE',
+      items: [
+        { type: 'heading', text: docTitle || 'Carte Mentale' },
+        { type: 'text', text: 'Document officiel généré par StudyCloud.' },
+      ],
+      filename: `${docTitle || 'Carte_Mentale'}_Export`,
+    });
+  }
 }
 
 // ============================================================================
@@ -1396,8 +1447,12 @@ export async function exportResumePdf(summary: any): Promise<void> {
   if (typeof document !== 'undefined') {
     const el = document.getElementById('resume-document-content');
     if (el) {
-      await exportHtmlElementToPdf(el, summary.title || 'Fiche_Resume');
-      return;
+      try {
+        await exportHtmlElementToPdf(el, summary.title || 'Fiche_Resume');
+        return;
+      } catch (domErr) {
+        console.warn('[exportResumePdf] Échec capture DOM, repli vers export PDF vectoriel:', domErr);
+      }
     }
   }
 
@@ -1572,8 +1627,12 @@ export async function exportExercicesPdf(data: {
   if (typeof document !== 'undefined') {
     const el = document.getElementById('exercices-printable-sheet') || document.getElementById('module-exercices-ecrits');
     if (el) {
-      await exportHtmlElementToPdf(el, data.title || 'Exercice_Copie');
-      return;
+      try {
+        await exportHtmlElementToPdf(el, data.title || 'Exercice_Copie');
+        return;
+      } catch (domErr) {
+        console.warn('[exportExercicesPdf] Échec capture DOM, repli vers export PDF vectoriel:', domErr);
+      }
     }
   }
 
@@ -1706,8 +1765,12 @@ export async function exportDevoirCompletPdf(data: {
       document.querySelector('[id^="exam-sheet-page"]') ||
       document.getElementById('module-devoir-complet');
     if (el) {
-      await exportHtmlElementToPdf(el as HTMLElement, data.title || 'Devoir_Examen');
-      return;
+      try {
+        await exportHtmlElementToPdf(el as HTMLElement, data.title || 'Devoir_Examen');
+        return;
+      } catch (domErr) {
+        console.warn('[exportDevoirCompletPdf] Échec capture DOM, repli vers export PDF vectoriel:', domErr);
+      }
     }
   }
 
@@ -1834,8 +1897,12 @@ export async function exportQuestionnaireTestPdf(data: {
   if (typeof document !== 'undefined') {
     const el = document.getElementById('questionnaire-test-results-panel') || document.getElementById('module-questionnaire-test');
     if (el) {
-      await exportHtmlElementToPdf(el, data.title || 'Questionnaire_Test');
-      return;
+      try {
+        await exportHtmlElementToPdf(el, data.title || 'Questionnaire_Test');
+        return;
+      } catch (domErr) {
+        console.warn('[exportQuestionnaireTestPdf] Échec capture DOM, repli vers export PDF vectoriel:', domErr);
+      }
     }
   }
 
