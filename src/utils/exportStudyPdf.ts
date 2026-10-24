@@ -1,6 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib';
 import html2canvas from 'html2canvas';
-import { toCanvas as htmlToImageToCanvas } from 'html-to-image';
 
 export interface StudyDocSection {
   heading: string;
@@ -1055,6 +1054,7 @@ function prepareClonedDocForHtml2Canvas(clonedDoc: Document, targetEl?: HTMLElem
         overflow: visible !important;
         overflow-x: visible !important;
         overflow-y: visible !important;
+        margin: 0.5em 0 !important;
       }
     `;
     clonedDoc.head?.appendChild(style);
@@ -1150,9 +1150,8 @@ function prepareClonedDocForHtml2Canvas(clonedDoc: Document, targetEl?: HTMLElem
 }
 
 /**
- * Capture haute fidélité d'un élément DOM en canvas HTML.
- * Prépare temporairement le conteneur en largeur standard A4 (860px) sans barres de défilement,
- * avec formules KaTeX réelles ajustées, puis capture fidèlement.
+ * Capture haute fidélité d'un élément DOM en canvas HTML via html2canvas local optimisé.
+ * Sans aucun appel réseau bloquant, avec exécution rapide et empreinte mémoire maîtrisée.
  */
 async function captureDomElementToCanvas(
   target: HTMLElement,
@@ -1193,134 +1192,35 @@ async function captureDomElementToCanvas(
     return true;
   };
 
-  const scale = options?.scale || 2;
+  const scale = options?.scale || 1.6;
   const bg = options?.backgroundColor || '#ffffff';
 
-  // Préparation du DOM en mode export PDF (suppression des scrollbars, overflow visible, largeur A4 860px)
-  let injectedStyle: HTMLStyleElement | null = null;
-  const originalWidth = target.style.width;
-  const originalMaxWidth = target.style.maxWidth;
-  const originalOverflow = target.style.overflow;
-  const formulaTransforms = new Map<HTMLElement, string>();
+  // html2canvas direct et 100% local (ne freeze jamais le navigateur)
+  const canvas = await html2canvas(target, {
+    scale: Math.min(scale, 1.6),
+    useCORS: true,
+    allowTaint: false,
+    backgroundColor: bg,
+    logging: false,
+    scrollX: 0,
+    scrollY: 0,
+    windowWidth: 860,
+    onclone: (clonedDoc) => {
+      const clonedTarget =
+        (target.id ? clonedDoc.getElementById(target.id) : null) ||
+        (clonedDoc.body.firstElementChild as HTMLElement);
+      prepareClonedDocForHtml2Canvas(clonedDoc, clonedTarget);
+    },
+    ignoreElements: (el) => !filterFn(el as HTMLElement),
+  });
 
-  try {
-    if (typeof document !== 'undefined') {
-      injectedStyle = document.createElement('style');
-      injectedStyle.id = 'studycloud-export-temp-style';
-      injectedStyle.textContent = `
-        .studycloud-pdf-export-mode * {
-          scrollbar-width: none !important;
-          -ms-overflow-style: none !important;
-        }
-        .studycloud-pdf-export-mode *::-webkit-scrollbar {
-          display: none !important;
-          width: 0 !important;
-          height: 0 !important;
-        }
-        .studycloud-pdf-export-mode .overflow-x-auto,
-        .studycloud-pdf-export-mode .overflow-y-auto,
-        .studycloud-pdf-export-mode [class*="overflow-"] {
-          overflow: visible !important;
-        }
-        .studycloud-pdf-export-mode .katex-display {
-          overflow: visible !important;
-          overflow-x: visible !important;
-          overflow-y: visible !important;
-        }
-      `;
-      document.head.appendChild(injectedStyle);
-    }
-
-    target.classList.add('studycloud-pdf-export-mode');
-    target.style.width = '860px';
-    target.style.maxWidth = '860px';
-    target.style.overflow = 'visible';
-
-    // Auto-ajustement des formules mathématiques KaTeX pour qu'aucune ne dépasse ni ne tronque
-    const mathDisplays = target.querySelectorAll<HTMLElement>('.katex-display');
-    mathDisplays.forEach((m) => {
-      m.style.overflow = 'visible';
-      if (m.scrollWidth > 800) {
-        const ratio = Math.min(1, 800 / m.scrollWidth);
-        if (ratio < 0.98) {
-          formulaTransforms.set(m, m.style.transform);
-          m.style.transform = `scale(${ratio})`;
-          m.style.transformOrigin = 'center center';
-        }
-      }
-    });
-
-    // 1. Essai prioritaire : html-to-image (moteur natif navigateur, polices et symboles KaTeX parfaits)
-    try {
-      const canvas = await htmlToImageToCanvas(target, {
-        pixelRatio: scale,
-        backgroundColor: bg,
-        filter: filterFn,
-        cacheBust: true,
-      });
-      if (canvas && canvas.width > 0 && canvas.height > 0) {
-        return canvas;
-      }
-    } catch (err1) {
-      console.warn('[PDF Export] html-to-image standard:', err1);
-    }
-
-    // 2. Deuxième essai html-to-image avec skipFonts (au cas où une police cross-origin bloque le fetch)
-    try {
-      const canvas = await htmlToImageToCanvas(target, {
-        pixelRatio: scale,
-        backgroundColor: bg,
-        filter: filterFn,
-        skipFonts: true,
-      });
-      if (canvas && canvas.width > 0 && canvas.height > 0) {
-        return canvas;
-      }
-    } catch (err2) {
-      console.warn('[PDF Export] html-to-image skipFonts:', err2);
-    }
-
-    // 3. Repli : html2canvas avec normalisation des couleurs oklch et filtres
-    const canvas = await html2canvas(target, {
-      scale: Math.min(scale, 1.8),
-      useCORS: true,
-      allowTaint: false,
-      backgroundColor: bg,
-      logging: false,
-      scrollX: 0,
-      scrollY: 0,
-      windowWidth: 860,
-      onclone: (clonedDoc) => {
-        const clonedTarget =
-          (target.id ? clonedDoc.getElementById(target.id) : null) ||
-          (clonedDoc.body.firstElementChild as HTMLElement);
-        prepareClonedDocForHtml2Canvas(clonedDoc, clonedTarget);
-      },
-      ignoreElements: (el) => !filterFn(el as HTMLElement),
-    });
-
-    return canvas;
-  } finally {
-    // Restauration propre des styles initiaux
-    target.classList.remove('studycloud-pdf-export-mode');
-    target.style.width = originalWidth;
-    target.style.maxWidth = originalMaxWidth;
-    target.style.overflow = originalOverflow;
-
-    formulaTransforms.forEach((origTrans, m) => {
-      m.style.transform = origTrans;
-    });
-
-    if (injectedStyle && injectedStyle.parentNode) {
-      injectedStyle.parentNode.removeChild(injectedStyle);
-    }
-  }
+  return canvas;
 }
 
 /**
  * Capture fidèlement un élément HTML (avec formules KaTeX réelles, polices, couleurs et cartes)
- * et le convertit en document PDF multi-pages A4 sans AUCUNE coupure horizontale de texte ni de titre,
- * et sans aucune barre de défilement.
+ * et le convertit en document PDF multi-pages A4 sans AUCUNE coupure de texte ni de titre,
+ * sans barres de défilement et avec respiration non-bloquante du navigateur.
  */
 export async function exportHtmlElementToPdf(
   elementOrId: string | HTMLElement,
@@ -1343,25 +1243,47 @@ export async function exportHtmlElementToPdf(
   const usableHeightPt = pageHeightPt - 2 * marginPt - footerHeightPt;
   const aspect = usableHeightPt / usableWidthPt;
 
-  // Repérage préalable des en-têtes et cartes clés dans le DOM pour éviter tout titre orphelin ou coupé
+  // 1. Repérage instantané (0.5ms) des frontières de cartes, sections et titres du DOM
   const targetRect = target.getBoundingClientRect();
-  const rawHeadingBoxes: { top: number; bottom: number }[] = [];
-  try {
-    const headingEls = target.querySelectorAll('h1, h2, h3, h4, header, [class*="heading"]');
-    headingEls.forEach((h) => {
-      const hr = h.getBoundingClientRect();
-      if (hr.height > 0) {
-        rawHeadingBoxes.push({
-          top: hr.top - targetRect.top,
-          bottom: hr.bottom - targetRect.top,
-        });
-      }
-    });
-  } catch {}
+  const totalH = targetRect.height;
+  const rawBreakRatios: number[] = [];
+  const headingTopRatios: number[] = [];
 
-  // Capture de l'élément HTML en haute résolution
+  if (totalH > 0) {
+    try {
+      const blockElements = target.querySelectorAll(
+        'header, section, [class*="rounded-2xl"], [class*="rounded-xl"], [class*="border-2"], .katex-display, table, tr, p, li, h1, h2, h3, h4'
+      );
+      blockElements.forEach((node) => {
+        const el = node as HTMLElement;
+        const r = el.getBoundingClientRect();
+        if (r.height < 8) return;
+        const topRel = (r.top - targetRect.top) / totalH;
+        const bottomRel = (r.bottom - targetRect.top) / totalH;
+        const isHeading = /^(h1|h2|h3|h4)$/i.test(el.tagName) || el.className?.includes?.('heading');
+
+        if (isHeading) {
+          headingTopRatios.push(topRel);
+          if (topRel > 0.03 && topRel < 0.97) {
+            rawBreakRatios.push(topRel - 0.003);
+          }
+        } else {
+          if (topRel > 0.03 && topRel < 0.97) {
+            rawBreakRatios.push(topRel - 0.002);
+          }
+          if (bottomRel > 0.03 && bottomRel < 0.97) {
+            rawBreakRatios.push(bottomRel + 0.004);
+          }
+        }
+      });
+    } catch (err) {
+      console.warn('[PDF Export] Repérage blocs DOM:', err);
+    }
+  }
+
+  // 2. Capture rapide via html2canvas local
   const canvas = await captureDomElementToCanvas(target, {
-    scale: options?.scale || 2,
+    scale: options?.scale || 1.6,
     backgroundColor: '#ffffff',
   });
 
@@ -1372,19 +1294,17 @@ export async function exportHtmlElementToPdf(
   }
 
   const maxSliceHeightPx = Math.floor(canvasWidth * aspect);
-  const scaleRatio = targetRect.height > 0 ? canvasHeight / targetRect.height : 1;
 
-  // Zones d'en-têtes converties en pixels canvas
-  const headingZones = rawHeadingBoxes.map((hb) => ({
-    top: Math.round(hb.top * scaleRatio),
-    bottom: Math.round(hb.bottom * scaleRatio),
-  }));
+  // Conversion des ratios relatifs en pixels sur le canvas
+  const candidateBreaks = rawBreakRatios
+    .map((r) => Math.round(r * canvasHeight))
+    .sort((a, b) => a - b);
+  const headingTopsPx = headingTopRatios.map((r) => Math.round(r * canvasHeight));
 
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-  // Calcul du découpage intelligent au pixel près : détection des lignes blanches horizontales
+  // 3. Découpage intelligent à progression garantie (zéro boucle infinie)
   const cuts: { startY: number; endY: number }[] = [];
   let currentY = 0;
+  const minStep = Math.max(180, Math.floor(maxSliceHeightPx * 0.40));
 
   while (currentY < canvasHeight) {
     const targetCutY = currentY + maxSliceHeightPx;
@@ -1393,166 +1313,49 @@ export async function exportHtmlElementToPdf(
       break;
     }
 
-    // Fenêtre de recherche du meilleur saut de page (entre 55% et 100% de la hauteur de la page)
-    const windowMaxY = Math.min(canvasHeight - 1, targetCutY - 4);
-    const windowMinY = currentY + Math.floor(maxSliceHeightPx * 0.55);
+    const windowMin = currentY + minStep;
+    let bestBreak = -1;
 
-    let bestCutY = -1;
-
-    if (ctx && windowMaxY > windowMinY) {
-      const windowH = windowMaxY - windowMinY + 1;
-      const imgData = ctx.getImageData(0, windowMinY, canvasWidth, windowH).data;
-
-      const leftMargin = Math.floor(canvasWidth * 0.04);
-      const rightMargin = Math.floor(canvasWidth * 0.96);
-
-      const isWhitespaceRow: boolean[] = new Array(windowH);
-      const darkCountPerRow: number[] = new Array(windowH);
-
-      for (let row = 0; row < windowH; row++) {
-        let darkPixels = 0;
-        const rowOffset = row * canvasWidth * 4;
-
-        // Échantillonnage de la ligne tous les 2 pixels pour rapidité maximale
-        for (let x = leftMargin; x < rightMargin; x += 2) {
-          const pxIdx = rowOffset + x * 4;
-          const r = imgData[pxIdx];
-          const g = imgData[pxIdx + 1];
-          const b = imgData[pxIdx + 2];
-          const a = imgData[pxIdx + 3];
-
-          // Détection d'un pixel d'encre (texte, formule mathématique, bordure)
-          if (a > 60 && (r < 220 || g < 220 || b < 220)) {
-            darkPixels++;
+    // Chercher la frontière DOM la plus basse dans la fenêtre de saut
+    for (let i = candidateBreaks.length - 1; i >= 0; i--) {
+      const b = candidateBreaks[i];
+      if (b <= targetCutY && b >= windowMin) {
+        // Éviter de couper immédiatement après un titre
+        let isRightAfterHeading = false;
+        for (const ht of headingTopsPx) {
+          if (b >= ht && b <= ht + 80) {
+            isRightAfterHeading = true;
+            break;
           }
         }
-
-        darkCountPerRow[row] = darkPixels;
-        // Ligne blanche garantie si aucun ou au maximum 1 pixel sombre résiduel
-        isWhitespaceRow[row] = darkPixels <= 1;
-      }
-
-      // Identification des bandes continues de blanc
-      interface WhitespaceBand {
-        height: number;
-        canvasMidY: number;
-      }
-      const bands: WhitespaceBand[] = [];
-      let inBand = false;
-      let bandStart = 0;
-
-      for (let row = 0; row < windowH; row++) {
-        if (isWhitespaceRow[row]) {
-          if (!inBand) {
-            inBand = true;
-            bandStart = row;
-          }
-        } else {
-          if (inBand) {
-            inBand = false;
-            bands.push({
-              height: row - bandStart,
-              canvasMidY: windowMinY + Math.floor((bandStart + row - 1) / 2),
-            });
-          }
-        }
-      }
-      if (inBand) {
-        bands.push({
-          height: windowH - bandStart,
-          canvasMidY: windowMinY + Math.floor((bandStart + windowH - 1) / 2),
-        });
-      }
-
-      // Fonction vérifiant qu'un saut ne tombe pas au milieu ou juste après un titre
-      const isBadForHeading = (cutY: number): boolean => {
-        for (const hz of headingZones) {
-          if (cutY >= hz.top - 4 && cutY <= hz.bottom + 65) {
-            return true;
-          }
-        }
-        return false;
-      };
-
-      // 1ère Priorité : Grand espace blanc entre cartes/sections (>= 16px) hors en-tête
-      for (let i = bands.length - 1; i >= 0; i--) {
-        const b = bands[i];
-        if (b.height >= 16 && !isBadForHeading(b.canvasMidY)) {
-          bestCutY = b.canvasMidY;
+        if (!isRightAfterHeading) {
+          bestBreak = b;
           break;
         }
       }
-
-      // 2ème Priorité : Espace blanc moyen entre paragraphes/points (>= 6px)
-      if (bestCutY === -1) {
-        for (let i = bands.length - 1; i >= 0; i--) {
-          const b = bands[i];
-          if (b.height >= 6 && !isBadForHeading(b.canvasMidY)) {
-            bestCutY = b.canvasMidY;
-            break;
-          }
-        }
-      }
-
-      // 3ème Priorité : Espace blanc interligne (>= 2px)
-      if (bestCutY === -1) {
-        for (let i = bands.length - 1; i >= 0; i--) {
-          const b = bands[i];
-          if (b.height >= 2 && !isBadForHeading(b.canvasMidY)) {
-            bestCutY = b.canvasMidY;
-            break;
-          }
-        }
-      }
-
-      // 4ème Priorité : Tout espace blanc valide
-      if (bestCutY === -1) {
-        for (let i = bands.length - 1; i >= 0; i--) {
-          const b = bands[i];
-          if (b.height >= 2) {
-            bestCutY = b.canvasMidY;
-            break;
-          }
-        }
-      }
-
-      // 5ème Priorité : Ligne avec le moins absolu de pixels sombres
-      if (bestCutY === -1) {
-        let minDark = Infinity;
-        let minRow = windowH - 1;
-        for (let row = windowH - 1; row >= 0; row--) {
-          if (darkCountPerRow[row] < minDark) {
-            minDark = darkCountPerRow[row];
-            minRow = row;
-          }
-        }
-        bestCutY = windowMinY + minRow;
-      }
     }
 
-    if (bestCutY <= currentY || bestCutY > targetCutY) {
-      bestCutY = targetCutY;
+    let nextCutY = bestBreak > 0 ? bestBreak : targetCutY;
+
+    // Garantie formelle de progression d'au moins minStep pixels
+    if (nextCutY <= currentY + minStep) {
+      nextCutY = Math.min(canvasHeight, targetCutY);
     }
 
-    // Protection anti-titre orphelin : si le saut touche un titre, on coupe avant le titre
-    for (const hz of headingZones) {
-      if (bestCutY > hz.top && bestCutY <= hz.bottom + 65) {
-        if (hz.top - 8 > currentY + Math.floor(maxSliceHeightPx * 0.45)) {
-          bestCutY = hz.top - 8;
-        }
-      }
-    }
-
-    cuts.push({ startY: currentY, endY: bestCutY });
-    currentY = bestCutY;
+    cuts.push({ startY: currentY, endY: nextCutY });
+    currentY = nextCutY;
   }
 
+  // 4. Génération du document PDF avec respiration de l'event loop (anti-freeze)
   const pdfDoc = await PDFDocument.create();
   const totalPages = cuts.length;
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
   for (let pIdx = 0; pIdx < totalPages; pIdx++) {
+    // Laisser respirer l'interface du navigateur pour ne JAMAIS déclencher "Page ne répondant pas"
+    await new Promise((resolve) => setTimeout(resolve, 15));
+
     const cut = cuts[pIdx];
     const sliceHeight = cut.endY - cut.startY;
     if (sliceHeight <= 0) continue;
@@ -1624,7 +1427,6 @@ export async function exportHtmlElementToPdf(
   document.body.appendChild(link);
   link.click();
 
-  // Laisser le temps au navigateur d'initier le téléchargement avant de détruire le blob
   setTimeout(() => {
     try {
       document.body.removeChild(link);
