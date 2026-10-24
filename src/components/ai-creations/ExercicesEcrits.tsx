@@ -145,7 +145,7 @@ function normalizeWrittenExercise(input: any, fallbackTitle?: string): Normalize
     return normalizeWrittenExercise(root.written_exercise, fallbackTitle);
   }
 
-  const title = root?.title || fallbackTitle || "Épreuve d'Exercices Écrits d'Application";
+  const title = root?.title || root?.label || root?.root?.label || fallbackTitle || "Épreuve d'Exercices Écrits d'Application";
   const rawContext = root?.context || root?.enonce || root?.description || root?.overview || "";
   const context = cleanExerciseContext(rawContext) || (fallbackTitle ? `Énoncé d'application et de réflexion basé sur le cours « ${fallbackTitle} ».` : "");
 
@@ -158,6 +158,28 @@ function normalizeWrittenExercise(input: any, fallbackTitle?: string): Normalize
     rawQuestions = root.exercises || root.exercices;
   } else if (Array.isArray(root?.problem_sections)) {
     rawQuestions = root.problem_sections.flatMap((sec: any) => sec.questions || [sec]);
+  } else if (Array.isArray(root?.children) || Array.isArray(root?.root?.children)) {
+    // Si l'IA a structuré en arborescence de piliers (comme la carte mentale)
+    const branches = Array.isArray(root?.children) ? root.children : root.root.children;
+    rawQuestions = branches.flatMap((pillar: any, pIdx: number) => {
+      const pillarTitle = pillar.label || pillar.title || `Pilier ${pIdx + 1}`;
+      const subItems = Array.isArray(pillar.children) ? pillar.children : [];
+      if (subItems.length === 0) {
+        return [{ text: pillarTitle, sampleAnswer: pillar.description || '' }];
+      }
+      return subItems.map((sub: any, sIdx: number) => {
+        const subTitle = sub.label || sub.title || `Question ${sIdx + 1}`;
+        const subDetails = Array.isArray(sub.children)
+          ? sub.children.map((c: any) => typeof c === 'string' ? c : (c.label || c.title || '')).filter(Boolean).join('\n• ')
+          : '';
+        const fullText = subDetails ? `${pillarTitle} — ${subTitle} :\n• ${subDetails}` : `${pillarTitle} — ${subTitle}`;
+        return {
+          text: fullText,
+          points: 0,
+          sampleAnswer: sub.sampleAnswer || sub.correction || sub.description || ''
+        };
+      });
+    });
   }
 
   let questions: QuestionData[] = [];

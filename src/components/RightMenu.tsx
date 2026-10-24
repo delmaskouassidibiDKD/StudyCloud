@@ -298,8 +298,8 @@ export function RightMenu({
       ),
       toolType: 'exercices-ecrits',
       getPrompt: (doc) => doc
-        ? `Conçois une épreuve d'Exercices Écrits complète de 8 à 10 exercices/problèmes progressifs et détaillés basés sur le cours « ${doc} », avec barème sur 20 points, énoncés rigoureux et corrigé pas-à-pas.`
-        : "Conçois une épreuve d'Exercices Écrits complète de 8 à 10 exercices/problèmes progressifs et détaillés avec barème sur 20 points, énoncés rigoureux et corrigé pas-à-pas."
+        ? `Extrais l'ensemble des piliers thématiques, concepts, figures, circuits et formules mathématiques en KaTeX du document « ${doc} » pour concevoir une épreuve d'Exercices Écrits complète de 8 à 10 questions progressives, avec barème sur 20 points, énoncés rigoureux et corrigé pas-à-pas détaillé.`
+        : "Extrais et structure l'ensemble des piliers thématiques, concepts et formules mathématiques en KaTeX pour concevoir une épreuve d'Exercices Écrits complète de 8 à 10 questions progressives, avec barème sur 20 points, énoncés rigoureux et corrigé pas-à-pas détaillé."
     },
     {
       id: 'devoir-complet',

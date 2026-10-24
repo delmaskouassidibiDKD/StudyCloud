@@ -323,26 +323,36 @@ RÈGLE FORMAT : INFOGRAPHIE PÉDAGOGIQUE ('infographie')
     return `
 ══════════════════════════════════════════════════════════════════════════════
 RÈGLE FORMAT : EXERCICES ÉCRITS D'APPLICATION ('exercices-ecrits')
-══════════════════════════════════════════════════════
-- Génère EXACTEMENT 8 à 10 exercices/questions progressives.
-- Barème précis totalisant exactement 20 POINTS.
-- Toutes les formules avec \\dfrac{}{} et KaTeX.
+══════════════════════════════════════════════════════════════════════════════
+- Extraction logique et rigoureuse du document selon la même arborescence à 4 PALIERS OBLIGATOIRES que la Carte Mentale, adaptée en épreuve d'Exercices Écrits :
+  * Niveau 0 (Titre Global) : Titre officiel exact du cours ou de l'épreuve analysée.
+  * Niveau 1 (4 à 6 Piliers Thématiques majeurs extraits du document) : Les grands axes directeurs du sujet (ex: 1. Filtre passif RC et modélisation, 2. Amplificateur opérationnel et montages actifs, 3. Analyse nodale / Théorème de Millman, 4. Fonctions de transfert canoniques & Bode).
+  * Niveau 2 (Sous-problèmes & Concepts par pilier) : Modélisation, circuits/figures (ex: Figure 1), hypothèses théoriques, équations directrices et grandeurs physiques à déterminer.
+  * Niveau 3 (Calculs exacts, formules KaTeX et Corrigé pas-à-pas) : Formules avec fractions verticales \\dfrac{}{}, paramètres canoniques, calculs asymptotiques, pulsations de coupure à -3dB, valeurs numériques avec unités SI, et corrigé pas-à-pas modèle pour chaque question.
+- Organisation en Épreuve d'Exercices Écrits :
+  * Génère EXACTEMENT 8 à 10 questions/exercices progressifs couvrant l'ensemble des Paliers 1, 2 et 3.
+  * Barème strict totalisant EXACTEMENT 20 POINTS (ex: 8 questions à 2.5 pts, ou répartition équilibrant 20 points au total).
+  * Toutes les expressions mathématiques DOIVENT être écrites avec KaTeX ($...$).
+  * Chaque question a sa correction complète et détaillée étape par étape dans 'sampleAnswer'.
 - Format JSON strict dans 'creation_data' :
 {
-  "title": "Série d'Exercices d'Application : Titre",
-  "context": "Énoncé général, présentation du système et équations...",
+  "title": "Série d'Exercices Écrits : Titre Global du Cours",
+  "context": "Mise en situation complète issue des Paliers 1 & 2 : présentation du système, schémas/figures, hypothèses physiques et données numériques.",
   "questions": [
     {
       "id": "q1",
       "number": 1,
-      "text": "Énoncé précis de la question 1 avec formules $...$",
+      "text": "Énoncé précis de la question (Palier 2) avec formules KaTeX ($...$)",
       "points": 2.5,
-      "sampleAnswer": "Correction complète détaillée étape par étape..."
+      "sampleAnswer": "Correction exhaustive pas-à-pas (Palier 3) avec démonstration complète, étapes intermédiaires et formules KaTeX ($...$)"
     }
   ],
   "correction": {
-    "steps": "Synthèse méthodologique globale...",
-    "examples": ["Exemple d'application directe", "Cas piège classique"]
+    "steps": "Synthèse méthodologique globale de résolution étape par étape...",
+    "examples": [
+      "Exemple concret 1 : Cas d'application numérique avec unités et vérification physique",
+      "Exemple concret 2 : Piège classique d'examen et méthode de contrôle rapide"
+    ]
   }
 }`;
   }
