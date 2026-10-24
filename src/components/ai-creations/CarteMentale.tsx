@@ -36,8 +36,96 @@ export interface MindNode {
   type?: string;
 }
 
+/**
+ * Calcule dynamiquement et intelligemment la largeur et la hauteur optimales
+ * d'un rectangle de nœud pour que TOUTES les informations (formules KaTeX complexes,
+ * fractions superposées, fractions simples, textes descriptifs longs) s'affichent
+ * parfaitement sans jamais être coupées ni serrées.
+ */
+export function computeNodeDimensions(
+  rawText: string,
+  level: number = 2,
+  isCentral: boolean = false
+): { width: number; height: number } {
+  const text = (rawText || '').trim();
+  if (!text) {
+    return {
+      width: isCentral ? 240 : (level === 1 ? 190 : 160),
+      height: isCentral ? 68 : (level === 1 ? 52 : 46)
+    };
+  }
+
+  // 1. Nœud central (Sujet principal)
+  if (isCentral) {
+    const cleanChars = text.replace(/\\[a-zA-Z]+/g, 'X').replace(/[\{\}\$\_\^]/g, '');
+    const lines = text.split(/\r?\n|\\\\/);
+    const lineCount = lines.length;
+    const maxLineLen = Math.max(...lines.map(l => l.length));
+    const width = Math.min(480, Math.max(220, Math.round(maxLineLen * 10 + 56)));
+    const height = Math.max(70, lineCount > 1 ? lineCount * 28 + 36 : 68);
+    return { width, height };
+  }
+
+  // 2. Analyse des formules LaTeX / KaTeX
+  const fracMatches = text.match(/\\(?:d?frac)/g);
+  const fracCount = fracMatches ? fracMatches.length : 0;
+  // Détection de fractions multi-étages / imbriquées (ex: \frac{... \frac ...} ou plusieurs \frac)
+  const isNestedFrac = /\\(?:d?frac)\s*\{[^{}]*\\(?:d?frac)/.test(text) || fracCount >= 2;
+  const hasFrac = fracCount >= 1;
+  const hasBigMath = /\\(?:sqrt|sum|int|prod|oint|bigcap|bigcup|matrix|pmatrix|bmatrix)/.test(text);
+  const hasSuperSub = /[\^_]/.test(text);
+
+  // Analyse textuelle
+  const cleanChars = text.replace(/\\[a-zA-Z]+/g, 'X').replace(/[\{\}\$\_\^]/g, '');
+  const lines = text.split(/\r?\n|\\\\/);
+  const lineCount = lines.length;
+
+  let width = 160;
+  let height = 46;
+
+  if (isNestedFrac) {
+    // Cas critique des fractions multi-étages / imbriquées :
+    // ex: Ordre 2 : T = \frac{T_0}{1 + j \frac{\omega}{Q \omega_0} + (j \frac{\omega}{\omega_0})^2}
+    // ex: Forme canonique : T = \frac{T_0 [ 1 + (j \frac{\omega}{\omega_0})^2 ]}{...}
+    // Nécessite 118px à 128px de hauteur pour que le numérateur et les fractions du dénominateur respirent sans être tronqués
+    height = fracCount >= 3 ? 128 : 118;
+    // Largeur généreuse pour accueillir les termes développés
+    width = Math.min(540, Math.max(380, Math.round(cleanChars.length * 9.0 + 80)));
+  } else if (hasFrac) {
+    // Fraction simple (ex: \Delta f = \frac{f_0}{Q_0} ou Ordre 1 simple)
+    height = hasSuperSub ? 88 : 80;
+    width = Math.min(480, Math.max(260, Math.round(cleanChars.length * 8.6 + 60)));
+  } else if (hasBigMath) {
+    // Racines carrées (ex: f_0 = \sqrt{f_B \cdot f_H}), intégrales, sommes
+    height = 74;
+    width = Math.min(460, Math.max(220, Math.round(cleanChars.length * 8.5 + 50)));
+  } else if (lineCount > 1) {
+    // Retours à la ligne explicites
+    height = Math.max(54, lineCount * 26 + 24);
+    const maxLineLen = Math.max(...lines.map(l => l.length));
+    width = Math.min(460, Math.max(160, Math.round(maxLineLen * 8.5 + 46)));
+  } else if (cleanChars.length > 60) {
+    // Texte descriptif long (paragraphe court se repliant sur plusieurs lignes)
+    height = 80;
+    width = Math.min(480, Math.max(300, Math.round(cleanChars.length * 7.5 + 40)));
+  } else if (cleanChars.length > 35) {
+    // Texte moyen (ex: "Bande passante : [0; f_H] avec f_H fréquence de coupure haute")
+    // Espace élargi pour tenir sur 1 ligne ou 2 lignes très confortables
+    height = 64;
+    width = Math.min(440, Math.max(260, Math.round(cleanChars.length * 8.0 + 40)));
+  } else {
+    // Nœud court classique
+    height = level === 1 ? 52 : 46;
+    width = level === 1
+      ? Math.min(360, Math.max(160, Math.round(cleanChars.length * 8.5 + 40)))
+      : Math.min(320, Math.max(140, Math.round(cleanChars.length * 8.0 + 36)));
+  }
+
+  return { width, height };
+}
+
 // Nodes with layout precisely matching Box / Card containers
-const INITIAL_NODES: MindNode[] = [
+const RAW_INITIAL_NODES: Omit<MindNode, 'width' | 'height'>[] = [
   // Nœud central dynamique neutre
   {
     id: 'root',
@@ -48,8 +136,6 @@ const INITIAL_NODES: MindNode[] = [
     color: '#334155',
     side: 'center',
     isCentral: true,
-    width: 220,
-    height: 68,
     level: 0
   },
   // Branche 1 (Haut gauche)
@@ -61,8 +147,6 @@ const INITIAL_NODES: MindNode[] = [
     y: 460,
     color: '#0E5EBA',
     side: 'left',
-    width: 230,
-    height: 50,
     level: 1
   },
   {
@@ -73,8 +157,6 @@ const INITIAL_NODES: MindNode[] = [
     y: 425,
     color: '#0E5EBA',
     side: 'left',
-    width: 210,
-    height: 46,
     level: 2
   },
   {
@@ -85,8 +167,6 @@ const INITIAL_NODES: MindNode[] = [
     y: 495,
     color: '#0E5EBA',
     side: 'left',
-    width: 200,
-    height: 46,
     level: 2
   },
   // Branche 2 (Bas gauche)
@@ -98,8 +178,6 @@ const INITIAL_NODES: MindNode[] = [
     y: 820,
     color: '#D11928',
     side: 'left',
-    width: 230,
-    height: 50,
     level: 1
   },
   {
@@ -110,8 +188,6 @@ const INITIAL_NODES: MindNode[] = [
     y: 785,
     color: '#D11928',
     side: 'left',
-    width: 190,
-    height: 46,
     level: 2
   },
   {
@@ -122,8 +198,6 @@ const INITIAL_NODES: MindNode[] = [
     y: 855,
     color: '#D11928',
     side: 'left',
-    width: 190,
-    height: 46,
     level: 2
   },
   // Branche 3 (Haut droite)
@@ -135,8 +209,6 @@ const INITIAL_NODES: MindNode[] = [
     y: 460,
     color: '#1E8238',
     side: 'right',
-    width: 230,
-    height: 50,
     level: 1
   },
   {
@@ -147,8 +219,6 @@ const INITIAL_NODES: MindNode[] = [
     y: 425,
     color: '#1E8238',
     side: 'right',
-    width: 190,
-    height: 46,
     level: 2
   },
   {
@@ -159,8 +229,6 @@ const INITIAL_NODES: MindNode[] = [
     y: 495,
     color: '#1E8238',
     side: 'right',
-    width: 190,
-    height: 46,
     level: 2
   },
   // Branche 4 (Bas droite)
@@ -172,8 +240,6 @@ const INITIAL_NODES: MindNode[] = [
     y: 820,
     color: '#7B1FA2',
     side: 'right',
-    width: 230,
-    height: 50,
     level: 1
   },
   {
@@ -184,8 +250,6 @@ const INITIAL_NODES: MindNode[] = [
     y: 785,
     color: '#7B1FA2',
     side: 'right',
-    width: 210,
-    height: 46,
     level: 2
   },
   {
@@ -196,11 +260,18 @@ const INITIAL_NODES: MindNode[] = [
     y: 855,
     color: '#7B1FA2',
     side: 'right',
-    width: 220,
-    height: 46,
     level: 2
   }
 ];
+
+const INITIAL_NODES: MindNode[] = RAW_INITIAL_NODES.map((node) => {
+  const dims = computeNodeDimensions(node.text, node.level || 2, !!node.isCentral);
+  return {
+    ...node,
+    width: dims.width,
+    height: dims.height
+  };
+});
 
 const PRESET_COLORS = [
   '#008EB0',
@@ -410,15 +481,17 @@ export function extractTreeItem(raw: any, defaultId: string): TreeItem {
   };
 }
 
-function measureSubtree(item: TreeItem): number {
+function measureSubtree(item: TreeItem, level: number = 2): number {
+  const nodeDim = computeNodeDimensions(item.text, level, false);
+  const selfH = nodeDim.height + 26; // Hauteur dynamique réelle + espacement vertical
   if (!item.children || item.children.length === 0) {
-    return 64; // Hauteur minimale d'une boîte feuille avec marge verticale
+    return selfH;
   }
   let sumH = 0;
   for (const child of item.children) {
-    sumH += measureSubtree(child);
+    sumH += measureSubtree(child, level + 1);
   }
-  return Math.max(sumH, 64);
+  return Math.max(sumH, selfH);
 }
 
 function layoutChildren(
@@ -435,19 +508,19 @@ function layoutChildren(
 ) {
   if (!children || children.length === 0) return;
 
-  const totalChildrenH = children.reduce((acc, c) => acc + measureSubtree(c), 0);
+  const totalChildrenH = children.reduce((acc, c) => acc + measureSubtree(c, level), 0);
   let childCurrentY = parentY - totalChildrenH / 2;
 
   children.forEach((child, cIdx) => {
-    const childH_span = measureSubtree(child);
+    const childH_span = measureSubtree(child, level);
     const childY = Math.round(childCurrentY + childH_span / 2);
     childCurrentY += childH_span;
 
-    const cleanT = child.text.replace(/\\[a-zA-Z]+/g, 'X').replace(/[\{\}\$\_\^]/g, '');
-    const childW = Math.min(340, Math.max(130, Math.round(cleanT.length * 7.5 + 32)));
-    const childBoxH = (child.text.includes('\n') || child.text.includes('\\dfrac') || child.text.includes('\\frac')) ? 54 : 46;
+    const childDim = computeNodeDimensions(child.text, level, false);
+    const childW = childDim.width;
+    const childBoxH = childDim.height;
 
-    const gapX = 75;
+    const gapX = 85;
     const childX = Math.round(side === 'right'
       ? parentX + parentW / 2 + gapX + childW / 2
       : parentX - parentW / 2 - gapX - childW / 2);
@@ -485,7 +558,16 @@ function layoutChildren(
 
 export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
   if (!data) return INITIAL_NODES;
-  if (Array.isArray(data.nodes) && data.nodes.length > 0) return data.nodes;
+  if (Array.isArray(data.nodes) && data.nodes.length > 0) {
+    return data.nodes.map((node: MindNode) => {
+      const dims = computeNodeDimensions(node.text, node.level || 2, !!node.isCentral);
+      return {
+        ...node,
+        width: Math.max(node.width || 0, dims.width),
+        height: Math.max(node.height || 0, dims.height)
+      };
+    });
+  }
 
   let actualData = data;
   if (typeof actualData === 'string') {
@@ -539,9 +621,9 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
 
   const result: MindNode[] = [];
   const rootId = unnested.id || 'root';
-  const cleanRoot = rootText.replace(/\\[a-zA-Z]+/g, 'X').replace(/[\{\}\$\_\^]/g, '');
-  const rootWidth = Math.min(380, Math.max(190, Math.round(cleanRoot.length * 9.5 + 36)));
-  const rootHeight = 68;
+  const rootDim = computeNodeDimensions(rootText, 0, true);
+  const rootWidth = rootDim.width;
+  const rootHeight = rootDim.height;
 
   result.push({
     id: rootId,
@@ -583,19 +665,19 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
 
   // Layout left branches & subtrees
   if (leftBranches.length > 0) {
-    const totalLeftH = leftBranches.reduce((acc, b) => acc + measureSubtree(b.item), 0) + (leftBranches.length - 1) * 28;
+    const totalLeftH = leftBranches.reduce((acc, b) => acc + measureSubtree(b.item, 1), 0) + (leftBranches.length - 1) * 32;
     let currentLeftY = 640 - totalLeftH / 2;
 
     leftBranches.forEach(({ item, origIdx }) => {
-      const bH_span = measureSubtree(item);
+      const bH_span = measureSubtree(item, 1);
       const branchY = Math.round(currentLeftY + bH_span / 2);
-      currentLeftY += bH_span + 28;
+      currentLeftY += bH_span + 32;
 
       const branchColor = branchColors[origIdx % branchColors.length];
-      const cleanText = item.text.replace(/\\[a-zA-Z]+/g, 'X').replace(/[\{\}\$\_\^]/g, '');
-      const branchWidth = Math.min(350, Math.max(140, Math.round(cleanText.length * 8 + 36)));
-      const branchHeight = (item.text.includes('\n') || item.text.includes('\\dfrac') || item.text.includes('\\frac')) ? 56 : 48;
-      const branchX = Math.round(1220 - rootWidth / 2 - 90 - branchWidth / 2);
+      const branchDim = computeNodeDimensions(item.text, 1, false);
+      const branchWidth = branchDim.width;
+      const branchHeight = branchDim.height;
+      const branchX = Math.round(1220 - rootWidth / 2 - 95 - branchWidth / 2);
       const branchId = item.id || `b_l_${origIdx}`;
 
       result.push({
@@ -630,19 +712,19 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
 
   // Layout right branches & subtrees
   if (rightBranches.length > 0) {
-    const totalRightH = rightBranches.reduce((acc, b) => acc + measureSubtree(b.item), 0) + (rightBranches.length - 1) * 28;
+    const totalRightH = rightBranches.reduce((acc, b) => acc + measureSubtree(b.item, 1), 0) + (rightBranches.length - 1) * 32;
     let currentRightY = 640 - totalRightH / 2;
 
     rightBranches.forEach(({ item, origIdx }) => {
-      const bH_span = measureSubtree(item);
+      const bH_span = measureSubtree(item, 1);
       const branchY = Math.round(currentRightY + bH_span / 2);
-      currentRightY += bH_span + 28;
+      currentRightY += bH_span + 32;
 
       const branchColor = branchColors[origIdx % branchColors.length];
-      const cleanText = item.text.replace(/\\[a-zA-Z]+/g, 'X').replace(/[\{\}\$\_\^]/g, '');
-      const branchWidth = Math.min(350, Math.max(140, Math.round(cleanText.length * 8 + 36)));
-      const branchHeight = (item.text.includes('\n') || item.text.includes('\\dfrac') || item.text.includes('\\frac')) ? 56 : 48;
-      const branchX = Math.round(1220 + rootWidth / 2 + 90 + branchWidth / 2);
+      const branchDim = computeNodeDimensions(item.text, 1, false);
+      const branchWidth = branchDim.width;
+      const branchHeight = branchDim.height;
+      const branchX = Math.round(1220 + rootWidth / 2 + 95 + branchWidth / 2);
       const branchId = item.id || `b_r_${origIdx}`;
 
       result.push({
@@ -1013,14 +1095,12 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
         prev.map((n) => {
           if (n.id === editingNodeId) {
             const trimmed = editText.trim();
-            const cleanText = trimmed.replace(/\\[a-zA-Z]+/g, 'X').replace(/[\{\}\$\_\^]/g, '');
-            const width = Math.min(360, Math.max(130, Math.round(cleanText.length * 8 + 32)));
-            const height = (trimmed.includes('\n') || trimmed.includes('\\dfrac') || trimmed.includes('\\frac')) ? 56 : 46;
+            const dims = computeNodeDimensions(trimmed, n.level || 2, !!n.isCentral);
             return {
               ...n,
               text: trimmed,
-              width: n.isCentral ? Math.max(width, 190) : width,
-              height: n.isCentral ? 68 : height
+              width: dims.width,
+              height: dims.height
             };
           }
           return n;
@@ -1053,8 +1133,10 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
     const newId = `custom-${Date.now()}`;
     const side = parent.side === 'center' ? 'right' : parent.side;
     const parentW = parent.width || 180;
-    const newW = 140;
-    const offsetX = side === 'left' ? -(parentW / 2 + 75 + newW / 2) : (parentW / 2 + 75 + newW / 2);
+    const childLevel = (parent.level || 0) + 1;
+    const dims = computeNodeDimensions('Nouvelle idée', childLevel, false);
+    const newW = dims.width;
+    const offsetX = side === 'left' ? -(parentW / 2 + 85 + newW / 2) : (parentW / 2 + 85 + newW / 2);
     const newChild: MindNode = {
       id: newId,
       parentId: parent.id,
@@ -1064,8 +1146,8 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
       color: parent.color,
       side,
       width: newW,
-      height: 46,
-      level: (parent.level || 0) + 1
+      height: dims.height,
+      level: childLevel
     };
 
     setNodes((prev) => [...prev, newChild]);
@@ -1416,8 +1498,9 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
               const children = childrenMap.get(node.id) || [];
               const hasChildren = children.length > 0;
               const isCollapsed = collapsedNodes[node.id];
-              const boxW = node.width || (node.isCentral ? 220 : 160);
-              const boxH = node.height || (node.isCentral ? 68 : 48);
+              const fallbackDims = computeNodeDimensions(node.text, node.level, !!node.isCentral);
+              const boxW = Math.max(node.width || 0, fallbackDims.width);
+              const boxH = Math.max(node.height || 0, fallbackDims.height);
               const isRightSide = node.side === 'right';
 
               return (
@@ -1477,10 +1560,10 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
 
                   {/* Text & Math formula inside the Card Box */}
                   <foreignObject
-                    x={-boxW / 2 + (node.level === 1 ? 10 : 6)}
-                    y={-boxH / 2 + 2}
-                    width={boxW - (node.level === 1 ? 18 : 12)}
-                    height={boxH - 4}
+                    x={-boxW / 2 + (node.level === 1 ? 10 : 8)}
+                    y={-boxH / 2 + 3}
+                    width={boxW - (node.level === 1 ? 20 : 16)}
+                    height={boxH - 6}
                     className="pointer-events-none select-none overflow-hidden"
                   >
                     <div
@@ -1491,19 +1574,20 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
                         alignItems: 'center',
                         justifyContent: 'center',
                         textAlign: 'center',
-                        padding: '0 4px',
+                        padding: '2px 4px',
                         userSelect: 'none',
-                        lineHeight: '1.25'
+                        boxSizing: 'border-box'
                       }}
                     >
                       <div
-                        className={`${
+                        className={`w-full flex items-center justify-center flex-wrap break-words ${
                           node.isCentral
                             ? 'font-bold text-[14.5px] text-slate-800 tracking-tight'
                             : node.level === 1
                             ? 'font-bold text-[13px] text-slate-900 tracking-tight'
                             : 'font-semibold text-[12px] text-slate-800'
                         }`}
+                        style={{ lineHeight: '1.3' }}
                       >
                         <MathText text={node.text} inline />
                       </div>
