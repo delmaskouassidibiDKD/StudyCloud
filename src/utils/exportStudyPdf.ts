@@ -22,32 +22,71 @@ export interface StudyDocumentData {
 }
 
 /**
- * Nettoie et formate les formules LaTeX et caractères pour un rendu PDF propre en police standard WinAnsi
+ * Nettoie récursivement les formules LaTeX (fractions imbriquées, symboles grecs, etc.)
  */
-function sanitizeForPdf(str: string): string {
-  if (!str) return '';
-  return str
-    .replace(/\\dfrac\{([^}]+)\}\{([^}]+)\}/g, '($1) / ($2)')
-    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1) / ($2)')
-    .replace(/\\boxed\{([^}]+)\}/g, '[$1]')
-    .replace(/\\underline\{([^}]+)\}/g, '$1')
+function cleanLatexMathString(text: string): string {
+  if (!text) return '';
+  let str = text;
+
+  // Résolution récursive des fractions (\dfrac & \frac) jusqu'à 8 niveaux d'imbrication
+  let prev = '';
+  let depth = 0;
+  while (depth < 8 && str !== prev) {
+    prev = str;
+    str = str
+      .replace(/\\(?:dfrac|frac)\{([^{}]+)\}\{([^{}]+)\}/g, '($1) / ($2)')
+      .replace(/\\(?:sqrt)\{([^{}]+)\}/g, 'sqrt($1)')
+      .replace(/\\(?:boxed|underline|textbf|textit|mathrm|mathbf|text|operatorname)\{([^{}]+)\}/g, '$1');
+    depth++;
+  }
+
+  // Remplacement des symboles grecs et opérateurs récurrents
+  str = str
     .replace(/\\omega_0/g, 'w0')
     .replace(/\\omega/g, 'w')
-    .replace(/\\pi/g, 'pi')
-    .replace(/\\tau/g, 'tau')
     .replace(/\\Omega_0/g, 'Omega_0')
     .replace(/\\Omega/g, 'Ohm')
     .replace(/\\Delta/g, 'Delta')
+    .replace(/\\pi/g, 'pi')
+    .replace(/\\tau/g, 'tau')
+    .replace(/\\theta/g, 'theta')
+    .replace(/\\alpha/g, 'alpha')
+    .replace(/\\beta/g, 'beta')
+    .replace(/\\gamma/g, 'gamma')
+    .replace(/\\lambda/g, 'lambda')
+    .replace(/\\mu/g, 'micro')
+    .replace(/\\sigma/g, 'sigma')
+    .replace(/\\phi/g, 'phi')
+    .replace(/\\Phi/g, 'Phi')
     .replace(/\\leq/g, '<=')
     .replace(/\\geq/g, '>=')
     .replace(/\\neq/g, '!=')
     .replace(/\\approx/g, '~=')
     .replace(/\\times/g, ' x ')
-    .replace(/\\cdot/g, ' . ')
-    .replace(/\\sqrt\{([^}]+)\}/g, 'sqrt($1)')
+    .replace(/\\cdot/g, ' * ')
+    .replace(/\\pm/g, '+/-')
+    .replace(/\\mp/g, '-+')
+    .replace(/\\infty/g, 'inf')
+    .replace(/\\partial/g, 'd')
+    .replace(/\\left[\[\(\{\|]/g, '')
+    .replace(/\\right[\]\)\}\|]/g, '')
+    .replace(/\\quad/g, '  ')
+    .replace(/\\qquad/g, '    ')
     .replace(/\$\$/g, '')
     .replace(/\$/g, '')
-    .replace(/\\/g, '')
+    .replace(/\\[a-zA-Z]+/g, '')
+    .replace(/[{}]/g, '');
+
+  return str;
+}
+
+/**
+ * Nettoie et formate les formules LaTeX et caractères pour un rendu PDF propre en police standard WinAnsi
+ */
+function sanitizeForPdf(str: string): string {
+  if (!str) return '';
+  const cleaned = cleanLatexMathString(str);
+  return cleaned
     .split('')
     .filter((c) => {
       const code = c.charCodeAt(0);
@@ -998,12 +1037,26 @@ export async function exportHtmlElementToPdf(
     scrollX: 0,
     scrollY: 0,
     windowWidth: target.scrollWidth || 1024,
+    onclone: (clonedDoc) => {
+      // Nettoyer tous les filtres SVG qui font planter html2canvas
+      try {
+        const filters = clonedDoc.querySelectorAll('filter');
+        filters.forEach((f) => f.remove());
+        const filteredEls = clonedDoc.querySelectorAll('[filter]');
+        filteredEls.forEach((el) => el.removeAttribute('filter'));
+      } catch {
+        // Ignorer
+      }
+    },
     ignoreElements: (el) => {
       return (
         el.classList.contains('no-print') ||
         el.getAttribute('data-no-print') === 'true' ||
         (el.tagName.toLowerCase() === 'button' &&
-          (el.textContent?.includes('Télécharger') || el.textContent?.includes('Copier')))
+          (el.textContent?.includes('Télécharger') ||
+            el.textContent?.includes('Copier') ||
+            el.textContent?.includes('Imprimer') ||
+            el.textContent?.includes('Recommencer')))
       );
     },
   });
@@ -1163,6 +1216,16 @@ export async function exportPagesToPdf(
       allowTaint: false,
       backgroundColor: '#ffffff',
       logging: false,
+      onclone: (clonedDoc) => {
+        try {
+          const filters = clonedDoc.querySelectorAll('filter');
+          filters.forEach((f) => f.remove());
+          const filteredEls = clonedDoc.querySelectorAll('[filter]');
+          filteredEls.forEach((elem) => elem.removeAttribute('filter'));
+        } catch {
+          // Ignorer
+        }
+      },
     });
 
     const imgData = canvas.toDataURL('image/png');

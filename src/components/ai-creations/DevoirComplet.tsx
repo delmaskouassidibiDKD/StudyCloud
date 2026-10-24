@@ -17,9 +17,7 @@ import {
   Download
 } from 'lucide-react';
 
-import { exportDevoirCompletPdf } from '../../utils/exportStudyPdf';
-import { PDFDocument } from 'pdf-lib';
-import html2canvas from 'html2canvas';
+import { exportDevoirCompletPdf, exportHtmlElementToPdf } from '../../utils/exportStudyPdf';
 import { DnaLogo } from '../DnaLogo';
 import { MathText } from '../MathText';
 import { CertificatExcellence, CertificateData } from './CertificatExcellence';
@@ -43,7 +41,7 @@ function StudyCloudLogo() {
       className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#0369A1] text-white shadow-xs border border-sky-800 select-none"
       title="StudyCloud - DKD TECHNOLOGIES"
     >
-      <DnaLogo className="w-6 h-6 shrink-0" glow={true} />
+      <DnaLogo className="w-6 h-6 shrink-0" glow={false} />
       <div className="flex flex-col text-left leading-none">
         <div className="flex items-baseline text-sm sm:text-base font-black tracking-tight font-sans">
           <span className="text-[#F38020]">Study</span>
@@ -681,73 +679,19 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
     if (isExportingPdf) return;
     try {
       setIsExportingPdf(true);
-      if (typeof document !== 'undefined') {
-        const savedPage = currentPage;
-        const pageCanvases: HTMLCanvasElement[] = [];
+      const printableEl =
+        document.getElementById('exam-printable-full-content') ||
+        document.getElementById(`exam-sheet-page-${currentPage}`) ||
+        document.querySelector('[id^="exam-sheet-page"]');
 
-        // Parcourir toutes les pages (Exercice 1, 2, 3) pour capturer chaque feuille d'examen avec KaTeX
-        for (let p = 1; p <= totalPages; p++) {
-          setCurrentPage(p);
-          await new Promise((r) => setTimeout(r, 160));
-          const el = document.getElementById(`exam-sheet-page-${p}`);
-          if (el) {
-            const c = await html2canvas(el, {
-              scale: 1.8,
-              useCORS: true,
-              allowTaint: false,
-              backgroundColor: '#ffffff',
-              logging: false,
-            });
-            pageCanvases.push(c);
-          }
-        }
-        setCurrentPage(savedPage);
-
-        if (pageCanvases.length > 0) {
-          const pdfDoc = await PDFDocument.create();
-          const pageWidthPt = 595.28;
-          const pageHeightPt = 841.89;
-
-          for (const canvas of pageCanvases) {
-            const imgData = canvas.toDataURL('image/png');
-            const embeddedImg = await pdfDoc.embedPng(imgData);
-            const page = pdfDoc.addPage([pageWidthPt, pageHeightPt]);
-            const drawAspect = canvas.height / canvas.width;
-            const drawHeight = Math.min(pageHeightPt - 36, (pageWidthPt - 36) * drawAspect);
-            const drawWidth = pageWidthPt - 36;
-            const drawY = pageHeightPt - 18 - drawHeight;
-
-            page.drawImage(embeddedImg, {
-              x: 18,
-              y: drawY,
-              width: drawWidth,
-              height: drawHeight,
-            });
-          }
-
-          const pdfBytes = await pdfDoc.save();
-          const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          const safeName = (title || examHeader.sousTitre || 'Devoir_Complet_Examen').replace(/[^a-zA-Z0-9_-]/g, '_');
-          link.download = `${safeName}.pdf`;
-          document.body.appendChild(link);
-          link.click();
-
-          setTimeout(() => {
-            try {
-              document.body.removeChild(link);
-              URL.revokeObjectURL(url);
-            } catch {
-              // Ignorer
-            }
-          }, 4000);
-
-          setDownloadedPdf(true);
-          setTimeout(() => setDownloadedPdf(false), 2500);
-          return;
-        }
+      if (printableEl) {
+        await exportHtmlElementToPdf(
+          printableEl as HTMLElement,
+          title || examHeader.sousTitre || 'Devoir_Complet_Examen'
+        );
+        setDownloadedPdf(true);
+        setTimeout(() => setDownloadedPdf(false), 2500);
+        return;
       }
 
       await exportDevoirCompletPdf({
@@ -1489,6 +1433,269 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
           </div>
         </div>
       )}
+
+      {/* ========================================================
+          VUE DU CERTIFICAT D'EXCELLENCE ACADÉMIQUE
+          ======================================================== */}
+      {/* ========================================================
+          DOCUMENT D'EXAMEN OFFICIEL COMPLET HORS-ÉCRAN POUR EXPORT PDF A4 HAUTE DÉFINITION
+          Rendu fidèle à l'identique avec toutes les formules KaTeX réelles, énoncés, barème et corrigé
+          ======================================================== */}
+      <div
+        id="exam-printable-full-content"
+        style={{
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          width: '840px',
+          zIndex: -9999,
+          pointerEvents: 'none',
+          backgroundColor: '#ffffff',
+        }}
+        className="p-8 space-y-8 text-stone-900 bg-white"
+        aria-hidden="true"
+      >
+        {/* En-tête officiel de l'examen */}
+        <header className="border-b-2 border-stone-900 pb-4 space-y-3">
+          <div className="flex items-center justify-between gap-3 text-left">
+            <div className="space-y-0.5">
+              <h2 className="font-serif font-black text-sm tracking-wide text-stone-900 uppercase">
+                {examHeader.institution}
+              </h2>
+              <p className="text-xs font-serif text-stone-600">
+                {examHeader.sousTitre} • Durée : {examHeader.duree}
+              </p>
+            </div>
+            <div className="text-right shrink-0">
+              <StudyCloudLogo />
+            </div>
+          </div>
+
+          <div className="text-center py-1">
+            <div className="inline-block border border-stone-900 px-8 py-1.5 bg-stone-50">
+              <h1 className="text-base sm:text-lg font-serif font-black tracking-widest text-stone-900 uppercase break-words">
+                {examHeader.matiere}
+              </h1>
+            </div>
+          </div>
+
+          <div className="text-center text-xs font-serif text-stone-600">
+            <span>{examHeader.calculatrice} • Barème officiel sur {examHeader.baremeTotal} points.</span>
+          </div>
+
+          {isSubmitted && gradingResult && (
+            <div className="mt-2 p-3 bg-stone-100 border border-stone-300 rounded text-center">
+              <span className="font-serif font-black text-sm text-stone-900">
+                NOTE OBTENUE : {finalScore} / 20 POINTS
+              </span>
+              {gradingResult.feedbackGlobal && (
+                <p className="text-xs font-serif text-stone-700 italic mt-1">
+                  « {gradingResult.feedbackGlobal} »
+                </p>
+              )}
+            </div>
+          )}
+        </header>
+
+        {/* Parcourir les 3 exercices complets */}
+        {sections.map((sec) => (
+          <section key={sec.id} className="space-y-6 pt-2 border-b border-stone-200 pb-8 last:border-b-0">
+            <div className="border-b border-stone-900 pb-2">
+              <div className="inline-block border border-stone-900 px-3.5 py-1 text-sm font-serif font-extrabold uppercase tracking-wider text-stone-900">
+                {sec.title}
+              </div>
+            </div>
+
+            {/* Énoncé de l'exercice */}
+            {sec.problem_statement && (
+              <div className="bg-stone-50 p-4 border-l-4 border-stone-800 text-stone-900 text-xs sm:text-sm font-serif leading-relaxed space-y-2 rounded-r-lg">
+                <span className="font-bold uppercase tracking-wider text-xs block text-stone-900">
+                  Énoncé de la situation & données du problème :
+                </span>
+                <div className="text-stone-800 leading-relaxed font-sans text-xs bg-white p-3 rounded border border-stone-200">
+                  <MathText text={sec.problem_statement} />
+                </div>
+              </div>
+            )}
+
+            {/* Questions de la section */}
+            <div className="space-y-6">
+              {sec.questions.map((q, qIdx) => (
+                <div key={q.id || qIdx} className="space-y-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <span className="font-serif font-bold text-xs uppercase tracking-wide text-stone-900 block mb-1">
+                        Question {q.number || `${qIdx + 1}.`}
+                      </span>
+                      <div className="text-xs sm:text-sm font-serif leading-relaxed text-stone-950 font-bold">
+                        <MathText text={q.texte} />
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-mono font-bold text-stone-600 bg-stone-100 px-2 py-0.5 rounded border border-stone-200 shrink-0">
+                      {q.points || 1} pt{(q.points || 1) > 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  {/* Réponse candidat type ouverte */}
+                  {q.type === 'open' && (
+                    <div className="space-y-1.5 pl-2">
+                      <span className="text-[10px] font-sans font-bold uppercase tracking-wider text-stone-500">
+                        Réponse rédigée du candidat :
+                      </span>
+                      {(openAnswers[q.id] || []).filter((l) => l && l.trim()).length > 0 ? (
+                        <div className="p-3 bg-stone-50 border border-stone-200 rounded text-xs font-mono text-stone-800 space-y-1">
+                          {(openAnswers[q.id] || []).filter((l) => l && l.trim()).map((line, lIdx) => (
+                            <p key={lIdx}>• {line}</p>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-2.5 bg-stone-50/60 border border-dashed border-stone-300 rounded text-[11px] italic text-stone-400">
+                          [Espace de calcul et de démonstration du candidat]
+                        </div>
+                      )}
+
+                      {/* Corrigé type */}
+                      {q.sampleAnswer && (
+                        <div className="p-3 bg-emerald-50 border-l-4 border-emerald-600 rounded-r text-xs text-emerald-950 space-y-1">
+                          <strong className="block text-[10px] uppercase tracking-wider text-emerald-800 font-bold">
+                            Corrigé type pas à pas :
+                          </strong>
+                          <MathText text={q.sampleAnswer} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Question QCM */}
+                  {q.type === 'multiple_choice' && (
+                    <div className="space-y-1.5 pl-2">
+                      <div className="grid grid-cols-1 gap-1.5">
+                        {(q.options || []).map((opt, optIdx) => {
+                          const isChosen = choiceAnswers[q.id] === optIdx;
+                          const isCorrect = q.correctIndex === optIdx;
+                          return (
+                            <div
+                              key={optIdx}
+                              className={`p-2 rounded border text-xs flex items-center gap-2 ${
+                                isSubmitted
+                                  ? isCorrect
+                                    ? 'bg-emerald-50 border-emerald-400 text-emerald-950 font-semibold'
+                                    : isChosen
+                                    ? 'bg-rose-50 border-rose-300 text-rose-950 line-through'
+                                    : 'bg-white border-stone-200 text-stone-700'
+                                  : isChosen
+                                  ? 'bg-blue-50 border-blue-400 font-semibold text-blue-950'
+                                  : 'bg-white border-stone-200 text-stone-700'
+                              }`}
+                            >
+                              <span className="font-mono font-bold text-[11px] shrink-0">
+                                {isChosen ? '[X]' : '[ ]'} {String.fromCharCode(65 + optIdx)}.
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <MathText text={opt} inline={true} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {isSubmitted && q.explication && (
+                        <div className="p-2.5 bg-emerald-50 border-l-4 border-emerald-600 rounded-r text-xs text-emerald-950 space-y-0.5">
+                          <strong className="block text-[10px] uppercase tracking-wider text-emerald-800 font-bold">
+                            Justification : Option {String.fromCharCode(65 + (q.correctIndex || 0))}
+                          </strong>
+                          <MathText text={q.explication} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Question Vrai ou Faux */}
+                  {q.type === 'true_false' && (
+                    <div className="space-y-1.5 pl-2">
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="font-bold text-stone-700">Votre réponse :</span>
+                        <span className={`px-2 py-0.5 rounded font-bold ${
+                          booleanAnswers[q.id] === true
+                            ? 'bg-blue-100 text-blue-800'
+                            : booleanAnswers[q.id] === false
+                            ? 'bg-stone-200 text-stone-800'
+                            : 'text-stone-400 italic'
+                        }`}>
+                          {booleanAnswers[q.id] === true ? 'VRAI' : booleanAnswers[q.id] === false ? 'FAUX' : 'Non répondu'}
+                        </span>
+                        {isSubmitted && (
+                          <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
+                            Attendu : {q.correctValue ? 'VRAI' : 'FAUX'}
+                          </span>
+                        )}
+                      </div>
+
+                      {isSubmitted && q.explication && (
+                        <div className="p-2.5 bg-emerald-50 border-l-4 border-emerald-600 rounded-r text-xs text-emerald-950 space-y-0.5">
+                          <strong className="block text-[10px] uppercase tracking-wider text-emerald-800 font-bold">
+                            Justification théorique :
+                          </strong>
+                          <MathText text={q.explication} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Corrigé type de la section & Exemples concrets */}
+            {isSubmitted && sec.correction && (
+              <div className="mt-4 p-4 bg-emerald-50/70 border border-emerald-300 rounded-lg space-y-3 text-emerald-950">
+                <div className="flex items-center gap-2 border-b border-emerald-200 pb-1.5">
+                  <Sparkles className="w-4 h-4 text-emerald-700 shrink-0" />
+                  <h4 className="font-serif font-black text-xs uppercase tracking-wide text-emerald-900">
+                    Corrigé Type Officiel & Exemples Concrets — {sec.title}
+                  </h4>
+                </div>
+
+                {sec.correction.steps && (
+                  <div className="space-y-1">
+                    <strong className="block text-[10px] uppercase tracking-wider text-emerald-800 font-bold">
+                      Démonstration & Étapes de Résolution :
+                    </strong>
+                    <div className="text-xs font-sans leading-relaxed text-emerald-950 bg-white/90 p-3 rounded border border-emerald-200">
+                      <MathText text={sec.correction.steps} />
+                    </div>
+                  </div>
+                )}
+
+                {Array.isArray(sec.correction.examples) && sec.correction.examples.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <strong className="block text-[10px] uppercase tracking-wider text-emerald-800 font-bold">
+                      Cas d'Usage Réels (Exemples Concrets) :
+                    </strong>
+                    <div className="grid grid-cols-1 gap-2">
+                      {sec.correction.examples.map((exText: string, exIdx: number) => (
+                        <div key={exIdx} className="p-2.5 bg-white rounded border border-emerald-200 text-xs text-emerald-950">
+                          <div className="flex items-start gap-2">
+                            <span className="w-4 h-4 rounded-full bg-emerald-600 text-white text-[9px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                              {exIdx + 1}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <MathText text={exText} />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        ))}
+
+        <footer className="border-t border-stone-300 pt-3 text-center text-xs text-stone-500 font-serif">
+          <span>Document officiel généré par StudyCloud • Plateforme d'Étude & d'Évaluation Certifiée</span>
+        </footer>
+      </div>
 
       {/* ========================================================
           VUE DU CERTIFICAT D'EXCELLENCE ACADÉMIQUE
