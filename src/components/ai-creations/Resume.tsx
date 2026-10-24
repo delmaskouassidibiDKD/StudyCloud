@@ -1155,8 +1155,8 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
 
                       {/* Encadré de Formule LaTeX Bleu Vibrant */}
                       {cleanedLatex && (
-                        <div className="py-3.5 px-4 rounded-xl bg-blue-50/70 border-2 border-blue-300 text-center overflow-x-auto shadow-inner my-2">
-                          <div className="text-xl sm:text-2xl font-bold text-blue-950 inline-block">
+                        <div className="py-3.5 px-4 rounded-xl bg-blue-50/70 border-2 border-blue-300 text-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden print:overflow-visible shadow-inner my-2">
+                          <div className="text-xl sm:text-2xl font-bold text-blue-950 inline-block max-w-full">
                             <MathText text={`$$ ${cleanedLatex} $$`} />
                           </div>
                         </div>
@@ -1237,7 +1237,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                 </h2>
               </div>
 
-              <div className="w-full overflow-x-auto rounded-2xl border-2 border-purple-200 shadow-xs bg-white">
+              <div className="w-full overflow-x-auto rounded-2xl border-2 border-purple-200 shadow-xs bg-white [scrollbar-width:none] [&::-webkit-scrollbar]:hidden print:overflow-visible">
                 <table className="w-full text-left border-collapse text-xs sm:text-sm">
                   <thead>
                     <tr className="bg-purple-700 text-white font-extrabold">

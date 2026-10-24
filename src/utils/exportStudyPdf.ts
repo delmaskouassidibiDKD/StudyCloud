@@ -1030,11 +1030,36 @@ export interface HtmlToPdfOptions {
  */
 /**
  * Prépare et normalise un document cloné pour html2canvas :
- * - Rétablissement des éléments masqués (ex. position fixed, zIndex négatif)
+ * - Largeur standardisée A4 pour un affichage optimal "en grand et en détails"
+ * - Élimination absolue des barres de défilement (scrollbars) et épanouissement des formules
  * - Nettoyage des filtres SVG incompatibles
  * - Conversion de toutes les couleurs modernes (oklch, oklab, color()) en RGB standard compatible avec le moteur de rendu
  */
 function prepareClonedDocForHtml2Canvas(clonedDoc: Document, targetEl?: HTMLElement | null): void {
+  try {
+    const style = clonedDoc.createElement('style');
+    style.textContent = `
+      * {
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+      }
+      *::-webkit-scrollbar {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+      }
+      .overflow-x-auto, .overflow-y-auto, [class*="overflow-"] {
+        overflow: visible !important;
+      }
+      .katex-display {
+        overflow: visible !important;
+        overflow-x: visible !important;
+        overflow-y: visible !important;
+      }
+    `;
+    clonedDoc.head?.appendChild(style);
+  } catch {}
+
   try {
     if (targetEl) {
       targetEl.style.position = 'static';
@@ -1044,7 +1069,23 @@ function prepareClonedDocForHtml2Canvas(clonedDoc: Document, targetEl?: HTMLElem
       targetEl.style.display = 'block';
       targetEl.style.visibility = 'visible';
       targetEl.style.opacity = '1';
+      targetEl.style.width = '860px';
+      targetEl.style.maxWidth = '860px';
       targetEl.style.margin = '0 auto';
+      targetEl.style.overflow = 'visible';
+
+      // Ajustement des formules KaTeX trop larges dans le document cloné
+      const mathDisplays = targetEl.querySelectorAll<HTMLElement>('.katex-display');
+      mathDisplays.forEach((m) => {
+        m.style.overflow = 'visible';
+        if (m.scrollWidth > 800) {
+          const ratio = Math.min(1, 800 / m.scrollWidth);
+          if (ratio < 0.98) {
+            m.style.transform = `scale(${ratio})`;
+            m.style.transformOrigin = 'center center';
+          }
+        }
+      });
     }
   } catch {}
 
@@ -1110,8 +1151,8 @@ function prepareClonedDocForHtml2Canvas(clonedDoc: Document, targetEl?: HTMLElem
 
 /**
  * Capture haute fidélité d'un élément DOM en canvas HTML.
- * Utilise en priorité `html-to-image` pour un rendu natif browser SVG foreignObject (polices KaTeX 100% fidèles),
- * avec repli automatique vers `html2canvas` si nécessaire.
+ * Prépare temporairement le conteneur en largeur standard A4 (860px) sans barres de défilement,
+ * avec formules KaTeX réelles ajustées, puis capture fidèlement.
  */
 async function captureDomElementToCanvas(
   target: HTMLElement,
@@ -1155,61 +1196,131 @@ async function captureDomElementToCanvas(
   const scale = options?.scale || 2;
   const bg = options?.backgroundColor || '#ffffff';
 
-  // 1. Essai prioritaire : html-to-image (moteur natif navigateur, polices et symboles KaTeX parfaits)
+  // Préparation du DOM en mode export PDF (suppression des scrollbars, overflow visible, largeur A4 860px)
+  let injectedStyle: HTMLStyleElement | null = null;
+  const originalWidth = target.style.width;
+  const originalMaxWidth = target.style.maxWidth;
+  const originalOverflow = target.style.overflow;
+  const formulaTransforms = new Map<HTMLElement, string>();
+
   try {
-    const canvas = await htmlToImageToCanvas(target, {
-      pixelRatio: scale,
-      backgroundColor: bg,
-      filter: filterFn,
-      cacheBust: true,
-    });
-    if (canvas && canvas.width > 0 && canvas.height > 0) {
-      return canvas;
+    if (typeof document !== 'undefined') {
+      injectedStyle = document.createElement('style');
+      injectedStyle.id = 'studycloud-export-temp-style';
+      injectedStyle.textContent = `
+        .studycloud-pdf-export-mode * {
+          scrollbar-width: none !important;
+          -ms-overflow-style: none !important;
+        }
+        .studycloud-pdf-export-mode *::-webkit-scrollbar {
+          display: none !important;
+          width: 0 !important;
+          height: 0 !important;
+        }
+        .studycloud-pdf-export-mode .overflow-x-auto,
+        .studycloud-pdf-export-mode .overflow-y-auto,
+        .studycloud-pdf-export-mode [class*="overflow-"] {
+          overflow: visible !important;
+        }
+        .studycloud-pdf-export-mode .katex-display {
+          overflow: visible !important;
+          overflow-x: visible !important;
+          overflow-y: visible !important;
+        }
+      `;
+      document.head.appendChild(injectedStyle);
     }
-  } catch (err1) {
-    console.warn('[PDF Export] html-to-image standard:', err1);
-  }
 
-  // 2. Deuxième essai html-to-image avec skipFonts (au cas où une police cross-origin bloque le fetch)
-  try {
-    const canvas = await htmlToImageToCanvas(target, {
-      pixelRatio: scale,
-      backgroundColor: bg,
-      filter: filterFn,
-      skipFonts: true,
+    target.classList.add('studycloud-pdf-export-mode');
+    target.style.width = '860px';
+    target.style.maxWidth = '860px';
+    target.style.overflow = 'visible';
+
+    // Auto-ajustement des formules mathématiques KaTeX pour qu'aucune ne dépasse ni ne tronque
+    const mathDisplays = target.querySelectorAll<HTMLElement>('.katex-display');
+    mathDisplays.forEach((m) => {
+      m.style.overflow = 'visible';
+      if (m.scrollWidth > 800) {
+        const ratio = Math.min(1, 800 / m.scrollWidth);
+        if (ratio < 0.98) {
+          formulaTransforms.set(m, m.style.transform);
+          m.style.transform = `scale(${ratio})`;
+          m.style.transformOrigin = 'center center';
+        }
+      }
     });
-    if (canvas && canvas.width > 0 && canvas.height > 0) {
-      return canvas;
+
+    // 1. Essai prioritaire : html-to-image (moteur natif navigateur, polices et symboles KaTeX parfaits)
+    try {
+      const canvas = await htmlToImageToCanvas(target, {
+        pixelRatio: scale,
+        backgroundColor: bg,
+        filter: filterFn,
+        cacheBust: true,
+      });
+      if (canvas && canvas.width > 0 && canvas.height > 0) {
+        return canvas;
+      }
+    } catch (err1) {
+      console.warn('[PDF Export] html-to-image standard:', err1);
     }
-  } catch (err2) {
-    console.warn('[PDF Export] html-to-image skipFonts:', err2);
+
+    // 2. Deuxième essai html-to-image avec skipFonts (au cas où une police cross-origin bloque le fetch)
+    try {
+      const canvas = await htmlToImageToCanvas(target, {
+        pixelRatio: scale,
+        backgroundColor: bg,
+        filter: filterFn,
+        skipFonts: true,
+      });
+      if (canvas && canvas.width > 0 && canvas.height > 0) {
+        return canvas;
+      }
+    } catch (err2) {
+      console.warn('[PDF Export] html-to-image skipFonts:', err2);
+    }
+
+    // 3. Repli : html2canvas avec normalisation des couleurs oklch et filtres
+    const canvas = await html2canvas(target, {
+      scale: Math.min(scale, 1.8),
+      useCORS: true,
+      allowTaint: false,
+      backgroundColor: bg,
+      logging: false,
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: 860,
+      onclone: (clonedDoc) => {
+        const clonedTarget =
+          (target.id ? clonedDoc.getElementById(target.id) : null) ||
+          (clonedDoc.body.firstElementChild as HTMLElement);
+        prepareClonedDocForHtml2Canvas(clonedDoc, clonedTarget);
+      },
+      ignoreElements: (el) => !filterFn(el as HTMLElement),
+    });
+
+    return canvas;
+  } finally {
+    // Restauration propre des styles initiaux
+    target.classList.remove('studycloud-pdf-export-mode');
+    target.style.width = originalWidth;
+    target.style.maxWidth = originalMaxWidth;
+    target.style.overflow = originalOverflow;
+
+    formulaTransforms.forEach((origTrans, m) => {
+      m.style.transform = origTrans;
+    });
+
+    if (injectedStyle && injectedStyle.parentNode) {
+      injectedStyle.parentNode.removeChild(injectedStyle);
+    }
   }
-
-  // 3. Repli : html2canvas avec normalisation des couleurs oklch et filtres
-  const canvas = await html2canvas(target, {
-    scale: Math.min(scale, 1.8),
-    useCORS: true,
-    allowTaint: false,
-    backgroundColor: bg,
-    logging: false,
-    scrollX: 0,
-    scrollY: 0,
-    windowWidth: target.scrollWidth || 1024,
-    onclone: (clonedDoc) => {
-      const clonedTarget =
-        (target.id ? clonedDoc.getElementById(target.id) : null) ||
-        (clonedDoc.body.firstElementChild as HTMLElement);
-      prepareClonedDocForHtml2Canvas(clonedDoc, clonedTarget);
-    },
-    ignoreElements: (el) => !filterFn(el as HTMLElement),
-  });
-
-  return canvas;
 }
 
 /**
- * Capture fidèlement un élément HTML (avec formules KaTeX réelles, polices, couleurs et mises en page à l'identique de l'écran)
- * et le convertit en document PDF multi-pages A4 avec découpage intelligent évitant de couper les formules en deux.
+ * Capture fidèlement un élément HTML (avec formules KaTeX réelles, polices, couleurs et cartes)
+ * et le convertit en document PDF multi-pages A4 sans AUCUNE coupure horizontale de texte ni de titre,
+ * et sans aucune barre de défilement.
  */
 export async function exportHtmlElementToPdf(
   elementOrId: string | HTMLElement,
@@ -1226,12 +1337,29 @@ export async function exportHtmlElementToPdf(
   const isLandscape = orientation === 'landscape';
   const pageWidthPt = isLandscape ? 841.89 : 595.28;
   const pageHeightPt = isLandscape ? 595.28 : 841.89;
-  const marginPt = options?.marginPt ?? 20;
+  const marginPt = options?.marginPt ?? 24;
+  const footerHeightPt = 24;
   const usableWidthPt = pageWidthPt - 2 * marginPt;
-  const usableHeightPt = pageHeightPt - 2 * marginPt;
+  const usableHeightPt = pageHeightPt - 2 * marginPt - footerHeightPt;
   const aspect = usableHeightPt / usableWidthPt;
 
-  // Capture de l'élément HTML rendu haute fidélité (KaTeX, Tailwind 4, couleurs réelles)
+  // Repérage préalable des en-têtes et cartes clés dans le DOM pour éviter tout titre orphelin ou coupé
+  const targetRect = target.getBoundingClientRect();
+  const rawHeadingBoxes: { top: number; bottom: number }[] = [];
+  try {
+    const headingEls = target.querySelectorAll('h1, h2, h3, h4, header, [class*="heading"]');
+    headingEls.forEach((h) => {
+      const hr = h.getBoundingClientRect();
+      if (hr.height > 0) {
+        rawHeadingBoxes.push({
+          top: hr.top - targetRect.top,
+          bottom: hr.bottom - targetRect.top,
+        });
+      }
+    });
+  } catch {}
+
+  // Capture de l'élément HTML en haute résolution
   const canvas = await captureDomElementToCanvas(target, {
     scale: options?.scale || 2,
     backgroundColor: '#ffffff',
@@ -1244,57 +1372,185 @@ export async function exportHtmlElementToPdf(
   }
 
   const maxSliceHeightPx = Math.floor(canvasWidth * aspect);
+  const scaleRatio = targetRect.height > 0 ? canvasHeight / targetRect.height : 1;
 
-  // Recherche des frontières d'éléments pour éviter de couper une formule ou une carte en deux
-  const targetRect = target.getBoundingClientRect();
-  const totalH = targetRect.height;
-  const breakOffsets: number[] = [];
+  // Zones d'en-têtes converties en pixels canvas
+  const headingZones = rawHeadingBoxes.map((hb) => ({
+    top: Math.round(hb.top * scaleRatio),
+    bottom: Math.round(hb.bottom * scaleRatio),
+  }));
 
-  if (totalH > 0 && canvasHeight > maxSliceHeightPx) {
-    const blockNodes = target.querySelectorAll(
-      'section, article, header, footer, h1, h2, h3, h4, table, tr, [class*="rounded"], [class*="border"], [class*="p-"], .katex-display'
-    );
-    blockNodes.forEach((node) => {
-      const r = node.getBoundingClientRect();
-      const topFromTarget = r.top - targetRect.top;
-      if (topFromTarget > 25 && topFromTarget < totalH - 25) {
-        const pxOnCanvas = Math.round((topFromTarget / totalH) * canvasHeight);
-        breakOffsets.push(pxOnCanvas);
-      }
-    });
-    breakOffsets.sort((a, b) => a - b);
-  }
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-  // Calcul des découpages de pages
+  // Calcul du découpage intelligent au pixel près : détection des lignes blanches horizontales
   const cuts: { startY: number; endY: number }[] = [];
   let currentY = 0;
 
   while (currentY < canvasHeight) {
-    let nextCutY = currentY + maxSliceHeightPx;
-    if (nextCutY >= canvasHeight) {
-      nextCutY = canvasHeight;
-    } else {
-      const minAcceptable = nextCutY - maxSliceHeightPx * 0.22;
-      let bestBreak = -1;
-      for (let i = breakOffsets.length - 1; i >= 0; i--) {
-        const b = breakOffsets[i];
-        if (b <= nextCutY && b >= minAcceptable) {
-          bestBreak = b;
+    const targetCutY = currentY + maxSliceHeightPx;
+    if (targetCutY >= canvasHeight) {
+      cuts.push({ startY: currentY, endY: canvasHeight });
+      break;
+    }
+
+    // Fenêtre de recherche du meilleur saut de page (entre 55% et 100% de la hauteur de la page)
+    const windowMaxY = Math.min(canvasHeight - 1, targetCutY - 4);
+    const windowMinY = currentY + Math.floor(maxSliceHeightPx * 0.55);
+
+    let bestCutY = -1;
+
+    if (ctx && windowMaxY > windowMinY) {
+      const windowH = windowMaxY - windowMinY + 1;
+      const imgData = ctx.getImageData(0, windowMinY, canvasWidth, windowH).data;
+
+      const leftMargin = Math.floor(canvasWidth * 0.04);
+      const rightMargin = Math.floor(canvasWidth * 0.96);
+
+      const isWhitespaceRow: boolean[] = new Array(windowH);
+      const darkCountPerRow: number[] = new Array(windowH);
+
+      for (let row = 0; row < windowH; row++) {
+        let darkPixels = 0;
+        const rowOffset = row * canvasWidth * 4;
+
+        // Échantillonnage de la ligne tous les 2 pixels pour rapidité maximale
+        for (let x = leftMargin; x < rightMargin; x += 2) {
+          const pxIdx = rowOffset + x * 4;
+          const r = imgData[pxIdx];
+          const g = imgData[pxIdx + 1];
+          const b = imgData[pxIdx + 2];
+          const a = imgData[pxIdx + 3];
+
+          // Détection d'un pixel d'encre (texte, formule mathématique, bordure)
+          if (a > 60 && (r < 220 || g < 220 || b < 220)) {
+            darkPixels++;
+          }
+        }
+
+        darkCountPerRow[row] = darkPixels;
+        // Ligne blanche garantie si aucun ou au maximum 1 pixel sombre résiduel
+        isWhitespaceRow[row] = darkPixels <= 1;
+      }
+
+      // Identification des bandes continues de blanc
+      interface WhitespaceBand {
+        height: number;
+        canvasMidY: number;
+      }
+      const bands: WhitespaceBand[] = [];
+      let inBand = false;
+      let bandStart = 0;
+
+      for (let row = 0; row < windowH; row++) {
+        if (isWhitespaceRow[row]) {
+          if (!inBand) {
+            inBand = true;
+            bandStart = row;
+          }
+        } else {
+          if (inBand) {
+            inBand = false;
+            bands.push({
+              height: row - bandStart,
+              canvasMidY: windowMinY + Math.floor((bandStart + row - 1) / 2),
+            });
+          }
+        }
+      }
+      if (inBand) {
+        bands.push({
+          height: windowH - bandStart,
+          canvasMidY: windowMinY + Math.floor((bandStart + windowH - 1) / 2),
+        });
+      }
+
+      // Fonction vérifiant qu'un saut ne tombe pas au milieu ou juste après un titre
+      const isBadForHeading = (cutY: number): boolean => {
+        for (const hz of headingZones) {
+          if (cutY >= hz.top - 4 && cutY <= hz.bottom + 65) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      // 1ère Priorité : Grand espace blanc entre cartes/sections (>= 16px) hors en-tête
+      for (let i = bands.length - 1; i >= 0; i--) {
+        const b = bands[i];
+        if (b.height >= 16 && !isBadForHeading(b.canvasMidY)) {
+          bestCutY = b.canvasMidY;
           break;
         }
       }
-      if (bestBreak > 0) {
-        nextCutY = bestBreak;
+
+      // 2ème Priorité : Espace blanc moyen entre paragraphes/points (>= 6px)
+      if (bestCutY === -1) {
+        for (let i = bands.length - 1; i >= 0; i--) {
+          const b = bands[i];
+          if (b.height >= 6 && !isBadForHeading(b.canvasMidY)) {
+            bestCutY = b.canvasMidY;
+            break;
+          }
+        }
+      }
+
+      // 3ème Priorité : Espace blanc interligne (>= 2px)
+      if (bestCutY === -1) {
+        for (let i = bands.length - 1; i >= 0; i--) {
+          const b = bands[i];
+          if (b.height >= 2 && !isBadForHeading(b.canvasMidY)) {
+            bestCutY = b.canvasMidY;
+            break;
+          }
+        }
+      }
+
+      // 4ème Priorité : Tout espace blanc valide
+      if (bestCutY === -1) {
+        for (let i = bands.length - 1; i >= 0; i--) {
+          const b = bands[i];
+          if (b.height >= 2) {
+            bestCutY = b.canvasMidY;
+            break;
+          }
+        }
+      }
+
+      // 5ème Priorité : Ligne avec le moins absolu de pixels sombres
+      if (bestCutY === -1) {
+        let minDark = Infinity;
+        let minRow = windowH - 1;
+        for (let row = windowH - 1; row >= 0; row--) {
+          if (darkCountPerRow[row] < minDark) {
+            minDark = darkCountPerRow[row];
+            minRow = row;
+          }
+        }
+        bestCutY = windowMinY + minRow;
       }
     }
 
-    cuts.push({ startY: currentY, endY: nextCutY });
-    currentY = nextCutY;
+    if (bestCutY <= currentY || bestCutY > targetCutY) {
+      bestCutY = targetCutY;
+    }
+
+    // Protection anti-titre orphelin : si le saut touche un titre, on coupe avant le titre
+    for (const hz of headingZones) {
+      if (bestCutY > hz.top && bestCutY <= hz.bottom + 65) {
+        if (hz.top - 8 > currentY + Math.floor(maxSliceHeightPx * 0.45)) {
+          bestCutY = hz.top - 8;
+        }
+      }
+    }
+
+    cuts.push({ startY: currentY, endY: bestCutY });
+    currentY = bestCutY;
   }
 
   const pdfDoc = await PDFDocument.create();
   const totalPages = cuts.length;
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
   for (let pIdx = 0; pIdx < totalPages; pIdx++) {
     const cut = cuts[pIdx];
@@ -1304,11 +1560,11 @@ export async function exportHtmlElementToPdf(
     const sliceCanvas = document.createElement('canvas');
     sliceCanvas.width = canvasWidth;
     sliceCanvas.height = sliceHeight;
-    const ctx = sliceCanvas.getContext('2d');
-    if (ctx) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-      ctx.drawImage(
+    const sCtx = sliceCanvas.getContext('2d');
+    if (sCtx) {
+      sCtx.fillStyle = '#ffffff';
+      sCtx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+      sCtx.drawImage(
         canvas,
         0, cut.startY, canvasWidth, sliceHeight,
         0, 0, canvasWidth, sliceHeight
@@ -1329,16 +1585,33 @@ export async function exportHtmlElementToPdf(
       height: drawHeightPt,
     });
 
-    // Pied de page discret
-    if (totalPages > 1) {
-      page.drawText(`StudyCloud • Page ${pIdx + 1} / ${totalPages}`, {
-        x: pageWidthPt - marginPt - 120,
-        y: 8,
-        size: 7.5,
-        font: fontRegular,
-        color: rgb(0.55, 0.55, 0.55),
-      });
-    }
+    // Ligne séparatrice de pied de page discret et officiel
+    page.drawLine({
+      start: { x: marginPt, y: 22 },
+      end: { x: pageWidthPt - marginPt, y: 22 },
+      thickness: 0.5,
+      color: rgb(0.85, 0.85, 0.85),
+    });
+
+    // Mention officielle à gauche
+    page.drawText('StudyCloud • Document Officiel d\'Étude — Plateforme Universitaire & Scolaire', {
+      x: marginPt,
+      y: 11,
+      size: 7.2,
+      font: fontRegular,
+      color: rgb(0.48, 0.48, 0.48),
+    });
+
+    // Pagination officielle à droite
+    const pageNumText = `Page ${pIdx + 1} / ${totalPages}`;
+    const pageNumWidth = fontBold.widthOfTextAtSize(pageNumText, 7.5);
+    page.drawText(pageNumText, {
+      x: pageWidthPt - marginPt - pageNumWidth,
+      y: 11,
+      size: 7.5,
+      font: fontBold,
+      color: rgb(0.22, 0.22, 0.22),
+    });
   }
 
   const pdfBytes = await pdfDoc.save();

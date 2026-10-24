@@ -839,5 +839,36 @@ p.brand-tagline,
   }
 }
 
+/* ============================================================================
+   STYLES D'EXPORT PDF HAUTE DÉFINITION (STUDYCLOUD PDF CAPTURE ENGINE)
+   Élimination absolue des scrollbars, épanouissement des équations mathématiques,
+   largeur optimisée pour ratio A4 sans aucune coupure de texte ni de bordure.
+   ============================================================================ */
+.studycloud-pdf-export-mode,
+.studycloud-pdf-export-mode * {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.studycloud-pdf-export-mode *::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.studycloud-pdf-export-mode .overflow-x-auto,
+.studycloud-pdf-export-mode .overflow-y-auto,
+.studycloud-pdf-export-mode [class*="overflow-"] {
+  overflow: visible !important;
+}
+
+.studycloud-pdf-export-mode .katex-display {
+  overflow: visible !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+  margin: 0.5em 0 !important;
+}
+
+
 
 
