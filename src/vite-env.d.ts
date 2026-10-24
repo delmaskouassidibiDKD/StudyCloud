@@ -20,7 +20,7 @@ declare module 'html2canvas' {
     foreignObjectRendering?: boolean;
     removeContainer?: boolean;
     onclone?: (document: Document, element: HTMLElement) => void;
-    ignoreElements?: (element: Element) => boolean;
+    ignoreElements?: (element: Element) => boolean | undefined | void;
     [key: string]: any;
   }
   const html2canvas: (element: HTMLElement, options?: Html2CanvasOptions) => Promise<HTMLCanvasElement>;

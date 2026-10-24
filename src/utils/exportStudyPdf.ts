@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib';
 import html2canvas from 'html2canvas';
 
 export interface StudyDocSection {
@@ -99,6 +99,7 @@ function sanitizeForPdf(str: string): string {
     .filter((c) => {
       const code = c.charCodeAt(0);
       return (
+        code === 10 ||
         (code >= 32 && code <= 126) ||
         (code >= 160 && code <= 255) ||
         [8364, 338, 339, 352, 353, 376, 381, 382, 8211, 8212, 8216, 8217, 8220, 8221, 8226, 8230].includes(code)
@@ -110,7 +111,7 @@ function sanitizeForPdf(str: string): string {
 /**
  * Découpe un texte en lignes ne dépassant pas la largeur max spécifiée
  */
-function wrapPdfText(text: string, font: any, fontSize: number, maxWidth: number): string[] {
+function wrapPdfText(text: string, font: PDFFont | any, fontSize: number, maxWidth: number): string[] {
   if (!text) return [];
   const lines: string[] = [];
   const paragraphs = text.split('\n');
@@ -126,7 +127,12 @@ function wrapPdfText(text: string, font: any, fontSize: number, maxWidth: number
 
     for (const word of words) {
       const testLine = currentLine ? `${currentLine} ${word}` : word;
-      const width = font.widthOfTextAtSize(testLine, fontSize);
+      let width = 0;
+      try {
+        width = font.widthOfTextAtSize(testLine, fontSize);
+      } catch {
+        width = testLine.length * fontSize * 0.6;
+      }
       if (width <= maxWidth) {
         currentLine = testLine;
       } else {
@@ -142,16 +148,20 @@ function wrapPdfText(text: string, font: any, fontSize: number, maxWidth: number
 /**
  * Tronque une ligne avec ellipse si nécessaire
  */
-function truncatePdfText(text: string, font: any, fontSize: number, maxWidth: number): string {
+function truncatePdfText(text: string, font: PDFFont | any, fontSize: number, maxWidth: number): string {
   let clean = sanitizeForPdf(text);
   if (!clean) return '';
-  if (font.widthOfTextAtSize(clean, fontSize) <= maxWidth) {
-    return clean;
+  try {
+    if (font.widthOfTextAtSize(clean, fontSize) <= maxWidth) {
+      return clean;
+    }
+    while (clean.length > 1 && font.widthOfTextAtSize(clean + '...', fontSize) > maxWidth) {
+      clean = clean.slice(0, -1);
+    }
+    return clean + '...';
+  } catch {
+    return clean.slice(0, Math.max(1, Math.floor(maxWidth / (fontSize * 0.6)))) + '...';
   }
-  while (clean.length > 1 && font.widthOfTextAtSize(clean + '...', fontSize) > maxWidth) {
-    clean = clean.slice(0, -1);
-  }
-  return clean + '...';
 }
 
 /**
@@ -1057,14 +1067,19 @@ export async function exportHtmlElementToPdf(
       }
     },
     ignoreElements: (el) => {
-      return (
+      const isButtonWithAction =
+        el.tagName.toLowerCase() === 'button' &&
+        Boolean(
+          el.textContent?.includes('Télécharger') ||
+          el.textContent?.includes('Copier') ||
+          el.textContent?.includes('Imprimer') ||
+          el.textContent?.includes('Recommencer')
+        );
+
+      return Boolean(
         el.classList.contains('no-print') ||
         el.getAttribute('data-no-print') === 'true' ||
-        (el.tagName.toLowerCase() === 'button' &&
-          (el.textContent?.includes('Télécharger') ||
-            el.textContent?.includes('Copier') ||
-            el.textContent?.includes('Imprimer') ||
-            el.textContent?.includes('Recommencer')))
+        isButtonWithAction
       );
     },
   });

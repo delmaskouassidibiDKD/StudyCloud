@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb, RGB } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, type RGB, type PDFFont } from 'pdf-lib';
 
 export interface ScheduleExportSlot {
   subject: string;
@@ -19,7 +19,8 @@ export interface ExportScheduleOptions {
  */
 function sanitizeText(str: string): string {
   if (!str) return '';
-  return str.split('').filter((c) => {
+  const normalized = str.replace(/[\r\n\t]+/g, ' ');
+  return normalized.split('').filter((c) => {
     const code = c.charCodeAt(0);
     return (
       (code >= 32 && code <= 126) ||
@@ -34,19 +35,23 @@ function sanitizeText(str: string): string {
  */
 function truncateText(
   text: string,
-  font: any,
+  font: PDFFont,
   fontSize: number,
   maxWidth: number
 ): string {
   let clean = sanitizeText(text);
   if (!clean) return '';
-  if (font.widthOfTextAtSize(clean, fontSize) <= maxWidth) {
-    return clean;
+  try {
+    if (font.widthOfTextAtSize(clean, fontSize) <= maxWidth) {
+      return clean;
+    }
+    while (clean.length > 1 && font.widthOfTextAtSize(clean + '...', fontSize) > maxWidth) {
+      clean = clean.slice(0, -1);
+    }
+    return clean + '...';
+  } catch {
+    return clean.slice(0, Math.max(1, Math.floor(maxWidth / (fontSize * 0.6)))) + '...';
   }
-  while (clean.length > 1 && font.widthOfTextAtSize(clean + '...', fontSize) > maxWidth) {
-    clean = clean.slice(0, -1);
-  }
-  return clean + '...';
 }
 
 /**
