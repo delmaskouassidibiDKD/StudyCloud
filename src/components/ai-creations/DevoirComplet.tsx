@@ -176,7 +176,17 @@ export function normalizeExamData(data: any, title?: string) {
 
   const rawSections: any[] = Array.isArray(source.sections)
     ? source.sections
-    : (Array.isArray(data?.sections) ? data.sections : []);
+    : (Array.isArray(source.parts)
+      ? source.parts
+      : (Array.isArray(source.exercices)
+        ? source.exercices
+        : (Array.isArray(data?.sections)
+          ? data.sections
+          : (Array.isArray(data?.parts)
+            ? data.parts
+            : (Array.isArray(source.children)
+              ? source.children
+              : (Array.isArray(source.root?.children) ? source.root.children : []))))));
 
   // Extraction d'exercices nommés si présents (exercice1, exercice2, etc.)
   const rawEx1 = source.exercice1 || source.problem || source.partie1 || (Array.isArray(source.exercices) && source.exercices[0]);

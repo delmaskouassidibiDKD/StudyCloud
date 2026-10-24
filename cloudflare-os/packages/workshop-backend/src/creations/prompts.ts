@@ -362,31 +362,93 @@ RÈGLE FORMAT : EXERCICES ÉCRITS D'APPLICATION ('exercices-ecrits')
     return `
 ══════════════════════════════════════════════════════════════════════════════
 RÈGLE FORMAT : DEVOIR COMPLET D'EXAMEN ('devoir-complet')
-══════════════════════════════════════════════════════
-- Épreuve officielle complète découpée en 2 à 4 Parties (Partie A, Partie B, Partie C).
-- Barème strict totalisant EXACTEMENT 20 POINTS.
-- Corrigé modèle détaillé pour chaque partie.
+══════════════════════════════════════════════════════════════════════════════
+- Extraction logique et rigoureuse du document selon la même arborescence à 4 PALIERS OBLIGATOIRES que la Carte Mentale, adaptée en Devoir Complet d'Examen :
+  * Niveau 0 (Titre Global de l'Épreuve) : Titre officiel exact du cours, de l'examen ou du polycopié analysé.
+  * Niveau 1 (Grands Piliers Thématiques du document) : Structure l'épreuve en 3 Exercices d'Examen complémentaires :
+      - Exercice 1 / Partie I : Problème Majeur & Modélisation Analytique (Questions ouvertes, démonstrations rédigées, barème sur 8 points).
+      - Exercice 2 / Partie II : Questionnaire d'Analyse Rapide à Choix Multiples (4 questions ciblées avec options et justifications, barème sur 6 points).
+      - Exercice 3 / Partie III : Test de Discrimination Conceptuelle (4 affirmations pointues Vrai ou Faux avec justifications détaillées, barème sur 6 points).
+  * Niveau 2 (Problèmes, Schémas, Circuits & Hypothèses par partie) : Énoncés progressifs complets, figures/circuits (ex: Figure 1), composants, équations directrices et grandeurs physiques à déterminer.
+  * Niveau 3 (Calculs exacts, formules KaTeX et Corrigé officiel pas-à-pas) : Formules avec fractions verticales \\dfrac{}{}, paramètres canoniques, calculs de limites, pulsations de coupure à -3dB, valeurs numériques avec unités SI, et corrigé pas-à-pas modèle pour chaque question.
+- Barème strict totalisant EXACTEMENT 20 POINTS (8 pts pour l'Exercice 1 + 6 pts pour l'Exercice 2 + 6 pts pour l'Exercice 3 = 20 points au total).
+- Toutes les expressions mathématiques DOIVENT être écrites avec KaTeX ($...$).
 - Format JSON strict dans 'creation_data' :
 {
-  "title": "Épreuve d'Examen : Titre du Cours",
-  "subject": "Discipline / Filière",
-  "duration": "2 Heures",
-  "totalPoints": 20,
-  "parts": [
+  "title": "Épreuve Complète d'Examen : Titre du Cours",
+  "discipline": "Discipline / Matière",
+  "duree": "Durée : 2h00",
+  "sections": [
     {
-      "partNumber": 1,
-      "title": "Partie I : Étude Théorique et Démonstrations",
-      "context": "Mise en situation et hypothèses fondamentales...",
-      "points": 8,
+      "title": "Exercice 1 : Problème Majeur & Modélisation Analytique",
+      "problem_statement": "Mise en situation complète issue des Paliers 1 & 2 : présentation du système, figures/circuits, hypothèses physiques et données numériques.",
       "questions": [
         {
           "id": "p1_q1",
-          "number": 1,
-          "text": "Énoncé précis de la question...",
-          "points": 4,
-          "sampleAnswer": "Démonstration pas à pas avec formules KaTeX..."
+          "number": "1.",
+          "texte": "Énoncé précis de la question rédigée avec formules KaTeX ($...$)",
+          "points": 3,
+          "sampleAnswer": "Correction exhaustive pas-à-pas avec démonstration complète et formules KaTeX ($...$)"
+        },
+        {
+          "id": "p1_q2",
+          "number": "2.",
+          "texte": "Énoncé de la deuxième question...",
+          "points": 3,
+          "sampleAnswer": "Démonstration complète pas-à-pas..."
+        },
+        {
+          "id": "p1_q3",
+          "number": "3.",
+          "texte": "Énoncé de la troisième question...",
+          "points": 2,
+          "sampleAnswer": "Calculs et conclusions physiques..."
         }
-      ]
+      ],
+      "correction": {
+        "steps": "Corrigé analytique de l'Exercice 1 : application rigoureuse des théorèmes...",
+        "examples": ["Exemple 1 : Cas concret d'application", "Exemple 2 : Dimensionnement pratique"]
+      }
+    },
+    {
+      "title": "Exercice 2 : Questionnaire d'Analyse à Choix Multiples (QCM)",
+      "questions": [
+        {
+          "id": "p2_q1",
+          "number": "1.",
+          "texte": "Question d'analyse conceptuelle avec formules KaTeX ($...$)",
+          "points": 1.5,
+          "options": [
+            "Proposition A exacte démontrée par le cours",
+            "Proposition B erronée (piège d'approximation)",
+            "Proposition C divergente",
+            "Proposition D non conforme aux hypothèses"
+          ],
+          "correctIndex": 0,
+          "explication": "Justification théorique rigoureuse expliquant pourquoi l'option est exacte et pourquoi les autres sont fausses."
+        }
+      ],
+      "correction": {
+        "steps": "Corrigé type du QCM : justification analytique de chaque proposition exacte.",
+        "examples": ["Exemple 1 : Vérification par calcul direct", "Exemple 2 : Élimination des pièges classiques"]
+      }
+    },
+    {
+      "title": "Exercice 3 : Test de Discrimination Conceptuelle (Vrai ou Faux)",
+      "questions": [
+        {
+          "id": "p3_q1",
+          "number": "1.",
+          "texte": "Affirmation scientifique précise issue du Palier 3 avec formules KaTeX ($...$)",
+          "points": 1.5,
+          "correctValue": true,
+          "explication": "Démonstration pédagogique complète justifiant la véracité ou la fausseté de l'affirmation."
+        }
+      ],
+      "correction": {
+        "steps": "Synthèse des pièges conceptuels et règles de validation.",
+        "examples": ["Exemple 1 : Condition de validité", "Exemple 2 : Contre-exemple classique"]
+      }
     }
   ]
 }`;

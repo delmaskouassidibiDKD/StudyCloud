@@ -316,8 +316,8 @@ export function RightMenu({
       ),
       toolType: 'devoir-complet',
       getPrompt: (doc) => doc
-        ? `Conçois un Devoir Complet d'examen officiel avec plusieurs parties, barème de points et corrigé détaillé sur « ${doc} ».`
-        : "Conçois un Devoir Complet d'examen officiel avec plusieurs parties, barème de points et corrigé détaillé."
+        ? `Extrais l'ensemble des piliers thématiques, concepts, figures, circuits et formules mathématiques en KaTeX du document « ${doc} » pour concevoir une Épreuve Complète de Devoir d'Examen sur 20 points découpée en 3 Exercices officiels (Problème analytique 8 pts, QCM 6 pts, Vrai ou Faux 6 pts) avec barème strict et corrigé pas-à-pas détaillé.`
+        : "Extrais et structure l'ensemble des piliers thématiques, concepts et formules mathématiques en KaTeX pour concevoir une Épreuve Complète de Devoir d'Examen sur 20 points découpée en 3 Exercices officiels (Problème analytique 8 pts, QCM 6 pts, Vrai ou Faux 6 pts) avec barème strict et corrigé pas-à-pas détaillé."
     }
   ], []);
 
