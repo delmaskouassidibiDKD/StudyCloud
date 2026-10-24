@@ -1233,6 +1233,12 @@ export async function exportHtmlElementToPdf(
     throw new Error(`Élément "${elementOrId}" introuvable pour export.`);
   }
 
+  if (typeof document !== 'undefined' && 'fonts' in document) {
+    try {
+      await (document as any).fonts.ready;
+    } catch {}
+  }
+
   const orientation = options?.orientation || 'portrait';
   const isLandscape = orientation === 'landscape';
   const pageWidthPt = isLandscape ? 841.89 : 595.28;
@@ -1241,261 +1247,263 @@ export async function exportHtmlElementToPdf(
   const footerHeightPt = 24;
   const usableWidthPt = pageWidthPt - 2 * marginPt;
   const usableHeightPt = pageHeightPt - 2 * marginPt - footerHeightPt;
-  const aspect = usableHeightPt / usableWidthPt;
 
-  // 1. Repérage préalable des titres et en-têtes dans le DOM
-  const targetRect = target.getBoundingClientRect();
-  const rawHeadingBoxes: { topRel: number; bottomRel: number }[] = [];
-  if (targetRect.height > 0) {
-    try {
-      const headingEls = target.querySelectorAll('h1, h2, h3, h4, header, [class*="heading"]');
-      headingEls.forEach((h) => {
-        const hr = (h as HTMLElement).getBoundingClientRect();
-        if (hr.height > 0) {
-          rawHeadingBoxes.push({
-            topRel: (hr.top - targetRect.top) / targetRect.height,
-            bottomRel: (hr.bottom - targetRect.top) / targetRect.height,
-          });
-        }
-      });
-    } catch (err) {
-      console.warn('[PDF Export] Repérage titres DOM:', err);
-    }
-  }
+  // 1. Découpage en blocs atomiques de contenu (cartes, en-têtes, tableaux)
+  const atomicBlocks: HTMLElement[] = [];
+  const rawChildren = Array.from(target.children) as HTMLElement[];
 
-  // 2. Capture rapide via html2canvas local
-  const canvas = await captureDomElementToCanvas(target, {
-    scale: options?.scale || 1.6,
-    backgroundColor: '#ffffff',
-  });
+  const isNoPrint = (node: HTMLElement) => {
+    if (!node || node.nodeType !== Node.ELEMENT_NODE) return true;
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'button') return true;
+    if (node.classList?.contains('no-print') || node.getAttribute('data-no-print') === 'true') return true;
+    return false;
+  };
 
-  const canvasWidth = canvas.width;
-  const canvasHeight = canvas.height;
-  if (!canvasWidth || !canvasHeight) {
-    throw new Error('Canvas invalide lors de la capture.');
-  }
+  for (const child of rawChildren) {
+    if (isNoPrint(child)) continue;
 
-  const maxSliceHeightPx = Math.floor(canvasWidth * aspect);
-  const headingZones = rawHeadingBoxes.map((hb) => ({
-    top: Math.round(hb.topRel * canvasHeight),
-    bottom: Math.round(hb.bottomRel * canvasHeight),
-  }));
+    const tag = child.tagName.toLowerCase();
+    // Décomposer les sections volumineuses en blocs individuels (en-tête + cartes)
+    if (tag === 'section') {
+      const sectionHeader = child.querySelector<HTMLElement>(':scope > div.border-b-2, :scope > div.border-b, :scope > [class*="border-b"]');
+      const cardsWrapper = child.querySelector<HTMLElement>(':scope > div.space-y-6, :scope > div.space-y-4, :scope > div.grid, :scope > div.space-y-2');
 
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-  // 3. Découpage intelligent au pixel près : détection des lignes blanches horizontales
-  // ZÉRO coupure de texte, ZÉRO coupure de formules mathématiques, progression absolue garantie
-  const cuts: { startY: number; endY: number }[] = [];
-  let currentY = 0;
-  const minStep = Math.max(180, Math.floor(maxSliceHeightPx * 0.40));
-
-  while (currentY < canvasHeight) {
-    const targetCutY = currentY + maxSliceHeightPx;
-    if (targetCutY >= canvasHeight) {
-      cuts.push({ startY: currentY, endY: canvasHeight });
-      break;
-    }
-
-    // Fenêtre de recherche du meilleur saut de page naturel (entre 55% et 100% de la hauteur autorisée)
-    const windowMaxY = Math.min(canvasHeight - 1, targetCutY - 4);
-    const windowMinY = currentY + Math.floor(maxSliceHeightPx * 0.55);
-
-    let bestCutY = -1;
-
-    if (ctx && windowMaxY > windowMinY) {
-      const windowH = windowMaxY - windowMinY + 1;
-      const imgData = ctx.getImageData(0, windowMinY, canvasWidth, windowH).data;
-
-      const leftMargin = Math.floor(canvasWidth * 0.05);
-      const rightMargin = Math.floor(canvasWidth * 0.95);
-
-      const isWhitespaceRow: boolean[] = new Array(windowH);
-      const darkCountPerRow: number[] = new Array(windowH);
-
-      for (let row = 0; row < windowH; row++) {
-        let darkPixels = 0;
-        const rowOffset = row * canvasWidth * 4;
-
-        // Échantillonnage ultra-rapide par pas de 8 pixels avec rupture anticipée dès 3 pixels d'encre
-        for (let x = leftMargin; x < rightMargin; x += 8) {
-          const pxIdx = rowOffset + x * 4;
-          const a = imgData[pxIdx + 3];
-          if (a > 60) {
-            const r = imgData[pxIdx];
-            const g = imgData[pxIdx + 1];
-            const b = imgData[pxIdx + 2];
-            // Détection d'encre (texte, formule mathématique, bordure)
-            if (r < 220 || g < 220 || b < 220) {
-              darkPixels++;
-              if (darkPixels > 2) {
-                // Dès 3 pixels sombres, la ligne contient du contenu et ne peut être coupée
-                break;
-              }
-            }
+      if (sectionHeader && cardsWrapper && cardsWrapper.children.length > 0) {
+        atomicBlocks.push(sectionHeader.cloneNode(true) as HTMLElement);
+        Array.from(cardsWrapper.children).forEach((card) => {
+          if (!isNoPrint(card as HTMLElement)) {
+            atomicBlocks.push(card.cloneNode(true) as HTMLElement);
           }
-        }
-
-        darkCountPerRow[row] = darkPixels;
-        // Ligne blanche garantie si 0 ou au maximum 1 pixel sombre résiduel (anti-aliasing)
-        isWhitespaceRow[row] = darkPixels <= 1;
-      }
-
-      // Détection des bandes continues d'espace blanc
-      interface WhitespaceBand {
-        height: number;
-        canvasMidY: number;
-      }
-      const bands: WhitespaceBand[] = [];
-      let inBand = false;
-      let bandStart = 0;
-
-      for (let row = 0; row < windowH; row++) {
-        if (isWhitespaceRow[row]) {
-          if (!inBand) {
-            inBand = true;
-            bandStart = row;
-          }
-        } else {
-          if (inBand) {
-            inBand = false;
-            bands.push({
-              height: row - bandStart,
-              canvasMidY: windowMinY + Math.floor((bandStart + row - 1) / 2),
-            });
-          }
-        }
-      }
-      if (inBand) {
-        bands.push({
-          height: windowH - bandStart,
-          canvasMidY: windowMinY + Math.floor((bandStart + windowH - 1) / 2),
         });
+        continue;
+      }
+    }
+
+    // Si le conteneur a plusieurs cartes rounded-2xl
+    const innerCards = child.querySelectorAll<HTMLElement>(':scope > [class*="rounded-2xl"]');
+    if (innerCards.length > 2) {
+      innerCards.forEach((c) => {
+        if (!isNoPrint(c)) atomicBlocks.push(c.cloneNode(true) as HTMLElement);
+      });
+      continue;
+    }
+
+    atomicBlocks.push(child.cloneNode(true) as HTMLElement);
+  }
+
+  if (atomicBlocks.length === 0) {
+    atomicBlocks.push(target.cloneNode(true) as HTMLElement);
+  }
+
+  // 2. Création de l'hôte temporaire pour l'assemblage des pages A4 virtuelles
+  const host = document.createElement('div');
+  host.id = 'studycloud-pdf-virtual-host';
+  host.style.position = 'fixed';
+  host.style.left = '-9999px';
+  host.style.top = '0';
+  host.style.width = '820px';
+  host.style.zIndex = '-9999';
+  host.style.opacity = '0';
+  host.style.pointerEvents = 'none';
+  host.style.backgroundColor = '#ffffff';
+
+  // Injecter la feuille de style de correction KaTeX et typographie
+  const styleEl = document.createElement('style');
+  styleEl.textContent = `
+    .studycloud-virtual-page * {
+      scrollbar-width: none !important;
+      -ms-overflow-style: none !important;
+    }
+    .studycloud-virtual-page *::-webkit-scrollbar {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+    }
+    .studycloud-virtual-page .katex .mfrac .frac-line {
+      border-bottom-style: solid !important;
+      border-bottom-width: 1.5px !important;
+      min-height: 1.5px !important;
+      box-sizing: border-box !important;
+    }
+    .studycloud-virtual-page .katex .vlist > span {
+      position: relative !important;
+    }
+    .studycloud-virtual-page .katex-display {
+      overflow: visible !important;
+      margin: 0.5em 0 !important;
+      padding: 4px 0 !important;
+      line-height: 1.25 !important;
+    }
+    .studycloud-virtual-page .overflow-x-auto,
+    .studycloud-virtual-page .overflow-y-auto,
+    .studycloud-virtual-page [class*="overflow-"] {
+      overflow: visible !important;
+    }
+  `;
+  host.appendChild(styleEl);
+  document.body.appendChild(host);
+
+  const PAGE_WIDTH_PX = 820;
+  const PAGE_HEIGHT_PX = 1140; // Ratio A4 1.414 avec largeur 820px
+  const PADDING_V = 28;
+  const PADDING_H = 34;
+
+  const createVirtualPage = (): HTMLElement => {
+    const page = document.createElement('div');
+    page.className = 'studycloud-virtual-page bg-white text-black';
+    page.style.width = `${PAGE_WIDTH_PX}px`;
+    page.style.minHeight = `${PAGE_HEIGHT_PX}px`;
+    page.style.maxHeight = `${PAGE_HEIGHT_PX}px`;
+    page.style.boxSizing = 'border-box';
+    page.style.padding = `${PADDING_V}px ${PADDING_H}px`;
+    page.style.backgroundColor = '#ffffff';
+    page.style.overflow = 'hidden';
+    page.style.display = 'flex';
+    page.style.flexDirection = 'column';
+    page.style.justifyContent = 'flex-start';
+    page.style.gap = '14px';
+    host.appendChild(page);
+    return page;
+  };
+
+  const virtualPages: HTMLElement[] = [];
+  let currentPage = createVirtualPage();
+  virtualPages.push(currentPage);
+
+  // Fonction pour vérifier si un élément est un simple en-tête de section
+  const isHeaderBlock = (el: HTMLElement): boolean => {
+    return el.tagName.toLowerCase() === 'header' ||
+      /border-b/i.test(el.className || '') ||
+      el.querySelectorAll('h1, h2').length > 0;
+  };
+
+  // 3. Répartition automatique et intelligente des cartes sur les pages A4 virtuelles
+  for (const block of atomicBlocks) {
+    currentPage.appendChild(block);
+
+    // Si le bloc fait déborder la page courante
+    if (currentPage.scrollHeight > PAGE_HEIGHT_PX && currentPage.children.length > 1) {
+      currentPage.removeChild(block);
+
+      // Si le dernier élément resté sur la page précédente est un en-tête de section isolé,
+      // on le transfère sur la nouvelle page pour éviter un titre orphelin en bas de page
+      const lastChild = currentPage.lastElementChild as HTMLElement | null;
+      let orphanedHeader: HTMLElement | null = null;
+      if (lastChild && isHeaderBlock(lastChild) && currentPage.children.length > 1) {
+        orphanedHeader = lastChild;
+        currentPage.removeChild(orphanedHeader);
       }
 
-      // Fonction évitant de couper à l'intérieur d'un titre ou juste en-dessous (titre orphelin)
-      const isBadForHeading = (cutY: number): boolean => {
-        for (const hz of headingZones) {
-          if (cutY >= hz.top - 4 && cutY <= hz.bottom + 65) {
-            return true;
-          }
+      currentPage = createVirtualPage();
+      virtualPages.push(currentPage);
+
+      if (orphanedHeader) {
+        currentPage.appendChild(orphanedHeader);
+      }
+      currentPage.appendChild(block);
+    }
+  }
+
+  // 4. Normalisation fine de chaque page (KaTeX sans transform:scale, suppression scrollbars, couleurs RGB)
+  for (const vPage of virtualPages) {
+    // Épanouir tous les conteneurs à défilement
+    const scrollContainers = vPage.querySelectorAll<HTMLElement>('.overflow-x-auto, .overflow-y-auto, [class*="overflow-"]');
+    scrollContainers.forEach((sc) => {
+      sc.style.overflow = 'visible';
+      sc.style.maxWidth = '100%';
+    });
+
+    // Ajustement de la taille des formules KaTeX trop larges (par font-size proportionnel, JAMAIS transform: scale)
+    const mathDisplays = vPage.querySelectorAll<HTMLElement>('.katex-display');
+    mathDisplays.forEach((m) => {
+      m.style.overflow = 'visible';
+      m.style.padding = '4px 0';
+      m.style.margin = '0.45em 0';
+      if (m.scrollWidth > 730) {
+        const ratio = Math.max(0.68, 730 / m.scrollWidth);
+        m.style.fontSize = `${Math.floor(ratio * 100)}%`;
+      }
+    });
+
+    // Lignes de fractions KaTeX renforcées
+    const fracLines = vPage.querySelectorAll<HTMLElement>('.katex .mfrac .frac-line');
+    fracLines.forEach((fl) => {
+      fl.style.borderBottomStyle = 'solid';
+      fl.style.borderBottomWidth = '1.5px';
+      fl.style.minHeight = '1.5px';
+      fl.style.boxSizing = 'border-box';
+    });
+  }
+
+  // Conversion des couleurs modernes oklch en RGB pour html2canvas
+  try {
+    const dummyCanvas = document.createElement('canvas');
+    dummyCanvas.width = 1;
+    dummyCanvas.height = 1;
+    const dCtx = dummyCanvas.getContext('2d');
+    if (dCtx) {
+      const toRgb = (val: string): string => {
+        if (!val) return val;
+        const lower = val.toLowerCase();
+        if (!lower.includes('oklch') && !lower.includes('oklab') && !lower.includes('color(') && !lower.includes('lch(')) {
+          return val;
         }
-        return false;
+        try {
+          dCtx.fillStyle = '#000000';
+          dCtx.fillStyle = val;
+          return dCtx.fillStyle || '#000000';
+        } catch {
+          return '#000000';
+        }
       };
 
-      // 1ère Priorité : Grand espace blanc entre cartes/sections (>= 14px)
-      for (let i = bands.length - 1; i >= 0; i--) {
-        const b = bands[i];
-        if (b.height >= 14 && !isBadForHeading(b.canvasMidY)) {
-          bestCutY = b.canvasMidY;
-          break;
-        }
-      }
-
-      // 2ème Priorité : Espace blanc moyen entre paragraphes/points/formules (>= 6px)
-      if (bestCutY === -1) {
-        for (let i = bands.length - 1; i >= 0; i--) {
-          const b = bands[i];
-          if (b.height >= 6 && !isBadForHeading(b.canvasMidY)) {
-            bestCutY = b.canvasMidY;
-            break;
-          }
-        }
-      }
-
-      // 3ème Priorité : Espace blanc interligne (>= 2px)
-      if (bestCutY === -1) {
-        for (let i = bands.length - 1; i >= 0; i--) {
-          const b = bands[i];
-          if (b.height >= 2 && !isBadForHeading(b.canvasMidY)) {
-            bestCutY = b.canvasMidY;
-            break;
-          }
-        }
-      }
-
-      // 4ème Priorité : Tout espace blanc valide
-      if (bestCutY === -1) {
-        for (let i = bands.length - 1; i >= 0; i--) {
-          const b = bands[i];
-          if (b.height >= 2) {
-            bestCutY = b.canvasMidY;
-            break;
-          }
-        }
-      }
-
-      // 5ème Priorité : Ligne avec le moins absolu de pixels sombres
-      if (bestCutY === -1) {
-        let minDark = Infinity;
-        let minRow = windowH - 1;
-        for (let row = windowH - 1; row >= 0; row--) {
-          if (darkCountPerRow[row] < minDark) {
-            minDark = darkCountPerRow[row];
-            minRow = row;
-          }
-        }
-        bestCutY = windowMinY + minRow;
+      const allElements = Array.from(host.querySelectorAll('*')) as HTMLElement[];
+      for (const el of allElements) {
+        if (!el || !el.style) continue;
+        try {
+          const cs = window.getComputedStyle(el);
+          if (cs.color && (cs.color.includes('ok') || cs.color.includes('color('))) el.style.color = toRgb(cs.color);
+          if (cs.backgroundColor && (cs.backgroundColor.includes('ok') || cs.backgroundColor.includes('color('))) el.style.backgroundColor = toRgb(cs.backgroundColor);
+          if (cs.borderColor && (cs.borderColor.includes('ok') || cs.borderColor.includes('color('))) el.style.borderColor = toRgb(cs.borderColor);
+        } catch {}
       }
     }
-
-    // Protection anti-titre orphelin : si le saut touche un titre, couper avant le titre
-    if (bestCutY > 0) {
-      for (const hz of headingZones) {
-        if (bestCutY >= hz.top - 4 && bestCutY <= hz.bottom + 65) {
-          const candidateCut = hz.top - 8;
-          if (candidateCut >= currentY + minStep && candidateCut <= targetCutY) {
-            bestCutY = candidateCut;
-          }
-          break;
-        }
-      }
-    }
-
-    // GARANTIE ABSOLUE DE PROGRESSION (Évite tout blocage, boucle infinie ou retour en arrière)
-    if (bestCutY < currentY + minStep || bestCutY > targetCutY) {
-      bestCutY = targetCutY;
-    }
-
-    cuts.push({ startY: currentY, endY: bestCutY });
-    currentY = bestCutY;
+  } catch (colErr) {
+    console.warn('[PDF Export] Normalisation couleurs:', colErr);
   }
 
-  // 4. Génération du document PDF avec respiration de l'event loop (anti-freeze)
+  // 5. Capture de chaque page virtuelle individuelle (1.5 megapixels, ultra-rapide et sans saturation GPU)
   const pdfDoc = await PDFDocument.create();
-  const totalPages = cuts.length;
+  const totalPages = virtualPages.length;
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
   for (let pIdx = 0; pIdx < totalPages; pIdx++) {
-    // Laisser respirer l'interface du navigateur pour ne JAMAIS déclencher "Page ne répondant pas"
+    // Respiration de l'event loop pour garder l'interface fluide
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    const cut = cuts[pIdx];
-    const sliceHeight = cut.endY - cut.startY;
-    if (sliceHeight <= 0) continue;
+    const vPage = virtualPages[pIdx];
 
-    const sliceCanvas = document.createElement('canvas');
-    sliceCanvas.width = canvasWidth;
-    sliceCanvas.height = sliceHeight;
-    const sCtx = sliceCanvas.getContext('2d');
-    if (sCtx) {
-      sCtx.fillStyle = '#ffffff';
-      sCtx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-      sCtx.drawImage(
-        canvas,
-        0, cut.startY, canvasWidth, sliceHeight,
-        0, 0, canvasWidth, sliceHeight
-      );
-    }
+    const pageCanvas = await html2canvas(vPage, {
+      scale: options?.scale || 1.6,
+      useCORS: true,
+      allowTaint: false,
+      backgroundColor: '#ffffff',
+      logging: false,
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: 820,
+    });
 
-    const slicePng = sliceCanvas.toDataURL('image/png');
-    const embeddedImg = await pdfDoc.embedPng(slicePng);
+    const pagePng = pageCanvas.toDataURL('image/png');
+    const embeddedImg = await pdfDoc.embedPng(pagePng);
 
-    const page = pdfDoc.addPage([pageWidthPt, pageHeightPt]);
+    const pdfPage = pdfDoc.addPage([pageWidthPt, pageHeightPt]);
     const drawWidthPt = usableWidthPt;
-    const drawHeightPt = (sliceHeight / canvasWidth) * usableWidthPt;
+    const drawHeightPt = Math.min(usableHeightPt, (pageCanvas.height / pageCanvas.width) * usableWidthPt);
 
-    page.drawImage(embeddedImg, {
+    pdfPage.drawImage(embeddedImg, {
       x: marginPt,
       y: pageHeightPt - marginPt - drawHeightPt,
       width: drawWidthPt,
@@ -1503,7 +1511,7 @@ export async function exportHtmlElementToPdf(
     });
 
     // Ligne séparatrice de pied de page discret et officiel
-    page.drawLine({
+    pdfPage.drawLine({
       start: { x: marginPt, y: 22 },
       end: { x: pageWidthPt - marginPt, y: 22 },
       thickness: 0.5,
@@ -1511,7 +1519,7 @@ export async function exportHtmlElementToPdf(
     });
 
     // Mention officielle à gauche
-    page.drawText('StudyCloud • Document Officiel d\'Étude — Plateforme Universitaire & Scolaire', {
+    pdfPage.drawText('StudyCloud • Document Officiel d\'Étude — Plateforme Universitaire & Scolaire', {
       x: marginPt,
       y: 11,
       size: 7.2,
@@ -1522,7 +1530,7 @@ export async function exportHtmlElementToPdf(
     // Pagination officielle à droite
     const pageNumText = `Page ${pIdx + 1} / ${totalPages}`;
     const pageNumWidth = fontBold.widthOfTextAtSize(pageNumText, 7.5);
-    page.drawText(pageNumText, {
+    pdfPage.drawText(pageNumText, {
       x: pageWidthPt - marginPt - pageNumWidth,
       y: 11,
       size: 7.5,
@@ -1531,12 +1539,18 @@ export async function exportHtmlElementToPdf(
     });
   }
 
+  // 6. Nettoyage de l'hôte temporaire du DOM
+  try {
+    document.body.removeChild(host);
+  } catch {}
+
+  // 7. Téléchargement automatique en 1 clic
   const pdfBytes = await pdfDoc.save();
   const blob = new Blob([pdfBytes], { type: 'application/pdf' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  const safeTitle = (options?.filename || docTitle || 'Document_StudyCloud').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const safeTitle = (options?.filename || docTitle || 'Document_StudyCloud').replace(/[^a-zA-Z0-9_\u00C0-\u017F-]/g, '_');
   link.download = `${safeTitle}.pdf`;
   document.body.appendChild(link);
   link.click();
@@ -1545,9 +1559,7 @@ export async function exportHtmlElementToPdf(
     try {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-    } catch {
-      // Ignorer
-    }
+    } catch {}
   }, 4000);
 }
 
