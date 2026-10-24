@@ -30,7 +30,7 @@ Si tu juges, au vu de la causerie ou de la demande de l'étudiant, qu'il a besoi
 - 'vrai-ou-faux' : Test interactif Vrai ou Faux avec justifications pédagogiques.
 - 'vrai-ou-faux-test' : Vrai ou Faux noté avec validation d'ensemble et score final.
 - 'carte-mentale' : Mindmap visuelle arborescente à 4 paliers (Level 0 -> 1 -> 2 -> 3).
-- 'carte-mentale-2' : Carte Conceptuelle structurée en colonnes / piliers avec blocs hiérarchiques et formules LaTeX.
+- 'carte-mentale-2' : Carte Conceptuelle (même arborescence riche à 4 paliers, affichée en piliers et blocs conceptuels).
 - 'carte-memoire' : Flashcards interactives de mémorisation (recto: notion/question, verso: synthèse/réponse).
 - 'resume' : Fiche de synthèse structurée (overview, key_definitions, formulas, comparison_table, traps_and_tips, practical_example, sections).
 - 'pdf' : Polycopié de cours exhaustif avec sections et contenus structurés.
@@ -199,31 +199,9 @@ RÈGLE FORMAT : CARTE MENTALE ARBORESCENTE ('carte-mentale')
 }`;
   }
 
-  // 6 : Carte Mentale Conceptuelle (Colonnes & Piliers)
+  // 6 : Carte Mentale Conceptuelle (Même prompt que Carte Mentale arborescente)
   if (t === 'carte-mentale-2') {
-    return `
-══════════════════════════════════════════════════════════════════════════════
-RÈGLE FORMAT : CARTE CONCEPTUELLE EN COLONNES ('carte-mentale-2')
-══════════════════════════════════════════════════════════════════════════════
-- Structure en 3 à 5 colonnes / piliers verticaux majeurs avec blocs et connecteurs.
-- Format JSON strict dans 'creation_data' :
-{
-  "title": "Carte Conceptuelle : Titre du Cours",
-  "noeud_central": "Concept Clé Central",
-  "columns": [
-    {
-      "id": "col1",
-      "title": "Pilier 1",
-      "color": "#f97316",
-      "blocks": [
-        { "id": "b1", "label": "Notion Majeure", "description": "Détails et formule KaTeX $...$" }
-      ]
-    }
-  ],
-  "connecteurs": [
-    { "from": "b1", "to": "b2", "label": "entraîne" }
-  ]
-}`;
+    return getCreationSpecificRule('carte-mentale');
   }
 
   // 7 : Carte Mémoire (Flashcards)

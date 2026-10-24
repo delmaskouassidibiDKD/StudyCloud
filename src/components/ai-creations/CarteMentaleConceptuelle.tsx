@@ -313,7 +313,7 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
 
   if (cols.length === 0) return null;
 
-  let rawRoot = actualData.root_title || actualData.rootTitle || actualData.title || actualData.root?.label || actualData.root?.title || fallbackTitle || 'CARTE CONCEPTUELLE';
+  let rawRoot = actualData.root_title || actualData.rootTitle || actualData.title || actualData.root?.label || actualData.root?.title || actualData.label || actualData.name || fallbackTitle || 'CARTE CONCEPTUELLE';
   if (typeof rawRoot === 'string' && (rawRoot.startsWith('{') || rawRoot.includes('":') || /^voici/i.test(rawRoot))) {
     rawRoot = fallbackTitle || 'CARTE CONCEPTUELLE';
   }
@@ -394,8 +394,28 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
         const cleanFormula = itemFormula.startsWith('$') ? itemFormula : `$${itemFormula}$`;
         cardDesc = cardDesc ? `${cardDesc} : ${cleanFormula}` : cleanFormula;
       }
+
+      // Extraction des sous-détails (Niveau 3 de l'arborescence : formules, définitions, propriétés)
+      if (typeof item === 'object' && Array.isArray(item.children) && item.children.length > 0) {
+        const subDetails = item.children.map((c: any) => {
+          if (typeof c === 'string') return cleanConceptText(c);
+          const cLabel = cleanConceptText(c.label || c.title || c.name || c.description || '');
+          const cFormula = c.formula || c.formule || '';
+          if (cFormula) {
+            const f = cFormula.startsWith('$') ? cFormula : `$${cFormula}$`;
+            return cLabel ? `${cLabel} (${f})` : f;
+          }
+          return cLabel;
+        }).filter(Boolean);
+
+        if (subDetails.length > 0) {
+          const formattedSub = subDetails.map((s: string) => `• ${s}`).join('\n');
+          cardDesc = cardDesc ? `${cardDesc}\n\n${formattedSub}` : formattedSub;
+        }
+      }
       
-      const cardH = Math.max(120, Math.min(320, 75 + Math.ceil(cardDesc.length / 26) * 22));
+      const lineCount = (cardDesc.match(/\n/g) || []).length;
+      const cardH = Math.max(120, Math.min(380, 75 + Math.ceil(cardDesc.length / 24) * 20 + lineCount * 14));
       const cardPillW = Math.max(120, Math.min(colWidth - 20, cardTitle.length * 8.5 + 26));
 
       generatedCards.push({
@@ -1352,8 +1372,8 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
                     height={card.height - 34}
                     className="pointer-events-none select-none"
                   >
-                    <div className="w-full h-full flex items-center justify-center text-center px-1">
-                      <div className="text-[12px] leading-relaxed text-slate-700 font-normal select-none">
+                    <div className={`w-full h-full flex items-center ${card.description?.includes('•') ? 'justify-start text-left overflow-y-auto custom-scrollbar' : 'justify-center text-center'} px-1`}>
+                      <div className={`text-[12px] leading-relaxed text-slate-700 font-normal select-none whitespace-pre-line ${card.description?.includes('•') ? 'text-left' : 'text-center'}`}>
                         <MathText text={card.description} />
                       </div>
                     </div>
