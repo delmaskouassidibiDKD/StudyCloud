@@ -223,55 +223,96 @@ RÈGLE FORMAT : CARTES MÉMOIRES / FLASHCARDS ('carte-memoire')
 }`;
   }
 
-  // 8 : Résumé (Fiche de Synthèse Complète)
+  // 8 : Résumé (Fiche de Synthèse Complète & Masterclass Explicative)
   if (t === 'resume') {
     return `
 ══════════════════════════════════════════════════════════════════════════════
-RÈGLE FORMAT : FICHE DE RÉSUMÉ & SYNTHÈSE ('resume')
+RÈGLE FORMAT : FICHE DE RÉSUMÉ & SYNTHÈSE DE COURS ('resume')
 ══════════════════════════════════════════════════════════════════════════════
-- Analyse exhaustive sans troncature :
-  * overview (3 à 5 phrases denses)
-  * key_definitions (5 à 8 définitions avec concept, definition, objective)
-  * formulas (4 à 8 formules avec name, latex, target_goal, demonstration_steps, exam_trap)
-  * comparison_table (headers et rows)
-  * traps_and_tips (type: 'trap' | 'tip', title, content)
-  * practical_example (statement, resolution_steps)
-  * sections (2 à 4 grandes parties rédigées)
+- EXTRACTION ARBORESCENTE EXHAUSTIVE EN 4 PALIERS (MÊME VISION QUE LA CARTE MENTALE) :
+  * Palier 0 (Niveau 0 - Racine) : Titre exact officiel du cours et domaine/thème précis à encadrer.
+  * Palier 1 (Niveau 1 - Grands Piliers Conceptuels) : 4 à 6 Piliers thématiques majeurs couvrant sans aucune omission l'intégralité du document (tous les blocs, chapitres, lois et montages).
+  * Palier 2 (Niveau 2 - Sous-branches & Composants) : Modélisations, composants, schémas/figures (ex: Figure 1, Figure 2), hypothèses physiques, grandeurs et variables clés.
+  * Palier 3 (Niveau 3 - Détails analytiques, Démonstrations & Formules KaTeX) : Formules mathématiques rigoureuses avec vraies fractions verticales \\dfrac{}{}, pulsations de coupure, gains, démonstrations pas-à-pas, cas limites asymptotiques ($p \\to 0, p \\to \\infty$), et pièges classiques d'examen.
+
+- VOCATION PÉDAGOGIQUE STRICTE : DESTINÉ À EXPLIQUER (PAS À CRÉER UN EXERCICE NI UN QUIZ) :
+  * Ce document n'est PAS un exercice, ni un QCM, ni un questionnaire d'évaluation.
+  * C'est une MASTERCLASS RÉDIGÉE d'explication pédagogique complète : beaucoup plus détaillée, longue, développée et explicite que les puces d'une carte mentale.
+  * Explique en profondeur le « POURQUOI » et le « COMMENT », les relations de cause à effet, les hypothèses physiques et le cheminement mathématique complet.
+
+- STYLE DE RÉDACTION CALQUÉ SUR LE CHAT PÉDAGOGIQUE DELMAS IA :
+  * Rédaction soignée en français académique et bienveillant, zéro monologue interne (anti-scratchpad).
+  * Structure très aérée : grands titres clairs (#, ##, ###), doubles sauts de ligne entre chaque idée.
+  * Formules mathématiques isolées sur leur propre ligne en bloc $$ ... $$ avec vraies fractions verticales \\dfrac{numérateur}{dénominateur} (JAMAIS de slash '/'), lettres grecques correctes (\\omega_0, \\pi, \\tau...), et encadrement des résultats directeurs avec \\boxed{...}.
+  * Démonstrations pas-à-pas numérotées et rédigées de bout en bout.
+
 - Format JSON strict dans 'creation_data' :
 {
-  "title": "Fiche de Synthèse : Titre du Cours",
-  "theme": "Domaine d'Étude",
-  "overview": "Synthèse globale approfondie...",
+  "title": "Titre Officiel et Exhaustif du Cours",
+  "theme": "Domaine d'Étude & Discipline Précise",
+  "overview": "Synthèse globale approfondie posant le cadre conceptuel, les hypothèses physiques, les objectifs pédagogiques et les enjeux théoriques (3 à 5 paragraphes denses et limpides)...",
+  "sections": [
+    {
+      "number": 1,
+      "heading": "Titre du Grand Pilier 1 (issu du Palier 1)",
+      "body": "Développement pédagogique approfondi et détaillé rédigé comme dans le chat : analyse du système, hypothèses, démonstration mathématique avec KaTeX ($$...$$ et $...$), explications physiques et interprétation des résultats.",
+      "points": [
+        "Point clé fondamental 1",
+        "Point clé fondamental 2",
+        "Point clé fondamental 3"
+      ]
+    }
+  ],
   "key_definitions": [
-    { "concept": "Nom du concept", "definition": "Définition rigoureuse...", "objective": "Cas d'usage..." }
+    {
+      "concept": "Nom rigoureux du concept ou de la grandeur",
+      "definition": "Définition scientifique complète, rigoureuse et approfondie...",
+      "objective": "Utilité concrète, rôle dans le circuit ou le système..."
+    }
   ],
   "formulas": [
     {
-      "name": "Intitulé de la loi",
+      "name": "Intitulé officiel de la loi ou du théorème",
       "latex": "\\\\omega_0 = \\\\dfrac{1}{\\\\sqrt{LC}}",
-      "target_goal": "Objectif visé",
-      "variables": "Variables et unités",
-      "when_to_use": "Condition d'application",
-      "how_to_derive": "Principe de calcul",
-      "demonstration_steps": ["Étape 1...", "Étape 2...", "Résultat final"],
-      "exam_trap": "Piège classique d'examen"
+      "target_goal": "Grandeur déterminée et signification physique",
+      "variables": "Description exhaustive des variables et constantes avec unités SI ($L$ en Henry, $C$ en Farad...)",
+      "when_to_use": "Conditions précises de validité et domaine d'application",
+      "how_to_derive": "Principe fondamental de la démonstration",
+      "demonstration_steps": [
+        "Étape 1 : Hypothèses et schéma équivalent...",
+        "Étape 2 : Application du théorème directeur (ex: Millman ou diviseur)...",
+        "Étape 3 : Mise sous forme canonique et identification..."
+      ],
+      "exam_trap": "Le piège classique récurrent en examen sur cette formule"
     }
   ],
   "comparison_table": {
-    "headers": ["Catégorie", "Propriété", "Formule clé", "Vigilance"],
-    "rows": [["Élément A", "Propriété A", "Formule A", "Point A"]]
+    "headers": ["Catégorie / Montage", "Configuration", "Formule Clé", "Propriété Majeure", "Point de Vigilance"],
+    "rows": [
+      ["Passe-bas 1er ordre", "R-C série", "T(j\\\\omega) = \\\\dfrac{A_0}{1 + j\\\\dfrac{\\\\omega}{\\\\omega_0}}", "Atténuation -20 dB/décade en HF", "Pente à l'origine nulle"]
+    ]
   },
   "traps_and_tips": [
-    { "type": "trap", "title": "PIÈGE CLASSIQUE", "content": "Erreur fréquente..." },
-    { "type": "tip", "title": "ASTUCE MÉTHODE", "content": "Règle de méthode..." }
+    {
+      "type": "trap",
+      "title": "PIÈGE CLASSIQUE D'EXAMEN",
+      "content": "Description détaillée de l'erreur fréquente commise par les étudiants et méthode absolue pour l'éviter..."
+    },
+    {
+      "type": "tip",
+      "title": "ASTUCE MÉTHODOLOGIQUE (NB)",
+      "content": "Méthode de calcul rapide, astuce de simplification ou réflexe de contrôle immédiat du résultat..."
+    }
   ],
   "practical_example": {
-    "statement": "Énoncé complet d'un problème type...",
-    "resolution_steps": ["1. Données...", "2. Résolution...", "3. Conclusion..."]
-  },
-  "sections": [
-    { "heading": "I. Première grande partie", "body": "Développement pédagogique...", "points": ["Point clé 1"] }
-  ]
+    "statement": "Énoncé complet et réaliste d'un problème type d'application issu des Paliers 2 et 3...",
+    "resolution_steps": [
+      "1. Analyse des données et identification des grandeurs...",
+      "2. Choix de la méthode et pose de l'équation directrice...",
+      "3. Calcul littéral avec fractions verticales...",
+      "4. Application numérique avec unités et conclusion physique."
+    ]
+  }
 }`;
   }
 

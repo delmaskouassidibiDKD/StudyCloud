@@ -663,14 +663,42 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
         : []
     ).map((kp: any) => typeof kp === 'string' ? kp : String(kp || ''));
 
-    // Sections rédigées de cours
-    const rawSections = raw?.sections || data?.sections;
-    const sections = Array.isArray(rawSections)
-      ? rawSections.map((sec: any, idx: number) => ({
+    // Sections rédigées de cours / Paliers conceptuels
+    const candidateSections =
+      raw?.sections ||
+      data?.sections ||
+      raw?.piliers ||
+      data?.piliers ||
+      raw?.parts ||
+      data?.parts ||
+      (Array.isArray(raw?.children)
+        ? raw.children.map((child: any, idx: number) => ({
+            number: idx + 1,
+            heading: child.label || `Pilier ${idx + 1}`,
+            body: Array.isArray(child.children)
+              ? child.children
+                  .map(
+                    (c: any) =>
+                      `### ${c.label || ''}\n${
+                        Array.isArray(c.children)
+                          ? c.children.map((leaf: any) => `• ${leaf.label || ''}`).join('\n')
+                          : ''
+                      }`
+                  )
+                  .join('\n\n')
+              : child.label || '',
+            points: Array.isArray(child.children)
+              ? child.children.map((c: any) => c.label).filter(Boolean)
+              : [],
+          }))
+        : null);
+
+    const sections = Array.isArray(candidateSections)
+      ? candidateSections.map((sec: any, idx: number) => ({
           number: sec.number || idx + 1,
           heading: typeof (sec.section_title || sec.sectionTitle || sec.heading || sec.title || sec.titre) === 'string'
             ? (sec.section_title || sec.sectionTitle || sec.heading || sec.title || sec.titre)
-            : `Section ${idx + 1}`,
+            : `Pilier ${idx + 1}`,
           body: typeof (sec.content || sec.body || sec.texte) === 'string'
             ? (sec.content || sec.body || sec.texte)
             : String(sec.content || sec.body || sec.texte || ''),
@@ -902,31 +930,98 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
         2. ZONE PRINCIPALE DE LECTURE : STRUCTURE PÉDAGOGIQUE COLORÉE & ÉLÉGANTE SUR FOND BLANC
       */}
       <div className="flex-1 w-full bg-white px-4 sm:px-8 md:px-12 py-8">
-        <article id="resume-document-content" className="w-full max-w-4xl mx-auto space-y-8 text-stone-900 bg-white">
+        <article id="resume-document-content" className="w-full max-w-4xl mx-auto space-y-8 text-black bg-white">
           
-          {/* En-tête avec badge thématique dégradé et titre percutant */}
-          <header className="w-full text-center space-y-3 pt-2 pb-4">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white font-extrabold text-xs sm:text-sm tracking-wide shadow-sm uppercase">
-              <Sparkles className="w-4 h-4 text-amber-200 animate-pulse" />
-              <MathText text={docTheme || docTitle} inline={true} />
+          {/* En-tête avec cadre élégant : Thème bien encadré et Titre en grand noir profond */}
+          <header className="w-full rounded-2xl border-2 border-stone-200 bg-white p-6 sm:p-8 shadow-xs text-center space-y-4">
+            {/* Boîte / Encadré du Thème adaptatif avec contour net */}
+            <div className="inline-flex max-w-full items-center justify-center gap-2.5 px-4 sm:px-6 py-2 rounded-xl border-2 border-indigo-200 bg-indigo-50/90 text-indigo-950 font-black text-xs sm:text-sm tracking-wider uppercase shadow-2xs">
+              <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span className="break-words">
+                <MathText text={docTheme || docTitle} inline={true} />
+              </span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-stone-950 tracking-tight px-4 leading-tight">
+            {/* Titre du Cours en écriture bien noire, nette et aérée */}
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-black tracking-tight px-2 leading-snug break-words">
               <MathText text={docTitle} inline={true} />
             </h1>
+
+            {/* Badge de sous-titre explicatif */}
+            <div className="flex items-center justify-center gap-2 text-stone-500 text-xs sm:text-sm font-semibold pt-1">
+              <BookOpen className="w-4 h-4 text-indigo-600" />
+              <span>Fiche de Révision & Masterclass Synthétique</span>
+            </div>
           </header>
 
           {/* Vue d'ensemble / Synthèse Globale du Chapitre */}
           {docOverview && (
-            <div className="rounded-2xl bg-gradient-to-br from-indigo-50/90 via-purple-50/40 to-blue-50/50 border border-indigo-200/80 p-5 sm:p-6 shadow-xs space-y-2.5">
-              <div className="flex items-center gap-2 text-indigo-700 font-black text-xs sm:text-sm uppercase tracking-wider">
+            <div className="rounded-2xl bg-white border-2 border-indigo-200 p-5 sm:p-6 shadow-xs space-y-2.5">
+              <div className="flex items-center gap-2 text-indigo-900 font-black text-xs sm:text-sm uppercase tracking-wider">
                 <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
                 <span>Synthèse Globale & Objectifs du Chapitre</span>
               </div>
-              <div className="text-stone-800 text-base sm:text-lg leading-relaxed font-normal">
+              <div className="text-black text-base sm:text-lg leading-relaxed font-normal">
                 <MathText text={docOverview} />
               </div>
             </div>
+          )}
+
+          {/* Piliers Thématiques & Développements Approfondis du Cours */}
+          {parsedSummary.sections.length > 0 && (
+            <section className="space-y-6 pt-2">
+              <div className="flex items-center gap-3 pb-3 border-b-2 border-indigo-300">
+                <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
+                  ★
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-black tracking-tight">
+                  Piliers Fondamentaux & Développements Pédagogiques
+                </h2>
+              </div>
+
+              <div className="space-y-6">
+                {parsedSummary.sections.map((sec, sidx) => {
+                  const headingText = String(sec?.heading || `Pilier ${sidx + 1}`);
+                  return (
+                    <div
+                      key={sidx}
+                      className="bg-white rounded-2xl border-2 border-stone-200 p-6 sm:p-7 space-y-4 shadow-xs hover:border-indigo-300 transition-all"
+                    >
+                      <div className="flex items-center gap-3 pb-3 border-b border-stone-200">
+                        <span className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-900 text-xs font-black flex items-center justify-center shrink-0">
+                          {sec.number || sidx + 1}
+                        </span>
+                        <h3 className="text-lg sm:text-xl font-black text-black">
+                          <MathText text={headingText.replace(/^\s*\d+[\.\-\)]\s*/, '') || headingText} inline={true} />
+                        </h3>
+                      </div>
+
+                      <div className="text-black leading-relaxed text-base sm:text-lg whitespace-pre-line font-normal">
+                        <MathText text={sec.body} />
+                      </div>
+
+                      {sec.points && sec.points.length > 0 && (
+                        <div className="pt-2">
+                          <p className="text-xs font-black uppercase tracking-wider text-indigo-950 pb-2">
+                            Points directeurs à retenir :
+                          </p>
+                          <ul className="space-y-2">
+                            {sec.points.map((pt: string, pidx: number) => (
+                              <li key={pidx} className="flex items-start gap-2.5 text-black text-sm sm:text-base leading-relaxed bg-stone-50/80 p-2.5 rounded-xl border border-stone-200">
+                                <span className="text-indigo-600 font-black mt-0.5">•</span>
+                                <div className="flex-1">
+                                  <MathText text={pt} inline={true} />
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
           )}
 
           {/* I. Notions Clés & Définitions */}
@@ -936,7 +1031,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                 <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
                   I
                 </div>
-                <h2 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight">
+                <h2 className="text-xl sm:text-2xl font-black text-black tracking-tight">
                   Notions Fondamentales & Définitions
                 </h2>
               </div>
@@ -952,21 +1047,21 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                     return (
                       <div
                         key={kidx}
-                        className="bg-white rounded-xl border border-stone-200/90 hover:border-indigo-300 shadow-xs hover:shadow-md transition-all p-4 border-l-4 border-l-indigo-600 flex flex-col justify-between space-y-2.5"
+                        className="bg-white rounded-xl border-2 border-stone-200 hover:border-indigo-300 shadow-xs hover:shadow-md transition-all p-4 border-l-4 border-l-indigo-600 flex flex-col justify-between space-y-2.5"
                       >
                         <div className="space-y-1.5">
                           <div className="flex items-center gap-2 text-indigo-950 font-black text-base sm:text-lg">
                             <BookmarkCheck className="w-4 h-4 text-indigo-600 shrink-0" />
                             <MathText text={cleanConcept} inline={true} />
                           </div>
-                          <div className="text-stone-700 text-sm sm:text-base leading-relaxed">
+                          <div className="text-black text-sm sm:text-base leading-relaxed">
                             <MathText text={cleanDef} inline={true} />
                           </div>
                         </div>
                         {cleanObj && (
                           <div className="pt-1">
-                            <span className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-150 rounded-lg px-2.5 py-1 text-xs font-semibold">
-                              <Target className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                            <span className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-900 border border-indigo-200 rounded-lg px-2.5 py-1 text-xs font-semibold">
+                              <Target className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                               <span>Objectif : <MathText text={cleanObj} inline={true} /></span>
                             </span>
                           </div>
@@ -978,7 +1073,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
               ) : (
                 <ul className="space-y-2.5 pl-1">
                   {parsedSummary.keyPoints.map((kp, kidx) => (
-                    <li key={kidx} className="flex items-start gap-2.5 text-stone-900 text-base leading-relaxed bg-white p-3 rounded-xl border border-stone-200">
+                    <li key={kidx} className="flex items-start gap-2.5 text-black text-base leading-relaxed bg-white p-3 rounded-xl border border-stone-200">
                       <span className="text-indigo-600 font-bold mt-1 text-sm">•</span>
                       <div className="flex-1">
                         <MathText text={kp} inline={true} />
@@ -997,7 +1092,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                 <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
                   II
                 </div>
-                <h2 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight">
+                <h2 className="text-xl sm:text-2xl font-black text-black tracking-tight">
                   Formules, Lois & Règles Fondamentales
                 </h2>
               </div>
@@ -1013,7 +1108,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                   return (
                     <div
                       key={fidx}
-                      className="bg-white rounded-2xl border border-stone-200/90 shadow-xs hover:shadow-md transition-all p-5 sm:p-6 space-y-4"
+                      className="bg-white rounded-2xl border-2 border-stone-200 shadow-xs hover:shadow-md transition-all p-5 sm:p-6 space-y-4"
                     >
                       {/* En-tête avec badge et titre */}
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-3">
@@ -1021,12 +1116,12 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                           <span className="px-2.5 py-0.5 rounded-full bg-blue-600 text-white text-xs font-black uppercase tracking-wider shadow-2xs">
                             #{fidx + 1}
                           </span>
-                          <h3 className="text-base sm:text-lg font-black text-stone-900">
+                          <h3 className="text-base sm:text-lg font-black text-black">
                             <MathText text={formula.name || `Formule ${fidx + 1}`} inline={true} />
                           </h3>
                         </div>
                         {formula.target_goal && (
-                          <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200/60 rounded-full px-3 py-0.5">
+                          <span className="text-xs font-semibold text-blue-800 bg-blue-50 border border-blue-200 rounded-full px-3 py-0.5">
                             Formule Clé
                           </span>
                         )}
@@ -1034,7 +1129,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
 
                       {/* Encadré de Formule LaTeX Bleu Vibrant */}
                       {cleanedLatex && (
-                        <div className="py-3.5 px-4 rounded-xl bg-gradient-to-r from-blue-50/90 via-indigo-50/60 to-blue-50/90 border-2 border-blue-300 text-center overflow-x-auto shadow-inner my-2">
+                        <div className="py-3.5 px-4 rounded-xl bg-blue-50/70 border-2 border-blue-300 text-center overflow-x-auto shadow-inner my-2">
                           <div className="text-xl sm:text-2xl font-bold text-blue-950 inline-block">
                             <MathText text={`$$ ${cleanedLatex} $$`} />
                           </div>
@@ -1043,7 +1138,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
 
                       {/* Objectif & Application */}
                       {hasObjective && (
-                        <div className="bg-blue-50/60 border-l-4 border-blue-500 rounded-r-xl p-3 text-sm text-stone-800">
+                        <div className="bg-blue-50/70 border-l-4 border-blue-600 rounded-r-xl p-3 text-sm text-black">
                           <strong className="font-bold text-blue-950">🎯 Objectif & Utilité : </strong>
                           <MathText text={formula.target_goal || formula.when_to_use || ''} inline={true} />
                         </div>
@@ -1051,14 +1146,14 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
 
                       {/* Démonstration ou Méthode pas à pas */}
                       {(hasSteps || hasDerivation) && (
-                        <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-4 space-y-2.5">
-                          <p className="font-bold text-stone-900 text-sm flex items-center gap-2">
+                        <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 space-y-2.5">
+                          <p className="font-bold text-black text-sm flex items-center gap-2">
                             <span>🛠️ Démonstration & Méthode d'application pas à pas :</span>
                           </p>
                           {hasSteps ? (
                             <ol className="space-y-2">
                               {formula.demonstration_steps!.map((step, sidx) => (
-                                <li key={sidx} className="flex items-start gap-2.5 text-stone-800 text-sm sm:text-base leading-relaxed">
+                                <li key={sidx} className="flex items-start gap-2.5 text-black text-sm sm:text-base leading-relaxed">
                                   <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
                                     {sidx + 1}
                                   </span>
@@ -1069,7 +1164,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                               ))}
                             </ol>
                           ) : (
-                            <div className="text-stone-800 text-sm sm:text-base leading-relaxed pl-2">
+                            <div className="text-black text-sm sm:text-base leading-relaxed pl-2">
                               <MathText text={formula.how_to_derive!} inline={true} />
                             </div>
                           )}
@@ -1078,7 +1173,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
 
                       {/* Variables & Unités */}
                       {formula.variables && (
-                        <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-3 text-sm text-stone-800 flex items-start gap-2.5">
+                        <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3 text-sm text-black flex items-start gap-2.5">
                           <span className="text-amber-600 text-base shrink-0">📐</span>
                           <div>
                             <strong className="font-bold text-amber-950">Variables, Unités & Conditions : </strong>
@@ -1089,7 +1184,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
 
                       {/* Piège classique pour cette formule */}
                       {hasTraps && (
-                        <div className="bg-rose-50/80 border border-rose-200 rounded-xl p-3 text-sm text-rose-950 flex items-start gap-2.5">
+                        <div className="bg-rose-50/90 border border-rose-200 rounded-xl p-3 text-sm text-rose-950 flex items-start gap-2.5">
                           <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                           <div>
                             <strong className="font-bold text-rose-900">Piège classique à l'examen : </strong>
@@ -1111,15 +1206,15 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                 <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
                   III
                 </div>
-                <h2 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight">
+                <h2 className="text-xl sm:text-2xl font-black text-black tracking-tight">
                   Tableau Synthétique Comparatif
                 </h2>
               </div>
 
-              <div className="w-full overflow-x-auto rounded-2xl border border-purple-200/90 shadow-xs bg-white">
+              <div className="w-full overflow-x-auto rounded-2xl border-2 border-purple-200 shadow-xs bg-white">
                 <table className="w-full text-left border-collapse text-xs sm:text-sm">
                   <thead>
-                    <tr className="bg-gradient-to-r from-purple-700 via-indigo-700 to-purple-800 text-white font-extrabold">
+                    <tr className="bg-purple-700 text-white font-extrabold">
                       {parsedSummary.comparisonTable.headers.map((h, hidx) => (
                         <th key={hidx} className="py-3.5 px-4 uppercase tracking-wider text-xs">
                           <MathText text={h} inline={true} />
@@ -1134,7 +1229,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                         className={ridx % 2 === 0 ? 'bg-white hover:bg-purple-50/40' : 'bg-purple-50/20 hover:bg-purple-50/50 transition-colors'}
                       >
                         {row.map((cell, cidx) => (
-                          <td key={cidx} className="py-3 px-4 text-stone-900 font-medium leading-relaxed">
+                          <td key={cidx} className="py-3 px-4 text-black font-medium leading-relaxed">
                             <MathText text={cell} inline={true} />
                           </td>
                         ))}
@@ -1153,7 +1248,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                 <div className="w-8 h-8 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
                   IV
                 </div>
-                <h2 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight">
+                <h2 className="text-xl sm:text-2xl font-black text-black tracking-tight">
                   Pièges à Éviter & Astuces Méthodologiques (NB)
                 </h2>
               </div>
@@ -1164,7 +1259,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                   return isTrap ? (
                     <div
                       key={tidx}
-                      className="bg-gradient-to-br from-rose-50/90 via-white to-rose-50/40 border-2 border-rose-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-2 flex flex-col justify-between"
+                      className="bg-white border-2 border-rose-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-2 flex flex-col justify-between"
                     >
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
@@ -1178,7 +1273,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                             </span>
                           )}
                         </div>
-                        <div className="text-rose-950 text-sm sm:text-base leading-relaxed">
+                        <div className="text-black text-sm sm:text-base leading-relaxed">
                           <MathText text={item.content} inline={true} />
                         </div>
                       </div>
@@ -1186,7 +1281,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                   ) : (
                     <div
                       key={tidx}
-                      className="bg-gradient-to-br from-amber-50/90 via-white to-amber-50/40 border-2 border-amber-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-2 flex flex-col justify-between"
+                      className="bg-white border-2 border-amber-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-2 flex flex-col justify-between"
                     >
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
@@ -1200,7 +1295,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                             </span>
                           )}
                         </div>
-                        <div className="text-amber-950 text-sm sm:text-base leading-relaxed">
+                        <div className="text-black text-sm sm:text-base leading-relaxed">
                           <MathText text={item.content} inline={true} />
                         </div>
                       </div>
@@ -1218,33 +1313,33 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
                 <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
                   V
                 </div>
-                <h2 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight">
+                <h2 className="text-xl sm:text-2xl font-black text-black tracking-tight">
                   Exemple Pratique Résolu Pas à Pas
                 </h2>
               </div>
 
-              <div className="bg-gradient-to-br from-emerald-50/60 via-white to-teal-50/40 border-2 border-emerald-200/90 rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
+              <div className="bg-white border-2 border-emerald-200 rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
                 {/* Énoncé */}
-                <div className="bg-white border border-emerald-200/80 rounded-xl p-4 shadow-2xs space-y-1.5">
+                <div className="bg-emerald-50/50 border border-emerald-200 rounded-xl p-4 shadow-2xs space-y-1.5">
                   <div className="flex items-center gap-2 text-emerald-900 font-black text-xs sm:text-sm uppercase tracking-wider">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span>Énoncé du problème</span>
                   </div>
-                  <div className="text-stone-800 text-sm sm:text-base leading-relaxed italic pl-1">
+                  <div className="text-black text-sm sm:text-base leading-relaxed italic pl-1">
                     <MathText text={parsedSummary.practicalExample.statement} inline={true} />
                   </div>
                 </div>
 
                 {/* Étapes de résolution */}
                 <div className="space-y-3 pt-1">
-                  <p className="font-black text-stone-900 text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2">
+                  <p className="font-black text-black text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2">
                     <span>🔍 Résolution détaillée étape par étape :</span>
                   </p>
                   <ol className="space-y-2.5">
                     {parsedSummary.practicalExample.resolution_steps.map((step, sidx) => {
                       const stepStr = typeof step === 'string' ? step : String(step || '');
                       return (
-                        <li key={sidx} className="flex items-start gap-3 bg-white/80 border border-emerald-150 rounded-xl p-3 shadow-2xs text-stone-800 text-sm sm:text-base leading-relaxed">
+                        <li key={sidx} className="flex items-start gap-3 bg-white border border-stone-200 rounded-xl p-3 shadow-2xs text-black text-sm sm:text-base leading-relaxed">
                           <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
                             {sidx + 1}
                           </span>
@@ -1260,39 +1355,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             </section>
           )}
 
-          {/* Sections détaillées de cours complémentaires */}
-          {parsedSummary.sections.length > 0 && (
-            <div className="space-y-6 pt-4">
-              {parsedSummary.sections.map((sec, sidx) => {
-                const headingText = String(sec?.heading || `Section ${sidx + 1}`);
-                return (
-                  <div key={sidx} className="bg-white rounded-2xl border border-stone-200 p-5 space-y-3 shadow-xs">
-                    <h3 className="text-lg sm:text-xl font-black text-stone-900 pb-2 border-b border-stone-100">
-                      {sec.number ? `${sec.number}. ` : ''}
-                      <MathText text={headingText.replace(/^\s*\d+[\.\-\)]\s*/, '') || headingText} inline={true} />
-                    </h3>
 
-                    <div className="text-stone-800 leading-relaxed text-sm sm:text-base whitespace-pre-line font-normal">
-                      <MathText text={sec.body} />
-                    </div>
-
-                    {sec.points && sec.points.length > 0 && (
-                      <ul className="space-y-2 pl-2 pt-1">
-                        {sec.points.map((pt: string, pidx: number) => (
-                          <li key={pidx} className="flex items-start gap-2 text-stone-700 text-sm sm:text-base leading-relaxed">
-                            <span className="text-indigo-600 font-bold mt-1 text-sm">•</span>
-                            <div className="flex-1">
-                              <MathText text={pt} inline={true} />
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
 
           {/* Rendu Markdown propre de repli (uniquement si aucune formule/section et si markdown assaini) */}
           {parsedSummary.markdown && parsedSummary.markdown.length > 50 && !parsedSummary.markdown.includes('```json') && !parsedSummary.markdown.startsWith('{') && parsedSummary.sections.length === 0 && parsedSummary.formulas.length === 0 && parsedSummary.keyDefinitions.length === 0 && (

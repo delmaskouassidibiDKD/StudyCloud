@@ -281,8 +281,8 @@ export function RightMenu({
       ),
       toolType: 'resume',
       getPrompt: (doc) => doc
-        ? `Génère une Fiche de Résumé complète, technique et rigoureusement structurée à partir du cours « ${doc} ». Inclus les notions clés avec définitions, le formulaire exhaustif en KaTeX avec fractions verticales, un tableau comparatif, les pièges d'examen et un exemple pratique résolu pas-à-pas.`
-        : "Génère une Fiche de Résumé complète, technique et rigoureusement structurée avec notions fondamentales, formulaire KaTeX, tableau comparatif, pièges d'examen et exemple résolu pas-à-pas."
+        ? `Extrais l'ensemble des 4 paliers thématiques, concepts, figures, circuits et formules mathématiques en KaTeX du document « ${doc} » pour rédiger une Fiche de Résumé et Synthèse complète, explicative et approfondie (style masterclass du chat), avec le thème bien encadré, grands piliers développés, définitions clés, formulaire exhaustif avec fractions verticales, tableau comparatif, pièges d'examen et exemple d'application pas-à-pas.`
+        : "Extrais et structure l'ensemble des 4 paliers thématiques, concepts et formules mathématiques en KaTeX pour rédiger une Fiche de Résumé et Synthèse complète, explicative et approfondie (style masterclass du chat), avec le thème bien encadré, grands piliers développés, définitions clés, formulaire exhaustif avec fractions verticales, tableau comparatif, pièges d'examen et exemple d'application pas-à-pas."
     },
     {
       id: 'exercices-ecrits',
