@@ -29,7 +29,7 @@ export function AiPedagogyRenderer({ type, data, title, sourceFileName }: AiPeda
       case 'qcm':
         return <Questionnaire data={data} />;
       case 'questionnaire-test':
-        return <QuestionnaireTest data={data} />;
+        return <QuestionnaireTest data={data} title={title} />;
       case 'vrai-ou-faux':
       case 'vrai-faux':
         return <VraiOuFaux data={data} />;

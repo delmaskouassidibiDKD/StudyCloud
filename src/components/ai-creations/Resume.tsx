@@ -13,7 +13,9 @@ import {
   Table as TableIcon,
   CheckCircle2,
   Target,
+  Loader2,
 } from 'lucide-react';
+import { exportResumePdf } from '../../utils/exportStudyPdf';
 import { MathText } from '../MathText';
 import {
   SummaryFormula,
@@ -854,19 +856,20 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDownload = () => {
-    if (!fullText) return;
-    const blob = new Blob([fullText], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${String(docTitle || 'Resume').replace(/[^a-zA-Z0-9_-]/g, '_')}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    setDownloaded(true);
-    setTimeout(() => setDownloaded(false), 2500);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  const handleDownload = async () => {
+    if (!parsedSummary.hasData || isExportingPdf) return;
+    try {
+      setIsExportingPdf(true);
+      await exportResumePdf(parsedSummary);
+      setDownloaded(true);
+      setTimeout(() => setDownloaded(false), 2500);
+    } catch (err) {
+      console.error('Erreur export PDF résumé:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
   };
 
   return (
@@ -908,13 +911,19 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
           <button
             id="btn-download-resume"
             onClick={handleDownload}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold transition-all shadow-xs active:scale-95 cursor-pointer"
-            title="Télécharger la fiche"
+            disabled={isExportingPdf}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs sm:text-sm font-semibold transition-all shadow-xs active:scale-95 cursor-pointer"
+            title="Télécharger la fiche en PDF"
           >
             {downloaded ? (
               <>
                 <Check className="w-4 h-4 text-emerald-300" />
-                <span className="font-bold">Téléchargé !</span>
+                <span className="font-bold">Téléchargé en PDF !</span>
+              </>
+            ) : isExportingPdf ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Génération PDF...</span>
               </>
             ) : (
               <>

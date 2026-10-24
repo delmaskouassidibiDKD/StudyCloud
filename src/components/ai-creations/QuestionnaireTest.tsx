@@ -8,8 +8,11 @@ import {
   Award,
   ChevronRight,
   ChevronLeft,
-  Check
+  Check,
+  Download,
+  Loader2
 } from 'lucide-react';
+import { exportQuestionnaireTestPdf } from '../../utils/exportStudyPdf';
 import { QuestionQCM } from './types';
 import { MathText } from '../MathText';
 import { shuffleOptionsWithCorrectIndex, cleanExplanationOfStaticLetterPrefixes } from '../../services/aiCreationGenerator';
@@ -186,7 +189,7 @@ function normalizeQuestions(input: any): QuestionQCM[] {
   });
 }
 
-export default function QuestionnaireTest({ data }: { data?: any }) {
+export default function QuestionnaireTest({ data, title }: { data?: any; title?: string }) {
   const dynamicQuestions = useMemo(() => normalizeQuestions(data), [data]);
   const questions: QuestionQCM[] = dynamicQuestions;
 
@@ -280,12 +283,35 @@ export default function QuestionnaireTest({ data }: { data?: any }) {
 
   const percentage = Math.round((totalScore / questions.length) * 100);
 
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [downloadedPdf, setDownloadedPdf] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    if (isExportingPdf) return;
+    try {
+      setIsExportingPdf(true);
+      await exportQuestionnaireTestPdf({
+        title: title || data?.title || 'Questionnaire Test QCM',
+        questions,
+        userAnswers: answers,
+        score: totalScore,
+        isSubmitted,
+      });
+      setDownloadedPdf(true);
+      setTimeout(() => setDownloadedPdf(false), 2500);
+    } catch (err) {
+      console.error('Erreur export PDF questionnaire:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   return (
     <div id="module-questionnaire-test" className="w-full max-w-4xl mx-auto p-6 md:p-8 space-y-6">
       {/* Top Header Bar */}
-      <div id="questionnaire-test-header" className="flex items-center justify-between">
+      <div id="questionnaire-test-header" className="flex flex-wrap items-center justify-between gap-3">
         {!isSubmitted ? (
-          <>
+          <div className="flex flex-wrap items-center gap-2">
             <div id="questionnaire-test-progress-badge" className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-stone-100 border border-stone-300 text-xs font-semibold text-stone-700">
               <HelpCircle className="w-4 h-4 text-stone-500" />
               <span>Question {currentIndex + 1} sur {questions.length}</span>
@@ -293,19 +319,45 @@ export default function QuestionnaireTest({ data }: { data?: any }) {
             <div id="questionnaire-test-answered-badge" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-100 border border-stone-300 text-xs font-semibold text-stone-700">
               <span>{answeredCount} / {questions.length} répondue{answeredCount > 1 ? 's' : ''}</span>
             </div>
-          </>
+          </div>
         ) : (
-          <>
+          <div className="flex flex-wrap items-center gap-2">
             <div id="questionnaire-test-finished-badge" className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-stone-900 text-white text-xs font-semibold">
               <Check className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Test terminé • Résultats et correction</span>
+              <span>Test terminé • Résultats</span>
             </div>
             <div id="questionnaire-test-score-badge" className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-stone-100 border border-stone-300 text-xs font-semibold text-stone-800">
               <span>Score :</span>
               <span className="font-bold text-stone-900">{totalScore} / {questions.length} ({percentage}%)</span>
             </div>
-          </>
+          </div>
         )}
+
+        {/* Bouton Télécharger PDF */}
+        <button
+          id="btn-download-qcm-pdf"
+          onClick={handleDownloadPdf}
+          disabled={isExportingPdf}
+          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold transition-all shadow-xs cursor-pointer"
+          title="Télécharger le test en format PDF"
+        >
+          {downloadedPdf ? (
+            <>
+              <Check className="w-3.5 h-3.5 text-emerald-300" />
+              <span>Téléchargé en PDF</span>
+            </>
+          ) : isExportingPdf ? (
+            <>
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>Génération PDF...</span>
+            </>
+          ) : (
+            <>
+              <Download className="w-3.5 h-3.5" />
+              <span>Télécharger (PDF)</span>
+            </>
+          )}
+        </button>
       </div>
 
       {!isSubmitted ? (
@@ -447,14 +499,35 @@ export default function QuestionnaireTest({ data }: { data?: any }) {
               Vous avez obtenu <strong className="text-stone-900 text-lg">{totalScore}</strong> sur <strong className="text-stone-900 text-lg">{questions.length}</strong> bonnes réponses (<span className="font-semibold text-stone-900">{percentage}%</span>).
             </p>
 
-            <button
-              id="btn-test-restart"
-              onClick={handleReset}
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-stone-900 text-white hover:bg-stone-800 text-sm font-medium transition-colors cursor-pointer"
-            >
-              <RotateCcw className="w-4 h-4" />
-              <span>Recommencer le test</span>
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button
+                id="btn-test-download-pdf"
+                onClick={handleDownloadPdf}
+                disabled={isExportingPdf}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
+              >
+                {isExportingPdf ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Génération PDF...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    <span>Télécharger la copie en PDF</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                id="btn-test-restart"
+                onClick={handleReset}
+                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-stone-900 text-white hover:bg-stone-800 text-sm font-medium transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Recommencer le test</span>
+              </button>
+            </div>
           </div>
 
           {/* Detailed Correction of all questions */}

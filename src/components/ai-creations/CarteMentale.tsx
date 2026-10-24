@@ -14,8 +14,10 @@ import {
   Check,
   X,
   Palette,
-  Crosshair
+  Crosshair,
+  Loader2
 } from 'lucide-react';
+import { exportSvgToPdf } from '../../utils/exportStudyPdf';
 import { MathText } from '../MathText';
 import { safeJsonParse } from '../../services/api';
 
@@ -1083,17 +1085,19 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
     setSelectedNodeId(null);
   };
 
-  const handleExportSVG = () => {
-    const svgEl = document.getElementById('mindmap-svg-canvas');
-    if (!svgEl) return;
-    const svgData = new XMLSerializer().serializeToString(svgEl);
-    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'carte-mentale.svg';
-    a.click();
-    URL.revokeObjectURL(url);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  const handleExportPDF = async () => {
+    if (isExportingPdf) return;
+    try {
+      setIsExportingPdf(true);
+      const rootTitle = centralNode?.text || title || 'Carte_Mentale';
+      await exportSvgToPdf('mindmap-svg-canvas', rootTitle);
+    } catch (err) {
+      console.error('Erreur export PDF carte mentale:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
   };
 
   const toggleFullscreen = () => {
@@ -1209,14 +1213,15 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
 
           <div className="h-4 w-px bg-slate-200 mx-0.5 hidden sm:block" />
 
-          {/* Download SVG */}
+          {/* Download PDF */}
           <button
             id="btn-mm-export"
-            onClick={handleExportSVG}
-            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-700 transition-colors active:scale-95"
-            title="Télécharger l'image SVG"
+            onClick={handleExportPDF}
+            disabled={isExportingPdf}
+            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-700 disabled:opacity-50 transition-colors active:scale-95 cursor-pointer"
+            title="Télécharger la carte mentale en PDF"
           >
-            <Download className="w-4 h-4" />
+            {isExportingPdf ? <Loader2 className="w-4 h-4 animate-spin text-blue-600" /> : <Download className="w-4 h-4" />}
           </button>
 
           {/* Fullscreen */}

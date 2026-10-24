@@ -13,9 +13,11 @@ import {
   Pause,
   Check,
   Sparkles,
-  Loader2
+  Loader2,
+  Download
 } from 'lucide-react';
 
+import { exportDevoirCompletPdf } from '../../utils/exportStudyPdf';
 import { DnaLogo } from '../DnaLogo';
 import { MathText } from '../MathText';
 import { CertificatExcellence, CertificateData } from './CertificatExcellence';
@@ -670,6 +672,34 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
     window.print();
   };
 
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [downloadedPdf, setDownloadedPdf] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    if (isExportingPdf) return;
+    try {
+      setIsExportingPdf(true);
+      await exportDevoirCompletPdf({
+        title: activeData.title,
+        discipline: activeData.discipline,
+        durationMinutes: activeData.durationMinutes,
+        instructions: activeData.instructions,
+        sections: activeData.sections,
+        openAnswers,
+        choiceAnswers,
+        booleanAnswers,
+        gradingResult,
+        isSubmitted,
+      });
+      setDownloadedPdf(true);
+      setTimeout(() => setDownloadedPdf(false), 2500);
+    } catch (err) {
+      console.error('Erreur export PDF examen:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   const localScores = calculateScores();
   const finalScore = gradingResult?.scoreTotal ?? localScores.total;
 
@@ -779,6 +809,31 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                 <span>Soumettre</span>
               </button>
             )}
+            {/* Bouton Télécharger PDF */}
+            <button
+              id="btn-download-exam-pdf"
+              onClick={handleDownloadPdf}
+              disabled={isExportingPdf}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 disabled:opacity-50 text-stone-200 text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
+              title="Télécharger l'épreuve en format PDF"
+            >
+              {downloadedPdf ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="hidden sm:inline">Téléchargé en PDF</span>
+                </>
+              ) : isExportingPdf ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+                  <span className="hidden sm:inline">Génération PDF...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-3.5 h-3.5 text-stone-300" />
+                  <span className="hidden sm:inline">Télécharger (PDF)</span>
+                </>
+              )}
+            </button>
             <button
               id="btn-print-exam"
               onClick={handlePrint}
@@ -863,6 +918,26 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                   className="w-full sm:w-auto px-4 py-2 rounded-xl bg-stone-900 text-white hover:bg-stone-800 text-xs font-semibold transition-colors cursor-pointer"
                 >
                   {showCorrectionDetail ? "Masquer le corrigé type" : "Consulter le corrigé type complet"}
+                </button>
+
+                <button
+                  id="btn-banner-download-exam-pdf"
+                  onClick={handleDownloadPdf}
+                  disabled={isExportingPdf}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer disabled:opacity-50"
+                  title="Télécharger votre copie d'examen en PDF"
+                >
+                  {isExportingPdf ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Génération PDF...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" />
+                      <span>Télécharger la Copie (PDF)</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

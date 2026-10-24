@@ -15,6 +15,7 @@ import {
   Loader2,
   AlertCircle
 } from 'lucide-react';
+import { exportExercicesPdf } from '../../utils/exportStudyPdf';
 import { MathText } from '../MathText';
 import { gradeExamPaper, safeJsonParse } from '../../services/api';
 
@@ -529,67 +530,28 @@ export default function ExercicesEcrits({ data, title }: { data?: any; title?: s
     }
   };
 
-  const handleDownload = () => {
-    let doc = `========================================================================\n`;
-    doc += `${exercise.title.toUpperCase()}\n`;
-    doc += `EXERCICE ÉCRIT & CORRECTION OFFICIELLE (STUDYCLOUD)\n`;
-    doc += `Date : ${new Date().toLocaleDateString('fr-FR')}\n`;
-    if (isSubmitted && gradingResult) {
-      doc += `Note obtenue : ${gradingResult.scoreTotal} / 20 points\n`;
-      doc += `Appréciation : ${gradingResult.feedbackGlobal}\n`;
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  const handleDownload = async () => {
+    if (isExportingPdf) return;
+    try {
+      setIsExportingPdf(true);
+      await exportExercicesPdf({
+        title: exercise.title,
+        context: exercise.context,
+        questions: exercise.questions,
+        answers,
+        correction: exercise.correction,
+        gradingResult,
+        isSubmitted,
+      });
+      setDownloaded(true);
+      setTimeout(() => setDownloaded(false), 2500);
+    } catch (err) {
+      console.error('Erreur export PDF exercice:', err);
+    } finally {
+      setIsExportingPdf(false);
     }
-    doc += `========================================================================\n\n`;
-
-    if (exercise.context) {
-      doc += `[ ÉNONCÉ & CONTEXTE DU PROBLÈME ]\n`;
-      doc += `${exercise.context}\n\n`;
-      doc += `------------------------------------------------------------------------\n\n`;
-    }
-
-    doc += `[ QUESTIONS & VOS RÉPONSES ÉCRITES ]\n`;
-    exercise.questions.forEach((q) => {
-      doc += `Question ${q.number} (${q.points} points) : ${q.text}\n`;
-      const lines = (answers[q.id] || []).filter((l) => l.trim().length > 0);
-      if (lines.length > 0) {
-        lines.forEach((l, idx) => {
-          doc += `   ${idx + 1}. ${l}\n`;
-        });
-      } else {
-        doc += `   [Aucune réponse saisie]\n`;
-      }
-      if (isSubmitted && gradingResult?.questionsFeedback?.[q.id]) {
-        const qfb = gradingResult.questionsFeedback[q.id];
-        doc += `   >> Points : ${qfb.points} / ${qfb.maxPoints} pts • ${qfb.feedback}\n`;
-      }
-      doc += `\n`;
-    });
-
-    if (isSubmitted) {
-      doc += `========================================================================\n`;
-      doc += `[ CORRECTION OFFICIELLE ÉTAPE PAR ÉTAPE ]\n`;
-      doc += `${exercise.correction.steps}\n\n`;
-
-      if (exercise.correction.examples.length > 0) {
-        doc += `[ DEUX EXEMPLES CONCRETS D'APPLICATION ]\n`;
-        exercise.correction.examples.forEach((ex) => {
-          doc += `• ${ex}\n`;
-        });
-        doc += `\n`;
-      }
-    }
-
-    const blob = new Blob([doc], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    const safeName = exercise.title.replace(/[^a-zA-Z0-9_-]/g, '_');
-    a.download = `${safeName}_Exercice_Copie.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    setDownloaded(true);
-    setTimeout(() => setDownloaded(false), 2000);
   };
 
   const handlePrint = () => {
@@ -648,18 +610,24 @@ export default function ExercicesEcrits({ data, title }: { data?: any; title?: s
             <button
               id="btn-download-exercices"
               onClick={handleDownload}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
-              title="Télécharger la copie d'exercice"
+              disabled={isExportingPdf}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 disabled:opacity-50 text-zinc-200 text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
+              title="Télécharger la copie en format PDF"
             >
               {downloaded ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="hidden sm:inline">Téléchargé</span>
+                  <span className="hidden sm:inline">Téléchargé en PDF</span>
+                </>
+              ) : isExportingPdf ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+                  <span className="hidden sm:inline">Génération PDF...</span>
                 </>
               ) : (
                 <>
                   <Download className="w-3.5 h-3.5 text-zinc-300" />
-                  <span className="hidden sm:inline">Télécharger</span>
+                  <span className="hidden sm:inline">Télécharger (PDF)</span>
                 </>
               )}
             </button>

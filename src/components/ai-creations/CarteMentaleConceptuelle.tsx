@@ -20,8 +20,10 @@ import {
   ChevronDown,
   LayoutGrid,
   FileImage,
-  HelpCircle
+  HelpCircle,
+  Loader2
 } from 'lucide-react';
+import { exportSvgToPdf } from '../../utils/exportStudyPdf';
 import { MathText } from '../MathText';
 import { safeJsonParse } from '../../services/api';
 
@@ -941,18 +943,20 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
     }));
   };
 
-  // Download SVG
-  const handleExportSVG = () => {
-    const svgEl = document.getElementById('concept-map-svg-stage');
-    if (!svgEl) return;
-    const svgData = new XMLSerializer().serializeToString(svgEl);
-    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'carte-conceptuelle.svg';
-    a.click();
-    URL.revokeObjectURL(url);
+  // Download PDF
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  const handleExportPDF = async () => {
+    if (isExportingPdf) return;
+    try {
+      setIsExportingPdf(true);
+      const rootText = activeDataset.rootTitle || title || 'Carte_Conceptuelle';
+      await exportSvgToPdf('concept-map-svg-stage', rootText);
+    } catch (err) {
+      console.error('Erreur export PDF carte conceptuelle:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
   };
 
   // Fullscreen
@@ -1078,14 +1082,15 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
 
           <div className="h-4 w-px bg-slate-300 mx-0.5" />
 
-          {/* Export SVG */}
+          {/* Export PDF */}
           <button
             id="btn-cm-export"
-            onClick={handleExportSVG}
-            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-800 transition-colors active:scale-95"
-            title="Télécharger en format vectoriel SVG"
+            onClick={handleExportPDF}
+            disabled={isExportingPdf}
+            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-800 disabled:opacity-50 transition-colors active:scale-95 cursor-pointer"
+            title="Télécharger la carte conceptuelle en PDF"
           >
-            <Download className="w-4 h-4" />
+            {isExportingPdf ? <Loader2 className="w-4 h-4 animate-spin text-blue-600" /> : <Download className="w-4 h-4" />}
           </button>
 
           {/* Fullscreen */}
