@@ -34,14 +34,20 @@ function cleanLatexMathString(text: string): string {
   while (depth < 8 && str !== prev) {
     prev = str;
     str = str
-      .replace(/\\(?:dfrac|frac)\{([^{}]+)\}\{([^{}]+)\}/g, '($1) / ($2)')
-      .replace(/\\(?:sqrt)\{([^{}]+)\}/g, 'sqrt($1)')
-      .replace(/\\(?:boxed|underline|textbf|textit|mathrm|mathbf|text|operatorname)\{([^{}]+)\}/g, '$1');
+      .replace(/j\s*\\(?:dfrac|frac)/g, 'j * \\dfrac')
+      .replace(/\\(?:dfrac|frac)\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g, '($1) / ($2)')
+      .replace(/\\(?:sqrt)\s*\{([^{}]+)\}/g, 'sqrt($1)')
+      .replace(/\\(?:boxed|underline|textbf|textit|mathrm|mathbf|text|operatorname)\s*\{([^{}]+)\}/g, '$1');
     depth++;
   }
 
-  // Remplacement des symboles grecs et opérateurs récurrents
+  // Remplacement des symboles grecs, flèches et opérateurs récurrents
   str = str
+    .replace(/\\(?:implies|Rightarrow)/g, ' => ')
+    .replace(/\\(?:iff|Leftrightarrow)/g, ' <=> ')
+    .replace(/\\(?:to|rightarrow)/g, ' -> ')
+    .replace(/\\(?:varepsillon|varepsilon|epsilon)/g, 'epsilon')
+    .replace(/\\in\b/g, ' in ')
     .replace(/\\omega_0/g, 'w0')
     .replace(/\\omega/g, 'w')
     .replace(/\\Omega_0/g, 'Omega_0')
@@ -1016,6 +1022,90 @@ export interface HtmlToPdfOptions {
  * Capture fidèlement un élément HTML (avec formules KaTeX réelles, polices, couleurs et mises en page à l'identique de l'écran)
  * et le convertit en document PDF multi-pages A4 avec découpage intelligent évitant de couper les formules en deux.
  */
+/**
+ * Prépare et normalise un document cloné pour html2canvas :
+ * - Rétablissement des éléments masqués (ex. position fixed, zIndex négatif)
+ * - Nettoyage des filtres SVG incompatibles
+ * - Conversion de toutes les couleurs modernes (oklch, oklab, color()) en RGB standard compatible avec le moteur de rendu
+ */
+function prepareClonedDocForHtml2Canvas(clonedDoc: Document, targetEl?: HTMLElement | null): void {
+  try {
+    if (targetEl) {
+      targetEl.style.position = 'static';
+      targetEl.style.left = '0';
+      targetEl.style.top = '0';
+      targetEl.style.zIndex = '1';
+      targetEl.style.display = 'block';
+      targetEl.style.visibility = 'visible';
+      targetEl.style.opacity = '1';
+      targetEl.style.margin = '0 auto';
+    }
+  } catch {}
+
+  try {
+    const filters = clonedDoc.querySelectorAll('filter');
+    filters.forEach((f) => f.remove());
+    const filteredEls = clonedDoc.querySelectorAll('[filter]');
+    filteredEls.forEach((el) => el.removeAttribute('filter'));
+  } catch {}
+
+  try {
+    const canvas = clonedDoc.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d');
+
+    const toRgb = (val: string): string => {
+      if (!val) return val;
+      const lower = val.toLowerCase();
+      if (
+        !lower.includes('oklch') &&
+        !lower.includes('oklab') &&
+        !lower.includes('color(') &&
+        !lower.includes('lch(') &&
+        !lower.includes('lab(')
+      ) {
+        return val;
+      }
+      if (!ctx) return '#000000';
+      try {
+        ctx.fillStyle = '#000000';
+        ctx.fillStyle = val;
+        return ctx.fillStyle || '#000000';
+      } catch {
+        return '#000000';
+      }
+    };
+
+    const rootEl = targetEl || clonedDoc.body;
+    if (rootEl) {
+      const allEls = [rootEl, ...Array.from(rootEl.querySelectorAll('*'))];
+      for (const node of allEls) {
+        const el = node as HTMLElement;
+        if (!el || !el.style) continue;
+        try {
+          const cs = window.getComputedStyle(el);
+          if (cs.color && (cs.color.includes('ok') || cs.color.includes('color('))) {
+            el.style.color = toRgb(cs.color);
+          }
+          if (cs.backgroundColor && (cs.backgroundColor.includes('ok') || cs.backgroundColor.includes('color('))) {
+            el.style.backgroundColor = toRgb(cs.backgroundColor);
+          }
+          if (cs.borderColor && (cs.borderColor.includes('ok') || cs.borderColor.includes('color('))) {
+            el.style.borderColor = toRgb(cs.borderColor);
+          }
+        } catch {}
+      }
+    }
+  } catch (colorErr) {
+    console.warn('[PDF Export] Normalisation couleurs:', colorErr);
+  }
+}
+
+/**
+ * Capture fidèlement un élément HTML (avec formules KaTeX réelles, polices, couleurs et mises en page à l'identique de l'écran)
+ * et le convertit en document PDF multi-pages A4 avec découpage intelligent évitant de couper les formules en deux.
+ */
 export async function exportHtmlElementToPdf(
   elementOrId: string | HTMLElement,
   docTitle: string,
@@ -1028,9 +1118,9 @@ export async function exportHtmlElementToPdf(
   }
 
   // S'assurer que toutes les polices web (dont KaTeX) sont totalement chargées
-  if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+  if (typeof document !== 'undefined' && 'fonts' in document) {
     try {
-      await document.fonts.ready;
+      await (document as any).fonts.ready;
     } catch {
       // Ignorer si échec
     }
@@ -1056,15 +1146,12 @@ export async function exportHtmlElementToPdf(
     scrollY: 0,
     windowWidth: target.scrollWidth || 1024,
     onclone: (clonedDoc) => {
-      // Nettoyer tous les filtres SVG qui font planter html2canvas
-      try {
-        const filters = clonedDoc.querySelectorAll('filter');
-        filters.forEach((f) => f.remove());
-        const filteredEls = clonedDoc.querySelectorAll('[filter]');
-        filteredEls.forEach((el) => el.removeAttribute('filter'));
-      } catch {
-        // Ignorer
-      }
+      const clonedTarget =
+        typeof elementOrId === 'string'
+          ? clonedDoc.getElementById(elementOrId)
+          : clonedDoc.getElementById((elementOrId as HTMLElement).id) || (clonedDoc.body.firstElementChild as HTMLElement);
+
+      prepareClonedDocForHtml2Canvas(clonedDoc, clonedTarget);
     },
     ignoreElements: (el) => {
       const isButtonWithAction =
@@ -1240,14 +1327,8 @@ export async function exportPagesToPdf(
       backgroundColor: '#ffffff',
       logging: false,
       onclone: (clonedDoc) => {
-        try {
-          const filters = clonedDoc.querySelectorAll('filter');
-          filters.forEach((f) => f.remove());
-          const filteredEls = clonedDoc.querySelectorAll('[filter]');
-          filteredEls.forEach((elem) => elem.removeAttribute('filter'));
-        } catch {
-          // Ignorer
-        }
+        const clonedPage = clonedDoc.getElementById(pageId);
+        prepareClonedDocForHtml2Canvas(clonedDoc, clonedPage);
       },
     });
 
@@ -1599,10 +1680,10 @@ export async function exportResumePdf(summary: any): Promise<void> {
 
     summary.formulas.forEach((f: any, idx: number) => {
       let bodyText = `Formule : ${f.latex || ''}`;
-      if (f.target_goal) bodyText += `\nObjectif : ${f.target_goal}`;
-      if (f.variables) bodyText += `\nVariables & Unites : ${f.variables}`;
-      if (f.when_to_use) bodyText += `\nConditions : ${f.when_to_use}`;
-      if (f.exam_trap) bodyText += `\nPiege d'examen : ${f.exam_trap}`;
+      if (f.target_goal) bodyText += `\n\nObjectif : ${f.target_goal}`;
+      if (f.variables) bodyText += `\n\nVariables & Unites : ${f.variables}`;
+      if (f.when_to_use) bodyText += `\n\nConditions : ${f.when_to_use}`;
+      if (f.exam_trap) bodyText += `\n\nPiege d'examen : ${f.exam_trap}`;
 
       items.push({
         type: 'box',

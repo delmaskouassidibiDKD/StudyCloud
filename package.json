@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "build:worker": "node build-worker.cjs"
+    "build:worker": "node build-worker.cjs",
+    "postinstall": "node patch-html2canvas.cjs"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.15",
