@@ -661,7 +661,7 @@ export default function ExercicesEcrits({ data, title }: { data?: any; title?: s
         Taille compacte et proportionnée : les questions sont directement visibles !
       */}
       <div className="flex-1 w-full flex justify-center py-4 sm:py-6 px-3 sm:px-6">
-        <div className="w-full max-w-4xl bg-white rounded-xl sm:rounded-2xl shadow-xl border border-stone-300 text-stone-900 p-5 sm:p-8 md:p-10 space-y-6">
+        <div id="exercices-printable-sheet" className="w-full max-w-4xl bg-white rounded-xl sm:rounded-2xl shadow-xl border border-stone-300 text-stone-900 p-5 sm:p-8 md:p-10 space-y-6">
 
           {/* En-tête officiel proportionné (compact, sobre, académique) */}
           <header className="border-b-2 border-stone-800 pb-4 space-y-2.5">

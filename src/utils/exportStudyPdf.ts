@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import html2canvas from 'html2canvas';
 
 export interface StudyDocSection {
   heading: string;
@@ -110,6 +111,21 @@ function truncatePdfText(text: string, font: any, fontSize: number, maxWidth: nu
  * Génère et télécharge un document PDF officiel d'étude au format standardisé A4
  */
 export async function exportStudyDocumentPdf(doc: StudyDocumentData): Promise<void> {
+  // Rendu fidèle à l'identique de l'écran avec formules KaTeX réelles
+  if (typeof document !== 'undefined') {
+    const pageIds: string[] = [];
+    const maxP = Math.max(doc.totalPages || 0, doc.pages?.length || 0, 10);
+    for (let i = 1; i <= maxP; i++) {
+      if (document.getElementById(`pdf-page-${i}`)) {
+        pageIds.push(`pdf-page-${i}`);
+      }
+    }
+    if (pageIds.length > 0) {
+      await exportPagesToPdf(pageIds, doc.docTitle || 'Document_Etude');
+      return;
+    }
+  }
+
   const pdfDoc = await PDFDocument.create();
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -925,6 +941,254 @@ export async function buildMultiPagePdfDocument(options: {
 }
 
 // ============================================================================
+// EXPORT HTML FIDÈLE VERS PDF (RENDU À L'IDENTIQUE DES FORMULES KATEX & STYLES)
+// ============================================================================
+
+export interface HtmlToPdfOptions {
+  filename?: string;
+  orientation?: 'portrait' | 'landscape';
+  marginPt?: number;
+  scale?: number;
+}
+
+/**
+ * Capture fidèlement un élément HTML (avec formules KaTeX réelles, polices, couleurs et mises en page à l'identique de l'écran)
+ * et le convertit en document PDF multi-pages A4 avec découpage intelligent évitant de couper les formules en deux.
+ */
+export async function exportHtmlElementToPdf(
+  elementOrId: string | HTMLElement,
+  docTitle: string,
+  options?: HtmlToPdfOptions
+): Promise<void> {
+  const target = typeof elementOrId === 'string' ? document.getElementById(elementOrId) : elementOrId;
+  if (!target) {
+    console.error(`[PDF Export] Élément "${elementOrId}" introuvable.`);
+    return;
+  }
+
+  // S'assurer que toutes les polices web (dont KaTeX) sont totalement chargées
+  if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+    try {
+      await document.fonts.ready;
+    } catch {
+      // Ignorer si échec
+    }
+  }
+
+  const orientation = options?.orientation || 'portrait';
+  const isLandscape = orientation === 'landscape';
+  const pageWidthPt = isLandscape ? 841.89 : 595.28;
+  const pageHeightPt = isLandscape ? 595.28 : 841.89;
+  const marginPt = options?.marginPt ?? 20;
+  const usableWidthPt = pageWidthPt - 2 * marginPt;
+  const usableHeightPt = pageHeightPt - 2 * marginPt;
+  const aspect = usableHeightPt / usableWidthPt;
+
+  // Capture de l'élément HTML rendu avec scale 2 pour un résultat haute définition (300dpi)
+  const canvas = await html2canvas(target, {
+    scale: options?.scale || 2,
+    useCORS: true,
+    allowTaint: true,
+    backgroundColor: '#ffffff',
+    logging: false,
+    windowWidth: target.scrollWidth || 1024,
+    ignoreElements: (el) => {
+      return (
+        el.classList.contains('no-print') ||
+        el.getAttribute('data-no-print') === 'true' ||
+        (el.tagName.toLowerCase() === 'button' &&
+          (el.textContent?.includes('Télécharger') || el.textContent?.includes('Copier')))
+      );
+    },
+  });
+
+  const canvasWidth = canvas.width;
+  const canvasHeight = canvas.height;
+  const maxSliceHeightPx = Math.floor(canvasWidth * aspect);
+
+  // Recherche des frontières d'éléments pour éviter de couper une formule ou une carte en deux
+  const targetRect = target.getBoundingClientRect();
+  const totalH = targetRect.height;
+  const breakOffsets: number[] = [];
+
+  if (totalH > 0 && canvasHeight > maxSliceHeightPx) {
+    const blockNodes = target.querySelectorAll(
+      'section, article, header, footer, h1, h2, h3, h4, table, tr, [class*="rounded"], [class*="border"], [class*="p-"], .katex-display'
+    );
+    blockNodes.forEach((node) => {
+      const r = node.getBoundingClientRect();
+      const topFromTarget = r.top - targetRect.top;
+      if (topFromTarget > 25 && topFromTarget < totalH - 25) {
+        const pxOnCanvas = Math.round((topFromTarget / totalH) * canvasHeight);
+        breakOffsets.push(pxOnCanvas);
+      }
+    });
+    breakOffsets.sort((a, b) => a - b);
+  }
+
+  // Calcul des découpages de pages
+  const cuts: { startY: number; endY: number }[] = [];
+  let currentY = 0;
+
+  while (currentY < canvasHeight) {
+    let nextCutY = currentY + maxSliceHeightPx;
+    if (nextCutY >= canvasHeight) {
+      nextCutY = canvasHeight;
+    } else {
+      const minAcceptable = nextCutY - maxSliceHeightPx * 0.22;
+      let bestBreak = -1;
+      for (let i = breakOffsets.length - 1; i >= 0; i--) {
+        const b = breakOffsets[i];
+        if (b <= nextCutY && b >= minAcceptable) {
+          bestBreak = b;
+          break;
+        }
+      }
+      if (bestBreak > 0) {
+        nextCutY = bestBreak;
+      }
+    }
+
+    cuts.push({ startY: currentY, endY: nextCutY });
+    currentY = nextCutY;
+  }
+
+  const pdfDoc = await PDFDocument.create();
+  const totalPages = cuts.length;
+  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  for (let pIdx = 0; pIdx < totalPages; pIdx++) {
+    const cut = cuts[pIdx];
+    const sliceHeight = cut.endY - cut.startY;
+    if (sliceHeight <= 0) continue;
+
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = canvasWidth;
+    sliceCanvas.height = sliceHeight;
+    const ctx = sliceCanvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+      ctx.drawImage(
+        canvas,
+        0, cut.startY, canvasWidth, sliceHeight,
+        0, 0, canvasWidth, sliceHeight
+      );
+    }
+
+    const sliceJpg = sliceCanvas.toDataURL('image/jpeg', 0.96);
+    const embeddedImg = await pdfDoc.embedJpg(sliceJpg);
+
+    const page = pdfDoc.addPage([pageWidthPt, pageHeightPt]);
+    const drawWidthPt = usableWidthPt;
+    const drawHeightPt = (sliceHeight / canvasWidth) * usableWidthPt;
+
+    page.drawImage(embeddedImg, {
+      x: marginPt,
+      y: pageHeightPt - marginPt - drawHeightPt,
+      width: drawWidthPt,
+      height: drawHeightPt,
+    });
+
+    // Pied de page discret
+    if (totalPages > 1) {
+      page.drawText(`StudyCloud • Page ${pIdx + 1} / ${totalPages}`, {
+        x: pageWidthPt - marginPt - 120,
+        y: 8,
+        size: 7.5,
+        font: fontRegular,
+        color: rgb(0.55, 0.55, 0.55),
+      });
+    }
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const safeTitle = (options?.filename || docTitle || 'Document_StudyCloud').replace(/[^a-zA-Z0-9_-]/g, '_');
+  link.download = `${safeTitle}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Capture plusieurs pages HTML A4 indépendantes et les assemble dans un PDF multi-pages A4
+ */
+export async function exportPagesToPdf(
+  pageElementIds: string[],
+  docTitle: string,
+  filename?: string
+): Promise<void> {
+  if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+    try {
+      await document.fonts.ready;
+    } catch {
+      // Ignorer
+    }
+  }
+
+  const pdfDoc = await PDFDocument.create();
+  const pageWidthPt = 595.28;
+  const pageHeightPt = 841.89;
+
+  for (const pageId of pageElementIds) {
+    const el = document.getElementById(pageId);
+    if (!el) continue;
+
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+    });
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.96);
+    const embeddedImg = await pdfDoc.embedJpg(imgData);
+    const page = pdfDoc.addPage([pageWidthPt, pageHeightPt]);
+
+    const drawAspect = canvas.height / canvas.width;
+    const pageAspect = pageHeightPt / pageWidthPt;
+
+    let drawWidth = pageWidthPt;
+    let drawHeight = pageHeightPt;
+    let drawX = 0;
+    let drawY = 0;
+
+    if (drawAspect > pageAspect) {
+      drawWidth = pageHeightPt / drawAspect;
+      drawX = (pageWidthPt - drawWidth) / 2;
+    } else {
+      drawHeight = pageWidthPt * drawAspect;
+      drawY = (pageHeightPt - drawHeight) / 2;
+    }
+
+    page.drawImage(embeddedImg, {
+      x: drawX,
+      y: drawY,
+      width: drawWidth,
+      height: drawHeight,
+    });
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const safeName = (filename || docTitle || 'Document_StudyCloud').replace(/[^a-zA-Z0-9_-]/g, '_');
+  link.download = `${safeName}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// ============================================================================
 // EXPORT SVG VERS PDF (POUR CARTES MENTALES & CONCEPTUELLES)
 // ============================================================================
 
@@ -934,6 +1198,139 @@ export async function exportSvgToPdf(svgElementId: string, docTitle: string): Pr
     throw new Error(`SVG element with id '${svgElementId}' not found.`);
   }
 
+  if (typeof document !== 'undefined' && 'fonts' in document) {
+    try {
+      await (document as any).fonts.ready;
+    } catch {
+      // Continue
+    }
+  }
+
+  const renderA4LandscapePdf = async (pngDataUrl: string, srcWidth: number, srcHeight: number) => {
+    const pdfDoc = await PDFDocument.create();
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const pngImage = await pdfDoc.embedPng(pngDataUrl);
+
+    const a4Width = 841.89; // Paysage A4
+    const a4Height = 595.28;
+    const margin = 28;
+
+    const page = pdfDoc.addPage([a4Width, a4Height]);
+
+    page.drawRectangle({
+      x: 0,
+      y: 0,
+      width: a4Width,
+      height: a4Height,
+      color: rgb(1, 1, 1),
+    });
+
+    page.drawText('STUDYCLOUD • CARTE MENTALE & ARBORESCENCE OFFICIELLE', {
+      x: margin,
+      y: a4Height - 22,
+      font: fontBold,
+      size: 9,
+      color: rgb(0.06, 0.41, 0.63),
+    });
+
+    const safeTitle = sanitizeForPdf(docTitle).slice(0, 60);
+    page.drawText(safeTitle, {
+      x: margin + 280,
+      y: a4Height - 22,
+      font: fontBold,
+      size: 9,
+      color: rgb(0.12, 0.15, 0.22),
+    });
+
+    const dateStr = new Date().toLocaleDateString('fr-FR');
+    page.drawText(`Date : ${dateStr}`, {
+      x: a4Width - margin - 75,
+      y: a4Height - 22,
+      font: fontRegular,
+      size: 8,
+      color: rgb(0.45, 0.45, 0.45),
+    });
+
+    page.drawLine({
+      start: { x: margin, y: a4Height - 28 },
+      end: { x: a4Width - margin, y: a4Height - 28 },
+      thickness: 0.6,
+      color: rgb(0.85, 0.85, 0.85),
+    });
+
+    const availWidth = a4Width - margin * 2;
+    const availHeight = a4Height - margin * 2 - 25;
+
+    const imgRatio = srcWidth / srcHeight;
+    const availRatio = availWidth / availHeight;
+
+    let renderW = availWidth;
+    let renderH = availHeight;
+
+    if (imgRatio > availRatio) {
+      renderH = availWidth / imgRatio;
+    } else {
+      renderW = availHeight * imgRatio;
+    }
+
+    const posX = margin + (availWidth - renderW) / 2;
+    const posY = margin + (availHeight - renderH) / 2;
+
+    page.drawImage(pngImage, {
+      x: posX,
+      y: posY,
+      width: renderW,
+      height: renderH,
+    });
+
+    page.drawLine({
+      start: { x: margin, y: 22 },
+      end: { x: a4Width - margin, y: 22 },
+      thickness: 0.5,
+      color: rgb(0.85, 0.85, 0.85),
+    });
+
+    page.drawText('Document genere par StudyCloud - Espace de Creation Interactive', {
+      x: margin,
+      y: 12,
+      font: fontRegular,
+      size: 7.5,
+      color: rgb(0.5, 0.5, 0.5),
+    });
+
+    const pdfBytes = await pdfDoc.save();
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    const safeFilename = docTitle.replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 45) || 'Carte_Mentale';
+    link.download = `${safeFilename}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setTimeout(() => URL.revokeObjectURL(downloadUrl), 2500);
+  };
+
+  // 1. Essai prioritaire via html2canvas pour conserver les foreignObject avec formules KaTeX réelles
+  try {
+    const html2canvas = (await import('html2canvas')).default;
+    const target = (svgEl.parentElement as HTMLElement) || (svgEl as unknown as HTMLElement);
+    const canvas = await html2canvas(target, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      logging: false,
+    });
+    const pngDataUrl = canvas.toDataURL('image/png');
+    await renderA4LandscapePdf(pngDataUrl, canvas.width, canvas.height);
+    return;
+  } catch (canvasErr) {
+    console.warn('[exportSvgToPdf] html2canvas fallback vers XMLSerializer:', canvasErr);
+  }
+
+  // 2. Repli XMLSerializer + Image
   const clone = svgEl.cloneNode(true) as SVGSVGElement;
 
   let width = 1400;
@@ -974,111 +1371,7 @@ export async function exportSvgToPdf(svgElementId: string, docTitle: string): Pr
         URL.revokeObjectURL(svgUrl);
 
         const pngDataUrl = canvas.toDataURL('image/png');
-
-        const pdfDoc = await PDFDocument.create();
-        const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-        const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        const pngImage = await pdfDoc.embedPng(pngDataUrl);
-
-        const a4Width = 841.89; // Paysage A4
-        const a4Height = 595.28;
-        const margin = 28;
-
-        const page = pdfDoc.addPage([a4Width, a4Height]);
-
-        page.drawRectangle({
-          x: 0,
-          y: 0,
-          width: a4Width,
-          height: a4Height,
-          color: rgb(1, 1, 1),
-        });
-
-        page.drawText('STUDYCLOUD • CARTE MENTALE & ARBORESCENCE OFFICIELLE', {
-          x: margin,
-          y: a4Height - 22,
-          font: fontBold,
-          size: 9,
-          color: rgb(0.06, 0.41, 0.63),
-        });
-
-        const safeTitle = sanitizeForPdf(docTitle).slice(0, 60);
-        page.drawText(safeTitle, {
-          x: margin + 280,
-          y: a4Height - 22,
-          font: fontBold,
-          size: 9,
-          color: rgb(0.12, 0.15, 0.22),
-        });
-
-        const dateStr = new Date().toLocaleDateString('fr-FR');
-        page.drawText(`Date : ${dateStr}`, {
-          x: a4Width - margin - 75,
-          y: a4Height - 22,
-          font: fontRegular,
-          size: 8,
-          color: rgb(0.45, 0.45, 0.45),
-        });
-
-        page.drawLine({
-          start: { x: margin, y: a4Height - 28 },
-          end: { x: a4Width - margin, y: a4Height - 28 },
-          thickness: 0.6,
-          color: rgb(0.85, 0.85, 0.85),
-        });
-
-        const availWidth = a4Width - margin * 2;
-        const availHeight = a4Height - margin * 2 - 25;
-
-        const imgRatio = width / height;
-        const availRatio = availWidth / availHeight;
-
-        let renderW = availWidth;
-        let renderH = availHeight;
-
-        if (imgRatio > availRatio) {
-          renderH = availWidth / imgRatio;
-        } else {
-          renderW = availHeight * imgRatio;
-        }
-
-        const posX = margin + (availWidth - renderW) / 2;
-        const posY = margin + (availHeight - renderH) / 2;
-
-        page.drawImage(pngImage, {
-          x: posX,
-          y: posY,
-          width: renderW,
-          height: renderH,
-        });
-
-        page.drawLine({
-          start: { x: margin, y: 22 },
-          end: { x: a4Width - margin, y: 22 },
-          thickness: 0.5,
-          color: rgb(0.85, 0.85, 0.85),
-        });
-
-        page.drawText('Document genere par StudyCloud - Espace de Creation Interactive', {
-          x: margin,
-          y: 12,
-          font: fontRegular,
-          size: 7.5,
-          color: rgb(0.5, 0.5, 0.5),
-        });
-
-        const pdfBytes = await pdfDoc.save();
-        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-        const downloadUrl = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        const safeFilename = docTitle.replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 45) || 'Carte_Mentale';
-        link.download = `${safeFilename}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        setTimeout(() => URL.revokeObjectURL(downloadUrl), 2500);
+        await renderA4LandscapePdf(pngDataUrl, width, height);
         resolve();
       } catch (err) {
         reject(err);
@@ -1099,6 +1392,15 @@ export async function exportSvgToPdf(svgElementId: string, docTitle: string): Pr
 // ============================================================================
 
 export async function exportResumePdf(summary: any): Promise<void> {
+  // Rendu fidèle à l'identique de l'écran avec formules KaTeX réelles, couleurs et typographie
+  if (typeof document !== 'undefined') {
+    const el = document.getElementById('resume-document-content');
+    if (el) {
+      await exportHtmlElementToPdf(el, summary.title || 'Fiche_Resume');
+      return;
+    }
+  }
+
   const items: UniversalPdfItem[] = [];
 
   if (Array.isArray(summary.sections) && summary.sections.length > 0) {
@@ -1266,6 +1568,15 @@ export async function exportExercicesPdf(data: {
   gradingResult?: any;
   isSubmitted?: boolean;
 }): Promise<void> {
+  // Rendu fidèle à l'identique de l'écran avec formules KaTeX réelles
+  if (typeof document !== 'undefined') {
+    const el = document.getElementById('exercices-printable-sheet') || document.getElementById('module-exercices-ecrits');
+    if (el) {
+      await exportHtmlElementToPdf(el, data.title || 'Exercice_Copie');
+      return;
+    }
+  }
+
   const items: UniversalPdfItem[] = [];
 
   if (data.context) {
@@ -1388,6 +1699,18 @@ export async function exportDevoirCompletPdf(data: {
   gradingResult?: any;
   isSubmitted?: boolean;
 }): Promise<void> {
+  // Rendu fidèle à l'identique de l'écran avec formules KaTeX réelles
+  if (typeof document !== 'undefined') {
+    const el = document.getElementById('exam-printable-full-content') ||
+      document.getElementById('exam-sheet-page-1') ||
+      document.querySelector('[id^="exam-sheet-page"]') ||
+      document.getElementById('module-devoir-complet');
+    if (el) {
+      await exportHtmlElementToPdf(el as HTMLElement, data.title || 'Devoir_Examen');
+      return;
+    }
+  }
+
   const items: UniversalPdfItem[] = [];
 
   const durationMin = Math.round((data.durationSeconds || 7200) / 60);
@@ -1507,6 +1830,15 @@ export async function exportQuestionnaireTestPdf(data: {
   score?: number;
   isSubmitted?: boolean;
 }): Promise<void> {
+  // Rendu fidèle à l'identique de l'écran avec formules KaTeX réelles
+  if (typeof document !== 'undefined') {
+    const el = document.getElementById('questionnaire-test-results-panel') || document.getElementById('module-questionnaire-test');
+    if (el) {
+      await exportHtmlElementToPdf(el, data.title || 'Questionnaire_Test');
+      return;
+    }
+  }
+
   const items: UniversalPdfItem[] = [];
 
   data.questions.forEach((q: any, qIdx: number) => {

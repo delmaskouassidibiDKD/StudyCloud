@@ -13,8 +13,10 @@ import {
   Layers,
   ArrowDown,
   Palette,
-  Copy
+  Copy,
+  Loader2
 } from 'lucide-react';
+import { exportHtmlElementToPdf } from '../../utils/exportStudyPdf';
 import { MathText } from '../MathText';
 
 interface InfographicStep {
@@ -189,58 +191,20 @@ export default function Infographie({ data, title }: { data?: any; title?: strin
 
   const dynamicInfo = normalizeInfographicData(data, title);
 
-  const handleDownload = () => {
-    if (dynamicInfo) {
-      let text = `================================================================================\nINFOGRAPHIE : ${dynamicInfo.title.toUpperCase()}\n${dynamicInfo.subtitle}\n================================================================================\n\n`;
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
-      if (dynamicInfo.visualStyle || dynamicInfo.imagePrompt) {
-        text += `[ DIRECTION ARTISTIQUE & PROMPT VISUEL IA ]\n`;
-        if (dynamicInfo.visualStyle) text += `Style : ${dynamicInfo.visualStyle}\n`;
-        if (dynamicInfo.imagePrompt) text += `Prompt Image : ${dynamicInfo.imagePrompt}\n`;
-        text += `\n--------------------------------------------------------------------------------\n\n`;
-      }
-
-      if (dynamicInfo.metrics.length > 0) {
-        text += `[ CHIFFRES ET REPÈRES CLÉS ]\n`;
-        dynamicInfo.metrics.forEach(m => {
-          text += `• ${m.value} : ${m.label}\n`;
-        });
-        text += `\n--------------------------------------------------------------------------------\n\n`;
-      }
-
-      if (dynamicInfo.steps.length > 0) {
-        text += `[ ÉTAPES ET BRANCHES DE L'INFOGRAPHIE ]\n`;
-        dynamicInfo.steps.forEach(s => {
-          text += `[ ÉTAPE ${s.number} : ${s.title.toUpperCase()}${s.badge ? ` (${s.badge})` : ''} ]\n`;
-          text += `${s.description}\n\n`;
-        });
-        text += `--------------------------------------------------------------------------------\n\n`;
-      }
-
-      if (dynamicInfo.highlights.length > 0) {
-        text += `[ POINTS D'ATTENTION ET CONSEILS CLÉS ]\n`;
-        dynamicInfo.highlights.forEach(h => {
-          text += `• ${h.title ? `[${h.title}] ` : ''}${h.text}\n`;
-        });
-        text += `\n--------------------------------------------------------------------------------\n\n`;
-      }
-
-      if (dynamicInfo.conclusion) {
-        text += `[ CONCLUSION ET SYNTHÈSE ]\n${dynamicInfo.conclusion}\n\n`;
-      }
-
-      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${dynamicInfo.title.replace(/[^a-zA-Z0-9]/g, '_')}_infographie.txt`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+  const handleDownload = async () => {
+    if (!dynamicInfo || isExportingPdf) return;
+    try {
+      setIsExportingPdf(true);
+      await exportHtmlElementToPdf('infographie-printable-card', dynamicInfo.title || 'Infographie');
+      setDownloaded(true);
+      setTimeout(() => setDownloaded(false), 2500);
+    } catch (err) {
+      console.error('Erreur export PDF infographie:', err);
+    } finally {
+      setIsExportingPdf(false);
     }
-    setDownloaded(true);
-    setTimeout(() => setDownloaded(false), 2000);
   };
 
   return (
@@ -293,18 +257,24 @@ export default function Infographie({ data, title }: { data?: any; title?: strin
             <button
               id="btn-download-infographie"
               onClick={handleDownload}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold transition-all shadow-xs active:scale-95 cursor-pointer"
-              title="Télécharger l'infographie"
+              disabled={isExportingPdf}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 disabled:opacity-50 text-white text-xs font-semibold transition-all shadow-xs active:scale-95 cursor-pointer"
+              title="Télécharger l'infographie en format PDF"
             >
               {downloaded ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Téléchargé !</span>
+                  <span>Téléchargé en PDF !</span>
+                </>
+              ) : isExportingPdf ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Génération PDF...</span>
                 </>
               ) : (
                 <>
                   <Download className="w-3.5 h-3.5" />
-                  <span>Télécharger</span>
+                  <span>Télécharger (PDF)</span>
                 </>
               )}
             </button>
@@ -324,7 +294,7 @@ export default function Infographie({ data, title }: { data?: any; title?: strin
           className="max-w-3xl w-full"
         >
           {dynamicInfo ? (
-            <div className="w-full bg-white rounded-3xl p-6 sm:p-10 shadow-xl border border-stone-200 space-y-8">
+            <div id="infographie-printable-card" className="w-full bg-white rounded-3xl p-6 sm:p-10 shadow-xl border border-stone-200 space-y-8">
               {/* En-tête de l'infographie avec support LaTeX */}
               <div className="text-center space-y-3 border-b border-stone-200 pb-6">
                 <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-gradient-to-r from-orange-100 to-amber-100 text-orange-800 text-xs font-bold uppercase tracking-wider border border-orange-200/60 shadow-2xs">

@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 
 import { exportDevoirCompletPdf } from '../../utils/exportStudyPdf';
+import { PDFDocument } from 'pdf-lib';
+import html2canvas from 'html2canvas';
 import { DnaLogo } from '../DnaLogo';
 import { MathText } from '../MathText';
 import { CertificatExcellence, CertificateData } from './CertificatExcellence';
@@ -679,6 +681,68 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
     if (isExportingPdf) return;
     try {
       setIsExportingPdf(true);
+      if (typeof document !== 'undefined') {
+        const savedPage = currentPage;
+        const pageCanvases: HTMLCanvasElement[] = [];
+
+        // Parcourir toutes les pages (Exercice 1, 2, 3) pour capturer chaque feuille d'examen avec KaTeX
+        for (let p = 1; p <= totalPages; p++) {
+          setCurrentPage(p);
+          await new Promise((r) => setTimeout(r, 160));
+          const el = document.getElementById(`exam-sheet-page-${p}`);
+          if (el) {
+            const c = await html2canvas(el, {
+              scale: 2,
+              useCORS: true,
+              allowTaint: true,
+              backgroundColor: '#ffffff',
+              logging: false,
+            });
+            pageCanvases.push(c);
+          }
+        }
+        setCurrentPage(savedPage);
+
+        if (pageCanvases.length > 0) {
+          const pdfDoc = await PDFDocument.create();
+          const pageWidthPt = 595.28;
+          const pageHeightPt = 841.89;
+
+          for (const canvas of pageCanvases) {
+            const imgData = canvas.toDataURL('image/jpeg', 0.96);
+            const embeddedImg = await pdfDoc.embedJpg(imgData);
+            const page = pdfDoc.addPage([pageWidthPt, pageHeightPt]);
+            const drawAspect = canvas.height / canvas.width;
+            const drawHeight = Math.min(pageHeightPt - 36, (pageWidthPt - 36) * drawAspect);
+            const drawWidth = pageWidthPt - 36;
+            const drawY = pageHeightPt - 18 - drawHeight;
+
+            page.drawImage(embeddedImg, {
+              x: 18,
+              y: drawY,
+              width: drawWidth,
+              height: drawHeight,
+            });
+          }
+
+          const pdfBytes = await pdfDoc.save();
+          const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          const safeName = (activeData.title || 'Devoir_Complet_Examen').replace(/[^a-zA-Z0-9_-]/g, '_');
+          link.download = `${safeName}.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+
+          setDownloadedPdf(true);
+          setTimeout(() => setDownloadedPdf(false), 2500);
+          return;
+        }
+      }
+
       await exportDevoirCompletPdf({
         title: activeData.title,
         discipline: activeData.discipline,
