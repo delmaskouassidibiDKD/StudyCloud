@@ -1218,7 +1218,7 @@ export async function exportPagesToPdf(
 // ============================================================================
 
 export async function exportSvgToPdf(svgElementId: string, docTitle: string): Promise<void> {
-  const svgEl = document.getElementById(svgElementId) as SVGSVGElement | null;
+  const svgEl = document.getElementById(svgElementId) as unknown as SVGSVGElement | null;
   if (!svgEl) {
     throw new Error(`SVG element with id '${svgElementId}' not found.`);
   }

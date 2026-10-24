@@ -1091,7 +1091,7 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
     if (isExportingPdf) return;
     try {
       setIsExportingPdf(true);
-      const rootTitle = centralNode?.text || title || 'Carte_Mentale';
+      const rootTitle = nodes.find((n) => n.isCentral)?.text || title || 'Carte_Mentale';
       await exportSvgToPdf('mindmap-svg-canvas', rootTitle);
     } catch (err) {
       console.error('Erreur export PDF carte mentale:', err);

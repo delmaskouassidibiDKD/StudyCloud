@@ -730,7 +730,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
           const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = url;
-          const safeName = (activeData.title || 'Devoir_Complet_Examen').replace(/[^a-zA-Z0-9_-]/g, '_');
+          const safeName = (title || examHeader.sousTitre || 'Devoir_Complet_Examen').replace(/[^a-zA-Z0-9_-]/g, '_');
           link.download = `${safeName}.pdf`;
           document.body.appendChild(link);
           link.click();
@@ -751,10 +751,9 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
       }
 
       await exportDevoirCompletPdf({
-        title: activeData.title,
-        discipline: activeData.discipline,
-        durationMinutes: activeData.durationMinutes,
-        instructions: activeData.instructions,
+        title: title || examHeader.sousTitre || 'Devoir Complet Examen',
+        discipline: examHeader.matiere,
+        durationSeconds: examHeader.durationSeconds,
         sections: activeData.sections,
         openAnswers,
         choiceAnswers,
