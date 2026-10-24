@@ -1243,41 +1243,23 @@ export async function exportHtmlElementToPdf(
   const usableHeightPt = pageHeightPt - 2 * marginPt - footerHeightPt;
   const aspect = usableHeightPt / usableWidthPt;
 
-  // 1. Repérage instantané (0.5ms) des frontières de cartes, sections et titres du DOM
+  // 1. Repérage préalable des titres et en-têtes dans le DOM
   const targetRect = target.getBoundingClientRect();
-  const totalH = targetRect.height;
-  const rawBreakRatios: number[] = [];
-  const headingTopRatios: number[] = [];
-
-  if (totalH > 0) {
+  const rawHeadingBoxes: { topRel: number; bottomRel: number }[] = [];
+  if (targetRect.height > 0) {
     try {
-      const blockElements = target.querySelectorAll(
-        'header, section, [class*="rounded-2xl"], [class*="rounded-xl"], [class*="border-2"], .katex-display, table, tr, p, li, h1, h2, h3, h4'
-      );
-      blockElements.forEach((node) => {
-        const el = node as HTMLElement;
-        const r = el.getBoundingClientRect();
-        if (r.height < 8) return;
-        const topRel = (r.top - targetRect.top) / totalH;
-        const bottomRel = (r.bottom - targetRect.top) / totalH;
-        const isHeading = /^(h1|h2|h3|h4)$/i.test(el.tagName) || el.className?.includes?.('heading');
-
-        if (isHeading) {
-          headingTopRatios.push(topRel);
-          if (topRel > 0.03 && topRel < 0.97) {
-            rawBreakRatios.push(topRel - 0.003);
-          }
-        } else {
-          if (topRel > 0.03 && topRel < 0.97) {
-            rawBreakRatios.push(topRel - 0.002);
-          }
-          if (bottomRel > 0.03 && bottomRel < 0.97) {
-            rawBreakRatios.push(bottomRel + 0.004);
-          }
+      const headingEls = target.querySelectorAll('h1, h2, h3, h4, header, [class*="heading"]');
+      headingEls.forEach((h) => {
+        const hr = (h as HTMLElement).getBoundingClientRect();
+        if (hr.height > 0) {
+          rawHeadingBoxes.push({
+            topRel: (hr.top - targetRect.top) / targetRect.height,
+            bottomRel: (hr.bottom - targetRect.top) / targetRect.height,
+          });
         }
       });
     } catch (err) {
-      console.warn('[PDF Export] Repérage blocs DOM:', err);
+      console.warn('[PDF Export] Repérage titres DOM:', err);
     }
   }
 
@@ -1294,14 +1276,15 @@ export async function exportHtmlElementToPdf(
   }
 
   const maxSliceHeightPx = Math.floor(canvasWidth * aspect);
+  const headingZones = rawHeadingBoxes.map((hb) => ({
+    top: Math.round(hb.topRel * canvasHeight),
+    bottom: Math.round(hb.bottomRel * canvasHeight),
+  }));
 
-  // Conversion des ratios relatifs en pixels sur le canvas
-  const candidateBreaks = rawBreakRatios
-    .map((r) => Math.round(r * canvasHeight))
-    .sort((a, b) => a - b);
-  const headingTopsPx = headingTopRatios.map((r) => Math.round(r * canvasHeight));
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-  // 3. Découpage intelligent à progression garantie (zéro boucle infinie)
+  // 3. Découpage intelligent au pixel près : détection des lignes blanches horizontales
+  // ZÉRO coupure de texte, ZÉRO coupure de formules mathématiques, progression absolue garantie
   const cuts: { startY: number; endY: number }[] = [];
   let currentY = 0;
   const minStep = Math.max(180, Math.floor(maxSliceHeightPx * 0.40));
@@ -1313,37 +1296,168 @@ export async function exportHtmlElementToPdf(
       break;
     }
 
-    const windowMin = currentY + minStep;
-    let bestBreak = -1;
+    // Fenêtre de recherche du meilleur saut de page naturel (entre 55% et 100% de la hauteur autorisée)
+    const windowMaxY = Math.min(canvasHeight - 1, targetCutY - 4);
+    const windowMinY = currentY + Math.floor(maxSliceHeightPx * 0.55);
 
-    // Chercher la frontière DOM la plus basse dans la fenêtre de saut
-    for (let i = candidateBreaks.length - 1; i >= 0; i--) {
-      const b = candidateBreaks[i];
-      if (b <= targetCutY && b >= windowMin) {
-        // Éviter de couper immédiatement après un titre
-        let isRightAfterHeading = false;
-        for (const ht of headingTopsPx) {
-          if (b >= ht && b <= ht + 80) {
-            isRightAfterHeading = true;
+    let bestCutY = -1;
+
+    if (ctx && windowMaxY > windowMinY) {
+      const windowH = windowMaxY - windowMinY + 1;
+      const imgData = ctx.getImageData(0, windowMinY, canvasWidth, windowH).data;
+
+      const leftMargin = Math.floor(canvasWidth * 0.05);
+      const rightMargin = Math.floor(canvasWidth * 0.95);
+
+      const isWhitespaceRow: boolean[] = new Array(windowH);
+      const darkCountPerRow: number[] = new Array(windowH);
+
+      for (let row = 0; row < windowH; row++) {
+        let darkPixels = 0;
+        const rowOffset = row * canvasWidth * 4;
+
+        // Échantillonnage ultra-rapide par pas de 8 pixels avec rupture anticipée dès 3 pixels d'encre
+        for (let x = leftMargin; x < rightMargin; x += 8) {
+          const pxIdx = rowOffset + x * 4;
+          const a = imgData[pxIdx + 3];
+          if (a > 60) {
+            const r = imgData[pxIdx];
+            const g = imgData[pxIdx + 1];
+            const b = imgData[pxIdx + 2];
+            // Détection d'encre (texte, formule mathématique, bordure)
+            if (r < 220 || g < 220 || b < 220) {
+              darkPixels++;
+              if (darkPixels > 2) {
+                // Dès 3 pixels sombres, la ligne contient du contenu et ne peut être coupée
+                break;
+              }
+            }
+          }
+        }
+
+        darkCountPerRow[row] = darkPixels;
+        // Ligne blanche garantie si 0 ou au maximum 1 pixel sombre résiduel (anti-aliasing)
+        isWhitespaceRow[row] = darkPixels <= 1;
+      }
+
+      // Détection des bandes continues d'espace blanc
+      interface WhitespaceBand {
+        height: number;
+        canvasMidY: number;
+      }
+      const bands: WhitespaceBand[] = [];
+      let inBand = false;
+      let bandStart = 0;
+
+      for (let row = 0; row < windowH; row++) {
+        if (isWhitespaceRow[row]) {
+          if (!inBand) {
+            inBand = true;
+            bandStart = row;
+          }
+        } else {
+          if (inBand) {
+            inBand = false;
+            bands.push({
+              height: row - bandStart,
+              canvasMidY: windowMinY + Math.floor((bandStart + row - 1) / 2),
+            });
+          }
+        }
+      }
+      if (inBand) {
+        bands.push({
+          height: windowH - bandStart,
+          canvasMidY: windowMinY + Math.floor((bandStart + windowH - 1) / 2),
+        });
+      }
+
+      // Fonction évitant de couper à l'intérieur d'un titre ou juste en-dessous (titre orphelin)
+      const isBadForHeading = (cutY: number): boolean => {
+        for (const hz of headingZones) {
+          if (cutY >= hz.top - 4 && cutY <= hz.bottom + 65) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      // 1ère Priorité : Grand espace blanc entre cartes/sections (>= 14px)
+      for (let i = bands.length - 1; i >= 0; i--) {
+        const b = bands[i];
+        if (b.height >= 14 && !isBadForHeading(b.canvasMidY)) {
+          bestCutY = b.canvasMidY;
+          break;
+        }
+      }
+
+      // 2ème Priorité : Espace blanc moyen entre paragraphes/points/formules (>= 6px)
+      if (bestCutY === -1) {
+        for (let i = bands.length - 1; i >= 0; i--) {
+          const b = bands[i];
+          if (b.height >= 6 && !isBadForHeading(b.canvasMidY)) {
+            bestCutY = b.canvasMidY;
             break;
           }
         }
-        if (!isRightAfterHeading) {
-          bestBreak = b;
+      }
+
+      // 3ème Priorité : Espace blanc interligne (>= 2px)
+      if (bestCutY === -1) {
+        for (let i = bands.length - 1; i >= 0; i--) {
+          const b = bands[i];
+          if (b.height >= 2 && !isBadForHeading(b.canvasMidY)) {
+            bestCutY = b.canvasMidY;
+            break;
+          }
+        }
+      }
+
+      // 4ème Priorité : Tout espace blanc valide
+      if (bestCutY === -1) {
+        for (let i = bands.length - 1; i >= 0; i--) {
+          const b = bands[i];
+          if (b.height >= 2) {
+            bestCutY = b.canvasMidY;
+            break;
+          }
+        }
+      }
+
+      // 5ème Priorité : Ligne avec le moins absolu de pixels sombres
+      if (bestCutY === -1) {
+        let minDark = Infinity;
+        let minRow = windowH - 1;
+        for (let row = windowH - 1; row >= 0; row--) {
+          if (darkCountPerRow[row] < minDark) {
+            minDark = darkCountPerRow[row];
+            minRow = row;
+          }
+        }
+        bestCutY = windowMinY + minRow;
+      }
+    }
+
+    // Protection anti-titre orphelin : si le saut touche un titre, couper avant le titre
+    if (bestCutY > 0) {
+      for (const hz of headingZones) {
+        if (bestCutY >= hz.top - 4 && bestCutY <= hz.bottom + 65) {
+          const candidateCut = hz.top - 8;
+          if (candidateCut >= currentY + minStep && candidateCut <= targetCutY) {
+            bestCutY = candidateCut;
+          }
           break;
         }
       }
     }
 
-    let nextCutY = bestBreak > 0 ? bestBreak : targetCutY;
-
-    // Garantie formelle de progression d'au moins minStep pixels
-    if (nextCutY <= currentY + minStep) {
-      nextCutY = Math.min(canvasHeight, targetCutY);
+    // GARANTIE ABSOLUE DE PROGRESSION (Évite tout blocage, boucle infinie ou retour en arrière)
+    if (bestCutY < currentY + minStep || bestCutY > targetCutY) {
+      bestCutY = targetCutY;
     }
 
-    cuts.push({ startY: currentY, endY: nextCutY });
-    currentY = nextCutY;
+    cuts.push({ startY: currentY, endY: bestCutY });
+    currentY = bestCutY;
   }
 
   // 4. Génération du document PDF avec respiration de l'event loop (anti-freeze)
@@ -1354,7 +1468,7 @@ export async function exportHtmlElementToPdf(
 
   for (let pIdx = 0; pIdx < totalPages; pIdx++) {
     // Laisser respirer l'interface du navigateur pour ne JAMAIS déclencher "Page ne répondant pas"
-    await new Promise((resolve) => setTimeout(resolve, 15));
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
     const cut = cuts[pIdx];
     const sliceHeight = cut.endY - cut.startY;
@@ -1461,7 +1575,9 @@ export async function exportPagesToPdf(
     const el = document.getElementById(pageId);
     if (!el) continue;
 
-    const canvas = await captureDomElementToCanvas(el, { scale: 2 });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const canvas = await captureDomElementToCanvas(el, { scale: 1.6 });
 
     const imgData = canvas.toDataURL('image/png');
     const embeddedImg = await pdfDoc.embedPng(imgData);
