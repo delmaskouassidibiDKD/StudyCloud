@@ -321,20 +321,29 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
   const palette = ['#06B6D4', '#10B981', '#EC4899', '#3B82F6', '#F59E0B', '#8B5CF6'];
   const generatedCards: ConceptCard[] = [];
 
-  // Centrage dynamique : calculer la largeur pour bien équilibrer les colonnes
-  const colCount = Math.min(cols.length, 6);
-  const estimatedColWidth = 300;
-  const colGap = 50;
-  const totalGridWidth = colCount * estimatedColWidth + (colCount - 1) * colGap;
-  let currentX = Math.max(80, (1400 - totalGridWidth) / 2);
+  // 1. Pré-calcul de chaque colonne pour que la largeur et la hauteur s'adaptent TOUJOURS au contenu
+  interface PreparedCol {
+    colId: string;
+    colColor: string;
+    colTitle: string;
+    colDesc: string;
+    colWidth: number;
+    colHeight: number;
+    colPillW: number;
+    childCards: Array<{
+      id: string;
+      title: string;
+      desc: string;
+      cardH: number;
+      pillW: number;
+    }>;
+  }
 
-  cols.slice(0, 6).forEach((col: any, cIdx: number) => {
+  const preparedCols: PreparedCol[] = cols.slice(0, 6).map((col: any, cIdx: number) => {
     const colId = `col_${cIdx + 1}`;
     const colColor = palette[cIdx % palette.length];
     const rawTitle = col.branch_title || col.title || col.name || col.label || `Pilier ${cIdx + 1}`;
     const colTitle = (cleanConceptText(rawTitle) || `PILIER ${cIdx + 1}`).toUpperCase();
-    const rawDesc = col.description || col.subtitle || col.summary || 'Axe fondamental';
-    const colDesc = cleanConceptText(rawDesc) || 'Axe fondamental';
 
     const items = Array.isArray(col.nodes)
       ? col.nodes
@@ -352,39 +361,26 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
       ? col.subConcepts
       : [];
 
-    let maxW = Math.max(260, Math.min(380, colTitle.length * 9 + 40));
-    items.forEach((item: any) => {
-      const itTitle = typeof item === 'string' ? '' : cleanConceptText(item.title || item.pillTitle || item.name || item.label || item.concept || '');
-      const itDesc = typeof item === 'string' ? cleanConceptText(item) : cleanConceptText(item.description || item.desc || item.body || item.details || item.formula || item.title || item.label || '');
-      if (itDesc.length > 90 || itDesc.includes('$')) {
-        maxW = Math.max(maxW, 300);
+    // Description du pilier : si l'IA ne fournit pas de description, synthèse intelligente des notions abordées
+    let colDesc = cleanConceptText(col.description || col.subtitle || col.summary || '');
+    if (!colDesc && items.length > 0) {
+      const subLabels = items
+        .map((it: any) => cleanConceptText(typeof it === 'string' ? it : (it.label || it.title || it.name || '')))
+        .filter(Boolean);
+      if (subLabels.length > 0) {
+        colDesc = subLabels.slice(0, 3).join(' • ');
       }
-      if (itTitle.length > 20) {
-        maxW = Math.max(maxW, Math.min(360, itTitle.length * 8.5 + 40));
-      }
-    });
+    }
+    if (!colDesc) {
+      colDesc = 'Axe thématique fondamental';
+    }
 
-    const colWidth = maxW;
-    const colHeight = Math.max(120, Math.min(220, 70 + Math.ceil(colDesc.length / 28) * 20));
-    const colPillW = Math.max(140, Math.min(colWidth - 20, colTitle.length * 8.5 + 30));
+    // Calcul de la largeur nécessaire pour le titre du pilier
+    const neededColPillW = Math.max(160, Math.ceil(colTitle.length * 9.8 + 44));
+    let maxW = Math.max(280, neededColPillW + 28);
 
-    generatedCards.push({
-      id: colId,
-      parentId: 'root',
-      level: 1,
-      pillTitle: colTitle,
-      description: colDesc,
-      x: currentX + colWidth / 2,
-      y: 225,
-      width: colWidth,
-      height: colHeight,
-      pillWidth: colPillW,
-      color: colColor,
-      shadowColor: colColor
-    });
-
-    let curY = 225 + colHeight / 2 + 55;
-    items.forEach((item: any, iIdx: number) => {
+    // Préparation des cartes enfants (Niveau 2 et Niveau 3)
+    const childCards = items.map((item: any, iIdx: number) => {
       const rawItemTitle = typeof item === 'string' ? `Point ${iIdx + 1}` : (item.title || item.pillTitle || item.pillText || item.label || item.concept || item.name || `Point ${iIdx + 1}`);
       const cardTitle = (cleanConceptText(rawItemTitle) || `Point ${iIdx + 1}`).toUpperCase();
       let rawItemDesc = typeof item === 'string' ? item : (item.description || item.desc || item.body || item.details || item.content || item.title || item.label || '');
@@ -413,29 +409,92 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
           cardDesc = cardDesc ? `${cardDesc}\n\n${formattedSub}` : formattedSub;
         }
       }
-      
+
+      const neededCardPillW = Math.max(140, Math.ceil(cardTitle.length * 9.6 + 40));
+      maxW = Math.max(maxW, neededCardPillW + 26);
+      if (cardDesc.length > 90 || cardDesc.includes('$')) {
+        maxW = Math.max(maxW, 310);
+      }
+      if (cardTitle.length > 22) {
+        maxW = Math.max(maxW, Math.min(420, cardTitle.length * 9.8 + 48));
+      }
+
       const lineCount = (cardDesc.match(/\n/g) || []).length;
       const cardH = Math.max(120, Math.min(380, 75 + Math.ceil(cardDesc.length / 24) * 20 + lineCount * 14));
-      const cardPillW = Math.max(120, Math.min(colWidth - 20, cardTitle.length * 8.5 + 26));
 
-      generatedCards.push({
+      return {
         id: `${colId}_c_${iIdx + 1}`,
-        parentId: colId,
-        level: 2,
-        pillTitle: cardTitle,
-        description: cardDesc,
-        x: currentX + colWidth / 2,
-        y: curY + cardH / 2,
-        width: colWidth,
-        height: cardH,
-        pillWidth: cardPillW,
-        color: colColor,
-        shadowColor: colColor
-      });
-      curY += cardH + 35;
+        title: cardTitle,
+        desc: cardDesc,
+        cardH,
+        pillW: neededCardPillW
+      };
     });
 
-    currentX += colWidth + colGap;
+    const colWidth = maxW;
+    const colPillW = Math.max(150, Math.min(colWidth - 20, neededColPillW));
+    const lineCount = (colDesc.match(/\n/g) || []).length;
+    const colHeight = Math.max(90, Math.min(220, 56 + Math.ceil(colDesc.length / 26) * 18 + lineCount * 14));
+
+    return {
+      colId,
+      colColor,
+      colTitle,
+      colDesc,
+      colWidth,
+      colHeight,
+      colPillW,
+      childCards
+    };
+  });
+
+  // Centrage dynamique : calculer la largeur totale réelle de toutes les colonnes
+  const colCount = preparedCols.length;
+  const colGap = 55;
+  const totalGridWidth = preparedCols.reduce((sum, col) => sum + col.colWidth, 0) + (colCount - 1) * colGap;
+  let currentX = Math.max(80, (1500 - totalGridWidth) / 2);
+
+  preparedCols.forEach((col) => {
+    // Positionnement aéré du Pilier Niveau 1 (espace généreux sous la boîte racine et la ligne bus)
+    const lvl1Y = 250;
+
+    generatedCards.push({
+      id: col.colId,
+      parentId: 'root',
+      level: 1,
+      pillTitle: col.colTitle,
+      description: col.colDesc,
+      x: currentX + col.colWidth / 2,
+      y: lvl1Y,
+      width: col.colWidth,
+      height: col.colHeight,
+      pillWidth: col.colPillW,
+      color: col.colColor,
+      shadowColor: col.colColor
+    });
+
+    let curY = lvl1Y + col.colHeight / 2 + 55;
+    col.childCards.forEach((child) => {
+      const cardPillW = Math.max(130, Math.min(col.colWidth - 18, child.pillW));
+
+      generatedCards.push({
+        id: child.id,
+        parentId: col.colId,
+        level: 2,
+        pillTitle: child.title,
+        description: child.desc,
+        x: currentX + col.colWidth / 2,
+        y: curY + child.cardH / 2,
+        width: col.colWidth,
+        height: child.cardH,
+        pillWidth: cardPillW,
+        color: col.colColor,
+        shadowColor: col.colColor
+      });
+      curY += child.cardH + 35;
+    });
+
+    currentX += col.colWidth + colGap;
   });
 
   return {
@@ -513,20 +572,36 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
     return map;
   }, [cards]);
 
-  // Root box definition
+  // Root box definition - S'adapte TOUJOURS dynamiquement au thème et au titre
   const rootBox = useMemo(() => {
     const level1Cards = childrenMap.get('root') || [];
-    if (level1Cards.length === 0) {
-      return { x: 760, y: 65, width: 340, height: 70 };
-    }
-    const minX = Math.min(...level1Cards.map((c) => c.x));
-    const maxX = Math.max(...level1Cards.map((c) => c.x));
+    const minX = level1Cards.length > 0 ? Math.min(...level1Cards.map((c) => c.x)) : 400;
+    const maxX = level1Cards.length > 0 ? Math.max(...level1Cards.map((c) => c.x)) : 1000;
     const centerX = (minX + maxX) / 2;
+
+    const titleText = (activeDataset.rootTitle || '').trim();
+    const titleLen = titleText.length;
+
+    let rootW: number;
+    let rootH: number;
+
+    if (titleLen <= 22) {
+      rootW = Math.max(320, Math.round(titleLen * 14 + 64));
+      rootH = 68;
+    } else if (titleLen <= 42) {
+      rootW = Math.max(400, Math.min(700, Math.round(titleLen * 13.5 + 76)));
+      rootH = 74;
+    } else {
+      // Pour les très longs titres : adaptation multi-lignes spacieuse
+      rootW = Math.max(480, Math.min(780, Math.round(Math.ceil(titleLen / 2) * 14.5 + 84)));
+      rootH = 92;
+    }
+
     return {
       x: centerX,
       y: 65,
-      width: activeDataset.rootTitle.length > 20 ? 380 : 310,
-      height: 72
+      width: rootW,
+      height: rootH
     };
   }, [childrenMap, activeDataset.rootTitle]);
 
@@ -1166,7 +1241,8 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
               if (level1.length === 0) return null;
 
               const rootBottomY = rootBox.y + rootBox.height / 2;
-              const busY = rootBottomY + 46;
+              const minPillTopY = Math.min(...level1.map((c) => c.y - c.height / 2 - 16));
+              const busY = Math.round((rootBottomY + minPillTopY) / 2);
               const minX = Math.min(...level1.map((c) => c.x));
               const maxX = Math.max(...level1.map((c) => c.x));
 
@@ -1201,7 +1277,8 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
                 if (children.length === 0) return null;
 
                 const parentBottomY = parent.y + parent.height / 2;
-                const busY = parentBottomY + 42;
+                const minChildPillTopY = Math.min(...children.map((c) => c.y - c.height / 2 - 16));
+                const busY = Math.round((parentBottomY + minChildPillTopY) / 2);
                 const minChildX = Math.min(...children.map((c) => c.x));
                 const maxChildX = Math.max(...children.map((c) => c.x));
 
@@ -1245,7 +1322,7 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
               y={-rootBox.height / 2 + 6}
               width={rootBox.width}
               height={rootBox.height}
-              rx={22}
+              rx={Math.min(24, Math.round(rootBox.height / 2))}
               fill={activeDataset.rootColor}
               stroke="#1E293B"
               strokeWidth={2}
@@ -1256,19 +1333,25 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
               y={-rootBox.height / 2}
               width={rootBox.width}
               height={rootBox.height}
-              rx={22}
+              rx={Math.min(24, Math.round(rootBox.height / 2))}
               fill="#FFFFFF"
               stroke="#1E293B"
               strokeWidth={2}
             />
-            {/* Title Text */}
-            <text
-              textAnchor="middle"
-              y={7}
-              className="font-extrabold text-[21px] sm:text-[22px] tracking-wide fill-slate-800 select-none pointer-events-none"
+            {/* Title Text via foreignObject for 100% responsive, auto-wrapping, zero-overflow design */}
+            <foreignObject
+              x={-rootBox.width / 2 + 16}
+              y={-rootBox.height / 2}
+              width={rootBox.width - 32}
+              height={rootBox.height}
+              className="pointer-events-none select-none"
             >
-              {activeDataset.rootTitle}
-            </text>
+              <div className="w-full h-full flex items-center justify-center text-center px-2">
+                <span className="font-extrabold text-[16px] sm:text-[18px] md:text-[20px] tracking-wide text-slate-800 leading-snug select-none">
+                  {activeDataset.rootTitle}
+                </span>
+              </div>
+            </foreignObject>
           </g>
 
           {/* 
@@ -1354,15 +1437,20 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
                     strokeWidth={2}
                   />
 
-                  {/* Pill Title Text */}
-                  <text
-                    x={0}
-                    y={-halfH + 5}
-                    textAnchor="middle"
-                    className="font-extrabold text-[11.5px] uppercase tracking-wider fill-slate-900 select-none pointer-events-none"
+                  {/* Pill Title Text via foreignObject */}
+                  <foreignObject
+                    x={-pillHalfW + 6}
+                    y={-halfH - 16}
+                    width={card.pillWidth - 12}
+                    height={34}
+                    className="pointer-events-none select-none"
                   >
-                    {card.pillTitle}
-                  </text>
+                    <div className="w-full h-full flex items-center justify-center text-center px-1">
+                      <span className="font-extrabold text-[11px] sm:text-[11.5px] uppercase tracking-wider text-slate-900 truncate leading-tight select-none">
+                        {card.pillTitle}
+                      </span>
+                    </div>
+                  </foreignObject>
 
                   {/* Body Text via foreignObject */}
                   <foreignObject
