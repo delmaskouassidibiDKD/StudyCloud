@@ -24,7 +24,7 @@ Si l'étudiant discute, échange, pose une question de cours, demande des explic
 -> RÈGLE ABSOLUE : N'inclus STRICTEMENT AUCUN objet JSON dans cette réponse. Parle directement à l'étudiant.
 
 2. BRANCHE CRÉATION AUTONOME D'UN MODULE D'APPRENTISSAGE (Espace Création à droite) :
-Si tu juges, au vu de la causerie ou de la demande de l'étudiant, qu'il a besoin d'un support interactif complet (s'entraîner, tester ses acquis, mémoriser, synthétiser ou structurer son cours) parmi les 12 formats officiels StudyCloud :
+Si tu juges, au vu de la causerie ou de la demande de l'étudiant, qu'il a besoin d'un support interactif complet (s'entraîner, tester ses acquis, mémoriser, synthétiser ou structurer son cours) parmi les 10 formats officiels StudyCloud :
 - 'questionnaire' : Quiz interactif à choix multiples (QCM) avec feedback immédiat.
 - 'questionnaire-test' : Questionnaire test chronométré et noté.
 - 'vrai-ou-faux' : Test interactif Vrai ou Faux avec justifications pédagogiques.
@@ -33,8 +33,6 @@ Si tu juges, au vu de la causerie ou de la demande de l'étudiant, qu'il a besoi
 - 'carte-mentale-2' : Carte Conceptuelle (même arborescence riche à 4 paliers, affichée en piliers et blocs conceptuels).
 - 'carte-memoire' : Flashcards interactives de mémorisation (recto: notion/question, verso: synthèse/réponse).
 - 'resume' : Fiche de synthèse structurée (overview, key_definitions, formulas, comparison_table, traps_and_tips, practical_example, sections).
-- 'pdf' : Polycopié de cours exhaustif avec sections et contenus structurés.
-- 'infographie' : Fiche visuelle synthétique avec chiffres clés, étapes et repères.
 - 'exercices-ecrits' : Série d'exercices d'application (8 à 10 exercices progressifs, barème sur 20 pts, corrigé guidé).
 - 'devoir-complet' : Sujet d'évaluation complet d'examen (parties I/II/III, barème sur 20 pts, corrigé détaillé).
 
@@ -49,7 +47,7 @@ FORMAT D'OBJET JSON STRICT :
 {
   "decision": "creation",
   "mode": "creation",
-  "creation_type": "questionnaire" | "questionnaire-test" | "vrai-ou-faux" | "vrai-ou-faux-test" | "carte-mentale" | "carte-mentale-2" | "carte-memoire" | "resume" | "pdf" | "infographie" | "exercices-ecrits" | "devoir-complet",
+  "creation_type": "questionnaire" | "questionnaire-test" | "vrai-ou-faux" | "vrai-ou-faux-test" | "carte-mentale" | "carte-mentale-2" | "carte-memoire" | "resume" | "exercices-ecrits" | "devoir-complet",
   "creation_title": "Titre explicite et valorisant du module créé",
   "chat_response": "Un message amical et court d'une seule phrase pour le chat",
   "creation_data": {

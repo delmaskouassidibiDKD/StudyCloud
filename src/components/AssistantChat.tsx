@@ -2782,8 +2782,6 @@ Uniquement si l'étudiant te demande expressément et clairement de CONCEVOIR / 
   * 'carte-memoire' : Flashcards mémorisation (recto question/concept, verso réponse/détail)
 - Documents et Fiches de Synthèse :
   * 'resume' : Fiche de Résumé structurée (overview, keyPoints, definitions, rules)
-  * 'pdf' : Polycopié ou Document PDF d'étude officiel (title, sections, content)
-  * 'infographie' : Infographie visuelle (chiffres clés, métriques, repères visuels, chronologie)
 - Exercices et Examens :
   * 'exercices-ecrits' : Série d'exercices d'application avec énoncé pas à pas et correction guidée
   * 'devoir-complet' : Devoir Complet officiel d'examen avec parties, barème sur 20 points et corrigé
@@ -2794,7 +2792,7 @@ Tu réponds sous la forme d'un objet JSON strict :
 {
   "decision": "creation",
   "mode": "creation",
-  "creation_type": "questionnaire" | "questionnaire-test" | "vrai-ou-faux" | "vrai-ou-faux-test" | "carte-mentale" | "carte-mentale-2" | "carte-memoire" | "resume" | "pdf" | "infographie" | "exercices-ecrits" | "devoir-complet",
+  "creation_type": "questionnaire" | "questionnaire-test" | "vrai-ou-faux" | "vrai-ou-faux-test" | "carte-mentale" | "carte-mentale-2" | "carte-memoire" | "resume" | "exercices-ecrits" | "devoir-complet",
   "creation_title": "Titre explicite de la création",
   "chat_response": "Court message amical d'une phrase pour le fil de discussion (ex: J'ai conçu votre création dans l'espace Création à droite !)",
   "creation_data": {

@@ -285,45 +285,6 @@ export function RightMenu({
         : "Génère une Fiche de Résumé complète, technique et rigoureusement structurée avec notions fondamentales, formulaire KaTeX, tableau comparatif, pièges d'examen et exemple résolu pas-à-pas."
     },
     {
-      id: 'pdf',
-      title: 'Document PDF',
-      iconColor: '#38bdf8',
-      icon: (
-        <div className="flex items-center justify-center w-5 h-5 text-[#38bdf8]">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-            <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z" />
-            <path d="M6 6h10" />
-            <path d="M6 10h10" />
-          </svg>
-        </div>
-      ),
-      toolType: 'pdf',
-      getPrompt: (doc) => doc
-        ? `J'aimerais concevoir un Document PDF à partir de mon document « ${doc} ». Analyse ce document et propose-moi les différents types de documents PDF que tu peux créer pour moi (ex: polycopié de cours complet, résolution pas à pas des exercices du document, formulaire officiel et fiches méthodes, devoir d'entraînement avec corrigé), ou demande-moi ce que je souhaite voir figurer dans le PDF.`
-        : "J'aimerais concevoir un Document PDF d'étude complet à télécharger. Demande-moi sur quel sujet ou matière je souhaite le créer et propose-moi des suggestions de thèmes."
-    },
-    {
-      id: 'infographie',
-      title: 'Infographie',
-      iconColor: '#facc15',
-      icon: (
-        <div className="flex items-center justify-center w-5 h-5 text-[#facc15]">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-            <rect width="3.5" height="10" x="5" y="10" rx="1" fill="currentColor" stroke="none" />
-            <circle cx="6.75" cy="6" r="1.5" fill="currentColor" />
-            <rect width="3.5" height="7" x="15" y="13" rx="1" fill="currentColor" stroke="none" />
-            <circle cx="16.75" cy="9" r="1.5" fill="currentColor" />
-            <rect width="3.5" height="12" x="10" y="8" rx="1" fill="currentColor" stroke="none" />
-            <circle cx="11.75" cy="4" r="1.5" fill="currentColor" />
-          </svg>
-        </div>
-      ),
-      toolType: 'infographie',
-      getPrompt: (doc) => doc
-        ? `Crée une Infographie pédagogique détaillée avec repères visuels, chiffres clés, métriques et chronologie sur « ${doc} ».`
-        : "Crée une Infographie pédagogique détaillée avec repères visuels, chiffres clés, métriques et chronologie."
-    },
-    {
       id: 'exercices-ecrits',
       title: 'Exercices Écrits',
       iconColor: '#8b5cf6',
