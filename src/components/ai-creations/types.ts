@@ -228,4 +228,7 @@ export interface AiCreation {
   updatedAt?: string;
   version?: number;
   htmlPreview?: string;
+  status?: 'queued' | 'generating' | 'ready' | 'error';
+  progressText?: string;
 }
+

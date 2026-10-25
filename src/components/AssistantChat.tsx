@@ -1076,6 +1076,31 @@ const CREATION_FORMAT_LABELS: Record<string, string> = {
   'infographie': 'Infographie pédagogique visuelle',
 };
 
+const CREATION_NAME_MAP: Record<string, string> = {
+  'questionnaire': 'Questionnaire QCM',
+  'quiz': 'Questionnaire QCM',
+  'qcm': 'Questionnaire QCM',
+  'questionnaire-test': 'Questionnaire Test',
+  'test': 'Questionnaire Test',
+  'carte-mentale': 'Carte Mentale',
+  'mindmap': 'Carte Mentale',
+  'carte-mentale-2': 'Carte Mentale 2',
+  'mindmap2': 'Carte Mentale 2',
+  'carte-memoire': 'Cartes Mémoires',
+  'flashcards': 'Cartes Mémoires',
+  'resume': 'Fiche de Résumé',
+  'summary': 'Fiche de Résumé',
+  'pdf': 'Document PDF',
+  'vrai-ou-faux': 'Vrai ou Faux',
+  'vrai-ou-faux-test': 'Vrai ou Faux Test',
+  'exercices-ecrits': 'Exercices Écrits',
+  'exercices': 'Exercices Écrits',
+  'devoir-complet': 'Devoir Complet',
+  'devoir': 'Devoir Complet',
+  'infographie': 'Infographie',
+};
+
+
 // Suggestions de prompts avec sujets concrets selon le format demandé
 function getSuggestedPromptsForFormat(formatType: string): string[] {
   const norm = (formatType || '').toLowerCase().replace(/_/g, '-');
@@ -2740,6 +2765,289 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     }
   };
 
+  /**
+   * Exécuteur de tâche de création en arrière-plan
+   * Appelé par le gestionnaire de file d'attente aiBackgroundManager (Max 3 requêtes en simultané)
+   */
+  const executeCreationApiCall = async (params: {
+    userText: string;
+    targetConvId: string;
+    targetUserId: string;
+    explicitToolType: AiCreationType;
+    mainDocName: string;
+    creationId: string;
+    creationTitle: string;
+    allDocs: any[];
+    messages: Message[];
+    selectedModel: string;
+    availableModels: any[];
+    currentConversationId: string;
+    sessionCreations: AiCreation[];
+    resolvedActiveItem: any;
+    attachedResources: any[];
+    activePreviewItem: any;
+    currentModelDisplay: string;
+  }): Promise<{ response?: string; creation?: any }> => {
+    let activeImageInfo: { base64: string; mimeType: string } | null = null;
+    let activeDocumentInfo: {
+      textContent: string;
+      documentBase64?: string;
+      documentMimeType?: string;
+      documentImages?: Array<{ base64: string; mimeType: string; name?: string }>;
+      fileName?: string;
+    } | null = null;
+
+    if (params.resolvedActiveItem) {
+      if (isDocumentItem(params.resolvedActiveItem)) {
+        activeDocumentInfo = await extractDocumentDetails(params.resolvedActiveItem);
+      } else if (!isVideoItem(params.resolvedActiveItem) && !isAudioItem(params.resolvedActiveItem)) {
+        activeImageInfo = await extractImageBase64FromItem(params.resolvedActiveItem);
+      }
+    }
+
+    if (Array.isArray(params.attachedResources)) {
+      for (const res of params.attachedResources) {
+        if (!activeDocumentInfo && isDocumentItem(res)) {
+          activeDocumentInfo = await extractDocumentDetails(res);
+        } else if (!activeImageInfo && !isVideoItem(res) && !isAudioItem(res)) {
+          activeImageInfo = await extractImageBase64FromItem(res);
+        }
+      }
+    }
+
+    const resolvedAttachedText = activeDocumentInfo?.textContent ||
+      (params.resolvedActiveItem as any)?.content ||
+      (params.resolvedActiveItem as any)?.text ||
+      (params.resolvedActiveItem as any)?.rawText ||
+      '';
+
+    let systemContent = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Gemini / Delmas IA).
+Tu es en mode CRÉATION DE MODULE D'ÉTUDE officiel StudyCloud pour fabriquer le support suivant : "${params.explicitToolType}".
+
+FORMAT DE SORTIE JSON STRICT ET OBLIGATOIRE :
+Tu réponds EXCLUSIVEMENT sous la forme d'un objet JSON strict :
+\`\`\`json
+{
+  "decision": "creation",
+  "mode": "creation",
+  "creation_type": "${params.explicitToolType}",
+  "creation_title": "${params.creationTitle}",
+  "chat_response": "Votre création a été générée avec succès.",
+  "creation_data": {
+    // Les données complètes selon le type demandé
+  }
+}
+\`\`\`
+
+RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
+0. LANGUE FRANÇAISE STRICTE ET ZÉRO MONOLOGUE INTERNE (ANTI-SCRATCHPAD) :
+   - TU RÉPONDS EXCLUSIVEMENT ET TOTALEMENT EN FRANÇAIS SOIGNÉ, CLAIR ET PÉDAGOGIQUE.
+   - IL EST STRICTEMENT INTERDIT D'ÉCRIRE EN ANGLAIS ET D'AFFICHER UN MONOLOGUE DE RÉFLEXION INTERNE ('Let's think', 'Waitcheck', 'Hmm', etc.).
+1. INTERDICTION FORMELLE D'ÉCRIRE DES FRACTIONS AVEC LE SLASH '/' :
+   - TOUTE fraction mathématique ou scientifique DOIT IMPÉRATIVEMENT être écrite avec \\dfrac{numérateur}{dénominateur} : $$ \\omega_0 = \\dfrac{1}{\\sqrt{LC}} $$.
+2. POSITION ALÉATOIRE ET DIVERSITÉ (18 MAXIMUM POUR QUESTIONNAIRES ET VRAI OU FAUX) :
+   - Limite à STRICTEMENT 18 items maximum.
+   - Bonne réponse répartie de façon équitable et aléatoire entre A, B, C, D (ne jamais la mettre toujours au début).
+   - Distracteurs plausibles et pédagogiques.`;
+
+    // Mémoire des créations de cette conversation pour anti-répétition
+    let relevantCreations: AiCreation[] = params.sessionCreations;
+    if (!relevantCreations || relevantCreations.length === 0) {
+      try {
+        const rawLocal = safeGetItem(`studycloud_conv_creations_${params.targetConvId}`);
+        if (rawLocal) {
+          const parsed = JSON.parse(rawLocal);
+          if (Array.isArray(parsed)) relevantCreations = parsed;
+        }
+      } catch {}
+    }
+
+    if (relevantCreations && relevantCreations.length > 0) {
+      const formattedCreationsContext = formatCreationsSummaryForPrompt(relevantCreations);
+      systemContent += `\n\n══════════════════════════════════════════════════════════════════════════════
+[MÉMOIRE DES CRÉATIONS ENREGISTRÉES DANS CETTE CONVERSATION (SESSION : ${params.targetConvId})] :
+Tu as un accès exclusif aux modules et contenus pédagogiques déjà générés et enregistrés dans la base de données au cours de CETTE session :
+${formattedCreationsContext}
+
+DIRECTIVES STRICTES DE NON-RÉPÉTITION :
+- INTERDICTION FORMELLE DE RÉPÉTER LES MÊMES QUESTIONS OU ITEMS.
+- Formule des questions sous de nouveaux angles (max 1-2 questions de révision pour la mémorisation espacée).
+══════════════════════════════════════════════════════════════════════════════`;
+    }
+
+    if (params.mainDocName) {
+      systemContent += `\n\nDOCUMENT FOURNI PAR L'ÉTUDIANT : "${params.mainDocName}". Tu as un accès direct au contenu textuel de ce document.`;
+    }
+
+    const sanitizedHistory = (params.messages || [])
+      .filter(m => !m.isStreaming && !m.isError && m.text && m.text.trim().length > 0)
+      .slice(-10)
+      .map(m => ({
+        role: m.sender === 'user' ? 'user' : 'assistant',
+        content: m.text
+      }));
+
+    const chatHistory = [
+      { role: 'system', content: systemContent },
+      ...sanitizedHistory,
+      { role: 'user', content: params.userText }
+    ];
+
+    const aiResult = await sendChatMessageToAi({
+      messages: chatHistory,
+      prompt: params.userText,
+      message: params.userText,
+      userId: params.targetUserId,
+      sessionId: params.targetConvId,
+      conversationId: params.targetConvId,
+      userMsgId: Date.now().toString(),
+      aiMsgId: 'ai-bg-' + Date.now(),
+      creationId: params.creationId,
+      model: params.selectedModel,
+      selectedModel: params.selectedModel,
+      apiKey: getGeminiApiKey() || undefined,
+      requested_type: params.explicitToolType,
+      attachedFileName: params.mainDocName,
+      attachedFileContent: resolvedAttachedText,
+      imageBase64: activeImageInfo?.base64,
+      mimeType: activeImageInfo?.mimeType,
+      documentBase64: activeDocumentInfo?.documentBase64,
+      documentMimeType: activeDocumentInfo?.documentMimeType,
+      documentImages: activeDocumentInfo?.documentImages,
+      mediaType: activeDocumentInfo ? 'document' : (activeImageInfo ? 'image' : undefined),
+    });
+
+    const rawResponseText = (aiResult as any).raw_response || (aiResult as any).rawResponse || aiResult.response || "";
+    let finalContent: any = aiResult.creation_data;
+
+    if (!finalContent) {
+      const jsonMatch = rawResponseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || rawResponseText.match(/(\{[\s\S]*\})/);
+      const candidate = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : rawResponseText;
+      const parsed = safeJsonParse(candidate);
+      if (parsed && typeof parsed === 'object') {
+        finalContent = parsed.creation_data || (parsed.questions || parsed.affirmations || parsed.cards || parsed.root || parsed.branches || parsed.overview || parsed.exercises || parsed.complete_exam ? parsed : null);
+      }
+    }
+
+    const normType = normalizeCreationType(aiResult.creation_type || params.explicitToolType);
+    if (normType === 'vrai-ou-faux' || normType === 'vrai-ou-faux-test') {
+      const rawAffs = Array.isArray(finalContent)
+        ? finalContent
+        : (finalContent?.affirmations || finalContent?.questions || finalContent?.items || finalContent?.statements || finalContent?.data);
+      if (Array.isArray(rawAffs) && rawAffs.length > 0) {
+        finalContent = {
+          affirmations: rawAffs.slice(0, 18).map((a: any, idx: number) => {
+            let isTrue = true;
+            if (typeof a.is_true === 'boolean') isTrue = a.is_true;
+            else if (typeof a.isTrue === 'boolean') isTrue = a.isTrue;
+            else if (typeof a.reponse === 'boolean') isTrue = a.reponse;
+            else if (typeof a.correctAnswer === 'boolean') isTrue = a.correctAnswer;
+            else if (typeof a.is_true === 'string') isTrue = a.is_true.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
+            else if (typeof a.isTrue === 'string') isTrue = a.isTrue.toLowerCase() === 'true' || a.isTrue.toLowerCase() === 'vrai';
+            else if (typeof a.reponse === 'string') isTrue = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
+            return {
+              id: a.id || `vf_${idx + 1}`,
+              statement: a.statement || a.affirmation || a.question || a.texte || a.text || `Affirmation n°${idx + 1}`,
+              is_true: isTrue,
+              isTrue,
+              explanation: a.explanation || a.explication || a.justification || ''
+            };
+          })
+        };
+      }
+    } else if (normType === 'questionnaire' || normType === 'questionnaire-test') {
+      const rawQs = Array.isArray(finalContent) ? finalContent : finalContent?.questions;
+      if (Array.isArray(rawQs)) {
+        finalContent = {
+          ...(typeof finalContent === 'object' && !Array.isArray(finalContent) ? finalContent : {}),
+          questions: rawQs.slice(0, 18)
+        };
+      }
+    } else if (normType === 'resume') {
+      const rObj = finalContent?.summary || finalContent?.creation_data || finalContent;
+      if (rObj) {
+        finalContent = {
+          title: rObj.title || params.creationTitle,
+          theme: rObj.theme || rObj.domaine || '',
+          overview: typeof rObj.overview === 'string' ? rObj.overview : '',
+          key_definitions: Array.isArray(rObj.key_definitions) ? rObj.key_definitions : (Array.isArray(rObj.definitions) ? rObj.definitions : []),
+          formulas: Array.isArray(rObj.formulas) ? rObj.formulas : [],
+          comparison_table: rObj.comparison_table || null,
+          traps_and_tips: Array.isArray(rObj.traps_and_tips) ? rObj.traps_and_tips : [],
+          practical_example: rObj.practical_example || null,
+          sections: Array.isArray(rObj.sections) ? rObj.sections : [],
+          markdown: typeof rObj.markdown === 'string' ? rObj.markdown : '',
+        };
+      }
+    }
+
+    const newCreation: AiCreation = {
+      id: params.creationId,
+      userId: params.targetUserId,
+      fileId: params.activePreviewItem?.id,
+      conversationId: params.targetConvId,
+      toolType: normType,
+      title: params.creationTitle,
+      content: finalContent,
+      sourceFileName: params.mainDocName,
+      createdAt: new Date().toISOString(),
+      version: 1,
+      status: 'ready',
+    };
+
+    try {
+      const localConvCreasRaw = safeGetItem(`studycloud_conv_creations_${params.targetConvId}`);
+      let localConvCreas: AiCreation[] = [];
+      if (localConvCreasRaw) {
+        try { localConvCreas = JSON.parse(localConvCreasRaw) || []; } catch {}
+      }
+      const updatedConvCreas = [newCreation, ...localConvCreas.filter(c => c.id !== newCreation.id)];
+      safeSetItem(`studycloud_conv_creations_${params.targetConvId}`, JSON.stringify(updatedConvCreas));
+
+      const cachedRaw = localStorage.getItem('studycloud_saved_creations_cache');
+      let currentList = cachedRaw ? JSON.parse(cachedRaw) : [];
+      if (!Array.isArray(currentList)) currentList = [];
+      const updatedList = [newCreation, ...currentList.filter((c: any) => c.id !== newCreation.id)];
+      localStorage.setItem('studycloud_saved_creations_cache', JSON.stringify(updatedList));
+    } catch {}
+
+    StudyCloudAPI.saveAiCreationRecord({
+      id: newCreation.id,
+      conversationId: params.targetConvId,
+      type: normType,
+      title: newCreation.title,
+      content: newCreation.content,
+    }).catch(() => {});
+
+    if (params.targetUserId && params.targetUserId !== 'default-user') {
+      StudyCloudAPI.saveAiContent({
+        id: newCreation.id,
+        userId: params.targetUserId,
+        fileId: params.activePreviewItem?.id || null,
+        conversationId: params.targetConvId,
+        toolType: normType,
+        title: newCreation.title,
+        contentJson: newCreation.content,
+        sourceFileName: params.mainDocName || undefined,
+        isPinned: false,
+      }).catch(() => {});
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('studycloud-creation-saved', { detail: { id: newCreation.id, creation: newCreation } }));
+      window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
+      window.dispatchEvent(new CustomEvent('studycloud-creation-status-changed', {
+        detail: {
+          creationId: newCreation.id,
+          status: 'ready',
+          creation: newCreation,
+        }
+      }));
+    }
+
+    return { response: "Création terminée", creation: newCreation };
+  };
+
   const sendMessage = async (textToSend: string, requestedTypeOverride?: string, options?: { isContinuation?: boolean; forceReanalysis?: boolean }) => {
     if (!textToSend.trim()) return;
 
@@ -3102,50 +3410,142 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
     const attachedFileName = resolvedActiveName || (Array.isArray(attachedResources) ? attachedResources.map((r: any) => r?.name).filter(Boolean).join(', ') : '');
     const effectiveRequestedType = requestedTypeOverride || (isCreationIntent ? (detectedFormat as any) : undefined);
     const isExplicitCreationRequest = Boolean(effectiveRequestedType);
-    const initialLiveStatus = isExplicitCreationRequest 
-      ? "Réflexion en cours..." 
-      : (requiresFreshAnalysis && hasAttachedDoc
-          ? "Nouvelle analyse approfondie en cours..."
-          : (isMediaAlreadyAnalyzed 
-              ? "Je réfléchis à votre question..." 
-              : getLiveAiActivity(userText, initialDocNames, 0, effectiveRequestedType)));
-    setAiActivityText(initialLiveStatus);
-    if (isExplicitCreationRequest) {
-      window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
+
+    // =========================================================================
+    // BRANCHE CRÉATION : EXÉCUTION EN ARRIÈRE-PLAN AVEC CONFIRMATION IMMÉDIATE
+    // Limite serveur : 3 requêtes max en simultané (la 4ème et + sont mises en attente)
+    // Le chat est immédiatement libéré pour permettre à l'utilisateur de continuer à discuter.
+    // =========================================================================
+    if (isExplicitCreationRequest && effectiveRequestedType) {
+      const explicitToolType = effectiveRequestedType as AiCreationType;
+      const formatTitle = CREATION_NAME_MAP[explicitToolType] || CREATION_FORMAT_LABELS[explicitToolType] || 'Support d\'apprentissage';
+      const mainDocName = resolvedActiveName || (attachedResources[0]?.name) || 'Document d\'étude';
+      const creationTitle = `${formatTitle} : ${mainDocName}`;
+
+      // Sauvegarde du titre de conversation si c'est le 1er message
+      if (convBaseMessages.length === 0) {
+        const generatedTitle = userText.slice(0, 38).trim() + (userText.length > 38 ? '...' : '');
+        setCurrentConversationTitle(generatedTitle);
+        StudyCloudAPI.createAiConversation({
+          id: targetConvId,
+          userId: targetUserId,
+          title: generatedTitle,
+        }).then(() => loadConversations()).catch(() => {});
+      }
+
+      // Concurrence serveur : Maximum 3 en simultané, les suivantes sont placées en attente
+      const runningCount = aiBackgroundManager.getRunningCount();
+      const willBeQueued = runningCount >= aiBackgroundManager.MAX_CONCURRENT_REQUESTS;
+
+      // 1. Message court et élégant de confirmation immédiate dans le chat
+      const confirmChatText = willBeQueued
+        ? `✨ C'est noté ! Votre demande de **${formatTitle}** a été ajoutée à la file d'attente (3 créations s'exécutent déjà en simultané sur le serveur).\n\n⏳ Dès qu'un slot sera libre, sa conception démarrera automatiquement en arrière-plan.\n\n💬 En attendant, vous pouvez continuer à me poser toutes vos questions ici !`
+        : `✨ C'est parti ! J'ai lancé la création de votre **${formatTitle}** en arrière-plan.\n\n👉 Vous pouvez suivre son avancement ou l'ouvrir directement dans le volet **Créations** à droite (ou l'onglet Créations sur mobile).\n\n💬 En attendant, vous pouvez continuer à me poser toutes vos questions ici !`;
+
+      const confirmAiMsg: Message = {
+        id: aiMsgId,
+        text: confirmChatText,
+        sender: 'ai',
+        isStreaming: false,
+        model: currentModelDisplay,
+      };
+
+      // Mettre à jour immédiatement le chat pour libérer l'utilisateur
+      const updatedChatMsgs = [...updatedMessages, confirmAiMsg];
+      safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(updatedChatMsgs));
+
+      if (currentConversationIdRef.current === targetConvId) {
+        messagesRef.current = updatedChatMsgs;
+        setMessages(updatedChatMsgs);
+        setInputValue('');
+        setIsTyping(false);
+        setIsWaitingServer(false);
+        setAiActivityText('');
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+      }
+
+      // Sauvegarde Cloudflare D1 du message utilisateur et du message de confirmation
+      StudyCloudAPI.saveAiMessage({
+        id: newUserMsgId,
+        conversationId: targetConvId,
+        role: 'user',
+        content: userText,
+        metadata: { model: selectedModel }
+      }).catch(() => {});
+
+      StudyCloudAPI.saveAiMessage({
+        id: aiMsgId,
+        conversationId: targetConvId,
+        role: 'assistant',
+        content: confirmChatText,
+        metadata: { model: currentModelDisplay }
+      }).catch(() => {});
+
+      // 2. Ajout immédiat de la création dans le volet RightMenu (avec statut "En cours" ou "En attente")
+      window.dispatchEvent(new CustomEvent('studycloud-creation-enqueued', {
         detail: {
-          phase: 'thinking',
-          isThinking: true,
-          statusText: "Réflexion en cours...",
-          isLoading: true,
-          isCreation: false,
-          prompt: userText,
-          toolType: effectiveRequestedType
+          id: creationId,
+          conversationId: targetConvId,
+          title: creationTitle,
+          toolType: explicitToolType,
+          sourceFileName: mainDocName,
+          createdAt: new Date().toISOString(),
+          status: willBeQueued ? 'queued' : 'generating',
+          progressText: willBeQueued ? 'En attente...' : 'Création en cours...',
+          isQueued: willBeQueued,
         }
       }));
+
+      // 3. Délégation au gestionnaire d'arrière-plan avec file d'attente automatique
+      aiBackgroundManager.enqueueCreationTask(
+        {
+          taskId: `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          conversationId: targetConvId,
+          userId: targetUserId,
+          userMsgId: newUserMsgId,
+          aiMsgId: aiMsgId,
+          creationId: creationId,
+          title: creationTitle,
+          toolType: explicitToolType,
+          prompt: userText,
+          mainDocName: mainDocName,
+        },
+        async () => {
+          return executeCreationApiCall({
+            userText,
+            targetConvId,
+            targetUserId,
+            explicitToolType,
+            mainDocName,
+            creationId,
+            creationTitle,
+            allDocs,
+            messages: convBaseMessages,
+            selectedModel,
+            availableModels,
+            currentConversationId: targetConvId,
+            sessionCreations,
+            resolvedActiveItem,
+            attachedResources,
+            activePreviewItem,
+            currentModelDisplay,
+          });
+        }
+      );
+
+      // Le chat reste totalement ouvert et disponible pour de nouvelles questions
+      return;
     }
-    activityTimerRef.current = setInterval(() => {
-      if (isExplicitCreationRequest) {
-        window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
-          detail: {
-            phase: 'thinking',
-            isThinking: true,
-            statusText: "Réflexion en cours...",
-            isLoading: true,
-            isCreation: false,
-            prompt: userText,
-            toolType: effectiveRequestedType
-          }
-        }));
-      } else {
-        const elapsed = Math.floor((Date.now() - startTimestamp) / 1000);
-        const liveStatus = isMediaAlreadyAnalyzed
-          ? (elapsed < 3 ? "Je réfléchis à votre question..." : "Je formule votre réponse...")
-          : (requiresFreshAnalysis && hasAttachedDoc
-              ? (elapsed < 3 ? "Nouvelle analyse du document..." : "Je formule vos explications...")
-              : getLiveAiActivity(userText, initialDocNames, elapsed, effectiveRequestedType));
-        setAiActivityText(liveStatus);
-      }
-    }, 1000);
+
+    const initialLiveStatus = (requiresFreshAnalysis && hasAttachedDoc
+      ? "Nouvelle analyse approfondie en cours..."
+      : (isMediaAlreadyAnalyzed 
+          ? "Je réfléchis à votre question..." 
+          : getLiveAiActivity(userText, initialDocNames, 0, effectiveRequestedType)));
+    setAiActivityText(initialLiveStatus);
+
 
     // Mise à jour du titre de conversation si c'est le 1er message
     if (messages.length === 0) {

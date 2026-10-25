@@ -1,29 +1,41 @@
 /**
  * Service de gestion d'exécution et persistance en arrière-plan des tâches IA (StudyCloud)
- * Permet à l'IA de poursuivre ses générations et calculs même si :
- * - L'utilisateur quitte le chat ou navigue ailleurs
- * - L'utilisateur change de session de discussion ou crée une nouvelle conversation
- * - L'écran se recharge (rechargement de page / refresh PWA)
+ * 
+ * Règles Clés :
+ * 1. Limite stricte : Maximum 3 requêtes en simultané vers le serveur IA.
+ * 2. À partir de la 4ème demande, la tâche est automatiquement placée EN ATTENTE (queued).
+ * 3. Dès qu'un slot se libère (tâche terminée ou échouée), la file d'attente s'exécute automatiquement.
+ * 4. Permet à l'utilisateur de continuer à discuter et naviguer sans aucun blocage.
  */
+
+export const MAX_CONCURRENT_REQUESTS = 3;
 
 export interface BackgroundAiTask {
   taskId: string;
   conversationId: string;
   userId: string;
-  userMsgId: string;
-  aiMsgId: string;
+  userMsgId?: string;
+  aiMsgId?: string;
   creationId?: string;
+  title?: string;
+  toolType?: string;
   prompt: string;
   requestedType?: string;
   mainDocName?: string;
-  status: 'running' | 'completed' | 'error';
-  startedAt: number;
+  status: 'queued' | 'running' | 'completed' | 'error';
+  startedAt?: number;
+  enqueuedAt: number;
   lastUpdated: number;
+  progressText?: string;
   resultResponse?: string;
   resultCreation?: any;
+  errorText?: string;
 }
 
+export type TaskExecutor = () => Promise<{ response?: string; creation?: any } | void>;
+
 const STORAGE_KEY = 'studycloud_active_ai_tasks';
+const memoryExecutors = new Map<string, TaskExecutor>();
 
 function safeGetStorage(): BackgroundAiTask[] {
   if (typeof window === 'undefined' || !window.localStorage) return [];
@@ -47,16 +59,47 @@ function safeSetStorage(tasks: BackgroundAiTask[]): void {
 }
 
 export const aiBackgroundManager = {
+  MAX_CONCURRENT_REQUESTS,
+
   /**
-   * Récupère toutes les tâches enregistrées
+   * Récupère toutes les tâches valides (moins de 30 minutes)
    */
   getActiveTasks(): BackgroundAiTask[] {
     const tasks = safeGetStorage();
     const now = Date.now();
-    // Purge des tâches fantômes de plus de 15 minutes
-    const valid = tasks.filter(t => now - t.startedAt < 15 * 60 * 1000);
+    const valid = tasks.filter(t => (now - (t.enqueuedAt || t.startedAt || now)) < 30 * 60 * 1000);
     if (valid.length !== tasks.length) safeSetStorage(valid);
     return valid;
+  },
+
+  /**
+   * Récupère les tâches actuellement en cours d'exécution
+   */
+  getRunningTasks(): BackgroundAiTask[] {
+    return this.getActiveTasks().filter(t => t.status === 'running');
+  },
+
+  /**
+   * Nombre de tâches en cours d'exécution (serveur)
+   */
+  getRunningCount(): number {
+    return this.getRunningTasks().length;
+  },
+
+  /**
+   * Récupère les tâches en attente dans la file
+   */
+  getQueuedTasks(): BackgroundAiTask[] {
+    return this.getActiveTasks()
+      .filter(t => t.status === 'queued')
+      .sort((a, b) => a.enqueuedAt - b.enqueuedAt);
+  },
+
+  /**
+   * Nombre de tâches en attente
+   */
+  getQueuedCount(): number {
+    return this.getQueuedTasks().length;
   },
 
   /**
@@ -65,19 +108,267 @@ export const aiBackgroundManager = {
   getActiveTaskForConversation(conversationId: string): BackgroundAiTask | undefined {
     if (!conversationId) return undefined;
     const tasks = this.getActiveTasks();
-    return tasks.find(t => t.conversationId === conversationId && t.status === 'running');
+    return tasks.find(t => t.conversationId === conversationId && (t.status === 'running' || t.status === 'queued'));
   },
 
   /**
-   * Enregistre le lancement d'une tâche IA en arrière-plan
+   * Enregistre et planifie une nouvelle création en arrière-plan avec gestion de file
    */
-  registerAiTask(task: BackgroundAiTask): void {
+  enqueueCreationTask(
+    taskData: {
+      taskId: string;
+      conversationId: string;
+      userId: string;
+      userMsgId?: string;
+      aiMsgId?: string;
+      creationId: string;
+      title: string;
+      toolType: string;
+      prompt: string;
+      mainDocName?: string;
+    },
+    executor?: TaskExecutor
+  ): { status: 'running' | 'queued'; isQueued: boolean } {
+    const activeTasks = this.getActiveTasks().filter(t => t.taskId !== taskData.taskId && t.creationId !== taskData.creationId);
+    const runningCount = activeTasks.filter(t => t.status === 'running').length;
+    const willRunNow = runningCount < MAX_CONCURRENT_REQUESTS;
+    const status: 'running' | 'queued' = willRunNow ? 'running' : 'queued';
+
+    const now = Date.now();
+    const newTask: BackgroundAiTask = {
+      ...taskData,
+      status,
+      enqueuedAt: now,
+      startedAt: willRunNow ? now : undefined,
+      lastUpdated: now,
+      progressText: willRunNow ? 'Création en cours...' : 'En attente...',
+    };
+
+    activeTasks.push(newTask);
+    safeSetStorage(activeTasks);
+
+    if (executor) {
+      memoryExecutors.set(newTask.taskId, executor);
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('studycloud-ai-task-enqueued', {
+        detail: { task: newTask, isQueued: !willRunNow }
+      }));
+
+      window.dispatchEvent(new CustomEvent('studycloud-creation-status-changed', {
+        detail: {
+          creationId: newTask.creationId,
+          taskId: newTask.taskId,
+          status: willRunNow ? 'generating' : 'queued',
+          title: newTask.title,
+          toolType: newTask.toolType,
+          progressText: newTask.progressText,
+        }
+      }));
+    }
+
+    if (willRunNow) {
+      setTimeout(() => this.executeTask(newTask.taskId), 10);
+    }
+
+    return { status, isQueued: !willRunNow };
+  },
+
+  /**
+   * Lance l'exécution d'une tâche (immédiate ou sortie de file)
+   */
+  executeTask(taskId: string): void {
+    const tasks = safeGetStorage();
+    const target = tasks.find(t => t.taskId === taskId);
+    if (!target) return;
+
+    if (target.status !== 'running') {
+      target.status = 'running';
+      target.startedAt = Date.now();
+      target.lastUpdated = Date.now();
+      target.progressText = 'Création en cours...';
+      safeSetStorage(tasks);
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('studycloud-creation-status-changed', {
+        detail: {
+          creationId: target.creationId,
+          taskId: target.taskId,
+          status: 'generating',
+          title: target.title,
+          toolType: target.toolType,
+          progressText: 'Création en cours...',
+        }
+      }));
+
+      window.dispatchEvent(new CustomEvent('studycloud-ai-task-started', {
+        detail: {
+          conversationId: target.conversationId,
+          taskId: target.taskId,
+          aiMsgId: target.aiMsgId,
+          prompt: target.prompt,
+        }
+      }));
+    }
+
+    const executor = memoryExecutors.get(taskId);
+    if (executor) {
+      executor()
+        .then((res: any) => {
+          this.completeAiTask(
+            target.conversationId,
+            target.aiMsgId,
+            res?.response,
+            res?.creation,
+            target.taskId
+          );
+        })
+        .catch((err: any) => {
+          console.error('[aiBackgroundManager] Échec tâche IA:', err);
+          this.failAiTask(target.taskId, err?.message || 'Erreur réseau');
+        })
+        .finally(() => {
+          memoryExecutors.delete(taskId);
+          this.processNextInQueue();
+        });
+    }
+  },
+
+  /**
+   * Vérifie la file d'attente et lance la tâche suivante si un slot est libre
+   */
+  processNextInQueue(): void {
+    const runningCount = this.getRunningCount();
+    if (runningCount >= MAX_CONCURRENT_REQUESTS) return;
+
+    const queuedTasks = this.getQueuedTasks();
+    if (queuedTasks.length === 0) return;
+
+    const nextTask = queuedTasks[0];
+    this.executeTask(nextTask.taskId);
+  },
+
+  /**
+   * Marque une tâche comme terminée et diffuse l'événement de complétion
+   */
+  completeAiTask(
+    conversationIdOrTaskId: string,
+    aiMsgId?: string,
+    resultResponse?: string,
+    resultCreation?: any,
+    explicitTaskId?: string
+  ): void {
+    const tasks = safeGetStorage();
+    let completedCreationId: string | undefined;
+
+    const updated = tasks.map(t => {
+      const match =
+        (explicitTaskId && t.taskId === explicitTaskId) ||
+        (t.taskId === conversationIdOrTaskId) ||
+        (t.conversationId === conversationIdOrTaskId && (!aiMsgId || t.aiMsgId === aiMsgId));
+
+      if (match) {
+        completedCreationId = t.creationId;
+        return {
+          ...t,
+          status: 'completed' as const,
+          lastUpdated: Date.now(),
+          resultResponse: resultResponse || t.resultResponse,
+          resultCreation: resultCreation || t.resultCreation,
+        };
+      }
+      return t;
+    });
+
+    safeSetStorage(updated);
+
+    if (typeof window !== 'undefined') {
+      if (completedCreationId || resultCreation) {
+        window.dispatchEvent(new CustomEvent('studycloud-creation-status-changed', {
+          detail: {
+            creationId: completedCreationId || resultCreation?.id,
+            status: 'ready',
+            creation: resultCreation,
+          }
+        }));
+      }
+
+      window.dispatchEvent(new CustomEvent('studycloud-ai-task-completed', {
+        detail: {
+          conversationId: conversationIdOrTaskId,
+          aiMsgId,
+          response: resultResponse,
+          creation: resultCreation,
+        }
+      }));
+    }
+
+    // Libère la file et lance la tâche suivante
+    this.processNextInQueue();
+
+    // Nettoyage après 15 secondes
+    setTimeout(() => {
+      const current = safeGetStorage().filter(t => t.status !== 'completed');
+      safeSetStorage(current);
+    }, 15000);
+  },
+
+  /**
+   * Signale l'échec d'une tâche
+   */
+  failAiTask(taskIdOrConvId: string, errorText?: string): void {
+    const tasks = safeGetStorage();
+    let targetCreationId: string | undefined;
+
+    const updated = tasks.map(t => {
+      if (t.taskId === taskIdOrConvId || t.conversationId === taskIdOrConvId) {
+        targetCreationId = t.creationId;
+        return {
+          ...t,
+          status: 'error' as const,
+          errorText: errorText || 'Erreur lors de la génération',
+          lastUpdated: Date.now(),
+        };
+      }
+      return t;
+    });
+
+    safeSetStorage(updated);
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('studycloud-creation-status-changed', {
+        detail: {
+          creationId: targetCreationId,
+          status: 'error',
+          errorText,
+        }
+      }));
+
+      window.dispatchEvent(new CustomEvent('studycloud-ai-task-error', {
+        detail: {
+          taskId: taskIdOrConvId,
+          errorText,
+        }
+      }));
+    }
+
+    this.processNextInQueue();
+  },
+
+  /**
+   * Enregistre le lancement d'une tâche IA (compatibilité directe)
+   */
+  registerAiTask(task: Partial<BackgroundAiTask> & { taskId: string; conversationId: string; prompt: string }): void {
     const tasks = this.getActiveTasks().filter(t => t.conversationId !== task.conversationId);
+    const now = Date.now();
     tasks.push({
       ...task,
-      status: 'running',
-      startedAt: task.startedAt || Date.now(),
-      lastUpdated: Date.now(),
+      status: task.status || 'running',
+      enqueuedAt: now,
+      startedAt: task.startedAt || now,
+      lastUpdated: now,
     });
     safeSetStorage(tasks);
 
@@ -94,48 +385,12 @@ export const aiBackgroundManager = {
   },
 
   /**
-   * Marque une tâche comme terminée et diffuse l'événement de complétion
-   */
-  completeAiTask(conversationId: string, aiMsgId?: string, resultResponse?: string, resultCreation?: any): void {
-    const tasks = safeGetStorage();
-    const updated = tasks.map(t => {
-      if (t.conversationId === conversationId && (!aiMsgId || t.aiMsgId === aiMsgId)) {
-        return {
-          ...t,
-          status: 'completed' as const,
-          lastUpdated: Date.now(),
-          resultResponse: resultResponse || t.resultResponse,
-          resultCreation: resultCreation || t.resultCreation,
-        };
-      }
-      return t;
-    });
-    // Conserver un court instant pour vérification post-rechargement puis purger
-    safeSetStorage(updated);
-
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('studycloud-ai-task-completed', {
-        detail: {
-          conversationId,
-          aiMsgId,
-          response: resultResponse,
-          creation: resultCreation,
-        }
-      }));
-    }
-
-    // Nettoyage après 15 secondes
-    setTimeout(() => {
-      const current = safeGetStorage().filter(t => !(t.conversationId === conversationId && t.status === 'completed'));
-      safeSetStorage(current);
-    }, 15000);
-  },
-
-  /**
    * Supprime une tâche en cas d'annulation ou d'erreur
    */
-  clearTask(conversationId: string): void {
-    const tasks = safeGetStorage().filter(t => t.conversationId !== conversationId);
+  clearTask(conversationIdOrTaskId: string): void {
+    memoryExecutors.delete(conversationIdOrTaskId);
+    const tasks = safeGetStorage().filter(t => t.conversationId !== conversationIdOrTaskId && t.taskId !== conversationIdOrTaskId);
     safeSetStorage(tasks);
+    this.processNextInQueue();
   },
 };

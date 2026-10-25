@@ -619,6 +619,26 @@ export function RightMenu({
   };
 
   const handleOpenSavedCreation = (item: any) => {
+    setIsRightDrawerOpen(false);
+
+    // Si la création est encore en cours de génération ou en attente dans la file
+    if (item.status === 'generating' || item.status === 'queued' || !item.content) {
+      setActiveCreation(item);
+      const title = item.title || CREATION_NAME_MAP[item.toolType || item.type] || 'Création Studio';
+      setGeneratingToolTitle(title);
+      setLiveStatusText(
+        item.status === 'queued'
+          ? "En attente dans la file (maximum 3 requêtes simultanées)..."
+          : (item.progressText || "L'IA conçoit actuellement votre support en arrière-plan...")
+      );
+      setCreationPhase('creating');
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
+      }
+      return;
+    }
+
     let parsedContent = item.content || item.data || item.contentJson || item.content_json;
     if (typeof parsedContent === 'string') {
       try {
@@ -637,10 +657,10 @@ export function RightMenu({
       contentJson: parsedContent,
       sourceFileName: item.sourceFileName || item.source_file_name,
       createdAt: item.createdAt || item.created_at,
+      status: 'ready',
     };
     setCreationPhase('idle');
     setActiveCreation(creationToLoad);
-    setIsRightDrawerOpen(false);
 
     // Basculer sur l'onglet Création si sur mobile
     if (typeof window !== 'undefined') {
@@ -683,10 +703,17 @@ export function RightMenu({
           sourceFileName: creation.sourceFileName || resolvedDocName || undefined,
           createdAt: creation.createdAt || creation.created_at || new Date().toISOString(),
           isPinned: Boolean(creation.isPinned),
+          status: 'ready',
         };
 
-        setCreationPhase('idle');
-        setActiveCreation(normalizedCreation);
+        // Si l'utilisateur consulte actuellement cette création ou est sur un écran d'attente, basculer sur le contenu
+        setActiveCreation(prev => {
+          if (!prev || prev.id === normalizedCreation.id || prev.status === 'generating' || prev.status === 'queued') {
+            setCreationPhase('idle');
+            return normalizedCreation;
+          }
+          return prev;
+        });
 
         // Enregistrement immédiat dans la liste locale de créations (en tête de liste)
         setSavedCreations(prev => {
@@ -717,10 +744,102 @@ export function RightMenu({
       }
     };
 
+    const handleCreationEnqueued = (e: any) => {
+      const detail = e.detail;
+      if (!detail) return;
+      const placeholder = {
+        id: detail.id || detail.creationId,
+        conversationId: detail.conversationId,
+        title: detail.title || 'Création Studio',
+        toolType: detail.toolType || 'creation',
+        type: detail.toolType || 'creation',
+        sourceFileName: detail.sourceFileName || resolvedDocName || undefined,
+        createdAt: detail.createdAt || new Date().toISOString(),
+        status: detail.status || (detail.isQueued ? 'queued' : 'generating'),
+        progressText: detail.progressText || (detail.status === 'queued' ? 'En attente...' : 'Création en cours...'),
+        content: null,
+      };
+
+      setSavedCreations(prev => {
+        const updated = [placeholder, ...prev.filter(c => c.id !== placeholder.id)];
+        persistCreationsLocally(updated);
+        return updated;
+      });
+
+      // Si l'utilisateur n'est pas déjà en train d'étudier une création terminée
+      setActiveCreation(prev => {
+        if (!prev || prev.status === 'generating' || prev.status === 'queued' || !prev.content) {
+          setGeneratingToolTitle(placeholder.title);
+          setLiveStatusText(
+            placeholder.status === 'queued'
+              ? 'En attente dans la file (maximum 3 requêtes simultanées)...'
+              : (placeholder.progressText || 'Création en cours...')
+          );
+          setCreationPhase('creating');
+          return placeholder;
+        }
+        return prev;
+      });
+    };
+
+    const handleCreationStatusChanged = (e: any) => {
+      const { creationId, status, progressText, creation, title, errorText } = e.detail || {};
+      if (!creationId) return;
+
+      setSavedCreations(prev => {
+        const updated = prev.map(c => {
+          if (c.id === creationId) {
+            const newContent = creation?.content || creation?.data || c.content;
+            return {
+              ...c,
+              title: title || creation?.title || c.title,
+              status,
+              progressText: progressText || (status === 'queued' ? 'En attente...' : status === 'generating' ? 'Création en cours...' : status === 'ready' ? 'Prêt' : 'Erreur'),
+              content: status === 'ready' ? (newContent || c.content) : c.content,
+            };
+          }
+          return c;
+        });
+        persistCreationsLocally(updated);
+        return updated;
+      });
+
+      setActiveCreation(prev => {
+        if (prev && prev.id === creationId) {
+          if (status === 'generating') {
+            setCreationPhase('creating');
+            setGeneratingToolTitle(title || prev.title);
+            setLiveStatusText(progressText || 'Création en cours...');
+            return { ...prev, status: 'generating', progressText: progressText || 'Création en cours...' };
+          } else if (status === 'queued') {
+            setCreationPhase('creating');
+            setGeneratingToolTitle(title || prev.title);
+            setLiveStatusText(progressText || 'En attente dans la file (maximum 3 requêtes simultanées)...');
+            return { ...prev, status: 'queued', progressText: progressText || 'En attente...' };
+          } else if (status === 'ready') {
+            const finalContent = creation?.content || creation?.data;
+            if (finalContent) {
+              setCreationPhase('idle');
+              return {
+                ...prev,
+                ...creation,
+                content: finalContent,
+                data: finalContent,
+                status: 'ready',
+              };
+            }
+          } else if (status === 'error') {
+            setLiveStatusText(errorText || 'Erreur lors de la création');
+            return { ...prev, status: 'error', progressText: errorText };
+          }
+        }
+        return prev;
+      });
+    };
+
     const handleOpenCreation = (e: any) => {
       const creation = e.detail?.creation || e.detail?.item || e.detail;
       if (creation) {
-        setCreationPhase('idle');
         handleOpenSavedCreation(creation);
       }
     };
@@ -790,6 +909,8 @@ export function RightMenu({
     };
 
     window.addEventListener('ai-creation-ready', handleCreationReady as any);
+    window.addEventListener('studycloud-creation-enqueued', handleCreationEnqueued as any);
+    window.addEventListener('studycloud-creation-status-changed', handleCreationStatusChanged as any);
     window.addEventListener('studycloud-open-creation', handleOpenCreation as any);
     window.addEventListener('studycloud-clear-creation', handleClearCreation as any);
     window.addEventListener('ai-creation-status-update', handleCreationStatus as any);
@@ -798,13 +919,15 @@ export function RightMenu({
 
     return () => {
       window.removeEventListener('ai-creation-ready', handleCreationReady as any);
+      window.removeEventListener('studycloud-creation-enqueued', handleCreationEnqueued as any);
+      window.removeEventListener('studycloud-creation-status-changed', handleCreationStatusChanged as any);
       window.removeEventListener('studycloud-open-creation', handleOpenCreation as any);
       window.removeEventListener('studycloud-clear-creation', handleClearCreation as any);
       window.removeEventListener('ai-creation-status-update', handleCreationStatus as any);
       window.removeEventListener('ai-creation-error', handleCreationError as any);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [proposalCards]);
+  }, [proposalCards, resolvedDocName]);
 
   // Fermeture du menu latéral avec la touche Échap
   useEffect(() => {
@@ -1063,7 +1186,7 @@ export function RightMenu({
                 <div className="flex flex-col items-center gap-3 max-w-sm px-6 py-5 rounded-3xl bg-black/75 backdrop-blur-md border border-orange-500/25 shadow-[0_0_30px_rgba(249,115,22,0.18)]">
                   <div className="inline-flex items-center px-3 py-1 rounded-full bg-orange-500/20 border border-orange-500/30">
                     <span className="text-[11px] font-bold text-orange-300 uppercase tracking-wider">
-                      {getCreationBadgeLabel(generatingToolTitle)}
+                      {activeCreation?.status === 'queued' ? 'EN ATTENTE (MAX 3 REQUÊTES)' : getCreationBadgeLabel(generatingToolTitle)}
                     </span>
                   </div>
 
@@ -1229,12 +1352,26 @@ export function RightMenu({
                         <p className={`font-semibold text-xs truncate ${isItemActive ? 'text-orange-300' : 'text-zinc-200 group-hover:text-white'}`}>
                           {item.title || 'Création sans titre'}
                         </p>
-                        {isItemActive && (
+                        {item.status === 'generating' ? (
+                          <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/40 font-semibold flex items-center gap-1 animate-pulse">
+                            <Loader2 className="w-2.5 h-2.5 animate-spin text-orange-400" />
+                            En cours
+                          </span>
+                        ) : item.status === 'queued' ? (
+                          <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-semibold flex items-center gap-1">
+                            <Clock className="w-2.5 h-2.5 text-amber-400" />
+                            En attente
+                          </span>
+                        ) : item.status === 'error' ? (
+                          <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30 font-semibold flex items-center gap-1">
+                            Échec
+                          </span>
+                        ) : isItemActive ? (
                           <span className="shrink-0 text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                             Affiché
                           </span>
-                        )}
+                        ) : null}
                       </div>
 
                       <div className="flex items-center gap-2 mt-1 flex-wrap text-[10px]">
