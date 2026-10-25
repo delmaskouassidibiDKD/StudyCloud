@@ -1861,6 +1861,154 @@ CONSIGNES STRICTES DE CONTINUATION :
         // ══════════════════════════════════════════════════════════════════════════════
         const creationRes = validateAndFormatCreation(answerText, body.requested_type, docName);
 
+        // ══════════════════════════════════════════════════════════════════════════════
+        // SAUVEGARDE AUTOMATIQUE EN ARRIÈRE-PLAN DANS CLOUDFLARE D1
+        // Même si l'utilisateur quitte l'écran, recharge la page ou ouvre une nouvelle conversation,
+        // la réponse et la création sont automatiquement enregistrées et persistées côté serveur.
+        // ══════════════════════════════════════════════════════════════════════════════
+        const convId = String(body.conversationId || body.conversation_id || body.sessionId || "").trim();
+        const userId = String(body.userId || req.headers.get("x-user-id") || "default-user").trim();
+        const userMsgId = String(body.userMsgId || body.userMessageId || "").trim();
+        const aiMsgId = String(body.aiMsgId || body.aiMessageId || `ai-msg-${Date.now()}`).trim();
+        const creationId = String(body.creationId || `crea-${Date.now()}`).trim();
+
+        if (convId) {
+          const db = getD1Database();
+          if (db) {
+            try {
+              // 1. Initialiser la conversation si besoin
+              await db.prepare(`
+                CREATE TABLE IF NOT EXISTS conversations (
+                  id TEXT PRIMARY KEY,
+                  user_id TEXT NOT NULL,
+                  title TEXT NOT NULL,
+                  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+              `).run().catch(() => {});
+
+              await db.prepare(`
+                INSERT OR IGNORE INTO conversations (id, user_id, title, created_at, updated_at)
+                VALUES (?, ?, ?, datetime('now'), datetime('now'))
+              `).bind(convId, userId, docName ? `Étude : ${docName}` : 'Discussion IA').run().catch(() => {});
+
+              // 2. Table messages
+              await db.prepare(`
+                CREATE TABLE IF NOT EXISTS messages (
+                  id TEXT PRIMARY KEY,
+                  conversation_id TEXT NOT NULL,
+                  role TEXT NOT NULL,
+                  content TEXT NOT NULL,
+                  metadata TEXT,
+                  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+              `).run().catch(() => {});
+
+              // Si message utilisateur fourni, l'insérer si pas déjà présent
+              if (userMsgId && userPrompt) {
+                await db.prepare(`
+                  INSERT OR IGNORE INTO messages (id, conversation_id, role, content, metadata, created_at)
+                  VALUES (?, ?, 'user', ?, ?, datetime('now'))
+                `).bind(
+                  userMsgId,
+                  convId,
+                  userPrompt,
+                  JSON.stringify({ attachedFileName: docName || undefined })
+                ).run().catch(() => {});
+              }
+
+              // Insérer le message assistant complété
+              const assistantContent = creationRes.chat_response || answerText;
+              await db.prepare(`
+                INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
+                VALUES (?, ?, 'assistant', ?, ?, datetime('now'))
+                ON CONFLICT(id) DO UPDATE SET content = excluded.content, metadata = excluded.metadata
+              `).bind(
+                aiMsgId,
+                convId,
+                assistantContent,
+                JSON.stringify({
+                  model: effectiveModelUsed,
+                  creation_type: creationRes.creation_type,
+                  creation_title: creationRes.creation_title,
+                  creation_id: creationRes.creation_data ? creationId : undefined,
+                  attachedFileName: docName || undefined
+                })
+              ).run().catch(() => {});
+
+              // Mettre à jour l'horodatage de la conversation parente
+              await db.prepare(`
+                UPDATE conversations SET updated_at = datetime('now') WHERE id = ?
+              `).bind(convId).run().catch(() => {});
+
+              // 3. Si une création a été générée, l'enregistrer dans ai_creations et ai_generated_contents
+              if (creationRes.creation_data) {
+                await db.prepare(`
+                  CREATE TABLE IF NOT EXISTS ai_creations (
+                    id TEXT PRIMARY KEY,
+                    conversation_id TEXT NOT NULL,
+                    message_id TEXT,
+                    type TEXT NOT NULL,
+                    title TEXT,
+                    content TEXT NOT NULL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                  )
+                `).run().catch(() => {});
+
+                await db.prepare(`
+                  INSERT INTO ai_creations (id, conversation_id, message_id, type, title, content, created_at)
+                  VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                  ON CONFLICT(id) DO UPDATE SET content = excluded.content, title = excluded.title
+                `).bind(
+                  creationId,
+                  convId,
+                  aiMsgId,
+                  creationRes.creation_type || body.requested_type || 'creation',
+                  creationRes.creation_title || 'Création Studio',
+                  JSON.stringify(creationRes.creation_data)
+                ).run().catch(() => {});
+
+                // Table globale ai_generated_contents
+                await db.prepare(`
+                  CREATE TABLE IF NOT EXISTS ai_generated_contents (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    file_id TEXT,
+                    conversation_id TEXT,
+                    tool_type TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    content_json TEXT NOT NULL,
+                    source_file_name TEXT,
+                    is_pinned INTEGER DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                  )
+                `).run().catch(() => {});
+
+                await db.prepare(`
+                  INSERT INTO ai_generated_contents (
+                    id, user_id, conversation_id, tool_type, title, content_json, source_file_name, is_pinned, created_at, updated_at
+                  )
+                  VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                  ON CONFLICT(id) DO UPDATE SET content_json = excluded.content_json, title = excluded.title, updated_at = excluded.updated_at
+                `).bind(
+                  creationId,
+                  userId,
+                  convId,
+                  creationRes.creation_type || body.requested_type || 'creation',
+                  creationRes.creation_title || 'Création Studio',
+                  JSON.stringify(creationRes.creation_data),
+                  docName || null,
+                  Date.now(),
+                  Date.now()
+                ).run().catch(() => {});
+              }
+            } catch (autoSaveErr) {
+              logger.warn("Erreur auto-save D1 chat", { event: "d1_autosave_warning", error: autoSaveErr });
+            }
+          }
+        }
+
         return new Response(JSON.stringify({
           success: true,
           mode: creationRes.mode,
@@ -1868,6 +2016,9 @@ CONSIGNES STRICTES DE CONTINUATION :
           creation_type: creationRes.creation_type,
           creation_title: creationRes.creation_title,
           creation_data: creationRes.creation_data,
+          creation_id: creationRes.creation_data ? creationId : undefined,
+          conversation_id: convId || undefined,
+          ai_msg_id: aiMsgId,
           response: creationRes.chat_response,
           chat_response: creationRes.chat_response,
           raw_response: answerText,

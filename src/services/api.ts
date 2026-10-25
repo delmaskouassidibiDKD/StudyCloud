@@ -272,7 +272,9 @@ export async function sendChatMessageToAi(params: {
   documentMimeType?: string;
   documentImages?: Array<{ base64: string; mimeType?: string; name?: string }>;
   pdfBase64?: string;
-  mediaType?: string;
+  userMsgId?: string;
+  aiMsgId?: string;
+  creationId?: string;
   perceptionReport?: string;
   [key: string]: any;
 }): Promise<{
@@ -285,6 +287,9 @@ export async function sendChatMessageToAi(params: {
   creation_type?: string;
   creation_title?: string;
   creation_data?: any;
+  creation_id?: string;
+  ai_msg_id?: string;
+  conversation_id?: string;
   raw_response?: string;
   rawResponse?: string;
   perceptionReport?: string;

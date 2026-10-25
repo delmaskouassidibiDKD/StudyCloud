@@ -5,6 +5,7 @@ import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
 import { MathText, stripAiReasoningScratchpad } from './MathText';
 import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey, safeJsonParse, getWorkerApiUrl } from '../services/api';
+import { aiBackgroundManager } from '../services/aiBackgroundManager';
 import { getFileBlob } from '../services/localFileStorage';
 import { extractDocumentDetails } from '../services/documentTextExtractor';
 
@@ -2191,8 +2192,13 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const watchdogTimerRef = useRef<any>(null);
   const isUserScrolledUpRef = useRef<boolean>(false);
   const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const currentRequestIdRef = useRef<number>(0);
+  const currentConversationIdRef = useRef<string>(currentConversationId);
+  useEffect(() => {
+    currentConversationIdRef.current = currentConversationId;
+  }, [currentConversationId]);
+
+  const activeControllersByConvRef = useRef<Record<string, AbortController>>({});
+  const activeRequestIdsByConvRef = useRef<Record<string, number>>({});
   const messagesRef = useRef<Message[]>(messages);
   useEffect(() => {
     messagesRef.current = messages;
@@ -2232,49 +2238,56 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     }
   };
 
-  // Annuler / interrompre immédiatement la tâche IA en cours
-  // switchingToNewTask: si vrai, une nouvelle tâche prend immédiatement le relais, ne pas éteindre le loader ni déclarer annulé globalement
-  const handleCancelTask = (switchingToNewTask = false) => {
-    if (abortControllerRef.current) {
+  // Annuler / interrompre la tâche IA pour une conversation spécifique (par défaut la conversation courante)
+  // switchingToNewTask: si vrai, une nouvelle tâche prend immédiatement le relais dans cette conversation
+  const handleCancelTask = (convIdToCancel?: string | boolean, switchingToNewTask = false) => {
+    const isSwitching = typeof convIdToCancel === 'boolean' ? convIdToCancel : switchingToNewTask;
+    const targetId = typeof convIdToCancel === 'string' ? convIdToCancel : currentConversationIdRef.current;
+
+    if (activeControllersByConvRef.current[targetId]) {
       try {
-        abortControllerRef.current.abort();
+        activeControllersByConvRef.current[targetId].abort();
       } catch {}
-      abortControllerRef.current = null;
+      delete activeControllersByConvRef.current[targetId];
     }
-    if (typingTimerRef.current) {
-      clearInterval(typingTimerRef.current);
-      typingTimerRef.current = null;
-    }
-    if (watchdogTimerRef.current) {
-      clearTimeout(watchdogTimerRef.current);
-      watchdogTimerRef.current = null;
-    }
-    if (activityTimerRef.current) {
-      clearInterval(activityTimerRef.current);
-      activityTimerRef.current = null;
-    }
+    aiBackgroundManager.clearTask(targetId);
 
-    if (!switchingToNewTask) {
-      currentRequestIdRef.current = 0;
-      setIsWaitingServer(false);
-      setIsTyping(false);
-      setRetryingMessageId(null);
-      window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
-        detail: { phase: 'idle', isLoading: false, isCancelled: true, resetToPrompts: true }
-      }));
-    }
-
-    setMessages(prev => {
-      const last = prev[prev.length - 1];
-      if (last && last.sender === 'ai' && last.isStreaming) {
-        return prev.map((m, i) => i === prev.length - 1 ? {
-          ...m,
-          isStreaming: false,
-          text: m.text ? `${m.text}\n\n*(Génération interrompue par l'utilisateur)*` : "*(Tâche annulée)*"
-        } : m);
+    if (targetId === currentConversationIdRef.current) {
+      if (typingTimerRef.current) {
+        clearInterval(typingTimerRef.current);
+        typingTimerRef.current = null;
       }
-      return prev;
-    });
+      if (watchdogTimerRef.current) {
+        clearTimeout(watchdogTimerRef.current);
+        watchdogTimerRef.current = null;
+      }
+      if (activityTimerRef.current) {
+        clearInterval(activityTimerRef.current);
+        activityTimerRef.current = null;
+      }
+
+      if (!isSwitching) {
+        activeRequestIdsByConvRef.current[targetId] = (activeRequestIdsByConvRef.current[targetId] || 0) + 1;
+        setIsWaitingServer(false);
+        setIsTyping(false);
+        setRetryingMessageId(null);
+        window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
+          detail: { phase: 'idle', isLoading: false, isCancelled: true, resetToPrompts: true }
+        }));
+      }
+
+      setMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (last && last.sender === 'ai' && last.isStreaming) {
+          return prev.map((m, i) => i === prev.length - 1 ? {
+            ...m,
+            isStreaming: false,
+            text: m.text ? `${m.text}\n\n*(Génération interrompue par l'utilisateur)*` : "*(Tâche annulée)*"
+          } : m);
+        }
+        return prev;
+      });
+    }
   };
 
   // Sauvegarde ID de session courante (uniquement si ce n'est pas une création directe)
@@ -2342,13 +2355,32 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     }
     // 1. Chargement instantané du cache local (zéro latence)
     const local = safeGetItem(`studycloud_conv_msgs_${convId}`);
+    let localParsed: Message[] = [];
     if (local) {
       try {
-        const parsed = JSON.parse(local);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setMessages(parsed);
+        localParsed = JSON.parse(local);
+        if (Array.isArray(localParsed) && localParsed.length > 0) {
+          setMessages(localParsed);
         }
       } catch {}
+    }
+
+    // Vérifier si une tâche d'arrière-plan tourne pour cette conversation
+    const activeBgTask = aiBackgroundManager.getActiveTaskForConversation(convId);
+    if (activeBgTask && activeBgTask.status === 'running') {
+      setIsWaitingServer(true);
+      setIsTyping(true);
+    } else {
+      // Si aucune tâche active pour cette conversation, s'assurer que les messages ne restent pas figés en streaming
+      if (localParsed.length > 0 && localParsed[localParsed.length - 1]?.isStreaming) {
+        if (!activeBgTask || Date.now() - (activeBgTask?.startedAt || 0) > 45000) {
+          localParsed = localParsed.map((m, idx) => idx === localParsed.length - 1 ? { ...m, isStreaming: false } : m);
+          setMessages(localParsed);
+          safeSetItem(`studycloud_conv_msgs_${convId}`, JSON.stringify(localParsed));
+        }
+      }
+      setIsWaitingServer(false);
+      setIsTyping(false);
     }
 
     try {
@@ -2374,7 +2406,16 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             createdAt: row.created_at,
           };
         });
-        setMessages(loaded);
+
+        // Si l'utilisateur est toujours sur cette conversation, mettre à jour la vue
+        if (currentConversationIdRef.current === convId) {
+          if (activeBgTask && loaded.some(m => m.id === activeBgTask.aiMsgId || (m.sender === 'ai' && (m.text || '').length > 20))) {
+            aiBackgroundManager.completeAiTask(convId, activeBgTask.aiMsgId);
+            setIsWaitingServer(false);
+            setIsTyping(false);
+          }
+          setMessages(loaded);
+        }
         safeSetItem(`studycloud_conv_msgs_${convId}`, JSON.stringify(loaded));
       }
 
@@ -2397,10 +2438,10 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             } catch {}
           }
         }
-        if (localCreas.length > 0) {
+        if (localCreas.length > 0 && currentConversationIdRef.current === convId) {
           setSessionCreations(localCreas);
           setActiveCreation(localCreas[0]);
-        } else {
+        } else if (currentConversationIdRef.current === convId) {
           setSessionCreations([]);
         }
 
@@ -2430,12 +2471,13 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             if (!mergedMap.has(item.id)) mergedMap.set(item.id, item);
           });
           const mergedList = Array.from(mergedMap.values());
-          setSessionCreations(mergedList);
-          safeSetItem(`studycloud_conv_creations_${convId}`, JSON.stringify(mergedList));
-
-          if (mergedList.length > 0) {
-            setActiveCreation(mergedList[0]);
+          if (currentConversationIdRef.current === convId) {
+            setSessionCreations(mergedList);
+            if (mergedList.length > 0) {
+              setActiveCreation(mergedList[0]);
+            }
           }
+          safeSetItem(`studycloud_conv_creations_${convId}`, JSON.stringify(mergedList));
         }
       } catch (err) {
         console.warn('[AssistantChat] Erreur chargement créations conversation:', err);
@@ -2448,6 +2490,64 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   useEffect(() => {
     loadConversationMessages(currentConversationId);
   }, [currentConversationId]);
+
+  // Écoute des événements d'arrière-plan et vérification de reprise post-rechargement
+  useEffect(() => {
+    const handleTaskCompleted = (e: any) => {
+      const { conversationId, creation } = e.detail || {};
+      if (conversationId === currentConversationIdRef.current) {
+        loadConversationMessages(conversationId);
+        if (creation) {
+          setActiveCreation(creation);
+        }
+        setIsWaitingServer(false);
+        setIsTyping(false);
+      }
+    };
+
+    const handleTaskStarted = (e: any) => {
+      const { conversationId } = e.detail || {};
+      if (conversationId === currentConversationIdRef.current) {
+        setIsWaitingServer(true);
+        setIsTyping(true);
+      }
+    };
+
+    window.addEventListener('studycloud-ai-task-completed', handleTaskCompleted as any);
+    window.addEventListener('studycloud-ai-task-started', handleTaskStarted as any);
+
+    // Watcher de reprise automatique post-rechargement pour les tâches en cours
+    let recoveryTimer: any = null;
+    const checkRunningTasks = () => {
+      const activeTasks = aiBackgroundManager.getActiveTasks().filter(t => t.status === 'running');
+      if (activeTasks.length > 0) {
+        activeTasks.forEach(task => {
+          StudyCloudAPI.getAiConversationMessages(task.conversationId).then(res => {
+            if (res && res.success && Array.isArray(res.data)) {
+              const foundMsg = res.data.find((m: any) => m.id === task.aiMsgId || (m.role === 'assistant' && (m.content || '').length > 20));
+              if (foundMsg) {
+                aiBackgroundManager.completeAiTask(task.conversationId, task.aiMsgId, foundMsg.content);
+                if (task.conversationId === currentConversationIdRef.current) {
+                  loadConversationMessages(task.conversationId);
+                  setIsWaitingServer(false);
+                  setIsTyping(false);
+                }
+              }
+            }
+          }).catch(() => {});
+        });
+      }
+    };
+
+    checkRunningTasks();
+    recoveryTimer = setInterval(checkRunningTasks, 3000);
+
+    return () => {
+      window.removeEventListener('studycloud-ai-task-completed', handleTaskCompleted as any);
+      window.removeEventListener('studycloud-ai-task-started', handleTaskStarted as any);
+      if (recoveryTimer) clearInterval(recoveryTimer);
+    };
+  }, []);
 
   // Synchronisation avec les créations actives du panneau droit et persistance D1
   useEffect(() => {
@@ -2562,12 +2662,15 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   // Création d'une nouvelle session de discussion
   const handleStartNewConversation = () => {
     const newId = 'conv-' + Date.now();
+    currentConversationIdRef.current = newId;
     setCurrentConversationId(newId);
     setCurrentConversationTitle('Nouvelle discussion');
     setMessages([]);
     setActiveCreation(null);
     setSessionCreations([]);
     setRetryingMessageId(null);
+    setIsTyping(false);
+    setIsWaitingServer(false);
     setIsHistoryDrawerOpen(false);
     setShowProposalBar(true);
     safeSetItem('studycloud_current_conversation_id', newId);
@@ -2588,6 +2691,12 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const handleDeleteConversation = async (convId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
+      if (activeControllersByConvRef.current[convId]) {
+        try { activeControllersByConvRef.current[convId].abort(); } catch {}
+        delete activeControllersByConvRef.current[convId];
+      }
+      aiBackgroundManager.clearTask(convId);
+
       await StudyCloudAPI.deleteAiConversation(convId);
       setConversations(prev => prev.filter(c => c.id !== convId));
       safeLocalStorageRemove(`studycloud_conv_msgs_${convId}`);
@@ -2634,46 +2743,98 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const sendMessage = async (textToSend: string, requestedTypeOverride?: string, options?: { isContinuation?: boolean; forceReanalysis?: boolean }) => {
     if (!textToSend.trim()) return;
 
-    // Incrément de l'ID unique de requête pour ce tour
-    const thisRequestId = ++currentRequestIdRef.current;
+    // Fixer la conversation cible de manière immuable pour cette requête
+    const targetConvId = currentConversationIdRef.current;
+    const targetUserId = currentUserId;
 
-    // Si une tâche IA est déjà en cours, on l'interrompt proprement pour enchaîner directement sur la nouvelle
-    if (isTyping || isWaitingServer) {
-      handleCancelTask(true);
+    // Incrément de l'ID unique de requête pour CETTE conversation cible
+    const nextReq = (activeRequestIdsByConvRef.current[targetConvId] || 0) + 1;
+    activeRequestIdsByConvRef.current[targetConvId] = nextReq;
+    const thisRequestId = nextReq;
+
+    // Si une tâche IA tournait déjà dans CETTE conversation, on l'interrompt
+    if (activeControllersByConvRef.current[targetConvId]) {
+      try {
+        activeControllersByConvRef.current[targetConvId].abort();
+      } catch {}
+      delete activeControllersByConvRef.current[targetConvId];
     }
 
     // Réinitialise le défilement pour suivre le nouveau prompt
     isUserScrolledUpRef.current = false;
     setShowScrollBottomBtn(false);
 
-    // Initialisation du contrôleur d'annulation pour cette requête
-    abortControllerRef.current = new AbortController();
-    const abortSignal = abortControllerRef.current.signal;
+    // Initialisation du contrôleur d'annulation pour cette requête spécifique
+    const controller = new AbortController();
+    activeControllersByConvRef.current[targetConvId] = controller;
+    const abortSignal = controller.signal;
 
     const userText = textToSend.trim();
     const newUserMsgId = Date.now().toString();
     const newUserMsg: Message = { id: newUserMsgId, text: userText, sender: 'user' };
-    
-    // Ajout immédiat du message utilisateur à la liste et au cache local
-    const baseMessages = messagesRef.current.length > 0 ? messagesRef.current : messages;
-    const updatedMessages = [...baseMessages, newUserMsg];
-    messagesRef.current = updatedMessages;
-    setMessages(updatedMessages);
-    try {
-      safeSetItem(`studycloud_conv_msgs_${currentConversationId}`, JSON.stringify(updatedMessages));
-    } catch {}
-    setInputValue('');
-    setIsTyping(true);
-    setIsWaitingServer(true);
+
+    const aiMsgId = 'ai-msg-' + (Date.now() + 1).toString();
+    const creationId = 'crea-' + (Date.now() + 2).toString();
+    const initialAiMsg: Message = {
+      id: aiMsgId,
+      text: '',
+      sender: 'ai',
+      isStreaming: true,
+      model: currentModelDisplay,
+    };
+
+    // Récupérer les messages existants de la conversation cible
+    let convBaseMessages: Message[] = [];
+    if (currentConversationIdRef.current === targetConvId && messagesRef.current.length > 0) {
+      convBaseMessages = messagesRef.current;
+    } else {
+      const local = safeGetItem(`studycloud_conv_msgs_${targetConvId}`);
+      if (local) {
+        try { convBaseMessages = JSON.parse(local) || []; } catch {}
+      }
+    }
+
+    const updatedMessages = [...convBaseMessages, newUserMsg];
+    // Ajout immédiat du message utilisateur ET du placeholder de réponse dans le cache local de targetConvId
+    const updatedMessagesWithPending = [...updatedMessages, initialAiMsg];
+    safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(updatedMessagesWithPending));
+
+    // Si l'utilisateur est actuellement sur cette conversation, mettre à jour le state React
+    if (currentConversationIdRef.current === targetConvId) {
+      messagesRef.current = updatedMessagesWithPending;
+      setMessages(updatedMessagesWithPending);
+      setInputValue('');
+      setIsTyping(true);
+      setIsWaitingServer(true);
+    }
+
+    // Sauvegarde Cloudflare D1 immédiate du message utilisateur
+    StudyCloudAPI.saveAiMessage({
+      id: newUserMsgId,
+      conversationId: targetConvId,
+      role: 'user',
+      content: userText,
+    }).catch(() => {});
+
+    // Enregistrement de la tâche d'arrière-plan pour reprise post-rechargement
+    aiBackgroundManager.registerAiTask({
+      taskId: `task-${Date.now()}`,
+      conversationId: targetConvId,
+      userId: targetUserId,
+      userMsgId: newUserMsgId,
+      aiMsgId: aiMsgId,
+      creationId: creationId,
+      prompt: userText,
+      requestedType: requestedTypeOverride || undefined,
+      mainDocName: resolvedActiveName,
+      status: 'running',
+      startedAt: Date.now(),
+      lastUpdated: Date.now(),
+    });
 
     // Détection immédiate hors ligne avant envoi réseau
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      setIsWaitingServer(false);
-      setIsTyping(false);
-      setRetryingMessageId(null);
-      window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
-        detail: { phase: 'idle', isLoading: false, isError: true, resetToPrompts: true }
-      }));
+      aiBackgroundManager.clearTask(targetConvId);
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         text: "Veuillez vérifier que votre appareil est bien connecté à Internet (Wi-Fi ou données mobiles).",
@@ -2683,7 +2844,17 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         errorType: 'network',
         retryPrompt: userText,
       };
-      setMessages(prev => [...prev, errorMsg]);
+      const reverted = convBaseMessages.concat([newUserMsg, errorMsg]);
+      safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(reverted));
+      if (currentConversationIdRef.current === targetConvId) {
+        setIsWaitingServer(false);
+        setIsTyping(false);
+        setRetryingMessageId(null);
+        window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
+          detail: { phase: 'idle', isLoading: false, isError: true, resetToPrompts: true }
+        }));
+        setMessages(reverted);
+      }
       return;
     }
 
@@ -3711,9 +3882,12 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         messages: chatHistory,
         prompt: userText,
         message: userText,
-        userId: currentUserId,
-        sessionId: currentConversationId,
-        conversationId: currentConversationId,
+        userId: targetUserId,
+        sessionId: targetConvId,
+        conversationId: targetConvId,
+        userMsgId: newUserMsgId,
+        aiMsgId,
+        creationId,
         model: effectiveModelToSend,
         selectedModel: effectiveModelToSend,
         isContinuation,
@@ -3740,9 +3914,9 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         abortSignal,
       });
 
-      // Si cette requête a été annulée ou supplantée par une nouvelle consigne plus récente
-      if (abortSignal.aborted || currentRequestIdRef.current !== thisRequestId) {
-        if (currentRequestIdRef.current === thisRequestId) {
+      // Si cette requête a été annulée spécifiquement pour CETTE conversation
+      if (abortSignal.aborted || (activeRequestIdsByConvRef.current[targetConvId] && activeRequestIdsByConvRef.current[targetConvId] !== thisRequestId)) {
+        if (currentConversationIdRef.current === targetConvId && activeRequestIdsByConvRef.current[targetConvId] === thisRequestId) {
           setIsWaitingServer(false);
           setIsTyping(false);
           setRetryingMessageId(null);
@@ -4053,120 +4227,135 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             };
           }
         }
-        const newCreation: AiCreation = {
-          id: 'ai-' + Date.now(),
-          userId: currentUserId,
-          fileId: activePreviewItem?.id,
-          conversationId: currentConversationId,
-          toolType: effectiveToolType,
-          title: creationParsed.title,
-          content: creationParsed.content,
-          sourceFileName: mainDocName,
-          createdAt: new Date().toISOString(),
-          version: 1,
-        };
+        let newCreation: AiCreation | null = null;
+        if (creationParsed && creationParsed.content) {
+          newCreation = {
+            id: (aiResult as any).creation_id || creationId || ('ai-' + Date.now()),
+            userId: targetUserId,
+            fileId: activePreviewItem?.id,
+            conversationId: targetConvId,
+            toolType: effectiveToolType,
+            title: creationParsed.title,
+            content: creationParsed.content,
+            sourceFileName: mainDocName,
+            createdAt: new Date().toISOString(),
+            version: 1,
+          };
 
-        setActiveCreation(newCreation);
-        setSessionCreations(prev => {
-          const updated = [newCreation, ...prev.filter(c => c.id !== newCreation.id)];
-          safeSetItem(`studycloud_conv_creations_${currentConversationId}`, JSON.stringify(updated));
-          return updated;
-        });
+          // Sauvegarde dans le cache local spécifique à CETTE conversation
+          const localConvCreasRaw = safeGetItem(`studycloud_conv_creations_${targetConvId}`);
+          let localConvCreas: AiCreation[] = [];
+          if (localConvCreasRaw) {
+            try { localConvCreas = JSON.parse(localConvCreasRaw) || []; } catch {}
+          }
+          const updatedConvCreas = [newCreation, ...localConvCreas.filter(c => c.id !== newCreation!.id)];
+          safeSetItem(`studycloud_conv_creations_${targetConvId}`, JSON.stringify(updatedConvCreas));
 
-        // Sauvegarde immédiate dans le cache local persistant pour affichage instantané et reprise
-        try {
-          const cachedRaw = localStorage.getItem('studycloud_saved_creations_cache');
-          let currentList = cachedRaw ? JSON.parse(cachedRaw) : [];
-          if (!Array.isArray(currentList)) currentList = [];
-          const updatedList = [newCreation, ...currentList.filter((c: any) => c.id !== newCreation.id)];
-          localStorage.setItem('studycloud_saved_creations_cache', JSON.stringify(updatedList));
-          localStorage.setItem('studycloud_active_creation', JSON.stringify(newCreation));
-        } catch {}
+          // Sauvegarde dans le cache global persistant
+          try {
+            const cachedRaw = localStorage.getItem('studycloud_saved_creations_cache');
+            let currentList = cachedRaw ? JSON.parse(cachedRaw) : [];
+            if (!Array.isArray(currentList)) currentList = [];
+            const updatedList = [newCreation, ...currentList.filter((c: any) => c.id !== newCreation!.id)];
+            localStorage.setItem('studycloud_saved_creations_cache', JSON.stringify(updatedList));
+            localStorage.setItem('studycloud_active_creation', JSON.stringify(newCreation));
+          } catch {}
 
-        // Sauvegarde dans la table Cloudflare D1 ai_creations liée à la session de conversation
-        if (currentConversationId) {
+          // Sauvegarde dans la table Cloudflare D1 ai_creations liée à targetConvId
           StudyCloudAPI.saveAiCreationRecord({
             id: newCreation.id,
-            conversationId: currentConversationId,
+            conversationId: targetConvId,
             type: effectiveToolType,
             title: newCreation.title,
             content: newCreation.content,
           }).catch(err => {
             console.warn('[AssistantChat] Erreur saveAiCreationRecord:', err);
           });
-        }
 
-        // Sauvegarde immédiate dans la base de données D1 liée à l'utilisateur
-        if (currentUserId && currentUserId !== 'default-user') {
-          StudyCloudAPI.saveAiContent({
-            id: newCreation.id,
-            userId: currentUserId,
-            fileId: activePreviewItem?.id || null,
-            conversationId: currentConversationId,
-            toolType: effectiveToolType,
-            title: newCreation.title || 'Création Studio',
-            contentJson: newCreation.content,
-            sourceFileName: mainDocName || undefined,
-            isPinned: false,
-          }).then(() => {
-            window.dispatchEvent(new CustomEvent('studycloud-creation-saved', { detail: { id: newCreation.id, creation: newCreation } }));
-          }).catch(err => {
-            console.warn('[AssistantChat] Erreur sauvegarde D1 création générée:', err);
-          });
-        }
+          // Sauvegarde immédiate dans la base de données D1 liée à l'utilisateur
+          if (targetUserId && targetUserId !== 'default-user') {
+            StudyCloudAPI.saveAiContent({
+              id: newCreation.id,
+              userId: targetUserId,
+              fileId: activePreviewItem?.id || null,
+              conversationId: targetConvId,
+              toolType: effectiveToolType,
+              title: newCreation.title || 'Création Studio',
+              contentJson: newCreation.content,
+              sourceFileName: mainDocName || undefined,
+              isPinned: false,
+            }).then(() => {
+              window.dispatchEvent(new CustomEvent('studycloud-creation-saved', { detail: { id: newCreation!.id, creation: newCreation } }));
+            }).catch(err => {
+              console.warn('[AssistantChat] Erreur sauvegarde D1 création générée:', err);
+            });
+          }
 
-        window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
-        window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false } }));
-        window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
+          // Si l'utilisateur est toujours dans CETTE conversation, mise à jour immédiate de l'affichage Création
+          if (currentConversationIdRef.current === targetConvId) {
+            setActiveCreation(newCreation);
+            setSessionCreations(updatedConvCreas);
+            window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
+            window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false } }));
+            window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
+          }
 
-        // Nettoyage radical du texte pour la discussion : JAMAIS de JSON brut !
-        const candidateIntro = companionChatMessage || aiResult.chat_response || '';
-        const cleanIntro = cleanChatText(candidateIntro);
+          // Nettoyage radical du texte pour la discussion : JAMAIS de JSON brut !
+          const candidateIntro = companionChatMessage || aiResult.chat_response || '';
+          const cleanIntro = cleanChatText(candidateIntro);
 
-        fullResponseText = `${cleanIntro ? cleanIntro + '\n\n' : ''}✨ J'ai généré votre **${newCreation.title}** directement dans votre espace **Création** !
+          fullResponseText = `${cleanIntro ? cleanIntro + '\n\n' : ''}✨ J'ai généré votre **${newCreation.title}** directement dans votre espace **Création** !
 
 👉 *Retrouvez et testez votre création dans le volet de droite (ou l'onglet Création sur mobile).*`;
+        }
       } else {
         // BRANCHE DISCUSSION SIMPLE DANS LE CHAT : Réponse directe sans rien déranger dans l'espace création
         const cleaned = cleanChatText(aiResult.chat_response || rawResponseText);
         fullResponseText = stripAiReasoningScratchpad(cleaned) || "✨ Votre demande a été traitée avec succès.";
-        window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCreation: false, resetToPrompts: true } }));
+        if (currentConversationIdRef.current === targetConvId) {
+          window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCreation: false, resetToPrompts: true } }));
+        }
       }
 
       const effectiveModelName = aiResult.model || currentModelDisplay;
 
-      // 7. Initialisation du message IA avec écriture fluide
-      const aiMsgId = (Date.now() + 1).toString();
-      const initialAiMsg: Message = {
+      // Mettre à jour le cache local pour targetConvId en remplaçant le message streaming par la réponse finale
+      const currentConvMsgsRaw = safeGetItem(`studycloud_conv_msgs_${targetConvId}`);
+      let currentConvMsgs: Message[] = [];
+      if (currentConvMsgsRaw) {
+        try { currentConvMsgs = JSON.parse(currentConvMsgsRaw) || []; } catch {}
+      }
+      const finalizedConvMsgs = currentConvMsgs.map(m =>
+        m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName } : m
+      );
+      if (!finalizedConvMsgs.some(m => m.id === aiMsgId)) {
+        finalizedConvMsgs.push({ id: aiMsgId, text: fullResponseText, sender: 'ai', isStreaming: false, model: effectiveModelName });
+      }
+      safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(finalizedConvMsgs));
+
+      // Sauvegarde Cloudflare D1 du message assistant complet
+      StudyCloudAPI.saveAiMessage({
         id: aiMsgId,
-        text: '',
-        sender: 'ai',
-        isStreaming: true,
-        attachedFileName: attachedFileName || undefined,
-        model: effectiveModelName,
-        isPowerMode: false,
-      };
-      setMessages(prev => [...prev, initialAiMsg]);
+        conversationId: targetConvId,
+        role: 'assistant',
+        content: fullResponseText,
+        metadata: { model: effectiveModelName }
+      }).catch(() => {});
 
-      // Sauvegarde locale du fil de discussion
-      try {
-        safeSetItem(`studycloud_conv_msgs_${currentConversationId}`, JSON.stringify([...updatedMessages, { ...initialAiMsg, text: fullResponseText, isStreaming: false, model: effectiveModelName }]));
-      } catch {}
+      // Marquer la tâche comme terminée dans le manager d'arrière-plan
+      aiBackgroundManager.completeAiTask(targetConvId, aiMsgId, fullResponseText, (creationParsed as any)?.content ? { title: creationParsed?.title, toolType: creationParsed?.toolType } : undefined);
 
-      // 8. Animation machine à écrire adaptative, ultra-fluide et garantie sans blocage
-      if (typingTimerRef.current) {
-        clearInterval(typingTimerRef.current);
-        typingTimerRef.current = null;
-      }
-      if (watchdogTimerRef.current) {
-        clearTimeout(watchdogTimerRef.current);
-        watchdogTimerRef.current = null;
+      if (currentMediaSignature) {
+        if (aiResult?.perceptionReport) {
+          cachedPerceptionReportsRef.current[currentMediaSignature] = aiResult.perceptionReport;
+          safeSetItem(`studycloud_perception_${currentMediaSignature}`, aiResult.perceptionReport);
+        }
+        analyzedMediaPerConvRef.current[convCacheKey] = currentMediaSignature;
+        safeSetItem(userSessionMediaKey, currentMediaSignature);
       }
 
-      let isAiMsgFinalized = false;
-      const finalizeAiMessage = () => {
-        if (isAiMsgFinalized || currentRequestIdRef.current !== thisRequestId) return;
-        isAiMsgFinalized = true;
+      // Si l'utilisateur est toujours dans CETTE conversation, mise à jour fluide de l'affichage
+      if (currentConversationIdRef.current === targetConvId) {
         if (typingTimerRef.current) {
           clearInterval(typingTimerRef.current);
           typingTimerRef.current = null;
@@ -4176,118 +4365,128 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           watchdogTimerRef.current = null;
         }
 
-        setMessages(prev =>
-          prev.map(m =>
-            m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName } : m
-          )
-        );
-        if (currentRequestIdRef.current === thisRequestId) {
-          setIsTyping(false);
-          setRetryingMessageId(null);
-        }
-
-        // Sauvegarde Cloudflare D1 du message assistant complet
-        StudyCloudAPI.saveAiMessage({
-          id: aiMsgId,
-          conversationId: currentConversationId,
-          role: 'assistant',
-          content: fullResponseText,
-          metadata: { model: effectiveModelName }
-        }).catch(() => {});
-
-        if (currentMediaSignature) {
-          if (aiResult?.perceptionReport) {
-            cachedPerceptionReportsRef.current[currentMediaSignature] = aiResult.perceptionReport;
-            safeSetItem(`studycloud_perception_${currentMediaSignature}`, aiResult.perceptionReport);
+        let isAiMsgFinalized = false;
+        const finalizeAiMessage = () => {
+          if (isAiMsgFinalized || activeRequestIdsByConvRef.current[targetConvId] !== thisRequestId) return;
+          isAiMsgFinalized = true;
+          if (typingTimerRef.current) {
+            clearInterval(typingTimerRef.current);
+            typingTimerRef.current = null;
           }
-          analyzedMediaPerConvRef.current[convCacheKey] = currentMediaSignature;
-          safeSetItem(userSessionMediaKey, currentMediaSignature);
-        }
-
-        // Notification d'ouverture automatique du chat quand la réponse est terminée ou qu'une demande a été traitée
-        window.dispatchEvent(new CustomEvent('open-assistant-chat'));
-        window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
-
-        if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
-          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
-        }
-      };
-
-      // Si le document est en arrière-plan ou masqué, ou si la réponse est très courte, finaliser immédiatement
-      if ((typeof document !== 'undefined' && document.hidden) || fullResponseText.length < 30) {
-        finalizeAiMessage();
-        return;
-      }
-
-      // Calcul dynamique de chunkSize : la totalité du message est rédigée en 1.0s maximum
-      const tickSpeed = 16;
-      const targetDurationMs = Math.min(1000, Math.max(300, fullResponseText.length * 2));
-      const totalTicks = Math.max(1, Math.floor(targetDurationMs / tickSpeed));
-      const chunkSize = Math.max(8, Math.ceil(fullResponseText.length / totalTicks));
-      let index = 0;
-
-      // Watchdog de sécurité absolue : force la finalisation après targetDurationMs + 600ms au maximum
-      watchdogTimerRef.current = setTimeout(() => {
-        finalizeAiMessage();
-      }, targetDurationMs + 600);
-
-      typingTimerRef.current = setInterval(() => {
-        try {
-          if (currentRequestIdRef.current !== thisRequestId) {
-            if (typingTimerRef.current) clearInterval(typingTimerRef.current);
-            return;
+          if (watchdogTimerRef.current) {
+            clearTimeout(watchdogTimerRef.current);
+            watchdogTimerRef.current = null;
           }
-          index += chunkSize;
-          if (index >= fullResponseText.length) {
-            finalizeAiMessage();
-          } else {
-            const partial = fullResponseText.slice(0, index);
+
+          if (currentConversationIdRef.current === targetConvId) {
             setMessages(prev =>
               prev.map(m =>
-                m.id === aiMsgId ? { ...m, text: partial, model: effectiveModelName } : m
+                m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName } : m
               )
             );
+            setIsTyping(false);
+            setIsWaitingServer(false);
+            setRetryingMessageId(null);
+            window.dispatchEvent(new CustomEvent('open-assistant-chat'));
+            window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
+            if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
+              scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+            }
           }
+        };
 
-          if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
-            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
-          }
-        } catch (_err) {
+        if ((typeof document !== 'undefined' && document.hidden) || fullResponseText.length < 30) {
           finalizeAiMessage();
+          return;
         }
-      }, tickSpeed);
 
-    } catch (err: any) {
-      if (currentRequestIdRef.current !== thisRequestId) {
-        return;
-      }
-      setRetryingMessageId(null);
-      if (err?.name === 'AbortError' || err?.message?.includes('aborted')) {
+        const tickSpeed = 16;
+        const targetDurationMs = Math.min(1000, Math.max(300, fullResponseText.length * 2));
+        const totalTicks = Math.max(1, Math.floor(targetDurationMs / tickSpeed));
+        const chunkSize = Math.max(8, Math.ceil(fullResponseText.length / totalTicks));
+        let index = 0;
+
+        watchdogTimerRef.current = setTimeout(() => {
+          finalizeAiMessage();
+        }, targetDurationMs + 600);
+
+        typingTimerRef.current = setInterval(() => {
+          try {
+            if (activeRequestIdsByConvRef.current[targetConvId] !== thisRequestId || currentConversationIdRef.current !== targetConvId) {
+              finalizeAiMessage();
+              return;
+            }
+            index += chunkSize;
+            if (index >= fullResponseText.length) {
+              finalizeAiMessage();
+            } else {
+              const partial = fullResponseText.slice(0, index);
+              setMessages(prev =>
+                prev.map(m =>
+                  m.id === aiMsgId ? { ...m, text: partial, model: effectiveModelName } : m
+                )
+              );
+            }
+            if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
+              scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+            }
+          } catch (_err) {
+            finalizeAiMessage();
+          }
+        }, tickSpeed);
+      } else {
+        // L'utilisateur navigue sur une autre conversation : la tâche d'arrière-plan a persisté en toute discrétion
         setIsWaitingServer(false);
         setIsTyping(false);
+      }
+
+    } catch (err: any) {
+      if (activeRequestIdsByConvRef.current[targetConvId] && activeRequestIdsByConvRef.current[targetConvId] !== thisRequestId) {
         return;
       }
-      console.error('[AssistantChat] Erreur appel IA:', err);
-      setIsWaitingServer(false);
-      setIsTyping(false);
-      window.dispatchEvent(new CustomEvent('ai-creation-error', { detail: { error: err.message } }));
-      window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isError: true, resetToPrompts: true } }));
-      
-      const isNetwork = isNetworkError(err);
-      const isFriendlyMsg = err.message && (err.message.includes("StudyCloud") || err.message.includes("disponible"));
-      
-      const errorMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        text: isNetwork 
-          ? "Veuillez vérifier que votre appareil est bien connecté à Internet (Wi-Fi ou données mobiles)."
-          : (isFriendlyMsg ? `⚠️ ${err.message}` : `⚠️ Erreur : ${err.message || "L'assistante StudyCloud n'est pas disponible pour le moment."}`),
-        sender: 'ai',
-        isStreaming: false,
-        isError: true,
-        errorType: isNetwork ? 'network' : 'server',
-        retryPrompt: userText,
-      };
-      setMessages(prev => [...prev, errorMsg]);
+      aiBackgroundManager.clearTask(targetConvId);
+
+      // Nettoyer le streaming dans le cache local
+      const convMsgsRaw = safeGetItem(`studycloud_conv_msgs_${targetConvId}`);
+      if (convMsgsRaw) {
+        try {
+          const list = JSON.parse(convMsgsRaw);
+          if (Array.isArray(list)) {
+            const cleanedList = list.filter(m => m.id !== aiMsgId);
+            safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(cleanedList));
+          }
+        } catch {}
+      }
+
+      if (currentConversationIdRef.current === targetConvId) {
+        setRetryingMessageId(null);
+        if (err?.name === 'AbortError' || err?.message?.includes('aborted')) {
+          setIsWaitingServer(false);
+          setIsTyping(false);
+          return;
+        }
+        console.error('[AssistantChat] Erreur appel IA:', err);
+        setIsWaitingServer(false);
+        setIsTyping(false);
+        window.dispatchEvent(new CustomEvent('ai-creation-error', { detail: { error: err.message } }));
+        window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isError: true, resetToPrompts: true } }));
+
+        const isNetwork = isNetworkError(err);
+        const isFriendlyMsg = err.message && (err.message.includes("StudyCloud") || err.message.includes("disponible"));
+
+        const errorMsg: Message = {
+          id: (Date.now() + 1).toString(),
+          text: isNetwork 
+            ? "Veuillez vérifier que votre appareil est bien connecté à Internet (Wi-Fi ou données mobiles)."
+            : (isFriendlyMsg ? `⚠️ ${err.message}` : `⚠️ Erreur : ${err.message || "L'assistante StudyCloud n'est pas disponible pour le moment."}`),
+          sender: 'ai',
+          isStreaming: false,
+          isError: true,
+          errorType: isNetwork ? 'network' : 'server',
+          retryPrompt: userText,
+        };
+        setMessages(prev => [...prev.filter(m => m.id !== aiMsgId), errorMsg]);
+      }
     }
   };
 
