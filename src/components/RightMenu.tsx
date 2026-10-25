@@ -628,7 +628,7 @@ export function RightMenu({
       setGeneratingToolTitle(title);
       setLiveStatusText(
         item.status === 'queued'
-          ? "En attente dans la file (maximum 3 requêtes simultanées)..."
+          ? "En attente... Démarrage dès qu'une création se termine"
           : (item.progressText || "L'IA conçoit actuellement votre support en arrière-plan...")
       );
       setCreationPhase('creating');
@@ -772,7 +772,7 @@ export function RightMenu({
           setGeneratingToolTitle(placeholder.title);
           setLiveStatusText(
             placeholder.status === 'queued'
-              ? 'En attente dans la file (maximum 3 requêtes simultanées)...'
+              ? "En attente... Démarrage dès qu'une création se termine"
               : (placeholder.progressText || 'Création en cours...')
           );
           setCreationPhase('creating');
@@ -814,7 +814,7 @@ export function RightMenu({
           } else if (status === 'queued') {
             setCreationPhase('creating');
             setGeneratingToolTitle(title || prev.title);
-            setLiveStatusText(progressText || 'En attente dans la file (maximum 3 requêtes simultanées)...');
+            setLiveStatusText(progressText || "En attente... Démarrage dès qu'une création se termine");
             return { ...prev, status: 'queued', progressText: progressText || 'En attente...' };
           } else if (status === 'ready') {
             const finalContent = creation?.content || creation?.data;
@@ -1186,7 +1186,7 @@ export function RightMenu({
                 <div className="flex flex-col items-center gap-3 max-w-sm px-6 py-5 rounded-3xl bg-black/75 backdrop-blur-md border border-orange-500/25 shadow-[0_0_30px_rgba(249,115,22,0.18)]">
                   <div className="inline-flex items-center px-3 py-1 rounded-full bg-orange-500/20 border border-orange-500/30">
                     <span className="text-[11px] font-bold text-orange-300 uppercase tracking-wider">
-                      {activeCreation?.status === 'queued' ? 'EN ATTENTE (MAX 3 REQUÊTES)' : getCreationBadgeLabel(generatingToolTitle)}
+                      {activeCreation?.status === 'queued' ? 'EN ATTENTE' : getCreationBadgeLabel(generatingToolTitle)}
                     </span>
                   </div>
 

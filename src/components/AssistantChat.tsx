@@ -3437,10 +3437,10 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
       const runningCount = aiBackgroundManager.getRunningCount();
       const willBeQueued = runningCount >= aiBackgroundManager.MAX_CONCURRENT_REQUESTS;
 
-      // 1. Message court et élégant de confirmation immédiate dans le chat
+      // 1. Message court, simple et amical de confirmation immédiate dans le chat
       const confirmChatText = willBeQueued
-        ? `✨ C'est noté ! Votre demande de **${formatTitle}** a été ajoutée à la file d'attente (3 créations s'exécutent déjà en simultané sur le serveur).\n\n⏳ Dès qu'un slot sera libre, sa conception démarrera automatiquement en arrière-plan.\n\n💬 En attendant, vous pouvez continuer à me poser toutes vos questions ici !`
-        : `✨ C'est parti ! J'ai lancé la création de votre **${formatTitle}** en arrière-plan.\n\n👉 Vous pouvez suivre son avancement ou l'ouvrir directement dans le volet **Créations** à droite (ou l'onglet Créations sur mobile).\n\n💬 En attendant, vous pouvez continuer à me poser toutes vos questions ici !`;
+        ? `✨ C'est noté ! Comme 3 créations sont déjà en cours, la vôtre commencera automatiquement dès qu'une sera terminée.\n\n👉 Vous pouvez la retrouver dans l'espace **Créations** à droite.\n\n💬 En attendant, vous pouvez continuer à me poser vos questions ici !`
+        : `✨ C'est noté ! La création de votre **${formatTitle}** est lancée.\n\n👉 Vous pouvez la retrouver dans l'espace **Créations** à droite.\n\n💬 En attendant, vous pouvez continuer à me poser vos questions ici !`;
 
       const confirmAiMsg: Message = {
         id: aiMsgId,
