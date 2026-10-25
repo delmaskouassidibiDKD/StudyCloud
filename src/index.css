@@ -815,9 +815,21 @@ p.brand-tagline,
   }
 
   #resume-document-content,
-  #exam-printable-full-content,
   #module-exercices-ecrits,
   #questionnaire-test-results-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  #exam-printable-full-content {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    opacity: 1 !important;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;

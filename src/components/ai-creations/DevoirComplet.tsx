@@ -733,7 +733,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
   const activeSection = sections[Math.min(currentPage - 1, sections.length - 1)] || sections[0];
 
   return (
-    <div id="module-devoir-complet" className="w-full min-h-screen bg-stone-200/70 pb-28">
+    <div id="module-devoir-complet" className="w-full min-h-screen bg-stone-200 relative overflow-x-hidden pb-28">
       {/* 
         BARRE D'OUTILS FIXE (STICKY) STYLE EXAMEN / PDF
       */}
@@ -1445,10 +1445,11 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
         id="exam-printable-full-content"
         style={{
           position: 'fixed',
-          left: 0,
+          left: '-99999px',
           top: 0,
           width: '840px',
           zIndex: -9999,
+          opacity: 0,
           pointerEvents: 'none',
           backgroundColor: '#ffffff',
         }}
@@ -1555,7 +1556,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                       )}
 
                       {/* Corrigé type */}
-                      {q.sampleAnswer && (
+                      {(isSubmitted || showCorrectionDetail) && q.sampleAnswer && (
                         <div className="p-3 bg-emerald-50 border-l-4 border-emerald-600 rounded-r text-xs text-emerald-950 space-y-1">
                           <strong className="block text-[10px] uppercase tracking-wider text-emerald-800 font-bold">
                             Corrigé type pas à pas :
