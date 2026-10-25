@@ -9,6 +9,7 @@ import DotField from './DotField';
 import MagicRings from './MagicRings';
 import { getCurrentUserId } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
+import { aiBackgroundManager } from '../services/aiBackgroundManager';
 
 export type CreationPhase = 'idle' | 'thinking' | 'creating';
 
@@ -742,9 +743,12 @@ export function RightMenu({
           status: 'ready',
         };
 
-        // Si l'utilisateur consulte actuellement cette création ou est sur un écran d'attente, basculer sur le contenu
+        // L'ESPACE NE DOIT PAS BASCULER SEUL :
+        // Si l'utilisateur a ouvert spécifiquement CETTE création (par ex. en cliquant dessus dans "Mes Créations"),
+        // alors on bascule sur son contenu final.
+        // Sinon, la création est simplement prête dans la liste locale et D1, l'espace reste stable !
         setActiveCreation(prev => {
-          if (!prev || prev.id === normalizedCreation.id || prev.status === 'generating' || prev.status === 'queued') {
+          if (prev && prev.id === normalizedCreation.id) {
             setCreationPhase('idle');
             return normalizedCreation;
           }
@@ -802,7 +806,13 @@ export function RightMenu({
         return updated;
       });
 
-      // Si l'utilisateur n'est pas déjà en train d'étudier une création terminée
+      // Si c'est une création en arrière-plan (ex: lancée depuis le chat pendant que l'utilisateur discute),
+      // L'ESPACE CRÉATION NE DOIT PAS BOUGER ! On ne bascule pas l'écran, les tâches tournent discrètement.
+      if (detail.isBackground) {
+        return;
+      }
+
+      // Si l'utilisateur a directement déclenché la création depuis les cartes de RightMenu
       setActiveCreation(prev => {
         if (!prev || prev.status === 'generating' || prev.status === 'queued' || !prev.content) {
           setGeneratingToolTitle(placeholder.title);
@@ -888,16 +898,28 @@ export function RightMenu({
     const handleCreationStatus = (e: any) => {
       const detail = e.detail || {};
 
+      // Les événements qui ne concernent pas les créations sont totalement ignorés par RightMenu
+      if (detail.isCreation === false && !detail.isCreating && !detail.toolType && detail.phase !== 'thinking' && detail.phase !== 'creating') {
+        return;
+      }
+
+      // Si des créations d'arrière-plan tournent, ne jamais réinitialiser l'espace création sur un simple reset
+      const runningCount = aiBackgroundManager.getRunningCount();
+
       // 1. Réinitialisation explicite vers les 12 prompts (IA ne crée pas / pose question / répond en chat / erreur / annulation)
       if (detail.resetToPrompts || detail.isError || detail.isCancelled) {
-        setCreationPhase('idle');
-        setActiveCreation(null);
+        if (runningCount === 0) {
+          setCreationPhase('idle');
+          setActiveCreation(null);
+        }
         return;
       }
 
       // 2. Si le chargement est terminé sans création
       if (detail.isLoading === false) {
-        setCreationPhase('idle');
+        if (runningCount === 0) {
+          setCreationPhase('idle');
+        }
         return;
       }
 

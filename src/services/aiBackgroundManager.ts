@@ -372,7 +372,8 @@ export const aiBackgroundManager = {
    * Enregistre le lancement d'une tâche IA (compatibilité directe)
    */
   registerAiTask(task: Partial<BackgroundAiTask> & { taskId: string; conversationId: string; prompt: string }): void {
-    const tasks = this.getActiveTasks().filter(t => t.conversationId !== task.conversationId);
+    // Ne jamais écraser les tâches de création d'arrière-plan de la même conversation
+    const tasks = this.getActiveTasks().filter(t => t.taskId !== task.taskId && (!task.aiMsgId || t.aiMsgId !== task.aiMsgId));
     const now = Date.now();
     tasks.push({
       ...task,
@@ -403,7 +404,13 @@ export const aiBackgroundManager = {
    */
   clearTask(conversationIdOrTaskId: string): void {
     memoryExecutors.delete(conversationIdOrTaskId);
-    const tasks = safeGetStorage().filter(t => t.conversationId !== conversationIdOrTaskId && t.taskId !== conversationIdOrTaskId);
+    // Si c'est un taskId spécifique, supprimer uniquement cette tâche
+    // Si c'est un conversationId, ne nettoyer que les tâches de chat simples sans toucher aux créations en arrière-plan
+    const tasks = safeGetStorage().filter(t => {
+      if (t.taskId === conversationIdOrTaskId) return false;
+      if (t.conversationId === conversationIdOrTaskId && !t.creationId && !t.toolType) return false;
+      return true;
+    });
     safeSetStorage(tasks);
     this.processNextInQueue();
   },

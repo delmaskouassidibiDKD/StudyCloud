@@ -1644,19 +1644,30 @@ export function detectAllCreationFormats(userText: string, requestedType?: strin
   }
   if (!userText || typeof userText !== 'string') return [];
   const t = userText.trim().toLowerCase();
+
+  // Si c'est une question ou discussion conversationnelle (ex: "C'est quoi un exercice ?", "Explique-moi le cours", "Pourquoi...", "Comment..."),
+  // ce n'est PAS une commande de création de support studio, sauf s'il y a un verbe explicite d'action de création ("crée", "génère", "fais-moi un", "conçois").
+  const hasCreationActionVerb = /\b(?:cr[eé][eé]r?|g[eé]n[eé]r(?:er|e)?|fais(?:-moi)?|fait(?:-moi)?|con[çc]ois|conception|pr[eé]pare(?:-moi)?|lance(?:-moi)?|donne(?:-moi)?|produi[st]|construi[st]|r[eé]dige(?:-moi)?|nouveau|nouvelle)\b/i.test(t);
+  
+  const isConversationalQuestion = /^(?:pourquoi|comment|qu['’]est-ce|quand|qui|o[uù]|est-ce|peux-tu\s+m['’]expliquer|peux-tu\s+m['’]aider|explique|aide-moi\s+[àa]\s+(?:comprendre|r[eé]soudre)|c['’]est\s+quoi|dis-moi|je\s+ne\s+comprends\s+pas|r[eé]sous|d[eé]taille|salut|bonjour|coucou|hello)\b/i.test(t);
+
+  if (isConversationalQuestion && !hasCreationActionVerb) {
+    return [];
+  }
+
   const detected: AiCreationType[] = [];
 
   // 1. Vrai ou Faux Test vs Vrai ou Faux (vérifié avant questionnaire pour ne pas confondre 'test')
   if (/\b(?:vrai\s+ou\s+faux\s+test|vrai\/faux\s+test|vf\s+test|[eé]preuve\s+vrai\s+ou\s+faux)\b/i.test(t)) {
     detected.push('vrai-ou-faux-test');
-  } else if (/\b(?:vrai\s+ou\s+faux|vrai\/faux|affirmations?)\b/i.test(t)) {
+  } else if (/\b(?:vrai\s+ou\s+faux|vrai\/faux)\b/i.test(t) || (hasCreationActionVerb && /\baffirmations?\b/i.test(t))) {
     detected.push('vrai-ou-faux');
   }
 
   // 2. Questionnaire Test vs Questionnaire QCM
   if (/\b(?:questionnaire\s+test|test\s+not[eé]|test\s+chrono|[eé]preuve\s+not[eé]e)\b/i.test(t)) {
     detected.push('questionnaire-test');
-  } else if (/\b(?:questionnaire|quiz|qcm)\b/i.test(t) || (/\btest\b/i.test(t) && !/\bvrai\s+ou\s+faux/i.test(t))) {
+  } else if (/\b(?:questionnaire|quiz|qcm)\b/i.test(t) || (hasCreationActionVerb && /\btest\b/i.test(t) && !/\bvrai\s+ou\s+faux/i.test(t))) {
     detected.push('questionnaire');
   }
 
@@ -1678,12 +1689,16 @@ export function detectAllCreationFormats(userText: string, requestedType?: strin
   }
 
   // 6. Exercices Écrits
-  if (/\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]application|s[eé]rie\s+d['’]exercices|exercices?)\b/i.test(t) && !detected.includes('devoir-complet')) {
+  if (/\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]application|s[eé]rie\s+d['’]exercices)\b/i.test(t) && !detected.includes('devoir-complet')) {
+    detected.push('exercices-ecrits');
+  } else if (hasCreationActionVerb && /\bexercices?\b/i.test(t) && !detected.includes('devoir-complet')) {
     detected.push('exercices-ecrits');
   }
 
   // 7. Résumé / Synthèse
-  if (/\b(?:fiche\s+de\s+r[eé]sum[eé]|r[eé]sum[eé]|synth[eè]se|fiche\s+de\s+synth[eè]se)\b/i.test(t)) {
+  if (/\b(?:fiche\s+de\s+r[eé]sum[eé]|fiche\s+de\s+synth[eè]se)\b/i.test(t)) {
+    detected.push('resume');
+  } else if (hasCreationActionVerb && /\b(?:r[eé]sum[eé]|synth[eè]se)\b/i.test(t)) {
     detected.push('resume');
   }
 
@@ -2993,10 +3008,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     const handleTaskCompleted = (e: any) => {
       const { conversationId, creation } = e.detail || {};
       if (conversationId === currentConversationIdRef.current) {
-        if (creation) {
-          // Si c'est une création d'arrière-plan terminée, on met à jour uniquement l'espace Création sans toucher au chat
-          setActiveCreation(creation);
-        } else {
+        if (!creation) {
           loadConversationMessages(conversationId);
           setIsWaitingServer(false);
           setIsTyping(false);
@@ -4034,6 +4046,7 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
             status: willBeQueued ? 'queued' : 'generating',
             progressText: willBeQueued ? 'En attente...' : 'Création en cours...',
             isQueued: willBeQueued,
+            isBackground: true,
           }
         }));
 
@@ -4195,9 +4208,14 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
       }
 
       // 3. Contexte du document actif et prompt autonome de décision (Architecture Gemini / StudyCloud)
+      const hasRunningBgCreations = aiBackgroundManager.getRunningCount() > 0;
       let systemContent = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Gemini / Delmas IA).
 Tu es directement connectée à l'espace d'étude de l'étudiant, avec deux modes de fonctionnement distincts selon ton analyse du prompt :
-
+${hasRunningBgCreations ? `
+ATTENTION CRUCIALE : Des créations pédagogiques sont actuellement en cours d'élaboration en arrière-plan par des sous-agents dédiés.
+Tu es dans le fil de discussion en mode CHAT PUR avec l'étudiant.
+IL EST STRICTEMENT INTERDIT de renvoyer un objet JSON de création. Réponds uniquement à sa question en Markdown direct.
+` : ''}
 1. BRANCHE DISCUSSION SIMPLE DANS LE CHAT (Mode par défaut) :
 Si l'étudiant discute, échange, pose une question, demande une explication de cours, une démonstration, une formule, une méthode ou un exemple — MÊME s'il emploie des termes comme "créer", "faire", "questions" dans un sens conversationnel (ex: "Comment créer une SARL ?", "Quelles questions penses-tu qu'on aura à l'examen ?", "Explique-moi comment faire cet exercice", "Que penses-tu de ce sujet ?") :
 -> Tu réponds DIRECTEMENT ET NATURELLEMENT DANS LE CHAT en texte Markdown fluide.
@@ -5187,6 +5205,14 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         creationParsed = null;
       }
 
+      // RÈGLE ABSOLUE POUR LA CONVERSATION :
+      // Si l'étudiant n'a pas expressément demandé une création (isExplicitCreationRequest est faux),
+      // ou si des créations d'arrière-plan sont actives : le message reste STRICTEMENT une discussion de chat !
+      // Aucune création n'est créée, l'espace création ne bouge pas et ne bascule pas.
+      if (!isExplicitCreationRequest && !isExplicitOverride) {
+        creationParsed = null;
+      }
+
       if (creationParsed && creationParsed.content) {
         window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
           detail: {
@@ -5320,9 +5346,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         // BRANCHE DISCUSSION SIMPLE DANS LE CHAT : Réponse directe sans rien déranger dans l'espace création
         const cleaned = cleanChatText(aiResult.chat_response || rawResponseText);
         fullResponseText = stripAiReasoningScratchpad(cleaned) || "✨ Votre demande a été traitée avec succès.";
-        if (currentConversationIdRef.current === targetConvId) {
-          window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCreation: false, resetToPrompts: false } }));
-        }
+        // Aucun événement de création n'est émis : l'espace création reste totalement stable et calme !
       }
 
       const effectiveModelName = aiResult.model || currentModelDisplay;
