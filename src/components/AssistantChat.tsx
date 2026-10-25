@@ -2433,14 +2433,30 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           };
         });
 
-        // Si l'utilisateur est toujours sur cette conversation, mettre à jour la vue
+        // Tri déterministe absolu : Chronologique par createdAt, et en cas d'égalité, le message utilisateur passe toujours AVANT l'IA
+        loaded.sort((a, b) => {
+          const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          if (timeA !== timeB) return timeA - timeB;
+          if (a.sender === 'user' && b.sender === 'ai') return -1;
+          if (a.sender === 'ai' && b.sender === 'user') return 1;
+          return 0;
+        });
+
+        // Si l'utilisateur est toujours sur cette conversation, mettre à jour la vue sans écraser les messages en cours de streaming
         if (currentConversationIdRef.current === convId) {
-          if (activeBgTask && loaded.some(m => m.id === activeBgTask.aiMsgId || (m.sender === 'ai' && (m.text || '').length > 20))) {
+          if (activeBgTask && loaded.some(m => m.id === activeBgTask.aiMsgId)) {
             aiBackgroundManager.completeAiTask(convId, activeBgTask.aiMsgId);
             setIsWaitingServer(false);
             setIsTyping(false);
           }
-          setMessages(loaded);
+          setMessages(prev => {
+            const inFlightStreaming = prev.filter(m => m.isStreaming);
+            if (inFlightStreaming.length === 0) return loaded;
+            const loadedIds = new Set(loaded.map(m => m.id));
+            const pending = inFlightStreaming.filter(m => !loadedIds.has(m.id));
+            return [...loaded, ...pending];
+          });
         }
         safeSetItem(`studycloud_conv_msgs_${convId}`, JSON.stringify(loaded));
       }
@@ -2522,12 +2538,14 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     const handleTaskCompleted = (e: any) => {
       const { conversationId, creation } = e.detail || {};
       if (conversationId === currentConversationIdRef.current) {
-        loadConversationMessages(conversationId);
         if (creation) {
+          // Si c'est une création d'arrière-plan terminée, on met à jour uniquement l'espace Création sans toucher au chat
           setActiveCreation(creation);
+        } else {
+          loadConversationMessages(conversationId);
+          setIsWaitingServer(false);
+          setIsTyping(false);
         }
-        setIsWaitingServer(false);
-        setIsTyping(false);
       }
     };
 
@@ -2547,13 +2565,15 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     // Watcher de reprise automatique post-rechargement pour les tâches en cours
     let recoveryTimer: any = null;
     const checkRunningTasks = () => {
-      const activeTasks = aiBackgroundManager.getActiveTasks().filter(t => t.status === 'running');
+      // Ignorer les créations : elles ont leur propre cycle de vie dans RightMenu et ne doivent pas reset le chat
+      const activeTasks = aiBackgroundManager.getActiveTasks().filter(t => t.status === 'running' && !t.creationId && !t.toolType);
       if (activeTasks.length > 0) {
         activeTasks.forEach(task => {
           StudyCloudAPI.getAiConversationMessages(task.conversationId).then(res => {
             if (res && res.success && Array.isArray(res.data)) {
-              const foundMsg = res.data.find((m: any) => m.id === task.aiMsgId || (m.role === 'assistant' && (m.content || '').length > 20));
-              if (foundMsg) {
+              // Vérification STRICTEMENT par id unique pour ne jamais confondre avec un ancien message
+              const foundMsg = res.data.find((m: any) => m.id === task.aiMsgId);
+              if (foundMsg && foundMsg.content && foundMsg.content.trim().length > 0) {
                 aiBackgroundManager.completeAiTask(task.conversationId, task.aiMsgId, foundMsg.content);
                 if (task.conversationId === currentConversationIdRef.current) {
                   loadConversationMessages(task.conversationId);
@@ -3067,30 +3087,9 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     const effectiveRequestedType = requestedTypeOverride || (isCreationIntent ? (detectedFormat as any) : undefined);
     const isExplicitCreationRequest = Boolean(effectiveRequestedType);
 
-    // Initialisation conditionnelle du contrôleur et de l'ID de requête :
-    // Les créations n'utilisent pas le contrôleur d'annulation du chat, ce qui leur permet de tourner en parallèle sans conflit
-    let thisRequestId = 0;
     let abortSignal: AbortSignal;
-
-    if (!isExplicitCreationRequest) {
-      const nextReq = (activeRequestIdsByConvRef.current[targetConvId] || 0) + 1;
-      activeRequestIdsByConvRef.current[targetConvId] = nextReq;
-      thisRequestId = nextReq;
-
-      // Si une réponse textuelle de chat tournait déjà dans CETTE conversation, on l'interrompt pour le nouveau message
-      if (activeControllersByConvRef.current[targetConvId]) {
-        try {
-          activeControllersByConvRef.current[targetConvId].abort();
-        } catch {}
-        delete activeControllersByConvRef.current[targetConvId];
-      }
-
-      const controller = new AbortController();
-      activeControllersByConvRef.current[targetConvId] = controller;
-      abortSignal = controller.signal;
-    } else {
-      abortSignal = (new AbortController()).signal;
-    }
+    const controller = new AbortController();
+    abortSignal = controller.signal;
 
     // Réinitialise le défilement pour suivre le nouveau prompt
     isUserScrolledUpRef.current = false;
@@ -3118,38 +3117,24 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     }
 
     const updatedMessages = [...convBaseMessages, newUserMsg];
+    const updatedMessagesWithPending = [...updatedMessages, initialAiMsg];
+    safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(updatedMessagesWithPending));
 
-    if (!isExplicitCreationRequest) {
-      // Pour une discussion ordinaire : ajout du message utilisateur et du placeholder de réponse en cours de streaming
-      const updatedMessagesWithPending = [...updatedMessages, initialAiMsg];
-      safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(updatedMessagesWithPending));
-
-      if (currentConversationIdRef.current === targetConvId) {
-        messagesRef.current = updatedMessagesWithPending;
-        setMessages(updatedMessagesWithPending);
-        setInputValue('');
-        setIsTyping(true);
-        setIsWaitingServer(true);
-      }
-    } else {
-      // Pour une création : le chat n'attend PAS, il affiche le message utilisateur et libère immédiatement l'input !
-      safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(updatedMessages));
-
-      if (currentConversationIdRef.current === targetConvId) {
-        messagesRef.current = updatedMessages;
-        setMessages(updatedMessages);
-        setInputValue('');
-        setIsTyping(false);
-        setIsWaitingServer(false);
-      }
+    if (currentConversationIdRef.current === targetConvId) {
+      messagesRef.current = updatedMessagesWithPending;
+      setMessages(updatedMessagesWithPending);
+      setInputValue('');
+      setIsTyping(true);
+      setIsWaitingServer(true);
     }
 
-    // Sauvegarde Cloudflare D1 immédiate du message utilisateur
+    // Sauvegarde Cloudflare D1 immédiate du message utilisateur (horodatage garanti AVANT l'IA)
     StudyCloudAPI.saveAiMessage({
       id: newUserMsgId,
       conversationId: targetConvId,
       role: 'user',
       content: userText,
+      created_at: new Date(Date.now() - 50).toISOString(),
     }).catch(() => {});
 
     // Enregistrement de la tâche d'arrière-plan pour reprise post-rechargement (uniquement pour les discussions ordinaires)
@@ -3435,9 +3420,10 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
     const attachedFileName = resolvedActiveName || (Array.isArray(attachedResources) ? attachedResources.map((r: any) => r?.name).filter(Boolean).join(', ') : '');
 
     // =========================================================================
-    // BRANCHE CRÉATION : EXÉCUTION EN ARRIÈRE-PLAN AVEC CONFIRMATION IMMÉDIATE
+    // BRANCHE CRÉATION : EXÉCUTION EN ARRIÈRE-PLAN AVEC CONFIRMATION DYNAMIQUE DE L'IA
     // Limite serveur : 3 requêtes max en simultané (la 4ème et + sont mises en attente)
     // Le chat est immédiatement libéré pour permettre à l'utilisateur de continuer à discuter.
+    // L'IA formule elle-même sa confirmation naturelle (aucun message figé/générique).
     // =========================================================================
     if (isExplicitCreationRequest && effectiveRequestedType) {
       const explicitToolType = effectiveRequestedType as AiCreationType;
@@ -3460,53 +3446,7 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
       const runningCount = aiBackgroundManager.getRunningCount();
       const willBeQueued = runningCount >= aiBackgroundManager.MAX_CONCURRENT_REQUESTS;
 
-      // 1. Message court, simple et amical de confirmation immédiate dans le chat
-      const confirmChatText = willBeQueued
-        ? `✨ C'est noté ! Comme 3 créations sont déjà en cours, la vôtre commencera automatiquement dès qu'une sera terminée.\n\n👉 Vous pouvez la retrouver dans l'espace **Créations** à droite.\n\n💬 En attendant, vous pouvez continuer à me poser vos questions ici !`
-        : `✨ C'est noté ! La création de votre **${formatTitle}** est lancée.\n\n👉 Vous pouvez la retrouver dans l'espace **Créations** à droite.\n\n💬 En attendant, vous pouvez continuer à me poser vos questions ici !`;
-
-      const confirmAiMsg: Message = {
-        id: aiMsgId,
-        text: confirmChatText,
-        sender: 'ai',
-        isStreaming: false,
-        model: currentModelDisplay,
-      };
-
-      // Mettre à jour immédiatement le chat pour libérer l'utilisateur
-      const updatedChatMsgs = [...updatedMessages, confirmAiMsg];
-      safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(updatedChatMsgs));
-
-      if (currentConversationIdRef.current === targetConvId) {
-        messagesRef.current = updatedChatMsgs;
-        setMessages(updatedChatMsgs);
-        setInputValue('');
-        setIsTyping(false);
-        setIsWaitingServer(false);
-        setAiActivityText('');
-        if (scrollContainerRef.current) {
-          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
-        }
-      }
-
-      // Sauvegarde Cloudflare D1 du message utilisateur et du message de confirmation
-      StudyCloudAPI.saveAiMessage({
-        id: newUserMsgId,
-        conversationId: targetConvId,
-        role: 'user',
-        content: userText,
-        metadata: { model: selectedModel }
-      }).catch(() => {});
-
-      StudyCloudAPI.saveAiMessage({
-        id: aiMsgId,
-        conversationId: targetConvId,
-        role: 'assistant',
-        content: confirmChatText,
-        metadata: { model: currentModelDisplay }
-      }).catch(() => {});
-
-      // 2. Ajout immédiat de la création dans le volet RightMenu (avec statut "En cours" ou "En attente")
+      // 1. Ajout immédiat de la création dans le volet RightMenu (avec statut "En cours" ou "En attente")
       window.dispatchEvent(new CustomEvent('studycloud-creation-enqueued', {
         detail: {
           id: creationId,
@@ -3521,7 +3461,7 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
         }
       }));
 
-      // 3. Délégation au gestionnaire d'arrière-plan avec file d'attente automatique
+      // 2. Délégation de la conception complète au gestionnaire d'arrière-plan avec file d'attente
       aiBackgroundManager.enqueueCreationTask(
         {
           taskId: `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -3557,6 +3497,93 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
           });
         }
       );
+
+      // 3. Demande à l'IA de répondre elle-même dans le chat avec une confirmation dynamique,
+      // humaine, personnalisée et adaptée au contenu précis du message de l'étudiant.
+      const confirmationSystemPrompt = `Tu es l'intelligence pédagogique de StudyCloud. L'étudiant vient de demander : "${userText}".
+La conception de son module d'apprentissage "${creationTitle}" (${formatTitle}) vient d'être lancée et s'exécute actuellement en arrière-plan dans son espace Créations.
+CONSIGNES STRICTES POUR TA RÉPONSE :
+1. Réponds directement et chaleureusement à l'étudiant en 1 ou 2 phrases concises en français.
+2. Fais référence avec précision au sujet ou aux spécificités de sa demande (notions, formules, figures, concepts ou paliers mentionnés).
+3. Confirme clairement que sa création a été lancée en arrière-plan et qu'il la retrouvera directement dans l'espace Créations à droite dès qu'elle sera prête.
+4. Invite-le avec bienveillance à continuer à te poser des questions ou à aborder d'autres points de cours ici pendant que la conception s'exécute.
+5. INTERDICTION ABSOLUE D'ÉCRIRE DU JSON OU DES ACCOLADES. Parle directement à l'étudiant en texte normal.`;
+
+      let aiConfirmationText = '';
+      try {
+        const aiAck = await sendChatMessageToAi({
+          messages: [
+            { role: 'system', content: confirmationSystemPrompt },
+            ...convBaseMessages.slice(-4).map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text })),
+            { role: 'user', content: userText }
+          ],
+          prompt: userText,
+          message: userText,
+          userId: targetUserId,
+          sessionId: targetConvId,
+          conversationId: targetConvId,
+          model: selectedModel,
+          selectedModel,
+          apiKey: getGeminiApiKey() || undefined,
+          signal: abortSignal,
+          abortSignal,
+        });
+        const cand = aiAck.chat_response || aiAck.response || '';
+        aiConfirmationText = cleanChatText(cand);
+      } catch (_ackErr) {
+        console.warn('[AssistantChat] Erreur confirmation IA dynamique:', _ackErr);
+      }
+
+      if (!aiConfirmationText || aiConfirmationText.trim().startsWith('{') || aiConfirmationText.includes('"creation_data"')) {
+        aiConfirmationText = willBeQueued
+          ? `Votre demande pour **${creationTitle}** est bien prise en compte ! Comme 3 créations s'exécutent déjà en simultané, elle démarrera automatiquement dès qu'un créneau se libère. Vous pourrez la retrouver dans l'espace Créations à droite. En attendant, n'hésitez pas si vous avez d'autres questions !`
+          : `C'est bien noté ! J'ai lancé la création de votre **${creationTitle}** en arrière-plan. Vous pouvez la suivre et la retrouver dans l'espace Créations à droite dès qu'elle sera prête. En attendant, vous pouvez continuer à me poser vos questions ici !`;
+      }
+
+      const effectiveModelName = currentModelDisplay;
+
+      // 4. Mettre à jour le cache local pour targetConvId en finalisant le message
+      const currentConvMsgsRaw = safeGetItem(`studycloud_conv_msgs_${targetConvId}`);
+      let currentConvMsgs: Message[] = [];
+      if (currentConvMsgsRaw) {
+        try { currentConvMsgs = JSON.parse(currentConvMsgsRaw) || []; } catch {}
+      }
+      const finalizedConvMsgs = currentConvMsgs.map(m =>
+        m.id === aiMsgId ? { ...m, text: aiConfirmationText, isStreaming: false, model: effectiveModelName } : m
+      );
+      if (!finalizedConvMsgs.some(m => m.id === aiMsgId)) {
+        finalizedConvMsgs.push({ id: aiMsgId, text: aiConfirmationText, sender: 'ai', isStreaming: false, model: effectiveModelName });
+      }
+      safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(finalizedConvMsgs));
+
+      // 5. Sauvegarde Cloudflare D1 avec horodatage strictly ultérieur à celui du message utilisateur
+      StudyCloudAPI.saveAiMessage({
+        id: aiMsgId,
+        conversationId: targetConvId,
+        role: 'assistant',
+        content: aiConfirmationText,
+        created_at: new Date(Date.now() + 100).toISOString(),
+        metadata: { model: effectiveModelName }
+      }).catch(() => {});
+
+      if (currentConversationIdRef.current === targetConvId) {
+        setMessages(prev => {
+          const exists = prev.some(m => m.id === aiMsgId);
+          if (!exists) {
+            return [...prev, { id: aiMsgId, text: aiConfirmationText, sender: 'ai', isStreaming: false, model: effectiveModelName }];
+          }
+          return prev.map(m =>
+            m.id === aiMsgId ? { ...m, text: aiConfirmationText, isStreaming: false, model: effectiveModelName } : m
+          );
+        });
+        setInputValue('');
+        setIsTyping(false);
+        setIsWaitingServer(false);
+        setAiActivityText('');
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+      }
 
       // Le chat reste totalement ouvert et disponible pour de nouvelles questions
       return;
@@ -4337,13 +4364,13 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         abortSignal,
       });
 
-      // Si cette requête a été annulée spécifiquement pour CETTE conversation
-      if (abortSignal.aborted || (activeRequestIdsByConvRef.current[targetConvId] && activeRequestIdsByConvRef.current[targetConvId] !== thisRequestId)) {
-        if (currentConversationIdRef.current === targetConvId && activeRequestIdsByConvRef.current[targetConvId] === thisRequestId) {
+      // Si cette requête a été annulée
+      if (abortSignal.aborted) {
+        if (currentConversationIdRef.current === targetConvId) {
           setIsWaitingServer(false);
           setIsTyping(false);
           setRetryingMessageId(null);
-          window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCancelled: true, resetToPrompts: true } }));
+          window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCancelled: true, resetToPrompts: false } }));
         }
         return;
       }
@@ -4736,7 +4763,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         const cleaned = cleanChatText(aiResult.chat_response || rawResponseText);
         fullResponseText = stripAiReasoningScratchpad(cleaned) || "✨ Votre demande a été traitée avec succès.";
         if (currentConversationIdRef.current === targetConvId) {
-          window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCreation: false, resetToPrompts: true } }));
+          window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCreation: false, resetToPrompts: false } }));
         }
       }
 
@@ -4756,12 +4783,13 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
       }
       safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(finalizedConvMsgs));
 
-      // Sauvegarde Cloudflare D1 du message assistant complet
+      // Sauvegarde Cloudflare D1 du message assistant complet avec horodatage ultérieur
       StudyCloudAPI.saveAiMessage({
         id: aiMsgId,
         conversationId: targetConvId,
         role: 'assistant',
         content: fullResponseText,
+        created_at: new Date(Date.now() + 100).toISOString(),
         metadata: { model: effectiveModelName }
       }).catch(() => {});
 
@@ -4790,7 +4818,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
 
         let isAiMsgFinalized = false;
         const finalizeAiMessage = () => {
-          if (isAiMsgFinalized || activeRequestIdsByConvRef.current[targetConvId] !== thisRequestId) return;
+          if (isAiMsgFinalized || abortSignal.aborted) return;
           isAiMsgFinalized = true;
           if (typingTimerRef.current) {
             clearInterval(typingTimerRef.current);
@@ -4802,11 +4830,15 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           }
 
           if (currentConversationIdRef.current === targetConvId) {
-            setMessages(prev =>
-              prev.map(m =>
+            setMessages(prev => {
+              const exists = prev.some(m => m.id === aiMsgId);
+              if (!exists) {
+                return [...prev, { id: aiMsgId, text: fullResponseText, sender: 'ai', isStreaming: false, model: effectiveModelName }];
+              }
+              return prev.map(m =>
                 m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName } : m
-              )
-            );
+              );
+            });
             setIsTyping(false);
             setIsWaitingServer(false);
             setRetryingMessageId(null);
@@ -4835,7 +4867,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
 
         typingTimerRef.current = setInterval(() => {
           try {
-            if (activeRequestIdsByConvRef.current[targetConvId] !== thisRequestId || currentConversationIdRef.current !== targetConvId) {
+            if (abortSignal.aborted || currentConversationIdRef.current !== targetConvId) {
               finalizeAiMessage();
               return;
             }
@@ -4844,11 +4876,15 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
               finalizeAiMessage();
             } else {
               const partial = fullResponseText.slice(0, index);
-              setMessages(prev =>
-                prev.map(m =>
+              setMessages(prev => {
+                const exists = prev.some(m => m.id === aiMsgId);
+                if (!exists) {
+                  return [...prev, { id: aiMsgId, text: partial, sender: 'ai', isStreaming: true, model: effectiveModelName }];
+                }
+                return prev.map(m =>
                   m.id === aiMsgId ? { ...m, text: partial, model: effectiveModelName } : m
-                )
-              );
+                );
+              });
             }
             if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
               scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
@@ -4864,7 +4900,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
       }
 
     } catch (err: any) {
-      if (activeRequestIdsByConvRef.current[targetConvId] && activeRequestIdsByConvRef.current[targetConvId] !== thisRequestId) {
+      if (abortSignal.aborted) {
         return;
       }
       aiBackgroundManager.clearTask(targetConvId);

@@ -2202,7 +2202,7 @@ CONSIGNES STRICTES DE CONTINUATION :
         `).run().catch(() => {});
 
         const { results } = await db.prepare(
-          "SELECT id, conversation_id, role, content, metadata, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC"
+          "SELECT id, conversation_id, role, content, metadata, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC"
         ).bind(conversationId).all();
 
         return new Response(JSON.stringify({
@@ -2237,6 +2237,7 @@ CONSIGNES STRICTES DE CONTINUATION :
         const role = String(body.role || "user").trim();
         const content = String(body.content || "").trim();
         const metadata = typeof body.metadata === "object" ? JSON.stringify(body.metadata) : (body.metadata || null);
+        const createdAt = String(body.created_at || body.createdAt || new Date().toISOString()).trim();
 
         const db = getD1Database();
         if (db) {
@@ -2253,9 +2254,9 @@ CONSIGNES STRICTES DE CONTINUATION :
 
           await db.prepare(`
             INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
-            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET content = excluded.content, metadata = excluded.metadata
-          `).bind(id, conversationId, role, content, metadata).run();
+          `).bind(id, conversationId, role, content, metadata, createdAt).run();
 
           // Met à jour l'horodatage de la conversation parente
           await db.prepare(

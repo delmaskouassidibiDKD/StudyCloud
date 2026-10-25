@@ -2104,7 +2104,7 @@ export const StudyCloudAPI = {
     return aiRequest<{ success: boolean; data: any[] }>(`/api/ai/messages?conversationId=${encodeURIComponent(conversationId)}`);
   },
 
-  async saveAiMessage(data: { id?: string; conversationId: string; role: 'user' | 'assistant' | 'system'; content: string; metadata?: any }) {
+  async saveAiMessage(data: { id?: string; conversationId: string; role: 'user' | 'assistant' | 'system'; content: string; metadata?: any; created_at?: string; createdAt?: string }) {
     return aiRequest<{ success: boolean }>('/api/ai/messages', {
       method: 'POST',
       body: JSON.stringify(data),
