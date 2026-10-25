@@ -2392,7 +2392,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
     // Vérifier si une tâche d'arrière-plan tourne pour cette conversation
     const activeBgTask = aiBackgroundManager.getActiveTaskForConversation(convId);
-    if (activeBgTask && activeBgTask.status === 'running') {
+    // Seules les requêtes textuelles de chat non terminées réactivent le statut d'attente, JAMAIS les créations d'arrière-plan
+    if (activeBgTask && activeBgTask.status === 'running' && !activeBgTask.creationId && !activeBgTask.toolType) {
       setIsWaitingServer(true);
       setIsTyping(true);
     } else {
@@ -2531,7 +2532,9 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     };
 
     const handleTaskStarted = (e: any) => {
-      const { conversationId } = e.detail || {};
+      const { conversationId, isCreation, creationId, toolType } = e.detail || {};
+      // Les créations d'arrière-plan ne doivent JAMAIS bloquer le chat !
+      if (isCreation || creationId || toolType) return;
       if (conversationId === currentConversationIdRef.current) {
         setIsWaitingServer(true);
         setIsTyping(true);
@@ -3055,31 +3058,43 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     const targetConvId = currentConversationIdRef.current;
     const targetUserId = currentUserId;
 
-    // Incrément de l'ID unique de requête pour CETTE conversation cible
-    const nextReq = (activeRequestIdsByConvRef.current[targetConvId] || 0) + 1;
-    activeRequestIdsByConvRef.current[targetConvId] = nextReq;
-    const thisRequestId = nextReq;
+    const userText = textToSend.trim();
+    const newUserMsgId = Date.now().toString();
+    const newUserMsg: Message = { id: newUserMsgId, text: userText, sender: 'user' };
 
-    // Si une tâche IA tournait déjà dans CETTE conversation, on l'interrompt
-    if (activeControllersByConvRef.current[targetConvId]) {
-      try {
-        activeControllersByConvRef.current[targetConvId].abort();
-      } catch {}
-      delete activeControllersByConvRef.current[targetConvId];
+    const detectedFormat = detectCreationFormat(userText, requestedTypeOverride);
+    const isCreationIntent = Boolean(detectedFormat);
+    const effectiveRequestedType = requestedTypeOverride || (isCreationIntent ? (detectedFormat as any) : undefined);
+    const isExplicitCreationRequest = Boolean(effectiveRequestedType);
+
+    // Initialisation conditionnelle du contrôleur et de l'ID de requête :
+    // Les créations n'utilisent pas le contrôleur d'annulation du chat, ce qui leur permet de tourner en parallèle sans conflit
+    let thisRequestId = 0;
+    let abortSignal: AbortSignal;
+
+    if (!isExplicitCreationRequest) {
+      const nextReq = (activeRequestIdsByConvRef.current[targetConvId] || 0) + 1;
+      activeRequestIdsByConvRef.current[targetConvId] = nextReq;
+      thisRequestId = nextReq;
+
+      // Si une réponse textuelle de chat tournait déjà dans CETTE conversation, on l'interrompt pour le nouveau message
+      if (activeControllersByConvRef.current[targetConvId]) {
+        try {
+          activeControllersByConvRef.current[targetConvId].abort();
+        } catch {}
+        delete activeControllersByConvRef.current[targetConvId];
+      }
+
+      const controller = new AbortController();
+      activeControllersByConvRef.current[targetConvId] = controller;
+      abortSignal = controller.signal;
+    } else {
+      abortSignal = (new AbortController()).signal;
     }
 
     // Réinitialise le défilement pour suivre le nouveau prompt
     isUserScrolledUpRef.current = false;
     setShowScrollBottomBtn(false);
-
-    // Initialisation du contrôleur d'annulation pour cette requête spécifique
-    const controller = new AbortController();
-    activeControllersByConvRef.current[targetConvId] = controller;
-    const abortSignal = controller.signal;
-
-    const userText = textToSend.trim();
-    const newUserMsgId = Date.now().toString();
-    const newUserMsg: Message = { id: newUserMsgId, text: userText, sender: 'user' };
 
     const aiMsgId = 'ai-msg-' + (Date.now() + 1).toString();
     const creationId = 'crea-' + (Date.now() + 2).toString();
@@ -3103,17 +3118,30 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     }
 
     const updatedMessages = [...convBaseMessages, newUserMsg];
-    // Ajout immédiat du message utilisateur ET du placeholder de réponse dans le cache local de targetConvId
-    const updatedMessagesWithPending = [...updatedMessages, initialAiMsg];
-    safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(updatedMessagesWithPending));
 
-    // Si l'utilisateur est actuellement sur cette conversation, mettre à jour le state React
-    if (currentConversationIdRef.current === targetConvId) {
-      messagesRef.current = updatedMessagesWithPending;
-      setMessages(updatedMessagesWithPending);
-      setInputValue('');
-      setIsTyping(true);
-      setIsWaitingServer(true);
+    if (!isExplicitCreationRequest) {
+      // Pour une discussion ordinaire : ajout du message utilisateur et du placeholder de réponse en cours de streaming
+      const updatedMessagesWithPending = [...updatedMessages, initialAiMsg];
+      safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(updatedMessagesWithPending));
+
+      if (currentConversationIdRef.current === targetConvId) {
+        messagesRef.current = updatedMessagesWithPending;
+        setMessages(updatedMessagesWithPending);
+        setInputValue('');
+        setIsTyping(true);
+        setIsWaitingServer(true);
+      }
+    } else {
+      // Pour une création : le chat n'attend PAS, il affiche le message utilisateur et libère immédiatement l'input !
+      safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(updatedMessages));
+
+      if (currentConversationIdRef.current === targetConvId) {
+        messagesRef.current = updatedMessages;
+        setMessages(updatedMessages);
+        setInputValue('');
+        setIsTyping(false);
+        setIsWaitingServer(false);
+      }
     }
 
     // Sauvegarde Cloudflare D1 immédiate du message utilisateur
@@ -3124,21 +3152,20 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
       content: userText,
     }).catch(() => {});
 
-    // Enregistrement de la tâche d'arrière-plan pour reprise post-rechargement
-    aiBackgroundManager.registerAiTask({
-      taskId: `task-${Date.now()}`,
-      conversationId: targetConvId,
-      userId: targetUserId,
-      userMsgId: newUserMsgId,
-      aiMsgId: aiMsgId,
-      creationId: creationId,
-      prompt: userText,
-      requestedType: requestedTypeOverride || undefined,
-      mainDocName: resolvedActiveName,
-      status: 'running',
-      startedAt: Date.now(),
-      lastUpdated: Date.now(),
-    });
+    // Enregistrement de la tâche d'arrière-plan pour reprise post-rechargement (uniquement pour les discussions ordinaires)
+    if (!isExplicitCreationRequest) {
+      aiBackgroundManager.registerAiTask({
+        taskId: `task-${Date.now()}`,
+        conversationId: targetConvId,
+        userId: targetUserId,
+        userMsgId: newUserMsgId,
+        aiMsgId: aiMsgId,
+        prompt: userText,
+        status: 'running',
+        startedAt: Date.now(),
+        lastUpdated: Date.now(),
+      });
+    }
 
     // Détection immédiate hors ligne avant envoi réseau
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -3221,8 +3248,6 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     const isMediaAlreadyAnalyzed = Boolean(!requiresFreshAnalysis && currentMediaSignature && sessionMediaSig === currentMediaSignature && existingPerception);
 
     const hasAttachedDoc = allDocs.length > 0;
-    const detectedFormat = detectCreationFormat(userText, requestedTypeOverride);
-    const isCreationIntent = Boolean(detectedFormat);
     const hasPromptSubject = detectHasSpecificSubject(userText);
     const hasConversationContext = hasRecentAcademicContext(messages);
 
@@ -3408,8 +3433,6 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
     }
     const docNames = initialDocNames;
     const attachedFileName = resolvedActiveName || (Array.isArray(attachedResources) ? attachedResources.map((r: any) => r?.name).filter(Boolean).join(', ') : '');
-    const effectiveRequestedType = requestedTypeOverride || (isCreationIntent ? (detectedFormat as any) : undefined);
-    const isExplicitCreationRequest = Boolean(effectiveRequestedType);
 
     // =========================================================================
     // BRANCHE CRÉATION : EXÉCUTION EN ARRIÈRE-PLAN AVEC CONFIRMATION IMMÉDIATE

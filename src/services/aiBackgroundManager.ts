@@ -67,7 +67,15 @@ export const aiBackgroundManager = {
   getActiveTasks(): BackgroundAiTask[] {
     const tasks = safeGetStorage();
     const now = Date.now();
-    const valid = tasks.filter(t => (now - (t.enqueuedAt || t.startedAt || now)) < 30 * 60 * 1000);
+    const valid = tasks.filter(t => {
+      const age = now - (t.enqueuedAt || t.startedAt || now);
+      if (age > 15 * 60 * 1000) return false;
+      // Si une tâche est marquée 'running' depuis plus de 3 minutes sans réponse, elle est expirée
+      if (t.status === 'running' && (now - (t.startedAt || t.enqueuedAt || now)) > 3 * 60 * 1000) {
+        return false;
+      }
+      return true;
+    });
     if (valid.length !== tasks.length) safeSetStorage(valid);
     return valid;
   },
@@ -209,6 +217,9 @@ export const aiBackgroundManager = {
           taskId: target.taskId,
           aiMsgId: target.aiMsgId,
           prompt: target.prompt,
+          creationId: target.creationId,
+          toolType: target.toolType,
+          isCreation: true,
         }
       }));
     }
@@ -379,6 +390,9 @@ export const aiBackgroundManager = {
           taskId: task.taskId,
           aiMsgId: task.aiMsgId,
           prompt: task.prompt,
+          creationId: task.creationId,
+          toolType: task.toolType || task.requestedType,
+          isCreation: Boolean(task.creationId || task.toolType || task.requestedType),
         }
       }));
     }
