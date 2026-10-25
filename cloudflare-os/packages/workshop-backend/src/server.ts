@@ -1393,10 +1393,6 @@ export default {
         }
 
         const executeGenerationAndPersist = async () => {
-          let backgroundPerceptionReport = String(body.perceptionReport || "").trim();
-          let answerText = "";
-          let effectiveModelUsed = targetModel;
-
           const accountId = "c80164ed977e6535efd1b67a54741ed6";
           const cfToken = ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join("");
 
@@ -2064,6 +2060,7 @@ CONSIGNES STRICTES DE CONTINUATION :
               logger.warn("Erreur auto-save D1 chat", { event: "d1_autosave_warning", error: autoSaveErr });
             }
           }
+        }
 
           return {
             creationRes,
