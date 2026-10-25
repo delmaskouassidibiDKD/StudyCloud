@@ -1765,6 +1765,135 @@ function getSpontaneousAiGreeting(modelName: string, activeDocName?: string | nu
   return { title, subtitle };
 }
 
+function formatCreationsSummaryForPrompt(creations: AiCreation[]): string {
+  if (!Array.isArray(creations) || creations.length === 0) {
+    return "Aucune création précédente n'a été générée dans cette conversation.";
+  }
+
+  const sections: string[] = [];
+
+  creations.slice(0, 10).forEach((cr, index) => {
+    const num = index + 1;
+    const typeLabel = cr.toolType || 'Module';
+    const title = cr.title || 'Sans titre';
+    const dateStr = cr.createdAt ? new Date(cr.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const content = cr.content;
+
+    let itemsSummary = '';
+
+    if (content) {
+      // 1. Questionnaires / QCM / Quiz
+      const questions = Array.isArray(content)
+        ? content
+        : (Array.isArray(content.questions) ? content.questions : null);
+
+      if (questions && questions.length > 0) {
+        const qList = questions.slice(0, 15).map((q: any, qIdx: number) => {
+          const qText = q.question || q.title || q.text || `Question ${qIdx + 1}`;
+          const qAns = typeof q.answerIndex === 'number' && Array.isArray(q.options)
+            ? ` [Réponse: ${q.options[q.answerIndex] || ''}]`
+            : (typeof q.correctIndex === 'number' && Array.isArray(q.options)
+              ? ` [Réponse: ${q.options[q.correctIndex] || ''}]`
+              : '');
+          return `     - Q${qIdx + 1} : "${qText}"${qAns}`;
+        }).join('\n');
+        itemsSummary = `   Questions déjà posées (${questions.length} au total) :\n${qList}`;
+      }
+
+      // 2. Vrai ou Faux
+      const affirmations = Array.isArray(content.affirmations)
+        ? content.affirmations
+        : (Array.isArray(content) && content[0]?.statement ? content : null);
+
+      if (!itemsSummary && affirmations && affirmations.length > 0) {
+        const affList = affirmations.slice(0, 15).map((a: any, aIdx: number) => {
+          const stmt = a.statement || a.text || a.question || `Affirmation ${aIdx + 1}`;
+          const truth = a.isTrue !== undefined ? (a.isTrue ? '[VRAI]' : '[FAUX]') : '';
+          return `     - Affirmation ${aIdx + 1} : "${stmt}" ${truth}`;
+        }).join('\n');
+        itemsSummary = `   Affirmations déjà traitées (${affirmations.length} au total) :\n${affList}`;
+      }
+
+      // 3. Flashcards / Cartes mémoires
+      const flashcards = Array.isArray(content.flashcards)
+        ? content.flashcards
+        : (Array.isArray(content.cards) ? content.cards : (Array.isArray(content) && content[0]?.front ? content : null));
+
+      if (!itemsSummary && flashcards && flashcards.length > 0) {
+        const fcList = flashcards.slice(0, 15).map((fc: any, fcIdx: number) => {
+          const front = fc.front || fc.term || fc.question || `Carte ${fcIdx + 1}`;
+          const back = fc.back || fc.definition || '';
+          const shortBack = back.length > 80 ? back.slice(0, 80) + '...' : back;
+          return `     - Notion ${fcIdx + 1} : "${front}" -> "${shortBack}"`;
+        }).join('\n');
+        itemsSummary = `   Notions et cartes mémoires déjà définies (${flashcards.length} au total) :\n${fcList}`;
+      }
+
+      // 4. Cartes Mentales
+      if (!itemsSummary && (typeLabel.includes('carte-mentale') || typeLabel.includes('mindmap') || content.root || content.branches)) {
+        const rootLabel = content.root?.label || content.root_title || content.label || title;
+        const branchLabels: string[] = [];
+        const extractBranches = (node: any, depth = 0) => {
+          if (!node || depth > 2) return;
+          if (node.label && depth > 0) branchLabels.push(node.label);
+          if (Array.isArray(node.children)) {
+            node.children.forEach((c: any) => extractBranches(c, depth + 1));
+          }
+        };
+        if (content.root) extractBranches(content.root);
+        else if (Array.isArray(content.children)) content.children.forEach((c: any) => extractBranches(c, 1));
+
+        itemsSummary = `   Arborescence explorée : Thème central "${rootLabel}" | Branches principales : ${branchLabels.slice(0, 12).join(', ') || 'Nœuds généraux'}`;
+      }
+
+      // 5. Résumés / Fiches de synthèse
+      if (!itemsSummary && (typeLabel.includes('resume') || typeLabel.includes('summary') || content.overview || content.key_definitions)) {
+        const defs = (Array.isArray(content.key_definitions) ? content.key_definitions : (Array.isArray(content.definitions) ? content.definitions : []))
+          .map((d: any) => d.concept || d.term || d.name).filter(Boolean);
+        const forms = (Array.isArray(content.formulas) ? content.formulas : [])
+          .map((f: any) => f.name || f.latex).filter(Boolean);
+        const secs = (Array.isArray(content.sections) ? content.sections : [])
+          .map((s: any) => s.heading || s.title).filter(Boolean);
+
+        const summaryParts: string[] = [];
+        if (content.overview) summaryParts.push(`Synthèse : "${content.overview.slice(0, 120)}..."`);
+        if (defs.length > 0) summaryParts.push(`Concepts définis : ${defs.slice(0, 10).join(', ')}`);
+        if (forms.length > 0) summaryParts.push(`Formules clés : ${forms.slice(0, 8).join(', ')}`);
+        if (secs.length > 0) summaryParts.push(`Sections : ${secs.slice(0, 6).join(', ')}`);
+
+        itemsSummary = `   Points abordés dans la fiche :\n${summaryParts.map(p => `     - ${p}`).join('\n')}`;
+      }
+
+      // 6. Exercices Écrits / Devoirs
+      const exercises = Array.isArray(content.questions)
+        ? content.questions
+        : (Array.isArray(content.exercises) ? content.exercises : null);
+
+      if (!itemsSummary && exercises && exercises.length > 0 && (typeLabel.includes('exercice') || typeLabel.includes('devoir'))) {
+        const exList = exercises.slice(0, 10).map((ex: any, exIdx: number) => {
+          const exText = ex.text || ex.question || ex.statement || ex.title || `Exercice ${exIdx + 1}`;
+          return `     - Exercice ${exIdx + 1} : "${exText.slice(0, 120)}"`;
+        }).join('\n');
+        itemsSummary = `   Exercices déjà générés :\n${exList}`;
+      }
+
+      // 7. Documents PDF / Poly
+      if (!itemsSummary && (typeLabel === 'pdf' || content.chapters || content.sections)) {
+        const chaps = (Array.isArray(content.chapters) ? content.chapters : (Array.isArray(content.sections) ? content.sections : []))
+          .map((ch: any) => ch.title || ch.heading).filter(Boolean);
+        if (chaps.length > 0) {
+          itemsSummary = `   Chapitres/Parties abordées : ${chaps.join(', ')}`;
+        }
+      }
+    }
+
+    sections.push(`[CRÉATION #${num} - Type: ${typeLabel.toUpperCase()} | Titre: "${title}"${dateStr ? ` | ${dateStr}` : ''}]
+${itemsSummary || '   Contenu général déjà synthétisé.'}`);
+  });
+
+  return sections.join('\n\n');
+}
+
 export interface AssistantChatProps {
   onClose: () => void;
   onHasMessagesChange?: (has: boolean) => void;
@@ -1834,6 +1963,31 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   
   // Création active suivie pour modification et itération continue
   const [activeCreation, setActiveCreation] = useState<AiCreation | null>(null);
+
+  // Mémoire des créations générées et enregistrées pour CETTE session de conversation uniquement
+  const [sessionCreations, setSessionCreations] = useState<AiCreation[]>(() => {
+    const savedId = safeGetItem('studycloud_current_conversation_id');
+    if (savedId && !savedId.startsWith('creation-')) {
+      const local = safeGetItem(`studycloud_conv_creations_${savedId}`);
+      if (local) {
+        try {
+          const parsed = JSON.parse(local);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch {}
+      }
+      try {
+        const genCache = safeGetItem('studycloud_saved_creations_cache');
+        if (genCache) {
+          const list = JSON.parse(genCache);
+          if (Array.isArray(list)) {
+            const filtered = list.filter((c: any) => c.conversationId === savedId);
+            if (filtered.length > 0) return filtered;
+          }
+        }
+      } catch {}
+    }
+    return [];
+  });
 
   // Cache des modèles IA actifs pour éviter tout clignotement / disparition à l'écran
   const getCachedActiveModels = (): Array<{ id: string; name: string; nickname?: string; rawName?: string; provider: string; model_id?: string }> => {
@@ -2224,23 +2378,67 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         safeSetItem(`studycloud_conv_msgs_${convId}`, JSON.stringify(loaded));
       }
 
-      // Recharger également la dernière création associée à cette conversation si elle vient du chat
-      const crRes = await StudyCloudAPI.getAiConversationCreations(convId);
-      if (crRes && crRes.success && Array.isArray(crRes.data) && crRes.data.length > 0) {
-        const lastCreation = crRes.data[0];
-        let contentParsed = lastCreation.content;
-        if (typeof contentParsed === 'string') {
-          try { contentParsed = JSON.parse(contentParsed); } catch {}
+      // Recharger également les créations associées à cette conversation
+      try {
+        // 1. D'abord depuis le cache local pour réactivité instantanée
+        const localConvCreasRaw = safeGetItem(`studycloud_conv_creations_${convId}`);
+        let localCreas: AiCreation[] = [];
+        if (localConvCreasRaw) {
+          try { localCreas = JSON.parse(localConvCreasRaw) || []; } catch {}
         }
-        const restoredCreation: AiCreation = {
-          id: lastCreation.id,
-          userId: currentUserId,
-          toolType: lastCreation.type,
-          title: lastCreation.title || 'Création IA',
-          content: contentParsed,
-          createdAt: lastCreation.created_at,
-        };
-        setActiveCreation(restoredCreation);
+        if (localCreas.length === 0) {
+          const genCache = safeGetItem('studycloud_saved_creations_cache');
+          if (genCache) {
+            try {
+              const parsedGen = JSON.parse(genCache);
+              if (Array.isArray(parsedGen)) {
+                localCreas = parsedGen.filter((c: any) => c.conversationId === convId);
+              }
+            } catch {}
+          }
+        }
+        if (localCreas.length > 0) {
+          setSessionCreations(localCreas);
+          setActiveCreation(localCreas[0]);
+        } else {
+          setSessionCreations([]);
+        }
+
+        // 2. Synchronisation en arrière-plan avec la table Cloudflare D1 ai_creations
+        const crRes = await StudyCloudAPI.getAiConversationCreations(convId);
+        if (crRes && crRes.success && Array.isArray(crRes.data)) {
+          const mappedFromD1: AiCreation[] = crRes.data.map((c: any) => {
+            let contentParsed = c.content;
+            if (typeof contentParsed === 'string') {
+              try { contentParsed = JSON.parse(contentParsed); } catch {}
+            }
+            return {
+              id: c.id,
+              userId: currentUserId,
+              conversationId: convId,
+              toolType: c.type,
+              title: c.title || 'Création IA',
+              content: contentParsed,
+              createdAt: c.created_at,
+            };
+          });
+
+          // Fusion sans doublons avec les créations locales de cette conversation
+          const mergedMap = new Map<string, AiCreation>();
+          mappedFromD1.forEach(item => mergedMap.set(item.id, item));
+          localCreas.forEach(item => {
+            if (!mergedMap.has(item.id)) mergedMap.set(item.id, item);
+          });
+          const mergedList = Array.from(mergedMap.values());
+          setSessionCreations(mergedList);
+          safeSetItem(`studycloud_conv_creations_${convId}`, JSON.stringify(mergedList));
+
+          if (mergedList.length > 0) {
+            setActiveCreation(mergedList[0]);
+          }
+        }
+      } catch (err) {
+        console.warn('[AssistantChat] Erreur chargement créations conversation:', err);
       }
     } catch (e) {
       console.warn('[AssistantChat] Erreur chargement messages:', e);
@@ -2257,30 +2455,42 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       const creation = e.detail?.creation;
       if (!creation) return;
 
+      const creationWithConv: AiCreation = {
+        ...creation,
+        conversationId: creation.conversationId || currentConversationId,
+      };
+
       if (e.detail?.isFromChat) {
-        setActiveCreation(creation);
+        setActiveCreation(creationWithConv);
         StudyCloudAPI.saveAiCreationRecord({
-          id: creation.id,
+          id: creationWithConv.id,
           conversationId: currentConversationId,
-          type: creation.toolType,
-          title: creation.title,
-          content: creation.content,
+          type: creationWithConv.toolType,
+          title: creationWithConv.title,
+          content: creationWithConv.content,
         }).catch(() => {});
       }
+
+      setSessionCreations(prev => {
+        const updated = [creationWithConv, ...prev.filter(c => c.id !== creationWithConv.id)];
+        safeSetItem(`studycloud_conv_creations_${currentConversationId}`, JSON.stringify(updated));
+        return updated;
+      });
 
       // Sauvegarde systématique dans la table D1 ai_generated_contents
       if (currentUserId && currentUserId !== 'default-user') {
         StudyCloudAPI.saveAiContent({
-          id: creation.id,
+          id: creationWithConv.id,
           userId: currentUserId,
-          fileId: creation.fileId || null,
-          toolType: creation.toolType || creation.type || 'creation',
-          title: creation.title || 'Création Studio',
-          contentJson: creation.content || creation.data,
-          sourceFileName: creation.sourceFileName || undefined,
-          isPinned: Boolean(creation.isPinned),
+          fileId: creationWithConv.fileId || null,
+          conversationId: currentConversationId,
+          toolType: creationWithConv.toolType || (creationWithConv as any).type || 'creation',
+          title: creationWithConv.title || 'Création Studio',
+          contentJson: creationWithConv.content || (creationWithConv as any).data,
+          sourceFileName: creationWithConv.sourceFileName || undefined,
+          isPinned: Boolean(creationWithConv.isPinned),
         }).then(() => {
-          window.dispatchEvent(new CustomEvent('studycloud-creation-saved', { detail: { id: creation.id } }));
+          window.dispatchEvent(new CustomEvent('studycloud-creation-saved', { detail: { id: creationWithConv.id } }));
         }).catch(err => {
           console.warn('[AssistantChat] Erreur sauvegarde D1 (handleReady):', err);
         });
@@ -2289,7 +2499,14 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
     const handleUpdate = (e: any) => {
       if (e.detail?.updatedContent && activeCreation) {
-        setActiveCreation(prev => prev ? { ...prev, content: e.detail.updatedContent } : null);
+        const updated = { ...activeCreation, content: e.detail.updatedContent };
+        setActiveCreation(updated);
+        setSessionCreations(prev => {
+          const list = prev.map(c => c.id === updated.id ? updated : c);
+          safeSetItem(`studycloud_conv_creations_${currentConversationId}`, JSON.stringify(list));
+          return list;
+        });
+
         if (e.detail?.isFromChat) {
           StudyCloudAPI.saveAiCreationRecord({
             id: activeCreation.id,
@@ -2306,6 +2523,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             id: activeCreation.id,
             userId: currentUserId,
             fileId: activeCreation.fileId || null,
+            conversationId: currentConversationId,
             toolType: activeCreation.toolType || activeCreation.type || 'creation',
             title: activeCreation.title || 'Création Studio',
             contentJson: e.detail.updatedContent,
@@ -2348,11 +2566,13 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     setCurrentConversationTitle('Nouvelle discussion');
     setMessages([]);
     setActiveCreation(null);
+    setSessionCreations([]);
     setRetryingMessageId(null);
     setIsHistoryDrawerOpen(false);
     setShowProposalBar(true);
     safeSetItem('studycloud_current_conversation_id', newId);
     safeLocalStorageRemove(`studycloud_conv_msgs_${newId}`);
+    safeLocalStorageRemove(`studycloud_conv_creations_${newId}`);
     safeLocalStorageRemove(`studycloud_analyzed_media_${currentUserId}_${newId}`);
     delete analyzedMediaPerConvRef.current[`${currentUserId}_${newId}`];
 
@@ -2371,6 +2591,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       await StudyCloudAPI.deleteAiConversation(convId);
       setConversations(prev => prev.filter(c => c.id !== convId));
       safeLocalStorageRemove(`studycloud_conv_msgs_${convId}`);
+      safeLocalStorageRemove(`studycloud_conv_creations_${convId}`);
       safeLocalStorageRemove(`studycloud_analyzed_media_${currentUserId}_${convId}`);
       delete analyzedMediaPerConvRef.current[`${currentUserId}_${convId}`];
       if (currentConversationId === convId) {
@@ -3343,6 +3564,58 @@ CONSIGNES STRICTES DE CONTINUATION :
 ══════════════════════════════════════════════════════════════════════════════`;
       }
 
+      // Injection de la mémoire des créations enregistrées strictement issues de CETTE session de conversation
+      let relevantCreations: AiCreation[] = sessionCreations;
+      if (!relevantCreations || relevantCreations.length === 0) {
+        try {
+          const rawLocal = safeGetItem(`studycloud_conv_creations_${currentConversationId}`);
+          if (rawLocal) {
+            const parsed = JSON.parse(rawLocal);
+            if (Array.isArray(parsed)) relevantCreations = parsed;
+          }
+          if (!relevantCreations || relevantCreations.length === 0) {
+            const genCache = safeGetItem('studycloud_saved_creations_cache');
+            if (genCache) {
+              const list = JSON.parse(genCache);
+              if (Array.isArray(list)) {
+                relevantCreations = list.filter((c: any) => c.conversationId === currentConversationId);
+              }
+            }
+          }
+        } catch {}
+      }
+
+      if (relevantCreations && relevantCreations.length > 0) {
+        const formattedCreationsContext = formatCreationsSummaryForPrompt(relevantCreations);
+        effectiveSystemContent += `\n\n══════════════════════════════════════════════════════════════════════════════
+[MÉMOIRE DES CRÉATIONS ENREGISTRÉES DANS CETTE CONVERSATION (SESSION : ${currentConversationId})] :
+Tu as un accès exclusif aux modules et contenus pédagogiques déjà générés et enregistrés dans la base de données au cours de CETTE session de conversation actuelle :
+
+${formattedCreationsContext}
+
+DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
+1. PÉRIMÈTRE STRICT À CETTE CONVERSATION :
+   Tu as UNIQUEMENT accès aux créations de cette conversation ci-dessus. Aucune création d'une autre discussion ne doit interférer.
+2. INTERDICTION FORMELLE DE RÉPÉTER LES MÊMES CRÉATIONS OU LES MÊMES QUESTIONS :
+   Si l'utilisateur te demande à nouveau une création (ex: nouveau questionnaire, autre QCM, nouvelles cartes mémoires, autre carte mentale, nouveaux exercices, nouveau résumé, etc.) sur le même cours, le même document ou le même sujet :
+   - TU NE DOIS EN AUCUN CAS RÉPÉTER LES MÊMES QUESTIONS, LES MÊMES ITEMS OU LES MÊMES ÉNONCÉS que ceux listés ci-dessus.
+   - L'utilisateur ne doit JAMAIS recevoir un questionnaire ou un module identique ou redondant.
+3. EXPLORATION DE NOUVELLES INFORMATIONS ET FORMULATION DE NOUVELLES IDÉES :
+   - Va chercher d'autres éléments dans le document ou cours : d'autres notions, théorèmes, définitions, cas particuliers, démonstrations, schémas ou exemples d'application qui n'ont pas encore été interrogés.
+   - Formule des questions sous de nouveaux angles (ex: questions d'analyse, cas limites, pièges courants, calculs inverses, applications concrètes).
+4. RÈGLE PÉDAGOGIQUE DES 1 À 2 QUESTIONS DE RAPPEL (MÉMORISATION ESPACÉE) :
+   - Pour favoriser l'ancrage mémoriel et la rétention, tu peux réintégrer AU MAXIMUM 1 ou 2 questions clés de rappel issues des créations précédentes.
+   - TOUT LE RESTE DU QUESTIONNAIRE OU DU MODULE (80% à 90% minimum) DOIT ÊTRE ENTIÈREMENT NOUVEAU ET INÉDIT.
+5. APPLICATION UNIFORME À TOUS LES TYPES DE CRÉATION :
+   - QCM / Questionnaire : Nouvelles questions avec nouveaux choix et nouvelles explications (max 1-2 questions de révision).
+   - Vrai ou Faux : Nouvelles affirmations explorant d'autres nuances ou pièges du cours.
+   - Flashcards : Nouveaux termes, formules et notions du cours pas encore synthétisés.
+   - Carte Mentale : Développer d'autres branches, sous-branches plus fines ou perspectives transversales.
+   - Résumé : Mettre l'accent sur d'autres chapitres, sections ou subtilités du cours.
+   - Exercices Écrits / Devoirs : Nouveaux énoncés d'exercices, nouvelles données numériques et cas d'application originaux.
+══════════════════════════════════════════════════════════════════════════════`;
+      }
+
       const chatHistory = [
         { role: 'system', content: effectiveSystemContent },
         ...sanitizedHistory,
@@ -3784,6 +4057,7 @@ CONSIGNES STRICTES DE CONTINUATION :
           id: 'ai-' + Date.now(),
           userId: currentUserId,
           fileId: activePreviewItem?.id,
+          conversationId: currentConversationId,
           toolType: effectiveToolType,
           title: creationParsed.title,
           content: creationParsed.content,
@@ -3793,6 +4067,11 @@ CONSIGNES STRICTES DE CONTINUATION :
         };
 
         setActiveCreation(newCreation);
+        setSessionCreations(prev => {
+          const updated = [newCreation, ...prev.filter(c => c.id !== newCreation.id)];
+          safeSetItem(`studycloud_conv_creations_${currentConversationId}`, JSON.stringify(updated));
+          return updated;
+        });
 
         // Sauvegarde immédiate dans le cache local persistant pour affichage instantané et reprise
         try {
@@ -3804,12 +4083,26 @@ CONSIGNES STRICTES DE CONTINUATION :
           localStorage.setItem('studycloud_active_creation', JSON.stringify(newCreation));
         } catch {}
 
+        // Sauvegarde dans la table Cloudflare D1 ai_creations liée à la session de conversation
+        if (currentConversationId) {
+          StudyCloudAPI.saveAiCreationRecord({
+            id: newCreation.id,
+            conversationId: currentConversationId,
+            type: effectiveToolType,
+            title: newCreation.title,
+            content: newCreation.content,
+          }).catch(err => {
+            console.warn('[AssistantChat] Erreur saveAiCreationRecord:', err);
+          });
+        }
+
         // Sauvegarde immédiate dans la base de données D1 liée à l'utilisateur
         if (currentUserId && currentUserId !== 'default-user') {
           StudyCloudAPI.saveAiContent({
             id: newCreation.id,
             userId: currentUserId,
             fileId: activePreviewItem?.id || null,
+            conversationId: currentConversationId,
             toolType: effectiveToolType,
             title: newCreation.title || 'Création Studio',
             contentJson: newCreation.content,

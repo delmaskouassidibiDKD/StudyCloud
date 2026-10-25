@@ -2037,6 +2037,7 @@ export const StudyCloudAPI = {
     id?: string;
     userId: string;
     fileId?: string | null;
+    conversationId?: string | null;
     toolType: string;
     title: string;
     contentJson: any;

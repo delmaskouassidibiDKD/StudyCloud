@@ -218,6 +218,7 @@ export interface AiCreation {
   id: string;
   userId?: string;
   fileId?: string;
+  conversationId?: string;
   toolType: AiCreationType;
   title: string;
   content: any;

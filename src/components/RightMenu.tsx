@@ -673,6 +673,7 @@ export function RightMenu({
         const normalizedCreation = {
           ...creation,
           id: creation.id || ('ai-' + Date.now()),
+          conversationId: creation.conversationId || undefined,
           title: creation.title || 'Création Studio',
           toolType: creation.toolType || creation.type || 'creation',
           type: creation.toolType || creation.type || 'creation',
@@ -701,6 +702,7 @@ export function RightMenu({
             id: normalizedCreation.id,
             userId: uid,
             fileId: normalizedCreation.fileId || activePreviewItem?.id || null,
+            conversationId: normalizedCreation.conversationId || null,
             toolType: normalizedCreation.toolType,
             title: normalizedCreation.title,
             contentJson: parsedContent,
