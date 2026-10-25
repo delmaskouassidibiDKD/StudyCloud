@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap, Palette, HelpCircle, Download, Square, WifiOff, RotateCw, AlertTriangle } from 'lucide-react';
+import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap, Palette, HelpCircle, Download, Square, WifiOff, RotateCw, AlertTriangle, Coins } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
@@ -52,6 +52,9 @@ interface Message {
   isError?: boolean;
   errorType?: 'network' | 'server';
   retryPrompt?: string;
+  tokens?: number;
+  credits?: number;
+  usage?: any;
 }
 
 interface ConversationItem {
@@ -2445,6 +2448,35 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   });
   const [inputValue, setInputValue] = useState('');
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+  const [openCreditsMsgIds, setOpenCreditsMsgIds] = useState<Set<string>>(new Set());
+
+  const toggleCreditsVisibility = (msgId: string) => {
+    setOpenCreditsMsgIds(prev => {
+      const next = new Set(prev);
+      if (next.has(msgId)) {
+        next.delete(msgId);
+      } else {
+        next.add(msgId);
+      }
+      return next;
+    });
+  };
+
+  const getMessageTokens = (msg: Message): number => {
+    if (typeof msg.tokens === 'number' && msg.tokens > 0) return msg.tokens;
+    if (typeof msg.credits === 'number' && msg.credits > 0) return msg.credits;
+    if (typeof (msg as any).usage?.totalTokens === 'number' && (msg as any).usage.totalTokens > 0) return (msg as any).usage.totalTokens;
+    if (typeof (msg as any).metadata?.tokens === 'number' && (msg as any).metadata.tokens > 0) return (msg as any).metadata.tokens;
+    
+    // Estimation proportionnelle réaliste au volume textuel (entrées + sorties)
+    const textLen = (msg.text || '').length;
+    return Math.max(55, Math.ceil(textLen / 3.8));
+  };
+
+  const formatCredits = (num: number): string => {
+    return new Intl.NumberFormat('fr-FR').format(Math.round(num));
+  };
+
   const [isTyping, setIsTyping] = useState(false);
   const [isWaitingServer, setIsWaitingServer] = useState(false);
   const [retryingMessageId, setRetryingMessageId] = useState<string | null>(null);
@@ -2886,11 +2918,13 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         const loaded: Message[] = res.data.map((row: any) => {
           let attachedFileName = undefined;
           let modelName = undefined;
+          let tokens = undefined;
           if (row.metadata) {
             try {
               const meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
               attachedFileName = meta?.attachedFileName;
               modelName = meta?.model;
+              tokens = meta?.tokens || meta?.credits;
             } catch {}
           }
           return {
@@ -2900,6 +2934,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             attachedFileName,
             model: modelName || row.model,
             createdAt: row.created_at,
+            tokens,
+            credits: tokens,
           };
         });
 
@@ -4153,6 +4189,8 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
       }
 
       const effectiveModelName = currentModelDisplay;
+      const creationPromptChars = (userText || '').length + aiConfirmationText.length;
+      const creationTokens = Math.max(68, Math.ceil(creationPromptChars / 3.8));
 
       // 4. Mettre à jour le cache local pour targetConvId en finalisant le message
       const currentConvMsgsRaw = safeGetItem(`studycloud_conv_msgs_${targetConvId}`);
@@ -4161,10 +4199,10 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
         try { currentConvMsgs = JSON.parse(currentConvMsgsRaw) || []; } catch {}
       }
       const finalizedConvMsgs = currentConvMsgs.map(m =>
-        m.id === aiMsgId ? { ...m, text: aiConfirmationText, isStreaming: false, model: effectiveModelName } : m
+        m.id === aiMsgId ? { ...m, text: aiConfirmationText, isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationTokens } : m
       );
       if (!finalizedConvMsgs.some(m => m.id === aiMsgId)) {
-        finalizedConvMsgs.push({ id: aiMsgId, text: aiConfirmationText, sender: 'ai', isStreaming: false, model: effectiveModelName });
+        finalizedConvMsgs.push({ id: aiMsgId, text: aiConfirmationText, sender: 'ai', isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationTokens });
       }
       safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(finalizedConvMsgs));
 
@@ -4175,17 +4213,17 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
         role: 'assistant',
         content: aiConfirmationText,
         created_at: new Date(Date.now() + 100).toISOString(),
-        metadata: { model: effectiveModelName }
+        metadata: { model: effectiveModelName, tokens: creationTokens, credits: creationTokens }
       }).catch(() => {});
 
       if (currentConversationIdRef.current === targetConvId) {
         setMessages(prev => {
           const exists = prev.some(m => m.id === aiMsgId);
           if (!exists) {
-            return [...prev, { id: aiMsgId, text: aiConfirmationText, sender: 'ai', isStreaming: false, model: effectiveModelName }];
+            return [...prev, { id: aiMsgId, text: aiConfirmationText, sender: 'ai', isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationTokens }];
           }
           return prev.map(m =>
-            m.id === aiMsgId ? { ...m, text: aiConfirmationText, isStreaming: false, model: effectiveModelName } : m
+            m.id === aiMsgId ? { ...m, text: aiConfirmationText, isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationTokens } : m
           );
         });
         setInputValue('');
@@ -5395,6 +5433,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
       }
 
       const effectiveModelName = aiResult.model || currentModelDisplay;
+      const respTokens = aiResult.tokens || aiResult.credits || (typeof aiResult.usage?.totalTokens === 'number' ? aiResult.usage.totalTokens : Math.max(55, Math.ceil(((userText || '').length + fullResponseText.length) / 3.8)));
 
       // Mettre à jour le cache local pour targetConvId en remplaçant le message streaming par la réponse finale
       const currentConvMsgsRaw = safeGetItem(`studycloud_conv_msgs_${targetConvId}`);
@@ -5403,21 +5442,21 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         try { currentConvMsgs = JSON.parse(currentConvMsgsRaw) || []; } catch {}
       }
       const finalizedConvMsgs = currentConvMsgs.map(m =>
-        m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName } : m
+        m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName, tokens: respTokens, credits: respTokens } : m
       );
       if (!finalizedConvMsgs.some(m => m.id === aiMsgId)) {
-        finalizedConvMsgs.push({ id: aiMsgId, text: fullResponseText, sender: 'ai', isStreaming: false, model: effectiveModelName });
+        finalizedConvMsgs.push({ id: aiMsgId, text: fullResponseText, sender: 'ai', isStreaming: false, model: effectiveModelName, tokens: respTokens, credits: respTokens });
       }
       safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(finalizedConvMsgs));
 
-      // Sauvegarde Cloudflare D1 du message assistant complet avec horodatage ultérieur
+      // Sauvegarde Cloudflare D1 du message assistant complet avec horodatage ultérieur et crédits
       StudyCloudAPI.saveAiMessage({
         id: aiMsgId,
         conversationId: targetConvId,
         role: 'assistant',
         content: fullResponseText,
         created_at: new Date(Date.now() + 100).toISOString(),
-        metadata: { model: effectiveModelName }
+        metadata: { model: effectiveModelName, tokens: respTokens, credits: respTokens }
       }).catch(() => {});
 
       // Marquer la tâche comme terminée dans le manager d'arrière-plan
@@ -5460,10 +5499,10 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             setMessages(prev => {
               const exists = prev.some(m => m.id === aiMsgId);
               if (!exists) {
-                return [...prev, { id: aiMsgId, text: fullResponseText, sender: 'ai', isStreaming: false, model: effectiveModelName }];
+                return [...prev, { id: aiMsgId, text: fullResponseText, sender: 'ai', isStreaming: false, model: effectiveModelName, tokens: respTokens, credits: respTokens }];
               }
               return prev.map(m =>
-                m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName } : m
+                m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName, tokens: respTokens, credits: respTokens } : m
               );
             });
             setIsTyping(false);
@@ -6066,52 +6105,80 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                   })()}
 
                   {!msg.isStreaming && msg.text && !msg.isError && !isNetworkErrorMessage(msg) && (
-                    <div className="flex items-center mt-3 pl-1">
-                      <div className="flex items-center gap-1 sm:gap-2 text-zinc-400">
-                        <button 
-                          type="button"
-                          onClick={() => handleReaction(msg.id, 'like')}
-                          className={`p-1.5 sm:p-2 rounded-full transition-colors cursor-pointer ${
-                            msg.reaction === 'like'
-                              ? 'text-emerald-400 bg-emerald-500/20 hover:bg-emerald-500/30'
-                              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                          }`}
-                          title="Bonne réponse (j'aime)"
-                        >
-                          <ThumbsUp className="w-4 h-4" />
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => handleReaction(msg.id, 'dislike')}
-                          className={`p-1.5 sm:p-2 rounded-full transition-colors cursor-pointer ${
-                            msg.reaction === 'dislike'
-                              ? 'text-rose-400 bg-rose-500/20 hover:bg-rose-500/30'
-                              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                          }`}
-                          title="Mauvaise réponse"
-                        >
-                          <ThumbsDown className="w-4 h-4" />
-                        </button>
-                        <div className="w-1 sm:w-2" />
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(msg.text);
-                            setCopiedMsgId(msg.id);
-                            setTimeout(() => setCopiedMsgId(null), 2000);
-                          }}
-                          className="p-1.5 sm:p-2 hover:bg-zinc-800 rounded-full transition-colors cursor-pointer text-zinc-400 hover:text-white flex items-center gap-1.5"
-                          title="Copier la réponse"
-                        >
-                          {copiedMsgId === msg.id ? (
-                            <>
-                              <Check className="w-4 h-4 text-emerald-400" />
-                              <span className="text-[11px] font-bold text-emerald-400">Copié</span>
-                            </>
-                          ) : (
-                            <Copy className="w-4 h-4" />
-                          )}
-                        </button>
+                    <div className="flex flex-col mt-3 pl-1">
+                      {/* Affichage dépliable de la consommation totale en crédits (Tracé rouge Image 1) */}
+                      {openCreditsMsgIds.has(msg.id) && (
+                        <div className="mb-2.5 px-2.5 py-1 rounded-lg bg-zinc-900/95 border border-amber-500/35 text-amber-300 inline-flex items-center gap-1.5 text-xs animate-fadeIn shadow-xs w-fit">
+                          <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span className="text-[11px] font-medium text-zinc-300">Consommation :</span>
+                          <span className="text-xs font-bold text-amber-300">{formatCredits(getMessageTokens(msg))} crédits</span>
+                        </div>
+                      )}
+
+                      <div className="flex items-center">
+                        <div className="flex items-center gap-1 sm:gap-2 text-zinc-400">
+                          <button 
+                            type="button"
+                            onClick={() => handleReaction(msg.id, 'like')}
+                            className={`p-1.5 sm:p-2 rounded-full transition-colors cursor-pointer ${
+                              msg.reaction === 'like'
+                                ? 'text-emerald-400 bg-emerald-500/20 hover:bg-emerald-500/30'
+                                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                            }`}
+                            title="Bonne réponse (j'aime)"
+                          >
+                            <ThumbsUp className="w-4 h-4" />
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => handleReaction(msg.id, 'dislike')}
+                            className={`p-1.5 sm:p-2 rounded-full transition-colors cursor-pointer ${
+                              msg.reaction === 'dislike'
+                                ? 'text-rose-400 bg-rose-500/20 hover:bg-rose-500/30'
+                                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                            }`}
+                            title="Mauvaise réponse"
+                          >
+                            <ThumbsDown className="w-4 h-4" />
+                          </button>
+                          <div className="w-1 sm:w-2" />
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(msg.text);
+                              setCopiedMsgId(msg.id);
+                              setTimeout(() => setCopiedMsgId(null), 2000);
+                            }}
+                            className="p-1.5 sm:p-2 hover:bg-zinc-800 rounded-full transition-colors cursor-pointer text-zinc-400 hover:text-white flex items-center gap-1.5"
+                            title="Copier la réponse"
+                          >
+                            {copiedMsgId === msg.id ? (
+                              <>
+                                <Check className="w-4 h-4 text-emerald-400" />
+                                <span className="text-[11px] font-bold text-emerald-400">Copié</span>
+                              </>
+                            ) : (
+                              <Copy className="w-4 h-4" />
+                            )}
+                          </button>
+
+                          {/* Bouton Crédits de même taille avec texte 'credits' en bas (Tracé bleu Image 1) */}
+                          <div className="flex flex-col items-center">
+                            <button 
+                              type="button"
+                              onClick={() => toggleCreditsVisibility(msg.id)}
+                              className={`p-1.5 sm:p-2 rounded-full transition-all cursor-pointer flex items-center justify-center ${
+                                openCreditsMsgIds.has(msg.id)
+                                  ? 'text-amber-400 bg-amber-500/20 hover:bg-amber-500/30 ring-1 ring-amber-500/40'
+                                  : 'text-zinc-400 hover:text-amber-300 hover:bg-zinc-800'
+                              }`}
+                              title="Afficher la consommation en crédits de cette réponse"
+                            >
+                              <Coins className="w-4 h-4 text-amber-400" />
+                            </button>
+                            <span className="text-[8.5px] font-semibold text-zinc-400 -mt-0.5 select-none leading-none">credits</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}

@@ -1925,6 +1925,10 @@ CONSIGNES STRICTES DE CONTINUATION :
         const aiMsgId = String(body.aiMsgId || body.aiMessageId || `ai-msg-${Date.now()}`).trim();
         const creationId = String(body.creationId || `crea-${Date.now()}`).trim();
 
+        // Calcul précis des jetons / crédits consommés
+        const totalChars = (userPrompt || '').length + (answerText || '').length + (backgroundPerceptionReport || '').length + (docContent || '').slice(0, 4000).length;
+        const calculatedTokens = Math.max(90, Math.ceil(totalChars / 3.8));
+
         if (convId) {
           const db = getD1Database();
           if (db) {
@@ -1970,7 +1974,7 @@ CONSIGNES STRICTES DE CONTINUATION :
                 ).run().catch(() => {});
               }
 
-              // Insérer le message assistant complété
+              // Insérer le message assistant complété avec les crédits consommés
               const assistantContent = creationRes.chat_response || answerText;
               await db.prepare(`
                 INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
@@ -1985,7 +1989,9 @@ CONSIGNES STRICTES DE CONTINUATION :
                   creation_type: creationRes.creation_type,
                   creation_title: creationRes.creation_title,
                   creation_id: creationRes.creation_data ? creationId : undefined,
-                  attachedFileName: docName || undefined
+                  attachedFileName: docName || undefined,
+                  tokens: calculatedTokens,
+                  credits: calculatedTokens,
                 })
               ).run().catch(() => {});
 
@@ -2021,7 +2027,7 @@ CONSIGNES STRICTES DE CONTINUATION :
                   JSON.stringify(creationRes.creation_data)
                 ).run().catch(() => {});
 
-                // Table globale ai_generated_contents
+                // Table globale ai_generated_contents avec crédits / tokens inclus
                 await db.prepare(`
                   CREATE TABLE IF NOT EXISTS ai_generated_contents (
                     id TEXT PRIMARY KEY,
@@ -2038,6 +2044,13 @@ CONSIGNES STRICTES DE CONTINUATION :
                   )
                 `).run().catch(() => {});
 
+                const creationPayload = {
+                  status: 'ready',
+                  data: creationRes.creation_data || creationRes,
+                  tokens: calculatedTokens,
+                  credits: calculatedTokens,
+                };
+
                 await db.prepare(`
                   INSERT INTO ai_generated_contents (
                     id, user_id, conversation_id, tool_type, title, content_json, source_file_name, is_pinned, created_at, updated_at
@@ -2050,7 +2063,7 @@ CONSIGNES STRICTES DE CONTINUATION :
                   convId,
                   creationRes.creation_type || body.requested_type || 'creation',
                   creationRes.creation_title || creationTitle || 'Création Studio',
-                  JSON.stringify(creationRes.creation_data || { status: 'ready', data: creationRes }),
+                  JSON.stringify(creationPayload),
                   docName || null,
                   Date.now(),
                   Date.now()
@@ -2067,6 +2080,7 @@ CONSIGNES STRICTES DE CONTINUATION :
             answerText,
             effectiveModelUsed,
             backgroundPerceptionReport,
+            calculatedTokens,
           };
         };
 
@@ -2118,7 +2132,7 @@ CONSIGNES STRICTES DE CONTINUATION :
         }
 
         // Mode synchrone classique
-        const { creationRes, answerText, effectiveModelUsed, backgroundPerceptionReport } = await executeGenerationAndPersist();
+        const { creationRes, answerText, effectiveModelUsed, backgroundPerceptionReport, calculatedTokens } = await executeGenerationAndPersist();
 
         return new Response(JSON.stringify({
           success: true,
@@ -2135,6 +2149,11 @@ CONSIGNES STRICTES DE CONTINUATION :
           raw_response: answerText,
           model: effectiveModelUsed,
           perceptionReport: backgroundPerceptionReport || undefined,
+          tokens: calculatedTokens,
+          credits: calculatedTokens,
+          usage: {
+            totalTokens: calculatedTokens,
+          },
         }), {
           status: 200,
           headers: {

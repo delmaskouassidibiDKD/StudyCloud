@@ -301,6 +301,9 @@ export async function sendChatMessageToAi(params: {
   isBackground?: boolean;
   status?: string;
   taskId?: string;
+  tokens?: number;
+  credits?: number;
+  usage?: any;
 }> {
   const isPowerMode = Boolean(params.powerMode || params.engine === 'gemini');
   const isAsyncBackground = Boolean(params.async || params.isBackground || params.runInBackground);
@@ -627,6 +630,9 @@ export async function sendChatMessageToAi(params: {
     isBackground: Boolean(data.isBackground || isAsyncBackground),
     status: data.status || (isAsyncBackground ? 'generating' : 'ready'),
     taskId: data.taskId || data.creation_id || data.creationId || params.creationId,
+    tokens: typeof data.tokens === 'number' ? data.tokens : (typeof data.credits === 'number' ? data.credits : (data.usage?.totalTokens || (typeof data.tokens === 'string' ? parseInt(data.tokens, 10) : undefined))),
+    credits: typeof data.credits === 'number' ? data.credits : (typeof data.tokens === 'number' ? data.tokens : (data.usage?.totalTokens || undefined)),
+    usage: data.usage || undefined,
   };
 }
 

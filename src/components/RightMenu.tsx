@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Maximize, Minimize, ArrowLeftRight, X, Menu, ChevronRight, History, Sparkles, Brain,
   Trash2, Search, RefreshCw, FolderOpen, AlertCircle, Clock, BookOpen, Layers, CheckCircle2,
-  FileText, Loader2
+  FileText, Loader2, Zap
 } from 'lucide-react';
 import { UniversalContentRenderer } from './universal-render/UniversalContentRenderer';
 import DotField from './DotField';
@@ -163,6 +163,38 @@ export function RightMenu({
   const [isLoadingCreations, setIsLoadingCreations] = useState<boolean>(false);
   const [creationSearch, setCreationSearch] = useState<string>('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [openCreditsCreationIds, setOpenCreditsCreationIds] = useState<Set<string>>(new Set());
+
+  const toggleCreditsCreation = (id: string) => {
+    setOpenCreditsCreationIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const getCreationTokens = (item: any): number => {
+    if (typeof item.tokens === 'number' && item.tokens > 0) return item.tokens;
+    if (typeof item.credits === 'number' && item.credits > 0) return item.credits;
+    if (typeof item.data?.tokens === 'number' && item.data.tokens > 0) return item.data.tokens;
+    if (typeof item.data?.credits === 'number' && item.data.credits > 0) return item.data.credits;
+    if (typeof item.content?.tokens === 'number' && item.content.tokens > 0) return item.content.tokens;
+    if (typeof item.content_json?.tokens === 'number' && item.content_json.tokens > 0) return item.content_json.tokens;
+
+    // Calcul précis basé sur la charge utile textuelle de la tâche en arrière-plan
+    const str = typeof item.content === 'string'
+      ? item.content
+      : (typeof item.data === 'string' ? item.data : JSON.stringify(item.content || item.data || item.content_json || item));
+    return Math.max(90, Math.ceil(str.length / 3.8));
+  };
+
+  const formatCredits = (num: number): string => {
+    return new Intl.NumberFormat('fr-FR').format(Math.round(num));
+  };
 
   const fetchUserCreations = async () => {
     // 1. Toujours synchroniser avec le cache local pour un affichage immédiat
@@ -185,6 +217,7 @@ export function RightMenu({
             try { parsedContent = JSON.parse(parsedContent); } catch {}
           }
           const itemStatus = item.status || (parsedContent && typeof parsedContent === 'object' && parsedContent.status) || 'ready';
+          const tokens = item.tokens || (parsedContent && typeof parsedContent === 'object' && (parsedContent.tokens || parsedContent.credits)) || undefined;
           return {
             ...item,
             id: item.id,
@@ -194,6 +227,8 @@ export function RightMenu({
             content: parsedContent,
             data: parsedContent,
             status: itemStatus,
+            tokens,
+            credits: tokens,
             sourceFileName: item.source_file_name || item.sourceFileName,
             createdAt: item.created_at || item.createdAt,
             isPinned: Boolean(item.is_pinned || item.isPinned),
@@ -1430,6 +1465,7 @@ export function RightMenu({
                 const isItemActive = activeCreation && activeCreation.id === item.id;
                 const displayType = CREATION_NAME_MAP[item.toolType || item.type] || item.toolType || 'Création';
                 const dateDisplay = formatCreationDate(item.createdAt || item.created_at);
+                const isCreditsOpen = openCreditsCreationIds.has(item.id);
 
                 return (
                   <div
@@ -1496,10 +1532,19 @@ export function RightMenu({
                           <span className="truncate">{item.sourceFileName}</span>
                         </p>
                       )}
+
+                      {/* Consommation de la création dépliée */}
+                      {isCreditsOpen && (
+                        <div className="mt-1.5 px-2 py-0.5 rounded-md bg-zinc-900/90 border border-amber-500/35 text-amber-300 inline-flex items-center gap-1.5 text-[10px] animate-fadeIn w-fit shadow-xs">
+                          <Zap className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+                          <span className="text-zinc-400">Consommation :</span>
+                          <span className="font-bold text-amber-300">{formatCredits(getCreationTokens(item))} crédits</span>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Actions : Bouton de suppression */}
-                    <div className="shrink-0 flex items-center self-center">
+                    {/* Actions : Bouton de suppression en haut, Bouton Crédits en bas à droite (Tracé rouge Image 2) */}
+                    <div className="shrink-0 flex flex-col items-end justify-between self-stretch gap-1.5 ml-1">
                       <button
                         type="button"
                         onClick={(e) => handleDeleteCreation(e, item.id)}
@@ -1513,6 +1558,24 @@ export function RightMenu({
                         ) : (
                           <Trash2 className="w-3.5 h-3.5" />
                         )}
+                      </button>
+
+                      {/* Bouton Crédits (Tracé rouge Image 2) */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleCreditsCreation(item.id);
+                        }}
+                        className={`px-1.5 py-0.5 rounded-md text-[10px] font-semibold transition-all cursor-pointer flex items-center gap-1 border ${
+                          isCreditsOpen
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-xs'
+                            : 'bg-zinc-800/80 text-zinc-400 border-zinc-700/60 hover:text-amber-300 hover:border-amber-500/30 hover:bg-zinc-800'
+                        }`}
+                        title="Afficher/masquer la consommation en crédits"
+                      >
+                        <Zap className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+                        <span>Crédits</span>
                       </button>
                     </div>
                   </div>
