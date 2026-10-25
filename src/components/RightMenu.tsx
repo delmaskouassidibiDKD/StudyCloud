@@ -72,19 +72,44 @@ function getCreationBadgeLabel(title?: string): string {
 // Clé de stockage local persistant pour les créations Studio (style historique des conversations)
 const CREATIONS_CACHE_KEY = 'studycloud_saved_creations_cache';
 
+const normalizeCreationItem = (it: any) => {
+  if (!it) return null;
+  let parsedContent = it.content !== undefined ? it.content : (it.data !== undefined ? it.data : (it.content_json !== undefined ? it.content_json : it.contentJson));
+  if (typeof parsedContent === 'string') {
+    try { parsedContent = JSON.parse(parsedContent); } catch {}
+  }
+  return {
+    ...it,
+    id: it.id || ('ai-' + Math.random().toString(36).substring(2, 9)),
+    title: it.title || 'Création Studio',
+    toolType: it.toolType || it.tool_type || it.type || 'creation',
+    type: it.type || it.toolType || it.tool_type || 'creation',
+    createdAt: it.createdAt || it.created_at || (it.dateStr ? new Date().toISOString() : new Date().toISOString()),
+    content: parsedContent,
+    data: parsedContent,
+    contentJson: parsedContent,
+    sourceFileName: it.sourceFileName || it.source_file_name,
+    isPinned: Boolean(it.isPinned || it.is_pinned || it.pinned),
+  };
+};
+
 const getStoredCreations = (): any[] => {
   try {
     const raw = localStorage.getItem(CREATIONS_CACHE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map(normalizeCreationItem).filter(Boolean);
+      }
     }
   } catch {}
   try {
     const historyRaw = localStorage.getItem('unifolder_ai_history');
     if (historyRaw) {
       const parsed = JSON.parse(historyRaw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map(normalizeCreationItem).filter(Boolean);
+      }
     }
   } catch {}
   return [];
@@ -92,7 +117,9 @@ const getStoredCreations = (): any[] => {
 
 const persistCreationsLocally = (items: any[]) => {
   try {
-    localStorage.setItem(CREATIONS_CACHE_KEY, JSON.stringify(items));
+    const trimmed = Array.isArray(items) ? items.slice(0, 50) : [];
+    localStorage.setItem(CREATIONS_CACHE_KEY, JSON.stringify(trimmed));
+    localStorage.setItem('unifolder_ai_history', JSON.stringify(trimmed));
     window.dispatchEvent(new Event('studycloud_creations_updated'));
   } catch (err) {
     console.warn('[RightMenu] Erreur persistance locale créations:', err);
@@ -224,6 +251,15 @@ export function RightMenu({
     };
     window.addEventListener('studycloud-creation-saved', handleSaved);
     return () => window.removeEventListener('studycloud-creation-saved', handleSaved);
+  }, []);
+
+  useEffect(() => {
+    const handleRestored = () => {
+      setSavedCreations(getStoredCreations());
+      fetchUserCreations();
+    };
+    window.addEventListener('unifolder_data_restored', handleRestored);
+    return () => window.removeEventListener('unifolder_data_restored', handleRestored);
   }, []);
 
   const resolvedDocName = useMemo(() => {

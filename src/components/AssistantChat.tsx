@@ -2638,7 +2638,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           sourceFileName: creationWithConv.sourceFileName || undefined,
           isPinned: Boolean(creationWithConv.isPinned),
         }).then(() => {
-          window.dispatchEvent(new CustomEvent('studycloud-creation-saved', { detail: { id: creationWithConv.id } }));
+          window.dispatchEvent(new CustomEvent('studycloud-creation-saved', { detail: { id: creationWithConv.id, creation: creationWithConv } }));
         }).catch(err => {
           console.warn('[AssistantChat] Erreur sauvegarde D1 (handleReady):', err);
         });
@@ -2654,6 +2654,16 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           safeSetItem(`studycloud_conv_creations_${currentConversationId}`, JSON.stringify(list));
           return list;
         });
+
+        try {
+          const cachedRaw = localStorage.getItem('studycloud_saved_creations_cache');
+          let currentList = cachedRaw ? JSON.parse(cachedRaw) : [];
+          if (Array.isArray(currentList)) {
+            const updatedGlobal = currentList.map((c: any) => c.id === updated.id ? { ...c, content: updated.content, data: updated.content } : c);
+            localStorage.setItem('studycloud_saved_creations_cache', JSON.stringify(updatedGlobal));
+            localStorage.setItem('unifolder_ai_history', JSON.stringify(updatedGlobal));
+          }
+        } catch {}
 
         if (e.detail?.isFromChat) {
           StudyCloudAPI.saveAiCreationRecord({
@@ -2677,7 +2687,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             contentJson: e.detail.updatedContent,
             sourceFileName: activeCreation.sourceFileName || undefined,
           }).then(() => {
-            window.dispatchEvent(new CustomEvent('studycloud-creation-saved', { detail: { id: activeCreation.id } }));
+            window.dispatchEvent(new CustomEvent('studycloud-creation-saved', { detail: { id: activeCreation.id, creation: updated } }));
           }).catch(err => {
             console.warn('[AssistantChat] Erreur mise à jour création D1:', err);
           });
@@ -3030,8 +3040,9 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
       const cachedRaw = localStorage.getItem('studycloud_saved_creations_cache');
       let currentList = cachedRaw ? JSON.parse(cachedRaw) : [];
       if (!Array.isArray(currentList)) currentList = [];
-      const updatedList = [newCreation, ...currentList.filter((c: any) => c.id !== newCreation.id)];
+      const updatedList = [newCreation, ...currentList.filter((c: any) => c.id !== newCreation.id)].slice(0, 50);
       localStorage.setItem('studycloud_saved_creations_cache', JSON.stringify(updatedList));
+      localStorage.setItem('unifolder_ai_history', JSON.stringify(updatedList));
     } catch {}
 
     StudyCloudAPI.saveAiCreationRecord({
@@ -4706,8 +4717,9 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             const cachedRaw = localStorage.getItem('studycloud_saved_creations_cache');
             let currentList = cachedRaw ? JSON.parse(cachedRaw) : [];
             if (!Array.isArray(currentList)) currentList = [];
-            const updatedList = [newCreation, ...currentList.filter((c: any) => c.id !== newCreation!.id)];
+            const updatedList = [newCreation, ...currentList.filter((c: any) => c.id !== newCreation!.id)].slice(0, 50);
             localStorage.setItem('studycloud_saved_creations_cache', JSON.stringify(updatedList));
+            localStorage.setItem('unifolder_ai_history', JSON.stringify(updatedList));
             localStorage.setItem('studycloud_active_creation', JSON.stringify(newCreation));
           } catch {}
 

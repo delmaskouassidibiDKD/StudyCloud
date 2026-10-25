@@ -65,7 +65,12 @@ export function purgeVolatileStorage(): void {
         k !== 'studycloud_auth_token' &&
         k !== 'studycloud_dashboard_wallpaper' &&
         k !== 'studycloud_dashboard_wallpaper_meta' &&
-        k !== 'unifolder_user_avatar'
+        k !== 'unifolder_user_avatar' &&
+        k !== 'studycloud_saved_creations_cache' &&
+        k !== 'unifolder_ai_history' &&
+        k !== 'studycloud_active_creation' &&
+        k !== 'studycloud_current_conversation_id' &&
+        !k.startsWith('studycloud_conv_creations_')
       ) {
         try {
           const val = localStorage.getItem(k);
@@ -79,6 +84,17 @@ export function purgeVolatileStorage(): void {
     keysToRemove.forEach(k => {
       try { localStorage.removeItem(k); } catch {}
     });
+
+    // Élagage gracieux du cache des créations s'il devient trop lourd plutôt que de tout supprimer
+    try {
+      const creasRaw = localStorage.getItem('studycloud_saved_creations_cache');
+      if (creasRaw && creasRaw.length > 250000) {
+        const parsed = JSON.parse(creasRaw);
+        if (Array.isArray(parsed) && parsed.length > 15) {
+          localStorage.setItem('studycloud_saved_creations_cache', JSON.stringify(parsed.slice(0, 15)));
+        }
+      }
+    } catch {}
 
     // Réduire les caches de conversations chat en ne conservant que les 3 plus récentes
     if (convMsgKeys.length > 3) {

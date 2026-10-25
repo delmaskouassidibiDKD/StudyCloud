@@ -240,20 +240,54 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
         localStorage.setItem('unifolder_clock_alarms', '[]');
       }
 
-      // 8. Contenus Générés IA (Créations & Studio)
+      // 8. Contenus Générés IA (Créations & Studio rattachées à userId dans Cloudflare D1)
       if (Array.isArray(d.aiContents) && d.aiContents.length > 0) {
-        const mappedAiHistory = d.aiContents.map((item: any) => ({
-          id: item.id,
-          toolType: item.tool_type,
-          title: item.title,
-          dateStr: item.created_at ? new Date(item.created_at).toLocaleDateString('fr-FR') : "Récemment",
-          colorClass: 'text-orange-300',
-          desc: item.source_file_name ? `Généré pour "${item.source_file_name}"` : 'Création IA',
-          pinned: Boolean(item.is_pinned),
-          contentJson: item.content_json ? (typeof item.content_json === 'string' ? JSON.parse(item.content_json) : item.content_json) : null,
-          sourceFileName: item.source_file_name,
-        }));
-        localStorage.setItem('unifolder_ai_history', JSON.stringify(mappedAiHistory));
+        const d1Creations = d.aiContents.map((item: any) => {
+          let parsedContent = item.content || item.data || item.content_json || item.contentJson;
+          if (typeof parsedContent === 'string') {
+            try { parsedContent = JSON.parse(parsedContent); } catch {}
+          }
+          return {
+            ...item,
+            id: item.id,
+            toolType: item.tool_type || item.toolType || item.type,
+            type: item.tool_type || item.toolType || item.type,
+            title: item.title,
+            createdAt: item.created_at || item.createdAt || new Date().toISOString(),
+            dateStr: item.created_at ? new Date(item.created_at).toLocaleDateString('fr-FR') : "Récemment",
+            colorClass: 'text-orange-300',
+            desc: item.source_file_name ? `Généré pour "${item.source_file_name}"` : 'Création IA',
+            isPinned: Boolean(item.is_pinned || item.isPinned),
+            pinned: Boolean(item.is_pinned || item.isPinned),
+            content: parsedContent,
+            data: parsedContent,
+            contentJson: parsedContent,
+            sourceFileName: item.source_file_name || item.sourceFileName,
+          };
+        });
+
+        // Fusionner harmonieusement avec d'éventuelles créations locales existantes
+        let localCreations: any[] = [];
+        try {
+          const raw = localStorage.getItem('studycloud_saved_creations_cache');
+          if (raw) localCreations = JSON.parse(raw) || [];
+        } catch {}
+
+        const map = new Map<string, any>();
+        d1Creations.forEach((it: any) => map.set(it.id, it));
+        localCreations.forEach((it: any) => {
+          if (!map.has(it.id)) map.set(it.id, it);
+        });
+
+        const merged = Array.from(map.values()).sort((a, b) => {
+          const da = new Date(a.createdAt || 0).getTime();
+          const db = new Date(b.createdAt || 0).getTime();
+          return db - da;
+        }).slice(0, 50);
+
+        localStorage.setItem('unifolder_ai_history', JSON.stringify(merged));
+        localStorage.setItem('studycloud_saved_creations_cache', JSON.stringify(merged));
+        window.dispatchEvent(new Event('studycloud_creations_updated'));
       }
 
       const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' - ' + new Date().toLocaleDateString();
