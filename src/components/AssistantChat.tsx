@@ -3419,6 +3419,10 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
       userMsgId: Date.now().toString(),
       aiMsgId: 'ai-bg-' + Date.now(),
       creationId: params.creationId,
+      creationTitle: params.creationTitle,
+      async: true,
+      isBackground: true,
+      runInBackground: true,
       model: params.selectedModel,
       selectedModel: params.selectedModel,
       apiKey: getGeminiApiKey() || undefined,
@@ -3432,6 +3436,47 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
       documentImages: activeDocumentInfo?.documentImages,
       mediaType: activeDocumentInfo ? 'document' : (activeImageInfo ? 'image' : undefined),
     });
+
+    if (aiResult.async || aiResult.status === 'generating') {
+      // OPTION 2 : Le serveur Cloudflare Worker génère la création en arrière-plan via ctx.waitUntil
+      // et l'enregistrera directement dans Cloudflare D1.
+      const pendingCreation: AiCreation = {
+        id: params.creationId,
+        userId: params.targetUserId,
+        fileId: params.activePreviewItem?.id,
+        conversationId: params.targetConvId,
+        toolType: normalizeCreationType(params.explicitToolType),
+        title: params.creationTitle,
+        content: { status: 'generating', title: params.creationTitle },
+        sourceFileName: params.mainDocName,
+        createdAt: new Date().toISOString(),
+        version: 1,
+        status: 'generating',
+      };
+
+      try {
+        const cachedRaw = localStorage.getItem('studycloud_saved_creations_cache');
+        let currentList = cachedRaw ? JSON.parse(cachedRaw) : [];
+        if (!Array.isArray(currentList)) currentList = [];
+        const updatedList = [pendingCreation, ...currentList.filter((c: any) => c.id !== pendingCreation.id)].slice(0, 50);
+        localStorage.setItem('studycloud_saved_creations_cache', JSON.stringify(updatedList));
+
+        if (params.targetConvId) {
+          const convKey = `studycloud_conv_creations_${params.targetConvId}`;
+          const convRaw = localStorage.getItem(convKey);
+          const convList = convRaw ? JSON.parse(convRaw) : [];
+          const updatedConvList = [pendingCreation, ...convList.filter((c: any) => c.id !== pendingCreation.id)];
+          localStorage.setItem(convKey, JSON.stringify(updatedConvList));
+        }
+      } catch {}
+
+      return {
+        response: aiResult.response,
+        creation: undefined,
+        async: true,
+        status: 'generating',
+      } as any;
+    }
 
     const rawResponseText = (aiResult as any).raw_response || (aiResult as any).rawResponse || aiResult.response || "";
     let finalContent: any = aiResult.creation_data;

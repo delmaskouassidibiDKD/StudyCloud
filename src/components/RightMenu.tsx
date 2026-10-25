@@ -184,6 +184,7 @@ export function RightMenu({
           if (typeof parsedContent === 'string') {
             try { parsedContent = JSON.parse(parsedContent); } catch {}
           }
+          const itemStatus = item.status || (parsedContent && typeof parsedContent === 'object' && parsedContent.status) || 'ready';
           return {
             ...item,
             id: item.id,
@@ -192,6 +193,7 @@ export function RightMenu({
             type: item.tool_type || item.toolType || item.type,
             content: parsedContent,
             data: parsedContent,
+            status: itemStatus,
             sourceFileName: item.source_file_name || item.sourceFileName,
             createdAt: item.created_at || item.createdAt,
             isPinned: Boolean(item.is_pinned || item.isPinned),
@@ -229,6 +231,46 @@ export function RightMenu({
       fetchUserCreations();
     }
   }, [isRightDrawerOpen]);
+
+  // OPTION 2 : Écouteur de réveil du smartphone (déverrouillage d'écran, changement d'onglet, reconnexion)
+  useEffect(() => {
+    const handleWake = () => {
+      fetchUserCreations();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') handleWake();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', handleWake);
+    window.addEventListener('online', handleWake);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', handleWake);
+      window.removeEventListener('online', handleWake);
+    };
+  }, []);
+
+  // Polling automatique pendant qu'au moins une création est au statut 'generating'
+  useEffect(() => {
+    const hasGenerating = savedCreations.some(c => c.status === 'generating' || (c.content && c.content.status === 'generating'));
+    if (!hasGenerating) return;
+
+    const interval = setInterval(() => {
+      fetchUserCreations();
+    }, 3500);
+
+    return () => clearInterval(interval);
+  }, [savedCreations]);
+
+  // Écouteur des changements de statut des créations en direct
+  useEffect(() => {
+    const handleStatusChanged = () => {
+      fetchUserCreations();
+    };
+    window.addEventListener('studycloud-creation-status-changed', handleStatusChanged);
+    return () => window.removeEventListener('studycloud-creation-status-changed', handleStatusChanged);
+  }, []);
 
   useEffect(() => {
     const handleCreationsUpdated = () => {

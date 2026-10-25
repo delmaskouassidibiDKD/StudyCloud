@@ -275,6 +275,10 @@ export async function sendChatMessageToAi(params: {
   userMsgId?: string;
   aiMsgId?: string;
   creationId?: string;
+  creationTitle?: string;
+  async?: boolean;
+  isBackground?: boolean;
+  runInBackground?: boolean;
   perceptionReport?: string;
   [key: string]: any;
 }): Promise<{
@@ -293,8 +297,13 @@ export async function sendChatMessageToAi(params: {
   raw_response?: string;
   rawResponse?: string;
   perceptionReport?: string;
+  async?: boolean;
+  isBackground?: boolean;
+  status?: string;
+  taskId?: string;
 }> {
   const isPowerMode = Boolean(params.powerMode || params.engine === 'gemini');
+  const isAsyncBackground = Boolean(params.async || params.isBackground || params.runInBackground);
   let userGeminiApiKey = (params.geminiApiKey || getGeminiApiKey()).trim();
   if (userGeminiApiKey.startsWith('AIzaSyDKct') || userGeminiApiKey.length < 25) {
     userGeminiApiKey = '';
@@ -307,6 +316,13 @@ export async function sendChatMessageToAi(params: {
   const payload = {
     ...params,
     userId: currentUserId,
+    async: isAsyncBackground,
+    isBackground: isAsyncBackground,
+    runInBackground: isAsyncBackground,
+    creationTitle: params.creationTitle || params.title || undefined,
+    creationId: params.creationId || undefined,
+    userMsgId: params.userMsgId || undefined,
+    aiMsgId: params.aiMsgId || undefined,
     perceptionReport: params.perceptionReport || undefined,
     model: params.model || params.selectedModel || 'gemini-2.0-flash',
     powerMode: isPowerMode,
@@ -334,7 +350,8 @@ export async function sendChatMessageToAi(params: {
   };
 
   // 1. Appel direct via le SDK officiel @google/genai si une clé Gemini est disponible et que le modèle ciblé est Gemini (ou Power Mode)
-  if (userGeminiApiKey && userGeminiApiKey.length > 20 && (params.model === 'gemini-2.0-flash' || isPowerMode || params.engine === 'gemini')) {
+  // NOTE OPTION 2 : On ne court-circuite PAS le Worker si la tâche est demandée en arrière-plan (isAsyncBackground), car le Worker utilise ctx.waitUntil pour garantir la persistance D1 même si le mobile est mis en veille.
+  if (!isAsyncBackground && userGeminiApiKey && userGeminiApiKey.length > 20 && (params.model === 'gemini-2.0-flash' || isPowerMode || params.engine === 'gemini')) {
     try {
       const isContinuation = Boolean(
         params.isContinuation ||
@@ -600,9 +617,16 @@ export async function sendChatMessageToAi(params: {
     creation_type: extractedCreationType || data.creation_type,
     creation_title: extractedCreationTitle || data.creation_title,
     creation_data: extractedCreationData || data.creation_data,
+    creation_id: data.creation_id || data.creationId || params.creationId,
+    ai_msg_id: data.ai_msg_id || params.aiMsgId,
+    conversation_id: data.conversation_id || params.conversationId,
     raw_response: rawFull,
     rawResponse: rawFull,
     perceptionReport: data.perceptionReport || undefined,
+    async: Boolean(data.async || (isAsyncBackground && data.status === 'generating')),
+    isBackground: Boolean(data.isBackground || isAsyncBackground),
+    status: data.status || (isAsyncBackground ? 'generating' : 'ready'),
+    taskId: data.taskId || data.creation_id || data.creationId || params.creationId,
   };
 }
 

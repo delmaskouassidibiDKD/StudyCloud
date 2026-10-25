@@ -14378,6 +14378,10 @@ a:hover{transform:translateY(-2px)}
                 parsedContent = JSON.parse(parsedContent);
               } catch {}
             }
+            const status = (parsedContent && typeof parsedContent === 'object' && parsedContent.status) 
+              ? parsedContent.status 
+              : 'ready';
+
             return {
               id: row.id,
               userId: row.user_id,
@@ -14385,6 +14389,7 @@ a:hover{transform:translateY(-2px)}
               toolType: row.tool_type,
               title: row.title,
               content: parsedContent,
+              status,
               sourceFileName: row.source_file_name,
               isPinned: Boolean(row.is_pinned),
               createdAt: row.created_at,

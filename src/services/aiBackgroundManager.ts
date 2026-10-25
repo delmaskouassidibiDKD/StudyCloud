@@ -8,6 +8,8 @@
  * 4. Permet à l'utilisateur de continuer à discuter et naviguer sans aucun blocage.
  */
 
+import { StudyCloudAPI } from './api';
+
 export const MAX_CONCURRENT_REQUESTS = 3;
 
 export interface BackgroundAiTask {
@@ -32,10 +34,11 @@ export interface BackgroundAiTask {
   errorText?: string;
 }
 
-export type TaskExecutor = () => Promise<{ response?: string; creation?: any } | void>;
+export type TaskExecutor = () => Promise<{ response?: string; creation?: any; async?: boolean; status?: string } | void>;
 
 const STORAGE_KEY = 'studycloud_active_ai_tasks';
 const memoryExecutors = new Map<string, TaskExecutor>();
+let cloudPollerTimer: any = null;
 
 function safeGetStorage(): BackgroundAiTask[] {
   if (typeof window === 'undefined' || !window.localStorage) return [];
@@ -228,6 +231,13 @@ export const aiBackgroundManager = {
     if (executor) {
       executor()
         .then((res: any) => {
+          if (res?.async || res?.status === 'generating') {
+            // OPTION 2 : Le Cloudflare Worker a pris le relais en arrière-plan (ctx.waitUntil) !
+            // La tâche reste en cours ('running') côté cloud et libère le slot local pour la suite.
+            this.ensureCloudPollerStarted();
+            return;
+          }
+
           this.completeAiTask(
             target.conversationId,
             target.aiMsgId,
@@ -414,4 +424,143 @@ export const aiBackgroundManager = {
     safeSetStorage(tasks);
     this.processNextInQueue();
   },
+
+  /**
+   * Démarre la vérification périodique des créations en arrière-plan sur Cloudflare D1
+   */
+  ensureCloudPollerStarted(): void {
+    if (typeof window === 'undefined') return;
+    if (!cloudPollerTimer) {
+      cloudPollerTimer = setInterval(() => {
+        this.syncCloudTasksFromD1();
+      }, 3500);
+    }
+    // Lancer une première vérification rapide
+    setTimeout(() => this.syncCloudTasksFromD1(), 1000);
+  },
+
+  /**
+   * Arrête le timer de vérification Cloudflare D1
+   */
+  stopCloudPoller(): void {
+    if (cloudPollerTimer) {
+      clearInterval(cloudPollerTimer);
+      cloudPollerTimer = null;
+    }
+  },
+
+  /**
+   * Synchronise l'état des créations en cours avec la base Cloudflare D1
+   * Essentiel lors du réveil du smartphone (déverrouillage de l'écran, retour sur l'onglet, reconnexion)
+   */
+  async syncCloudTasksFromD1(): Promise<void> {
+    const runningTasks = this.getRunningTasks();
+    if (runningTasks.length === 0) {
+      this.stopCloudPoller();
+      return;
+    }
+
+    const userId = runningTasks[0]?.userId || (typeof window !== 'undefined' ? localStorage.getItem('unifolder_user_id') : null) || 'default-user';
+    if (!userId || userId === 'default-user') return;
+
+    try {
+      const res = await StudyCloudAPI.getAiContents(userId);
+      if (res && res.success && Array.isArray(res.data)) {
+        const cloudContents = res.data;
+
+        for (const task of runningTasks) {
+          const match = cloudContents.find((c: any) => c.id === task.creationId || c.id === task.taskId);
+          if (match) {
+            const isReady = match.status === 'ready' || (
+              match.content &&
+              match.content.status !== 'generating' &&
+              (match.content.questions || match.content.nodes || match.content.resume || match.content.flashcards || match.content.data || typeof match.content === 'object')
+            );
+            const isFailed = match.status === 'failed' || (match.content && match.content.status === 'failed');
+
+            if (isReady) {
+              const fullCreation = {
+                id: match.id,
+                type: match.toolType,
+                toolType: match.toolType,
+                title: match.title,
+                content: match.content,
+                createdAt: match.createdAt,
+              };
+
+              // Mettre à jour les caches locaux pour que l'interface s'affiche instantanément
+              try {
+                if (typeof window !== 'undefined') {
+                  const savedRaw = localStorage.getItem('studycloud_saved_creations_cache');
+                  const list = savedRaw ? JSON.parse(savedRaw) : [];
+                  const existingIdx = list.findIndex((x: any) => x.id === match.id);
+                  if (existingIdx >= 0) {
+                    list[existingIdx] = { ...list[existingIdx], ...fullCreation, status: 'ready' };
+                  } else {
+                    list.unshift({ ...fullCreation, status: 'ready' });
+                  }
+                  localStorage.setItem('studycloud_saved_creations_cache', JSON.stringify(list));
+
+                  if (task.conversationId) {
+                    const convKey = `studycloud_conv_creations_${task.conversationId}`;
+                    const convRaw = localStorage.getItem(convKey);
+                    const convList = convRaw ? JSON.parse(convRaw) : [];
+                    const cIdx = convList.findIndex((x: any) => x.id === match.id);
+                    if (cIdx >= 0) {
+                      convList[cIdx] = { ...convList[cIdx], ...fullCreation, status: 'ready' };
+                    } else {
+                      convList.unshift({ ...fullCreation, status: 'ready' });
+                    }
+                    localStorage.setItem(convKey, JSON.stringify(convList));
+                  }
+                }
+              } catch (cacheErr) {
+                console.warn('[aiBackgroundManager] Erreur mise à jour cache local:', cacheErr);
+              }
+
+              this.completeAiTask(task.conversationId, task.aiMsgId, undefined, fullCreation, task.taskId);
+            } else if (isFailed) {
+              this.failAiTask(task.taskId, match.content?.error || 'Échec de la génération sur le serveur');
+            }
+          }
+        }
+      }
+    } catch (pollErr) {
+      console.warn('[aiBackgroundManager] syncCloudTasksFromD1 avertissement:', pollErr);
+    }
+
+    if (this.getRunningTasks().length === 0) {
+      this.stopCloudPoller();
+    }
+  },
 };
+
+// ══════════════════════════════════════════════════════════════════════════════
+// OPTION 2 : ÉCOUTEURS GLOBAUX DE SORTIE DE VEILLE DU SMARTPHONE
+// Lorsque l'étudiant verrouille son téléphone puis le déverrouille 5 minutes plus tard,
+// l'événement visibilitychange (ou window.focus / online) se déclenche aussitôt.
+// On interroge immédiatement Cloudflare D1 pour récupérer toutes les créations terminées !
+// ══════════════════════════════════════════════════════════════════════════════
+if (typeof window !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      aiBackgroundManager.syncCloudTasksFromD1();
+    }
+  });
+
+  window.addEventListener('focus', () => {
+    aiBackgroundManager.syncCloudTasksFromD1();
+  });
+
+  window.addEventListener('online', () => {
+    aiBackgroundManager.syncCloudTasksFromD1();
+  });
+
+  // Vérification de reprise au rechargement de la page si des tâches étaient en cours
+  setTimeout(() => {
+    if (aiBackgroundManager.getRunningCount() > 0) {
+      aiBackgroundManager.ensureCloudPollerStarted();
+      aiBackgroundManager.syncCloudTasksFromD1();
+    }
+  }, 1200);
+}

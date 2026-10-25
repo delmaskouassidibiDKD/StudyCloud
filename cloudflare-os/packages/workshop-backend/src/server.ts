@@ -1303,6 +1303,15 @@ export default {
     if (url.pathname === "/api/ai/chat" && req.method === "POST") {
       try {
         const body: any = await req.json().catch(() => ({}));
+        const isAsync = Boolean(body.async || body.isBackground || body.runInBackground || url.pathname === "/api/ai/async-create");
+        const convId = String(body.conversationId || body.conversation_id || body.sessionId || "").trim();
+        const userId = String(body.userId || req.headers.get("x-user-id") || "default-user").trim();
+        const userMsgId = String(body.userMsgId || body.userMessageId || "").trim();
+        const aiMsgId = String(body.aiMsgId || body.aiMessageId || `ai-msg-${Date.now()}`).trim();
+        const creationId = String(body.creationId || `crea-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`).trim();
+        const creationTitle = String(body.creationTitle || body.title || 'Création Studio').trim();
+        const requestedType = String(body.requested_type || body.toolType || 'creation').trim();
+
         const userPrompt = String(body.message || body.prompt || "").trim();
         let targetModel = String(body.model || body.requested_model || "gemini-2.0-flash").trim();
         const history = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
@@ -1330,7 +1339,6 @@ export default {
           videoFrames.length > 0
         );
 
-
         if (targetModel.includes("llama-3.3") && !targetModel.includes("fp8-fast")) {
           targetModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
         } else if (targetModel.includes("gemini")) {
@@ -1339,37 +1347,86 @@ export default {
           targetModel = "claude-sonnet-4-5";
         }
 
-        const accountId = "c80164ed977e6535efd1b67a54741ed6";
-        const cfToken = ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join("");
+        // Pré-enregistrement immédiat de la création en base D1 avec statut 'generating'
+        const db = getD1Database();
+        if (isAsync && db && userId && userId !== "default-user") {
+          try {
+            await db.prepare(`
+              CREATE TABLE IF NOT EXISTS ai_generated_contents (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                file_id TEXT,
+                conversation_id TEXT,
+                tool_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                content_json TEXT NOT NULL,
+                source_file_name TEXT,
+                is_pinned INTEGER DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+              )
+            `).run().catch(() => {});
 
-        const rawApiKey = String(body.apiKey || body.apiToken || body.geminiApiKey || "").trim();
-        const candidateKeys = [
-          (env as any)?.STUDYCLOUD_GEMINI_1,
-          (env as any)?.['studyCloud-Gemini-1'],
-          (env as any)?.['StudyCloud-Gemini-1'],
-          (env as any)?.['STUDYCLOUD-GEMINI-1'],
-          (env as any)?.['StudyCloud-cloud-1'],
-          (env as any)?.['studyCloud-cloud-1'],
-          (env as any)?.STUDYCLOUD_CLOUD_1,
-          (env as any)?.GEMINI_API_KEY,
-          (typeof process !== "undefined" && process.env) ? process.env.STUDYCLOUD_GEMINI_1 : undefined,
-          (typeof process !== "undefined" && process.env) ? process.env['studyCloud-Gemini-1'] : undefined,
-          (typeof process !== "undefined" && process.env) ? process.env.GEMINI_API_KEY : undefined,
-        ];
-        let cloudflareGeminiSecret = "";
-        for (const k of candidateKeys) {
-          if (k && typeof k === "string" && k.trim().length > 15) {
-            cloudflareGeminiSecret = k.trim();
-            break;
+            await db.prepare(`
+              INSERT INTO ai_generated_contents (
+                id, user_id, conversation_id, tool_type, title, content_json, source_file_name, is_pinned, created_at, updated_at
+              )
+              VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                content_json = excluded.content_json,
+                title = excluded.title,
+                updated_at = excluded.updated_at
+            `).bind(
+              creationId,
+              userId,
+              convId || null,
+              requestedType,
+              creationTitle,
+              JSON.stringify({ status: "generating", title: creationTitle, toolType: requestedType }),
+              docName || null,
+              Date.now(),
+              Date.now()
+            ).run().catch(() => {});
+          } catch (initD1Err) {
+            logger.warn("Pré-enregistrement D1 création async échoué", { error: initD1Err });
           }
         }
-        const isKnownDeadKey = rawApiKey.startsWith("AIzaSyDKct");
-        const hasValidUserGeminiKey = !isKnownDeadKey && rawApiKey.startsWith("AIzaSy") && rawApiKey.length > 25;
-        const fallbackGeminiKey = ["AIzaSyA", "K6XU4uK5R-wVjH", "gB2Z-p5kM8mK9eXQ"].join("");
-        // On priorise toujours le secret Cloudflare d'environnement (STUDYCLOUD_GEMINI_1) pour les workers
-        const geminiKeyToUse = cloudflareGeminiSecret || (hasValidUserGeminiKey ? rawApiKey : "") || fallbackGeminiKey;
 
-        const isSelectedGemini = targetModel === "gemini-3.8-flash" || targetModel === "gemini-2.0-flash" || targetModel.includes("gemini");
+        const executeGenerationAndPersist = async () => {
+          let backgroundPerceptionReport = String(body.perceptionReport || "").trim();
+          let answerText = "";
+          let effectiveModelUsed = targetModel;
+
+          const accountId = "c80164ed977e6535efd1b67a54741ed6";
+          const cfToken = ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join("");
+
+          const rawApiKey = String(body.apiKey || body.apiToken || body.geminiApiKey || "").trim();
+          const candidateKeys = [
+            (env as any)?.STUDYCLOUD_GEMINI_1,
+            (env as any)?.['studyCloud-Gemini-1'],
+            (env as any)?.['StudyCloud-Gemini-1'],
+            (env as any)?.['STUDYCLOUD-GEMINI-1'],
+            (env as any)?.['StudyCloud-cloud-1'],
+            (env as any)?.['studyCloud-cloud-1'],
+            (env as any)?.STUDYCLOUD_CLOUD_1,
+            (env as any)?.GEMINI_API_KEY,
+            (typeof process !== "undefined" && process.env) ? process.env.STUDYCLOUD_GEMINI_1 : undefined,
+            (typeof process !== "undefined" && process.env) ? process.env['studyCloud-Gemini-1'] : undefined,
+            (typeof process !== "undefined" && process.env) ? process.env.GEMINI_API_KEY : undefined,
+          ];
+          let cloudflareGeminiSecret = "";
+          for (const k of candidateKeys) {
+            if (k && typeof k === "string" && k.trim().length > 15) {
+              cloudflareGeminiSecret = k.trim();
+              break;
+            }
+          }
+          const isKnownDeadKey = rawApiKey.startsWith("AIzaSyDKct");
+          const hasValidUserGeminiKey = !isKnownDeadKey && rawApiKey.startsWith("AIzaSy") && rawApiKey.length > 25;
+          const fallbackGeminiKey = ["AIzaSyA", "K6XU4uK5R-wVjH", "gB2Z-p5kM8mK9eXQ"].join("");
+          const geminiKeyToUse = cloudflareGeminiSecret || (hasValidUserGeminiKey ? rawApiKey : "") || fallbackGeminiKey;
+
+          const isSelectedGemini = targetModel === "gemini-3.8-flash" || targetModel === "gemini-2.0-flash" || targetModel.includes("gemini");
 
         // Si un média (vidéo, audio, document PDF/Word avec schémas, ou image) est fourni ET que le modèle sélectionné n'est pas Gemini :
         // Gemini Flash intervient en arrière-plan comme moteur de perception universel.
@@ -1996,8 +2053,8 @@ CONSIGNES STRICTES DE CONTINUATION :
                   userId,
                   convId,
                   creationRes.creation_type || body.requested_type || 'creation',
-                  creationRes.creation_title || 'Création Studio',
-                  JSON.stringify(creationRes.creation_data),
+                  creationRes.creation_title || creationTitle || 'Création Studio',
+                  JSON.stringify(creationRes.creation_data || { status: 'ready', data: creationRes }),
                   docName || null,
                   Date.now(),
                   Date.now()
@@ -2007,7 +2064,64 @@ CONSIGNES STRICTES DE CONTINUATION :
               logger.warn("Erreur auto-save D1 chat", { event: "d1_autosave_warning", error: autoSaveErr });
             }
           }
+
+          return {
+            creationRes,
+            answerText,
+            effectiveModelUsed,
+            backgroundPerceptionReport,
+          };
+        };
+
+        if (isAsync) {
+          // OPTION 2 : Le worker répond en ~150ms au mobile et continue l'exécution + écriture D1 via ctx.waitUntil
+          const bgPromise = executeGenerationAndPersist().catch(async (bgErr) => {
+            logger.error("Erreur génération arrière-plan ctx.waitUntil", { error: bgErr });
+            if (db && creationId) {
+              await db.prepare(`
+                UPDATE ai_generated_contents
+                SET content_json = ?, updated_at = ?
+                WHERE id = ?
+              `).bind(
+                JSON.stringify({ status: "failed", error: bgErr?.message || "Erreur de génération", title: creationTitle, toolType: requestedType }),
+                Date.now(),
+                creationId
+              ).run().catch(() => {});
+            }
+          });
+
+          if (ctx && typeof (ctx as any).waitUntil === "function") {
+            ctx.waitUntil(bgPromise);
+          } else {
+            bgPromise.catch(() => {});
+          }
+
+          return new Response(JSON.stringify({
+            success: true,
+            async: true,
+            isBackground: true,
+            status: "generating",
+            taskId: creationId,
+            creation_id: creationId,
+            creationId: creationId,
+            creation_title: creationTitle,
+            creation_type: requestedType,
+            conversation_id: convId || undefined,
+            ai_msg_id: aiMsgId,
+            user_msg_id: userMsgId,
+            response: `Votre création « ${creationTitle} » est en cours de génération en arrière-plan sur nos serveurs. Vous pouvez continuer à discuter, changer d'onglet ou verrouiller votre téléphone : elle sera prête et enregistrée automatiquement !`,
+            chat_response: `Votre création « ${creationTitle} » est en cours de génération en arrière-plan sur nos serveurs. Vous pouvez continuer à discuter, changer d'onglet ou verrouiller votre téléphone : elle sera prête et enregistrée automatiquement !`,
+          }), {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+              ...corsHeaders,
+            },
+          });
         }
+
+        // Mode synchrone classique
+        const { creationRes, answerText, effectiveModelUsed, backgroundPerceptionReport } = await executeGenerationAndPersist();
 
         return new Response(JSON.stringify({
           success: true,
