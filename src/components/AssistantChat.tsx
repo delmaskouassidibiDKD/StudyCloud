@@ -1200,56 +1200,73 @@ function getSuggestedPromptsForFormat(formatType: string): string[] {
   ];
 }
 
-// Détection du format de création demandé
-function detectCreationFormat(userText: string, requestedType?: string): string | null {
+// Détection de tous les formats de création demandés (support multi-agents)
+export function detectAllCreationFormats(userText: string, requestedType?: string): AiCreationType[] {
   if (requestedType && typeof requestedType === 'string' && requestedType.trim()) {
-    return requestedType.trim().toLowerCase();
+    return [normalizeCreationType(requestedType) as AiCreationType];
   }
-  if (!userText || typeof userText !== 'string') return null;
+  if (!userText || typeof userText !== 'string') return [];
   const t = userText.trim().toLowerCase();
+  const detected: AiCreationType[] = [];
 
-  // Test noté / Questionnaire Test
+  // 1. Questionnaire Test vs Questionnaire QCM
   if (/(?:questionnaire\s+test|test\s+not[eé]|test\s+chrono|[eé]preuve\s+not[eé]e)/i.test(t)) {
-    return 'questionnaire-test';
-  }
-  if (/(?:questionnaire\s+quiz|quiz\s+qcm|questionnaire\s+qcm|faire\s+un\s+quiz|fais-moi\s+un\s+quiz|cr[eé]e\s+un\s+quiz|un\s+quiz|le\s+quiz|un\s+qcm|le\s+qcm|des\s+qcm|questionnaire)/i.test(t)) {
-    if (t.includes('test') || t.includes('noté') || t.includes('chrono')) return 'questionnaire-test';
-    return 'questionnaire';
-  }
-  // Vrai ou Faux Test vs Vrai ou Faux
-  if (/(?:vrai\s+ou\s+faux\s+test|vrai\/faux\s+test|vf\s+test|[eé]preuve\s+vrai\s+ou\s+faux)/i.test(t)) {
-    return 'vrai-ou-faux-test';
-  }
-  if (/(?:vrai\s+ou\s+faux|vrai\/faux)/i.test(t)) {
-    return 'vrai-ou-faux';
-  }
-  // Carte Mentale 2 vs Carte Mentale
-  if (/(?:carte\s+mentale\s+2|mindmap\s*2|carte\s+conceptuelle)/i.test(t)) {
-    return 'carte-mentale-2';
-  }
-  if (/(?:carte\s+mentale|mindmap|arborescence)/i.test(t)) {
-    return 'carte-mentale';
-  }
-  if (/(?:carte\s+m[eé]moire|cartes\s+m[eé]moires|flashcard|flashcards)/i.test(t)) {
-    return 'carte-memoire';
-  }
-  if (/(?:fiche\s+de\s+r[eé]sum[eé]|r[eé]sum[eé]|synth[eè]se|fiche\s+de\s+synth[eè]se)/i.test(t)) {
-    return 'resume';
-  }
-  if (/(?:document\s+pdf|polycopi[eé]|polycopie|g[eé]n[eé]rer\s+un\s+pdf|cr[eé]er\s+un\s+pdf|faire\s+un\s+pdf)/i.test(t)) {
-    return 'pdf';
-  }
-  if (/(?:devoir\s+complet|sujet\s+d['’]examen|[eé]preuve\s+d['’]examen|devoir\s+d['’]examen)/i.test(t)) {
-    return 'devoir-complet';
-  }
-  if (/(?:exercices?\s+[eé]crits?|exercices?\s+d['’]application|s[eé]rie\s+d['’]exercices)/i.test(t)) {
-    return 'exercices-ecrits';
-  }
-  if (/(?:infographie|fiche\s+visuelle)/i.test(t)) {
-    return 'infographie';
+    detected.push('questionnaire-test');
+  } else if (/(?:questionnaire|quiz|qcm|test)/i.test(t)) {
+    detected.push('questionnaire');
   }
 
-  return null;
+  // 2. Vrai ou Faux Test vs Vrai ou Faux
+  if (/(?:vrai\s+ou\s+faux\s+test|vrai\/faux\s+test|vf\s+test|[eé]preuve\s+vrai\s+ou\s+faux)/i.test(t)) {
+    detected.push('vrai-ou-faux-test');
+  } else if (/(?:vrai\s+ou\s+faux|vrai\/faux|affirmations?)/i.test(t)) {
+    detected.push('vrai-ou-faux');
+  }
+
+  // 3. Carte Mentale 2 vs Carte Mentale
+  if (/(?:carte\s+mentale\s+2|mindmap\s*2|carte\s+conceptuelle)/i.test(t)) {
+    detected.push('carte-mentale-2');
+  } else if (/(?:carte\s+mentale|mindmap|mind-map|arborescence)/i.test(t)) {
+    detected.push('carte-mentale');
+  }
+
+  // 4. Cartes Mémoires
+  if (/(?:carte\s+m[eé]moire|cartes\s+m[eé]moires|flashcard|flashcards)/i.test(t)) {
+    detected.push('carte-memoire');
+  }
+
+  // 5. Résumé / Synthèse
+  if (/(?:fiche\s+de\s+r[eé]sum[eé]|r[eé]sum[eé]|synth[eè]se|fiche\s+de\s+synth[eè]se)/i.test(t)) {
+    detected.push('resume');
+  }
+
+  // 6. Devoir Complet / Examen
+  if (/(?:devoir\s+complet|sujet\s+d['’]examen|[eé]preuve\s+d['’]examen|devoir\s+d['’]examen|examen\s+complet)/i.test(t)) {
+    detected.push('devoir-complet');
+  }
+
+  // 7. Exercices Écrits
+  if (/(?:exercices?\s+[eé]crits?|exercices?\s+d['’]application|s[eé]rie\s+d['’]exercices)/i.test(t)) {
+    detected.push('exercices-ecrits');
+  }
+
+  // 8. Infographie
+  if (/(?:infographie|fiche\s+visuelle)/i.test(t)) {
+    detected.push('infographie');
+  }
+
+  // 9. Document PDF
+  if (/(?:document\s+pdf|polycopi[eé]|polycopie|g[eé]n[eé]rer\s+un\s+pdf|cr[eé]er\s+un\s+pdf|faire\s+un\s+pdf)/i.test(t)) {
+    detected.push('pdf');
+  }
+
+  return detected;
+}
+
+// Détection du premier format de création demandé (compatibilité ascendante)
+function detectCreationFormat(userText: string, requestedType?: string): string | null {
+  const all = detectAllCreationFormats(userText, requestedType);
+  return all.length > 0 ? all[0] : null;
 }
 
 // Détection si l'utilisateur a choisi un document particulier parmi plusieurs ou une synthèse globale
@@ -2854,8 +2871,37 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       (params.resolvedActiveItem as any)?.rawText ||
       '';
 
-    let systemContent = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Gemini / Delmas IA).
-Tu es en mode CRÉATION DE MODULE D'ÉTUDE officiel StudyCloud pour fabriquer le support suivant : "${params.explicitToolType}".
+    const getAgentRoleDescription = (type: string): string => {
+      switch (type) {
+        case 'resume':
+          return "Tu es le Sous-Agent Spécialiste de la Synthèse et des Fiches de Révision. Ton rôle exclusif est de synthétiser le cours avec clarté, rigueur, grands points clés et définitions incontournables.";
+        case 'questionnaire':
+        case 'questionnaire-test':
+          return "Tu es le Sous-Agent Spécialiste de la Docimologie et des Évaluations Formatives (QCM). Ton rôle exclusif est de créer des questions percutantes, des distracteurs plausibles et des explications limpides.";
+        case 'vrai-ou-faux':
+        case 'vrai-ou-faux-test':
+          return "Tu es le Sous-Agent Spécialiste de l'Analyse Critique et des Épreuves Vrai/Faux. Ton rôle exclusif est de tester la précision conceptuelle de l'étudiant avec des affirmations subtiles et des justifications détaillées.";
+        case 'carte-mentale':
+        case 'carte-mentale-2':
+          return "Tu es le Sous-Agent Cartographe Conceptuel. Ton rôle exclusif est de décomposer le cours en arborescences visuelles, hiérarchies claires et connecteurs logiques.";
+        case 'carte-memoire':
+          return "Tu es le Sous-Agent Spécialiste de la Mémorisation Active et Répétition Espacée. Ton rôle exclusif est de fabriquer des cartes mémoires (flashcards) recto/verso à fort impact mémoriel.";
+        case 'devoir-complet':
+          return "Tu es le Sous-Agent Concepteur d'Épreuves d'Examen et Concours. Ton rôle exclusif est de rédiger un devoir complet avec barème précis sur 20 points, énoncés rigoureux et corrigé type pas à pas.";
+        case 'exercices-ecrits':
+          return "Tu es le Sous-Agent Rédacteur d'Exercices d'Application. Ton rôle exclusif est de concevoir des exercices progressifs avec énoncés détaillés et démarches de résolution guidées.";
+        case 'infographie':
+          return "Tu es le Sous-Agent Infographiste Pédagogique. Ton rôle exclusif est de structurer les notions clés sous forme de tableau de bord visuel et de repères visuels.";
+        case 'pdf':
+          return "Tu es le Sous-Agent Rédacteur Académique. Ton rôle exclusif est de rédiger un polycopié complet, structuré et prêt pour l'exportation PDF.";
+        default:
+          return `Tu es le Sous-Agent Pédagogique Spécialisé pour le support "${type}".`;
+      }
+    };
+
+    let systemContent = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (${params.currentModelDisplay || 'IA'}).
+${getAgentRoleDescription(params.explicitToolType)}
+Tu es en mission de conception officielle StudyCloud pour fabriquer le support : "${params.explicitToolType}".
 
 FORMAT DE SORTIE JSON STRICT ET OBLIGATOIRE :
 Tu réponds EXCLUSIVEMENT sous la forme d'un objet JSON strict :
@@ -3093,10 +3139,11 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     const newUserMsgId = Date.now().toString();
     const newUserMsg: Message = { id: newUserMsgId, text: userText, sender: 'user' };
 
-    const detectedFormat = detectCreationFormat(userText, requestedTypeOverride);
-    const isCreationIntent = Boolean(detectedFormat);
+    const detectedFormats = detectAllCreationFormats(userText, requestedTypeOverride);
+    const isCreationIntent = detectedFormats.length > 0;
+    const detectedFormat = detectedFormats.length > 0 ? detectedFormats[0] : null;
     const effectiveRequestedType = requestedTypeOverride || (isCreationIntent ? (detectedFormat as any) : undefined);
-    const isExplicitCreationRequest = Boolean(effectiveRequestedType);
+    const isExplicitCreationRequest = isCreationIntent;
 
     let abortSignal: AbortSignal;
     const controller = new AbortController();
@@ -3436,11 +3483,8 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
     // Le chat est immédiatement libéré pour permettre à l'utilisateur de continuer à discuter.
     // L'IA formule elle-même sa confirmation naturelle (aucun message figé/générique).
     // =========================================================================
-    if (isExplicitCreationRequest && effectiveRequestedType) {
-      const explicitToolType = effectiveRequestedType as AiCreationType;
-      const formatTitle = CREATION_NAME_MAP[explicitToolType] || CREATION_FORMAT_LABELS[explicitToolType] || 'Support d\'apprentissage';
+    if (isExplicitCreationRequest && detectedFormats.length > 0) {
       const mainDocName = resolvedActiveName || (attachedResources[0]?.name) || 'Document d\'étude';
-      const creationTitle = `${formatTitle} : ${mainDocName}`;
 
       // Sauvegarde du titre de conversation si c'est le 1er message
       if (convBaseMessages.length === 0) {
@@ -3453,102 +3497,96 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
         }).then(() => loadConversations()).catch(() => {});
       }
 
-      // Concurrence serveur : Maximum 3 en simultané, les suivantes sont placées en attente
-      const runningCount = aiBackgroundManager.getRunningCount();
-      const willBeQueued = runningCount >= aiBackgroundManager.MAX_CONCURRENT_REQUESTS;
+      // Préparation des tâches d'agents pour chaque format de création détecté
+      const tasksToEnqueue = detectedFormats.map((explicitToolType, index) => {
+        const formatTitle = CREATION_NAME_MAP[explicitToolType] || CREATION_FORMAT_LABELS[explicitToolType] || 'Support d\'apprentissage';
+        const creationTitle = `${formatTitle} : ${mainDocName}`;
+        const creationId = 'crea-' + (Date.now() + index + 2).toString();
+        const taskId = `task-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 6)}`;
+        return {
+          explicitToolType,
+          formatTitle,
+          creationTitle,
+          creationId,
+          taskId,
+        };
+      });
 
-      // 1. Ajout immédiat de la création dans le volet RightMenu (avec statut "En cours" ou "En attente")
-      window.dispatchEvent(new CustomEvent('studycloud-creation-enqueued', {
-        detail: {
-          id: creationId,
-          conversationId: targetConvId,
-          title: creationTitle,
-          toolType: explicitToolType,
-          sourceFileName: mainDocName,
-          createdAt: new Date().toISOString(),
-          status: willBeQueued ? 'queued' : 'generating',
-          progressText: willBeQueued ? 'En attente...' : 'Création en cours...',
-          isQueued: willBeQueued,
-        }
-      }));
+      // Lancement de chaque tâche dans le Pool d'Agents (max 3 en simultané, les suivantes en file d'attente)
+      const taskResults: Array<{ taskId: string; title: string; isQueued: boolean }> = [];
+      tasksToEnqueue.forEach(task => {
+        const runningCount = aiBackgroundManager.getRunningCount();
+        const willBeQueued = runningCount >= aiBackgroundManager.MAX_CONCURRENT_REQUESTS;
 
-      // 2. Délégation de la conception complète au gestionnaire d'arrière-plan avec file d'attente
-      aiBackgroundManager.enqueueCreationTask(
-        {
-          taskId: `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          conversationId: targetConvId,
-          userId: targetUserId,
-          userMsgId: newUserMsgId,
-          aiMsgId: aiMsgId,
-          creationId: creationId,
-          title: creationTitle,
-          toolType: explicitToolType,
-          prompt: userText,
-          mainDocName: mainDocName,
-        },
-        async () => {
-          return executeCreationApiCall({
-            userText,
-            targetConvId,
-            targetUserId,
-            explicitToolType,
-            mainDocName,
-            creationId,
-            creationTitle,
-            allDocs,
-            messages: convBaseMessages,
-            selectedModel,
-            availableModels,
-            currentConversationId: targetConvId,
-            sessionCreations,
-            resolvedActiveItem,
-            attachedResources,
-            activePreviewItem,
-            currentModelDisplay,
-          });
-        }
-      );
+        window.dispatchEvent(new CustomEvent('studycloud-creation-enqueued', {
+          detail: {
+            id: task.creationId,
+            conversationId: targetConvId,
+            title: task.creationTitle,
+            toolType: task.explicitToolType,
+            sourceFileName: mainDocName,
+            createdAt: new Date().toISOString(),
+            status: willBeQueued ? 'queued' : 'generating',
+            progressText: willBeQueued ? 'En attente...' : 'Création en cours...',
+            isQueued: willBeQueued,
+          }
+        }));
 
-      // 3. Demande à l'IA de répondre elle-même dans le chat avec une confirmation dynamique,
-      // humaine, personnalisée et adaptée au contenu précis du message de l'étudiant.
-      const confirmationSystemPrompt = `Tu es l'intelligence pédagogique de StudyCloud. L'étudiant vient de demander : "${userText}".
-La conception de son module d'apprentissage "${creationTitle}" (${formatTitle}) vient d'être lancée et s'exécute actuellement en arrière-plan dans son espace Créations.
-CONSIGNES STRICTES POUR TA RÉPONSE :
-1. Réponds directement et chaleureusement à l'étudiant en 1 ou 2 phrases concises en français.
-2. Fais référence avec précision au sujet ou aux spécificités de sa demande (notions, formules, figures, concepts ou paliers mentionnés).
-3. Confirme clairement que sa création a été lancée en arrière-plan et qu'il la retrouvera directement dans l'espace Créations à droite dès qu'elle sera prête.
-4. Invite-le avec bienveillance à continuer à te poser des questions ou à aborder d'autres points de cours ici pendant que la conception s'exécute.
-5. INTERDICTION ABSOLUE D'ÉCRIRE DU JSON OU DES ACCOLADES. Parle directement à l'étudiant en texte normal.`;
+        const enqRes = aiBackgroundManager.enqueueCreationTask(
+          {
+            taskId: task.taskId,
+            conversationId: targetConvId,
+            userId: targetUserId,
+            userMsgId: newUserMsgId,
+            aiMsgId: aiMsgId,
+            creationId: task.creationId,
+            title: task.creationTitle,
+            toolType: task.explicitToolType,
+            prompt: userText,
+            mainDocName: mainDocName,
+          },
+          async () => {
+            return executeCreationApiCall({
+              userText,
+              targetConvId,
+              targetUserId,
+              explicitToolType: task.explicitToolType,
+              mainDocName,
+              creationId: task.creationId,
+              creationTitle: task.creationTitle,
+              allDocs,
+              messages: convBaseMessages,
+              selectedModel,
+              availableModels,
+              currentConversationId: targetConvId,
+              sessionCreations,
+              resolvedActiveItem,
+              attachedResources,
+              activePreviewItem,
+              currentModelDisplay,
+            });
+          }
+        );
+
+        taskResults.push({ taskId: task.taskId, title: task.creationTitle, isQueued: enqRes.isQueued });
+      });
+
+      // Formulation immédiate et vivante de la réponse par l'IA
+      const activeRunningCount = taskResults.filter(t => !t.isQueued).length;
+      const queuedCount = taskResults.filter(t => t.isQueued).length;
 
       let aiConfirmationText = '';
-      try {
-        const aiAck = await sendChatMessageToAi({
-          messages: [
-            { role: 'system', content: confirmationSystemPrompt },
-            ...convBaseMessages.slice(-4).map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text })),
-            { role: 'user', content: userText }
-          ],
-          prompt: userText,
-          message: userText,
-          userId: targetUserId,
-          sessionId: targetConvId,
-          conversationId: targetConvId,
-          model: selectedModel,
-          selectedModel,
-          apiKey: getGeminiApiKey() || undefined,
-          signal: abortSignal,
-          abortSignal,
-        });
-        const cand = aiAck.chat_response || aiAck.response || '';
-        aiConfirmationText = cleanChatText(cand);
-      } catch (_ackErr) {
-        console.warn('[AssistantChat] Erreur confirmation IA dynamique:', _ackErr);
-      }
-
-      if (!aiConfirmationText || aiConfirmationText.trim().startsWith('{') || aiConfirmationText.includes('"creation_data"')) {
-        aiConfirmationText = willBeQueued
-          ? `Votre demande pour **${creationTitle}** est bien prise en compte ! Comme 3 créations s'exécutent déjà en simultané, elle démarrera automatiquement dès qu'un créneau se libère. Vous pourrez la retrouver dans l'espace Créations à droite. En attendant, n'hésitez pas si vous avez d'autres questions !`
-          : `C'est bien noté ! J'ai lancé la création de votre **${creationTitle}** en arrière-plan. Vous pouvez la suivre et la retrouver dans l'espace Créations à droite dès qu'elle sera prête. En attendant, vous pouvez continuer à me poser vos questions ici !`;
+      if (tasksToEnqueue.length === 1) {
+        const singleTask = tasksToEnqueue[0];
+        const isQueued = taskResults[0]?.isQueued;
+        aiConfirmationText = isQueued
+          ? `Votre demande pour **${singleTask.creationTitle}** est bien prise en compte ! Comme 3 agents sont déjà au travail en simultané, elle démarrera automatiquement dès qu'une place se libère. Vous la retrouverez dans l'espace Créations à droite. En attendant, n'hésitez pas si vous avez d'autres questions ici !`
+          : `C'est bien noté ! J'ai confié la conception de votre **${singleTask.creationTitle}** à un agent spécialisé en arrière-plan. Vous pouvez suivre son avancement et la retrouver dans l'espace Créations à droite dès qu'elle est prête. En attendant, le chat reste totalement ouvert : vous pouvez continuer à me poser vos questions ici !`;
+      } else {
+        const titlesList = tasksToEnqueue.map(t => `**${t.formatTitle}**`).join(', ');
+        aiConfirmationText = queuedCount > 0
+          ? `C'est bien noté ! J'ai mobilisé mes agents spécialisés pour vos ${tasksToEnqueue.length} créations (${titlesList}). ${activeRunningCount} sont lancées immédiatement et ${queuedCount} démarreront automatiquement dès qu'un agent aura terminé. Vous pouvez suivre leur avancement dans l'espace Créations à droite. En attendant, n'hésitez pas si vous avez d'autres questions !`
+          : `C'est bien noté ! J'ai mobilisé mes agents spécialisés pour vos ${tasksToEnqueue.length} créations en parallèle : ${titlesList}. Elles s'exécutent en arrière-plan dans l'espace Créations à droite. En attendant, le chat reste totalement ouvert : vous pouvez continuer à me poser vos questions ici !`;
       }
 
       const effectiveModelName = currentModelDisplay;
@@ -4990,20 +5028,18 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
   }, []);
 
   const handleSend = () => {
-    if (isTyping || isWaitingServer) return;
+    if (!inputValue.trim()) return;
     sendMessage(inputValue);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (isTyping || isWaitingServer) return;
       handleSend();
     }
   };
 
   const handleQuickAction = (toolType: AiCreationType) => {
-    if (isTyping || isWaitingServer) return;
     const docName = activePreviewItem?.name || 'ce document';
     let prompt = '';
     switch (toolType) {
@@ -5023,7 +5059,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         prompt = `Rédige une fiche d'étude exportable en PDF sur "${docName}"`;
         break;
     }
-    sendMessage(prompt);
+    sendMessage(prompt, toolType);
   };
 
   // Groupement temporel des conversations façon Gemini (Aujourd'hui, Hier, 7 derniers jours, Plus ancien)
@@ -5546,7 +5582,6 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (isTyping || isWaitingServer) return;
               handleSend();
             }}
             className="relative flex flex-col gap-2 bg-[#282a2f] rounded-[22.5px] p-3 sm:p-3.5 transition-all w-full h-full"
@@ -5615,26 +5650,27 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                ))}
             </div>
 
-            {isTyping || isWaitingServer ? (
-              <button
-                type="button"
-                onClick={handleCancelTask}
-                className="self-end px-3.5 py-2 font-bold rounded-full flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs shrink-0"
-                title="Arrêter la tâche en cours"
-              >
-                <Square className="w-3.5 h-3.5 fill-current text-rose-400" />
-                <span>Arrêter</span>
-              </button>
-            ) : (
+            <div className="flex items-center gap-1.5 shrink-0 self-end">
+              {isWaitingServer && (
+                <button
+                  type="button"
+                  onClick={handleCancelTask}
+                  className="px-3 py-2 font-bold rounded-full flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs shrink-0"
+                  title="Arrêter la réponse en cours"
+                >
+                  <Square className="w-3.5 h-3.5 fill-current text-rose-400" />
+                  <span>Arrêter</span>
+                </button>
+              )}
               <button
                 type="submit"
                 disabled={!inputValue.trim()}
-                className="self-end p-2.5 font-bold rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0 bg-[#70a5ff] hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-slate-950"
+                className="p-2.5 font-bold rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0 bg-[#70a5ff] hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-slate-950"
                 title="Envoyer"
               >
                 <Send className="w-4 h-4" />
               </button>
-            )}
+            </div>
           </div>
         </form>
         </div>
