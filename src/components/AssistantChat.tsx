@@ -1200,6 +1200,443 @@ function getSuggestedPromptsForFormat(formatType: string): string[] {
   ];
 }
 
+// Extraction robuste et universelle du texte d'une affirmation Vrai ou Faux
+function extractStatementText(a: any): string {
+  let stmt = '';
+  if (typeof a === 'string') {
+    stmt = a.trim();
+  } else if (a && typeof a === 'object') {
+    stmt = String(
+      a.statement ||
+      a.affirmation ||
+      a.proposition ||
+      a.enonce ||
+      a.phrase ||
+      a.question ||
+      a.claim ||
+      a.texte ||
+      a.text ||
+      a.content ||
+      a.item ||
+      a.label ||
+      a.title ||
+      ''
+    ).trim();
+  }
+  const explText = typeof a?.explanation === 'string'
+    ? a.explanation
+    : (typeof a?.explication === 'string'
+      ? a.explication
+      : (typeof a?.justification === 'string' ? a.justification : ''));
+
+  if (!stmt || /^Affirmation\s*(?:n°\s*\d+)?$/i.test(stmt)) {
+    if (explText && explText.length > 10) {
+      stmt = explText;
+    }
+  }
+  return stmt;
+}
+
+// Vérificateur de complétude et validité réelle des données de création pour chaque type
+function hasRealCreationData(type: string, content: any): boolean {
+  if (!content || typeof content !== 'object') return false;
+  const norm = normalizeCreationType(type as any);
+
+  if (norm === 'vrai-ou-faux' || norm === 'vrai-ou-faux-test') {
+    const affs = Array.isArray(content) ? content : (content.affirmations || content.propositions);
+    return Array.isArray(affs) && affs.length > 0 && affs.some((a: any) => {
+      const s = extractStatementText(a);
+      return s.length > 5 && !/^Affirmation\s*(?:n°\s*\d+)?$/i.test(s);
+    });
+  }
+
+  if (norm === 'questionnaire' || norm === 'questionnaire-test') {
+    const qs = Array.isArray(content) ? content : content.questions;
+    return Array.isArray(qs) && qs.length > 0 && qs.some((q: any) => {
+      const txt = typeof q === 'string' ? q : (q?.question || q?.enonce || q?.title || '');
+      return String(txt).trim().length > 3;
+    });
+  }
+
+  if (norm === 'carte-mentale' || norm === 'carte-mentale-2') {
+    return Boolean(
+      content.root ||
+      content.branches ||
+      content.columns ||
+      content.piliers ||
+      content.nodes ||
+      (Array.isArray(content.children) && content.children.length > 0)
+    );
+  }
+
+  if (norm === 'exercices-ecrits') {
+    const exs = content.written_exercise?.questions || content.exercises || content.exercices || (Array.isArray(content.questions) ? content.questions : null);
+    return Boolean(Array.isArray(exs) && exs.length > 0);
+  }
+
+  if (norm === 'devoir-complet') {
+    const secs = content.complete_exam?.sections || content.sections || content.devoir?.sections;
+    return Boolean(Array.isArray(secs) && secs.length > 0);
+  }
+
+  if (norm === 'carte-memoire') {
+    const cards = content.cards || content.flashcards || (Array.isArray(content) ? content : null);
+    return Boolean(Array.isArray(cards) && cards.length > 0);
+  }
+
+  if (norm === 'resume') {
+    return Boolean(
+      (typeof content.overview === 'string' && content.overview.trim().length > 10) ||
+      (Array.isArray(content.key_definitions) && content.key_definitions.length > 0) ||
+      (Array.isArray(content.sections) && content.sections.length > 0) ||
+      (typeof content.markdown === 'string' && content.markdown.trim().length > 20)
+    );
+  }
+
+  if (norm === 'infographie') {
+    return Boolean(
+      content.stats ||
+      content.metrics ||
+      content.keyConcepts ||
+      content.timeline ||
+      content.summary_cards
+    );
+  }
+
+  if (norm === 'pdf') {
+    return Boolean(
+      (Array.isArray(content.sections) && content.sections.length > 0) ||
+      (Array.isArray(content.chapters) && content.chapters.length > 0) ||
+      (typeof content.content === 'string' && content.content.trim().length > 20)
+    );
+  }
+
+  return Object.keys(content).length > 0;
+}
+
+// Prompt ciblé et exclusif pour chaque sous-agent afin d'éviter la contamination entre modules
+function getSubAgentTargetPrompt(toolType: AiCreationType, docName: string, originalUserText: string): string {
+  const norm = normalizeCreationType(toolType);
+  const safeDoc = docName || "Document d'étude";
+  const userContext = originalUserText ? ` (Demande globale de l'étudiant : "${originalUserText}")` : '';
+
+  switch (norm) {
+    case 'vrai-ou-faux':
+    case 'vrai-ou-faux-test':
+      return `Mission exclusive pour ce sous-agent : Rédige une série complète de 10 à 18 affirmations VRAI OU FAUX rigoureuses pour tester la précision conceptuelle sur : ${safeDoc}.${userContext}
+Chaque affirmation DOIT comporter un énoncé textuel précis dans "statement" (sans placeholder comme 'Affirmation 1'), la valeur booléenne (is_true: true ou false) et une justification détaillée. Tu es strictement dédié à ce module Vrai ou Faux.`;
+
+    case 'carte-mentale':
+    case 'carte-mentale-2':
+      return `Mission exclusive pour ce sous-agent : Conçois une CARTE MENTALE complète, arborescente et hiérarchisée structurant visuellement toutes les notions clés sur : ${safeDoc}.${userContext}
+Définit un nœud central (root), des branches principales thématiques, des sous-branches et des détails conceptuels. Tu es strictement dédié à ce module Carte Mentale.`;
+
+    case 'exercices-ecrits':
+      return `Mission exclusive pour ce sous-agent : Rédige une série complète d'EXERCICES ÉCRITS d'application progressive avec énoncés détaillés, questions numérotées, démarches guidées et solutions corrigées détaillées pas à pas sur : ${safeDoc}.${userContext}
+Tu es strictement dédié à ce module Exercices Écrits.`;
+
+    case 'devoir-complet':
+      return `Mission exclusive pour ce sous-agent : Conçois un DEVOIR COMPLET d'examen officiel avec barème sur 20 points, énoncés rigoureux et corrigé type détaillé pas à pas sur : ${safeDoc}.${userContext}
+Tu es strictement dédié à ce module Devoir Complet.`;
+
+    case 'carte-memoire':
+      return `Mission exclusive pour ce sous-agent : Conçois un jeu de 10 à 20 CARTES MÉMOIRE (flashcards recto/verso avec question ciblée et réponse synthétique) pour la mémorisation active sur : ${safeDoc}.${userContext}
+Tu es strictement dédié à ce module Cartes Mémoire.`;
+
+    case 'resume':
+      return `Mission exclusive pour ce sous-agent : Rédige une FICHE DE RÉVISION ET SYNTHÈSE complète avec grands points clés, définitions incontournables, formules, pièges d'examen et exemples concrets sur : ${safeDoc}.${userContext}
+Tu es strictement dédié à ce module Résumé.`;
+
+    case 'questionnaire':
+    case 'questionnaire-test':
+      return `Mission exclusive pour ce sous-agent : Conçois un QUESTIONNAIRE (QCM) rigoureux de 10 à 18 questions avec 4 options (A, B, C, D), bonne réponse identifiée et explications détaillées sur : ${safeDoc}.${userContext}
+Tu es strictement dédié à ce module Questionnaire QCM.`;
+
+    case 'infographie':
+      return `Mission exclusive pour ce sous-agent : Conçois une INFOGRAPHIE PÉDAGOGIQUE synthétique structurant visuellement les repères clés, statistiques et synthèses sur : ${safeDoc}.${userContext}
+Tu es strictement dédié à ce module Infographie.`;
+
+    case 'pdf':
+      return `Mission exclusive pour ce sous-agent : Rédige un POLYCOPIÉ DE COURS académique complet et structuré, prêt pour l'exportation PDF sur : ${safeDoc}.${userContext}
+Tu es strictement dédié à ce module Polycopié PDF.`;
+
+    default:
+      return `Mission exclusive pour ce sous-agent : Fabrique le support pédagogique "${toolType}" sur : ${safeDoc}.${userContext}`;
+  }
+}
+
+// Spécification formelle du schéma JSON attendu pour chaque sous-agent dans le prompt système
+function getTargetJsonInstructions(type: AiCreationType, docName: string, title: string): string {
+  const norm = normalizeCreationType(type);
+  switch (norm) {
+    case 'vrai-ou-faux':
+    case 'vrai-ou-faux-test':
+      return `FORMAT JSON ATTENDU :
+\`\`\`json
+{
+  "decision": "creation",
+  "mode": "creation",
+  "creation_type": "${norm}",
+  "creation_title": "${title}",
+  "chat_response": "Affirmations Vrai ou Faux prêtes !",
+  "creation_data": {
+    "affirmations": [
+      {
+        "id": "vf_1",
+        "statement": "Énoncé complet et précis de la première affirmation sans placeholder",
+        "is_true": true,
+        "explanation": "Justification détaillée prouvant pourquoi cette affirmation est vraie ou fausse"
+      }
+    ]
+  }
+}
+\`\`\`
+RÈGLES CRUCIALES POUR LES VRAI OU FAUX :
+- Rédige entre 10 et 18 affirmations distinctes et pertinentes.
+- Chaque affirmation DOIT avoir un énoncé textuel complet dans "statement" (ou "affirmation").
+- INTERDICTION FORMELLE d'écrire seulement 'Affirmation 1' ou 'Affirmation n°1' sans énoncé.`;
+
+    case 'carte-mentale':
+    case 'carte-mentale-2':
+      return `FORMAT JSON ATTENDU :
+\`\`\`json
+{
+  "decision": "creation",
+  "mode": "creation",
+  "creation_type": "${norm}",
+  "creation_title": "${title}",
+  "chat_response": "Carte mentale générée avec succès !",
+  "creation_data": {
+    "root": {
+      "id": "root-1",
+      "label": "${docName}",
+      "children": [
+        {
+          "id": "branch-1",
+          "label": "Titre Branche Principale 1",
+          "children": [
+            { "id": "sub-1-1", "label": "Sous-notion ou point clé 1" },
+            { "id": "sub-1-2", "label": "Sous-notion ou point clé 2" }
+          ]
+        },
+        {
+          "id": "branch-2",
+          "label": "Titre Branche Principale 2",
+          "children": [
+            { "id": "sub-2-1", "label": "Sous-notion ou point clé" }
+          ]
+        }
+      ]
+    }
+  }
+}
+\`\`\``;
+
+    case 'exercices-ecrits':
+      return `FORMAT JSON ATTENDU :
+\`\`\`json
+{
+  "decision": "creation",
+  "mode": "creation",
+  "creation_type": "exercices-ecrits",
+  "creation_title": "${title}",
+  "chat_response": "Exercices écrits rédigés avec succès !",
+  "creation_data": {
+    "written_exercise": {
+      "title": "${title}",
+      "theme": "${docName}",
+      "questions": [
+        {
+          "id": "ex_1",
+          "title": "Exercice 1 : Application des principes fondamentaux",
+          "statement": "Énoncé complet de l'exercice avec données numériques, contexte ou texte d'étude.",
+          "hints": ["Indice méthodologique pour démarrer"],
+          "solution": {
+            "steps": ["Étape 1 : rappel de la règle ou formule", "Étape 2 : calcul ou démonstration"],
+            "answer": "Solution rédigée complète et pédagogique",
+            "final_answer": "Résultat final"
+          }
+        }
+      ]
+    }
+  }
+}
+\`\`\``;
+
+    case 'devoir-complet':
+      return `FORMAT JSON ATTENDU :
+\`\`\`json
+{
+  "decision": "creation",
+  "mode": "creation",
+  "creation_type": "devoir-complet",
+  "creation_title": "${title}",
+  "chat_response": "Devoir complet d'examen conçu avec succès !",
+  "creation_data": {
+    "complete_exam": {
+      "exam_title": "${title}",
+      "total_points": 20,
+      "time_allowed": "2 heures",
+      "sections": [
+        {
+          "title": "Partie 1 : Restitution organisée des connaissances (6 points)",
+          "points": 6,
+          "questions": [
+            { "id": "q1", "text": "Énoncé complet de la question 1", "points": 3, "correction": "Corrigé pas à pas", "criteria": ["Clarté de la définition", "Exemple pertinent"] }
+          ]
+        },
+        {
+          "title": "Partie 2 : Analyse et application guidée (8 points)",
+          "points": 8,
+          "questions": [
+            { "id": "q2", "text": "Énoncé détaillé de l'exercice", "points": 4, "correction": "Calcul et justification", "criteria": ["Formule appliquée", "Unité correcte"] }
+          ]
+        },
+        {
+          "title": "Partie 3 : Problème de synthèse (6 points)",
+          "points": 6,
+          "questions": [
+            { "id": "q3", "text": "Énoncé du problème ouvert", "points": 6, "correction": "Résolution rédigée", "criteria": ["Raisonnement logique"] }
+          ]
+        }
+      ]
+    }
+  }
+}
+\`\`\``;
+
+    case 'carte-memoire':
+      return `FORMAT JSON ATTENDU :
+\`\`\`json
+{
+  "decision": "creation",
+  "mode": "creation",
+  "creation_type": "carte-memoire",
+  "creation_title": "${title}",
+  "chat_response": "Cartes mémoires prêtes !",
+  "creation_data": {
+    "cards": [
+      {
+        "id": "fc_1",
+        "question": "Question ou notion clé au recto ?",
+        "answer": "Définition ou réponse concise et percutante au verso",
+        "hint": "Indice mnémotechnique"
+      }
+    ]
+  }
+}
+\`\`\``;
+
+    case 'resume':
+      return `FORMAT JSON ATTENDU :
+\`\`\`json
+{
+  "decision": "creation",
+  "mode": "creation",
+  "creation_type": "resume",
+  "creation_title": "${title}",
+  "chat_response": "Fiche de synthèse prête !",
+  "creation_data": {
+    "title": "${title}",
+    "theme": "${docName}",
+    "overview": "Synthèse globale rédigée et claire du cours.",
+    "key_definitions": [
+      { "concept": "Concept clé", "definition": "Définition précise et rigoureuse", "objective": "Application directe" }
+    ],
+    "formulas": [
+      { "name": "Nom de la relation", "formula": "$$ \\dfrac{a}{b} $$", "meaning": "Sens de chaque variable", "exam_trap": "Erreur classique à éviter" }
+    ],
+    "comparison_table": {
+      "headers": ["Critère", "Élément A", "Élément B"],
+      "rows": [["Propriété clé", "Valeur A", "Valeur B"]]
+    },
+    "traps_and_tips": ["Conseil d'examen 1", "Astuce de mémorisation 2"],
+    "practical_example": {
+      "statement": "Énoncé d'un cas pratique ou exemple type",
+      "resolution_steps": ["Étape 1 : identifier", "Étape 2 : appliquer"]
+    },
+    "sections": [
+      { "number": "1", "heading": "I. Grand axe thématique", "body": "Développement pédagogique soigné", "points": ["Point clé"] }
+    ]
+  }
+}
+\`\`\``;
+
+    case 'questionnaire':
+    case 'questionnaire-test':
+      return `FORMAT JSON ATTENDU :
+\`\`\`json
+{
+  "decision": "creation",
+  "mode": "creation",
+  "creation_type": "${norm}",
+  "creation_title": "${title}",
+  "chat_response": "Questionnaire QCM prêt !",
+  "creation_data": {
+    "questions": [
+      {
+        "id": "q_1",
+        "question": "Énoncé précis de la question ?",
+        "options": ["Choix A", "Choix B", "Choix C", "Choix D"],
+        "correctAnswer": 0,
+        "explanation": "Explication pédagogique prouvant pourquoi cette option est la bonne."
+      }
+    ]
+  }
+}
+\`\`\``;
+
+    case 'infographie':
+      return `FORMAT JSON ATTENDU :
+\`\`\`json
+{
+  "decision": "creation",
+  "mode": "creation",
+  "creation_type": "infographie",
+  "creation_title": "${title}",
+  "chat_response": "Infographie pédagogique prête !",
+  "creation_data": {
+    "title": "${title}",
+    "subtitle": "Synthèse visuelle de ${docName}",
+    "stats": [{ "label": "Indicateur clé", "value": "100%" }],
+    "keyConcepts": [{ "title": "Concept 1", "description": "Explication claire" }]
+  }
+}
+\`\`\``;
+
+    case 'pdf':
+      return `FORMAT JSON ATTENDU :
+\`\`\`json
+{
+  "decision": "creation",
+  "mode": "creation",
+  "creation_type": "pdf",
+  "creation_title": "${title}",
+  "chat_response": "Document de cours prêt pour le PDF !",
+  "creation_data": {
+    "title": "${title}",
+    "sections": [
+      { "heading": "Section 1 : Introduction", "content": "Contenu détaillé du polycopié." }
+    ]
+  }
+}
+\`\`\``;
+
+    default:
+      return `FORMAT JSON ATTENDU :
+\`\`\`json
+{
+  "decision": "creation",
+  "mode": "creation",
+  "creation_type": "${norm}",
+  "creation_title": "${title}",
+  "chat_response": "Support prêt !",
+  "creation_data": {}
+}
+\`\`\``;
+  }
+}
+
 // Détection de tous les formats de création demandés (support multi-agents)
 export function detectAllCreationFormats(userText: string, requestedType?: string): AiCreationType[] {
   if (requestedType && typeof requestedType === 'string' && requestedType.trim()) {
@@ -1209,54 +1646,54 @@ export function detectAllCreationFormats(userText: string, requestedType?: strin
   const t = userText.trim().toLowerCase();
   const detected: AiCreationType[] = [];
 
-  // 1. Questionnaire Test vs Questionnaire QCM
-  if (/(?:questionnaire\s+test|test\s+not[eé]|test\s+chrono|[eé]preuve\s+not[eé]e)/i.test(t)) {
-    detected.push('questionnaire-test');
-  } else if (/(?:questionnaire|quiz|qcm|test)/i.test(t)) {
-    detected.push('questionnaire');
-  }
-
-  // 2. Vrai ou Faux Test vs Vrai ou Faux
-  if (/(?:vrai\s+ou\s+faux\s+test|vrai\/faux\s+test|vf\s+test|[eé]preuve\s+vrai\s+ou\s+faux)/i.test(t)) {
+  // 1. Vrai ou Faux Test vs Vrai ou Faux (vérifié avant questionnaire pour ne pas confondre 'test')
+  if (/\b(?:vrai\s+ou\s+faux\s+test|vrai\/faux\s+test|vf\s+test|[eé]preuve\s+vrai\s+ou\s+faux)\b/i.test(t)) {
     detected.push('vrai-ou-faux-test');
-  } else if (/(?:vrai\s+ou\s+faux|vrai\/faux|affirmations?)/i.test(t)) {
+  } else if (/\b(?:vrai\s+ou\s+faux|vrai\/faux|affirmations?)\b/i.test(t)) {
     detected.push('vrai-ou-faux');
   }
 
+  // 2. Questionnaire Test vs Questionnaire QCM
+  if (/\b(?:questionnaire\s+test|test\s+not[eé]|test\s+chrono|[eé]preuve\s+not[eé]e)\b/i.test(t)) {
+    detected.push('questionnaire-test');
+  } else if (/\b(?:questionnaire|quiz|qcm)\b/i.test(t) || (/\btest\b/i.test(t) && !/\bvrai\s+ou\s+faux/i.test(t))) {
+    detected.push('questionnaire');
+  }
+
   // 3. Carte Mentale 2 vs Carte Mentale
-  if (/(?:carte\s+mentale\s+2|mindmap\s*2|carte\s+conceptuelle)/i.test(t)) {
+  if (/\b(?:carte\s+mentale\s+2|mindmap\s*2|carte\s+conceptuelle)\b/i.test(t)) {
     detected.push('carte-mentale-2');
-  } else if (/(?:carte\s+mentale|mindmap|mind-map|arborescence)/i.test(t)) {
+  } else if (/\b(?:carte\s+mentale|mindmap|mind-map|arborescence)\b/i.test(t)) {
     detected.push('carte-mentale');
   }
 
   // 4. Cartes Mémoires
-  if (/(?:carte\s+m[eé]moire|cartes\s+m[eé]moires|flashcard|flashcards)/i.test(t)) {
+  if (/\b(?:cartes?\s+m[eé]moires?|flashcards?|fiches?\s+de\s+m[eé]morisation)\b/i.test(t)) {
     detected.push('carte-memoire');
   }
 
-  // 5. Résumé / Synthèse
-  if (/(?:fiche\s+de\s+r[eé]sum[eé]|r[eé]sum[eé]|synth[eè]se|fiche\s+de\s+synth[eè]se)/i.test(t)) {
-    detected.push('resume');
-  }
-
-  // 6. Devoir Complet / Examen
-  if (/(?:devoir\s+complet|sujet\s+d['’]examen|[eé]preuve\s+d['’]examen|devoir\s+d['’]examen|examen\s+complet)/i.test(t)) {
+  // 5. Devoir Complet / Examen
+  if (/\b(?:devoir\s+complet|sujet\s+d['’]examen|[eé]preuve\s+d['’]examen|devoir\s+d['’]examen|examen\s+complet|examen\s+blanc)\b/i.test(t)) {
     detected.push('devoir-complet');
   }
 
-  // 7. Exercices Écrits
-  if (/(?:exercices?\s+[eé]crits?|exercices?\s+d['’]application|s[eé]rie\s+d['’]exercices)/i.test(t)) {
+  // 6. Exercices Écrits
+  if (/\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]application|s[eé]rie\s+d['’]exercices|exercices?)\b/i.test(t) && !detected.includes('devoir-complet')) {
     detected.push('exercices-ecrits');
   }
 
+  // 7. Résumé / Synthèse
+  if (/\b(?:fiche\s+de\s+r[eé]sum[eé]|r[eé]sum[eé]|synth[eè]se|fiche\s+de\s+synth[eè]se)\b/i.test(t)) {
+    detected.push('resume');
+  }
+
   // 8. Infographie
-  if (/(?:infographie|fiche\s+visuelle)/i.test(t)) {
+  if (/\b(?:infographie|fiche\s+visuelle)\b/i.test(t)) {
     detected.push('infographie');
   }
 
   // 9. Document PDF
-  if (/(?:document\s+pdf|polycopi[eé]|polycopie|g[eé]n[eé]rer\s+un\s+pdf|cr[eé]er\s+un\s+pdf|faire\s+un\s+pdf)/i.test(t)) {
+  if (/\b(?:document\s+pdf|polycopi[eé]|polycopie|g[eé]n[eé]rer\s+un\s+pdf|cr[eé]er\s+un\s+pdf|faire\s+un\s+pdf|export\s+pdf)\b/i.test(t)) {
     detected.push('pdf');
   }
 
@@ -1268,6 +1705,7 @@ function detectCreationFormat(userText: string, requestedType?: string): string 
   const all = detectAllCreationFormats(userText, requestedType);
   return all.length > 0 ? all[0] : null;
 }
+
 
 // Détection si l'utilisateur a choisi un document particulier parmi plusieurs ou une synthèse globale
 function detectTargetDocumentChoice(text: string, docs: any[]): { isAllDocs: boolean; targetedDoc: any | null } {
@@ -2903,20 +3341,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 ${getAgentRoleDescription(params.explicitToolType)}
 Tu es en mission de conception officielle StudyCloud pour fabriquer le support : "${params.explicitToolType}".
 
-FORMAT DE SORTIE JSON STRICT ET OBLIGATOIRE :
-Tu réponds EXCLUSIVEMENT sous la forme d'un objet JSON strict :
-\`\`\`json
-{
-  "decision": "creation",
-  "mode": "creation",
-  "creation_type": "${params.explicitToolType}",
-  "creation_title": "${params.creationTitle}",
-  "chat_response": "Votre création a été générée avec succès.",
-  "creation_data": {
-    // Les données complètes selon le type demandé
-  }
-}
-\`\`\`
+${getTargetJsonInstructions(params.explicitToolType, params.mainDocName, params.creationTitle)}
 
 RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
 0. LANGUE FRANÇAISE STRICTE ET ZÉRO MONOLOGUE INTERNE (ANTI-SCRATCHPAD) :
@@ -3008,43 +3433,110 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
       }
     }
 
-    const normType = normalizeCreationType(aiResult.creation_type || params.explicitToolType);
+    const normType = normalizeCreationType(params.explicitToolType);
     if (normType === 'vrai-ou-faux' || normType === 'vrai-ou-faux-test') {
       const rawAffs = Array.isArray(finalContent)
         ? finalContent
-        : (finalContent?.affirmations || finalContent?.questions || finalContent?.items || finalContent?.statements || finalContent?.data);
+        : (finalContent?.affirmations || finalContent?.questions || finalContent?.items || finalContent?.statements || finalContent?.propositions || finalContent?.data);
       if (Array.isArray(rawAffs) && rawAffs.length > 0) {
-        finalContent = {
-          affirmations: rawAffs.slice(0, 18).map((a: any, idx: number) => {
-            let isTrue = true;
-            if (typeof a.is_true === 'boolean') isTrue = a.is_true;
-            else if (typeof a.isTrue === 'boolean') isTrue = a.isTrue;
-            else if (typeof a.reponse === 'boolean') isTrue = a.reponse;
-            else if (typeof a.correctAnswer === 'boolean') isTrue = a.correctAnswer;
-            else if (typeof a.is_true === 'string') isTrue = a.is_true.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
-            else if (typeof a.isTrue === 'string') isTrue = a.isTrue.toLowerCase() === 'true' || a.isTrue.toLowerCase() === 'vrai';
-            else if (typeof a.reponse === 'string') isTrue = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
-            return {
-              id: a.id || `vf_${idx + 1}`,
-              statement: a.statement || a.affirmation || a.question || a.texte || a.text || `Affirmation n°${idx + 1}`,
-              is_true: isTrue,
-              isTrue,
-              explanation: a.explanation || a.explication || a.justification || ''
-            };
-          })
-        };
+        const mappedAffs = rawAffs.map((a: any, idx: number) => {
+          let isTrue = true;
+          if (typeof a.is_true === 'boolean') isTrue = a.is_true;
+          else if (typeof a.isTrue === 'boolean') isTrue = a.isTrue;
+          else if (typeof a.reponse === 'boolean') isTrue = a.reponse;
+          else if (typeof a.correctAnswer === 'boolean') isTrue = a.correctAnswer;
+          else if (typeof a.correct === 'boolean') isTrue = a.correct;
+          else if (typeof a.is_correct === 'boolean') isTrue = a.is_correct;
+          else if (typeof a.is_true === 'string') isTrue = a.is_true.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
+          else if (typeof a.isTrue === 'string') isTrue = a.isTrue.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
+          else if (typeof a.reponse === 'string') isTrue = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
+          else if (typeof a.correctAnswer === 'string') isTrue = a.correctAnswer.toLowerCase() === 'true' || a.correctAnswer.toLowerCase() === 'vrai';
+
+          const stmt = extractStatementText(a);
+          const explText = typeof a?.explanation === 'string'
+            ? a.explanation
+            : (typeof a?.explication === 'string'
+              ? a.explication
+              : (typeof a?.justification === 'string' ? a.justification : ''));
+
+          return {
+            id: a?.id || `vf_${idx + 1}`,
+            statement: stmt,
+            is_true: isTrue,
+            isTrue,
+            explanation: explText
+          };
+        }).filter((a: any) => a.statement && a.statement.length > 0 && !/^Affirmation\s*(?:n°\s*\d+)?$/i.test(a.statement));
+
+        if (mappedAffs.length > 0) {
+          finalContent = { affirmations: mappedAffs.slice(0, 18) };
+        } else {
+          finalContent = null;
+        }
       }
     } else if (normType === 'questionnaire' || normType === 'questionnaire-test') {
       const rawQs = Array.isArray(finalContent) ? finalContent : finalContent?.questions;
-      if (Array.isArray(rawQs)) {
+      if (Array.isArray(rawQs) && rawQs.length > 0) {
         finalContent = {
           ...(typeof finalContent === 'object' && !Array.isArray(finalContent) ? finalContent : {}),
           questions: rawQs.slice(0, 18)
         };
       }
+    } else if (normType === 'carte-memoire') {
+      const rawCards = Array.isArray(finalContent) ? finalContent : (finalContent?.cards || finalContent?.flashcards || finalContent?.data);
+      if (Array.isArray(rawCards) && rawCards.length > 0) {
+        finalContent = {
+          cards: rawCards.map((c: any, idx: number) => ({
+            id: c?.id || `card_${idx + 1}`,
+            question: typeof c === 'string' ? c : (c?.question || c?.front || c?.recto || c?.terme || c?.term || `Concept ${idx + 1}`),
+            answer: typeof c === 'string' ? '' : (c?.answer || c?.back || c?.verso || c?.definition || c?.explication || ''),
+            hint: typeof c === 'object' ? (c?.hint || c?.indice || '') : ''
+          }))
+        };
+      }
+    } else if (normType === 'exercices-ecrits') {
+      if (finalContent && typeof finalContent === 'object') {
+        const we = finalContent.written_exercise || finalContent;
+        const rawExs = Array.isArray(we.questions) ? we.questions : (Array.isArray(we.exercises) ? we.exercises : (Array.isArray(we.exercices) ? we.exercices : (Array.isArray(finalContent) ? finalContent : null)));
+        if (Array.isArray(rawExs) && rawExs.length > 0) {
+          finalContent = {
+            written_exercise: {
+              title: we.title || params.creationTitle,
+              theme: we.theme || params.mainDocName,
+              questions: rawExs
+            }
+          };
+        }
+      }
+    } else if (normType === 'devoir-complet') {
+      if (finalContent && typeof finalContent === 'object') {
+        const ce = finalContent.complete_exam || finalContent;
+        if (Array.isArray(ce.sections) && ce.sections.length > 0) {
+          finalContent = {
+            complete_exam: {
+              exam_title: ce.exam_title || params.creationTitle,
+              total_points: ce.total_points || 20,
+              time_allowed: ce.time_allowed || '2 heures',
+              sections: ce.sections
+            }
+          };
+        }
+      }
+    } else if (normType === 'carte-mentale' || normType === 'carte-mentale-2') {
+      if (finalContent && typeof finalContent === 'object') {
+        if (!finalContent.root && (finalContent.branches || finalContent.nodes || finalContent.children)) {
+          finalContent = {
+            root: {
+              id: 'root-1',
+              label: finalContent.title || params.mainDocName,
+              children: finalContent.branches || finalContent.nodes || finalContent.children || []
+            }
+          };
+        }
+      }
     } else if (normType === 'resume') {
       const rObj = finalContent?.summary || finalContent?.creation_data || finalContent;
-      if (rObj) {
+      if (rObj && typeof rObj === 'object') {
         finalContent = {
           title: rObj.title || params.creationTitle,
           theme: rObj.theme || rObj.domaine || '',
@@ -3058,6 +3550,17 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
           markdown: typeof rObj.markdown === 'string' ? rObj.markdown : '',
         };
       }
+    }
+
+    // Filet de sécurité absolu : Si finalContent est incomplet ou invalide pour le type demandé,
+    // appel de secours à parseOrBuildAiCreation avec le normType strict
+    if (!hasRealCreationData(normType, finalContent)) {
+      try {
+        const built = parseOrBuildAiCreation(normType as any, rawResponseText, params.mainDocName, params.userText);
+        if (built?.content && hasRealCreationData(normType, built.content)) {
+          finalContent = built.content;
+        }
+      } catch (_fallbackErr) {}
     }
 
     const newCreation: AiCreation = {
@@ -3503,12 +4006,14 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
         const creationTitle = `${formatTitle} : ${mainDocName}`;
         const creationId = 'crea-' + (Date.now() + index + 2).toString();
         const taskId = `task-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 6)}`;
+        const agentPrompt = getSubAgentTargetPrompt(explicitToolType, mainDocName, userText);
         return {
           explicitToolType,
           formatTitle,
           creationTitle,
           creationId,
           taskId,
+          agentPrompt,
         };
       });
 
@@ -3542,12 +4047,12 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
             creationId: task.creationId,
             title: task.creationTitle,
             toolType: task.explicitToolType,
-            prompt: userText,
+            prompt: task.agentPrompt,
             mainDocName: mainDocName,
           },
           async () => {
             return executeCreationApiCall({
-              userText,
+              userText: task.agentPrompt,
               targetConvId,
               targetUserId,
               explicitToolType: task.explicitToolType,
@@ -4504,16 +5009,17 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                 else if (typeof a.reponse === 'boolean') isTrue = a.reponse;
                 else if (typeof a.correctAnswer === 'boolean') isTrue = a.correctAnswer;
                 else if (typeof a.is_true === 'string') isTrue = a.is_true.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
-                else if (typeof a.isTrue === 'string') isTrue = a.isTrue.toLowerCase() === 'true' || a.isTrue.toLowerCase() === 'vrai';
+                else if (typeof a.isTrue === 'string') isTrue = a.isTrue.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
                 else if (typeof a.reponse === 'string') isTrue = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
+                const stmt = extractStatementText(a);
                 return {
                   id: a.id || `vf_${idx + 1}`,
-                  statement: a.statement || a.affirmation || a.question || a.texte || a.text || `Affirmation n°${idx + 1}`,
+                  statement: stmt,
                   is_true: isTrue,
                   isTrue,
                   explanation: a.explanation || a.explication || a.justification || ''
                 };
-              })
+              }).filter((a: any) => a.statement && a.statement.length > 0 && !/^Affirmation\s*(?:n°\s*\d+)?$/i.test(a.statement))
             };
           }
         } else if (normType === 'questionnaire' || normType === 'questionnaire-test') {
@@ -4576,16 +5082,17 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                     else if (typeof a.reponse === 'boolean') isTrue = a.reponse;
                     else if (typeof a.correctAnswer === 'boolean') isTrue = a.correctAnswer;
                     else if (typeof a.is_true === 'string') isTrue = a.is_true.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
-                    else if (typeof a.isTrue === 'string') isTrue = a.isTrue.toLowerCase() === 'true' || a.isTrue.toLowerCase() === 'vrai';
+                    else if (typeof a.isTrue === 'string') isTrue = a.isTrue.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
                     else if (typeof a.reponse === 'string') isTrue = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
+                    const stmt = extractStatementText(a);
                     return {
                       id: a.id || `vf_${idx + 1}`,
-                      statement: a.statement || a.affirmation || a.question || a.texte || a.text || `Affirmation n°${idx + 1}`,
+                      statement: stmt,
                       is_true: isTrue,
                       isTrue,
                       explanation: a.explanation || a.explication || a.justification || ''
                     };
-                  })
+                  }).filter((a: any) => a.statement && a.statement.length > 0 && !/^Affirmation\s*(?:n°\s*\d+)?$/i.test(a.statement))
                 };
               }
             } else if (normType === 'questionnaire' || normType === 'questionnaire-test') {
@@ -4707,14 +5214,15 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                 else if (typeof a.is_true === 'string') isTrue = a.is_true.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
                 else if (typeof a.isTrue === 'string') isTrue = a.isTrue.toLowerCase() === 'true' || a.isTrue.toLowerCase() === 'vrai';
                 else if (typeof a.reponse === 'string') isTrue = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
+                const stmt = extractStatementText(a);
                 return {
                   id: a.id || `vf_${idx + 1}`,
-                  statement: a.statement || a.affirmation || a.question || a.texte || a.text || `Affirmation n°${idx + 1}`,
+                  statement: stmt,
                   is_true: isTrue,
                   isTrue,
                   explanation: a.explanation || a.explication || a.justification || ''
                 };
-              })
+              }).filter((a: any) => a.statement && a.statement.length > 0 && !/^Affirmation\s*(?:n°\s*\d+)?$/i.test(a.statement))
             };
           }
         } else if (effectiveToolType === 'questionnaire' || effectiveToolType === 'questionnaire-test') {

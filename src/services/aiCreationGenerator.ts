@@ -1093,21 +1093,39 @@ export function parseOrBuildAiCreation(
       const normType = String(toolType || '').toLowerCase();
       let effectiveType = normType;
 
-      if (['vrai-ou-faux', 'vrai-ou-faux-test'].includes(normType) || Array.isArray(dataObj.affirmations) || Array.isArray(parsed.affirmations)) {
+      if (['vrai-ou-faux', 'vrai-ou-faux-test'].includes(normType)) {
         effectiveType = 'vrai-ou-faux';
-      } else if (['questionnaire', 'questionnaire-test', 'qcm', 'quiz'].includes(normType) || Array.isArray(dataObj.questions) || Array.isArray(parsed.questions)) {
+      } else if (['questionnaire', 'questionnaire-test', 'qcm', 'quiz'].includes(normType)) {
         effectiveType = 'quiz';
-      } else if (['carte-mentale', 'carte-mentale-2', 'mindmap'].includes(normType) || (dataObj.root && (dataObj.root.label || dataObj.root.children))) {
+      } else if (['carte-mentale', 'carte-mentale-2', 'mindmap'].includes(normType)) {
         effectiveType = 'mindmap';
-      } else if (['infographie', 'infographic'].includes(normType) || Array.isArray(dataObj.metrics) || Array.isArray(dataObj.keyConcepts)) {
+      } else if (['infographie', 'infographic'].includes(normType)) {
         effectiveType = 'infographic';
-      } else if (['resume', 'summary'].includes(normType) || dataObj.overview || Array.isArray(dataObj.keyPoints)) {
+      } else if (['resume', 'summary'].includes(normType)) {
         effectiveType = 'summary';
-      } else if (['carte-memoire', 'flashcards'].includes(normType) || Array.isArray(dataObj.cards) || Array.isArray(dataObj.flashcards)) {
+      } else if (['carte-memoire', 'flashcards'].includes(normType)) {
         effectiveType = 'carte-memoire';
-      } else if (['exercices-ecrits'].includes(normType) || dataObj.written_exercise || Array.isArray(dataObj.exercises) || Array.isArray(dataObj.exercices)) {
+      } else if (['exercices-ecrits'].includes(normType)) {
         effectiveType = 'exercices-ecrits';
-      } else if (['devoir-complet'].includes(normType) || dataObj.complete_exam || dataObj.devoir || dataObj.baremeTotal) {
+      } else if (['devoir-complet'].includes(normType)) {
+        effectiveType = 'devoir-complet';
+      } else if (['pdf', 'document'].includes(normType)) {
+        effectiveType = 'pdf';
+      } else if (Array.isArray(dataObj.affirmations) || Array.isArray(parsed.affirmations)) {
+        effectiveType = 'vrai-ou-faux';
+      } else if (Array.isArray(dataObj.questions) || Array.isArray(parsed.questions)) {
+        effectiveType = 'quiz';
+      } else if (dataObj.root && (dataObj.root.label || dataObj.root.children)) {
+        effectiveType = 'mindmap';
+      } else if (Array.isArray(dataObj.metrics) || Array.isArray(dataObj.keyConcepts)) {
+        effectiveType = 'infographic';
+      } else if (dataObj.overview || Array.isArray(dataObj.keyPoints)) {
+        effectiveType = 'summary';
+      } else if (Array.isArray(dataObj.cards) || Array.isArray(dataObj.flashcards)) {
+        effectiveType = 'carte-memoire';
+      } else if (dataObj.written_exercise || Array.isArray(dataObj.exercises) || Array.isArray(dataObj.exercices)) {
+        effectiveType = 'exercices-ecrits';
+      } else if (dataObj.complete_exam || dataObj.devoir || dataObj.baremeTotal) {
         effectiveType = 'devoir-complet';
       }
 
@@ -1142,18 +1160,50 @@ export function parseOrBuildAiCreation(
               else if (typeof a.reponse === 'string') isTrue = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
               else if (typeof a.correctAnswer === 'string') isTrue = a.correctAnswer.toLowerCase() === 'true' || a.correctAnswer.toLowerCase() === 'vrai';
 
+              let stmt = '';
+              if (typeof a === 'string') {
+                stmt = a.trim();
+              } else if (a && typeof a === 'object') {
+                stmt = String(
+                  a.statement ||
+                  a.affirmation ||
+                  a.proposition ||
+                  a.enonce ||
+                  a.phrase ||
+                  a.question ||
+                  a.claim ||
+                  a.texte ||
+                  a.text ||
+                  a.content ||
+                  a.item ||
+                  a.label ||
+                  a.title ||
+                  ''
+                ).trim();
+              }
+
+              const explText = a?.explanation || a?.explication || a?.justification || '';
+              if (!stmt || /^Affirmation\s*(?:n°\s*\d+)?$/i.test(stmt)) {
+                if (explText && explText.length > 10) {
+                  stmt = explText;
+                }
+              }
+
               return {
-                id: a.id || `vf_${idx + 1}`,
-                statement: a.statement || a.affirmation || a.question || a.texte || a.text || `Affirmation n°${idx + 1}`,
+                id: a?.id || `vf_${idx + 1}`,
+                statement: stmt,
                 isTrue,
                 is_true: isTrue,
-                explanation: a.explanation || a.explication || a.justification || ''
+                explanation: explText
               };
-            });
-            return {
-              title: sanitizeText(parsed.creation_title || dataObj.title) || defaultVfTitle,
-              content: { affirmations: cleanAffs }
-            };
+            }).filter((a: any) => a.statement && a.statement.length > 0 && !/^Affirmation\s*(?:n°\s*\d+)?$/i.test(a.statement));
+
+            if (cleanAffs.length > 0) {
+              return {
+                title: sanitizeText(parsed.creation_title || dataObj.title) || defaultVfTitle,
+                content: { affirmations: cleanAffs }
+              };
+            }
           }
           const fallbackVF = parseVraiOuFauxFromText(cleanText, safeDocName);
           return {

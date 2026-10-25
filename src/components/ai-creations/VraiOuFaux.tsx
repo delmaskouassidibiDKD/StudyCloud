@@ -24,7 +24,7 @@ function normalizeAffirmations(input: any): AffirmationVraiFaux[] {
                 : []))))));
   if (!Array.isArray(list) || list.length === 0) return [];
 
-  return list.slice(0, 18).map((a: any, idx: number) => {
+  const cleaned = list.map((a: any, idx: number) => {
     let isTrueVal = true;
     if (typeof a.is_true === 'boolean') isTrueVal = a.is_true;
     else if (typeof a.isTrue === 'boolean') isTrueVal = a.isTrue;
@@ -55,13 +55,43 @@ function normalizeAffirmations(input: any): AffirmationVraiFaux[] {
       explText = a.explication || a.justification || a.details || a.detail || '';
     }
 
+    let stmt = '';
+    if (typeof a === 'string') {
+      stmt = a.trim();
+    } else if (a && typeof a === 'object') {
+      stmt = String(
+        a.statement ||
+        a.affirmation ||
+        a.proposition ||
+        a.enonce ||
+        a.phrase ||
+        a.question ||
+        a.claim ||
+        a.texte ||
+        a.text ||
+        a.content ||
+        a.item ||
+        a.label ||
+        a.title ||
+        ''
+      ).trim();
+    }
+
+    if (!stmt || /^Affirmation\s*(?:n°\s*\d+)?$/i.test(stmt)) {
+      if (explText && explText.length > 10) {
+        stmt = explText;
+      }
+    }
+
     return {
-      id: a.id || `vf_${idx + 1}`,
-      statement: a.statement || a.affirmation || a.question || a.texte || a.text || a.proposition || `Affirmation n°${idx + 1}`,
+      id: a?.id || `vf_${idx + 1}`,
+      statement: stmt,
       isTrue: isTrueVal,
       explanation: explText
     };
-  });
+  }).filter((item: any) => item.statement && item.statement.length > 0 && !/^Affirmation\s*(?:n°\s*\d+)?$/i.test(item.statement));
+
+  return cleaned.slice(0, 18);
 }
 
 export default function VraiOuFaux({ data }: { data?: any }) {

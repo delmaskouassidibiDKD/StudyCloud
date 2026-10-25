@@ -683,25 +683,65 @@ export async function generateDirectAiCreation(params: {
         ? creationData
         : (creationData?.affirmations || creationData?.questions || creationData?.items || creationData?.statements || creationData?.data);
       if (Array.isArray(rawAffs) && rawAffs.length > 0) {
-        creationData = {
-          affirmations: rawAffs.slice(0, 18).map((a: any, idx: number) => {
-            let isTrue = true;
-            if (typeof a.is_true === 'boolean') isTrue = a.is_true;
-            else if (typeof a.isTrue === 'boolean') isTrue = a.isTrue;
-            else if (typeof a.reponse === 'boolean') isTrue = a.reponse;
-            else if (typeof a.correctAnswer === 'boolean') isTrue = a.correctAnswer;
-            else if (typeof a.is_true === 'string') isTrue = a.is_true.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
-            else if (typeof a.isTrue === 'string') isTrue = a.isTrue.toLowerCase() === 'true' || a.isTrue.toLowerCase() === 'vrai';
-            else if (typeof a.reponse === 'string') isTrue = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
-            return {
-              id: a.id || `vf_${idx + 1}`,
-              statement: a.statement || a.affirmation || a.question || a.texte || a.text || `Affirmation n°${idx + 1}`,
-              is_true: isTrue,
-              isTrue,
-              explanation: a.explanation || a.explication || a.justification || ''
-            };
-          })
-        };
+        const mappedAffs = rawAffs.map((a: any, idx: number) => {
+          let isTrue = true;
+          if (typeof a.is_true === 'boolean') isTrue = a.is_true;
+          else if (typeof a.isTrue === 'boolean') isTrue = a.isTrue;
+          else if (typeof a.reponse === 'boolean') isTrue = a.reponse;
+          else if (typeof a.correctAnswer === 'boolean') isTrue = a.correctAnswer;
+          else if (typeof a.correct === 'boolean') isTrue = a.correct;
+          else if (typeof a.is_correct === 'boolean') isTrue = a.is_correct;
+          else if (typeof a.is_true === 'string') isTrue = a.is_true.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
+          else if (typeof a.isTrue === 'string') isTrue = a.isTrue.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
+          else if (typeof a.reponse === 'string') isTrue = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
+          else if (typeof a.correctAnswer === 'string') isTrue = a.correctAnswer.toLowerCase() === 'true' || a.correctAnswer.toLowerCase() === 'vrai';
+
+          let stmt = '';
+          if (typeof a === 'string') {
+            stmt = a.trim();
+          } else if (a && typeof a === 'object') {
+            stmt = String(
+              a.statement ||
+              a.affirmation ||
+              a.proposition ||
+              a.enonce ||
+              a.phrase ||
+              a.question ||
+              a.claim ||
+              a.texte ||
+              a.text ||
+              a.content ||
+              a.item ||
+              a.label ||
+              a.title ||
+              ''
+            ).trim();
+          }
+
+          const explText = a?.explanation || a?.explication || a?.justification || '';
+          if (!stmt || /^Affirmation\s*(?:n°\s*\d+)?$/i.test(stmt)) {
+            if (explText && explText.length > 10) {
+              stmt = explText;
+            }
+          }
+
+          return {
+            id: a?.id || `vf_${idx + 1}`,
+            statement: stmt,
+            is_true: isTrue,
+            isTrue,
+            explanation: explText
+          };
+        }).filter((a: any) => a.statement && a.statement.length > 0 && !/^Affirmation\s*(?:n°\s*\d+)?$/i.test(a.statement));
+
+        if (mappedAffs.length > 0) {
+          creationData = { affirmations: mappedAffs.slice(0, 18) };
+        } else {
+          try {
+            const built = parseOrBuildAiCreation(params.toolType as any, rawTextCandidate || params.docContent, params.docName, params.prompt);
+            if (built?.content) creationData = built.content;
+          } catch {}
+        }
       } else {
         try {
           const built = parseOrBuildAiCreation(params.toolType as any, rawTextCandidate || params.docContent, params.docName, params.prompt);

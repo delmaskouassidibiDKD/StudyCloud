@@ -32,7 +32,7 @@ function normalizeAffirmations(input: any): AffirmationVraiFaux[] {
                 : []))))));
   if (!Array.isArray(list) || list.length === 0) return [];
 
-  return list.slice(0, 18).map((a: any, idx: number) => {
+  const cleaned = list.map((a: any, idx: number) => {
     let isTrueVal = true;
     if (typeof a.is_true === 'boolean') isTrueVal = a.is_true;
     else if (typeof a.isTrue === 'boolean') isTrueVal = a.isTrue;
@@ -41,7 +41,7 @@ function normalizeAffirmations(input: any): AffirmationVraiFaux[] {
     else if (typeof a.correct === 'boolean') isTrueVal = a.correct;
     else if (typeof a.is_correct === 'boolean') isTrueVal = a.is_correct;
     else if (typeof a.is_true === 'string') isTrueVal = a.is_true.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
-    else if (typeof a.isTrue === 'string') isTrueVal = a.isTrue.toLowerCase() === 'true' || a.isTrue.toLowerCase() === 'vrai';
+    else if (typeof a.isTrue === 'string') isTrueVal = a.isTrue.toLowerCase() === 'true' || a.is_true.toLowerCase() === 'vrai';
     else if (typeof a.reponse === 'string') isTrueVal = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
     else if (typeof a.correctAnswer === 'string') isTrueVal = a.correctAnswer.toLowerCase() === 'true' || a.correctAnswer.toLowerCase() === 'vrai';
 
@@ -63,13 +63,43 @@ function normalizeAffirmations(input: any): AffirmationVraiFaux[] {
       explText = a.explication || a.justification || a.details || a.detail || '';
     }
 
+    let stmt = '';
+    if (typeof a === 'string') {
+      stmt = a.trim();
+    } else if (a && typeof a === 'object') {
+      stmt = String(
+        a.statement ||
+        a.affirmation ||
+        a.proposition ||
+        a.enonce ||
+        a.phrase ||
+        a.question ||
+        a.claim ||
+        a.texte ||
+        a.text ||
+        a.content ||
+        a.item ||
+        a.label ||
+        a.title ||
+        ''
+      ).trim();
+    }
+
+    if (!stmt || /^Affirmation\s*(?:n°\s*\d+)?$/i.test(stmt)) {
+      if (explText && explText.length > 10) {
+        stmt = explText;
+      }
+    }
+
     return {
-      id: a.id || `vft_${idx + 1}`,
-      statement: a.statement || a.affirmation || a.question || a.texte || a.text || a.proposition || `Affirmation n°${idx + 1}`,
+      id: a?.id || `vft_${idx + 1}`,
+      statement: stmt,
       isTrue: isTrueVal,
       explanation: explText
     };
-  });
+  }).filter((item: any) => item.statement && item.statement.length > 0 && !/^Affirmation\s*(?:n°\s*\d+)?$/i.test(item.statement));
+
+  return cleaned.slice(0, 18);
 }
 
 export default function VraiOuFauxTest({ data }: { data?: any }) {
