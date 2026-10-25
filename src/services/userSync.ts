@@ -8,7 +8,7 @@ import { StudyCloudAPI } from './api';
 import { safeLocalStorageSet } from '../utils/safeStorage';
 
 export function getCurrentUserId(): string | null {
-  return localStorage.getItem('unifolder_user_id') || null;
+  return localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id') || null;
 }
 
 export function isUserLoggedIn(): boolean {

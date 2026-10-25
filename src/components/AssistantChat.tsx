@@ -3794,6 +3794,16 @@ CONSIGNES STRICTES DE CONTINUATION :
 
         setActiveCreation(newCreation);
 
+        // Sauvegarde immédiate dans le cache local persistant pour affichage instantané et reprise
+        try {
+          const cachedRaw = localStorage.getItem('studycloud_saved_creations_cache');
+          let currentList = cachedRaw ? JSON.parse(cachedRaw) : [];
+          if (!Array.isArray(currentList)) currentList = [];
+          const updatedList = [newCreation, ...currentList.filter((c: any) => c.id !== newCreation.id)];
+          localStorage.setItem('studycloud_saved_creations_cache', JSON.stringify(updatedList));
+          localStorage.setItem('studycloud_active_creation', JSON.stringify(newCreation));
+        } catch {}
+
         // Sauvegarde immédiate dans la base de données D1 liée à l'utilisateur
         if (currentUserId && currentUserId !== 'default-user') {
           StudyCloudAPI.saveAiContent({
@@ -3806,7 +3816,7 @@ CONSIGNES STRICTES DE CONTINUATION :
             sourceFileName: mainDocName || undefined,
             isPinned: false,
           }).then(() => {
-            window.dispatchEvent(new CustomEvent('studycloud-creation-saved', { detail: { id: newCreation.id } }));
+            window.dispatchEvent(new CustomEvent('studycloud-creation-saved', { detail: { id: newCreation.id, creation: newCreation } }));
           }).catch(err => {
             console.warn('[AssistantChat] Erreur sauvegarde D1 création générée:', err);
           });

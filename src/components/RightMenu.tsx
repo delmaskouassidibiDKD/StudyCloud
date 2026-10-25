@@ -69,6 +69,36 @@ function getCreationBadgeLabel(title?: string): string {
   return `Création ${elision ? "d'" : "de "}${clean} en cours`;
 }
 
+// Clé de stockage local persistant pour les créations Studio (style historique des conversations)
+const CREATIONS_CACHE_KEY = 'studycloud_saved_creations_cache';
+
+const getStoredCreations = (): any[] => {
+  try {
+    const raw = localStorage.getItem(CREATIONS_CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  try {
+    const historyRaw = localStorage.getItem('unifolder_ai_history');
+    if (historyRaw) {
+      const parsed = JSON.parse(historyRaw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return [];
+};
+
+const persistCreationsLocally = (items: any[]) => {
+  try {
+    localStorage.setItem(CREATIONS_CACHE_KEY, JSON.stringify(items));
+    window.dispatchEvent(new Event('studycloud_creations_updated'));
+  } catch (err) {
+    console.warn('[RightMenu] Erreur persistance locale créations:', err);
+  }
+};
+
 export function RightMenu({
   isRightFullscreen,
   setIsRightFullscreen,
@@ -101,25 +131,62 @@ export function RightMenu({
   const [generatingToolTitle, setGeneratingToolTitle] = useState<string>('');
   const [liveStatusText, setLiveStatusText] = useState<string>('Je prépare votre support avec soin...');
   const [isRightDrawerOpen, setIsRightDrawerOpen] = useState<boolean>(false);
-  const [savedCreations, setSavedCreations] = useState<any[]>([]);
+  const [savedCreations, setSavedCreations] = useState<any[]>(() => getStoredCreations());
   const [isLoadingCreations, setIsLoadingCreations] = useState<boolean>(false);
   const [creationSearch, setCreationSearch] = useState<string>('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchUserCreations = async () => {
-    const uid = getCurrentUserId();
-    if (!uid) {
-      setSavedCreations([]);
+    // 1. Toujours synchroniser avec le cache local pour un affichage immédiat
+    const localItems = getStoredCreations();
+    if (localItems.length > 0) {
+      setSavedCreations(localItems);
+    }
+
+    const uid = getCurrentUserId() || localStorage.getItem('studycloud_user_id');
+    if (!uid || uid === 'default-user') {
       return;
     }
     try {
       setIsLoadingCreations(true);
       const res = await StudyCloudAPI.getAiContents(uid);
       if (res && res.success && Array.isArray(res.data)) {
-        setSavedCreations(res.data);
+        const d1Items = res.data.map((item: any) => {
+          let parsedContent = item.content || item.data || item.content_json || item.contentJson;
+          if (typeof parsedContent === 'string') {
+            try { parsedContent = JSON.parse(parsedContent); } catch {}
+          }
+          return {
+            ...item,
+            id: item.id,
+            title: item.title,
+            toolType: item.tool_type || item.toolType || item.type,
+            type: item.tool_type || item.toolType || item.type,
+            content: parsedContent,
+            data: parsedContent,
+            sourceFileName: item.source_file_name || item.sourceFileName,
+            createdAt: item.created_at || item.createdAt,
+            isPinned: Boolean(item.is_pinned || item.isPinned),
+          };
+        });
+
+        const map = new Map<string, any>();
+        d1Items.forEach((it: any) => map.set(it.id, it));
+        localItems.forEach((it: any) => {
+          if (!map.has(it.id)) map.set(it.id, it);
+        });
+
+        const merged = Array.from(map.values()).sort((a, b) => {
+          const da = new Date(a.createdAt || 0).getTime();
+          const db = new Date(b.createdAt || 0).getTime();
+          return db - da;
+        });
+
+        setSavedCreations(merged);
+        persistCreationsLocally(merged);
       }
     } catch (err) {
-      console.warn('[RightMenu] Erreur chargement créations D1:', err);
+      console.warn('[RightMenu] Erreur synchronisation créations D1:', err);
     } finally {
       setIsLoadingCreations(false);
     }
@@ -136,7 +203,23 @@ export function RightMenu({
   }, [isRightDrawerOpen]);
 
   useEffect(() => {
-    const handleSaved = () => {
+    const handleCreationsUpdated = () => {
+      setSavedCreations(getStoredCreations());
+    };
+    window.addEventListener('studycloud_creations_updated', handleCreationsUpdated);
+    return () => window.removeEventListener('studycloud_creations_updated', handleCreationsUpdated);
+  }, []);
+
+  useEffect(() => {
+    const handleSaved = (e: any) => {
+      if (e?.detail?.creation) {
+        const item = e.detail.creation;
+        setSavedCreations(prev => {
+          const updated = [item, ...prev.filter(c => c.id !== item.id)];
+          persistCreationsLocally(updated);
+          return updated;
+        });
+      }
       fetchUserCreations();
     };
     window.addEventListener('studycloud-creation-saved', handleSaved);
@@ -257,9 +340,9 @@ export function RightMenu({
     {
       id: 'carte-mentale',
       title: 'Carte Mentale',
-      iconColor: '#a855f7',
+      iconColor: '#0ea5e9',
       icon: (
-        <div className="flex items-center justify-center w-5 h-5 text-[#a855f7]">
+        <div className="flex items-center justify-center w-5 h-5 text-[#0ea5e9]">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
             <rect width="5" height="5" x="3" y="10" rx="1" />
             <rect width="5" height="5" x="16" y="5" rx="1" />
@@ -277,9 +360,9 @@ export function RightMenu({
       id: 'carte-mentale-2',
       title: 'Carte Mentale 2',
       badge: 'Conceptuelle',
-      iconColor: '#6366f1',
+      iconColor: '#0284c7',
       icon: (
-        <div className="flex items-center justify-center w-5 h-5 text-[#6366f1]">
+        <div className="flex items-center justify-center w-5 h-5 text-[#0284c7]">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
             <rect width="6" height="4" x="2" y="3" rx="1" />
             <rect width="6" height="4" x="9" y="17" rx="1" />
@@ -333,9 +416,9 @@ export function RightMenu({
     {
       id: 'exercices-ecrits',
       title: 'Exercices Écrits',
-      iconColor: '#8b5cf6',
+      iconColor: '#f59e0b',
       icon: (
-        <div className="flex items-center justify-center w-5 h-5 text-[#8b5cf6]">
+        <div className="flex items-center justify-center w-5 h-5 text-[#f59e0b]">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
             <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
             <path d="m15 5 4 4" />
@@ -461,7 +544,7 @@ export function RightMenu({
     }
     if (norm.includes('mindmap') || norm.includes('mentale')) {
       return (
-        <div className="flex items-center justify-center w-5 h-5 text-[#a855f7]">
+        <div className="flex items-center justify-center w-5 h-5 text-[#0ea5e9]">
           <Brain className="w-4 h-4" />
         </div>
       );
@@ -481,7 +564,7 @@ export function RightMenu({
       );
     }
     return (
-      <div className="flex items-center justify-center w-5 h-5 text-purple-400">
+      <div className="flex items-center justify-center w-5 h-5 text-orange-400">
         <Sparkles className="w-4 h-4" />
       </div>
     );
@@ -505,31 +588,38 @@ export function RightMenu({
 
   const handleDeleteCreation = async (e: React.MouseEvent, creationId: string) => {
     e.stopPropagation();
-    const uid = getCurrentUserId();
-    if (!uid || !creationId) return;
+    if (!creationId) return;
 
     if (!window.confirm('Voulez-vous vraiment supprimer cette création de votre compte ?')) {
       return;
     }
 
-    try {
-      setDeletingId(creationId);
-      const res = await StudyCloudAPI.deleteAiContent(creationId, uid);
-      if (res && res.success) {
-        setSavedCreations(prev => prev.filter(c => c.id !== creationId));
-        if (activeCreation && activeCreation.id === creationId) {
-          setActiveCreation(null);
-        }
+    // Suppression immédiate du state et du cache local
+    setSavedCreations(prev => {
+      const updated = prev.filter(c => c.id !== creationId);
+      persistCreationsLocally(updated);
+      return updated;
+    });
+
+    if (activeCreation && activeCreation.id === creationId) {
+      setActiveCreation(null);
+    }
+
+    const uid = getCurrentUserId() || localStorage.getItem('studycloud_user_id');
+    if (uid && uid !== 'default-user') {
+      try {
+        setDeletingId(creationId);
+        await StudyCloudAPI.deleteAiContent(creationId, uid);
+      } catch (err) {
+        console.error('[RightMenu] Erreur suppression création D1:', err);
+      } finally {
+        setDeletingId(null);
       }
-    } catch (err) {
-      console.error('[RightMenu] Erreur suppression création:', err);
-    } finally {
-      setDeletingId(null);
     }
   };
 
   const handleOpenSavedCreation = (item: any) => {
-    let parsedContent = item.content || item.data || item.contentJson;
+    let parsedContent = item.content || item.data || item.contentJson || item.content_json;
     if (typeof parsedContent === 'string') {
       try {
         parsedContent = JSON.parse(parsedContent);
@@ -539,15 +629,23 @@ export function RightMenu({
     const creationToLoad = {
       ...item,
       id: item.id,
-      title: item.title,
-      toolType: item.toolType || item.type,
-      type: item.toolType || item.type,
+      title: item.title || 'Création Studio',
+      toolType: item.toolType || item.tool_type || item.type || 'creation',
+      type: item.toolType || item.tool_type || item.type || 'creation',
       content: parsedContent,
       data: parsedContent,
+      contentJson: parsedContent,
       sourceFileName: item.sourceFileName || item.source_file_name,
+      createdAt: item.createdAt || item.created_at,
     };
+    setCreationPhase('idle');
     setActiveCreation(creationToLoad);
     setIsRightDrawerOpen(false);
+
+    // Basculer sur l'onglet Création si sur mobile
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
+    }
   };
 
   const filteredCreations = useMemo(() => {
@@ -567,28 +665,52 @@ export function RightMenu({
     const handleCreationReady = (e: any) => {
       const creation = e.detail?.creation || e.detail;
       if (creation) {
+        let parsedContent = creation.content || creation.data || creation.contentJson;
+        if (typeof parsedContent === 'string') {
+          try { parsedContent = JSON.parse(parsedContent); } catch {}
+        }
+
+        const normalizedCreation = {
+          ...creation,
+          id: creation.id || ('ai-' + Date.now()),
+          title: creation.title || 'Création Studio',
+          toolType: creation.toolType || creation.type || 'creation',
+          type: creation.toolType || creation.type || 'creation',
+          content: parsedContent,
+          data: parsedContent,
+          contentJson: parsedContent,
+          sourceFileName: creation.sourceFileName || resolvedDocName || undefined,
+          createdAt: creation.createdAt || creation.created_at || new Date().toISOString(),
+          isPinned: Boolean(creation.isPinned),
+        };
+
         setCreationPhase('idle');
-        setActiveCreation(creation);
+        setActiveCreation(normalizedCreation);
+
+        // Enregistrement immédiat dans la liste locale de créations (en tête de liste)
+        setSavedCreations(prev => {
+          const updated = [normalizedCreation, ...prev.filter(c => c.id !== normalizedCreation.id)];
+          persistCreationsLocally(updated);
+          return updated;
+        });
 
         // Sauvegarde systématique dans la base D1
-        const uid = getCurrentUserId();
-        if (uid && (creation.content || creation.data)) {
+        const uid = getCurrentUserId() || localStorage.getItem('studycloud_user_id');
+        if (uid && uid !== 'default-user' && parsedContent) {
           StudyCloudAPI.saveAiContent({
-            id: creation.id,
+            id: normalizedCreation.id,
             userId: uid,
-            fileId: creation.fileId || activePreviewItem?.id || null,
-            toolType: creation.toolType || creation.type || 'creation',
-            title: creation.title || 'Création Studio',
-            contentJson: creation.content || creation.data,
-            sourceFileName: creation.sourceFileName || resolvedDocName || undefined,
-            isPinned: Boolean(creation.isPinned),
+            fileId: normalizedCreation.fileId || activePreviewItem?.id || null,
+            toolType: normalizedCreation.toolType,
+            title: normalizedCreation.title,
+            contentJson: parsedContent,
+            sourceFileName: normalizedCreation.sourceFileName,
+            isPinned: Boolean(normalizedCreation.isPinned),
           }).then(() => {
             fetchUserCreations();
           }).catch(err => {
             console.warn('[RightMenu] Erreur sauvegarde création D1:', err);
           });
-        } else {
-          fetchUserCreations();
         }
       }
     };
@@ -695,7 +817,7 @@ export function RightMenu({
 
   return (
     <div
-      className={`w-full h-full pointer-events-auto relative bg-[#120F17] flex flex-col pt-[44px] overflow-hidden ${
+      className={`w-full h-full pointer-events-auto relative bg-[#131417] flex flex-col pt-[44px] overflow-hidden ${
         isCenterFullscreen
           ? 'hidden'
           : isMobileScreen
@@ -732,10 +854,10 @@ export function RightMenu({
         creationPhase === 'creating'
           ? 'bg-black border-zinc-900'
           : creationPhase === 'thinking'
-          ? 'bg-[#0f0c1b]/95 border-purple-900/40'
+          ? 'bg-[#18181b]/95 border-zinc-800'
           : activeCreation
-          ? 'bg-[#1a1c22]/90 border-zinc-700/60'
-          : 'bg-[#120F17]/90 border-purple-900/30'
+          ? 'bg-[#18181b]/95 border-zinc-800'
+          : 'bg-[#131417]/95 border-zinc-800'
       } border-b shrink-0 z-30 shadow-xs backdrop-blur-sm transition-colors`}>
         {/* Côté gauche : Bouton Zoom jaune */}
         <div className="flex items-center gap-2">
@@ -752,12 +874,12 @@ export function RightMenu({
         {/* Centre : Titre repoussé vers le milieu, sans logo étoile */}
         <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none text-xs sm:text-[13px] font-semibold text-zinc-200 select-none max-w-[55%] truncate text-center">
           {creationPhase === 'thinking' ? (
-            <span className="text-purple-300 truncate font-medium flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+            <span className="text-orange-300 truncate font-medium flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-orange-400 animate-pulse" />
               Réflexion en cours...
             </span>
           ) : creationPhase === 'creating' ? (
-            <span className="text-purple-400 truncate font-medium">
+            <span className="text-orange-400 truncate font-medium">
               {getCreationBadgeLabel(generatingToolTitle)}
             </span>
           ) : activeCreation ? (
@@ -771,7 +893,7 @@ export function RightMenu({
           )}
         </div>
 
-        {/* Côté droit (ancienne place du titre entouré en rouge) : Bouton 3 traits pour ouvrir le menu latéral */}
+        {/* Côté droit : Bouton 3 traits pour ouvrir le menu latéral */}
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -786,12 +908,12 @@ export function RightMenu({
       </div>
 
       {/* Zone principale */}
-      <div className="flex-1 w-full h-full min-h-0 overflow-hidden relative bg-[#120F17]">
-        {/* Fond animé WebGL2 avec les petits points colorés */}
+      <div className="flex-1 w-full h-full min-h-0 overflow-hidden relative bg-[#131417]">
+        {/* Fond animé WebGL2 avec les petits points */}
         <div className="absolute inset-0 z-0 w-full h-full">
           <DotField
-            gradientFrom="#5227FF"
-            gradientTo="#FF9FFC"
+            gradientFrom="#ea580c"
+            gradientTo="#f59e0b"
             dotRadius={1.5}
             dotSpacing={14}
             cursorRadius={240}
@@ -813,7 +935,7 @@ export function RightMenu({
           />
         </div>
 
-        {/* Grille des cartes carrées proposées par l'IA (2 par ligne comme sur l'Image 2) */}
+        {/* Grille des cartes carrées proposées par l'IA */}
         {!activeCreation && creationPhase === 'idle' && (
           <div className="absolute inset-0 z-10 overflow-y-auto px-4 py-6 flex flex-col items-center justify-center custom-scrollbar animate-fadeIn select-none">
             {/* Titre spontané écrit par l'IA */}
@@ -821,7 +943,7 @@ export function RightMenu({
               <p className="text-xs sm:text-[13px] font-medium text-zinc-300 min-h-[22px] flex items-center">
                 <span>{displayedSubtitle}</span>
                 {isTypingSubtitle && (
-                  <span className="inline-block w-0.5 h-3.5 bg-purple-400 ml-1 animate-pulse" />
+                  <span className="inline-block w-0.5 h-3.5 bg-orange-400 ml-1 animate-pulse" />
                 )}
               </p>
             </div>
@@ -842,7 +964,7 @@ export function RightMenu({
                     {card.title}
                   </span>
                   {card.badge && (
-                    <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 group-hover:text-pink-300 border border-zinc-700/60 shrink-0">
+                    <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 group-hover:text-amber-300 border border-zinc-700/60 shrink-0">
                       {card.badge}
                     </span>
                   )}
@@ -852,25 +974,25 @@ export function RightMenu({
           </div>
         )}
 
-        {/* ÉCRAN DE RÉFLEXION EN COURS (L'IA RÉFLÉCHIT ET ANALYSE AVANT DE CRÉER) */}
+        {/* ÉCRAN DE RÉFLEXION EN COURS */}
         {creationPhase === 'thinking' && (
-          <div className="absolute inset-0 z-30 bg-[#0c0a13]/95 backdrop-blur-md flex flex-col items-center justify-center overflow-hidden animate-fadeIn select-none p-6 text-center">
-            <div className="relative flex flex-col items-center max-w-sm w-full px-6 py-8 rounded-3xl bg-[#161320]/85 border border-purple-500/25 shadow-[0_0_50px_rgba(168,85,247,0.18)]">
+          <div className="absolute inset-0 z-30 bg-black/95 backdrop-blur-md flex flex-col items-center justify-center overflow-hidden animate-fadeIn select-none p-6 text-center">
+            <div className="relative flex flex-col items-center max-w-sm w-full px-6 py-8 rounded-3xl bg-[#18181b]/90 border border-orange-500/25 shadow-[0_0_50px_rgba(249,115,22,0.15)]">
               {/* Effet d'aura lumineuse pulsante */}
-              <div className="absolute -top-10 -bottom-10 left-1/2 -translate-x-1/2 w-48 bg-purple-600/20 rounded-full blur-3xl pointer-events-none animate-pulse" />
+              <div className="absolute -top-10 -bottom-10 left-1/2 -translate-x-1/2 w-48 bg-orange-600/15 rounded-full blur-3xl pointer-events-none animate-pulse" />
 
               {/* Icône d'intelligence avec pulsation douce */}
               <div className="relative mb-4 flex items-center justify-center">
-                <div className="absolute w-20 h-20 bg-purple-500/25 rounded-full blur-xl animate-pulse" />
-                <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-tr from-purple-600/30 to-indigo-500/20 border border-purple-400/40 flex items-center justify-center shadow-inner">
-                  <Sparkles className="w-7 h-7 text-purple-300 animate-pulse" />
+                <div className="absolute w-20 h-20 bg-orange-500/20 rounded-full blur-xl animate-pulse" />
+                <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-tr from-orange-500/20 to-amber-500/20 border border-orange-500/30 flex items-center justify-center shadow-inner">
+                  <Sparkles className="w-7 h-7 text-orange-300 animate-pulse" />
                 </div>
               </div>
 
               {/* Badge discret de l'action ciblée */}
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/15 border border-purple-500/30 mb-3">
-                <Brain className="w-3.5 h-3.5 text-purple-300" />
-                <span className="text-[11px] font-bold text-purple-200 uppercase tracking-wider">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/15 border border-orange-500/30 mb-3">
+                <Brain className="w-3.5 h-3.5 text-orange-300" />
+                <span className="text-[11px] font-bold text-orange-200 uppercase tracking-wider">
                   {generatingToolTitle || "Studio IA"}
                 </span>
               </div>
@@ -879,9 +1001,9 @@ export function RightMenu({
               <h3 className="text-base sm:text-lg font-bold text-white mb-2 flex items-center gap-2">
                 <span>Réflexion en cours</span>
                 <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:-0.3s]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:-0.15s]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce [animation-delay:-0.3s]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce [animation-delay:-0.15s]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce" />
                 </span>
               </h3>
 
@@ -903,13 +1025,13 @@ export function RightMenu({
           </div>
         )}
 
-        {/* ÉCRAN NOIR PENDANT LA CRÉATION AVEC ANIMATION MAGICRINGS ET DIALOGUE EN DIRECT DE L'IA */}
+        {/* ÉCRAN NOIR PENDANT LA CRÉATION AVEC ANIMATION MAGICRINGS */}
         {creationPhase === 'creating' && (
           <div className="absolute inset-0 z-30 bg-black flex flex-col items-center justify-center overflow-hidden animate-fadeIn">
             <div style={{ width: '100%', height: '500px', position: 'relative' }}>
               <MagicRings
-                color="#A855F7"
-                colorTwo="#6366F1"
+                color="#F97316"
+                colorTwo="#FBBF24"
                 motion="pulse"
                 ringCount={6}
                 speed={1}
@@ -934,11 +1056,11 @@ export function RightMenu({
                 intro
               />
 
-              {/* Ce que l'IA fait en direct au milieu de l'écran / des anneaux */}
+              {/* Ce que l'IA fait en direct au milieu de l'écran */}
               <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center pointer-events-none z-20">
-                <div className="flex flex-col items-center gap-3 max-w-sm px-6 py-5 rounded-3xl bg-black/60 backdrop-blur-md border border-purple-500/25 shadow-[0_0_30px_rgba(168,85,247,0.2)]">
-                  <div className="inline-flex items-center px-3 py-1 rounded-full bg-purple-500/20 border border-purple-500/30">
-                    <span className="text-[11px] font-bold text-purple-300 uppercase tracking-wider">
+                <div className="flex flex-col items-center gap-3 max-w-sm px-6 py-5 rounded-3xl bg-black/75 backdrop-blur-md border border-orange-500/25 shadow-[0_0_30px_rgba(249,115,22,0.18)]">
+                  <div className="inline-flex items-center px-3 py-1 rounded-full bg-orange-500/20 border border-orange-500/30">
+                    <span className="text-[11px] font-bold text-orange-300 uppercase tracking-wider">
                       {getCreationBadgeLabel(generatingToolTitle)}
                     </span>
                   </div>
@@ -963,9 +1085,9 @@ export function RightMenu({
           </div>
         )}
 
-        {/* Si une création est active : UniversalContentRenderer au premier plan avec transparence élégante */}
+        {/* Si une création est active : UniversalContentRenderer au premier plan */}
         {activeCreation && creationPhase === 'idle' && (
-          <div className="absolute inset-0 z-20 overflow-hidden flex flex-col bg-[#14121b]/80 backdrop-blur-sm animate-fadeIn">
+          <div className="absolute inset-0 z-20 overflow-hidden flex flex-col bg-[#141518]/90 backdrop-blur-sm animate-fadeIn">
             <UniversalContentRenderer
               item={activeCreation}
               onClose={() => setActiveCreation(null)}
@@ -985,20 +1107,20 @@ export function RightMenu({
 
       {/* Menu latéral droit glissant : Volet "Mes Créations" connectées à la base D1 */}
       <aside
-        className={`absolute top-[44px] right-0 bottom-0 z-50 bg-[#120F17]/98 backdrop-blur-md border-l border-purple-900/40 shadow-[-16px_0_40px_rgba(0,0,0,0.7)] flex flex-col transition-transform duration-300 ease-in-out will-change-transform ${
+        className={`absolute top-[44px] right-0 bottom-0 z-50 bg-[#18181b]/98 backdrop-blur-md border-l border-zinc-800 shadow-[-16px_0_40px_rgba(0,0,0,0.7)] flex flex-col transition-transform duration-300 ease-in-out will-change-transform ${
           isRightFullscreen ? 'w-full sm:w-1/3 md:w-1/3' : 'w-[88%] sm:w-[65%] max-w-[360px]'
         } ${
           isRightDrawerOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
         }`}
       >
         {/* En-tête du volet latéral avec titre "Mes Créations", compteur et bouton rafraîchir / fermer */}
-        <div className="flex items-center justify-between px-3.5 py-3 border-b border-zinc-800/80 bg-[#14111d]/95 shrink-0">
+        <div className="flex items-center justify-between px-3.5 py-3 border-b border-zinc-800 bg-[#161619]/95 shrink-0">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
             <span className="text-xs sm:text-[13px] font-bold text-white tracking-wide">
               Mes Créations
             </span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-900/60 text-purple-200 border border-purple-700/50 font-semibold">
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-300 border border-orange-500/30 font-semibold">
               {savedCreations.length}
             </span>
           </div>
@@ -1013,7 +1135,7 @@ export function RightMenu({
               title="Actualiser les créations depuis la base de données"
               aria-label="Actualiser"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingCreations ? 'animate-spin text-purple-400' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingCreations ? 'animate-spin text-orange-400' : ''}`} />
             </button>
 
             {/* Bouton croix pour fermer le volet */}
@@ -1038,7 +1160,7 @@ export function RightMenu({
               value={creationSearch}
               onChange={(e) => setCreationSearch(e.target.value)}
               placeholder="Rechercher une création..."
-              className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-zinc-900/80 border border-zinc-800 focus:border-purple-600 focus:outline-none text-zinc-200 placeholder-zinc-500 text-xs transition-colors"
+              className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-zinc-900/80 border border-zinc-800 focus:border-orange-500 focus:outline-none text-zinc-200 placeholder-zinc-500 text-xs transition-colors"
             />
             {creationSearch && (
               <button
@@ -1054,63 +1176,17 @@ export function RightMenu({
         </div>
 
         {/* Corps défilable : Liste des créations de l'utilisateur enregistrées en BDD */}
-        <div className="flex-1 overflow-y-auto p-3.5 space-y-3 custom-scrollbar text-xs">
-          {/* Bloc création en cours si une création est active */}
-          {activeCreation && (
-            <div className="p-3 rounded-2xl bg-purple-950/40 border border-purple-800/60 flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Affichage en cours
-                </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-900/80 text-purple-200 font-medium">
-                  {CREATION_NAME_MAP[activeCreation.toolType || activeCreation.type] || 'Module'}
-                </span>
-              </div>
-              <p className="font-semibold text-white text-xs line-clamp-2">
-                {activeCreation.title || 'Création Studio'}
-              </p>
-              <div className="flex items-center gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setIsRightDrawerOpen(false)}
-                  className="flex-1 py-1.5 px-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-medium text-xs text-center transition-colors cursor-pointer"
-                >
-                  Voir à l'écran
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveCreation(null);
-                    setIsRightDrawerOpen(false);
-                  }}
-                  className="py-1.5 px-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white font-medium text-xs text-center border border-zinc-700 transition-colors cursor-pointer"
-                  title="Fermer la vue pour revenir aux modules du Studio"
-                >
-                  Fermer
-                </button>
-              </div>
-            </div>
-          )}
-
+        <div className="flex-1 overflow-y-auto p-3.5 space-y-2 custom-scrollbar text-xs">
           {/* État de chargement */}
           {isLoadingCreations && savedCreations.length === 0 ? (
             <div className="py-12 flex flex-col items-center justify-center text-center space-y-3 text-zinc-400">
-              <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
+              <Loader2 className="w-6 h-6 animate-spin text-orange-400" />
               <p className="text-xs">Chargement de vos créations...</p>
             </div>
           ) : savedCreations.length === 0 ? (
-            /* État vide si aucune création n'est enregistrée en BDD */
-            <div className="py-10 px-4 rounded-2xl bg-zinc-900/40 border border-dashed border-zinc-800 text-center space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-purple-600/10 border border-purple-500/20 text-purple-400 flex items-center justify-center mx-auto">
-                <Sparkles className="w-6 h-6" />
-              </div>
-              <div className="space-y-1">
-                <p className="font-semibold text-zinc-200 text-xs">Aucune création enregistrée</p>
-                <p className="text-[11px] text-zinc-400 leading-relaxed">
-                  Lancez un questionnaire, une carte mentale, un résumé ou un devoir. Vos créations seront automatiquement enregistrées dans la base de données et accessibles ici à tout moment.
-                </p>
-              </div>
+            /* État vide si aucune création n'est enregistrée - Éléments entourés en rouge retirés ! */
+            <div className="py-12 px-4 text-center">
+              <p className="font-semibold text-zinc-300 text-xs">Aucune création enregistrée</p>
             </div>
           ) : filteredCreations.length === 0 ? (
             /* Aucun résultat de recherche */
@@ -1120,7 +1196,7 @@ export function RightMenu({
               <p className="text-[11px] text-zinc-500">Aucune création ne correspond à « {creationSearch} »</p>
             </div>
           ) : (
-            /* Liste des créations de l'utilisateur */
+            /* Liste des créations de l'utilisateur - Style identique à l'historique des discussions */
             <div className="space-y-2">
               <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider px-1">
                 Toutes vos créations ({filteredCreations.length})
@@ -1136,8 +1212,8 @@ export function RightMenu({
                     onClick={() => handleOpenSavedCreation(item)}
                     className={`group w-full p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5 ${
                       isItemActive
-                        ? 'bg-purple-950/40 border-purple-700/60 shadow-sm'
-                        : 'bg-[#1a1824]/90 hover:bg-[#252233] border-zinc-800/80 hover:border-purple-800/50'
+                        ? 'bg-orange-500/10 border-orange-500/50 text-white shadow-sm ring-1 ring-orange-500/30'
+                        : 'bg-[#202024] hover:bg-[#27272c] border-zinc-800 text-zinc-300 hover:border-zinc-700'
                     }`}
                   >
                     {/* Icône du type de création */}
@@ -1147,12 +1223,24 @@ export function RightMenu({
 
                     {/* Informations de la création */}
                     <div className="flex-1 min-w-0">
-                      <p className={`font-semibold text-xs truncate ${isItemActive ? 'text-purple-200' : 'text-zinc-200 group-hover:text-white'}`}>
-                        {item.title || 'Création sans titre'}
-                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <p className={`font-semibold text-xs truncate ${isItemActive ? 'text-orange-300' : 'text-zinc-200 group-hover:text-white'}`}>
+                          {item.title || 'Création sans titre'}
+                        </p>
+                        {isItemActive && (
+                          <span className="shrink-0 text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            Affiché
+                          </span>
+                        )}
+                      </div>
 
                       <div className="flex items-center gap-2 mt-1 flex-wrap text-[10px]">
-                        <span className="px-1.5 py-0.5 rounded-md bg-purple-950/60 text-purple-300 border border-purple-900/50 font-medium">
+                        <span className={`px-1.5 py-0.5 rounded-md font-medium border ${
+                          isItemActive
+                            ? 'bg-orange-500/20 text-orange-300 border-orange-500/30'
+                            : 'bg-zinc-800/80 text-zinc-400 border-zinc-700/60'
+                        }`}>
                           {displayType}
                         </span>
                         {dateDisplay && (
