@@ -3226,11 +3226,11 @@ export const formatConsumedCreditsDisplay = (tokens: number, customRate?: number
  */
 export async function getAiBillingConfig(): Promise<{ success: boolean; config: AiBillingConfig }> {
   const candidateUrls = [
-    'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev',
-    getAiWorkerUrl().replace(/\/+$/, ''),
     getWorkerApiUrl().replace(/\/+$/, ''),
+    'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev',
     'https://api-worker.dkd-technologies.com',
-    'https://studycloud-worker.delmaskouassidibi.workers.dev'
+    'https://studycloud-worker.delmaskouassidibi.workers.dev',
+    getAiWorkerUrl().replace(/\/+$/, '')
   ];
 
   for (const url of candidateUrls) {
@@ -3274,38 +3274,49 @@ export async function getAiBillingConfig(): Promise<{ success: boolean; config: 
 export async function saveAiBillingConfig(
   config: Partial<AiBillingConfig>
 ): Promise<{ success: boolean; message?: string; config?: AiBillingConfig; error?: string }> {
-  try {
-    const workerUrl = getAiWorkerUrl();
-    const res = await fetch(`${workerUrl}/api/ai/billing/config`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config)
-    });
-    const data = await res.json();
-    return data;
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Erreur réseau lors de la sauvegarde' };
+  const candidateUrls = [
+    'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev',
+    getWorkerApiUrl().replace(/\/+$/, ''),
+    getAiWorkerUrl().replace(/\/+$/, '')
+  ];
+  for (const workerUrl of candidateUrls) {
+    try {
+      const res = await fetch(`${workerUrl}/api/ai/billing/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data;
+      }
+    } catch (err: any) {}
   }
+  return { success: false, error: 'Erreur réseau lors de la sauvegarde' };
 }
 
 /**
  * Récupère tous les utilisateurs avec leurs crédits IA en temps réel
  */
 export async function getAiAdminUsers(): Promise<{ success: boolean; users: AiUserCreditProfile[]; error?: string }> {
-  try {
-    const workerUrl = getAiWorkerUrl();
-    const res = await fetch(`${workerUrl}/api/ai/admin/users`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return { success: true, users: data.users || [] };
-    }
-    return { success: false, users: [], error: `Erreur serveur (${res.status})` };
-  } catch (err: any) {
-    return { success: false, users: [], error: err?.message || 'Erreur lors du chargement des utilisateurs' };
+  const candidateUrls = [
+    'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev',
+    getWorkerApiUrl().replace(/\/+$/, ''),
+    getAiWorkerUrl().replace(/\/+$/, '')
+  ];
+  for (const workerUrl of candidateUrls) {
+    try {
+      const res = await fetch(`${workerUrl}/api/ai/admin/users`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return { success: true, users: data.users || [] };
+      }
+    } catch (err: any) {}
   }
+  return { success: false, users: [], error: 'Erreur lors du chargement des utilisateurs' };
 }
 
 /**
@@ -3317,18 +3328,25 @@ export async function adjustUserAiCredits(
   action: 'add' | 'set' = 'add',
   reason: string = 'Ajustement administrateur'
 ): Promise<{ success: boolean; message?: string; data?: any; error?: string }> {
-  try {
-    const workerUrl = getAiWorkerUrl();
-    const res = await fetch(`${workerUrl}/api/ai/admin/user/credits`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, amount, action, reason })
-    });
-    const data = await res.json();
-    return data;
-  } catch (err: any) {
-    return { success: false, error: err?.message || "Erreur lors de l'ajustement des crédits" };
+  const candidateUrls = [
+    'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev',
+    getWorkerApiUrl().replace(/\/+$/, ''),
+    getAiWorkerUrl().replace(/\/+$/, '')
+  ];
+  for (const workerUrl of candidateUrls) {
+    try {
+      const res = await fetch(`${workerUrl}/api/ai/admin/user/credits`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, user_id: userId, amount, action, operation: action, reason })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data;
+      }
+    } catch (err: any) {}
   }
+  return { success: false, error: "Erreur lors de l'ajustement des crédits" };
 }
 
 /**
@@ -3352,11 +3370,11 @@ export async function getUserAiCreditsLive(
   error?: string;
 }> {
   const candidateUrls = [
-    'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev',
-    getAiWorkerUrl().replace(/\/+$/, ''),
     getWorkerApiUrl().replace(/\/+$/, ''),
+    'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev',
     'https://api-worker.dkd-technologies.com',
-    'https://studycloud-worker.delmaskouassidibi.workers.dev'
+    'https://studycloud-worker.delmaskouassidibi.workers.dev',
+    getAiWorkerUrl().replace(/\/+$/, '')
   ];
 
   for (const url of candidateUrls) {

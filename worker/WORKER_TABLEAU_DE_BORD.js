@@ -24,8 +24,8 @@ function formatBytes(bytes, decimals = 2) {
 function corsHeaders(origin = '*') {
   return {
     'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-user-id, Cache-Control, Pragma, *',
     'Access-Control-Max-Age': '86400',
   };
 }
@@ -13836,9 +13836,12 @@ function renderDashboardHtml(data) {
           const kpiS = document.getElementById('kpi-daily-status');
           if (kpiS) kpiS.textContent = isDailyRenewal ? '✅ Renouvellement automatique activé' : '⏸️ Inactif';
 
-          if (applyWelcomeAll) {
-            refreshFacturationIaData();
-          }
+          const statWel = document.getElementById('stat-robot-welcome');
+          if (statWel) statWel.textContent = welcomeCredits + ' Crédits';
+          const rWel = document.getElementById('robot-welcome-credits');
+          if (rWel) rWel.value = welcomeCredits;
+
+          await refreshFacturationIaData();
         } else {
           showToast('⚠️ Erreur : ' + (data.error || 'Échec de sauvegarde'));
         }
@@ -15974,15 +15977,27 @@ export default {
             }
           } catch (errSyncModels) {}
 
-          if (b.apply_welcome_to_all && Number(b.welcome_credits) > 0) {
-            try {
-              await db.prepare(`
+          if (b.welcome_credits !== undefined) {
+            const wc = Number(b.welcome_credits);
+            await safeRun(db, "UPDATE ai_billing_config SET welcome_credits = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'default'", [wc]);
+            await safeRun(db, `
+              UPDATE user_ai_credits 
+              SET credits_balance = ? + total_credits_purchased,
+                  remaining_credits = ? + total_credits_purchased,
+                  total_credits = ? + total_credits_purchased,
+                  updated_at = CURRENT_TIMESTAMP
+              WHERE total_credits_consumed = 0 OR total_tokens_consumed = 0
+            `, [wc, wc, wc]);
+            if (wc > 0) {
+              await safeRun(db, `
                 UPDATE user_ai_credits 
-                SET remaining_credits = remaining_credits + ?,
-                    total_credits = total_credits + ?,
+                SET credits_balance = MAX(credits_balance, ? + total_credits_purchased - total_credits_consumed),
+                    remaining_credits = MAX(remaining_credits, ? + total_credits_purchased - total_credits_consumed),
+                    total_credits = ? + total_credits_purchased,
                     updated_at = CURRENT_TIMESTAMP
-              `).bind(Number(b.welcome_credits), Number(b.welcome_credits)).run();
-            } catch (errCredit) {}
+                WHERE total_credits_consumed < ?
+              `, [wc, wc, wc, wc]);
+            }
           }
 
           const updatedCfg = await db.prepare("SELECT * FROM robot_rouge_global_config WHERE id = 'default'").first();
@@ -16555,7 +16570,7 @@ export default {
         const welcomeCredits = Math.max(0, parseFloat(body.welcome_credits !== undefined ? body.welcome_credits : 50));
         const dailyFreeCredits = Math.max(0, parseFloat(body.daily_free_credits !== undefined ? body.daily_free_credits : 0));
         const isDailyRenewal = body.is_daily_renewal_active ? 1 : 0;
-        const applyWelcomeAll = body.apply_welcome_to_all ? true : false;
+        const applyWelcomeAll = body.apply_welcome_to_all !== undefined ? !!body.apply_welcome_to_all : true;
 
         await safeRun(db, `
           INSERT INTO ai_billing_config (id, tokens_per_credit, welcome_credits, daily_free_credits, is_daily_renewal_active, updated_at)
@@ -16568,11 +16583,41 @@ export default {
             updated_at = CURRENT_TIMESTAMP
         `, [tokensPerCredit, welcomeCredits, dailyFreeCredits, isDailyRenewal]);
 
-        if (applyWelcomeAll && welcomeCredits > 0) {
+        // Synchroniser également la configuration Robot Rouge dans D1
+        await safeRun(db, `
+          UPDATE robot_rouge_global_config SET welcome_credits = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'default'
+        `, [welcomeCredits]);
+
+        // Mise à jour automatique de tous les portefeuilles étudiants dans D1 (modèle "Mon Stockage") :
+        // 1. Les étudiants n'ayant encore rien consommé reçoivent immédiatement le nouveau cadeau
+        await safeRun(db, `
+          UPDATE user_ai_credits 
+          SET credits_balance = ? + total_credits_purchased,
+              remaining_credits = ? + total_credits_purchased,
+              total_credits = ? + total_credits_purchased,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE total_credits_consumed = 0 OR total_tokens_consumed = 0
+        `, [welcomeCredits, welcomeCredits, welcomeCredits]);
+
+        // 2. Si le cadeau a été augmenté, rehausser le solde de ceux qui ont entamé leur crédit
+        if (welcomeCredits > 0) {
           await safeRun(db, `
-            UPDATE user_ai_credits SET credits_balance = ? WHERE credits_balance < ?
-          `, [welcomeCredits, welcomeCredits]);
+            UPDATE user_ai_credits 
+            SET credits_balance = MAX(credits_balance, ? + total_credits_purchased - total_credits_consumed),
+                remaining_credits = MAX(remaining_credits, ? + total_credits_purchased - total_credits_consumed),
+                total_credits = ? + total_credits_purchased,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE total_credits_consumed < ?
+          `, [welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits]);
         }
+
+        // 3. S'assurer que tous les utilisateurs inscrits dans 'users' ont un portefeuille de crédits IA
+        try {
+          await db.prepare(`
+            INSERT OR IGNORE INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed, plan_tier, remaining_credits, total_credits, used_credits)
+            SELECT id, ?, 0, 0, 0, 'free', ?, ?, 0 FROM users
+          `).bind(welcomeCredits, welcomeCredits, welcomeCredits).run();
+        } catch (e) {}
 
         return new Response(JSON.stringify({
           success: true,
@@ -16606,12 +16651,15 @@ export default {
         if (!userCredits) {
           // Créer automatiquement l'utilisateur avec les crédits d'accueil configurés
           await safeRun(db, `
-            INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed, plan_tier)
-            VALUES (?, ?, 0, 0, 0, 'free')
-          `, [targetUserId, welcomeCredits]);
+            INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed, plan_tier, remaining_credits, total_credits, used_credits)
+            VALUES (?, ?, 0, 0, 0, 'free', ?, ?, 0)
+          `, [targetUserId, welcomeCredits, welcomeCredits, welcomeCredits]);
           userCredits = {
             user_id: targetUserId,
             credits_balance: welcomeCredits,
+            remaining_credits: welcomeCredits,
+            total_credits: welcomeCredits,
+            used_credits: 0,
             total_credits_purchased: 0,
             total_tokens_consumed: 0,
             total_credits_consumed: 0,
@@ -16627,10 +16675,13 @@ export default {
             userCredits.total_credits_purchased = verifiedPurchased;
           }
 
-          if (Number(userCredits.remaining_credits || 0) > Number(userCredits.credits_balance || 0)) {
-            const syncedBal = Number(userCredits.remaining_credits);
-            await safeRun(db, "UPDATE user_ai_credits SET credits_balance = ? WHERE user_id = ?", [syncedBal, targetUserId]);
-            userCredits.credits_balance = syncedBal;
+          const consumed = Number(userCredits.total_credits_consumed || 0);
+          // RÈGLE MÉCANIQUE MON STOCKAGE : Le solde actif = (Cadeau de bienvenue + Achetés validés) - Consommation
+          const minExpectedBalance = Math.max(0, +((welcomeCredits + verifiedPurchased) - consumed).toFixed(2));
+
+          if (Number(userCredits.credits_balance || 0) < minExpectedBalance && consumed < welcomeCredits) {
+            await safeRun(db, "UPDATE user_ai_credits SET credits_balance = ?, remaining_credits = ?, total_credits = ? WHERE user_id = ?", [minExpectedBalance, minExpectedBalance, welcomeCredits + verifiedPurchased, targetUserId]);
+            userCredits.credits_balance = minExpectedBalance;
           }
         }
 

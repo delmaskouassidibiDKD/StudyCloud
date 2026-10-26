@@ -2739,6 +2739,63 @@ async function ensureCloudMediaTables(db) {
     } catch (e) {
     }
     await db.prepare(`
+      CREATE TABLE IF NOT EXISTS ai_billing_config (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        tokens_per_credit INTEGER DEFAULT 1000,
+        welcome_credits REAL DEFAULT 50.0,
+        daily_free_credits REAL DEFAULT 0.0,
+        is_daily_renewal_active INTEGER DEFAULT 0,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_ai_credits (
+        user_id TEXT PRIMARY KEY,
+        credits_balance REAL DEFAULT 50.0,
+        total_tokens_consumed INTEGER DEFAULT 0,
+        total_credits_purchased REAL DEFAULT 0.0,
+        total_credits_consumed REAL DEFAULT 0.0,
+        plan_tier TEXT DEFAULT 'free',
+        is_blocked INTEGER DEFAULT 0,
+        last_daily_grant_date TEXT DEFAULT '',
+        last_usage_at TEXT,
+        remaining_credits REAL DEFAULT 50.0,
+        total_credits REAL DEFAULT 50.0,
+        used_credits REAL DEFAULT 0.0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_ai_purchases (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        credits_amount REAL NOT NULL,
+        tokens_equivalent INTEGER DEFAULT 0,
+        price_paid REAL DEFAULT 0,
+        currency TEXT DEFAULT 'FCFA',
+        payment_method TEXT,
+        reference TEXT,
+        pack_name TEXT,
+        status TEXT DEFAULT 'completed',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS ai_usage_logs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        action_type TEXT DEFAULT 'chat_deduction',
+        prompt_tokens INTEGER DEFAULT 0,
+        completion_tokens INTEGER DEFAULT 0,
+        total_tokens INTEGER DEFAULT 0,
+        credits_deducted REAL DEFAULT 0,
+        balance_after REAL DEFAULT 0,
+        model_used TEXT DEFAULT 'Delmas IA',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+    await db.prepare(`
       CREATE TABLE IF NOT EXISTS user_storage_quotas (
         user_id TEXT PRIMARY KEY,
         welcome_total_mb REAL DEFAULT 100.0,
@@ -13454,6 +13511,335 @@ Lien vers le produit : ${productShareUrl}`;
         }
         return jsonResponse({ success: true, requests: list }, 200, origin);
       }
+
+      // =========================================================================
+      // ROUTES CRÉDITS IA & FACTURATION CLOUDFLARE D1 (SYNCHRONISÉES TABLEAU DE BORD)
+      // =========================================================================
+      if (path === "/api/ai/billing/config" && method === "GET") {
+        let config = {
+          tokens_per_credit: 1000,
+          welcome_credits: 50.0,
+          daily_free_credits: 0.0,
+          is_daily_renewal_active: 0
+        };
+        if (env.DB) {
+          try {
+            await ensureCloudMediaTables(env.DB);
+            const row = await env.DB.prepare("SELECT * FROM ai_billing_config WHERE id = 'default'").first();
+            if (row) {
+              config = {
+                tokens_per_credit: Number(row.tokens_per_credit || 1000),
+                welcome_credits: Number(row.welcome_credits !== undefined ? row.welcome_credits : 50),
+                daily_free_credits: Number(row.daily_free_credits || 0),
+                is_daily_renewal_active: Number(row.is_daily_renewal_active || 0)
+              };
+            }
+          } catch (e) {}
+        }
+        return jsonResponse({ success: true, config }, 200, origin);
+      }
+
+      if (path === "/api/ai/billing/config" && method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        const tokensPerCredit = Math.max(1, parseInt(body.tokens_per_credit || 1000, 10));
+        const welcomeCredits = Math.max(0, parseFloat(body.welcome_credits !== undefined ? body.welcome_credits : 50));
+        const dailyFreeCredits = Math.max(0, parseFloat(body.daily_free_credits !== undefined ? body.daily_free_credits : 0));
+        const isDailyRenewal = body.is_daily_renewal_active ? 1 : 0;
+        if (env.DB) {
+          try {
+            await ensureCloudMediaTables(env.DB);
+            await env.DB.prepare(`
+              INSERT INTO ai_billing_config (id, tokens_per_credit, welcome_credits, daily_free_credits, is_daily_renewal_active, updated_at)
+              VALUES ('default', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET
+                tokens_per_credit = excluded.tokens_per_credit,
+                welcome_credits = excluded.welcome_credits,
+                daily_free_credits = excluded.daily_free_credits,
+                is_daily_renewal_active = excluded.is_daily_renewal_active,
+                updated_at = CURRENT_TIMESTAMP
+            `).bind(tokensPerCredit, welcomeCredits, dailyFreeCredits, isDailyRenewal).run();
+
+            await env.DB.prepare(`
+              UPDATE user_ai_credits 
+              SET credits_balance = ? + total_credits_purchased,
+                  remaining_credits = ? + total_credits_purchased,
+                  total_credits = ? + total_credits_purchased,
+                  updated_at = CURRENT_TIMESTAMP
+              WHERE total_credits_consumed = 0 OR total_tokens_consumed = 0
+            `).bind(welcomeCredits, welcomeCredits, welcomeCredits).run().catch(() => {});
+
+            if (welcomeCredits > 0) {
+              await env.DB.prepare(`
+                UPDATE user_ai_credits 
+                SET credits_balance = MAX(credits_balance, ? + total_credits_purchased - total_credits_consumed),
+                    remaining_credits = MAX(remaining_credits, ? + total_credits_purchased - total_credits_consumed),
+                    total_credits = ? + total_credits_purchased,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE total_credits_consumed < ?
+              `).bind(welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits).run().catch(() => {});
+            }
+
+            try {
+              await env.DB.prepare(`
+                INSERT OR IGNORE INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed, plan_tier, remaining_credits, total_credits, used_credits)
+                SELECT id, ?, 0, 0, 0, 'free', ?, ?, 0 FROM users
+              `).bind(welcomeCredits, welcomeCredits, welcomeCredits).run();
+            } catch (e) {}
+          } catch (e) {}
+        }
+        return jsonResponse({
+          success: true,
+          config: {
+            tokens_per_credit: tokensPerCredit,
+            welcome_credits: welcomeCredits,
+            daily_free_credits: dailyFreeCredits,
+            is_daily_renewal_active: isDailyRenewal
+          }
+        }, 200, origin);
+      }
+
+      if (path === "/api/ai/user/credits" && method === "GET") {
+        const targetUserId = (url.searchParams.get("userId") || request.headers.get("x-user-id") || "default-user").trim();
+        let cfg = { tokens_per_credit: 1000, welcome_credits: 50.0, daily_free_credits: 0.0, is_daily_renewal_active: 0 };
+        let userCredits = null;
+        if (env.DB) {
+          try {
+            await ensureCloudMediaTables(env.DB);
+            const cfgRow = await env.DB.prepare("SELECT * FROM ai_billing_config WHERE id = 'default'").first().catch(() => null);
+            if (cfgRow) {
+              cfg = {
+                tokens_per_credit: Number(cfgRow.tokens_per_credit || 1000),
+                welcome_credits: Number(cfgRow.welcome_credits !== undefined ? cfgRow.welcome_credits : 50),
+                daily_free_credits: Number(cfgRow.daily_free_credits || 0),
+                is_daily_renewal_active: Number(cfgRow.is_daily_renewal_active || 0)
+              };
+            }
+            const welcomeCredits = cfg.welcome_credits;
+            const dailyFreeCredits = cfg.daily_free_credits;
+            const isDailyActive = cfg.is_daily_renewal_active === 1;
+
+            userCredits = await env.DB.prepare("SELECT * FROM user_ai_credits WHERE user_id = ?").bind(targetUserId).first().catch(() => null);
+
+            if (!userCredits) {
+              await env.DB.prepare(`
+                INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed, plan_tier, remaining_credits, total_credits, used_credits)
+                VALUES (?, ?, 0, 0, 0, 'free', ?, ?, 0)
+              `).bind(targetUserId, welcomeCredits, welcomeCredits, welcomeCredits).run().catch(() => {});
+              userCredits = {
+                user_id: targetUserId,
+                credits_balance: welcomeCredits,
+                remaining_credits: welcomeCredits,
+                total_credits: welcomeCredits,
+                used_credits: 0,
+                total_credits_purchased: 0,
+                total_tokens_consumed: 0,
+                total_credits_consumed: 0,
+                plan_tier: "free"
+              };
+            } else {
+              const purSumRow = await env.DB.prepare("SELECT COALESCE(SUM(credits_amount), 0) as total FROM user_ai_purchases WHERE user_id = ? AND status IN ('completed', 'approved', 'confirmed')").bind(targetUserId).first().catch(() => null);
+              const verifiedPurchased = Math.max(Number(userCredits.total_credits_purchased || 0), Number(purSumRow?.total || 0));
+              if (verifiedPurchased > Number(userCredits.total_credits_purchased || 0)) {
+                await env.DB.prepare("UPDATE user_ai_credits SET total_credits_purchased = ? WHERE user_id = ?").bind(verifiedPurchased, targetUserId).run().catch(() => {});
+                userCredits.total_credits_purchased = verifiedPurchased;
+              }
+
+              const consumed = Number(userCredits.total_credits_consumed || 0);
+              const minExpectedBalance = Math.max(0, +((welcomeCredits + verifiedPurchased) - consumed).toFixed(2));
+              if (Number(userCredits.credits_balance || 0) < minExpectedBalance && consumed < welcomeCredits) {
+                await env.DB.prepare("UPDATE user_ai_credits SET credits_balance = ?, remaining_credits = ?, total_credits = ? WHERE user_id = ?").bind(minExpectedBalance, minExpectedBalance, welcomeCredits + verifiedPurchased, targetUserId).run().catch(() => {});
+                userCredits.credits_balance = minExpectedBalance;
+              }
+            }
+
+            if (userCredits && isDailyActive && dailyFreeCredits > 0) {
+              const today = new Date().toISOString().slice(0, 10);
+              const totalConsumed = Number(userCredits.total_credits_consumed || 0);
+              const totalPurchased = Number(userCredits.total_credits_purchased || 0);
+              const currentBal = Number(userCredits.credits_balance || 0);
+              const isWelcomeGiftExhausted = (totalConsumed >= welcomeCredits) || (currentBal <= totalPurchased);
+              if (isWelcomeGiftExhausted && userCredits.last_daily_grant_date !== today) {
+                const updatedBal = +(currentBal + dailyFreeCredits).toFixed(2);
+                await env.DB.prepare(`
+                  UPDATE user_ai_credits SET credits_balance = ?, last_daily_grant_date = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?
+                `).bind(updatedBal, today, targetUserId).run().catch(() => {});
+                userCredits.credits_balance = updatedBal;
+                userCredits.last_daily_grant_date = today;
+              }
+            }
+          } catch (e) {}
+        }
+
+        const bal = userCredits ? Number(userCredits.credits_balance || 0) : cfg.welcome_credits;
+        const tok = userCredits ? Number(userCredits.total_tokens_consumed || 0) : 0;
+        const pur = userCredits ? Number(userCredits.total_credits_purchased || 0) : 0;
+        const con = userCredits ? Number(userCredits.total_credits_consumed || 0) : 0;
+
+        return jsonResponse({
+          success: true,
+          credits: {
+            balance: bal,
+            tokensUsed: tok,
+            totalPurchased: pur,
+            totalConsumed: con,
+            plan: pur > 0 ? "IA Pro Étudiant" : "Étudiant Gratuit",
+            daily_free_credits: cfg.daily_free_credits,
+            tokens_per_credit: cfg.tokens_per_credit,
+            welcome_credits: cfg.welcome_credits,
+            last_usage_at: userCredits?.last_usage_at || null
+          }
+        }, 200, origin);
+      }
+
+      if (path === "/api/ai/user/deduct-credits" && method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        const targetUserId = (body.userId || body.user_id || request.headers.get("x-user-id") || "default-user").trim();
+        const tokens = Math.max(1, parseInt(body.tokens || 0, 10));
+        const model = body.model || "Delmas IA";
+        const actionType = body.actionType || body.action_type || "chat_deduction";
+
+        let newBalance = 50;
+        let newTotalTokens = tokens;
+        let newTotalCreditsConsumed = 0;
+        let creditsDeducted = 0;
+
+        if (env.DB) {
+          try {
+            await ensureCloudMediaTables(env.DB);
+            const cfg = await env.DB.prepare("SELECT * FROM ai_billing_config WHERE id = 'default'").first().catch(() => null) || { tokens_per_credit: 1000, welcome_credits: 50.0 };
+            const tokensPerCredit = Math.max(1, Number(cfg.tokens_per_credit || 1000));
+            creditsDeducted = Math.max(0.01, +(tokens / tokensPerCredit).toFixed(2));
+
+            let userCredits = await env.DB.prepare("SELECT * FROM user_ai_credits WHERE user_id = ?").bind(targetUserId).first().catch(() => null);
+            if (!userCredits) {
+              const welcomeCredits = cfg.welcome_credits !== undefined ? Number(cfg.welcome_credits) : 50.0;
+              await env.DB.prepare(`
+                INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed, plan_tier, remaining_credits, total_credits, used_credits)
+                VALUES (?, ?, 0, 0, 0, 'free', ?, ?, 0)
+              `).bind(targetUserId, welcomeCredits, welcomeCredits, welcomeCredits).run().catch(() => {});
+              userCredits = { user_id: targetUserId, credits_balance: welcomeCredits, total_tokens_consumed: 0, total_credits_consumed: 0, total_credits_purchased: 0 };
+            }
+
+            const currentBal = Number(userCredits.credits_balance || 0);
+            newBalance = Math.max(0, +(currentBal - creditsDeducted).toFixed(2));
+            newTotalTokens = (userCredits.total_tokens_consumed || 0) + tokens;
+            newTotalCreditsConsumed = +(Number(userCredits.total_credits_consumed || 0) + creditsDeducted).toFixed(2);
+
+            await env.DB.prepare(`
+              UPDATE user_ai_credits
+              SET credits_balance = ?,
+                  remaining_credits = ?,
+                  total_tokens_consumed = ?,
+                  total_credits_consumed = ?,
+                  used_credits = ?,
+                  last_usage_at = CURRENT_TIMESTAMP,
+                  updated_at = CURRENT_TIMESTAMP
+              WHERE user_id = ?
+            `).bind(newBalance, newBalance, newTotalTokens, newTotalCreditsConsumed, newTotalCreditsConsumed, targetUserId).run();
+
+            const logId = "log_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+            await env.DB.prepare(`
+              INSERT INTO ai_usage_logs (id, user_id, action_type, prompt_tokens, completion_tokens, total_tokens, credits_deducted, balance_after, model_used, created_at)
+              VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(logId, targetUserId, actionType, tokens, creditsDeducted, newBalance, model).run().catch(() => {});
+          } catch (e) {}
+        }
+
+        return jsonResponse({
+          success: true,
+          credits_deducted: creditsDeducted,
+          new_balance: newBalance,
+          tokens_consumed: tokens,
+          total_tokens_consumed: newTotalTokens,
+          total_credits_consumed: newTotalCreditsConsumed
+        }, 200, origin);
+      }
+
+      if (path === "/api/ai/user/purchases" && method === "GET") {
+        const targetUserId = (url.searchParams.get("userId") || request.headers.get("x-user-id") || "default-user").trim();
+        let rows = [];
+        let totalPurchased = 0;
+        if (env.DB) {
+          try {
+            await ensureCloudMediaTables(env.DB);
+            const res = await env.DB.prepare("SELECT * FROM user_ai_purchases WHERE user_id = ? ORDER BY created_at DESC").bind(targetUserId).all();
+            rows = res?.results || [];
+            const sumRow = await env.DB.prepare("SELECT COALESCE(SUM(credits_amount), 0) as total FROM user_ai_purchases WHERE user_id = ? AND status IN ('completed', 'approved', 'confirmed')").bind(targetUserId).first();
+            totalPurchased = Number(sumRow?.total || 0);
+          } catch (e) {}
+        }
+        return jsonResponse({ success: true, purchases: rows, total_purchased: totalPurchased }, 200, origin);
+      }
+
+      if (path === "/api/ai/admin/users" && method === "GET") {
+        let users = [];
+        if (env.DB) {
+          try {
+            await ensureCloudMediaTables(env.DB);
+            const res = await env.DB.prepare("SELECT * FROM user_ai_credits").all();
+            users = res?.results || [];
+          } catch (e) {}
+        }
+        return jsonResponse({ success: true, users }, 200, origin);
+      }
+
+      if (path === "/api/ai/admin/user/credits" && method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        const userId = body.user_id || body.userId;
+        const amount = parseFloat(body.amount || 0);
+        const operation = body.operation || body.action || "add";
+        if (!userId) return errorResponse("Identifiant utilisateur requis", 400, origin);
+
+        if (env.DB) {
+          try {
+            await ensureCloudMediaTables(env.DB);
+            const existing = await env.DB.prepare("SELECT * FROM user_ai_credits WHERE user_id = ?").bind(userId).first();
+            let newBalance = amount;
+            const purchasedDelta = (operation === "add" && amount > 0) ? amount : (amount > 0 ? amount : 0);
+            if (existing) {
+              if (operation === "add") {
+                newBalance = +(Number(existing.credits_balance || 0) + amount).toFixed(2);
+              }
+              await env.DB.prepare(`
+                UPDATE user_ai_credits 
+                SET credits_balance = ?,
+                    remaining_credits = ?,
+                    total_credits_purchased = total_credits_purchased + ?,
+                    total_credits = total_credits + ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+              `).bind(newBalance, newBalance, purchasedDelta, purchasedDelta, userId).run();
+            } else {
+              await env.DB.prepare(`
+                INSERT INTO user_ai_credits (user_id, credits_balance, remaining_credits, total_credits, total_credits_purchased)
+                VALUES (?, ?, ?, ?, ?)
+              `).bind(userId, newBalance, newBalance, newBalance, purchasedDelta).run();
+            }
+
+            if (amount > 0) {
+              const purId = "pur_admin_" + Date.now();
+              await env.DB.prepare(`
+                INSERT INTO user_ai_purchases (id, user_id, credits_amount, tokens_equivalent, price_paid, currency, payment_method, reference, pack_name, status, created_at)
+                VALUES (?, ?, ?, ?, 0, 'FCFA', 'Attribution Admin', ?, 'Recharge Administrateur', 'completed', CURRENT_TIMESTAMP)
+              `).bind(purId, userId, amount, Math.round(amount * 1000), "admin-direct-" + Date.now()).run().catch(() => {});
+            }
+          } catch (e) {}
+        }
+        return jsonResponse({ success: true, message: "Crédits mis à jour avec succès" }, 200, origin);
+      }
+
+      if (path === "/api/ai/admin/logs" && method === "GET") {
+        let logs = [];
+        if (env.DB) {
+          try {
+            await ensureCloudMediaTables(env.DB);
+            const res = await env.DB.prepare("SELECT * FROM ai_usage_logs ORDER BY created_at DESC LIMIT 50").all();
+            logs = res?.results || [];
+          } catch (e) {}
+        }
+        return jsonResponse({ success: true, logs }, 200, origin);
+      }
+
       if (path === "/api/storage/update-user-quota" && method === "POST") {
         const body = await request.json().catch(() => ({}));
         const userId = body.userId;

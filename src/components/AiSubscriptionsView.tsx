@@ -74,6 +74,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     balance: number;
     tokensUsed: number;
     totalPurchased: number;
+    totalConsumed?: number;
     plan: string;
     welcome_credits?: number;
     daily_free_credits?: number;
@@ -82,6 +83,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     balance: 0,
     tokensUsed: 0,
     totalPurchased: 0,
+    totalConsumed: 0,
     plan: 'Étudiant Gratuit'
   });
 
@@ -168,6 +170,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
             balance: serverBalance,
             tokensUsed: Number(liveRes.credits.tokensUsed || 0),
             totalPurchased: finalPurchased,
+            totalConsumed: Number(liveRes.credits.totalConsumed || 0),
             plan: liveRes.credits.plan || (finalPurchased > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit'),
             welcome_credits: liveRes.credits.welcome_credits,
             daily_free_credits: liveRes.credits.daily_free_credits,
@@ -224,6 +227,19 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
   useEffect(() => {
     loadData();
 
+    // Polling régulier toutes les 15 secondes pour synchronisation temps réel automatique
+    const pollInterval = setInterval(() => {
+      loadData(false);
+    }, 15000);
+
+    // Rafraîchir dès que l'utilisateur revient sur l'onglet de l'application
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadData(false);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
     // Écouter les déductions ou recharges en temps réel pour cet utilisateur
     const handleCreditUpdate = (e: any) => {
       const detail = e.detail;
@@ -239,6 +255,8 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
 
     window.addEventListener('studycloud_user_credits_updated', handleCreditUpdate);
     return () => {
+      clearInterval(pollInterval);
+      document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('studycloud_user_credits_updated', handleCreditUpdate);
     };
   }, [currentUserId]);
@@ -271,17 +289,28 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     }
   };
 
-  // Valeurs calculées dynamiquement depuis la base de données D1
+  // Valeurs calculées dynamiquement depuis la base de données D1 (Modèle Mon Stockage)
+  const tokensPerCredit = Math.max(1, Number(billingConfig.tokens_per_credit || userCredits.tokens_per_credit || 1000));
   const welcomeCredits = userCredits.welcome_credits !== undefined
     ? Number(userCredits.welcome_credits)
     : Number(billingConfig.welcome_credits !== undefined ? billingConfig.welcome_credits : 50);
   const purchasedCredits = Math.max(0, Number(userCredits.totalPurchased || 0));
-  const creditsRemaining = Math.max(0, Number(userCredits.balance || 0));
-  const totalMaxCredits = Math.max(creditsRemaining, welcomeCredits + purchasedCredits);
+  const rawConsumedCredits = Number(userCredits.totalConsumed !== undefined ? userCredits.totalConsumed : ((userCredits.tokensUsed || 0) / tokensPerCredit));
+  const consumedCredits = Math.max(0, +rawConsumedCredits.toFixed(2));
+
+  // RÈGLE COMMANDE UTILISATEUR & MODÈLE MON STOCKAGE :
+  // Solde Total Accordé = Cadeaux + Achetés
+  // Solde Actif Disponible = Math.max(0, (Cadeaux + Achetés) - Consommation)
+  const totalMaxCredits = Math.max(0, +(welcomeCredits + purchasedCredits).toFixed(2));
+  const calculatedActiveBalance = Math.max(0, +(totalMaxCredits - consumedCredits).toFixed(2));
+  const creditsRemaining = userCredits.balance > 0
+    ? Math.max(userCredits.balance, calculatedActiveBalance)
+    : calculatedActiveBalance;
+
   const creditsPercentage = totalMaxCredits > 0
     ? Math.min(100, Math.max(0, Math.round((creditsRemaining / totalMaxCredits) * 100)))
     : 0;
-  const tokensPerCredit = Math.max(1, Number(billingConfig.tokens_per_credit || userCredits.tokens_per_credit || 1000));
+
   const dailyFreeCredits = Number(billingConfig.daily_free_credits || userCredits.daily_free_credits || 0);
   const isDailyActive = Number(billingConfig.is_daily_renewal_active) === 1 && dailyFreeCredits > 0;
 
