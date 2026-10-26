@@ -5225,9 +5225,8 @@ function renderDashboardHtml(data) {
 
       </div>
 
-      <!-- BLOC 3 : DIRECTIVES SYSTÈME & TARIFICATION ÉTUDIANTS -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        
+      <!-- BLOC 3 : DIRECTIVES SYSTÈME / PROMPT MAÎTRE -->
+      <div class="w-full">
         <!-- Instructions Système / Prompt du Robot -->
         <div class="neo-card p-4 sm:p-5 space-y-3">
           <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
@@ -5235,75 +5234,20 @@ function renderDashboardHtml(data) {
               <span class="text-base">📜</span>
               <span>Instructions Système Pédagogiques (Prompt Maître)</span>
             </div>
+            <span class="text-[10px] px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-300 border border-purple-500/20 font-bold">
+              Directives Pédagogiques Globales
+            </span>
           </div>
           <p class="text-[11px] text-slate-400">
             Ces directives définissent la personnalité, le comportement et la méthodologie de réponse du Robot Rouge pour tous vos élèves.
           </p>
           <textarea 
             id="robot-system-instructions" 
-            rows="5"
+            rows="6"
             class="w-full bg-slate-900 text-white text-xs rounded-xl p-3.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition leading-relaxed resize-y font-sans"
             placeholder="Tu es l'assistant d'étude officiel de StudyCloud..."
           >${safeHtml(rc.system_instructions, "Tu es l'assistant d'étude IA officiel de StudyCloud (Robot Rouge). Sois pédagogique, précis, encourageant et clair. Utilise le format Markdown et LaTeX pour les formules mathématiques.")}</textarea>
         </div>
-
-        <!-- Tarification Crédits & Quotas -->
-        <div class="neo-card p-4 sm:p-5 space-y-3 flex flex-col justify-between">
-          <div>
-            <div class="border-b border-slate-800 pb-3 flex items-center justify-between mb-3">
-              <div class="flex items-center gap-2 text-white font-bold text-xs sm:text-sm">
-                <span class="text-base">🪙</span>
-                <span>Crédits Étudiants & Quotas d'Utilisation</span>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-              <div class="space-y-1">
-                <label class="text-[11px] font-bold text-slate-300">Coût par message (Crédits)</label>
-                <input 
-                  type="number" 
-                  id="robot-cost-per-request" 
-                  value="${rc.cost_per_request !== undefined ? rc.cost_per_request : 1}" 
-                  min="0" 
-                  max="100"
-                  class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition"
-                >
-              </div>
-              <div class="space-y-1">
-                <label class="text-[11px] font-bold text-slate-300">Crédits offerts à l'inscription</label>
-                <input 
-                  type="number" 
-                  id="robot-welcome-credits" 
-                  value="${rc.welcome_credits !== undefined ? rc.welcome_credits : 50}" 
-                  min="0" 
-                  max="10000"
-                  class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-orange-500/60 focus:border-orange-500 outline-none transition"
-                >
-              </div>
-            </div>
-
-            <div class="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
-              <label class="flex items-start gap-2.5 cursor-pointer">
-                <input type="checkbox" id="robot-apply-welcome-all" class="mt-0.5 rounded border-slate-700 text-orange-600 focus:ring-0">
-                <div class="text-[11px] text-slate-300 leading-tight">
-                  <strong>Appliquer à tous :</strong> Mettre à niveau les comptes étudiants existants qui ont moins que ce montant de bienvenue.
-                </div>
-              </label>
-            </div>
-          </div>
-
-          <div class="pt-3 border-t border-slate-800 flex items-center justify-end">
-            <button 
-              type="button" 
-              onclick="saveRobotRougeConfig()" 
-              class="w-full py-2.5 rounded-xl bg-gradient-to-r from-red-600 via-orange-600 to-red-600 hover:from-red-500 hover:to-orange-500 text-white font-black text-xs shadow-lg shadow-red-600/30 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer"
-            >
-              <span>💾</span>
-              <span>Enregistrer et Appliquer Immédiatement</span>
-            </button>
-          </div>
-        </div>
-
       </div>
 
       <!-- BLOC 4 : CONSOLE DE TEST EN DIRECT DU ROBOT ROUGE -->
@@ -13029,18 +12973,15 @@ function renderDashboardHtml(data) {
 
       try {
         const payload = {
-          default_model: document.getElementById('robot-default-model')?.value || 'gemini-3.8-flash',
-          fallback_model: document.getElementById('robot-fallback-model')?.value || 'gemini-3.8-flash',
+          default_model: document.getElementById('robot-default-model')?.value || 'gemini-2.0-flash',
+          fallback_model: document.getElementById('robot-fallback-model')?.value || '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
           edge_router_url: document.getElementById('robot-edge-url')?.value || 'https://router.delmaskouassidibi.workers.dev',
           is_maintenance: document.getElementById('robot-is-maintenance')?.checked ? 1 : 0,
           gemini_api_key: document.getElementById('robot-gemini-key')?.value || '',
           openai_api_key: document.getElementById('robot-openai-key')?.value || '',
           anthropic_api_key: document.getElementById('robot-anthropic-key')?.value || '',
           cf_ai_token: document.getElementById('robot-cf-token')?.value || '',
-          system_instructions: document.getElementById('robot-system-instructions')?.value || '',
-          cost_per_request: parseInt(document.getElementById('robot-cost-per-request')?.value, 10) || 1,
-          welcome_credits: parseInt(document.getElementById('robot-welcome-credits')?.value, 10) || 50,
-          apply_welcome_to_all: document.getElementById('robot-apply-welcome-all')?.checked || false
+          system_instructions: document.getElementById('robot-system-instructions')?.value || ''
         };
 
         const res = await fetch('/api/admin/robot-rouge-config', {
@@ -14034,6 +13975,340 @@ function renderDashboardHtml(data) {
 }
 
 // ============================================================================
+// GESTIONNAIRE DÉDIÉ ULTRA-RAPIDE DES ROUTES IA & FACTURATION D1 (/api/ai/*)
+// Exécution directe en < 20ms sans inspecter R2 ni les utilisateurs D1
+// ============================================================================
+async function handleAiBillingRoutes(request, path, url, origin, db) {
+  // 1. GET /api/ai/billing/config
+  if (request.method === 'GET' && path === '/api/ai/billing/config') {
+    const cfg = await safeFirst(db, "SELECT * FROM ai_billing_config WHERE id = 'default'") || {
+      tokens_per_credit: 1000,
+      welcome_credits: 50.0,
+      daily_free_credits: 0.0,
+      is_daily_renewal_active: 0
+    };
+    return new Response(JSON.stringify({ success: true, config: cfg }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 2. POST /api/ai/billing/config
+  if (request.method === 'POST' && path === '/api/ai/billing/config') {
+    const body = await request.json().catch(() => ({}));
+    const tokensPerCredit = Math.max(1, parseInt(body.tokens_per_credit || 1000, 10));
+    const welcomeCredits = Math.max(0, parseFloat(body.welcome_credits !== undefined ? body.welcome_credits : 50));
+    const dailyFreeCredits = Math.max(0, parseFloat(body.daily_free_credits !== undefined ? body.daily_free_credits : 0));
+    const isDailyRenewal = body.is_daily_renewal_active ? 1 : 0;
+
+    await safeRun(db, `
+      INSERT INTO ai_billing_config (id, tokens_per_credit, welcome_credits, daily_free_credits, is_daily_renewal_active, updated_at)
+      VALUES ('default', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(id) DO UPDATE SET
+        tokens_per_credit = excluded.tokens_per_credit,
+        welcome_credits = excluded.welcome_credits,
+        daily_free_credits = excluded.daily_free_credits,
+        is_daily_renewal_active = excluded.is_daily_renewal_active,
+        updated_at = CURRENT_TIMESTAMP
+    `, [tokensPerCredit, welcomeCredits, dailyFreeCredits, isDailyRenewal]);
+
+    // Synchroniser également la configuration Robot Rouge dans D1
+    await safeRun(db, `
+      UPDATE robot_rouge_global_config SET welcome_credits = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'default'
+    `, [welcomeCredits]);
+
+    // Mise à jour automatique de tous les portefeuilles étudiants dans D1
+    await safeRun(db, `
+      UPDATE user_ai_credits 
+      SET credits_balance = ? + total_credits_purchased,
+          remaining_credits = ? + total_credits_purchased,
+          total_credits = ? + total_credits_purchased,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE total_credits_consumed = 0 OR total_tokens_consumed = 0
+    `, [welcomeCredits, welcomeCredits, welcomeCredits]);
+
+    if (welcomeCredits > 0) {
+      await safeRun(db, `
+        UPDATE user_ai_credits 
+        SET credits_balance = MAX(credits_balance, ? + total_credits_purchased - total_credits_consumed),
+            remaining_credits = MAX(remaining_credits, ? + total_credits_purchased - total_credits_consumed),
+            total_credits = ? + total_credits_purchased,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE total_credits_consumed < ?
+      `, [welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits]);
+    }
+
+    try {
+      await db.prepare(`
+        INSERT OR IGNORE INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed, plan_tier, remaining_credits, total_credits, used_credits)
+        SELECT id, ?, 0, 0, 0, 'free', ?, ?, 0 FROM users
+      `).bind(welcomeCredits, welcomeCredits, welcomeCredits).run();
+    } catch (e) {}
+
+    return new Response(JSON.stringify({
+      success: true,
+      config: {
+        tokens_per_credit: tokensPerCredit,
+        welcome_credits: welcomeCredits,
+        daily_free_credits: dailyFreeCredits,
+        is_daily_renewal_active: isDailyRenewal
+      }
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 3. GET /api/ai/user/credits
+  if (request.method === 'GET' && path === '/api/ai/user/credits') {
+    const targetUserId = (url.searchParams.get('userId') || request.headers.get('x-user-id') || 'default-user').trim();
+    const cfg = await safeFirst(db, "SELECT * FROM ai_billing_config WHERE id = 'default'") || {
+      tokens_per_credit: 1000,
+      welcome_credits: 50.0,
+      daily_free_credits: 0.0,
+      is_daily_renewal_active: 0
+    };
+    const welcomeCredits = cfg.welcome_credits !== undefined ? Number(cfg.welcome_credits) : 50.0;
+    const dailyFreeCredits = cfg.daily_free_credits !== undefined ? Number(cfg.daily_free_credits) : 0.0;
+    const isDailyActive = Number(cfg.is_daily_renewal_active) === 1;
+
+    let userCredits = await safeFirst(db, "SELECT * FROM user_ai_credits WHERE user_id = ?", [targetUserId]);
+
+    if (!userCredits) {
+      await safeRun(db, `
+        INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed, plan_tier, remaining_credits, total_credits, used_credits)
+        VALUES (?, ?, 0, 0, 0, 'free', ?, ?, 0)
+      `, [targetUserId, welcomeCredits, welcomeCredits, welcomeCredits]);
+      userCredits = {
+        user_id: targetUserId,
+        credits_balance: welcomeCredits,
+        remaining_credits: welcomeCredits,
+        total_credits: welcomeCredits,
+        used_credits: 0,
+        total_credits_purchased: 0,
+        total_tokens_consumed: 0,
+        total_credits_consumed: 0,
+        plan_tier: 'free'
+      };
+    } else {
+      const purSumRow = await safeFirst(db, "SELECT COALESCE(SUM(credits_amount), 0) as total FROM user_ai_purchases WHERE user_id = ? AND status IN ('completed', 'approved', 'confirmed')", [targetUserId]);
+      const verifiedPurchased = Math.max(Number(userCredits.total_credits_purchased || 0), Number(purSumRow?.total || 0));
+
+      if (verifiedPurchased > Number(userCredits.total_credits_purchased || 0)) {
+        await safeRun(db, "UPDATE user_ai_credits SET total_credits_purchased = ? WHERE user_id = ?", [verifiedPurchased, targetUserId]);
+        userCredits.total_credits_purchased = verifiedPurchased;
+      }
+
+      const consumed = Number(userCredits.total_credits_consumed || 0);
+      const minExpectedBalance = Math.max(0, +((welcomeCredits + verifiedPurchased) - consumed).toFixed(2));
+
+      if (Number(userCredits.credits_balance || 0) < minExpectedBalance && consumed < welcomeCredits) {
+        await safeRun(db, "UPDATE user_ai_credits SET credits_balance = ?, remaining_credits = ?, total_credits = ? WHERE user_id = ?", [minExpectedBalance, minExpectedBalance, welcomeCredits + verifiedPurchased, targetUserId]);
+        userCredits.credits_balance = minExpectedBalance;
+      }
+    }
+
+    if (userCredits && isDailyActive && dailyFreeCredits > 0) {
+      const today = new Date().toISOString().slice(0, 10);
+      const totalConsumed = Number(userCredits.total_credits_consumed || 0);
+      const totalPurchased = Number(userCredits.total_credits_purchased || 0);
+      const currentBal = Number(userCredits.credits_balance || 0);
+
+      const isWelcomeGiftExhausted = (totalConsumed >= welcomeCredits) || (currentBal <= totalPurchased);
+
+      if (isWelcomeGiftExhausted && userCredits.last_daily_grant_date !== today) {
+        const updatedBal = +(currentBal + dailyFreeCredits).toFixed(2);
+        await safeRun(db, `
+          UPDATE user_ai_credits 
+          SET credits_balance = ?, last_daily_grant_date = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = ?
+        `, [updatedBal, today, targetUserId]);
+        userCredits.credits_balance = updatedBal;
+        userCredits.last_daily_grant_date = today;
+      }
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      credits: {
+        balance: Number(userCredits.credits_balance || 0),
+        tokensUsed: Number(userCredits.total_tokens_consumed || 0),
+        totalPurchased: Number(userCredits.total_credits_purchased || 0),
+        totalConsumed: Number(userCredits.total_credits_consumed || 0),
+        plan: userCredits.total_credits_purchased > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit',
+        daily_free_credits: dailyFreeCredits,
+        tokens_per_credit: Number(cfg.tokens_per_credit || 1000),
+        welcome_credits: welcomeCredits,
+        last_usage_at: userCredits.last_usage_at
+      }
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 4. POST /api/ai/user/deduct-credits
+  if (request.method === 'POST' && path === '/api/ai/user/deduct-credits') {
+    const body = await request.json().catch(() => ({}));
+    const targetUserId = (body.userId || body.user_id || request.headers.get('x-user-id') || 'default-user').trim();
+    const tokens = Math.max(1, parseInt(body.tokens || 0, 10));
+    const model = body.model || 'Delmas IA';
+    const actionType = body.actionType || body.action_type || 'chat_deduction';
+    const reason = body.reason || 'Consommation IA';
+
+    const cfg = await safeFirst(db, "SELECT * FROM ai_billing_config WHERE id = 'default'") || { tokens_per_credit: 1000, welcome_credits: 50.0 };
+    const tokensPerCredit = Math.max(1, Number(cfg.tokens_per_credit || 1000));
+    const rawCredits = tokens / tokensPerCredit;
+    const creditsDeducted = Math.max(0.01, +(rawCredits).toFixed(2));
+
+    let userCredits = await safeFirst(db, "SELECT * FROM user_ai_credits WHERE user_id = ?", [targetUserId]);
+    if (!userCredits) {
+      const welcomeCredits = cfg.welcome_credits !== undefined ? Number(cfg.welcome_credits) : 50.0;
+      await safeRun(db, `
+        INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed, plan_tier)
+        VALUES (?, ?, 0, 0, 0, 'free')
+      `, [targetUserId, welcomeCredits]);
+      userCredits = { user_id: targetUserId, credits_balance: welcomeCredits, total_tokens_consumed: 0, total_credits_consumed: 0, total_credits_purchased: 0 };
+    }
+
+    const currentBal = Number(userCredits.credits_balance || 0);
+    const newBalance = Math.max(0, +(currentBal - creditsDeducted).toFixed(2));
+    const newTotalTokens = (userCredits.total_tokens_consumed || 0) + tokens;
+    const newTotalCreditsConsumed = +(Number(userCredits.total_credits_consumed || 0) + creditsDeducted).toFixed(2);
+
+    await safeRun(db, `
+      UPDATE user_ai_credits
+      SET credits_balance = ?,
+          total_tokens_consumed = ?,
+          total_credits_consumed = ?,
+          last_usage_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE user_id = ?
+    `, [newBalance, newTotalTokens, newTotalCreditsConsumed, targetUserId]);
+
+    const logId = 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    await safeRun(db, `
+      INSERT INTO ai_usage_logs (id, user_id, action_type, prompt_tokens, completion_tokens, total_tokens, credits_deducted, balance_after, model_used, created_at)
+      VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `, [logId, targetUserId, actionType, tokens, creditsDeducted, newBalance, model]);
+
+    return new Response(JSON.stringify({
+      success: true,
+      credits_deducted: creditsDeducted,
+      new_balance: newBalance,
+      tokens_consumed: tokens,
+      total_tokens_consumed: newTotalTokens,
+      total_credits_consumed: newTotalCreditsConsumed
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 5. GET /api/ai/user/purchases
+  if (request.method === 'GET' && path === '/api/ai/user/purchases') {
+    const targetUserId = (url.searchParams.get('userId') || request.headers.get('x-user-id') || 'default-user').trim();
+    const rows = await safeQuery(db, "SELECT * FROM user_ai_purchases WHERE user_id = ? ORDER BY created_at DESC", [targetUserId]);
+    const sumRow = await safeFirst(db, "SELECT COALESCE(SUM(credits_amount), 0) as total FROM user_ai_purchases WHERE user_id = ? AND status IN ('completed', 'approved', 'confirmed')", [targetUserId]);
+    const totalPurchased = Number(sumRow?.total || 0);
+    return new Response(JSON.stringify({
+      success: true,
+      purchases: rows?.results || [],
+      total_purchased: totalPurchased
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 6. GET /api/ai/admin/users
+  if (request.method === 'GET' && path === '/api/ai/admin/users') {
+    const creditsRows = await safeQuery(db, "SELECT * FROM user_ai_credits") || { results: [] };
+    return new Response(JSON.stringify({ success: true, users: creditsRows.results || [] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 7. POST /api/ai/admin/user/credits
+  if (request.method === 'POST' && path === '/api/ai/admin/user/credits') {
+    const body = await request.json().catch(() => ({}));
+    const userId = body.user_id;
+    const amount = parseFloat(body.amount || 0);
+    const operation = body.operation || 'add';
+    const reason = body.reason || 'Attribution administrateur';
+
+    if (!userId) {
+      return new Response(JSON.stringify({ success: false, error: 'Identifiant utilisateur requis' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+
+    const existing = await safeFirst(db, "SELECT * FROM user_ai_credits WHERE user_id = ?", [userId]);
+    let newBalance = amount;
+    const purchasedDelta = (operation === 'add' && amount > 0) ? amount : (amount > 0 ? amount : 0);
+
+    if (existing) {
+      if (operation === 'add') {
+        newBalance = +(Number(existing.credits_balance || 0) + amount).toFixed(2);
+      }
+      await safeRun(db, `
+        UPDATE user_ai_credits 
+        SET credits_balance = ?,
+            total_credits_purchased = total_credits_purchased + ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
+      `, [newBalance, purchasedDelta, userId]);
+    } else {
+      await safeRun(db, `
+        INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased)
+        VALUES (?, ?, ?)
+      `, [userId, newBalance, purchasedDelta]);
+    }
+
+    if (amount > 0) {
+      const purchaseId = 'pur_adm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      await safeRun(db, `
+        INSERT INTO user_ai_purchases (id, user_id, credits_amount, price_paid, currency, payment_method, payment_reference, reason, status, created_at, confirmed_at)
+        VALUES (?, ?, ?, 0, 'FCFA', 'admin_grant', 'ATTRIBUTION_MANUELLE_ADMIN', ?, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      `, [purchaseId, userId, amount, reason]);
+    }
+
+    await safeRun(db, `
+      INSERT INTO ai_usage_logs (id, user_id, action_type, prompt_tokens, completion_tokens, total_tokens, credits_deducted, balance_after, model_used, created_at)
+      VALUES (?, ?, ?, 0, 0, 0, ?, ?, ?, CURRENT_TIMESTAMP)
+    `, [
+      'ADMIN_' + Math.random().toString(36).substring(2, 9),
+      userId,
+      operation === 'add' ? 'admin_credit_add' : 'admin_credit_set',
+      -amount,
+      newBalance,
+      reason
+    ]);
+
+    return new Response(JSON.stringify({ success: true, new_balance: newBalance, total_purchased_added: purchasedDelta }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 8. GET /api/ai/admin/logs
+  if (request.method === 'GET' && path === '/api/ai/admin/logs') {
+    const logs = await safeQuery(db, "SELECT * FROM ai_usage_logs ORDER BY created_at DESC LIMIT 50") || { results: [] };
+    return new Response(JSON.stringify({ success: true, logs: logs.results || [] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  return new Response(JSON.stringify({ success: false, error: `Route IA introuvable: ${request.method} ${path}` }), {
+    status: 404,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+  });
+}
+
+// ============================================================================
 // GESTIONNAIRE PRINCIPAL DU WORKER TABLEAU DE BORD
 // ============================================================================
 export default {
@@ -14073,6 +14348,13 @@ export default {
     }
 
     try {
+      // ----------------------------------------------------------------------
+      // INTERCEPTION ULTRA-RAPIDE : ROUTES IA & CRÉDITS D1 (/api/ai/*)
+      // Exécution immédiate en < 20ms sans inspecter R2 ni les utilisateurs
+      // ----------------------------------------------------------------------
+      if (path.startsWith('/api/ai/')) {
+        return await handleAiBillingRoutes(request, path, url, origin, db);
+      }
       // ----------------------------------------------------------------------
       // ROUTE GET : /api/storage/file/* (Téléchargement / Affichage Fichiers & Reçus R2)
       // ----------------------------------------------------------------------
@@ -15934,6 +16216,10 @@ export default {
       if (request.method === 'POST' && path === '/api/admin/robot-rouge-config') {
         const b = await request.json().catch(() => ({}));
         try {
+          const existingRc = await safeFirst(db, "SELECT cost_per_request, welcome_credits FROM robot_rouge_global_config WHERE id = 'default'") || {};
+          const currentCost = b.cost_per_request !== undefined ? Number(b.cost_per_request) : (existingRc.cost_per_request !== undefined ? Number(existingRc.cost_per_request) : 1);
+          const currentWelcome = b.welcome_credits !== undefined ? Number(b.welcome_credits) : (existingRc.welcome_credits !== undefined ? Number(existingRc.welcome_credits) : 55);
+
           await db.prepare(`
             INSERT INTO robot_rouge_global_config (
               id, default_model, fallback_model, edge_router_url, is_maintenance,
@@ -15963,8 +16249,8 @@ export default {
             b.anthropic_api_key || '',
             b.cf_ai_token || '',
             b.system_instructions || '',
-            b.cost_per_request !== undefined ? Number(b.cost_per_request) : 1,
-            b.welcome_credits !== undefined ? Number(b.welcome_credits) : 50
+            currentCost,
+            currentWelcome
           ).run();
 
           // Synchroniser les clés dans robot_rouge_models
@@ -16547,341 +16833,7 @@ export default {
         });
       }
 
-      // ----------------------------------------------------------------------
-      // ----------------------------------------------------------------------
-      // ROUTES API : FACTURATION & QUOTAS IA (FORMULE 2)
-      // ----------------------------------------------------------------------
-      if (request.method === 'GET' && path === '/api/ai/billing/config') {
-        const cfg = await safeFirst(db, "SELECT * FROM ai_billing_config WHERE id = 'default'") || {
-          tokens_per_credit: 1000,
-          welcome_credits: 50.0,
-          daily_free_credits: 0.0,
-          is_daily_renewal_active: 0
-        };
-        return new Response(JSON.stringify({ success: true, config: cfg }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-        });
-      }
-
-      if (request.method === 'POST' && path === '/api/ai/billing/config') {
-        const body = await request.json().catch(() => ({}));
-        const tokensPerCredit = Math.max(1, parseInt(body.tokens_per_credit || 1000, 10));
-        const welcomeCredits = Math.max(0, parseFloat(body.welcome_credits !== undefined ? body.welcome_credits : 50));
-        const dailyFreeCredits = Math.max(0, parseFloat(body.daily_free_credits !== undefined ? body.daily_free_credits : 0));
-        const isDailyRenewal = body.is_daily_renewal_active ? 1 : 0;
-        const applyWelcomeAll = body.apply_welcome_to_all !== undefined ? !!body.apply_welcome_to_all : true;
-
-        await safeRun(db, `
-          INSERT INTO ai_billing_config (id, tokens_per_credit, welcome_credits, daily_free_credits, is_daily_renewal_active, updated_at)
-          VALUES ('default', ?, ?, ?, ?, CURRENT_TIMESTAMP)
-          ON CONFLICT(id) DO UPDATE SET
-            tokens_per_credit = excluded.tokens_per_credit,
-            welcome_credits = excluded.welcome_credits,
-            daily_free_credits = excluded.daily_free_credits,
-            is_daily_renewal_active = excluded.is_daily_renewal_active,
-            updated_at = CURRENT_TIMESTAMP
-        `, [tokensPerCredit, welcomeCredits, dailyFreeCredits, isDailyRenewal]);
-
-        // Synchroniser également la configuration Robot Rouge dans D1
-        await safeRun(db, `
-          UPDATE robot_rouge_global_config SET welcome_credits = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'default'
-        `, [welcomeCredits]);
-
-        // Mise à jour automatique de tous les portefeuilles étudiants dans D1 (modèle "Mon Stockage") :
-        // 1. Les étudiants n'ayant encore rien consommé reçoivent immédiatement le nouveau cadeau
-        await safeRun(db, `
-          UPDATE user_ai_credits 
-          SET credits_balance = ? + total_credits_purchased,
-              remaining_credits = ? + total_credits_purchased,
-              total_credits = ? + total_credits_purchased,
-              updated_at = CURRENT_TIMESTAMP
-          WHERE total_credits_consumed = 0 OR total_tokens_consumed = 0
-        `, [welcomeCredits, welcomeCredits, welcomeCredits]);
-
-        // 2. Si le cadeau a été augmenté, rehausser le solde de ceux qui ont entamé leur crédit
-        if (welcomeCredits > 0) {
-          await safeRun(db, `
-            UPDATE user_ai_credits 
-            SET credits_balance = MAX(credits_balance, ? + total_credits_purchased - total_credits_consumed),
-                remaining_credits = MAX(remaining_credits, ? + total_credits_purchased - total_credits_consumed),
-                total_credits = ? + total_credits_purchased,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE total_credits_consumed < ?
-          `, [welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits]);
-        }
-
-        // 3. S'assurer que tous les utilisateurs inscrits dans 'users' ont un portefeuille de crédits IA
-        try {
-          await db.prepare(`
-            INSERT OR IGNORE INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed, plan_tier, remaining_credits, total_credits, used_credits)
-            SELECT id, ?, 0, 0, 0, 'free', ?, ?, 0 FROM users
-          `).bind(welcomeCredits, welcomeCredits, welcomeCredits).run();
-        } catch (e) {}
-
-        return new Response(JSON.stringify({
-          success: true,
-          config: {
-            tokens_per_credit: tokensPerCredit,
-            welcome_credits: welcomeCredits,
-            daily_free_credits: dailyFreeCredits,
-            is_daily_renewal_active: isDailyRenewal
-          }
-        }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-        });
-      }
-
-      // Route publique / utilisateur : consultation en direct du solde de crédits et tokens
-      if (request.method === 'GET' && path === '/api/ai/user/credits') {
-        const targetUserId = (url.searchParams.get('userId') || request.headers.get('x-user-id') || 'default-user').trim();
-        const cfg = await safeFirst(db, "SELECT * FROM ai_billing_config WHERE id = 'default'") || {
-          tokens_per_credit: 1000,
-          welcome_credits: 50.0,
-          daily_free_credits: 0.0,
-          is_daily_renewal_active: 0
-        };
-        const welcomeCredits = cfg.welcome_credits !== undefined ? Number(cfg.welcome_credits) : 50.0;
-        const dailyFreeCredits = cfg.daily_free_credits !== undefined ? Number(cfg.daily_free_credits) : 0.0;
-        const isDailyActive = Number(cfg.is_daily_renewal_active) === 1;
-
-        let userCredits = await safeFirst(db, "SELECT * FROM user_ai_credits WHERE user_id = ?", [targetUserId]);
-
-        if (!userCredits) {
-          // Créer automatiquement l'utilisateur avec les crédits d'accueil configurés
-          await safeRun(db, `
-            INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed, plan_tier, remaining_credits, total_credits, used_credits)
-            VALUES (?, ?, 0, 0, 0, 'free', ?, ?, 0)
-          `, [targetUserId, welcomeCredits, welcomeCredits, welcomeCredits]);
-          userCredits = {
-            user_id: targetUserId,
-            credits_balance: welcomeCredits,
-            remaining_credits: welcomeCredits,
-            total_credits: welcomeCredits,
-            used_credits: 0,
-            total_credits_purchased: 0,
-            total_tokens_consumed: 0,
-            total_credits_consumed: 0,
-            plan_tier: 'free'
-          };
-        } else {
-          // Synchronisation dynamique avec user_ai_purchases pour cohérence absolue D1
-          const purSumRow = await safeFirst(db, "SELECT COALESCE(SUM(credits_amount), 0) as total FROM user_ai_purchases WHERE user_id = ? AND status IN ('completed', 'approved', 'confirmed')", [targetUserId]);
-          const verifiedPurchased = Math.max(Number(userCredits.total_credits_purchased || 0), Number(purSumRow?.total || 0));
-
-          if (verifiedPurchased > Number(userCredits.total_credits_purchased || 0)) {
-            await safeRun(db, "UPDATE user_ai_credits SET total_credits_purchased = ? WHERE user_id = ?", [verifiedPurchased, targetUserId]);
-            userCredits.total_credits_purchased = verifiedPurchased;
-          }
-
-          const consumed = Number(userCredits.total_credits_consumed || 0);
-          // RÈGLE MÉCANIQUE MON STOCKAGE : Le solde actif = (Cadeau de bienvenue + Achetés validés) - Consommation
-          const minExpectedBalance = Math.max(0, +((welcomeCredits + verifiedPurchased) - consumed).toFixed(2));
-
-          if (Number(userCredits.credits_balance || 0) < minExpectedBalance && consumed < welcomeCredits) {
-            await safeRun(db, "UPDATE user_ai_credits SET credits_balance = ?, remaining_credits = ?, total_credits = ? WHERE user_id = ?", [minExpectedBalance, minExpectedBalance, welcomeCredits + verifiedPurchased, targetUserId]);
-            userCredits.credits_balance = minExpectedBalance;
-          }
-        }
-
-        if (userCredits && isDailyActive && dailyFreeCredits > 0) {
-          // RÈGLE COMMANDE UTILISATEUR :
-          // Le cadeau de bienvenue initial doit obligatoirement être FINI / ÉPUISÉ d'abord avant que le renouvellement quotidien ne démarre !
-          const today = new Date().toISOString().slice(0, 10);
-          const totalConsumed = Number(userCredits.total_credits_consumed || 0);
-          const totalPurchased = Number(userCredits.total_credits_purchased || 0);
-          const currentBal = Number(userCredits.credits_balance || 0);
-
-          // Le cadeau de bienvenue initial est fini si la consommation a atteint ou dépassé les crédits offerts,
-          // OU si le solde restant est inférieur ou égal aux crédits achetés (part gratuite épuisée)
-          const isWelcomeGiftExhausted = (totalConsumed >= welcomeCredits) || (currentBal <= totalPurchased);
-
-          if (isWelcomeGiftExhausted && userCredits.last_daily_grant_date !== today) {
-            const updatedBal = +(currentBal + dailyFreeCredits).toFixed(2);
-            await safeRun(db, `
-              UPDATE user_ai_credits 
-              SET credits_balance = ?, last_daily_grant_date = ?, updated_at = CURRENT_TIMESTAMP
-              WHERE user_id = ?
-            `, [updatedBal, today, targetUserId]);
-            userCredits.credits_balance = updatedBal;
-            userCredits.last_daily_grant_date = today;
-          }
-        }
-
-        return new Response(JSON.stringify({
-          success: true,
-          credits: {
-            balance: Number(userCredits.credits_balance || 0),
-            tokensUsed: Number(userCredits.total_tokens_consumed || 0),
-            totalPurchased: Number(userCredits.total_credits_purchased || 0),
-            totalConsumed: Number(userCredits.total_credits_consumed || 0),
-            plan: userCredits.total_credits_purchased > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit',
-            daily_free_credits: dailyFreeCredits,
-            tokens_per_credit: Number(cfg.tokens_per_credit || 1000),
-            welcome_credits: welcomeCredits,
-            last_usage_at: userCredits.last_usage_at
-          }
-        }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-        });
-      }
-
-      // Route de déduction en direct des crédits de consommation IA (Formule 2 : tokens / tokens_per_credit)
-      if (request.method === 'POST' && path === '/api/ai/user/deduct-credits') {
-        const body = await request.json().catch(() => ({}));
-        const targetUserId = (body.userId || body.user_id || request.headers.get('x-user-id') || 'default-user').trim();
-        const tokens = Math.max(1, parseInt(body.tokens || 0, 10));
-        const model = body.model || 'Delmas IA';
-        const actionType = body.actionType || body.action_type || 'chat_deduction';
-        const reason = body.reason || 'Consommation IA';
-
-        const cfg = await safeFirst(db, "SELECT * FROM ai_billing_config WHERE id = 'default'") || { tokens_per_credit: 1000, welcome_credits: 50.0 };
-        const tokensPerCredit = Math.max(1, Number(cfg.tokens_per_credit || 1000));
-        const rawCredits = tokens / tokensPerCredit;
-        const creditsDeducted = Math.max(0.01, +(rawCredits).toFixed(2));
-
-        let userCredits = await safeFirst(db, "SELECT * FROM user_ai_credits WHERE user_id = ?", [targetUserId]);
-        if (!userCredits) {
-          const welcomeCredits = cfg.welcome_credits !== undefined ? Number(cfg.welcome_credits) : 50.0;
-          await safeRun(db, `
-            INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed, plan_tier)
-            VALUES (?, ?, 0, 0, 0, 'free')
-          `, [targetUserId, welcomeCredits]);
-          userCredits = { user_id: targetUserId, credits_balance: welcomeCredits, total_tokens_consumed: 0, total_credits_consumed: 0, total_credits_purchased: 0 };
-        }
-
-        const currentBal = Number(userCredits.credits_balance || 0);
-        const newBalance = Math.max(0, +(currentBal - creditsDeducted).toFixed(2));
-        const newTotalTokens = (userCredits.total_tokens_consumed || 0) + tokens;
-        const newTotalCreditsConsumed = +(Number(userCredits.total_credits_consumed || 0) + creditsDeducted).toFixed(2);
-
-        await safeRun(db, `
-          UPDATE user_ai_credits
-          SET credits_balance = ?,
-              total_tokens_consumed = ?,
-              total_credits_consumed = ?,
-              last_usage_at = CURRENT_TIMESTAMP,
-              updated_at = CURRENT_TIMESTAMP
-          WHERE user_id = ?
-        `, [newBalance, newTotalTokens, newTotalCreditsConsumed, targetUserId]);
-
-        // Journaliser dans ai_usage_logs
-        const logId = 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-        await safeRun(db, `
-          INSERT INTO ai_usage_logs (id, user_id, action_type, prompt_tokens, completion_tokens, total_tokens, credits_deducted, balance_after, model_used, created_at)
-          VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        `, [logId, targetUserId, actionType, tokens, creditsDeducted, newBalance, model]);
-
-        return new Response(JSON.stringify({
-          success: true,
-          credits_deducted: creditsDeducted,
-          new_balance: newBalance,
-          tokens_consumed: tokens,
-          total_tokens_consumed: newTotalTokens,
-          total_credits_consumed: newTotalCreditsConsumed
-        }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-        });
-      }
-
-      // Route de consultation des crédits achetés par l'utilisateur (historique user_ai_purchases)
-      if (request.method === 'GET' && path === '/api/ai/user/purchases') {
-        const targetUserId = (url.searchParams.get('userId') || request.headers.get('x-user-id') || 'default-user').trim();
-        const rows = await safeQuery(db, "SELECT * FROM user_ai_purchases WHERE user_id = ? ORDER BY created_at DESC", [targetUserId]);
-        const sumRow = await safeFirst(db, "SELECT COALESCE(SUM(credits_amount), 0) as total FROM user_ai_purchases WHERE user_id = ? AND status IN ('completed', 'approved', 'confirmed')", [targetUserId]);
-        const totalPurchased = Number(sumRow?.total || 0);
-        return new Response(JSON.stringify({
-          success: true,
-          purchases: rows?.results || [],
-          total_purchased: totalPurchased
-        }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-        });
-      }
-
-      if (request.method === 'GET' && path === '/api/ai/admin/users') {
-        const creditsRows = await safeQuery(db, "SELECT * FROM user_ai_credits") || { results: [] };
-        return new Response(JSON.stringify({ success: true, users: creditsRows.results || [] }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-        });
-      }
-
-      if (request.method === 'POST' && path === '/api/ai/admin/user/credits') {
-        const body = await request.json().catch(() => ({}));
-        const userId = body.user_id;
-        const amount = parseFloat(body.amount || 0);
-        const operation = body.operation || 'add';
-        const reason = body.reason || 'Attribution administrateur';
-
-        if (!userId) {
-          return new Response(JSON.stringify({ success: false, error: 'Identifiant utilisateur requis' }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-          });
-        }
-
-        const existing = await safeFirst(db, "SELECT * FROM user_ai_credits WHERE user_id = ?", [userId]);
-        let newBalance = amount;
-        const purchasedDelta = (operation === 'add' && amount > 0) ? amount : (amount > 0 ? amount : 0);
-
-        if (existing) {
-          if (operation === 'add') {
-            newBalance = +(Number(existing.credits_balance || 0) + amount).toFixed(2);
-          }
-          await safeRun(db, `
-            UPDATE user_ai_credits 
-            SET credits_balance = ?,
-                total_credits_purchased = total_credits_purchased + ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE user_id = ?
-          `, [newBalance, purchasedDelta, userId]);
-        } else {
-          await safeRun(db, `
-            INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased)
-            VALUES (?, ?, ?)
-          `, [userId, newBalance, purchasedDelta]);
-        }
-
-        // RÈGLE COMMANDE : Enregistrer impérativement dans user_ai_purchases sous les crédits achetés
-        if (amount > 0) {
-          const purchaseId = 'pur_adm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-          await safeRun(db, `
-            INSERT INTO user_ai_purchases (id, user_id, credits_amount, price_paid, currency, payment_method, payment_reference, reason, status, created_at, confirmed_at)
-            VALUES (?, ?, ?, 0, 'FCFA', 'admin_grant', 'ATTRIBUTION_MANUELLE_ADMIN', ?, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-          `, [purchaseId, userId, amount, reason]);
-        }
-
-        // Enregistrement dans ai_usage_logs
-        await safeRun(db, `
-          INSERT INTO ai_usage_logs (id, user_id, action_type, prompt_tokens, completion_tokens, total_tokens, credits_deducted, balance_after, model_used, created_at)
-          VALUES (?, ?, ?, 0, 0, 0, ?, ?, ?, CURRENT_TIMESTAMP)
-        `, [
-          'ADMIN_' + Math.random().toString(36).substring(2, 9),
-          userId,
-          operation === 'add' ? 'admin_credit_add' : 'admin_credit_set',
-          -amount,
-          newBalance,
-          reason
-        ]);
-
-        return new Response(JSON.stringify({ success: true, new_balance: newBalance, total_purchased_added: purchasedDelta }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-        });
-      }
-
-      if (request.method === 'GET' && path === '/api/ai/admin/logs') {
-        const logs = await safeQuery(db, "SELECT * FROM ai_usage_logs ORDER BY created_at DESC LIMIT 50") || { results: [] };
-        return new Response(JSON.stringify({ success: true, logs: logs.results || [] }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-        });
-      }
+      // Les routes /api/ai/* sont désormais interceptées et traitées instantanément tout en haut via handleAiBillingRoutes()
 
       // GARDE 404 JSON : TOUTE REQUÊTE /api/* NON RECONNUE DOIT RENVOYER DU JSON ET JAMAIS DU HTML
       // ----------------------------------------------------------------------

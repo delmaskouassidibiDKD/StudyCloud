@@ -3236,7 +3236,7 @@ export async function getAiBillingConfig(): Promise<{ success: boolean; config: 
   for (const url of candidateUrls) {
     try {
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const timeoutId = controller ? setTimeout(() => controller.abort(), 3500) : null;
+      const timeoutId = controller ? setTimeout(() => controller.abort(), 8000) : null;
       const res = await fetch(`${url}/api/ai/billing/config`, {
         method: 'GET',
         headers: {
@@ -3384,7 +3384,7 @@ export async function getUserAiCreditsLive(
   for (const url of candidateUrls) {
     try {
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const timeoutId = controller ? setTimeout(() => controller.abort(), 3500) : null;
+      const timeoutId = controller ? setTimeout(() => controller.abort(), 8000) : null;
       const res = await fetch(`${url}/api/ai/user/credits?userId=${encodeURIComponent(userId)}`, {
         method: 'GET',
         headers: {

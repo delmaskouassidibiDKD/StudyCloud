@@ -120,7 +120,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
 
   // Chargement ultra-rapide et parallèle des données Cloudflare D1
   const loadData = async (showSpin = false, isBackground = false) => {
-    if (isFetchingRef.current) return;
+    if (isFetchingRef.current && !showSpin) return;
     isFetchingRef.current = true;
 
     if (showSpin) {
@@ -153,7 +153,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
           totalPurchased: finalPurchased,
           totalConsumed: Number(cred.totalConsumed || 0),
           plan: cred.plan || (finalPurchased > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit'),
-          welcome_credits: cred.welcome_credits,
+          welcome_credits: cred.welcome_credits !== undefined ? Number(cred.welcome_credits) : undefined,
           daily_free_credits: cred.daily_free_credits,
           tokens_per_credit: cred.tokens_per_credit
         };
@@ -167,7 +167,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
         if (cred.welcome_credits !== undefined) {
           setBillingConfig(prev => ({
             ...prev,
-            welcome_credits: cred.welcome_credits!,
+            welcome_credits: Number(cred.welcome_credits),
             tokens_per_credit: cred.tokens_per_credit || prev.tokens_per_credit,
             daily_free_credits: cred.daily_free_credits !== undefined ? cred.daily_free_credits : prev.daily_free_credits
           }));
@@ -182,7 +182,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
           tokens_per_credit: cfg.tokens_per_credit || prev.tokens_per_credit,
           daily_free_credits: cfg.daily_free_credits !== undefined ? cfg.daily_free_credits : prev.daily_free_credits,
           is_daily_renewal_active: cfg.is_daily_renewal_active !== undefined ? cfg.is_daily_renewal_active : prev.is_daily_renewal_active,
-          welcome_credits: prev.welcome_credits !== undefined ? prev.welcome_credits : cfg.welcome_credits
+          welcome_credits: cfg.welcome_credits !== undefined ? Number(cfg.welcome_credits) : prev.welcome_credits
         }));
         try {
           localStorage.setItem('studycloud_cached_ai_config', JSON.stringify(cfg));
@@ -332,9 +332,10 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
 
   // Valeurs calculées dynamiquement depuis la base de données D1 (Modèle Mon Stockage)
   const tokensPerCredit = Math.max(1, Number(billingConfig.tokens_per_credit || userCredits.tokens_per_credit || 1000));
-  const welcomeCredits = userCredits.welcome_credits !== undefined
-    ? Number(userCredits.welcome_credits)
-    : Number(billingConfig.welcome_credits !== undefined ? billingConfig.welcome_credits : 50);
+  // Priorité absolue aux règles globales définies par l'administrateur dans Cloudflare D1
+  const welcomeCredits = billingConfig.welcome_credits !== undefined
+    ? Number(billingConfig.welcome_credits)
+    : (userCredits.welcome_credits !== undefined ? Number(userCredits.welcome_credits) : 50);
   const purchasedCredits = Math.max(0, Number(userCredits.totalPurchased || 0));
   const rawConsumedCredits = Number(userCredits.totalConsumed !== undefined ? userCredits.totalConsumed : ((userCredits.tokensUsed || 0) / tokensPerCredit));
   const consumedCredits = Math.max(0, +rawConsumedCredits.toFixed(2));
@@ -344,9 +345,10 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
   // Solde Actif Disponible = Math.max(0, (Cadeaux + Achetés) - Consommation)
   const totalMaxCredits = Math.max(0, +(welcomeCredits + purchasedCredits).toFixed(2));
   const calculatedActiveBalance = Math.max(0, +(totalMaxCredits - consumedCredits).toFixed(2));
-  const creditsRemaining = userCredits.balance > 0
-    ? Math.max(userCredits.balance, calculatedActiveBalance)
-    : calculatedActiveBalance;
+  // Si l'utilisateur n'a encore rien consommé, le solde restant est exactement la dotation totale accordée
+  const creditsRemaining = (userCredits.totalConsumed === 0 && (userCredits.tokensUsed || 0) === 0)
+    ? totalMaxCredits
+    : (userCredits.balance > 0 ? Math.max(userCredits.balance, calculatedActiveBalance) : calculatedActiveBalance);
 
   const creditsPercentage = totalMaxCredits > 0
     ? Math.min(100, Math.max(0, Math.round((creditsRemaining / totalMaxCredits) * 100)))
