@@ -378,6 +378,55 @@ async function ensureStorageTables(db) {
     }
     try { await db.prepare("ALTER TABLE robot_rouge_models ADD COLUMN nickname TEXT DEFAULT ''").run(); } catch (e) {}
 
+    // 1.b. Tables D1 pour la Facturation et les Quotas IA (Formule 2 Proportionnelle)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS ai_billing_config (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        tokens_per_credit INTEGER DEFAULT 1000,
+        welcome_credits REAL DEFAULT 50.0,
+        daily_free_credits REAL DEFAULT 0.0,
+        is_daily_renewal_active INTEGER DEFAULT 0,
+        min_deduction_credit REAL DEFAULT 0.01,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      INSERT OR IGNORE INTO ai_billing_config (id, tokens_per_credit, welcome_credits, daily_free_credits, is_daily_renewal_active)
+      VALUES ('default', 1000, 50.0, 0.0, 0)
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_ai_credits (
+        user_id TEXT PRIMARY KEY,
+        credits_balance REAL DEFAULT 50.0,
+        total_tokens_consumed INTEGER DEFAULT 0,
+        total_credits_purchased REAL DEFAULT 0.0,
+        total_credits_consumed REAL DEFAULT 0.0,
+        plan_tier TEXT DEFAULT 'gratuit',
+        is_blocked INTEGER DEFAULT 0,
+        last_daily_grant_date TEXT DEFAULT '',
+        last_usage_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS ai_usage_logs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        action_type TEXT NOT NULL,
+        prompt_tokens INTEGER DEFAULT 0,
+        completion_tokens INTEGER DEFAULT 0,
+        total_tokens INTEGER DEFAULT 0,
+        credits_deducted REAL DEFAULT 0.0,
+        balance_after REAL DEFAULT 0.0,
+        model_used TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
     // 2. Table 'shop_profiles' pour les boutiques et services
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS shop_profiles (
@@ -2706,6 +2755,9 @@ function renderDashboardHtml(data) {
   const alertLogsJson = JSON.stringify(data.alertLogs || []).replace(/</g, '\\u003c');
   const robotRougeConfigJson = JSON.stringify(data.robotRougeConfig || {}).replace(/</g, '\\u003c');
   const robotRougeModelsJson = JSON.stringify(data.robotRougeModels || []).replace(/</g, '\\u003c');
+  const aiBillingConfigJson = JSON.stringify(data.aiBillingConfig || { tokens_per_credit: 1000, welcome_credits: 50, daily_free_credits: 0, is_daily_renewal_active: 0 }).replace(/</g, '\\u003c');
+  const aiUsageLogsJson = JSON.stringify(data.aiUsageLogs || []).replace(/</g, '\\u003c');
+  const aiCfg = data.aiBillingConfig || { tokens_per_credit: 1000, welcome_credits: 50, daily_free_credits: 0, is_daily_renewal_active: 0 };
   const rc = data.robotRougeConfig || {};
   const cp = data.companyProfile || {};
   const safeAttr = (val, fallback = '') => {
@@ -2921,6 +2973,21 @@ function renderDashboardHtml(data) {
       >
         <span class="text-base">🤖</span>
         <span>Demandes de crédits IA</span>
+      </button>
+
+      <button 
+        onclick="switchView('facturation-ia')" 
+        id="nav-btn-facturation-ia"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
+      >
+        <span class="text-base text-amber-400 group-hover:scale-110 transition-transform">🪙</span>
+        <div class="flex-1 overflow-hidden">
+          <div class="text-xs font-bold text-white flex items-center gap-1.5">
+            <span>Facturation & Quotas IA</span>
+            <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono">Formule 2</span>
+          </div>
+          <div class="text-[10px] text-slate-400 font-normal truncate">Tokens/Crédit, Bienvenue & Quotidien</div>
+        </div>
       </button>
 
       <button 
@@ -5252,6 +5319,467 @@ function renderDashboardHtml(data) {
     </div>
   </div>
 
+  <!-- ==================================================================== -->
+  <!-- VUE : FACTURATION ET QUOTAS IA (FORMULE 2 PROPORTIONNELLE)          -->
+  <!-- ==================================================================== -->
+  <div id="view-facturation-ia" class="hidden w-full h-full overflow-y-auto space-y-5 pb-24 pr-1 overscroll-contain custom-scrollbar" style="display: none;">
+    
+    <!-- Bannière Principale Facturation IA -->
+    <div class="neo-card p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-[#1c1829] to-slate-900 border-l-4 border-l-amber-500 shrink-0">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2.5">
+            <span class="text-2xl">🪙</span>
+            <h3 class="text-base sm:text-lg font-extrabold text-white">
+              Facturation & Quotas IA • Formule 2 Proportionnelle
+            </h3>
+            <span class="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold font-mono">
+              Cloudflare D1 En Direct
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 mt-1 max-w-4xl leading-relaxed">
+            Configurez ici le barème de facturation proportionnel de vos étudiants : <strong>taux de conversion Tokens / Crédit</strong>, <strong>crédits offerts à l'inscription</strong> et <strong>crédits quotidiens gratuits</strong> renouvelables chaque jour. Consultez et ajustez le solde de chaque étudiant en un clic.
+          </p>
+        </div>
+
+        <div class="flex items-center gap-2.5 shrink-0 flex-wrap">
+          <button 
+            type="button" 
+            onclick="saveFacturationIaConfig()" 
+            id="btn-save-facturation-ia"
+            class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 hover:from-amber-400 hover:to-orange-400 text-stone-900 font-black text-xs shadow-lg shadow-orange-500/30 flex items-center gap-2 active:scale-95 transition-all cursor-pointer"
+          >
+            <span>💾</span>
+            <span>Enregistrer les Barèmes D1</span>
+          </button>
+          <button 
+            type="button" 
+            onclick="refreshFacturationIaData()" 
+            class="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <span>🔄</span>
+            <span>Actualiser les Soldes</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4 CARTES KPIS EN HAUT -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div class="neo-card p-4 bg-slate-900/80 border border-slate-800 relative overflow-hidden">
+        <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+          <span>Taux Tokens / Crédit</span>
+          <span class="text-base text-amber-400">⚖️</span>
+        </div>
+        <div class="text-xl sm:text-2xl font-black text-white font-mono" id="kpi-tokens-per-credit">
+          ${aiCfg.tokens_per_credit || 1000}
+        </div>
+        <div class="text-[10px] text-slate-400 mt-1">tokens génèrent 1 crédit débité</div>
+      </div>
+
+      <div class="neo-card p-4 bg-slate-900/80 border border-slate-800 relative overflow-hidden">
+        <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+          <span>Crédit de Bienvenue</span>
+          <span class="text-base text-emerald-400">🎁</span>
+        </div>
+        <div class="text-xl sm:text-2xl font-black text-white font-mono" id="kpi-welcome-credits">
+          ${aiCfg.welcome_credits !== undefined ? aiCfg.welcome_credits : 50}
+        </div>
+        <div class="text-[10px] text-slate-400 mt-1">crédits offerts aux nouveaux comptes</div>
+      </div>
+
+      <div class="neo-card p-4 bg-slate-900/80 border border-slate-800 relative overflow-hidden">
+        <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+          <span>Recharge Quotidienne</span>
+          <span class="text-base text-cyan-400">🔄</span>
+        </div>
+        <div class="text-xl sm:text-2xl font-black text-white font-mono" id="kpi-daily-free-credits">
+          ${aiCfg.daily_free_credits || 0}
+        </div>
+        <div class="text-[10px] text-slate-400 mt-1" id="kpi-daily-status">
+          ${aiCfg.is_daily_renewal_active ? '✅ Renouvellement automatique activé' : '⏸️ Inactif'}
+        </div>
+      </div>
+
+      <div class="neo-card p-4 bg-slate-900/80 border border-slate-800 relative overflow-hidden">
+        <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+          <span>Étudiants Détectés</span>
+          <span class="text-base text-purple-400">👥</span>
+        </div>
+        <div class="text-xl sm:text-2xl font-black text-white font-mono" id="kpi-total-ia-users">
+          ${(data.users || []).length}
+        </div>
+        <div class="text-[10px] text-slate-400 mt-1">comptes avec suivi des quotas IA</div>
+      </div>
+    </div>
+
+    <!-- FORMULAIRE CONFIGURATION FORMULE 2 + SIMULATEUR VISUEL INTERACTIF -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      
+      <!-- Colonne Gauche : Formulaire de Paramétrage D1 -->
+      <div class="lg:col-span-7 neo-card p-4 sm:p-5 space-y-4 bg-slate-900/70 border border-slate-800">
+        <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+          <div class="flex items-center gap-2 text-white font-bold text-sm">
+            <span>⚙️</span>
+            <span>Règles de Facturation (Formule 2 Proportionnelle)</span>
+          </div>
+          <span class="text-[10px] text-amber-400 font-mono bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+            Formule : Crédits = Tokens ÷ Taux
+          </span>
+        </div>
+
+        <!-- 1. Taux de conversion -->
+        <div class="space-y-1.5">
+          <label class="text-xs font-bold text-slate-200 block flex items-center justify-between">
+            <span>Taux de conversion : Nombre de tokens pour 1 crédit *</span>
+            <span class="text-[10px] text-slate-400 font-normal">Exemple : 1000 tokens = 1 crédit</span>
+          </label>
+          <div class="relative">
+            <input 
+              type="number" 
+              id="ia-cfg-tokens-per-credit" 
+              value="${aiCfg.tokens_per_credit || 1000}" 
+              min="1" 
+              max="1000000" 
+              step="10"
+              oninput="updateFacturationSimulator()"
+              class="w-full bg-slate-950 text-white text-xs font-mono rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-amber-500/60 focus:border-amber-500 outline-none transition"
+            >
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-bold font-mono">tokens = 1 crédit</span>
+          </div>
+          <p class="text-[10px] text-slate-400">
+            Si une requête génère 450 tokens et que le taux est de 1000, le compte est débité de <strong>0.45 crédit</strong>.
+          </p>
+        </div>
+
+        <!-- 2. Crédit de Bienvenue -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+          <div class="space-y-1.5">
+            <label class="text-xs font-bold text-slate-200 block">Crédits de Bienvenue (À l'inscription)</label>
+            <input 
+              type="number" 
+              id="ia-cfg-welcome-credits" 
+              value="${aiCfg.welcome_credits !== undefined ? aiCfg.welcome_credits : 50}" 
+              min="0" 
+              max="100000" 
+              step="1"
+              class="w-full bg-slate-950 text-white text-xs font-mono rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-amber-500/60 focus:border-amber-500 outline-none transition"
+            >
+            <p class="text-[10px] text-slate-400">Solde attribué gratuitement lors de la création d'un compte.</p>
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-xs font-bold text-slate-200 block">Crédits Gratuits Quotidiens (Par jour)</label>
+            <input 
+              type="number" 
+              id="ia-cfg-daily-free-credits" 
+              value="${aiCfg.daily_free_credits || 0}" 
+              min="0" 
+              max="10000" 
+              step="1"
+              class="w-full bg-slate-950 text-white text-xs font-mono rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-amber-500/60 focus:border-amber-500 outline-none transition"
+            >
+            <p class="text-[10px] text-slate-400">Recharge quotidienne offerte aux étudiants actifs.</p>
+          </div>
+        </div>
+
+        <!-- Options cases à cocher -->
+        <div class="space-y-2 pt-2 border-t border-slate-800/80">
+          <label class="flex items-start gap-2.5 cursor-pointer p-2.5 rounded-xl bg-slate-950/40 border border-slate-800 hover:border-slate-700">
+            <input 
+              type="checkbox" 
+              id="ia-cfg-daily-renewal-active" 
+              ${aiCfg.is_daily_renewal_active ? 'checked' : ''}
+              class="mt-0.5 rounded border-slate-700 text-amber-500 focus:ring-0"
+            >
+            <div class="text-xs text-slate-300">
+              <strong class="text-white">Activer le renouvellement automatique quotidien :</strong>
+              <div class="text-[10px] text-slate-400 mt-0.5">Chaque utilisateur reçoit automatiquement ses crédits gratuits du jour dès sa première requête de la journée.</div>
+            </div>
+          </label>
+
+          <label class="flex items-start gap-2.5 cursor-pointer p-2.5 rounded-xl bg-slate-950/40 border border-slate-800 hover:border-slate-700">
+            <input 
+              type="checkbox" 
+              id="ia-cfg-apply-welcome-all" 
+              class="mt-0.5 rounded border-slate-700 text-amber-500 focus:ring-0"
+            >
+            <div class="text-xs text-slate-300">
+              <strong class="text-white">Mettre à niveau tous les étudiants existants :</strong>
+              <div class="text-[10px] text-slate-400 mt-0.5">Si un compte étudiant a un solde inférieur aux crédits de bienvenue, son solde sera rehaussé immédiatement à ce montant.</div>
+            </div>
+          </label>
+        </div>
+
+        <div class="pt-3 border-t border-slate-800 flex justify-end">
+          <button 
+            type="button" 
+            onclick="saveFacturationIaConfig()" 
+            class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-900 font-black text-xs shadow-md shadow-amber-500/20 flex items-center gap-2 cursor-pointer transition active:scale-95"
+          >
+            <span>💾</span>
+            <span>Enregistrer et Appliquer Immédiatement</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Colonne Droite : Simulateur Visuel Interactif Formule 2 -->
+      <div class="lg:col-span-5 neo-card p-4 sm:p-5 space-y-4 bg-slate-900/70 border border-slate-800 flex flex-col justify-between">
+        <div>
+          <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-white font-bold text-sm">
+              <span>🧪</span>
+              <span>Simulateur Visuel en Direct</span>
+            </div>
+            <span class="text-[10px] text-cyan-400 font-mono bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+              Calcul Instantané
+            </span>
+          </div>
+
+          <div class="space-y-3 pt-3">
+            <div>
+              <label class="text-xs font-bold text-slate-300 block mb-1">Nombre de Tokens simulés générés par l'IA :</label>
+              <div class="flex items-center gap-2">
+                <input 
+                  type="number" 
+                  id="sim-tokens-input" 
+                  value="450" 
+                  min="1" 
+                  max="100000" 
+                  step="50"
+                  oninput="updateFacturationSimulator()"
+                  class="flex-1 bg-slate-950 text-white text-xs font-mono rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-cyan-500 focus:border-cyan-500 outline-none transition"
+                >
+                <div class="flex gap-1">
+                  <button type="button" onclick="setSimTokens(150)" class="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-[10px] font-mono text-slate-300 rounded-lg">150</button>
+                  <button type="button" onclick="setSimTokens(450)" class="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-[10px] font-mono text-slate-300 rounded-lg">450</button>
+                  <button type="button" onclick="setSimTokens(1200)" class="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-[10px] font-mono text-slate-300 rounded-lg">1200</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Résultat du Calcul Formule 2 -->
+            <div class="p-4 rounded-2xl bg-gradient-to-br from-slate-950 via-[#0d1627] to-slate-950 border border-cyan-500/30 space-y-3">
+              <div class="flex items-center justify-between text-xs text-slate-400 border-b border-slate-800 pb-2">
+                <span>Formule appliquée :</span>
+                <span class="font-mono text-cyan-300" id="sim-formula-text">450 tokens ÷ 1000</span>
+              </div>
+
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-300">Crédits débités à l'étudiant :</span>
+                <span class="text-2xl font-black text-amber-400 font-mono" id="sim-result-credits">0.45</span>
+              </div>
+
+              <div class="text-[11px] text-slate-400 leading-relaxed bg-slate-900/60 p-2.5 rounded-xl border border-slate-800" id="sim-explanation-text">
+                Sur un solde de départ de 50.00 crédits, il restera 49.55 crédits pour cet étudiant après cette requête.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 flex items-start gap-2">
+          <span>💡</span>
+          <span>Le calcul proportionnel garantit une équité absolue : les réponses courtes coûtent peu, et les longues requêtes consomment à la juste mesure.</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- TABLEAU DE GESTION DES UTILISATEURS & AJOUT DE CRÉDITS -->
+    <div class="neo-card p-4 sm:p-5 space-y-4 bg-slate-900/70 border border-slate-800">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div>
+          <h4 class="text-sm font-black text-white flex items-center gap-2">
+            <span>👥</span>
+            <span>Portefeuilles des Utilisateurs & Attribution de Crédits</span>
+          </h4>
+          <p class="text-[10px] text-slate-400">Consultez en temps réel le solde de crédits et les tokens consommés par chaque étudiant.</p>
+        </div>
+
+        <!-- Recherche rapide -->
+        <div class="relative w-full sm:w-72">
+          <input 
+            type="text" 
+            id="ia-user-search-input" 
+            placeholder="Rechercher par nom, email, tél..." 
+            oninput="filterFacturationUsers()"
+            class="w-full bg-slate-950 text-white text-xs rounded-xl pl-8 pr-3 py-2 border border-slate-700 hover:border-amber-500 focus:border-amber-500 outline-none transition"
+          >
+          <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 text-xs">🔍</span>
+        </div>
+      </div>
+
+      <!-- Table Utilisateurs -->
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs border-collapse">
+          <thead>
+            <tr class="border-b border-slate-800 text-[10px] font-black text-slate-400 uppercase tracking-wider bg-slate-950/50">
+              <th class="py-2.5 px-3">Étudiant / Utilisateur</th>
+              <th class="py-2.5 px-3">Téléphone & École</th>
+              <th class="py-2.5 px-3 text-center">Solde Crédits IA</th>
+              <th class="py-2.5 px-3 text-center">Tokens Consommés</th>
+              <th class="py-2.5 px-3 text-center">Crédits Déduits</th>
+              <th class="py-2.5 px-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="ia-users-table-body" class="divide-y divide-slate-800/60 font-sans">
+            <!-- Rendu dynamique par renderFacturationUsersList() -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- JOURNAL D'AUDIT EN DIRECT (HISTORIQUE DES DÉBITS ET AJOUTS) -->
+    <div class="neo-card p-4 sm:p-5 space-y-3 bg-slate-900/70 border border-slate-800">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-2 text-white font-bold text-sm">
+          <span>📜</span>
+          <span>Historique & Audit des Consommations IA (50 dernières requêtes)</span>
+        </div>
+        <button type="button" onclick="loadFacturationIaLogs()" class="text-xs text-amber-400 hover:underline cursor-pointer flex items-center gap-1">
+          <span>🔄</span> <span>Rafraîchir les logs</span>
+        </button>
+      </div>
+
+      <div class="overflow-x-auto max-h-72 overflow-y-auto custom-scrollbar">
+        <table class="w-full text-left text-[11px] border-collapse">
+          <thead>
+            <tr class="border-b border-slate-800 text-[9px] font-black text-slate-400 uppercase tracking-wider bg-slate-950/50 sticky top-0">
+              <th class="py-2 px-3">Date</th>
+              <th class="py-2 px-3">Utilisateur</th>
+              <th class="py-2 px-3">Action / Modèle</th>
+              <th class="py-2 px-3 text-center">Tokens</th>
+              <th class="py-2 px-3 text-center">Crédits</th>
+              <th class="py-2 px-3 text-right">Solde Après</th>
+            </tr>
+          </thead>
+          <tbody id="ia-logs-table-body" class="divide-y divide-slate-800/40 font-mono">
+            <!-- Rendu dynamique par loadFacturationIaLogs() -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ==================================================================== -->
+  <!-- MODALE INTERACTIVE : AJOUTER OU AJUSTER LES CRÉDITS D'UN ÉTUDIANT    -->
+  <!-- ==================================================================== -->
+  <div id="modal-credit-user" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm hidden" style="display: none;">
+    <div class="relative max-w-md w-full bg-[#0e1628] border-2 border-slate-700 p-6 rounded-3xl shadow-2xl space-y-5">
+      
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3.5">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">🪙</span>
+          <div>
+            <h3 class="text-base font-extrabold text-white">Ajuster les Crédits IA</h3>
+            <p class="text-xs text-slate-400">Ajoutez ou définissez le solde de crédits de l'étudiant.</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeCreditModal()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center cursor-pointer transition">✕</button>
+      </div>
+
+      <!-- Fiche Utilisateur sélectionné -->
+      <div class="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+        <div>
+          <div class="text-xs font-bold text-white" id="modal-credit-user-name">Nom Étudiant</div>
+          <div class="text-[10px] text-slate-400" id="modal-credit-user-email">email@domain.com</div>
+        </div>
+        <div class="text-right">
+          <div class="text-[9px] text-slate-400 uppercase font-bold">Solde Actuel</div>
+          <div class="text-base font-black text-amber-400 font-mono" id="modal-credit-user-balance">50.00</div>
+        </div>
+      </div>
+
+      <input type="hidden" id="modal-credit-user-id" value="">
+      <input type="hidden" id="modal-credit-op" value="add">
+
+      <!-- Choix Type d'opération -->
+      <div class="space-y-1">
+        <label class="text-xs font-bold text-slate-300 block">Opération à effectuer :</label>
+        <div class="grid grid-cols-2 gap-2">
+          <button 
+            type="button" 
+            id="btn-op-add"
+            onclick="setCreditOp('add')" 
+            class="py-2 px-3 rounded-xl border-2 border-amber-500 bg-amber-500/20 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+          >
+            <span>➕</span> <span>Ajouter (+)</span>
+          </button>
+          <button 
+            type="button" 
+            id="btn-op-set"
+            onclick="setCreditOp('set')" 
+            class="py-2 px-3 rounded-xl border border-slate-700 bg-slate-900 text-slate-400 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer hover:border-slate-600"
+          >
+            <span>⚖️</span> <span>Fixer Solde (=)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Raccourcis rapides de montant -->
+      <div class="space-y-1">
+        <label class="text-[11px] font-bold text-slate-400 block">Montants rapides :</label>
+        <div class="grid grid-cols-4 gap-2">
+          <button type="button" onclick="setCreditAmount(20)" class="py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-300">+20</button>
+          <button type="button" onclick="setCreditAmount(50)" class="py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-300">+50</button>
+          <button type="button" onclick="setCreditAmount(100)" class="py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-300">+100</button>
+          <button type="button" onclick="setCreditAmount(500)" class="py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-300">+500</button>
+        </div>
+      </div>
+
+      <!-- Champ Montant libre -->
+      <div class="space-y-1">
+        <label class="text-xs font-bold text-slate-300 block">Montant de crédits :</label>
+        <div class="relative">
+          <input 
+            type="number" 
+            id="modal-credit-amount-input" 
+            value="50" 
+            min="0" 
+            max="1000000" 
+            step="1"
+            class="w-full bg-slate-950 text-white font-mono text-base font-bold rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-amber-500 focus:border-amber-500 outline-none transition"
+          >
+          <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500 font-mono">Crédits</span>
+        </div>
+      </div>
+
+      <!-- Motif -->
+      <div class="space-y-1">
+        <label class="text-xs font-bold text-slate-300 block">Motif de l'opération :</label>
+        <input 
+          type="text" 
+          id="modal-credit-reason" 
+          value="Recharge manuelle par l'administrateur" 
+          placeholder="Ex: Achat pack, Dépannage, Cadeau..." 
+          class="w-full bg-slate-950 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 hover:border-amber-500 focus:border-amber-500 outline-none transition"
+        >
+      </div>
+
+      <!-- Actions -->
+      <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+        <button 
+          type="button" 
+          onclick="closeCreditModal()" 
+          class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition cursor-pointer"
+        >
+          Annuler
+        </button>
+        <button 
+          type="button" 
+          id="btn-submit-credit"
+          onclick="submitCreditAdjustment()" 
+          class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 hover:from-amber-400 hover:to-orange-400 text-stone-900 font-black text-xs shadow-lg shadow-amber-500/30 flex items-center gap-1.5 transition cursor-pointer active:scale-95"
+        >
+          <span>✓</span>
+          <span>Valider et Créditer dans D1</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
 </main>
 
   <!-- ================================================================== -->
@@ -5944,7 +6472,7 @@ function renderDashboardHtml(data) {
     function switchView(viewName) {
       currentView = viewName;
       const flexViews = ['users', 'demandes', 'demandes-ia', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques'];
-      ['global', 'users', 'demandes', 'demandes-ia', 'robot-rouge', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'profil-pro', 'alertes-stockage'].forEach(v => {
+      ['global', 'users', 'demandes', 'demandes-ia', 'robot-rouge', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'profil-pro', 'alertes-stockage', 'facturation-ia'].forEach(v => {
         const el = document.getElementById('view-' + v);
         const navBtn = document.getElementById('nav-btn-' + v);
         if (!el) return;
@@ -5977,7 +6505,8 @@ function renderDashboardHtml(data) {
           abonnements: 'Abonnements & Forfaits',
           statistiques: 'Statistiques & Métriques',
           'profil-pro': 'Informations professionnelles',
-          'alertes-stockage': 'Planification Alertes Stockage'
+          'alertes-stockage': 'Planification Alertes Stockage',
+          'facturation-ia': 'Facturation & Quotas IA (Formule 2)'
         };
         badge.textContent = titles[viewName] || viewName;
       }
@@ -6024,6 +6553,8 @@ function renderDashboardHtml(data) {
       } else if (viewName === 'alertes-stockage') {
         renderAlertRules();
         renderAlertLogs();
+      } else if (viewName === 'facturation-ia') {
+        renderFacturationIaView();
       } else if (viewName === 'robot-rouge') {
         try {
           if (typeof loadRobotRougeConfig === 'function') {
@@ -12562,7 +13093,7 @@ function renderDashboardHtml(data) {
       const start = Date.now();
       try {
         const edgeUrl = document.getElementById('robot-edge-url')?.value || 'https://workshop-backend.delmaskouassidibi.workers.dev';
-        let targetUrl = edgeUrl.trim().replace(/\/+$/, '');
+        let targetUrl = edgeUrl.trim().replace(/[/]+$/, '');
         if (targetUrl.includes('router.delmaskouassidibi.workers.dev')) {
           targetUrl = 'https://workshop-backend.delmaskouassidibi.workers.dev';
         }
@@ -13103,6 +13634,349 @@ function renderDashboardHtml(data) {
     window.editAiModelById = editAiModelById;
     window.toggleAiModelActive = toggleAiModelActive;
     window.saveAiModelNickname = saveAiModelNickname;
+
+    // =========================================================================
+    // LOGIQUE CLIENT : FACTURATION & QUOTAS IA (FORMULE 2)
+    // =========================================================================
+    let aiBillingConfigGlobal = ${aiBillingConfigJson};
+    let aiUsageLogsGlobal = ${aiUsageLogsJson};
+
+    function updateFacturationSimulator() {
+      const tokensPerCredit = Math.max(1, parseInt(document.getElementById('ia-cfg-tokens-per-credit')?.value || 1000, 10));
+      const tokens = Math.max(1, parseInt(document.getElementById('sim-tokens-input')?.value || 450, 10));
+      const credits = Math.max(0.01, +(tokens / tokensPerCredit).toFixed(2));
+      
+      const formulaEl = document.getElementById('sim-formula-text');
+      if (formulaEl) formulaEl.textContent = tokens + " tokens ÷ " + tokensPerCredit;
+      
+      const resEl = document.getElementById('sim-result-credits');
+      if (resEl) resEl.textContent = credits.toFixed(2);
+      
+      const explEl = document.getElementById('sim-explanation-text');
+      if (explEl) {
+        const welcome = parseFloat(document.getElementById('ia-cfg-welcome-credits')?.value || 50);
+        const remaining = Math.max(0, +(welcome - credits).toFixed(2));
+        explEl.innerHTML = "Sur un solde de départ de <strong>" + welcome.toFixed(2) + " crédits</strong>, il restera <strong>" + remaining.toFixed(2) + " crédits</strong> pour cet étudiant après cette requête.";
+      }
+    }
+    window.updateFacturationSimulator = updateFacturationSimulator;
+
+    function setSimTokens(n) {
+      const el = document.getElementById('sim-tokens-input');
+      if (el) {
+        el.value = n;
+        updateFacturationSimulator();
+      }
+    }
+    window.setSimTokens = setSimTokens;
+
+    function renderFacturationUsersList(filterText = '') {
+      const tbody = document.getElementById('ia-users-table-body');
+      if (!tbody) return;
+
+      const q = (filterText || '').toLowerCase().trim();
+      const users = (allUsers || []).filter(u => {
+        if (!q) return true;
+        const name = (u.user?.name || '').toLowerCase();
+        const email = (u.user?.email || '').toLowerCase();
+        const phone = (u.user?.phone || '').toLowerCase();
+        const filiere = (u.user?.filiere || '').toLowerCase();
+        return name.includes(q) || email.includes(q) || phone.includes(q) || filiere.includes(q);
+      });
+
+      if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-slate-500">Aucun étudiant trouvé</td></tr>';
+        return;
+      }
+
+      let html = '';
+      for (const u of users) {
+        const uid = u.user?.id || u.id;
+        const uname = u.user?.name || 'Étudiant';
+        const uemail = u.user?.email || '';
+        const uphone = u.user?.phone || 'Non renseigné';
+        const umajor = u.user?.filiere || u.user?.school || 'Étudiant';
+        const credits = (u.aiCredits?.credits_balance !== undefined) ? Number(u.aiCredits.credits_balance) : (aiBillingConfigGlobal.welcome_credits || 50.0);
+        const tokensConsumed = (u.aiCredits?.total_tokens_consumed || 0).toLocaleString('fr-FR');
+        const creditsConsumed = (u.aiCredits?.total_credits_consumed || 0).toFixed(2);
+
+        let badgeBg = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
+        if (credits <= 0) {
+          badgeBg = 'bg-rose-500/20 text-rose-400 border-rose-500/30';
+        } else if (credits < 10) {
+          badgeBg = 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+        }
+
+        html += '<tr class="hover:bg-slate-800/40 transition-colors">';
+        html += '<td class="py-3 px-3">';
+        html += '  <div class="font-bold text-white text-xs">' + (uname.replace(/</g, '&lt;')) + '</div>';
+        html += '  <div class="text-[10px] text-slate-400 font-mono">' + (uemail.replace(/</g, '&lt;')) + '</div>';
+        html += '</td>';
+
+        html += '<td class="py-3 px-3">';
+        html += '  <div class="text-xs text-slate-300 font-mono">' + (uphone.replace(/</g, '&lt;')) + '</div>';
+        html += '  <div class="text-[10px] text-slate-400 truncate max-w-[140px]">' + (umajor.replace(/</g, '&lt;')) + '</div>';
+        html += '</td>';
+
+        html += '<td class="py-3 px-3 text-center">';
+        html += '  <span class="inline-block px-2.5 py-1 rounded-full text-xs font-black font-mono border ' + badgeBg + '">';
+        html += '    ' + credits.toFixed(2) + ' crédits';
+        html += '  </span>';
+        html += '</td>';
+
+        html += '<td class="py-3 px-3 text-center text-xs font-mono text-slate-300">';
+        html += '  ' + tokensConsumed;
+        html += '</td>';
+
+        html += '<td class="py-3 px-3 text-center text-xs font-mono text-slate-400">';
+        html += '  ' + creditsConsumed;
+        html += '</td>';
+
+        html += '<td class="py-3 px-3 text-right">';
+        html += '  <button type="button" data-user-id="' + uid + '" onclick="openCreditModal(this.dataset.userId)" class="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-stone-900 border border-amber-500/30 font-bold text-xs transition cursor-pointer active:scale-95">';
+        html += '    + Créditer';
+        html += '  </button>';
+        html += '</td>';
+        html += '</tr>';
+      }
+      tbody.innerHTML = html;
+    }
+    window.renderFacturationUsersList = renderFacturationUsersList;
+
+    function filterFacturationUsers() {
+      const q = document.getElementById('ia-user-search-input')?.value || '';
+      renderFacturationUsersList(q);
+    }
+    window.filterFacturationUsers = filterFacturationUsers;
+
+    function renderFacturationIaView() {
+      updateFacturationSimulator();
+      renderFacturationUsersList();
+      loadFacturationIaLogs();
+    }
+    window.renderFacturationIaView = renderFacturationIaView;
+
+    async function saveFacturationIaConfig() {
+      const btn = document.getElementById('btn-save-facturation-ia');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span><span>Enregistrement...</span>';
+      }
+
+      const tokensPerCredit = Math.max(1, parseInt(document.getElementById('ia-cfg-tokens-per-credit')?.value || 1000, 10));
+      const welcomeCredits = Math.max(0, parseFloat(document.getElementById('ia-cfg-welcome-credits')?.value || 50));
+      const dailyFreeCredits = Math.max(0, parseFloat(document.getElementById('ia-cfg-daily-free-credits')?.value || 0));
+      const isDailyRenewal = document.getElementById('ia-cfg-daily-renewal-active')?.checked ? 1 : 0;
+      const applyWelcomeAll = document.getElementById('ia-cfg-apply-welcome-all')?.checked ? true : false;
+
+      try {
+        const res = await fetch('/api/ai/billing/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tokens_per_credit: tokensPerCredit,
+            welcome_credits: welcomeCredits,
+            daily_free_credits: dailyFreeCredits,
+            is_daily_renewal_active: isDailyRenewal,
+            apply_welcome_to_all: applyWelcomeAll
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          aiBillingConfigGlobal = data.config;
+          showToast('✓ Barème de facturation IA enregistré avec succès dans D1 !');
+          
+          const kpiT = document.getElementById('kpi-tokens-per-credit');
+          if (kpiT) kpiT.textContent = tokensPerCredit;
+          const kpiW = document.getElementById('kpi-welcome-credits');
+          if (kpiW) kpiW.textContent = welcomeCredits;
+          const kpiD = document.getElementById('kpi-daily-free-credits');
+          if (kpiD) kpiD.textContent = dailyFreeCredits;
+          const kpiS = document.getElementById('kpi-daily-status');
+          if (kpiS) kpiS.textContent = isDailyRenewal ? '✅ Renouvellement automatique activé' : '⏸️ Inactif';
+
+          if (applyWelcomeAll) {
+            refreshFacturationIaData();
+          }
+        } else {
+          showToast('⚠️ Erreur : ' + (data.error || 'Échec de sauvegarde'));
+        }
+      } catch (err) {
+        showToast('❌ Erreur de communication : ' + err.message);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>💾</span><span>Enregistrer les Barèmes D1</span>';
+        }
+      }
+    }
+    window.saveFacturationIaConfig = saveFacturationIaConfig;
+
+    async function refreshFacturationIaData() {
+      try {
+        showToast('🔄 Actualisation des soldes depuis D1...');
+        const res = await fetch('/api/ai/admin/users');
+        const data = await res.json();
+        if (data.success && Array.isArray(data.users)) {
+          const map = new Map();
+          for (const row of data.users) map.set(row.user_id, row);
+          for (const u of (allUsers || [])) {
+            const uid = u.user?.id || u.id;
+            if (map.has(uid)) {
+              u.aiCredits = map.get(uid);
+            }
+          }
+          renderFacturationUsersList(document.getElementById('ia-user-search-input')?.value || '');
+          showToast('✓ Soldes actualisés avec succès !');
+        }
+      } catch (err) {
+        showToast('⚠️ Erreur rafraîchissement : ' + err.message);
+      }
+    }
+    window.refreshFacturationIaData = refreshFacturationIaData;
+
+    function openCreditModal(userId) {
+      const modal = document.getElementById('modal-credit-user');
+      if (!modal) return;
+      const found = (allUsers || []).find(u => (u.user?.id || u.id) === userId);
+      const uname = found?.user?.name || 'Étudiant';
+      const uemail = found?.user?.email || '';
+      const currentBalance = (found?.aiCredits?.credits_balance !== undefined) ? Number(found.aiCredits.credits_balance) : (aiBillingConfigGlobal.welcome_credits || 50.0);
+
+      document.getElementById('modal-credit-user-id').value = userId;
+      document.getElementById('modal-credit-user-name').textContent = uname;
+      document.getElementById('modal-credit-user-email').textContent = uemail;
+      document.getElementById('modal-credit-user-balance').textContent = currentBalance.toFixed(2);
+      document.getElementById('modal-credit-amount-input').value = '50';
+      setCreditOp('add');
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+    }
+    window.openCreditModal = openCreditModal;
+
+    function closeCreditModal() {
+      const modal = document.getElementById('modal-credit-user');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+      }
+    }
+    window.closeCreditModal = closeCreditModal;
+
+    function setCreditOp(op) {
+      document.getElementById('modal-credit-op').value = op;
+      const btnAdd = document.getElementById('btn-op-add');
+      const btnSet = document.getElementById('btn-op-set');
+      if (op === 'add') {
+        if (btnAdd) btnAdd.className = 'py-2 px-3 rounded-xl border-2 border-amber-500 bg-amber-500/20 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer';
+        if (btnSet) btnSet.className = 'py-2 px-3 rounded-xl border border-slate-700 bg-slate-900 text-slate-400 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer hover:border-slate-600';
+      } else {
+        if (btnSet) btnSet.className = 'py-2 px-3 rounded-xl border-2 border-amber-500 bg-amber-500/20 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer';
+        if (btnAdd) btnAdd.className = 'py-2 px-3 rounded-xl border border-slate-700 bg-slate-900 text-slate-400 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer hover:border-slate-600';
+      }
+    }
+    window.setCreditOp = setCreditOp;
+
+    function setCreditAmount(n) {
+      const input = document.getElementById('modal-credit-amount-input');
+      if (input) input.value = n;
+    }
+    window.setCreditAmount = setCreditAmount;
+
+    async function submitCreditAdjustment() {
+      const btn = document.getElementById('btn-submit-credit');
+      const userId = document.getElementById('modal-credit-user-id')?.value;
+      const op = document.getElementById('modal-credit-op')?.value || 'add';
+      const amount = parseFloat(document.getElementById('modal-credit-amount-input')?.value || 0);
+      const reason = document.getElementById('modal-credit-reason')?.value || 'Ajustement administrateur';
+
+      if (!userId) {
+        showToast('⚠️ Aucun utilisateur sélectionné');
+        return;
+      }
+      if (isNaN(amount) || amount < 0) {
+        showToast('⚠️ Veuillez entrer un montant valide');
+        return;
+      }
+
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span><span>Enregistrement...</span>';
+      }
+
+      try {
+        const res = await fetch('/api/ai/admin/user/credits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: userId,
+            amount: amount,
+            operation: op,
+            reason: reason
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('✓ ' + (op === 'add' ? ('+' + amount + ' crédits ajoutés') : ('Solde fixé à ' + amount + ' crédits')) + ' !');
+          closeCreditModal();
+          
+          const found = (allUsers || []).find(u => (u.user?.id || u.id) === userId);
+          if (found) {
+            if (!found.aiCredits) found.aiCredits = {};
+            found.aiCredits.credits_balance = data.new_balance;
+          }
+          renderFacturationUsersList(document.getElementById('ia-user-search-input')?.value || '');
+          loadFacturationIaLogs();
+        } else {
+          showToast('⚠️ Erreur : ' + (data.error || 'Échec de mise à jour'));
+        }
+      } catch (err) {
+        showToast('❌ Erreur : ' + err.message);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>✓</span><span>Valider et Créditer dans D1</span>';
+        }
+      }
+    }
+    window.submitCreditAdjustment = submitCreditAdjustment;
+
+    async function loadFacturationIaLogs() {
+      const tbody = document.getElementById('ia-logs-table-body');
+      if (!tbody) return;
+
+      try {
+        const res = await fetch('/api/ai/admin/logs');
+        const data = await res.json();
+        if (data.success && Array.isArray(data.logs) && data.logs.length > 0) {
+          let html = '';
+          for (const l of data.logs) {
+            const dateStr = l.created_at ? new Date(l.created_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
+            const deducted = Number(l.credits_deducted || 0);
+            const isAdd = deducted < 0;
+            const creditBadge = isAdd 
+              ? ('<span class="text-emerald-400 font-bold">+' + Math.abs(deducted).toFixed(2) + '</span>')
+              : ('<span class="text-rose-400 font-bold">-' + deducted.toFixed(2) + '</span>');
+
+            html += '<tr class="hover:bg-slate-800/30">';
+            html += '<td class="py-2 px-3 text-slate-400">' + dateStr + '</td>';
+            html += '<td class="py-2 px-3 font-bold text-white truncate max-w-[120px]">' + (l.user_id || '').replace(/</g, '&lt;') + '</td>';
+            html += '<td class="py-2 px-3 text-slate-300 truncate max-w-[160px]">' + ((l.model_used || l.action_type || '').replace(/</g, '&lt;')) + '</td>';
+            html += '<td class="py-2 px-3 text-center text-slate-300">' + (l.total_tokens || 0) + '</td>';
+            html += '<td class="py-2 px-3 text-center">' + creditBadge + '</td>';
+            html += '<td class="py-2 px-3 text-right text-amber-300 font-bold">' + Number(l.balance_after || 0).toFixed(2) + '</td>';
+            html += '</tr>';
+          }
+          tbody.innerHTML = html;
+        } else {
+          tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-slate-500">Aucun log récent</td></tr>';
+        }
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-slate-500">Prêt pour les nouvelles requêtes</td></tr>';
+      }
+    }
+    window.loadFacturationIaLogs = loadFacturationIaLogs;
+
 
     window.addEventListener('focus', () => {
       smartAutoRefresh();
@@ -14094,9 +14968,33 @@ export default {
       }
 
       // Inspection pour chaque utilisateur
+      // Préchargement de la configuration de facturation IA et des soldes utilisateurs D1
+      const aiBillingConfigRow = await safeFirst(db, "SELECT * FROM ai_billing_config WHERE id = 'default'") || {
+        tokens_per_credit: 1000,
+        welcome_credits: 50.0,
+        daily_free_credits: 0.0,
+        is_daily_renewal_active: 0
+      };
+
+      const aiCreditsMap = new Map();
+      const aiCreditsRes = await safeQuery(db, "SELECT * FROM user_ai_credits", []);
+      if (aiCreditsRes && aiCreditsRes.results) {
+        for (const row of aiCreditsRes.results) {
+          aiCreditsMap.set(row.user_id, row);
+        }
+      }
+
       const detailedUsers = [];
       for (const u of rawUsers) {
         const detail = await inspectUserStorageDetail(db, bucket, u, globalConfigRow, usageMap.get(u.id));
+        detail.aiCredits = aiCreditsMap.get(u.id) || {
+          credits_balance: (aiBillingConfigRow.welcome_credits !== undefined ? aiBillingConfigRow.welcome_credits : 50.0),
+          total_tokens_consumed: 0,
+          total_credits_purchased: 0,
+          total_credits_consumed: 0,
+          last_daily_grant_date: '',
+          plan_tier: 'gratuit'
+        };
         detailedUsers.push(detail);
       }
 
@@ -15554,6 +16452,130 @@ export default {
       }
 
       // ----------------------------------------------------------------------
+      // ----------------------------------------------------------------------
+      // ROUTES API : FACTURATION & QUOTAS IA (FORMULE 2)
+      // ----------------------------------------------------------------------
+      if (request.method === 'GET' && path === '/api/ai/billing/config') {
+        const cfg = await safeFirst(db, "SELECT * FROM ai_billing_config WHERE id = 'default'") || {
+          tokens_per_credit: 1000,
+          welcome_credits: 50.0,
+          daily_free_credits: 0.0,
+          is_daily_renewal_active: 0
+        };
+        return new Response(JSON.stringify({ success: true, config: cfg }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      if (request.method === 'POST' && path === '/api/ai/billing/config') {
+        const body = await request.json().catch(() => ({}));
+        const tokensPerCredit = Math.max(1, parseInt(body.tokens_per_credit || 1000, 10));
+        const welcomeCredits = Math.max(0, parseFloat(body.welcome_credits !== undefined ? body.welcome_credits : 50));
+        const dailyFreeCredits = Math.max(0, parseFloat(body.daily_free_credits !== undefined ? body.daily_free_credits : 0));
+        const isDailyRenewal = body.is_daily_renewal_active ? 1 : 0;
+        const applyWelcomeAll = body.apply_welcome_to_all ? true : false;
+
+        await safeRun(db, `
+          INSERT INTO ai_billing_config (id, tokens_per_credit, welcome_credits, daily_free_credits, is_daily_renewal_active, updated_at)
+          VALUES ('default', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(id) DO UPDATE SET
+            tokens_per_credit = excluded.tokens_per_credit,
+            welcome_credits = excluded.welcome_credits,
+            daily_free_credits = excluded.daily_free_credits,
+            is_daily_renewal_active = excluded.is_daily_renewal_active,
+            updated_at = CURRENT_TIMESTAMP
+        `, [tokensPerCredit, welcomeCredits, dailyFreeCredits, isDailyRenewal]);
+
+        if (applyWelcomeAll && welcomeCredits > 0) {
+          await safeRun(db, `
+            UPDATE user_ai_credits SET credits_balance = ? WHERE credits_balance < ?
+          `, [welcomeCredits, welcomeCredits]);
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          config: {
+            tokens_per_credit: tokensPerCredit,
+            welcome_credits: welcomeCredits,
+            daily_free_credits: dailyFreeCredits,
+            is_daily_renewal_active: isDailyRenewal
+          }
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      if (request.method === 'GET' && path === '/api/ai/admin/users') {
+        const creditsRows = await safeQuery(db, "SELECT * FROM user_ai_credits") || { results: [] };
+        return new Response(JSON.stringify({ success: true, users: creditsRows.results || [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      if (request.method === 'POST' && path === '/api/ai/admin/user/credits') {
+        const body = await request.json().catch(() => ({}));
+        const userId = body.user_id;
+        const amount = parseFloat(body.amount || 0);
+        const operation = body.operation || 'add';
+        const reason = body.reason || 'Ajustement administrateur';
+
+        if (!userId) {
+          return new Response(JSON.stringify({ success: false, error: 'Identifiant utilisateur requis' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+
+        const existing = await safeFirst(db, "SELECT * FROM user_ai_credits WHERE user_id = ?", [userId]);
+        let newBalance = amount;
+        if (existing) {
+          if (operation === 'add') {
+            newBalance = +(Number(existing.credits_balance || 0) + amount).toFixed(2);
+          }
+          await safeRun(db, `
+            UPDATE user_ai_credits 
+            SET credits_balance = ?,
+                total_credits_purchased = total_credits_purchased + ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+          `, [newBalance, (operation === 'add' && amount > 0) ? amount : 0, userId]);
+        } else {
+          await safeRun(db, `
+            INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased)
+            VALUES (?, ?, ?)
+          `, [userId, newBalance, amount > 0 ? amount : 0]);
+        }
+
+        // Enregistrement dans ai_usage_logs
+        await safeRun(db, `
+          INSERT INTO ai_usage_logs (id, user_id, action_type, prompt_tokens, completion_tokens, total_tokens, credits_deducted, balance_after, model_used, created_at)
+          VALUES (?, ?, ?, 0, 0, 0, ?, ?, ?, CURRENT_TIMESTAMP)
+        `, [
+          'ADMIN_' + Math.random().toString(36).substring(2, 9),
+          userId,
+          operation === 'add' ? 'admin_credit_add' : 'admin_credit_set',
+          -amount,
+          newBalance,
+          reason
+        ]);
+
+        return new Response(JSON.stringify({ success: true, new_balance: newBalance }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      if (request.method === 'GET' && path === '/api/ai/admin/logs') {
+        const logs = await safeQuery(db, "SELECT * FROM ai_usage_logs ORDER BY created_at DESC LIMIT 50") || { results: [] };
+        return new Response(JSON.stringify({ success: true, logs: logs.results || [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
       // GARDE 404 JSON : TOUTE REQUÊTE /api/* NON RECONNUE DOIT RENVOYER DU JSON ET JAMAIS DU HTML
       // ----------------------------------------------------------------------
       if (path.startsWith('/api/')) {
@@ -15582,7 +16604,8 @@ export default {
         alertRules: (alertRulesRes && alertRulesRes.results) ? alertRulesRes.results : [],
         alertLogs: (alertLogsRes && alertLogsRes.results) ? alertLogsRes.results : [],
         robotRougeConfig: robotRougeConfigRes,
-        robotRougeModels: (robotRougeModelsRes && robotRougeModelsRes.results) ? robotRougeModelsRes.results : []
+        robotRougeModels: (robotRougeModelsRes && robotRougeModelsRes.results) ? robotRougeModelsRes.results : [],
+        aiBillingConfig: aiBillingConfigRow
       });
 
       return new Response(htmlContent, {
