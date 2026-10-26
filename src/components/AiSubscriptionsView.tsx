@@ -22,6 +22,7 @@ import {
   getUserStorageQuota,
   getUserStorageRequests,
   getUserPurchasesHistory,
+  getUserAiPurchases,
   getSubscriptionPlans,
   getUserAiCreditsLive,
   getAiBillingConfig,
@@ -118,11 +119,21 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
         serverReqs = reqRes.requests;
       }
 
-      // 4. Achats enregistrés sur le serveur
+      // 4. Achats enregistrés sur le serveur (stockage & forfaits)
       const purRes = await getUserPurchasesHistory(currentUserId);
       let serverPurs: any[] = [];
       if (purRes && purRes.success && Array.isArray(purRes.purchases)) {
-        serverPurs = purRes.purchases;
+        serverPurs = [...purRes.purchases];
+      }
+
+      // 4b. Achats de crédits IA enregistrés dans la table user_ai_purchases (D1)
+      try {
+        const aiPurRes = await getUserAiPurchases(currentUserId);
+        if (aiPurRes && aiPurRes.success && Array.isArray(aiPurRes.purchases)) {
+          serverPurs = [...serverPurs, ...aiPurRes.purchases];
+        }
+      } catch (errAiPur) {
+        console.warn('[AiSubscriptionsView] Erreur récupération achats IA:', errAiPur);
       }
 
       // 5. Demandes locales (sauvegardées lors des soumissions)

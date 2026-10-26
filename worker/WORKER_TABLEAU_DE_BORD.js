@@ -412,6 +412,34 @@ async function ensureStorageTables(db) {
       )
     `).run().catch(() => {});
 
+    // Table dédiée pour enregistrer les crédits achetés ou accordés par l'administrateur
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_ai_purchases (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        credits_amount REAL NOT NULL,
+        price_paid REAL DEFAULT 0,
+        currency TEXT DEFAULT 'FCFA',
+        payment_method TEXT DEFAULT 'admin_grant',
+        payment_reference TEXT DEFAULT '',
+        reason TEXT DEFAULT 'Achat / Attribution de crédits',
+        status TEXT DEFAULT 'completed',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        confirmed_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_user_ai_purchases_uid ON user_ai_purchases(user_id)`).run().catch(() => {});
+
+    // Migration tolérante aux schémas préexistants de user_ai_credits
+    try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN credits_balance REAL DEFAULT 50.0").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN total_tokens_consumed INTEGER DEFAULT 0").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN total_credits_purchased REAL DEFAULT 0.0").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN total_credits_consumed REAL DEFAULT 0.0").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN plan_tier TEXT DEFAULT 'gratuit'").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN is_blocked INTEGER DEFAULT 0").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN last_daily_grant_date TEXT DEFAULT ''").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN last_usage_at TEXT").run(); } catch (e) {}
+
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS ai_usage_logs (
         id TEXT PRIMARY KEY,
@@ -5616,7 +5644,8 @@ function renderDashboardHtml(data) {
             <tr class="border-b border-slate-800 text-[10px] font-black text-slate-400 uppercase tracking-wider bg-slate-950/50">
               <th class="py-2.5 px-3">Étudiant / Utilisateur</th>
               <th class="py-2.5 px-3">Téléphone & École</th>
-              <th class="py-2.5 px-3 text-center">Solde Crédits IA</th>
+              <th class="py-2.5 px-3 text-center">Solde Restant</th>
+              <th class="py-2.5 px-3 text-center">Crédits Achetés</th>
               <th class="py-2.5 px-3 text-center">Tokens Consommés</th>
               <th class="py-2.5 px-3 text-center">Crédits Déduits</th>
               <th class="py-2.5 px-3 text-right">Actions</th>
@@ -13697,6 +13726,7 @@ function renderDashboardHtml(data) {
         const uphone = u.user?.phone || 'Non renseigné';
         const umajor = u.user?.filiere || u.user?.school || 'Étudiant';
         const credits = (u.aiCredits?.credits_balance !== undefined) ? Number(u.aiCredits.credits_balance) : (aiBillingConfigGlobal.welcome_credits || 50.0);
+        const purchasedCredits = (u.aiCredits?.total_credits_purchased !== undefined) ? Number(u.aiCredits.total_credits_purchased) : 0.0;
         const tokensConsumed = (u.aiCredits?.total_tokens_consumed || 0).toLocaleString('fr-FR');
         const creditsConsumed = (u.aiCredits?.total_credits_consumed || 0).toFixed(2);
 
@@ -13718,20 +13748,31 @@ function renderDashboardHtml(data) {
         html += '  <div class="text-[10px] text-slate-400 truncate max-w-[140px]">' + (umajor.replace(/</g, '&lt;')) + '</div>';
         html += '</td>';
 
+        // 1. Solde Restant
         html += '<td class="py-3 px-3 text-center">';
         html += '  <span class="inline-block px-2.5 py-1 rounded-full text-xs font-black font-mono border ' + badgeBg + '">';
         html += '    ' + credits.toFixed(2) + ' crédits';
         html += '  </span>';
         html += '</td>';
 
+        // 2. Crédits Achetés (demandé par l'administrateur devant chaque utilisateur)
+        html += '<td class="py-3 px-3 text-center">';
+        html += '  <span class="inline-block px-2.5 py-1 rounded-full text-xs font-bold font-mono border bg-blue-500/15 text-blue-400 border-blue-500/30">';
+        html += '    ' + purchasedCredits.toFixed(2) + ' crédits';
+        html += '  </span>';
+        html += '</td>';
+
+        // 3. Tokens Consommés
         html += '<td class="py-3 px-3 text-center text-xs font-mono text-slate-300">';
         html += '  ' + tokensConsumed;
         html += '</td>';
 
+        // 4. Crédits Déduits
         html += '<td class="py-3 px-3 text-center text-xs font-mono text-slate-400">';
         html += '  ' + creditsConsumed;
         html += '</td>';
 
+        // 5. Actions
         html += '<td class="py-3 px-3 text-right">';
         html += '  <button type="button" data-user-id="' + uid + '" onclick="openCreditModal(this.dataset.userId)" class="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-stone-900 border border-amber-500/30 font-bold text-xs transition cursor-pointer active:scale-95">';
         html += '    + Créditer';
@@ -13924,6 +13965,9 @@ function renderDashboardHtml(data) {
           if (found) {
             if (!found.aiCredits) found.aiCredits = {};
             found.aiCredits.credits_balance = data.new_balance;
+            if (data.total_purchased_added) {
+              found.aiCredits.total_credits_purchased = +(Number(found.aiCredits.total_credits_purchased || 0) + Number(data.total_purchased_added)).toFixed(2);
+            }
           }
           renderFacturationUsersList(document.getElementById('ia-user-search-input')?.value || '');
           loadFacturationIaLogs();
@@ -14659,18 +14703,24 @@ export default {
           UPDATE storage_upgrade_requests 
           SET status = 'approved', 
               additional_words = ?,
+              credits_amount = ?,
               price_paid = ?,
               confirmed_start_date = ?, 
               confirmed_end_date = ?, 
               grace_period_days = ?, 
               updated_at = CURRENT_TIMESTAMP 
           WHERE id = ?
-        `, [allocatedWords, pricePaid, startDate, endDate, gracePeriodDays, requestId]);
+        `, [allocatedWords, allocatedWords, pricePaid, startDate, endDate, gracePeriodDays, requestId]);
 
-        // 2. Allouer les crédits dans user_ai_credits
+        // 2. Allouer les crédits dans user_ai_credits (synchronisation balance et total acheté D1)
         await safeRun(db, `
           CREATE TABLE IF NOT EXISTS user_ai_credits (
             user_id TEXT PRIMARY KEY,
+            credits_balance REAL DEFAULT 50.0,
+            total_credits_purchased REAL DEFAULT 0.0,
+            total_credits_consumed REAL DEFAULT 0.0,
+            total_tokens_consumed INTEGER DEFAULT 0,
+            plan_tier TEXT DEFAULT 'free',
             total_credits REAL DEFAULT 0,
             remaining_credits REAL DEFAULT 0,
             used_credits REAL DEFAULT 0,
@@ -14679,13 +14729,44 @@ export default {
         `);
 
         await safeRun(db, `
-          INSERT INTO user_ai_credits (user_id, total_credits, remaining_credits, used_credits, updated_at)
-          VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP)
+          INSERT INTO user_ai_credits (
+            user_id, 
+            credits_balance, 
+            total_credits_purchased, 
+            total_credits, 
+            remaining_credits, 
+            used_credits, 
+            plan_tier,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, 0, 'pro', CURRENT_TIMESTAMP)
           ON CONFLICT(user_id) DO UPDATE SET
+            credits_balance = credits_balance + excluded.credits_balance,
+            total_credits_purchased = total_credits_purchased + excluded.total_credits_purchased,
             total_credits = total_credits + excluded.total_credits,
             remaining_credits = remaining_credits + excluded.remaining_credits,
+            plan_tier = 'pro',
             updated_at = CURRENT_TIMESTAMP
-        `, [userId, allocatedWords, allocatedWords]);
+        `, [userId, allocatedWords, allocatedWords, allocatedWords, allocatedWords]);
+
+        // 2b. Enregistrer impérativement dans user_ai_purchases sous les crédits achetés
+        const aiPurId = 'pur_req_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+        await safeRun(db, `
+          INSERT OR REPLACE INTO user_ai_purchases (
+            id, user_id, credits_amount, price_paid, currency, 
+            payment_method, payment_reference, reason, status, created_at, confirmed_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `, [
+          aiPurId, 
+          userId, 
+          allocatedWords, 
+          pricePaid, 
+          reqRow.currency || 'FCFA', 
+          reqRow.payment_method || 'Mobile Money', 
+          reqRow.payment_reference || reqRow.id || '', 
+          reqRow.pack_name || 'Recharge Crédits IA (Validation Admin)'
+        ]);
 
         // 3. Mettre à jour user_word_counts
         await safeRun(db, `
@@ -16536,11 +16617,37 @@ export default {
             total_credits_consumed: 0,
             plan_tier: 'free'
           };
-        } else if (isDailyActive && dailyFreeCredits > 0) {
-          // Vérification et application automatique de la recharge quotidienne gratuite
+        } else {
+          // Synchronisation dynamique avec user_ai_purchases pour cohérence absolue D1
+          const purSumRow = await safeFirst(db, "SELECT COALESCE(SUM(credits_amount), 0) as total FROM user_ai_purchases WHERE user_id = ? AND status IN ('completed', 'approved', 'confirmed')", [targetUserId]);
+          const verifiedPurchased = Math.max(Number(userCredits.total_credits_purchased || 0), Number(purSumRow?.total || 0));
+
+          if (verifiedPurchased > Number(userCredits.total_credits_purchased || 0)) {
+            await safeRun(db, "UPDATE user_ai_credits SET total_credits_purchased = ? WHERE user_id = ?", [verifiedPurchased, targetUserId]);
+            userCredits.total_credits_purchased = verifiedPurchased;
+          }
+
+          if (Number(userCredits.remaining_credits || 0) > Number(userCredits.credits_balance || 0)) {
+            const syncedBal = Number(userCredits.remaining_credits);
+            await safeRun(db, "UPDATE user_ai_credits SET credits_balance = ? WHERE user_id = ?", [syncedBal, targetUserId]);
+            userCredits.credits_balance = syncedBal;
+          }
+        }
+
+        if (userCredits && isDailyActive && dailyFreeCredits > 0) {
+          // RÈGLE COMMANDE UTILISATEUR :
+          // Le cadeau de bienvenue initial doit obligatoirement être FINI / ÉPUISÉ d'abord avant que le renouvellement quotidien ne démarre !
           const today = new Date().toISOString().slice(0, 10);
-          if (userCredits.last_daily_grant_date !== today) {
-            const updatedBal = +(Number(userCredits.credits_balance || 0) + dailyFreeCredits).toFixed(2);
+          const totalConsumed = Number(userCredits.total_credits_consumed || 0);
+          const totalPurchased = Number(userCredits.total_credits_purchased || 0);
+          const currentBal = Number(userCredits.credits_balance || 0);
+
+          // Le cadeau de bienvenue initial est fini si la consommation a atteint ou dépassé les crédits offerts,
+          // OU si le solde restant est inférieur ou égal aux crédits achetés (part gratuite épuisée)
+          const isWelcomeGiftExhausted = (totalConsumed >= welcomeCredits) || (currentBal <= totalPurchased);
+
+          if (isWelcomeGiftExhausted && userCredits.last_daily_grant_date !== today) {
+            const updatedBal = +(currentBal + dailyFreeCredits).toFixed(2);
             await safeRun(db, `
               UPDATE user_ai_credits 
               SET credits_balance = ?, last_daily_grant_date = ?, updated_at = CURRENT_TIMESTAMP
@@ -16570,6 +16677,78 @@ export default {
         });
       }
 
+      // Route de déduction en direct des crédits de consommation IA (Formule 2 : tokens / tokens_per_credit)
+      if (request.method === 'POST' && path === '/api/ai/user/deduct-credits') {
+        const body = await request.json().catch(() => ({}));
+        const targetUserId = (body.userId || body.user_id || request.headers.get('x-user-id') || 'default-user').trim();
+        const tokens = Math.max(1, parseInt(body.tokens || 0, 10));
+        const model = body.model || 'Delmas IA';
+        const actionType = body.actionType || body.action_type || 'chat_deduction';
+        const reason = body.reason || 'Consommation IA';
+
+        const cfg = await safeFirst(db, "SELECT * FROM ai_billing_config WHERE id = 'default'") || { tokens_per_credit: 1000, welcome_credits: 50.0 };
+        const tokensPerCredit = Math.max(1, Number(cfg.tokens_per_credit || 1000));
+        const rawCredits = tokens / tokensPerCredit;
+        const creditsDeducted = Math.max(0.01, +(rawCredits).toFixed(2));
+
+        let userCredits = await safeFirst(db, "SELECT * FROM user_ai_credits WHERE user_id = ?", [targetUserId]);
+        if (!userCredits) {
+          const welcomeCredits = cfg.welcome_credits !== undefined ? Number(cfg.welcome_credits) : 50.0;
+          await safeRun(db, `
+            INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed, plan_tier)
+            VALUES (?, ?, 0, 0, 0, 'free')
+          `, [targetUserId, welcomeCredits]);
+          userCredits = { user_id: targetUserId, credits_balance: welcomeCredits, total_tokens_consumed: 0, total_credits_consumed: 0, total_credits_purchased: 0 };
+        }
+
+        const currentBal = Number(userCredits.credits_balance || 0);
+        const newBalance = Math.max(0, +(currentBal - creditsDeducted).toFixed(2));
+        const newTotalTokens = (userCredits.total_tokens_consumed || 0) + tokens;
+        const newTotalCreditsConsumed = +(Number(userCredits.total_credits_consumed || 0) + creditsDeducted).toFixed(2);
+
+        await safeRun(db, `
+          UPDATE user_ai_credits
+          SET credits_balance = ?,
+              total_tokens_consumed = ?,
+              total_credits_consumed = ?,
+              last_usage_at = CURRENT_TIMESTAMP,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = ?
+        `, [newBalance, newTotalTokens, newTotalCreditsConsumed, targetUserId]);
+
+        // Journaliser dans ai_usage_logs
+        const logId = 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+        await safeRun(db, `
+          INSERT INTO ai_usage_logs (id, user_id, action_type, prompt_tokens, completion_tokens, total_tokens, credits_deducted, balance_after, model_used, created_at)
+          VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        `, [logId, targetUserId, actionType, tokens, creditsDeducted, newBalance, model]);
+
+        return new Response(JSON.stringify({
+          success: true,
+          credits_deducted: creditsDeducted,
+          new_balance: newBalance,
+          tokens_consumed: tokens,
+          total_tokens_consumed: newTotalTokens,
+          total_credits_consumed: newTotalCreditsConsumed
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // Route de consultation des crédits achetés par l'utilisateur (historique user_ai_purchases)
+      if (request.method === 'GET' && path === '/api/ai/user/purchases') {
+        const targetUserId = (url.searchParams.get('userId') || request.headers.get('x-user-id') || 'default-user').trim();
+        const rows = await safeQuery(db, "SELECT * FROM user_ai_purchases WHERE user_id = ? ORDER BY created_at DESC", [targetUserId]);
+        return new Response(JSON.stringify({
+          success: true,
+          purchases: rows?.results || []
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
       if (request.method === 'GET' && path === '/api/ai/admin/users') {
         const creditsRows = await safeQuery(db, "SELECT * FROM user_ai_credits") || { results: [] };
         return new Response(JSON.stringify({ success: true, users: creditsRows.results || [] }), {
@@ -16583,7 +16762,7 @@ export default {
         const userId = body.user_id;
         const amount = parseFloat(body.amount || 0);
         const operation = body.operation || 'add';
-        const reason = body.reason || 'Ajustement administrateur';
+        const reason = body.reason || 'Attribution administrateur';
 
         if (!userId) {
           return new Response(JSON.stringify({ success: false, error: 'Identifiant utilisateur requis' }), {
@@ -16594,6 +16773,8 @@ export default {
 
         const existing = await safeFirst(db, "SELECT * FROM user_ai_credits WHERE user_id = ?", [userId]);
         let newBalance = amount;
+        const purchasedDelta = (operation === 'add' && amount > 0) ? amount : (amount > 0 ? amount : 0);
+
         if (existing) {
           if (operation === 'add') {
             newBalance = +(Number(existing.credits_balance || 0) + amount).toFixed(2);
@@ -16604,12 +16785,21 @@ export default {
                 total_credits_purchased = total_credits_purchased + ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE user_id = ?
-          `, [newBalance, (operation === 'add' && amount > 0) ? amount : 0, userId]);
+          `, [newBalance, purchasedDelta, userId]);
         } else {
           await safeRun(db, `
             INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased)
             VALUES (?, ?, ?)
-          `, [userId, newBalance, amount > 0 ? amount : 0]);
+          `, [userId, newBalance, purchasedDelta]);
+        }
+
+        // RÈGLE COMMANDE : Enregistrer impérativement dans user_ai_purchases sous les crédits achetés
+        if (amount > 0) {
+          const purchaseId = 'pur_adm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+          await safeRun(db, `
+            INSERT INTO user_ai_purchases (id, user_id, credits_amount, price_paid, currency, payment_method, payment_reference, reason, status, created_at, confirmed_at)
+            VALUES (?, ?, ?, 0, 'FCFA', 'admin_grant', 'ATTRIBUTION_MANUELLE_ADMIN', ?, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `, [purchaseId, userId, amount, reason]);
         }
 
         // Enregistrement dans ai_usage_logs
@@ -16625,7 +16815,7 @@ export default {
           reason
         ]);
 
-        return new Response(JSON.stringify({ success: true, new_balance: newBalance }), {
+        return new Response(JSON.stringify({ success: true, new_balance: newBalance, total_purchased_added: purchasedDelta }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         });

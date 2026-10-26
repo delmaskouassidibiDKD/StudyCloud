@@ -303,6 +303,7 @@ export async function sendChatMessageToAi(params: {
   taskId?: string;
   tokens?: number;
   credits?: number;
+  credits_deducted?: number;
   usage?: any;
 }> {
   const isPowerMode = Boolean(params.powerMode || params.engine === 'gemini');
@@ -389,6 +390,21 @@ export async function sendChatMessageToAi(params: {
       });
 
       if (gText) {
+        const promptLen = (params.prompt || params.message || '').length;
+        const estimatedTokens = Math.max(35, Math.ceil((promptLen + gText.length) / 3.8));
+        const activeTpc = getActiveTokensPerCredit();
+        const estimatedCredits = +(estimatedTokens / activeTpc).toFixed(2);
+
+        // Déduction en temps réel dans Cloudflare D1
+        deductUserAiCredits({
+          userId: currentUserId,
+          tokens: estimatedTokens,
+          model: 'Google Gemini 2.0 Flash (@google/genai SDK)',
+          promptPreview: (params.prompt || params.message || '').substring(0, 100),
+          responsePreview: gText.substring(0, 150),
+          operationType: 'chat'
+        }).catch(e => console.warn('[StudyCloud AI] Erreur déduction SDK Gemini:', e));
+
         return {
           response: gText,
           success: true,
@@ -396,6 +412,9 @@ export async function sendChatMessageToAi(params: {
           chat_response: gText,
           raw_response: gText,
           rawResponse: gText,
+          tokens: estimatedTokens,
+          credits: estimatedCredits,
+          credits_deducted: estimatedCredits,
         };
       }
     } catch (sdkErr: any) {
@@ -3363,5 +3382,169 @@ export async function getAiUsageLogs(): Promise<{ success: boolean; logs: AiUsag
   } catch (err) {}
   return { success: true, logs: [] };
 }
+
+/**
+ * Déduit en temps réel la consommation de crédits de l'utilisateur dans Cloudflare D1
+ * Met à jour le cache local et émet un événement 'studycloud_user_credits_updated'
+ */
+export async function deductUserAiCredits(params: {
+  userId: string;
+  tokens: number;
+  model?: string;
+  promptPreview?: string;
+  responsePreview?: string;
+  operationType?: string;
+  explicitCredits?: number;
+}): Promise<{
+  success: boolean;
+  credits_deducted: number;
+  remaining_balance: number;
+  tokens_consumed: number;
+  total_tokens_consumed?: number;
+  total_credits_consumed?: number;
+}> {
+  const currentUserId = params.userId || localStorage.getItem('unifolder_user_id') || 'default-user';
+  const candidateUrls = [
+    'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev',
+    getAiWorkerUrl().replace(/\/+$/, ''),
+    getWorkerApiUrl().replace(/\/+$/, ''),
+    'https://api-worker.dkd-technologies.com',
+    'https://studycloud-worker.delmaskouassidibi.workers.dev'
+  ];
+
+  for (const url of candidateUrls) {
+    try {
+      const res = await fetch(`${url}/api/ai/user/deduct-credits`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': currentUserId
+        },
+        body: JSON.stringify({
+          user_id: currentUserId,
+          tokens: params.tokens,
+          model: params.model || 'Delmas IA',
+          prompt_preview: params.promptPreview || '',
+          response_preview: params.responsePreview || '',
+          operation_type: params.operationType || 'chat',
+          explicit_credits: params.explicitCredits
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success) {
+          // Mettre à jour immédiatement le cache local de l'utilisateur
+          try {
+            const cacheKey = `studycloud_user_credits_${currentUserId}`;
+            const existingRaw = localStorage.getItem(cacheKey);
+            const existing = existingRaw ? JSON.parse(existingRaw) : {};
+            const updated = {
+              ...existing,
+              balance: Number(data.remaining_balance),
+              tokensUsed: Number(data.total_tokens_consumed || ((existing.tokensUsed || 0) + (data.tokens_consumed || params.tokens))),
+              totalConsumed: Number(data.total_credits_consumed || ((existing.totalConsumed || 0) + data.credits_deducted))
+            };
+            localStorage.setItem(cacheKey, JSON.stringify(updated));
+          } catch {}
+
+          // Déclencher l'événement global pour synchroniser les vues en temps réel
+          try {
+            window.dispatchEvent(new CustomEvent('studycloud_user_credits_updated', {
+              detail: {
+                userId: currentUserId,
+                credits_deducted: data.credits_deducted,
+                remaining_balance: data.remaining_balance,
+                tokens_consumed: data.tokens_consumed,
+                total_tokens_consumed: data.total_tokens_consumed,
+                total_credits_consumed: data.total_credits_consumed
+              }
+            }));
+          } catch {}
+
+          return data;
+        }
+      }
+    } catch (err) {
+      // essayer url suivante
+    }
+  }
+
+  // Fallback local si aucun réseau
+  const activeTpc = getActiveTokensPerCredit();
+  const fallbackDeducted = +(params.tokens / activeTpc).toFixed(2);
+  let localRemaining = 0;
+  try {
+    const cacheKey = `studycloud_user_credits_${currentUserId}`;
+    const existingRaw = localStorage.getItem(cacheKey);
+    const existing = existingRaw ? JSON.parse(existingRaw) : { balance: 50 };
+    localRemaining = Math.max(0, +(Number(existing.balance || 50) - fallbackDeducted).toFixed(2));
+    const updated = {
+      ...existing,
+      balance: localRemaining,
+      tokensUsed: Number((existing.tokensUsed || 0) + params.tokens),
+      totalConsumed: +(Number(existing.totalConsumed || 0) + fallbackDeducted).toFixed(2)
+    };
+    localStorage.setItem(cacheKey, JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('studycloud_user_credits_updated', {
+      detail: {
+        userId: currentUserId,
+        credits_deducted: fallbackDeducted,
+        remaining_balance: localRemaining,
+        tokens_consumed: params.tokens
+      }
+    }));
+  } catch {}
+
+  return {
+    success: true,
+    credits_deducted: fallbackDeducted,
+    remaining_balance: localRemaining,
+    tokens_consumed: params.tokens
+  };
+}
+
+/**
+ * Récupère les crédits achetés ou accordés à l'utilisateur depuis Cloudflare D1 (table user_ai_purchases)
+ */
+export async function getUserAiPurchases(
+  userId?: string
+): Promise<{ success: boolean; purchases: any[]; total_purchased: number }> {
+  const currentUserId = userId || localStorage.getItem('unifolder_user_id') || 'default-user';
+  const candidateUrls = [
+    'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev',
+    getAiWorkerUrl().replace(/\/+$/, ''),
+    getWorkerApiUrl().replace(/\/+$/, ''),
+    'https://api-worker.dkd-technologies.com',
+    'https://studycloud-worker.delmaskouassidibi.workers.dev'
+  ];
+
+  for (const url of candidateUrls) {
+    try {
+      const res = await fetch(`${url}/api/ai/user/purchases?userId=${encodeURIComponent(currentUserId)}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': currentUserId,
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache'
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success) {
+          return {
+            success: true,
+            purchases: Array.isArray(data.purchases) ? data.purchases : [],
+            total_purchased: Number(data.total_purchased || 0)
+          };
+        }
+      }
+    } catch {}
+  }
+
+  return { success: true, purchases: [], total_purchased: 0 };
+}
+
 
 
