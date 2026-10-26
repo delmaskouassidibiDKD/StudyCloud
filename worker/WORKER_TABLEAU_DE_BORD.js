@@ -14256,27 +14256,35 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
 
     const existing = await safeFirst(db, "SELECT * FROM user_ai_credits WHERE user_id = ?", [userId]);
     let newBalance = amount;
-    const purchasedDelta = (operation === 'add' && amount > 0) ? amount : (amount > 0 ? amount : 0);
+    const isPurchaseGrant = body.is_purchase === true;
+    const purchasedDelta = isPurchaseGrant ? amount : 0;
 
     if (existing) {
       if (operation === 'add') {
         newBalance = +(Number(existing.credits_balance || 0) + amount).toFixed(2);
       }
+      const newPurchased = operation === 'reset' ? 0 : (isPurchaseGrant ? +(Number(existing.total_credits_purchased || 0) + purchasedDelta).toFixed(2) : Number(existing.total_credits_purchased || 0));
+
       await safeRun(db, `
         UPDATE user_ai_credits 
         SET credits_balance = ?,
-            total_credits_purchased = total_credits_purchased + ?,
+            total_credits_purchased = ?,
+            remaining_credits = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE user_id = ?
-      `, [newBalance, purchasedDelta, userId]);
+      `, [newBalance, newPurchased, newBalance, userId]);
+
+      if (operation === 'reset') {
+        await safeRun(db, "DELETE FROM user_ai_purchases WHERE user_id = ? AND payment_method = 'admin_grant'", [userId]);
+      }
     } else {
       await safeRun(db, `
-        INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased)
-        VALUES (?, ?, ?)
-      `, [userId, newBalance, purchasedDelta]);
+        INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, remaining_credits)
+        VALUES (?, ?, ?, ?)
+      `, [userId, newBalance, purchasedDelta, newBalance]);
     }
 
-    if (amount > 0) {
+    if (isPurchaseGrant && amount > 0) {
       const purchaseId = 'pur_adm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
       await safeRun(db, `
         INSERT INTO user_ai_purchases (id, user_id, credits_amount, price_paid, currency, payment_method, payment_reference, reason, status, created_at, confirmed_at)
