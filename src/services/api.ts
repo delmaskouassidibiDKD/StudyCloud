@@ -3075,4 +3075,208 @@ export async function getSubscriptionPlans(): Promise<{
   return { success: true, storagePlans: [], aiPlans: [] };
 }
 
+// ============================================================================
+// GESTION FACTURATION, TOKENS ET CRÉDITS IA (FORMULE 2 - PROPORTIONNELLE)
+// ============================================================================
+
+export interface AiBillingConfig {
+  tokens_per_credit: number;
+  welcome_credits: number;
+  daily_free_credits: number;
+  is_daily_renewal_active: number;
+  min_deduction_credit?: number;
+  updated_at?: string;
+}
+
+export interface AiUserCreditProfile {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  school?: string;
+  filiere?: string;
+  credits_balance: number;
+  total_tokens_consumed: number;
+  total_credits_purchased: number;
+  total_credits_consumed: number;
+  plan_tier?: string;
+  last_usage_at?: string;
+  updated_at?: string;
+}
+
+export interface AiUsageLogItem {
+  id: string;
+  user_id: string;
+  user_name?: string;
+  user_email?: string;
+  action_type: string;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens: number;
+  credits_deducted: number;
+  balance_after?: number;
+  model_used?: string;
+  created_at: string;
+}
+
+/**
+ * Récupère la configuration globale de facturation IA (Taux tokens/crédit, bienvenue, quotidien)
+ */
+export async function getAiBillingConfig(): Promise<{ success: boolean; config: AiBillingConfig }> {
+  try {
+    const workerUrl = getAiWorkerUrl();
+    const res = await fetch(`${workerUrl}/api/ai/billing/config`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && data.config) {
+        return { success: true, config: data.config };
+      }
+    }
+  } catch (err) {
+    console.warn('[API] Erreur récupération configuration facturation IA:', err);
+  }
+  return {
+    success: true,
+    config: {
+      tokens_per_credit: 1000,
+      welcome_credits: 50.0,
+      daily_free_credits: 0.0,
+      is_daily_renewal_active: 0
+    }
+  };
+}
+
+/**
+ * Enregistre les nouvelles règles de facturation IA définies par l'administrateur
+ */
+export async function saveAiBillingConfig(
+  config: Partial<AiBillingConfig>
+): Promise<{ success: boolean; message?: string; config?: AiBillingConfig; error?: string }> {
+  try {
+    const workerUrl = getAiWorkerUrl();
+    const res = await fetch(`${workerUrl}/api/ai/billing/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config)
+    });
+    const data = await res.json();
+    return data;
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Erreur réseau lors de la sauvegarde' };
+  }
+}
+
+/**
+ * Récupère tous les utilisateurs avec leurs crédits IA en temps réel
+ */
+export async function getAiAdminUsers(): Promise<{ success: boolean; users: AiUserCreditProfile[]; error?: string }> {
+  try {
+    const workerUrl = getAiWorkerUrl();
+    const res = await fetch(`${workerUrl}/api/ai/admin/users`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, users: data.users || [] };
+    }
+    return { success: false, users: [], error: `Erreur serveur (${res.status})` };
+  } catch (err: any) {
+    return { success: false, users: [], error: err?.message || 'Erreur lors du chargement des utilisateurs' };
+  }
+}
+
+/**
+ * Permet à l'administrateur d'ajouter ou de modifier les crédits d'un utilisateur spécifique
+ */
+export async function adjustUserAiCredits(
+  userId: string,
+  amount: number,
+  action: 'add' | 'set' = 'add',
+  reason: string = 'Ajustement administrateur'
+): Promise<{ success: boolean; message?: string; data?: any; error?: string }> {
+  try {
+    const workerUrl = getAiWorkerUrl();
+    const res = await fetch(`${workerUrl}/api/ai/admin/user/credits`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, amount, action, reason })
+    });
+    const data = await res.json();
+    return data;
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Erreur lors de l'ajustement des crédits" };
+  }
+}
+
+/**
+ * Récupère le solde en direct, les tokens et les crédits consommés d'un utilisateur
+ */
+export async function getUserAiCreditsLive(
+  userId: string
+): Promise<{
+  success: boolean;
+  credits: {
+    balance: number;
+    tokensUsed: number;
+    totalPurchased: number;
+    totalConsumed: number;
+    plan: string;
+    daily_free_credits?: number;
+    tokens_per_credit?: number;
+    last_usage_at?: string;
+  };
+  error?: string;
+}> {
+  try {
+    const workerUrl = getAiWorkerUrl();
+    const res = await fetch(`${workerUrl}/api/ai/user/credits?userId=${encodeURIComponent(userId)}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': userId
+      }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && data.credits) {
+        return { success: true, credits: data.credits };
+      }
+    }
+  } catch (err: any) {
+    console.warn('[API] Erreur getUserAiCreditsLive:', err);
+  }
+  return {
+    success: false,
+    credits: {
+      balance: 50,
+      tokensUsed: 0,
+      totalPurchased: 0,
+      totalConsumed: 0,
+      plan: 'Étudiant Gratuit'
+    }
+  };
+}
+
+/**
+ * Récupère le journal chronologique des consommations IA
+ */
+export async function getAiUsageLogs(): Promise<{ success: boolean; logs: AiUsageLogItem[]; error?: string }> {
+  try {
+    const workerUrl = getAiWorkerUrl();
+    const res = await fetch(`${workerUrl}/api/ai/admin/logs`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, logs: data.logs || [] };
+    }
+  } catch (err) {}
+  return { success: true, logs: [] };
+}
+
 

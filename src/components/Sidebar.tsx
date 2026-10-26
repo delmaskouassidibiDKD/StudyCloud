@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Folder, Upload, Share2, BarChart3, Settings, BookOpen, LogOut, LayoutDashboard, UserCircle, Sparkles, HardDrive } from 'lucide-react';
+import { Folder, Upload, Share2, BarChart3, Settings, BookOpen, LogOut, LayoutDashboard, UserCircle, Sparkles, HardDrive, Coins } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { NavigationTab } from '../types';
 
@@ -20,6 +20,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
     { id: 'settings' as NavigationTab, label: 'Profil', icon: UserCircle },
     { id: 'storage-menu' as NavigationTab, label: 'Mon stockage', icon: HardDrive, specialGlow: true },
     { id: 'ai-subscriptions' as NavigationTab, label: 'Crédits IA', icon: Sparkles, specialGlow: true },
+    { id: 'ai-admin' as NavigationTab, label: 'Gestion Crédits IA', icon: Coins, specialGlow: true },
   ];
 
   const mobileNavItems: Array<{ id: NavigationTab; label: string; icon: any }> = [

@@ -1021,11 +1021,36 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         );
         break;
 
+      case 'ai-admin':
+        label = 'Gestion Crédits';
+        defaultAction = () => {
+          setTab('ai-admin' as any);
+        };
+        iconContent = (
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="p2AdminAiGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#F59E0B" />
+                  <stop offset="50%" stopColor="#EA580C" />
+                  <stop offset="100%" stopColor="#DC2626" />
+                </linearGradient>
+              </defs>
+              <rect x="14" y="14" width="72" height="72" rx="20" fill="url(#p2AdminAiGrad)" stroke="#18181B" strokeWidth="1.3" />
+              <circle cx="50" cy="46" r="22" fill="#0F172A" stroke="#FDE047" strokeWidth="1.5" />
+              <path d="M 50 32 L 53 43 L 64 46 L 53 49 L 50 60 L 47 49 L 36 46 L 47 43 Z" fill="#FDE047" />
+              <rect x="20" y="70" width="60" height="15" rx="5" fill="#0F172A" stroke="#FFFFFF" strokeWidth="1.2" />
+              <text x="50" y="81" fill="#FFFFFF" fontSize="7.5" fontWeight="900" textAnchor="middle" letterSpacing="0.8">FACTURATION</text>
+            </svg>
+          </div>
+        );
+        break;
+
       default:
         return null;
     }
 
-    const isMobileOnlyApp = id === 'storage' || id === 'ai-subscriptions';
+    const isMobileOnlyApp = id === 'storage' || id === 'ai-subscriptions' || id === 'ai-admin';
 
     return (
       <div 
@@ -2178,7 +2203,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
               <div className="w-1/2 shrink-0 px-1 sm:px-4">
                 {/* Sur mobile : 3 blocs par ligne (inclut Mon stockage et Abonnements IA) | Sur desktop : 9 colonnes centrées avec accès stockage et IA sur la barre latérale gauche */}
                 <div className="grid grid-cols-3 md:grid-cols-9 gap-y-6 gap-x-2 sm:gap-x-4 md:gap-4 lg:gap-6 justify-items-center w-fit max-w-full mx-auto md:overflow-x-auto md:pb-4 md:pt-1 md:no-scrollbar">
-                  {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage', 'ai-subscriptions'].map((id, index) => renderBlock(id, index))}
+                  {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage', 'ai-subscriptions', 'ai-admin'].map((id, index) => renderBlock(id, index))}
                 </div>
               </div>
             </div>

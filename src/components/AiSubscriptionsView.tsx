@@ -23,6 +23,7 @@ import {
   getUserStorageRequests,
   getUserPurchasesHistory,
   getSubscriptionPlans,
+  getUserAiCreditsLive,
   SubscriptionPlan,
   UserStorageQuotaDetails
 } from '../services/api';
@@ -128,18 +129,43 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
         .filter(r => r.status === 'completed' || r.status === 'approved' || r.status === 'active' || r.status === 'confirmed')
         .reduce((sum, r) => sum + (Number(r.credits_amount) || Number(r.additional_words ? r.additional_words / 1000 : 0) || 0), 0);
 
-      setUserCredits(prev => {
-        const next = {
+      // Récupération du solde en direct, des tokens réels consommés et du portefeuille D1
+      try {
+        const liveRes = await getUserAiCreditsLive(currentUserId);
+        if (liveRes && liveRes.success && liveRes.credits) {
+          setUserCredits({
+            balance: liveRes.credits.balance,
+            tokensUsed: liveRes.credits.tokensUsed || 0,
+            totalPurchased: liveRes.credits.totalPurchased || totalApprovedCredits,
+            plan: liveRes.credits.plan || (totalApprovedCredits > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit')
+          });
+          try {
+            localStorage.setItem(
+              `studycloud_user_credits_${currentUserId}`,
+              JSON.stringify({
+                balance: liveRes.credits.balance,
+                tokensUsed: liveRes.credits.tokensUsed || 0,
+                totalPurchased: liveRes.credits.totalPurchased || totalApprovedCredits,
+                plan: liveRes.credits.plan
+              })
+            );
+          } catch {}
+        } else {
+          setUserCredits(prev => ({
+            ...prev,
+            balance: 50 + totalApprovedCredits,
+            totalPurchased: totalApprovedCredits,
+            plan: totalApprovedCredits > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit'
+          }));
+        }
+      } catch (errLive) {
+        setUserCredits(prev => ({
           ...prev,
           balance: 50 + totalApprovedCredits,
           totalPurchased: totalApprovedCredits,
           plan: totalApprovedCredits > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit'
-        };
-        try {
-          localStorage.setItem(`studycloud_user_credits_${currentUserId}`, JSON.stringify(next));
-        } catch {}
-        return next;
-      });
+        }));
+      }
 
       // 5. Charger les formules IA de la base D1
       try {

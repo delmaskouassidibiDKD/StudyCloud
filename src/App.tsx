@@ -11,6 +11,7 @@ import { UploadView } from './components/UploadView';
 import { SharedLinksView } from './components/SharedLinksView';
 import { SettingsView } from './components/SettingsView';
 import { AiSubscriptionsView } from './components/AiSubscriptionsView';
+import { AiBillingAdminView } from './components/AiBillingAdminView';
 import { StorageMenuView } from './components/StorageMenuView';
 import { PricingView } from './components/PricingView';
 import { CreateShareLinkModal } from './components/CreateShareLinkModal';
@@ -185,7 +186,7 @@ export default function App() {
       }
     } catch (e) {}
     const saved = localStorage.getItem('unifolder_current_tab');
-    if (saved && ['folders', 'upload', 'share-portal', 'library', 'shared', 'settings', 'publish-file', 'ai-subscriptions', 'storage-menu'].includes(saved)) {
+    if (saved && ['folders', 'upload', 'share-portal', 'library', 'shared', 'settings', 'publish-file', 'ai-subscriptions', 'storage-menu', 'ai-admin'].includes(saved)) {
       return saved as NavigationTab;
     }
     return 'folders';
@@ -1739,6 +1740,10 @@ export default function App() {
             <StorageMenuView
               onBack={() => handleSetTab('folders')}
               onOpenPricing={(tab = 'storage') => handleOpenAuthenticPricing(tab as 'ai' | 'renewal' | 'storage')}
+            />
+          ) : currentTab === 'ai-admin' ? (
+            <AiBillingAdminView
+              onBack={() => handleSetTab('folders')}
             />
           ) : null}
 

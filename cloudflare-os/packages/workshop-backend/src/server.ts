@@ -1146,6 +1146,156 @@ export default {
       );
     }
 
+    let _aiBillingTablesEnsured = false;
+    async function ensureAiBillingTables(db: D1Database | null) {
+      if (!db || _aiBillingTablesEnsured) return;
+      _aiBillingTablesEnsured = true;
+      try {
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS ai_billing_config (
+            id TEXT PRIMARY KEY DEFAULT 'default',
+            tokens_per_credit INTEGER DEFAULT 1000,
+            welcome_credits REAL DEFAULT 50.0,
+            daily_free_credits REAL DEFAULT 0.0,
+            is_daily_renewal_active INTEGER DEFAULT 0,
+            min_deduction_credit REAL DEFAULT 0.01,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        `).run().catch(() => {});
+
+        await db.prepare(`
+          INSERT OR IGNORE INTO ai_billing_config (id, tokens_per_credit, welcome_credits, daily_free_credits, is_daily_renewal_active)
+          VALUES ('default', 1000, 50.0, 0.0, 0)
+        `).run().catch(() => {});
+
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS user_ai_credits (
+            user_id TEXT PRIMARY KEY,
+            credits_balance REAL DEFAULT 50.0,
+            total_tokens_consumed INTEGER DEFAULT 0,
+            total_credits_purchased REAL DEFAULT 0.0,
+            total_credits_consumed REAL DEFAULT 0.0,
+            plan_tier TEXT DEFAULT 'gratuit',
+            is_blocked INTEGER DEFAULT 0,
+            last_daily_grant_date TEXT DEFAULT '',
+            last_usage_at TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        `).run().catch(() => {});
+
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS ai_usage_logs (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            action_type TEXT NOT NULL,
+            prompt_tokens INTEGER DEFAULT 0,
+            completion_tokens INTEGER DEFAULT 0,
+            total_tokens INTEGER DEFAULT 0,
+            credits_deducted REAL DEFAULT 0.0,
+            balance_after REAL DEFAULT 0.0,
+            model_used TEXT DEFAULT '',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        `).run().catch(() => {});
+      } catch (e) {
+        logger.warn("Erreur création tables facturation IA D1", { error: e });
+      }
+    }
+
+    async function getAiBillingConfig(db: D1Database | null) {
+      if (!db) {
+        return {
+          tokens_per_credit: 1000,
+          welcome_credits: 50.0,
+          daily_free_credits: 0.0,
+          is_daily_renewal_active: 0
+        };
+      }
+      try {
+        const row: any = await db.prepare("SELECT * FROM ai_billing_config WHERE id = 'default'").first().catch(() => null);
+        if (row) {
+          return {
+            tokens_per_credit: Number(row.tokens_per_credit) || 1000,
+            welcome_credits: Number(row.welcome_credits) !== undefined ? Number(row.welcome_credits) : 50.0,
+            daily_free_credits: Number(row.daily_free_credits) || 0.0,
+            is_daily_renewal_active: row.is_daily_renewal_active ? 1 : 0
+          };
+        }
+      } catch {}
+      return {
+        tokens_per_credit: 1000,
+        welcome_credits: 50.0,
+        daily_free_credits: 0.0,
+        is_daily_renewal_active: 0
+      };
+    }
+
+    async function getUserAiCredits(db: D1Database | null, userId: string, config: any) {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      if (!db || !userId) {
+        return {
+          user_id: userId || 'default-user',
+          credits_balance: 50.0,
+          total_tokens_consumed: 0,
+          total_credits_purchased: 0,
+          total_credits_consumed: 0,
+          plan_tier: 'gratuit',
+          last_daily_grant_date: todayStr
+        };
+      }
+
+      let userRow: any = await db.prepare(
+        "SELECT * FROM user_ai_credits WHERE user_id = ?"
+      ).bind(userId).first().catch(() => null);
+
+      if (!userRow) {
+        const initialBalance = config.welcome_credits !== undefined ? Number(config.welcome_credits) : 50.0;
+        await db.prepare(`
+          INSERT INTO user_ai_credits (user_id, credits_balance, total_tokens_consumed, total_credits_purchased, total_credits_consumed, last_daily_grant_date, created_at, updated_at)
+          VALUES (?, ?, 0, 0, 0, ?, datetime('now'), datetime('now'))
+          ON CONFLICT(user_id) DO NOTHING
+        `).bind(userId, initialBalance, todayStr).run().catch(() => {});
+
+        return {
+          user_id: userId,
+          credits_balance: initialBalance,
+          total_tokens_consumed: 0,
+          total_credits_purchased: 0,
+          total_credits_consumed: 0,
+          plan_tier: 'gratuit',
+          last_daily_grant_date: todayStr
+        };
+      }
+
+      // Renouvellement journalier automatique si activé
+      if (config.is_daily_renewal_active === 1 && (config.daily_free_credits || 0) > 0) {
+        if (userRow.last_daily_grant_date !== todayStr) {
+          const addedDaily = Number(config.daily_free_credits) || 0;
+          const newBal = +(Number(userRow.credits_balance || 0) + addedDaily).toFixed(2);
+          await db.prepare(`
+            UPDATE user_ai_credits
+            SET credits_balance = ?, last_daily_grant_date = ?, updated_at = datetime('now')
+            WHERE user_id = ?
+          `).bind(newBal, todayStr, userId).run().catch(() => {});
+
+          userRow.credits_balance = newBal;
+          userRow.last_daily_grant_date = todayStr;
+        }
+      }
+
+      return {
+        user_id: userRow.user_id,
+        credits_balance: Number(userRow.credits_balance) || 0,
+        total_tokens_consumed: Number(userRow.total_tokens_consumed) || 0,
+        total_credits_purchased: Number(userRow.total_credits_purchased) || 0,
+        total_credits_consumed: Number(userRow.total_credits_consumed) || 0,
+        plan_tier: userRow.plan_tier || 'gratuit',
+        last_daily_grant_date: userRow.last_daily_grant_date || todayStr,
+        last_usage_at: userRow.last_usage_at
+      };
+    }
+
     if (req.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders });
     }
@@ -1349,6 +1499,44 @@ export default {
 
         // Pré-enregistrement immédiat de la création en base D1 avec statut 'generating'
         const db = getD1Database();
+        let billingConfig = {
+          tokens_per_credit: 1000,
+          welcome_credits: 50.0,
+          daily_free_credits: 0.0,
+          is_daily_renewal_active: 0
+        };
+        let userBilling = {
+          user_id: userId,
+          credits_balance: 50.0,
+          total_tokens_consumed: 0,
+          total_credits_purchased: 0,
+          total_credits_consumed: 0,
+          plan_tier: 'gratuit',
+          last_daily_grant_date: ''
+        };
+
+        if (db) {
+          await ensureAiBillingTables(db);
+          billingConfig = await getAiBillingConfig(db);
+          if (userId && userId !== "default-user") {
+            userBilling = await getUserAiCredits(db, userId, billingConfig);
+
+            // Vérification stricte du solde : si 0 crédit restant, refus immédiat de la requête
+            if (userBilling.credits_balance <= 0) {
+              return new Response(JSON.stringify({
+                success: false,
+                error: "Votre solde de crédits IA est épuisé (0 crédit restant). Veuillez recharger vos crédits depuis le menu « Mes Crédits IA » pour continuer à interagir avec l'IA.",
+                code: "INSUFFICIENT_CREDITS",
+                credits_balance: 0,
+                remaining_credits: 0
+              }), {
+                status: 402,
+                headers: { "Content-Type": "application/json", ...corsHeaders }
+              });
+            }
+          }
+        }
+
         if (isAsync && db && userId && userId !== "default-user") {
           try {
             await db.prepare(`
@@ -1929,6 +2117,47 @@ CONSIGNES STRICTES DE CONTINUATION :
         const totalChars = (userPrompt || '').length + (answerText || '').length + (backgroundPerceptionReport || '').length + (docContent || '').slice(0, 4000).length;
         const calculatedTokens = Math.max(90, Math.ceil(totalChars / 3.8));
 
+        // Déduction proportionnelle aux tokens (Formule 2 demandée par l'administrateur)
+        const tokensPerCredit = Math.max(1, billingConfig?.tokens_per_credit || 1000);
+        const rawCreditsDeducted = calculatedTokens / tokensPerCredit;
+        const creditsDeducted = Math.max(0.01, +(rawCreditsDeducted).toFixed(2));
+        let remainingCredits = Math.max(0, +((userBilling?.credits_balance || 50) - creditsDeducted).toFixed(2));
+
+        if (db && userId && userId !== "default-user") {
+          try {
+            await db.prepare(`
+              UPDATE user_ai_credits
+              SET
+                credits_balance = ?,
+                total_tokens_consumed = total_tokens_consumed + ?,
+                total_credits_consumed = ROUND(total_credits_consumed + ?, 2),
+                last_usage_at = datetime('now'),
+                updated_at = datetime('now')
+              WHERE user_id = ?
+            `).bind(remainingCredits, calculatedTokens, creditsDeducted, userId).run().catch(() => {});
+
+            const logId = `tx-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+            await db.prepare(`
+              INSERT INTO ai_usage_logs (
+                id, user_id, action_type, prompt_tokens, completion_tokens, total_tokens, credits_deducted, balance_after, model_used, created_at
+              )
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            `).bind(
+              logId,
+              userId,
+              creationRes.creation_type || requestedType || 'chat',
+              Math.max(10, Math.ceil((userPrompt || '').length / 3.8)),
+              Math.max(10, Math.ceil((answerText || '').length / 3.8)),
+              calculatedTokens,
+              creditsDeducted,
+              remainingCredits,
+              effectiveModelUsed
+            ).run().catch(() => {});
+          } catch (deductErr) {
+            logger.warn("Erreur mise à jour crédits D1", { error: deductErr });
+          }
+        }
+
         if (convId) {
           const db = getD1Database();
           if (db) {
@@ -2081,6 +2310,8 @@ CONSIGNES STRICTES DE CONTINUATION :
             effectiveModelUsed,
             backgroundPerceptionReport,
             calculatedTokens,
+            creditsDeducted,
+            remainingCredits,
           };
         };
 
@@ -2132,7 +2363,7 @@ CONSIGNES STRICTES DE CONTINUATION :
         }
 
         // Mode synchrone classique
-        const { creationRes, answerText, effectiveModelUsed, backgroundPerceptionReport, calculatedTokens } = await executeGenerationAndPersist();
+        const { creationRes, answerText, effectiveModelUsed, backgroundPerceptionReport, calculatedTokens, creditsDeducted, remainingCredits } = await executeGenerationAndPersist();
 
         return new Response(JSON.stringify({
           success: true,
@@ -2151,8 +2382,12 @@ CONSIGNES STRICTES DE CONTINUATION :
           perceptionReport: backgroundPerceptionReport || undefined,
           tokens: calculatedTokens,
           credits: calculatedTokens,
+          credits_deducted: creditsDeducted,
+          remaining_credits: remainingCredits,
           usage: {
             totalTokens: calculatedTokens,
+            creditsDeducted,
+            remainingCredits,
           },
         }), {
           status: 200,
@@ -2510,6 +2745,286 @@ CONSIGNES STRICTES DE CONTINUATION :
         return new Response(JSON.stringify({ success: false, error: err?.message || String(err) }), {
           status: 500,
           headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // MODULE ADMIN FACTURATION & GESTION DES CRÉDITS IA (FORMULE 2 - D1)
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    // 1. Configuration de facturation (Taux tokens/crédits, bienvenue, renouvellement journalier)
+    if (url.pathname === "/api/ai/billing/config" || url.pathname === "/api/ai/admin/billing/config") {
+      const db = getD1Database();
+      if (!db) {
+        return new Response(JSON.stringify({ success: false, error: "Base D1 non accessible" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+      await ensureAiBillingTables(db);
+
+      if (req.method === "GET") {
+        const config = await getAiBillingConfig(db);
+        return new Response(JSON.stringify({ success: true, config }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+
+      if (req.method === "POST") {
+        try {
+          const body: any = await req.json().catch(() => ({}));
+          const tokensPerCredit = Math.max(1, parseInt(body.tokens_per_credit || body.tokensPerCredit || "1000", 10));
+          const welcomeCredits = Math.max(0, parseFloat(body.welcome_credits ?? body.welcomeCredits ?? "50.0"));
+          const dailyFreeCredits = Math.max(0, parseFloat(body.daily_free_credits ?? body.dailyFreeCredits ?? "0.0"));
+          const isDailyRenewalActive = body.is_daily_renewal_active !== undefined
+            ? (body.is_daily_renewal_active ? 1 : 0)
+            : (body.isDailyRenewalActive ? 1 : 0);
+
+          await db.prepare(`
+            INSERT INTO ai_billing_config (id, tokens_per_credit, welcome_credits, daily_free_credits, is_daily_renewal_active, updated_at)
+            VALUES ('default', ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(id) DO UPDATE SET
+              tokens_per_credit = excluded.tokens_per_credit,
+              welcome_credits = excluded.welcome_credits,
+              daily_free_credits = excluded.daily_free_credits,
+              is_daily_renewal_active = excluded.is_daily_renewal_active,
+              updated_at = excluded.updated_at
+          `).bind(tokensPerCredit, welcomeCredits, dailyFreeCredits, isDailyRenewalActive).run();
+
+          return new Response(JSON.stringify({
+            success: true,
+            message: "Règles de facturation IA enregistrées avec succès dans la base de données D1",
+            config: {
+              tokens_per_credit: tokensPerCredit,
+              welcome_credits: welcomeCredits,
+              daily_free_credits: dailyFreeCredits,
+              is_daily_renewal_active: isDailyRenewalActive
+            }
+          }), {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders }
+          });
+        } catch (postConfigErr: any) {
+          return new Response(JSON.stringify({ success: false, error: postConfigErr?.message || String(postConfigErr) }), {
+            status: 500,
+            headers: { "Content-Type": "application/json", ...corsHeaders }
+          });
+        }
+      }
+    }
+
+    // 2. Liste de tous les utilisateurs avec leurs crédits IA en temps réel
+    if (url.pathname === "/api/ai/admin/users" && req.method === "GET") {
+      const db = getD1Database();
+      if (!db) {
+        return new Response(JSON.stringify({ success: false, error: "Base D1 non accessible", users: [] }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+      await ensureAiBillingTables(db);
+      try {
+        let users: any[] = [];
+        try {
+          const res = await db.prepare(`
+            SELECT 
+              u.id,
+              u.name,
+              u.email,
+              u.phone,
+              u.school,
+              u.filiere,
+              COALESCE(c.credits_balance, 50.0) as credits_balance,
+              COALESCE(c.total_tokens_consumed, 0) as total_tokens_consumed,
+              COALESCE(c.total_credits_purchased, 0.0) as total_credits_purchased,
+              COALESCE(c.total_credits_consumed, 0.0) as total_credits_consumed,
+              COALESCE(c.plan_tier, 'gratuit') as plan_tier,
+              c.last_usage_at,
+              COALESCE(c.updated_at, u.created_at, datetime('now')) as updated_at
+            FROM users u
+            LEFT JOIN user_ai_credits c ON u.id = c.user_id
+            ORDER BY c.total_tokens_consumed DESC, u.created_at DESC
+            LIMIT 300
+          `).all();
+          users = (res?.results || []) as any[];
+        } catch (_joinErr) {
+          // Si table users non disponible, interroger directement user_ai_credits
+          const res = await db.prepare(`
+            SELECT 
+              user_id as id,
+              'Utilisateur ' || SUBSTR(user_id, 1, 8) as name,
+              '' as email,
+              '' as phone,
+              credits_balance,
+              total_tokens_consumed,
+              total_credits_purchased,
+              total_credits_consumed,
+              plan_tier,
+              last_usage_at,
+              updated_at
+            FROM user_ai_credits
+            ORDER BY total_tokens_consumed DESC, updated_at DESC
+            LIMIT 300
+          `).all().catch(() => ({ results: [] }));
+          users = (res?.results || []) as any[];
+        }
+
+        return new Response(JSON.stringify({ success: true, users }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      } catch (errUsers: any) {
+        return new Response(JSON.stringify({ success: false, error: errUsers?.message || String(errUsers), users: [] }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+    }
+
+    // 3. Ajustement / Recharge de crédits pour un utilisateur spécifique
+    if (url.pathname === "/api/ai/admin/user/credits" && req.method === "POST") {
+      const db = getD1Database();
+      if (!db) {
+        return new Response(JSON.stringify({ success: false, error: "Base D1 non accessible" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+      await ensureAiBillingTables(db);
+      try {
+        const body: any = await req.json().catch(() => ({}));
+        const targetUserId = String(body.userId || "").trim();
+        const amount = parseFloat(body.amount || "0");
+        const action = String(body.action || "add").toLowerCase(); // 'add' ou 'set'
+        const reason = String(body.reason || "Recharge manuelle par l'administrateur").trim();
+
+        if (!targetUserId) {
+          return new Response(JSON.stringify({ success: false, error: "L'identifiant utilisateur (userId) est obligatoire" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", ...corsHeaders }
+          });
+        }
+
+        const config = await getAiBillingConfig(db);
+        const currentCredits = await getUserAiCredits(db, targetUserId, config);
+
+        let newBalance = currentCredits.credits_balance;
+        let purchasedAdd = 0;
+
+        if (action === "set") {
+          newBalance = Math.max(0, amount);
+        } else {
+          newBalance = Math.max(0, +(currentCredits.credits_balance + amount).toFixed(2));
+          if (amount > 0) purchasedAdd = amount;
+        }
+
+        await db.prepare(`
+          UPDATE user_ai_credits
+          SET 
+            credits_balance = ?,
+            total_credits_purchased = ROUND(total_credits_purchased + ?, 2),
+            updated_at = datetime('now')
+          WHERE user_id = ?
+        `).bind(newBalance, purchasedAdd, targetUserId).run();
+
+        // Enregistrer la transaction dans le journal
+        const logId = `tx-admin-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        await db.prepare(`
+          INSERT INTO ai_usage_logs (id, user_id, action_type, prompt_tokens, completion_tokens, total_tokens, credits_deducted, balance_after, model_used, created_at)
+          VALUES (?, ?, ?, 0, 0, 0, ?, ?, 'admin', datetime('now'))
+        `).bind(logId, targetUserId, `admin_${action}: ${reason}`, -amount, newBalance).run().catch(() => {});
+
+        return new Response(JSON.stringify({
+          success: true,
+          message: `Crédits enregistrés : nouveau solde de ${newBalance} crédits pour ${targetUserId}`,
+          data: {
+            userId: targetUserId,
+            newBalance,
+            credits_balance: newBalance,
+            action,
+            amount
+          }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      } catch (errAdj: any) {
+        return new Response(JSON.stringify({ success: false, error: errAdj?.message || String(errAdj) }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+    }
+
+    // 4. Consultation du solde en direct par l'utilisateur connecté
+    if (url.pathname === "/api/ai/user/credits" && req.method === "GET") {
+      const db = getD1Database();
+      const targetUserId = String(url.searchParams.get("userId") || req.headers.get("x-user-id") || "default-user").trim();
+      if (!db) {
+        return new Response(JSON.stringify({
+          success: true,
+          credits: { balance: 50, tokensUsed: 0, totalPurchased: 0, totalConsumed: 0, plan: 'Étudiant Gratuit' }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+      await ensureAiBillingTables(db);
+      const config = await getAiBillingConfig(db);
+      const userCredits = await getUserAiCredits(db, targetUserId, config);
+
+      return new Response(JSON.stringify({
+        success: true,
+        credits: {
+          balance: userCredits.credits_balance,
+          tokensUsed: userCredits.total_tokens_consumed,
+          totalPurchased: userCredits.total_credits_purchased,
+          totalConsumed: userCredits.total_credits_consumed,
+          plan: userCredits.plan_tier === 'pro' || userCredits.total_credits_purchased > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit',
+          daily_free_credits: config.daily_free_credits,
+          tokens_per_credit: config.tokens_per_credit,
+          last_usage_at: userCredits.last_usage_at
+        }
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
+
+    // 5. Journal des consommations et audits d'usage IA
+    if (url.pathname === "/api/ai/admin/logs" && req.method === "GET") {
+      const db = getD1Database();
+      if (!db) {
+        return new Response(JSON.stringify({ success: true, logs: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+      await ensureAiBillingTables(db);
+      try {
+        const logsRes = await db.prepare(`
+          SELECT l.*, COALESCE(u.name, l.user_id) as user_name, COALESCE(u.email, '') as user_email
+          FROM ai_usage_logs l
+          LEFT JOIN users u ON l.user_id = u.id
+          ORDER BY l.created_at DESC
+          LIMIT 100
+        `).all().catch(async () => {
+          return await db.prepare("SELECT * FROM ai_usage_logs ORDER BY created_at DESC LIMIT 100").all();
+        });
+
+        return new Response(JSON.stringify({
+          success: true,
+          logs: logsRes?.results || []
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      } catch (_logsErr) {
+        return new Response(JSON.stringify({ success: true, logs: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
         });
       }
     }
