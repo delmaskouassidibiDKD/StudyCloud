@@ -57,5 +57,5 @@ export interface PublishedDocument {
   updatedAt?: string;
 }
 
-export type NavigationTab = 'folders' | 'upload' | 'shared' | 'library' | 'settings' | 'publish-file' | 'ai-subscriptions' | 'storage-menu' | 'ai-admin';
+export type NavigationTab = 'folders' | 'upload' | 'shared' | 'library' | 'settings' | 'publish-file' | 'ai-subscriptions' | 'storage-menu';
 

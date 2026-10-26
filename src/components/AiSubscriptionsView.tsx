@@ -24,6 +24,8 @@ import {
   getUserPurchasesHistory,
   getSubscriptionPlans,
   getUserAiCreditsLive,
+  getAiBillingConfig,
+  AiBillingConfig,
   SubscriptionPlan,
   UserStorageQuotaDetails
 } from '../services/api';
@@ -58,18 +60,29 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
   const [aiPlans, setAiPlans] = useState<SubscriptionPlan[]>([]);
   const [loadingPlans, setLoadingPlans] = useState<boolean>(true);
 
+  // Configuration globale de facturation IA (Formule 2) issue de la base Cloudflare D1
+  const [billingConfig, setBillingConfig] = useState<AiBillingConfig>({
+    tokens_per_credit: 1000,
+    welcome_credits: 50,
+    daily_free_credits: 0,
+    is_daily_renewal_active: 0
+  });
+
   // Solde de crédits de l'utilisateur
   const [userCredits, setUserCredits] = useState<{
     balance: number;
     tokensUsed: number;
     totalPurchased: number;
     plan: string;
+    welcome_credits?: number;
+    daily_free_credits?: number;
+    tokens_per_credit?: number;
   }>(() => {
     try {
       const saved = localStorage.getItem(`studycloud_user_credits_${currentUserId}`);
       if (saved) return JSON.parse(saved);
     } catch {}
-    return { balance: 50, tokensUsed: 1250, totalPurchased: 0, plan: 'Étudiant Gratuit' };
+    return { balance: 50, tokensUsed: 0, totalPurchased: 0, plan: 'Étudiant Gratuit' };
   });
 
   // Liste globale de toutes les demandes utilisateur
@@ -82,27 +95,37 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     setError(null);
 
     try {
-      // 1. Quota de stockage et crédits IA
+      // 1. Configuration globale IA configurée par l'administrateur dans le Tableau de Bord
+      try {
+        const cfgRes = await getAiBillingConfig();
+        if (cfgRes && cfgRes.success && cfgRes.config) {
+          setBillingConfig(cfgRes.config);
+        }
+      } catch (errCfg) {
+        console.warn('[AiSubscriptionsView] Erreur config facturation:', errCfg);
+      }
+
+      // 2. Quota de stockage et crédits IA
       const quotaRes = await getUserStorageQuota(currentUserId);
       if (quotaRes.success && quotaRes.data) {
         setQuotaData(quotaRes.data);
       }
 
-      // 2. Demandes enregistrées sur le serveur
+      // 3. Demandes enregistrées sur le serveur
       const reqRes = await getUserStorageRequests(currentUserId);
       let serverReqs: any[] = [];
       if (reqRes && reqRes.success && Array.isArray(reqRes.requests)) {
         serverReqs = reqRes.requests;
       }
 
-      // 3. Achats enregistrés sur le serveur
+      // 4. Achats enregistrés sur le serveur
       const purRes = await getUserPurchasesHistory(currentUserId);
       let serverPurs: any[] = [];
       if (purRes && purRes.success && Array.isArray(purRes.purchases)) {
         serverPurs = purRes.purchases;
       }
 
-      // 4. Demandes locales (sauvegardées lors des soumissions)
+      // 5. Demandes locales (sauvegardées lors des soumissions)
       let localReqs: any[] = [];
       try {
         const saved = localStorage.getItem('studycloud_ai_credit_requests');
@@ -124,36 +147,56 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
 
       setAllRequests(combined);
 
-      // Calcul dynamique des crédits achetés validés
+      // Calcul dynamique des crédits achetés validés (uniquement crédits IA explicites)
       const totalApprovedCredits = combined
-        .filter(r => r.status === 'completed' || r.status === 'approved' || r.status === 'active' || r.status === 'confirmed')
-        .reduce((sum, r) => sum + (Number(r.credits_amount) || Number(r.additional_words ? r.additional_words / 1000 : 0) || 0), 0);
+        .filter(r => (r.status === 'completed' || r.status === 'approved' || r.status === 'active' || r.status === 'confirmed') && r.credits_amount)
+        .reduce((sum, r) => sum + (Number(r.credits_amount) || 0), 0);
 
       // Récupération du solde en direct, des tokens réels consommés et du portefeuille D1
       try {
         const liveRes = await getUserAiCreditsLive(currentUserId);
         if (liveRes && liveRes.success && liveRes.credits) {
+          const serverPurchased = Number(liveRes.credits.totalPurchased || 0);
+          const finalPurchased = serverPurchased > 0 ? serverPurchased : totalApprovedCredits;
+          const serverBalance = Number(liveRes.credits.balance);
+
           setUserCredits({
-            balance: liveRes.credits.balance,
-            tokensUsed: liveRes.credits.tokensUsed || 0,
-            totalPurchased: liveRes.credits.totalPurchased || totalApprovedCredits,
-            plan: liveRes.credits.plan || (totalApprovedCredits > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit')
+            balance: serverBalance,
+            tokensUsed: Number(liveRes.credits.tokensUsed || 0),
+            totalPurchased: finalPurchased,
+            plan: liveRes.credits.plan || (finalPurchased > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit'),
+            welcome_credits: liveRes.credits.welcome_credits,
+            daily_free_credits: liveRes.credits.daily_free_credits,
+            tokens_per_credit: liveRes.credits.tokens_per_credit
           });
+
+          if (liveRes.credits.welcome_credits !== undefined) {
+            setBillingConfig(prev => ({
+              ...prev,
+              welcome_credits: liveRes.credits.welcome_credits!,
+              tokens_per_credit: liveRes.credits.tokens_per_credit || prev.tokens_per_credit,
+              daily_free_credits: liveRes.credits.daily_free_credits !== undefined ? liveRes.credits.daily_free_credits : prev.daily_free_credits
+            }));
+          }
+
           try {
             localStorage.setItem(
               `studycloud_user_credits_${currentUserId}`,
               JSON.stringify({
-                balance: liveRes.credits.balance,
+                balance: serverBalance,
                 tokensUsed: liveRes.credits.tokensUsed || 0,
-                totalPurchased: liveRes.credits.totalPurchased || totalApprovedCredits,
-                plan: liveRes.credits.plan
+                totalPurchased: finalPurchased,
+                plan: liveRes.credits.plan,
+                welcome_credits: liveRes.credits.welcome_credits,
+                daily_free_credits: liveRes.credits.daily_free_credits,
+                tokens_per_credit: liveRes.credits.tokens_per_credit
               })
             );
           } catch {}
         } else {
           setUserCredits(prev => ({
             ...prev,
-            balance: 50 + totalApprovedCredits,
+            balance: (billingConfig.welcome_credits || 50) + totalApprovedCredits,
             totalPurchased: totalApprovedCredits,
             plan: totalApprovedCredits > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit'
           }));
@@ -161,7 +204,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
       } catch (errLive) {
         setUserCredits(prev => ({
           ...prev,
-          balance: 50 + totalApprovedCredits,
+          balance: (billingConfig.welcome_credits || 50) + totalApprovedCredits,
           totalPurchased: totalApprovedCredits,
           plan: totalApprovedCredits > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit'
         }));
@@ -221,14 +264,19 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     }
   };
 
-  // Valeurs calculées
-  const welcomeCredits = 50;
-  const purchasedCredits = userCredits.totalPurchased || 0;
-  const totalMaxCredits = welcomeCredits + purchasedCredits;
-  const creditsRemaining = Math.max(0, userCredits.balance);
+  // Valeurs calculées dynamiquement depuis la base de données D1
+  const welcomeCredits = userCredits.welcome_credits !== undefined
+    ? Number(userCredits.welcome_credits)
+    : Number(billingConfig.welcome_credits !== undefined ? billingConfig.welcome_credits : 50);
+  const purchasedCredits = Math.max(0, Number(userCredits.totalPurchased || 0));
+  const creditsRemaining = Math.max(0, Number(userCredits.balance || 0));
+  const totalMaxCredits = Math.max(creditsRemaining, welcomeCredits + purchasedCredits);
   const creditsPercentage = totalMaxCredits > 0
     ? Math.min(100, Math.max(0, Math.round((creditsRemaining / totalMaxCredits) * 100)))
     : 0;
+  const tokensPerCredit = Math.max(1, Number(billingConfig.tokens_per_credit || userCredits.tokens_per_credit || 1000));
+  const dailyFreeCredits = Number(billingConfig.daily_free_credits || userCredits.daily_free_credits || 0);
+  const isDailyActive = Number(billingConfig.is_daily_renewal_active) === 1 && dailyFreeCredits > 0;
 
   // Formatage du prix d'un forfait IA
   const formatPlanPrice = (plan: SubscriptionPlan) => {
@@ -460,6 +508,21 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
               />
             </div>
           </div>
+
+          {/* Badge Recharge Quotidienne Active si configurée dans le Tableau de Bord */}
+          {isDailyActive && (
+            <div className="mt-3.5 py-2 px-3.5 bg-emerald-500/20 border border-emerald-400/40 rounded-xl flex items-center justify-between text-xs text-emerald-200 backdrop-blur-sm">
+              <div className="flex items-center gap-2">
+                <Gift className="w-4 h-4 text-emerald-300 shrink-0" />
+                <span>
+                  <strong>Recharge quotidienne active :</strong> +{dailyFreeCredits} crédits sont automatiquement offerts à votre compte chaque jour.
+                </span>
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-400/25 px-2 py-0.5 rounded text-emerald-300 border border-emerald-400/30">
+                +{dailyFreeCredits}/jour
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -546,7 +609,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                       {creditsRemaining} crédits dispo
                     </span>
                     <span className="text-stone-500 dark:text-slate-400 text-[11px]">
-                      1 crédit = 1 échange complet
+                      1 crédit = {tokensPerCredit.toLocaleString('fr-FR')} tokens IA
                     </span>
                   </div>
                   <div className="w-full h-2.5 bg-stone-100 dark:bg-slate-900 rounded-full overflow-hidden">
@@ -559,7 +622,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
 
                 <div className="flex items-center gap-1.5 text-[11px] text-stone-500 dark:text-slate-400 bg-stone-50 dark:bg-slate-900/50 p-2.5 rounded-xl border border-stone-100 dark:border-slate-800">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                  <span>Modèles sécurisés à haute précision pédagogique (Llama 3.3, Mistral, LaTeX).</span>
+                  <span>Modèles sécurisés à haute précision pédagogique (Gemini 2.0, Llama 3.3, LaTeX).</span>
                 </div>
               </div>
 
@@ -588,10 +651,10 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-black text-amber-600 dark:text-amber-400 text-base">
-                      {wordsRemainingFormatted}
+                      {Math.round(creditsRemaining * tokensPerCredit).toLocaleString('fr-FR')} tokens restants
                     </span>
                     <span className="text-stone-500 dark:text-slate-400 text-[11px]">
-                      Équivalence volume
+                      Équivalence Formule 2
                     </span>
                   </div>
                   <div className="w-full h-2.5 bg-stone-100 dark:bg-slate-900 rounded-full overflow-hidden">
@@ -974,12 +1037,24 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-stone-600 dark:text-slate-400">
                   <Gift className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>Crédits offerts</span>
+                  <span>Crédits offerts (Bienvenue)</span>
                 </div>
                 <span className="font-black text-stone-900 dark:text-white">
                   {welcomeCredits} Crédits
                 </span>
               </div>
+
+              {isDailyActive && (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-stone-600 dark:text-slate-400">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Recharge quotidienne</span>
+                  </div>
+                  <span className="font-black text-emerald-600 dark:text-emerald-400">
+                    +{dailyFreeCredits} / jour
+                  </span>
+                </div>
+              )}
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-stone-600 dark:text-slate-400">
@@ -1010,6 +1085,16 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                 </div>
                 <span className="font-bold text-stone-900 dark:text-white">
                   {userCredits.tokensUsed.toLocaleString('fr-FR')} tokens
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-stone-600 dark:text-slate-400">
+                  <Layers className="w-3.5 h-3.5 text-orange-500" />
+                  <span>Taux proportionnel actif</span>
+                </div>
+                <span className="font-semibold text-stone-800 dark:text-slate-200 text-xs">
+                  1 crédit = {tokensPerCredit.toLocaleString('fr-FR')} tokens
                 </span>
               </div>
 

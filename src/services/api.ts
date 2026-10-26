@@ -3123,21 +3123,35 @@ export interface AiUsageLogItem {
  * Récupère la configuration globale de facturation IA (Taux tokens/crédit, bienvenue, quotidien)
  */
 export async function getAiBillingConfig(): Promise<{ success: boolean; config: AiBillingConfig }> {
-  try {
-    const workerUrl = getAiWorkerUrl();
-    const res = await fetch(`${workerUrl}/api/ai/billing/config`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success && data.config) {
-        return { success: true, config: data.config };
+  const candidateUrls = [
+    'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev',
+    getAiWorkerUrl().replace(/\/+$/, ''),
+    getWorkerApiUrl().replace(/\/+$/, ''),
+    'https://api-worker.dkd-technologies.com',
+    'https://studycloud-worker.delmaskouassidibi.workers.dev'
+  ];
+
+  for (const url of candidateUrls) {
+    try {
+      const res = await fetch(`${url}/api/ai/billing/config`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache'
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && data.config) {
+          return { success: true, config: data.config };
+        }
       }
+    } catch (err) {
+      // Continuer sur le candidat suivant
     }
-  } catch (err) {
-    console.warn('[API] Erreur récupération configuration facturation IA:', err);
   }
+
   return {
     success: true,
     config: {
@@ -3227,28 +3241,41 @@ export async function getUserAiCreditsLive(
     plan: string;
     daily_free_credits?: number;
     tokens_per_credit?: number;
+    welcome_credits?: number;
     last_usage_at?: string;
   };
   error?: string;
 }> {
-  try {
-    const workerUrl = getAiWorkerUrl();
-    const res = await fetch(`${workerUrl}/api/ai/user/credits?userId=${encodeURIComponent(userId)}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-user-id': userId
+  const candidateUrls = [
+    'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev',
+    getAiWorkerUrl().replace(/\/+$/, ''),
+    getWorkerApiUrl().replace(/\/+$/, ''),
+    'https://api-worker.dkd-technologies.com',
+    'https://studycloud-worker.delmaskouassidibi.workers.dev'
+  ];
+
+  for (const url of candidateUrls) {
+    try {
+      const res = await fetch(`${url}/api/ai/user/credits?userId=${encodeURIComponent(userId)}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userId,
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache'
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && data.credits) {
+          return { success: true, credits: data.credits };
+        }
       }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success && data.credits) {
-        return { success: true, credits: data.credits };
-      }
+    } catch (err: any) {
+      // Continuer sur le candidat suivant
     }
-  } catch (err: any) {
-    console.warn('[API] Erreur getUserAiCreditsLive:', err);
   }
+
   return {
     success: false,
     credits: {

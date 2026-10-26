@@ -16507,6 +16507,69 @@ export default {
         });
       }
 
+      // Route publique / utilisateur : consultation en direct du solde de crédits et tokens
+      if (request.method === 'GET' && path === '/api/ai/user/credits') {
+        const targetUserId = (url.searchParams.get('userId') || request.headers.get('x-user-id') || 'default-user').trim();
+        const cfg = await safeFirst(db, "SELECT * FROM ai_billing_config WHERE id = 'default'") || {
+          tokens_per_credit: 1000,
+          welcome_credits: 50.0,
+          daily_free_credits: 0.0,
+          is_daily_renewal_active: 0
+        };
+        const welcomeCredits = cfg.welcome_credits !== undefined ? Number(cfg.welcome_credits) : 50.0;
+        const dailyFreeCredits = cfg.daily_free_credits !== undefined ? Number(cfg.daily_free_credits) : 0.0;
+        const isDailyActive = Number(cfg.is_daily_renewal_active) === 1;
+
+        let userCredits = await safeFirst(db, "SELECT * FROM user_ai_credits WHERE user_id = ?", [targetUserId]);
+
+        if (!userCredits) {
+          // Créer automatiquement l'utilisateur avec les crédits d'accueil configurés
+          await safeRun(db, `
+            INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed, plan_tier)
+            VALUES (?, ?, 0, 0, 0, 'free')
+          `, [targetUserId, welcomeCredits]);
+          userCredits = {
+            user_id: targetUserId,
+            credits_balance: welcomeCredits,
+            total_credits_purchased: 0,
+            total_tokens_consumed: 0,
+            total_credits_consumed: 0,
+            plan_tier: 'free'
+          };
+        } else if (isDailyActive && dailyFreeCredits > 0) {
+          // Vérification et application automatique de la recharge quotidienne gratuite
+          const today = new Date().toISOString().slice(0, 10);
+          if (userCredits.last_daily_grant_date !== today) {
+            const updatedBal = +(Number(userCredits.credits_balance || 0) + dailyFreeCredits).toFixed(2);
+            await safeRun(db, `
+              UPDATE user_ai_credits 
+              SET credits_balance = ?, last_daily_grant_date = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE user_id = ?
+            `, [updatedBal, today, targetUserId]);
+            userCredits.credits_balance = updatedBal;
+            userCredits.last_daily_grant_date = today;
+          }
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          credits: {
+            balance: Number(userCredits.credits_balance || 0),
+            tokensUsed: Number(userCredits.total_tokens_consumed || 0),
+            totalPurchased: Number(userCredits.total_credits_purchased || 0),
+            totalConsumed: Number(userCredits.total_credits_consumed || 0),
+            plan: userCredits.total_credits_purchased > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit',
+            daily_free_credits: dailyFreeCredits,
+            tokens_per_credit: Number(cfg.tokens_per_credit || 1000),
+            welcome_credits: welcomeCredits,
+            last_usage_at: userCredits.last_usage_at
+          }
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
       if (request.method === 'GET' && path === '/api/ai/admin/users') {
         const creditsRows = await safeQuery(db, "SELECT * FROM user_ai_credits") || { results: [] };
         return new Response(JSON.stringify({ success: true, users: creditsRows.results || [] }), {
