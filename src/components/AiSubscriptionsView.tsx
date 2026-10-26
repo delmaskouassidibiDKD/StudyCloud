@@ -80,8 +80,21 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     tokens_per_credit?: number;
   }>(() => {
     try {
+      // Nettoyer toute trace de demandes fantômes ou anciennes données locales
+      localStorage.removeItem('studycloud_ai_credit_requests');
       const saved = localStorage.getItem(`studycloud_user_credits_${currentUserId}`);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          balance: Number(parsed.balance || 50),
+          tokensUsed: Number(parsed.tokensUsed || 0),
+          totalPurchased: 0, // TOUJOURS 0 par défaut pour éliminer tout affichage fantôme au démarrage
+          plan: parsed.plan || 'Étudiant Gratuit',
+          welcome_credits: parsed.welcome_credits,
+          daily_free_credits: parsed.daily_free_credits,
+          tokens_per_credit: parsed.tokens_per_credit
+        };
+      }
     } catch {}
     return { balance: 50, tokensUsed: 0, totalPurchased: 0, plan: 'Étudiant Gratuit' };
   });
@@ -167,8 +180,9 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
       try {
         const liveRes = await getUserAiCreditsLive(currentUserId);
         if (liveRes && liveRes.success && liveRes.credits) {
-          const serverPurchased = Number(liveRes.credits.totalPurchased || 0);
-          const finalPurchased = serverPurchased > 0 ? serverPurchased : totalApprovedCredits;
+          // RÈGLE ABSOLUE : La base D1 fait foi. Si rien n'a été acheté, c'est 0.
+          const serverPurchased = Math.max(0, Number(liveRes.credits.totalPurchased || 0));
+          const finalPurchased = serverPurchased;
           const serverBalance = Number(liveRes.credits.balance);
 
           setUserCredits({
@@ -207,17 +221,17 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
         } else {
           setUserCredits(prev => ({
             ...prev,
-            balance: (billingConfig.welcome_credits || 50) + totalApprovedCredits,
-            totalPurchased: totalApprovedCredits,
-            plan: totalApprovedCredits > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit'
+            balance: Number(billingConfig.welcome_credits !== undefined ? billingConfig.welcome_credits : 50),
+            totalPurchased: 0,
+            plan: 'Étudiant Gratuit'
           }));
         }
       } catch (errLive) {
         setUserCredits(prev => ({
           ...prev,
-          balance: (billingConfig.welcome_credits || 50) + totalApprovedCredits,
-          totalPurchased: totalApprovedCredits,
-          plan: totalApprovedCredits > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit'
+          balance: Number(billingConfig.welcome_credits !== undefined ? billingConfig.welcome_credits : 50),
+          totalPurchased: 0,
+          plan: 'Étudiant Gratuit'
         }));
       }
 
@@ -244,6 +258,18 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
   };
 
   useEffect(() => {
+    try {
+      localStorage.removeItem('studycloud_ai_credit_requests');
+      const cacheKey = `studycloud_user_credits_${currentUserId}`;
+      const saved = localStorage.getItem(cacheKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && Number(parsed.totalPurchased || 0) > 0) {
+          parsed.totalPurchased = 0;
+          localStorage.setItem(cacheKey, JSON.stringify(parsed));
+        }
+      }
+    } catch {}
     loadData();
   }, [currentUserId]);
 
