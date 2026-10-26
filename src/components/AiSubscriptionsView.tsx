@@ -69,7 +69,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     is_daily_renewal_active: 0
   });
 
-  // Solde de crédits de l'utilisateur
+  // Solde de crédits de l'utilisateur (provenant exclusivement de la base de données D1)
   const [userCredits, setUserCredits] = useState<{
     balance: number;
     tokensUsed: number;
@@ -78,25 +78,11 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     welcome_credits?: number;
     daily_free_credits?: number;
     tokens_per_credit?: number;
-  }>(() => {
-    try {
-      // Nettoyer toute trace de demandes fantômes ou anciennes données locales
-      localStorage.removeItem('studycloud_ai_credit_requests');
-      const saved = localStorage.getItem(`studycloud_user_credits_${currentUserId}`);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return {
-          balance: Number(parsed.balance || 50),
-          tokensUsed: Number(parsed.tokensUsed || 0),
-          totalPurchased: 0, // TOUJOURS 0 par défaut pour éliminer tout affichage fantôme au démarrage
-          plan: parsed.plan || 'Étudiant Gratuit',
-          welcome_credits: parsed.welcome_credits,
-          daily_free_credits: parsed.daily_free_credits,
-          tokens_per_credit: parsed.tokens_per_credit
-        };
-      }
-    } catch {}
-    return { balance: 50, tokensUsed: 0, totalPurchased: 0, plan: 'Étudiant Gratuit' };
+  }>({
+    balance: 0,
+    tokensUsed: 0,
+    totalPurchased: 0,
+    plan: 'Étudiant Gratuit'
   });
 
   // Liste globale de toutes les demandes utilisateur
@@ -149,16 +135,9 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
         console.warn('[AiSubscriptionsView] Erreur récupération achats IA:', errAiPur);
       }
 
-      // 5. Demandes locales (sauvegardées lors des soumissions)
-      let localReqs: any[] = [];
-      try {
-        const saved = localStorage.getItem('studycloud_ai_credit_requests');
-        if (saved) localReqs = JSON.parse(saved);
-      } catch {}
-
-      // Fusionner en éliminant les doublons d'identifiant
+      // 5. Fusionner les demandes et achats issus exclusivement de Cloudflare D1 (PAS DE LOCAL)
       const allMap = new Map<string, any>();
-      [...localReqs, ...serverReqs, ...serverPurs].forEach((item) => {
+      [...serverReqs, ...serverPurs].forEach((item) => {
         if (item && (item.id || item.requestId)) {
           const key = item.id || item.requestId;
           allMap.set(key, item);
@@ -171,7 +150,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
 
       setAllRequests(combined);
 
-      // Calcul dynamique des crédits achetés validés (uniquement crédits IA explicites)
+      // Calcul dynamique des crédits achetés validés (uniquement crédits IA explicites de D1)
       const totalApprovedCredits = combined
         .filter(r => (r.status === 'completed' || r.status === 'approved' || r.status === 'active' || r.status === 'confirmed') && r.credits_amount)
         .reduce((sum, r) => sum + (Number(r.credits_amount) || 0), 0);
@@ -203,25 +182,10 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
               daily_free_credits: liveRes.credits.daily_free_credits !== undefined ? liveRes.credits.daily_free_credits : prev.daily_free_credits
             }));
           }
-
-          try {
-            localStorage.setItem(
-              `studycloud_user_credits_${currentUserId}`,
-              JSON.stringify({
-                balance: serverBalance,
-                tokensUsed: liveRes.credits.tokensUsed || 0,
-                totalPurchased: finalPurchased,
-                plan: liveRes.credits.plan,
-                welcome_credits: liveRes.credits.welcome_credits,
-                daily_free_credits: liveRes.credits.daily_free_credits,
-                tokens_per_credit: liveRes.credits.tokens_per_credit
-              })
-            );
-          } catch {}
         } else {
           setUserCredits(prev => ({
             ...prev,
-            balance: Number(billingConfig.welcome_credits !== undefined ? billingConfig.welcome_credits : 50),
+            balance: 0,
             totalPurchased: 0,
             plan: 'Étudiant Gratuit'
           }));
@@ -229,7 +193,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
       } catch (errLive) {
         setUserCredits(prev => ({
           ...prev,
-          balance: Number(billingConfig.welcome_credits !== undefined ? billingConfig.welcome_credits : 50),
+          balance: 0,
           totalPurchased: 0,
           plan: 'Étudiant Gratuit'
         }));
@@ -258,18 +222,6 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
   };
 
   useEffect(() => {
-    try {
-      localStorage.removeItem('studycloud_ai_credit_requests');
-      const cacheKey = `studycloud_user_credits_${currentUserId}`;
-      const saved = localStorage.getItem(cacheKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && Number(parsed.totalPurchased || 0) > 0) {
-          parsed.totalPurchased = 0;
-          localStorage.setItem(cacheKey, JSON.stringify(parsed));
-        }
-      }
-    } catch {}
     loadData();
 
     // Écouter les déductions ou recharges en temps réel pour cet utilisateur
@@ -369,8 +321,6 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
       />
     );
   }
-
-  const wordsRemainingFormatted = quotaData?.wordsUsage?.formatted || `${(userCredits.balance * 1000).toLocaleString('fr-FR')} crédits`;
 
   return (
     <div className="absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F2EC] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 overflow-y-auto overflow-x-hidden transition-colors duration-300">

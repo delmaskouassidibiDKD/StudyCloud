@@ -13277,12 +13277,18 @@ Lien vers le produit : ${productShareUrl}`;
               }
             } catch (e) {
             }
+            let dbAiBalance = 0;
+            let dbAiConsumed = 0;
+            let dbAiPurchased = 0;
             try {
               const aiCred = await env.DB.prepare(
-                "SELECT credits_balance, remaining_credits FROM user_ai_credits WHERE user_id = ?"
+                "SELECT credits_balance, remaining_credits, total_credits_purchased, total_credits_consumed FROM user_ai_credits WHERE user_id = ?"
               ).bind(userId).first();
               if (aiCred) {
-                purchasedWords += Number(aiCred.credits_balance !== undefined && aiCred.credits_balance !== null ? aiCred.credits_balance : (aiCred.remaining_credits || 0));
+                dbAiBalance = Number(aiCred.credits_balance !== undefined && aiCred.credits_balance !== null ? aiCred.credits_balance : (aiCred.remaining_credits || 0));
+                dbAiConsumed = Number(aiCred.total_credits_consumed || 0);
+                dbAiPurchased = Number(aiCred.total_credits_purchased || 0);
+                purchasedWords += dbAiPurchased;
               }
             } catch (e) {
             }
@@ -13383,13 +13389,13 @@ Lien vers le produit : ${productShareUrl}`;
             freeNote: "Partage libre / Sur quota global"
           },
           wordsUsage: {
-            name: "Cr\xE9dits Mots IA",
-            subtitle: "Mots pour vos discussions et analyses avec l'IA",
-            usedWords: 0,
-            maxWords: 5e4 + purchasedWords,
-            remainingWords: 5e4 + purchasedWords,
-            percentage: 0,
-            formatted: `${(5e4 + purchasedWords).toLocaleString("fr-FR")} mots restants`
+            name: "Crédits IA",
+            subtitle: "Crédits pour vos discussions et analyses avec l'IA",
+            usedWords: dbAiConsumed,
+            maxWords: Math.max(dbAiBalance, dbAiBalance + dbAiConsumed),
+            remainingWords: dbAiBalance,
+            percentage: (dbAiBalance + dbAiConsumed) > 0 ? Math.min(100, Math.round((dbAiConsumed / (dbAiBalance + dbAiConsumed)) * 100)) : 0,
+            formatted: `${dbAiBalance.toLocaleString("fr-FR")} crédits restants`
           },
           telemetry: telemetryData
         };

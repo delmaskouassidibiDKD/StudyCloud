@@ -633,31 +633,20 @@ export async function sendChatMessageToAi(params: {
     ? data.credits_deducted
     : (typeof data.credits === 'number' && data.credits < (data.tokens || Infinity) && data.credits < 30 ? data.credits : undefined);
 
-  // Synchronisation du cache local de l'utilisateur et émission d'événement en temps réel
+  // Émission d'événement en temps réel directement avec les données de la base de données D1 (PAS DE LOCAL)
   if (typeof data.remaining_credits === 'number' || typeof respCreditsDeducted === 'number') {
     try {
-      const cacheKey = `studycloud_user_credits_${currentUserId}`;
-      const existingRaw = localStorage.getItem(cacheKey);
-      const existing = existingRaw ? JSON.parse(existingRaw) : {};
-      const newBal = typeof data.remaining_credits === 'number' ? Number(data.remaining_credits) : Math.max(0, +(Number(existing.balance || 50) - (respCreditsDeducted || 0)).toFixed(2));
-      const updated = {
-        ...existing,
-        balance: newBal,
-        tokensUsed: Number(data.tokens || data.usage?.totalTokens || (existing.tokensUsed || 0)),
-        totalConsumed: +(Number(existing.totalConsumed || 0) + (respCreditsDeducted || 0)).toFixed(2)
-      };
-      localStorage.setItem(cacheKey, JSON.stringify(updated));
       window.dispatchEvent(new CustomEvent('studycloud_user_credits_updated', {
         detail: {
           userId: currentUserId,
           credits_deducted: respCreditsDeducted || 0,
-          remaining_balance: newBal,
+          remaining_balance: typeof data.remaining_credits === 'number' ? Number(data.remaining_credits) : undefined,
           tokens_consumed: data.tokens || 0
         }
       }));
     } catch {}
   } else if (!isAsyncBackground && currentUserId && currentUserId !== 'default-user') {
-    // Si la route appelée n'a pas inclus de déduction serveur, on déclenche la déduction D1 client
+    // Si la route appelée n'a pas inclus de déduction serveur, on déclenche la déduction D1
     const promptLen = (params.prompt || params.message || '').length;
     const estimatedTokens = typeof data.tokens === 'number' ? data.tokens : Math.max(35, Math.ceil((promptLen + (finalResponse || '').length) / 3.8));
     deductUserAiCredits({
@@ -667,7 +656,7 @@ export async function sendChatMessageToAi(params: {
       promptPreview: (params.prompt || params.message || '').substring(0, 100),
       responsePreview: (finalResponse || '').substring(0, 150),
       operationType: 'chat'
-    }).catch(e => console.warn('[StudyCloud AI] Erreur déduction de secours:', e));
+    }).catch(e => console.warn('[StudyCloud AI] Erreur déduction D1:', e));
   }
 
   return {
@@ -2682,10 +2671,10 @@ export function computeFallbackUserStorage(userId: string): UserStorageQuotaDeta
       name: 'Crédits IA',
       subtitle: "Crédits pour vos discussions et analyses avec l'IA",
       usedWords: 0,
-      maxWords: 50000,
-      remainingWords: 50000,
+      maxWords: 0,
+      remainingWords: 0,
       percentage: 0,
-      formatted: '50 000 crédits restants',
+      formatted: '0 crédit restant',
     },
   };
 }
@@ -3395,31 +3384,10 @@ export async function getUserAiCreditsLive(
     }
   }
 
-  try {
-    const cacheKey = `studycloud_user_credits_${userId}`;
-    const cachedRaw = localStorage.getItem(cacheKey);
-    if (cachedRaw) {
-      const cached = JSON.parse(cachedRaw);
-      return {
-        success: true,
-        credits: {
-          balance: Number(cached.balance !== undefined ? cached.balance : 50),
-          tokensUsed: Number(cached.tokensUsed || 0),
-          totalPurchased: Number(cached.totalPurchased || 0),
-          totalConsumed: Number(cached.totalConsumed || 0),
-          plan: cached.plan || (Number(cached.totalPurchased || 0) > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit'),
-          daily_free_credits: cached.daily_free_credits,
-          welcome_credits: cached.welcome_credits,
-          tokens_per_credit: cached.tokens_per_credit
-        }
-      };
-    }
-  } catch {}
-
   return {
     success: false,
     credits: {
-      balance: 50,
+      balance: 0,
       tokensUsed: 0,
       totalPurchased: 0,
       totalConsumed: 0,
@@ -3448,7 +3416,7 @@ export async function getAiUsageLogs(): Promise<{ success: boolean; logs: AiUsag
 
 /**
  * Déduit en temps réel la consommation de crédits de l'utilisateur dans Cloudflare D1
- * Met à jour le cache local et émet un événement 'studycloud_user_credits_updated'
+ * Émet l'événement 'studycloud_user_credits_updated' directement avec les données de la base
  */
 export async function deductUserAiCredits(params: {
   userId: string;
@@ -3497,21 +3465,7 @@ export async function deductUserAiCredits(params: {
       if (res.ok) {
         const data = await res.json();
         if (data && data.success) {
-          // Mettre à jour immédiatement le cache local de l'utilisateur
-          try {
-            const cacheKey = `studycloud_user_credits_${currentUserId}`;
-            const existingRaw = localStorage.getItem(cacheKey);
-            const existing = existingRaw ? JSON.parse(existingRaw) : {};
-            const updated = {
-              ...existing,
-              balance: Number(data.remaining_balance),
-              tokensUsed: Number(data.total_tokens_consumed || ((existing.tokensUsed || 0) + (data.tokens_consumed || params.tokens))),
-              totalConsumed: Number(data.total_credits_consumed || ((existing.totalConsumed || 0) + data.credits_deducted))
-            };
-            localStorage.setItem(cacheKey, JSON.stringify(updated));
-          } catch {}
-
-          // Déclencher l'événement global pour synchroniser les vues en temps réel
+          // Déclencher l'événement global pour synchroniser les vues en temps réel avec les données D1
           try {
             window.dispatchEvent(new CustomEvent('studycloud_user_credits_updated', {
               detail: {
@@ -3533,36 +3487,11 @@ export async function deductUserAiCredits(params: {
     }
   }
 
-  // Fallback local si aucun réseau
-  const activeTpc = getActiveTokensPerCredit();
-  const fallbackDeducted = +(params.tokens / activeTpc).toFixed(2);
-  let localRemaining = 0;
-  try {
-    const cacheKey = `studycloud_user_credits_${currentUserId}`;
-    const existingRaw = localStorage.getItem(cacheKey);
-    const existing = existingRaw ? JSON.parse(existingRaw) : { balance: 50 };
-    localRemaining = Math.max(0, +(Number(existing.balance || 50) - fallbackDeducted).toFixed(2));
-    const updated = {
-      ...existing,
-      balance: localRemaining,
-      tokensUsed: Number((existing.tokensUsed || 0) + params.tokens),
-      totalConsumed: +(Number(existing.totalConsumed || 0) + fallbackDeducted).toFixed(2)
-    };
-    localStorage.setItem(cacheKey, JSON.stringify(updated));
-    window.dispatchEvent(new CustomEvent('studycloud_user_credits_updated', {
-      detail: {
-        userId: currentUserId,
-        credits_deducted: fallbackDeducted,
-        remaining_balance: localRemaining,
-        tokens_consumed: params.tokens
-      }
-    }));
-  } catch {}
-
+  // Pas de fabrication locale : retour propre
   return {
-    success: true,
-    credits_deducted: fallbackDeducted,
-    remaining_balance: localRemaining,
+    success: false,
+    credits_deducted: 0,
+    remaining_balance: 0,
     tokens_consumed: params.tokens
   };
 }
