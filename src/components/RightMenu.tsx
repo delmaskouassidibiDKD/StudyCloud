@@ -8,7 +8,7 @@ import { UniversalContentRenderer } from './universal-render/UniversalContentRen
 import DotField from './DotField';
 import MagicRings from './MagicRings';
 import { getCurrentUserId } from '../services/userSync';
-import { StudyCloudAPI } from '../services/api';
+import { StudyCloudAPI, formatConsumedCreditsDisplay, convertTokensToCredits, getActiveTokensPerCredit, getAiBillingConfig } from '../services/api';
 import { aiBackgroundManager } from '../services/aiBackgroundManager';
 
 export type CreationPhase = 'idle' | 'thinking' | 'creating';
@@ -177,11 +177,27 @@ export function RightMenu({
     });
   };
 
+  const [tokensPerCredit, setTokensPerCredit] = useState<number>(() => getActiveTokensPerCredit());
+
+  useEffect(() => {
+    getAiBillingConfig().then(res => {
+      if (res && res.success && res.config?.tokens_per_credit) {
+        setTokensPerCredit(Number(res.config.tokens_per_credit));
+      }
+    }).catch(() => {});
+
+    const handleConfigUpdate = (e: any) => {
+      if (e.detail?.tokens_per_credit) {
+        setTokensPerCredit(Number(e.detail.tokens_per_credit));
+      }
+    };
+    window.addEventListener('studycloud_billing_config_updated', handleConfigUpdate);
+    return () => window.removeEventListener('studycloud_billing_config_updated', handleConfigUpdate);
+  }, []);
+
   const getCreationTokens = (item: any): number => {
     if (typeof item.tokens === 'number' && item.tokens > 0) return item.tokens;
-    if (typeof item.credits === 'number' && item.credits > 0) return item.credits;
     if (typeof item.data?.tokens === 'number' && item.data.tokens > 0) return item.data.tokens;
-    if (typeof item.data?.credits === 'number' && item.data.credits > 0) return item.data.credits;
     if (typeof item.content?.tokens === 'number' && item.content.tokens > 0) return item.content.tokens;
     if (typeof item.content_json?.tokens === 'number' && item.content_json.tokens > 0) return item.content_json.tokens;
 
@@ -192,8 +208,14 @@ export function RightMenu({
     return Math.max(90, Math.ceil(str.length / 3.8));
   };
 
-  const formatCredits = (num: number): string => {
-    return new Intl.NumberFormat('fr-FR').format(Math.round(num));
+  const getCreationCreditsDisplay = (item: any): string => {
+    const rawTokens = getCreationTokens(item);
+    const rawCredits = item.credits || item.data?.credits || item.content?.credits || item.content_json?.credits || item.credits_deducted;
+    if (typeof rawCredits === 'number' && rawCredits > 0 && rawCredits < rawTokens && rawCredits < 30) {
+      const fmt = rawCredits.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+      return `${fmt} ${rawCredits <= 1 ? 'crédit' : 'crédits'}`;
+    }
+    return formatConsumedCreditsDisplay(rawTokens, tokensPerCredit);
   };
 
   const fetchUserCreations = async () => {
@@ -1538,7 +1560,7 @@ export function RightMenu({
                         <div className="mt-1.5 px-2 py-0.5 rounded-md bg-zinc-900/90 border border-amber-500/35 text-amber-300 inline-flex items-center gap-1.5 text-[10px] animate-fadeIn w-fit shadow-xs">
                           <Zap className="w-2.5 h-2.5 text-amber-400 shrink-0" />
                           <span className="text-zinc-400">Consommation :</span>
-                          <span className="font-bold text-amber-300">{formatCredits(getCreationTokens(item))} crédits</span>
+                          <span className="font-bold text-amber-300">{getCreationCreditsDisplay(item)}</span>
                         </div>
                       )}
                     </div>

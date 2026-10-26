@@ -4,7 +4,7 @@ import { DnaLogo } from './DnaLogo';
 import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
 import { MathText, stripAiReasoningScratchpad } from './MathText';
-import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey, safeJsonParse, getWorkerApiUrl } from '../services/api';
+import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey, safeJsonParse, getWorkerApiUrl, getActiveTokensPerCredit, convertTokensToCredits, formatConsumedCreditsDisplay, getAiBillingConfig } from '../services/api';
 import { aiBackgroundManager } from '../services/aiBackgroundManager';
 import { getFileBlob } from '../services/localFileStorage';
 import { extractDocumentDetails } from '../services/documentTextExtractor';
@@ -2462,19 +2462,52 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     });
   };
 
+  const [tokensPerCredit, setTokensPerCredit] = useState<number>(() => getActiveTokensPerCredit());
+
+  useEffect(() => {
+    // Synchronisation immédiate du ratio tokens <-> crédits avec la base Cloudflare D1
+    getAiBillingConfig().then(res => {
+      if (res && res.success && res.config?.tokens_per_credit) {
+        setTokensPerCredit(Number(res.config.tokens_per_credit));
+      }
+    }).catch(() => {});
+
+    const handleConfigUpdate = (e: any) => {
+      if (e.detail?.tokens_per_credit) {
+        setTokensPerCredit(Number(e.detail.tokens_per_credit));
+      }
+    };
+    window.addEventListener('studycloud_billing_config_updated', handleConfigUpdate);
+    return () => window.removeEventListener('studycloud_billing_config_updated', handleConfigUpdate);
+  }, []);
+
   const getMessageTokens = (msg: Message): number => {
     if (typeof msg.tokens === 'number' && msg.tokens > 0) return msg.tokens;
-    if (typeof msg.credits === 'number' && msg.credits > 0) return msg.credits;
     if (typeof (msg as any).usage?.totalTokens === 'number' && (msg as any).usage.totalTokens > 0) return (msg as any).usage.totalTokens;
     if (typeof (msg as any).metadata?.tokens === 'number' && (msg as any).metadata.tokens > 0) return (msg as any).metadata.tokens;
+    if (typeof msg.credits === 'number' && msg.credits > 20) return msg.credits;
     
     // Estimation proportionnelle réaliste au volume textuel (entrées + sorties)
     const textLen = (msg.text || '').length;
     return Math.max(55, Math.ceil(textLen / 3.8));
   };
 
-  const formatCredits = (num: number): string => {
-    return new Intl.NumberFormat('fr-FR').format(Math.round(num));
+  const getMessageCreditsDisplay = (msg: Message): string => {
+    const rawTokens = getMessageTokens(msg);
+    // Si des crédits réels explicites ont été déduits par le serveur
+    if (typeof (msg as any).credits_deducted === 'number' && (msg as any).credits_deducted > 0) {
+      const val = (msg as any).credits_deducted;
+      const fmt = val.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+      return `${fmt} ${val <= 1 ? 'crédit' : 'crédits'}`;
+    }
+    // Si msg.credits est déjà un crédit calculé distinct des tokens
+    if (typeof msg.credits === 'number' && msg.credits > 0 && msg.credits < (msg.tokens || Infinity) && msg.credits < 30) {
+      const val = msg.credits;
+      const fmt = val.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+      return `${fmt} ${val <= 1 ? 'crédit' : 'crédits'}`;
+    }
+    // Sinon, convertir directement les tokens en crédits selon le paramètre D1 du tableau de bord
+    return formatConsumedCreditsDisplay(rawTokens, tokensPerCredit);
   };
 
   const [isTyping, setIsTyping] = useState(false);
@@ -4191,6 +4224,7 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
       const effectiveModelName = currentModelDisplay;
       const creationPromptChars = (userText || '').length + aiConfirmationText.length;
       const creationTokens = Math.max(68, Math.ceil(creationPromptChars / 3.8));
+      const creationCredits = convertTokensToCredits(creationTokens, tokensPerCredit);
 
       // 4. Mettre à jour le cache local pour targetConvId en finalisant le message
       const currentConvMsgsRaw = safeGetItem(`studycloud_conv_msgs_${targetConvId}`);
@@ -4199,10 +4233,10 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
         try { currentConvMsgs = JSON.parse(currentConvMsgsRaw) || []; } catch {}
       }
       const finalizedConvMsgs = currentConvMsgs.map(m =>
-        m.id === aiMsgId ? { ...m, text: aiConfirmationText, isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationTokens } : m
+        m.id === aiMsgId ? { ...m, text: aiConfirmationText, isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationCredits } : m
       );
       if (!finalizedConvMsgs.some(m => m.id === aiMsgId)) {
-        finalizedConvMsgs.push({ id: aiMsgId, text: aiConfirmationText, sender: 'ai', isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationTokens });
+        finalizedConvMsgs.push({ id: aiMsgId, text: aiConfirmationText, sender: 'ai', isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationCredits });
       }
       safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(finalizedConvMsgs));
 
@@ -4213,7 +4247,7 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
         role: 'assistant',
         content: aiConfirmationText,
         created_at: new Date(Date.now() + 100).toISOString(),
-        metadata: { model: effectiveModelName, tokens: creationTokens, credits: creationTokens }
+        metadata: { model: effectiveModelName, tokens: creationTokens, credits: creationCredits }
       }).catch(() => {});
 
       if (currentConversationIdRef.current === targetConvId) {
@@ -5433,7 +5467,10 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
       }
 
       const effectiveModelName = aiResult.model || currentModelDisplay;
-      const respTokens = aiResult.tokens || aiResult.credits || (typeof aiResult.usage?.totalTokens === 'number' ? aiResult.usage.totalTokens : Math.max(55, Math.ceil(((userText || '').length + fullResponseText.length) / 3.8)));
+      const respTokens = aiResult.tokens || (typeof aiResult.usage?.totalTokens === 'number' ? aiResult.usage.totalTokens : Math.max(55, Math.ceil(((userText || '').length + fullResponseText.length) / 3.8)));
+      const respCredits = typeof aiResult.credits_deducted === 'number' && aiResult.credits_deducted > 0
+        ? aiResult.credits_deducted
+        : convertTokensToCredits(respTokens, tokensPerCredit);
 
       // Mettre à jour le cache local pour targetConvId en remplaçant le message streaming par la réponse finale
       const currentConvMsgsRaw = safeGetItem(`studycloud_conv_msgs_${targetConvId}`);
@@ -5442,10 +5479,10 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         try { currentConvMsgs = JSON.parse(currentConvMsgsRaw) || []; } catch {}
       }
       const finalizedConvMsgs = currentConvMsgs.map(m =>
-        m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName, tokens: respTokens, credits: respTokens } : m
+        m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName, tokens: respTokens, credits: respCredits } : m
       );
       if (!finalizedConvMsgs.some(m => m.id === aiMsgId)) {
-        finalizedConvMsgs.push({ id: aiMsgId, text: fullResponseText, sender: 'ai', isStreaming: false, model: effectiveModelName, tokens: respTokens, credits: respTokens });
+        finalizedConvMsgs.push({ id: aiMsgId, text: fullResponseText, sender: 'ai', isStreaming: false, model: effectiveModelName, tokens: respTokens, credits: respCredits });
       }
       safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(finalizedConvMsgs));
 
@@ -5456,7 +5493,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         role: 'assistant',
         content: fullResponseText,
         created_at: new Date(Date.now() + 100).toISOString(),
-        metadata: { model: effectiveModelName, tokens: respTokens, credits: respTokens }
+        metadata: { model: effectiveModelName, tokens: respTokens, credits: respCredits }
       }).catch(() => {});
 
       // Marquer la tâche comme terminée dans le manager d'arrière-plan
@@ -6111,7 +6148,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                         <div className="mb-2.5 px-2.5 py-1 rounded-lg bg-zinc-900/95 border border-amber-500/35 text-amber-300 inline-flex items-center gap-1.5 text-xs animate-fadeIn shadow-xs w-fit">
                           <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                           <span className="text-[11px] font-medium text-zinc-300">Consommation :</span>
-                          <span className="text-xs font-bold text-amber-300">{formatCredits(getMessageTokens(msg))} crédits</span>
+                          <span className="text-xs font-bold text-amber-300">{getMessageCreditsDisplay(msg)}</span>
                         </div>
                       )}
 

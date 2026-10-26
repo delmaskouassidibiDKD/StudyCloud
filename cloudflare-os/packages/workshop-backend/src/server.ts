@@ -2220,7 +2220,7 @@ CONSIGNES STRICTES DE CONTINUATION :
                   creation_id: creationRes.creation_data ? creationId : undefined,
                   attachedFileName: docName || undefined,
                   tokens: calculatedTokens,
-                  credits: calculatedTokens,
+                  credits: creditsDeducted,
                 })
               ).run().catch(() => {});
 
@@ -2277,7 +2277,7 @@ CONSIGNES STRICTES DE CONTINUATION :
                   status: 'ready',
                   data: creationRes.creation_data || creationRes,
                   tokens: calculatedTokens,
-                  credits: calculatedTokens,
+                  credits: creditsDeducted,
                 };
 
                 await db.prepare(`
@@ -2381,7 +2381,7 @@ CONSIGNES STRICTES DE CONTINUATION :
           model: effectiveModelUsed,
           perceptionReport: backgroundPerceptionReport || undefined,
           tokens: calculatedTokens,
-          credits: calculatedTokens,
+          credits: creditsDeducted,
           credits_deducted: creditsDeducted,
           remaining_credits: remainingCredits,
           usage: {

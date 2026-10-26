@@ -3120,6 +3120,58 @@ export interface AiUsageLogItem {
 }
 
 /**
+ * Récupère le taux actif de conversion configuré dans le Tableau de Bord (tokens par crédit).
+ * Valeur par défaut : 1000 tokens = 1 crédit si non synchronisé.
+ */
+export const getActiveTokensPerCredit = (): number => {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const cached = localStorage.getItem('studycloud_tokens_per_credit');
+      if (cached && Number(cached) > 0) return Number(cached);
+    }
+  } catch {}
+  return 1000;
+};
+
+/**
+ * Enregistre et diffuse le nouveau taux de conversion tokens <-> crédits
+ */
+export const setActiveTokensPerCredit = (tokensPerCredit: number): void => {
+  try {
+    if (typeof localStorage !== 'undefined' && tokensPerCredit > 0) {
+      localStorage.setItem('studycloud_tokens_per_credit', String(tokensPerCredit));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('studycloud_billing_config_updated', { detail: { tokens_per_credit: tokensPerCredit } }));
+      }
+    }
+  } catch {}
+};
+
+/**
+ * Convertit un volume brut de tokens en crédits selon la Formule 2 proportionnelle du Tableau de Bord
+ */
+export const convertTokensToCredits = (tokens: number, customRate?: number): number => {
+  if (!tokens || tokens <= 0) return 0;
+  const rate = customRate && customRate > 0 ? customRate : getActiveTokensPerCredit();
+  return Number((tokens / rate).toFixed(2));
+};
+
+/**
+ * Formate l'affichage de la consommation en crédits pour l'utilisateur
+ * (ex: '0,5 crédit', '1 crédit', '1,43 crédits') - Jamais de tokens bruts affichés
+ */
+export const formatConsumedCreditsDisplay = (tokens: number, customRate?: number): string => {
+  const credits = convertTokensToCredits(tokens, customRate);
+  const displayVal = credits < 0.01 && tokens > 0 ? 0.01 : credits;
+  const formattedNum = displayVal.toLocaleString('fr-FR', {
+    minimumFractionDigits: displayVal % 1 === 0 ? 0 : (displayVal * 10) % 1 === 0 ? 1 : 2,
+    maximumFractionDigits: 2
+  });
+  const label = displayVal <= 1 ? 'crédit' : 'crédits';
+  return `${formattedNum} ${label}`;
+};
+
+/**
  * Récupère la configuration globale de facturation IA (Taux tokens/crédit, bienvenue, quotidien)
  */
 export async function getAiBillingConfig(): Promise<{ success: boolean; config: AiBillingConfig }> {
@@ -3144,6 +3196,9 @@ export async function getAiBillingConfig(): Promise<{ success: boolean; config: 
       if (res.ok) {
         const data = await res.json();
         if (data && data.success && data.config) {
+          if (data.config.tokens_per_credit) {
+            setActiveTokensPerCredit(Number(data.config.tokens_per_credit));
+          }
           return { success: true, config: data.config };
         }
       }
@@ -3155,7 +3210,7 @@ export async function getAiBillingConfig(): Promise<{ success: boolean; config: 
   return {
     success: true,
     config: {
-      tokens_per_credit: 1000,
+      tokens_per_credit: getActiveTokensPerCredit(),
       welcome_credits: 50.0,
       daily_free_credits: 0.0,
       is_daily_renewal_active: 0
@@ -3268,6 +3323,9 @@ export async function getUserAiCreditsLive(
       if (res.ok) {
         const data = await res.json();
         if (data && data.success && data.credits) {
+          if (data.credits.tokens_per_credit) {
+            setActiveTokensPerCredit(Number(data.credits.tokens_per_credit));
+          }
           return { success: true, credits: data.credits };
         }
       }
