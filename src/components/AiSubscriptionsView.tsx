@@ -340,16 +340,23 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
   const rawConsumedCredits = Number(userCredits.totalConsumed !== undefined ? userCredits.totalConsumed : ((userCredits.tokensUsed || 0) / tokensPerCredit));
   const consumedCredits = Math.max(0, +rawConsumedCredits.toFixed(2));
 
-  // RÈGLE COMMANDE UTILISATEUR & MODÈLE MON STOCKAGE :
-  // Solde Total Accordé = Cadeaux + Achetés
-  // Solde Actif Disponible = Math.max(0, (Cadeaux + Achetés) - Consommation)
-  const totalMaxCredits = Math.max(0, +(welcomeCredits + purchasedCredits).toFixed(2));
-  const calculatedActiveBalance = Math.max(0, +(totalMaxCredits - consumedCredits).toFixed(2));
-  // Si l'utilisateur n'a encore rien consommé, le solde restant est exactement la dotation totale accordée
+  // Solde restant réel (issu de Cloudflare D1)
+  const serverBalance = Number(userCredits.balance || 0);
   const creditsRemaining = (userCredits.totalConsumed === 0 && (userCredits.tokensUsed || 0) === 0)
-    ? totalMaxCredits
-    : (userCredits.balance > 0 ? Math.max(userCredits.balance, calculatedActiveBalance) : calculatedActiveBalance);
+    ? +(welcomeCredits + purchasedCredits).toFixed(2)
+    : Math.max(0, serverBalance > 0 ? serverBalance : +((welcomeCredits + purchasedCredits) - consumedCredits).toFixed(2));
 
+  // RÈGLE LOGIQUE STRICTE : La dotation de départ accordée ne peut JAMAIS être inférieure au solde actuel !
+  // Si une recharge a eu lieu, la dotation totale de départ = Solde restant + Déjà consommé.
+  const totalMaxCredits = Math.max(welcomeCredits + purchasedCredits, +(creditsRemaining + consumedCredits).toFixed(2));
+
+  // RÈGLE FIFO STRICTE (COMMANDE UTILISATEUR) :
+  // Le cadeau est consommé en premier jusqu'à épuisement complet.
+  // Les crédits payés restent 100% préservés tant que le cadeau n'est pas tombé à zéro !
+  const giftRemaining = Math.max(0, +(welcomeCredits - consumedCredits).toFixed(2));
+  const paidRemaining = Math.max(0, +(creditsRemaining - giftRemaining).toFixed(2));
+
+  // Pourcentage de la jauge (démarre plein au départ, et se vide progressivement vers la gauche)
   const creditsPercentage = totalMaxCredits > 0
     ? Math.min(100, Math.max(0, Math.round((creditsRemaining / totalMaxCredits) * 100)))
     : 0;
@@ -498,16 +505,16 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                   </text>
                 </svg>
                 <p className="text-white/80 text-xs mt-1 font-medium text-center">
-                  {creditsRemaining} Crédits
+                  {creditsRemaining} Crédits restants
                   <span className="text-white/50"> / </span>
-                  {totalMaxCredits} Crédits au total
+                  {totalMaxCredits} Crédits au départ
                 </p>
               </div>
             </div>
 
             {/* STATS RAPIDES — 3 Cartes essentielles Glassmorphism */}
             <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* 1. Crédits gratuits offerts */}
+              {/* 1. Crédits gratuits offerts (Consommés en premier) */}
               <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
                 <div className="flex items-center gap-2 mb-2">
                   <Gift className="w-4 h-4 text-emerald-300" />
@@ -516,10 +523,12 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                 <p className="text-2xl md:text-3xl font-black text-white leading-none">
                   {welcomeCredits}
                 </p>
-                <p className="text-white/50 text-[10px] mt-1">Pack Bienvenue</p>
+                <p className="text-emerald-300/90 text-[10px] mt-1 font-medium">
+                  {giftRemaining > 0 ? `${giftRemaining} restants (Prioritaire)` : 'Cadeau épuisé'}
+                </p>
               </div>
 
-              {/* 2. Crédits achetés */}
+              {/* 2. Crédits achetés (Préservés tant que le cadeau existe) */}
               <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
                 <div className="flex items-center gap-2 mb-2">
                   <CreditCard className="w-4 h-4 text-blue-300" />
@@ -528,19 +537,21 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                 <p className="text-2xl md:text-3xl font-black text-white leading-none">
                   {purchasedCredits}
                 </p>
-                <p className="text-white/50 text-[10px] mt-1">Extensions validées</p>
+                <p className="text-blue-200/90 text-[10px] mt-1 font-medium">
+                  {purchasedCredits > 0 ? `${paidRemaining} restants (Préservé)` : 'Extensions validées'}
+                </p>
               </div>
 
-              {/* 3. Solde restant disponible */}
+              {/* 3. Crédit disponible (Solde total actif qui diminue) */}
               <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
                 <div className="flex items-center gap-2 mb-2">
                   <Zap className="w-4 h-4 text-amber-300" />
-                  <span className="text-white/70 text-[11px] font-semibold uppercase tracking-wider">Solde actif</span>
+                  <span className="text-white/70 text-[11px] font-semibold uppercase tracking-wider">Crédit disponible</span>
                 </div>
                 <p className="text-2xl md:text-3xl font-black text-amber-300 leading-none">
                   {creditsRemaining}
                 </p>
-                <p className="text-white/50 text-[10px] mt-1">Prêts à l'emploi</p>
+                <p className="text-amber-200/90 text-[10px] mt-1 font-medium">Diminue à chaque réponse IA</p>
               </div>
             </div>
           </div>
@@ -556,7 +567,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                   ? '⚡ Solde disponible — Pensez à recharger pour continuer à poser vos questions'
                   : '⚠️ Solde faible — Recharger vos crédits pour ne pas être interrompu'}
               </span>
-              <span>{totalMaxCredits} Crédits</span>
+              <span>{totalMaxCredits} Crédits (Départ)</span>
             </div>
             <div className="w-full h-3 bg-white/10 rounded-full border border-white/20 overflow-hidden p-0.5">
               <div
@@ -1001,9 +1012,14 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                   <Gift className="w-3.5 h-3.5 text-emerald-500" />
                   <span>Crédits offerts (Bienvenue)</span>
                 </div>
-                <span className="font-black text-stone-900 dark:text-white">
-                  {welcomeCredits} Crédits
-                </span>
+                <div className="text-right">
+                  <span className="font-black text-stone-900 dark:text-white">
+                    {welcomeCredits} Crédits
+                  </span>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block">
+                    {giftRemaining > 0 ? `(${giftRemaining} restants • Prioritaire)` : '(Cadeau épuisé)'}
+                  </span>
+                </div>
               </div>
 
               {isDailyActive && (
@@ -1023,9 +1039,16 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                   <CreditCard className="w-3.5 h-3.5 text-blue-500" />
                   <span>Extensions achetées</span>
                 </div>
-                <span className="font-black text-stone-900 dark:text-white">
-                  {purchasedCredits} Crédits
-                </span>
+                <div className="text-right">
+                  <span className="font-black text-stone-900 dark:text-white">
+                    {purchasedCredits} Crédits
+                  </span>
+                  {purchasedCredits > 0 && (
+                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold block">
+                      ({paidRemaining} restants • Préservé)
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="h-px bg-stone-100 dark:border-slate-800" />
@@ -1043,11 +1066,16 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-stone-600 dark:text-slate-400">
                   <Bot className="w-3.5 h-3.5 text-purple-500" />
-                  <span>Tokens consommés</span>
+                  <span>Consommation IA</span>
                 </div>
-                <span className="font-bold text-stone-900 dark:text-white">
-                  {userCredits.tokensUsed.toLocaleString('fr-FR')} tokens
-                </span>
+                <div className="text-right">
+                  <span className="font-bold text-stone-900 dark:text-white">
+                    {consumedCredits} crédits
+                  </span>
+                  <span className="text-[10px] text-stone-400 block font-mono">
+                    {userCredits.tokensUsed.toLocaleString('fr-FR')} tokens
+                  </span>
+                </div>
               </div>
 
               <div className="flex items-center justify-between">

@@ -14108,15 +14108,24 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
       }
     }
 
+    // GESTION DU RENOUVELLEMENT QUOTIDIEN (+20 / jour) :
+    // RÈGLE COMMANDE STRICTE : Le cadeau de bienvenue DOIT OBLIGATOIREMENT ÊTRE TOTALEMENT ÉPUISÉ D'ABORD
+    // (Consommation totale >= welcomeCredits ET Solde cadeau restant <= 0).
+    // Le solde ne doit JAMAIS augmenter tout seul tant que l'élève utilise son cadeau !
     if (userCredits && isDailyActive && dailyFreeCredits > 0) {
       const today = new Date().toISOString().slice(0, 10);
       const totalConsumed = Number(userCredits.total_credits_consumed || 0);
       const totalPurchased = Number(userCredits.total_credits_purchased || 0);
       const currentBal = Number(userCredits.credits_balance || 0);
 
-      const isWelcomeGiftExhausted = (totalConsumed >= welcomeCredits) || (currentBal <= totalPurchased);
+      // Part gratuite restante dans le solde actuel :
+      const freeGiftRemaining = Math.max(0, +(currentBal - totalPurchased).toFixed(2));
 
-      if (isWelcomeGiftExhausted && userCredits.last_daily_grant_date !== today) {
+      // Le cadeau de bienvenue initial est épuisé SEULEMENT si la consommation totale a atteint la dotation de départ
+      const isWelcomeGiftExhausted = totalConsumed >= welcomeCredits;
+
+      // La recharge quotidienne ne s'ajoute QUE si le cadeau de départ est épuisé ET qu'il ne reste aucun crédit gratuit
+      if (isWelcomeGiftExhausted && freeGiftRemaining <= 0 && userCredits.last_daily_grant_date !== today) {
         const updatedBal = +(currentBal + dailyFreeCredits).toFixed(2);
         await safeRun(db, `
           UPDATE user_ai_credits 
