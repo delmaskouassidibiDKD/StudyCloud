@@ -16740,9 +16740,12 @@ export default {
       if (request.method === 'GET' && path === '/api/ai/user/purchases') {
         const targetUserId = (url.searchParams.get('userId') || request.headers.get('x-user-id') || 'default-user').trim();
         const rows = await safeQuery(db, "SELECT * FROM user_ai_purchases WHERE user_id = ? ORDER BY created_at DESC", [targetUserId]);
+        const sumRow = await safeFirst(db, "SELECT COALESCE(SUM(credits_amount), 0) as total FROM user_ai_purchases WHERE user_id = ? AND status IN ('completed', 'approved', 'confirmed')", [targetUserId]);
+        const totalPurchased = Number(sumRow?.total || 0);
         return new Response(JSON.stringify({
           success: true,
-          purchases: rows?.results || []
+          purchases: rows?.results || [],
+          total_purchased: totalPurchased
         }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }

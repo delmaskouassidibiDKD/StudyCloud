@@ -13279,10 +13279,10 @@ Lien vers le produit : ${productShareUrl}`;
             }
             try {
               const aiCred = await env.DB.prepare(
-                "SELECT remaining_credits FROM user_ai_credits WHERE user_id = ?"
+                "SELECT credits_balance, remaining_credits FROM user_ai_credits WHERE user_id = ?"
               ).bind(userId).first();
               if (aiCred) {
-                purchasedWords += Number(aiCred.remaining_credits || 0);
+                purchasedWords += Number(aiCred.credits_balance !== undefined && aiCred.credits_balance !== null ? aiCred.credits_balance : (aiCred.remaining_credits || 0));
               }
             } catch (e) {
             }

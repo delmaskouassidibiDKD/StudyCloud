@@ -271,6 +271,24 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
       }
     } catch {}
     loadData();
+
+    // Écouter les déductions ou recharges en temps réel pour cet utilisateur
+    const handleCreditUpdate = (e: any) => {
+      const detail = e.detail;
+      if (detail && detail.userId === currentUserId) {
+        setUserCredits(prev => ({
+          ...prev,
+          balance: Number(detail.remaining_balance !== undefined ? detail.remaining_balance : prev.balance),
+          tokensUsed: Number(detail.total_tokens_consumed || (prev.tokensUsed + (detail.tokens_consumed || 0))),
+          totalConsumed: Number(detail.total_credits_consumed || (prev.totalConsumed || 0))
+        }));
+      }
+    };
+
+    window.addEventListener('studycloud_user_credits_updated', handleCreditUpdate);
+    return () => {
+      window.removeEventListener('studycloud_user_credits_updated', handleCreditUpdate);
+    };
   }, [currentUserId]);
 
   // Filtrage : Demandes en cours

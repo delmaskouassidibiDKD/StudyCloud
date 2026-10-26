@@ -629,6 +629,47 @@ export async function sendChatMessageToAi(params: {
 
   const rawFull = data.raw_response || data.rawResponse || text;
 
+  const respCreditsDeducted = typeof data.credits_deducted === 'number'
+    ? data.credits_deducted
+    : (typeof data.credits === 'number' && data.credits < (data.tokens || Infinity) && data.credits < 30 ? data.credits : undefined);
+
+  // Synchronisation du cache local de l'utilisateur et émission d'événement en temps réel
+  if (typeof data.remaining_credits === 'number' || typeof respCreditsDeducted === 'number') {
+    try {
+      const cacheKey = `studycloud_user_credits_${currentUserId}`;
+      const existingRaw = localStorage.getItem(cacheKey);
+      const existing = existingRaw ? JSON.parse(existingRaw) : {};
+      const newBal = typeof data.remaining_credits === 'number' ? Number(data.remaining_credits) : Math.max(0, +(Number(existing.balance || 50) - (respCreditsDeducted || 0)).toFixed(2));
+      const updated = {
+        ...existing,
+        balance: newBal,
+        tokensUsed: Number(data.tokens || data.usage?.totalTokens || (existing.tokensUsed || 0)),
+        totalConsumed: +(Number(existing.totalConsumed || 0) + (respCreditsDeducted || 0)).toFixed(2)
+      };
+      localStorage.setItem(cacheKey, JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent('studycloud_user_credits_updated', {
+        detail: {
+          userId: currentUserId,
+          credits_deducted: respCreditsDeducted || 0,
+          remaining_balance: newBal,
+          tokens_consumed: data.tokens || 0
+        }
+      }));
+    } catch {}
+  } else if (!isAsyncBackground && currentUserId && currentUserId !== 'default-user') {
+    // Si la route appelée n'a pas inclus de déduction serveur, on déclenche la déduction D1 client
+    const promptLen = (params.prompt || params.message || '').length;
+    const estimatedTokens = typeof data.tokens === 'number' ? data.tokens : Math.max(35, Math.ceil((promptLen + (finalResponse || '').length) / 3.8));
+    deductUserAiCredits({
+      userId: currentUserId,
+      tokens: estimatedTokens,
+      model: data.model || 'Delmas IA',
+      promptPreview: (params.prompt || params.message || '').substring(0, 100),
+      responsePreview: (finalResponse || '').substring(0, 150),
+      operationType: 'chat'
+    }).catch(e => console.warn('[StudyCloud AI] Erreur déduction de secours:', e));
+  }
+
   return {
     response: finalResponse,
     success: data.success !== false,
@@ -651,6 +692,7 @@ export async function sendChatMessageToAi(params: {
     taskId: data.taskId || data.creation_id || data.creationId || params.creationId,
     tokens: typeof data.tokens === 'number' ? data.tokens : (typeof data.credits === 'number' ? data.credits : (data.usage?.totalTokens || (typeof data.tokens === 'string' ? parseInt(data.tokens, 10) : undefined))),
     credits: typeof data.credits === 'number' ? data.credits : (typeof data.tokens === 'number' ? data.tokens : (data.usage?.totalTokens || undefined)),
+    credits_deducted: respCreditsDeducted,
     usage: data.usage || undefined,
   };
 }
@@ -3352,6 +3394,27 @@ export async function getUserAiCreditsLive(
       // Continuer sur le candidat suivant
     }
   }
+
+  try {
+    const cacheKey = `studycloud_user_credits_${userId}`;
+    const cachedRaw = localStorage.getItem(cacheKey);
+    if (cachedRaw) {
+      const cached = JSON.parse(cachedRaw);
+      return {
+        success: true,
+        credits: {
+          balance: Number(cached.balance !== undefined ? cached.balance : 50),
+          tokensUsed: Number(cached.tokensUsed || 0),
+          totalPurchased: Number(cached.totalPurchased || 0),
+          totalConsumed: Number(cached.totalConsumed || 0),
+          plan: cached.plan || (Number(cached.totalPurchased || 0) > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit'),
+          daily_free_credits: cached.daily_free_credits,
+          welcome_credits: cached.welcome_credits,
+          tokens_per_credit: cached.tokens_per_credit
+        }
+      };
+    }
+  } catch {}
 
   return {
     success: false,
