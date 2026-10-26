@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Sparkles,
   Zap,
@@ -19,7 +19,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
-  getUserStorageQuota,
   getUserStorageRequests,
   getUserPurchasesHistory,
   getUserAiPurchases,
@@ -27,8 +26,7 @@ import {
   getUserAiCreditsLive,
   getAiBillingConfig,
   AiBillingConfig,
-  SubscriptionPlan,
-  UserStorageQuotaDetails
+  SubscriptionPlan
 } from '../services/api';
 import { PricingView } from './PricingView';
 
@@ -50,26 +48,46 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
   // Onglets pour l'utilisateur : "Demandes en cours" vs "Achats validés & Refus"
   const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  // Cache synchrone pour affichage instantané sans attente (0ms)
+  const cachedCredits = (() => {
+    try {
+      const raw = localStorage.getItem(`studycloud_cached_user_credits_${currentUserId}`) || localStorage.getItem('studycloud_cached_user_credits');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  })();
+
+  const cachedConfig = (() => {
+    try {
+      const raw = localStorage.getItem('studycloud_cached_ai_config');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  })();
+
+  // Si on a des données en cache, pas de spinner d'attente initial
+  const [loading, setLoading] = useState<boolean>(!cachedCredits);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Quota de stockage et crédits IA
-  const [quotaData, setQuotaData] = useState<UserStorageQuotaDetails | null>(null);
+  const hasEverLoadedRef = useRef<boolean>(!!cachedCredits);
+  const isFetchingRef = useRef<boolean>(false);
 
   // Formules IA issues de la base D1
   const [aiPlans, setAiPlans] = useState<SubscriptionPlan[]>([]);
   const [loadingPlans, setLoadingPlans] = useState<boolean>(true);
 
-  // Configuration globale de facturation IA (Formule 2) issue de la base Cloudflare D1
-  const [billingConfig, setBillingConfig] = useState<AiBillingConfig>({
-    tokens_per_credit: 1000,
-    welcome_credits: 50,
-    daily_free_credits: 0,
-    is_daily_renewal_active: 0
-  });
+  // Configuration globale de facturation IA issue de la base Cloudflare D1
+  const [billingConfig, setBillingConfig] = useState<AiBillingConfig>(() => ({
+    tokens_per_credit: Number(cachedConfig?.tokens_per_credit || cachedCredits?.tokens_per_credit || 1000),
+    welcome_credits: Number(cachedConfig?.welcome_credits !== undefined ? cachedConfig.welcome_credits : (cachedCredits?.welcome_credits !== undefined ? cachedCredits.welcome_credits : 50)),
+    daily_free_credits: Number(cachedConfig?.daily_free_credits || cachedCredits?.daily_free_credits || 0),
+    is_daily_renewal_active: Number(cachedConfig?.is_daily_renewal_active || 0)
+  }));
 
-  // Solde de crédits de l'utilisateur (provenant exclusivement de la base de données D1)
+  // Solde de crédits de l'utilisateur (issu de D1 et mis en cache pour fluidité maximale)
   const [userCredits, setUserCredits] = useState<{
     balance: number;
     tokensUsed: number;
@@ -79,185 +97,208 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     welcome_credits?: number;
     daily_free_credits?: number;
     tokens_per_credit?: number;
-  }>({
-    balance: 0,
-    tokensUsed: 0,
-    totalPurchased: 0,
-    totalConsumed: 0,
-    plan: 'Étudiant Gratuit'
-  });
+  }>(() => ({
+    balance: Number(cachedCredits?.balance || 0),
+    tokensUsed: Number(cachedCredits?.tokensUsed || 0),
+    totalPurchased: Number(cachedCredits?.totalPurchased || 0),
+    totalConsumed: Number(cachedCredits?.totalConsumed || 0),
+    plan: cachedCredits?.plan || 'Étudiant Gratuit',
+    welcome_credits: cachedCredits?.welcome_credits,
+    daily_free_credits: cachedCredits?.daily_free_credits,
+    tokens_per_credit: cachedCredits?.tokens_per_credit
+  }));
 
   // Liste globale de toutes les demandes utilisateur
-  const [allRequests, setAllRequests] = useState<any[]>([]);
+  const [allRequests, setAllRequests] = useState<any[]>(() => {
+    try {
+      const raw = localStorage.getItem(`studycloud_cached_user_requests_${currentUserId}`);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
 
-  // Chargement des données synchronisées (serveur et local)
-  const loadData = async (showSpin = false) => {
-    if (showSpin) setRefreshing(true);
-    else setLoading(true);
+  // Chargement ultra-rapide et parallèle des données Cloudflare D1
+  const loadData = async (showSpin = false, isBackground = false) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
+    if (showSpin) {
+      setRefreshing(true);
+    } else if (!isBackground && !hasEverLoadedRef.current) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
-      // 1. Configuration globale IA configurée par l'administrateur dans le Tableau de Bord
-      try {
-        const cfgRes = await getAiBillingConfig();
-        if (cfgRes && cfgRes.success && cfgRes.config) {
-          setBillingConfig(cfgRes.config);
+      // Exécution simultanée de toutes les requêtes en parallèle (gain de plusieurs secondes)
+      const [liveRes, configRes, aiPurRes, purHistRes, storReqRes, plansRes] = await Promise.allSettled([
+        getUserAiCreditsLive(currentUserId),
+        getAiBillingConfig(),
+        getUserAiPurchases(currentUserId),
+        getUserPurchasesHistory(currentUserId),
+        getUserStorageRequests(currentUserId),
+        getSubscriptionPlans()
+      ]);
+
+      // 1. Solde en direct et crédits réels D1
+      if (liveRes.status === 'fulfilled' && liveRes.value && liveRes.value.success && liveRes.value.credits) {
+        const cred = liveRes.value.credits;
+        const finalPurchased = Math.max(0, Number(cred.totalPurchased || 0));
+        const serverBalance = Number(cred.balance);
+
+        const updatedCredits = {
+          balance: serverBalance,
+          tokensUsed: Number(cred.tokensUsed || 0),
+          totalPurchased: finalPurchased,
+          totalConsumed: Number(cred.totalConsumed || 0),
+          plan: cred.plan || (finalPurchased > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit'),
+          welcome_credits: cred.welcome_credits,
+          daily_free_credits: cred.daily_free_credits,
+          tokens_per_credit: cred.tokens_per_credit
+        };
+
+        setUserCredits(updatedCredits);
+        try {
+          localStorage.setItem(`studycloud_cached_user_credits_${currentUserId}`, JSON.stringify(updatedCredits));
+          localStorage.setItem('studycloud_cached_user_credits', JSON.stringify(updatedCredits));
+        } catch (_) {}
+
+        if (cred.welcome_credits !== undefined) {
+          setBillingConfig(prev => ({
+            ...prev,
+            welcome_credits: cred.welcome_credits!,
+            tokens_per_credit: cred.tokens_per_credit || prev.tokens_per_credit,
+            daily_free_credits: cred.daily_free_credits !== undefined ? cred.daily_free_credits : prev.daily_free_credits
+          }));
         }
-      } catch (errCfg) {
-        console.warn('[AiSubscriptionsView] Erreur config facturation:', errCfg);
       }
 
-      // 2. Quota de stockage et crédits IA
-      const quotaRes = await getUserStorageQuota(currentUserId);
-      if (quotaRes.success && quotaRes.data) {
-        setQuotaData(quotaRes.data);
+      // 2. Configuration globale IA configurée par l'administrateur
+      if (configRes.status === 'fulfilled' && configRes.value && configRes.value.success && configRes.value.config) {
+        const cfg = configRes.value.config;
+        setBillingConfig(prev => ({
+          ...prev,
+          tokens_per_credit: cfg.tokens_per_credit || prev.tokens_per_credit,
+          daily_free_credits: cfg.daily_free_credits !== undefined ? cfg.daily_free_credits : prev.daily_free_credits,
+          is_daily_renewal_active: cfg.is_daily_renewal_active !== undefined ? cfg.is_daily_renewal_active : prev.is_daily_renewal_active,
+          welcome_credits: prev.welcome_credits !== undefined ? prev.welcome_credits : cfg.welcome_credits
+        }));
+        try {
+          localStorage.setItem('studycloud_cached_ai_config', JSON.stringify(cfg));
+        } catch (_) {}
       }
 
-      // 3. Demandes enregistrées sur le serveur
-      const reqRes = await getUserStorageRequests(currentUserId);
-      let serverReqs: any[] = [];
-      if (reqRes && reqRes.success && Array.isArray(reqRes.requests)) {
-        serverReqs = reqRes.requests;
+      // 3. Fusion des demandes et achats réels pour les onglets
+      let combinedItems: any[] = [];
+      if (storReqRes.status === 'fulfilled' && storReqRes.value && storReqRes.value.success && Array.isArray(storReqRes.value.requests)) {
+        combinedItems.push(...storReqRes.value.requests);
+      }
+      if (purHistRes.status === 'fulfilled' && purHistRes.value && purHistRes.value.success && Array.isArray(purHistRes.value.purchases)) {
+        combinedItems.push(...purHistRes.value.purchases);
+      }
+      if (aiPurRes.status === 'fulfilled' && aiPurRes.value && aiPurRes.value.success && Array.isArray(aiPurRes.value.purchases)) {
+        combinedItems.push(...aiPurRes.value.purchases);
       }
 
-      // 4. Achats enregistrés sur le serveur (stockage & forfaits)
-      const purRes = await getUserPurchasesHistory(currentUserId);
-      let serverPurs: any[] = [];
-      if (purRes && purRes.success && Array.isArray(purRes.purchases)) {
-        serverPurs = [...purRes.purchases];
-      }
-
-      // 4b. Achats de crédits IA enregistrés dans la table user_ai_purchases (D1)
-      try {
-        const aiPurRes = await getUserAiPurchases(currentUserId);
-        if (aiPurRes && aiPurRes.success && Array.isArray(aiPurRes.purchases)) {
-          serverPurs = [...serverPurs, ...aiPurRes.purchases];
-        }
-      } catch (errAiPur) {
-        console.warn('[AiSubscriptionsView] Erreur récupération achats IA:', errAiPur);
-      }
-
-      // 5. Fusionner les demandes et achats issus exclusivement de Cloudflare D1 (PAS DE LOCAL)
       const allMap = new Map<string, any>();
-      [...serverReqs, ...serverPurs].forEach((item) => {
+      combinedItems.forEach((item) => {
         if (item && (item.id || item.requestId)) {
-          const key = item.id || item.requestId;
-          allMap.set(key, item);
+          allMap.set(item.id || item.requestId, item);
         }
       });
 
-      const combined = Array.from(allMap.values()).sort(
+      const sorted = Array.from(allMap.values()).sort(
         (a, b) => new Date(b.created_at || b.purchased_at || 0).getTime() - new Date(a.created_at || a.purchased_at || 0).getTime()
       );
-
-      setAllRequests(combined);
-
-      // Calcul dynamique des crédits achetés validés (uniquement crédits IA explicites de D1)
-      const totalApprovedCredits = combined
-        .filter(r => (r.status === 'completed' || r.status === 'approved' || r.status === 'active' || r.status === 'confirmed') && r.credits_amount)
-        .reduce((sum, r) => sum + (Number(r.credits_amount) || 0), 0);
-
-      // Récupération du solde en direct, des tokens réels consommés et du portefeuille D1
+      setAllRequests(sorted);
       try {
-        const liveRes = await getUserAiCreditsLive(currentUserId);
-        if (liveRes && liveRes.success && liveRes.credits) {
-          // RÈGLE ABSOLUE : La base D1 fait foi. Si rien n'a été acheté, c'est 0.
-          const serverPurchased = Math.max(0, Number(liveRes.credits.totalPurchased || 0));
-          const finalPurchased = serverPurchased;
-          const serverBalance = Number(liveRes.credits.balance);
+        localStorage.setItem(`studycloud_cached_user_requests_${currentUserId}`, JSON.stringify(sorted));
+      } catch (_) {}
 
-          setUserCredits({
-            balance: serverBalance,
-            tokensUsed: Number(liveRes.credits.tokensUsed || 0),
-            totalPurchased: finalPurchased,
-            totalConsumed: Number(liveRes.credits.totalConsumed || 0),
-            plan: liveRes.credits.plan || (finalPurchased > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit'),
-            welcome_credits: liveRes.credits.welcome_credits,
-            daily_free_credits: liveRes.credits.daily_free_credits,
-            tokens_per_credit: liveRes.credits.tokens_per_credit
-          });
-
-          if (liveRes.credits.welcome_credits !== undefined) {
-            setBillingConfig(prev => ({
-              ...prev,
-              welcome_credits: liveRes.credits.welcome_credits!,
-              tokens_per_credit: liveRes.credits.tokens_per_credit || prev.tokens_per_credit,
-              daily_free_credits: liveRes.credits.daily_free_credits !== undefined ? liveRes.credits.daily_free_credits : prev.daily_free_credits
-            }));
-          }
-        } else {
-          setUserCredits(prev => ({
-            ...prev,
-            balance: 0,
-            totalPurchased: 0,
-            plan: 'Étudiant Gratuit'
-          }));
-        }
-      } catch (errLive) {
-        setUserCredits(prev => ({
-          ...prev,
-          balance: 0,
-          totalPurchased: 0,
-          plan: 'Étudiant Gratuit'
-        }));
-      }
-
-      // 5. Charger les formules IA de la base D1
-      try {
-        setLoadingPlans(true);
-        const plansRes = await getSubscriptionPlans();
-        if (plansRes && plansRes.success && Array.isArray(plansRes.aiPlans)) {
-          setAiPlans(plansRes.aiPlans);
-        }
-      } catch (errPlans) {
-        console.warn('[AiSubscriptionsView] Erreur forfaits IA:', errPlans);
-      } finally {
-        setLoadingPlans(false);
+      // 4. Formules IA de la base D1
+      if (plansRes.status === 'fulfilled' && plansRes.value && plansRes.value.success && Array.isArray(plansRes.value.aiPlans)) {
+        setAiPlans(plansRes.value.aiPlans);
       }
 
     } catch (err: any) {
-      console.warn('[AiSubscriptionsView] Erreur lors du chargement des données:', err);
-      setError(err?.message || "Erreur de synchronisation avec le serveur");
+      console.warn('[AiSubscriptionsView] Erreur synchronisation D1:', err);
+      if (!hasEverLoadedRef.current) {
+        setError(err?.message || "Erreur de synchronisation avec le serveur");
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setLoadingPlans(false);
+      hasEverLoadedRef.current = true;
+      isFetchingRef.current = false;
     }
   };
 
   useEffect(() => {
-    loadData();
+    // Premier appel rapide (ne bloque pas si déjà en cache)
+    loadData(false, hasEverLoadedRef.current);
 
-    // Polling régulier toutes les 15 secondes pour synchronisation temps réel automatique
+    // Synchronisation automatique en tâche de fond toutes les 10 secondes (SILENCIEUSE, SANS RESET DE JAUGE)
     const pollInterval = setInterval(() => {
-      loadData(false);
-    }, 15000);
+      loadData(false, true);
+    }, 10000);
 
-    // Rafraîchir dès que l'utilisateur revient sur l'onglet de l'application
+    // Rafraîchir en tâche de fond dès que la fenêtre reprend le focus
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
-        loadData(false);
+        loadData(false, true);
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleVisibility);
 
     // Écouter les déductions ou recharges en temps réel pour cet utilisateur
     const handleCreditUpdate = (e: any) => {
       const detail = e.detail;
-      if (detail && detail.userId === currentUserId) {
-        setUserCredits(prev => ({
-          ...prev,
-          balance: Number(detail.remaining_balance !== undefined ? detail.remaining_balance : prev.balance),
-          tokensUsed: Number(detail.total_tokens_consumed || (prev.tokensUsed + (detail.tokens_consumed || 0))),
-          totalConsumed: Number(detail.total_credits_consumed || (prev.totalConsumed || 0))
-        }));
+      if (detail && (!detail.userId || detail.userId === currentUserId)) {
+        setUserCredits(prev => {
+          const updated = {
+            ...prev,
+            balance: Number(detail.remaining_balance !== undefined ? detail.remaining_balance : prev.balance),
+            tokensUsed: Number(detail.total_tokens_consumed !== undefined ? detail.total_tokens_consumed : (prev.tokensUsed + (detail.tokens_consumed || 0))),
+            totalConsumed: Number(detail.total_credits_consumed !== undefined ? detail.total_credits_consumed : (prev.totalConsumed || 0))
+          };
+          try {
+            localStorage.setItem(`studycloud_cached_user_credits_${currentUserId}`, JSON.stringify(updated));
+            localStorage.setItem('studycloud_cached_user_credits', JSON.stringify(updated));
+          } catch (_) {}
+          return updated;
+        });
       }
     };
-
     window.addEventListener('studycloud_user_credits_updated', handleCreditUpdate);
+
+    // Écouter une modification globale de facturation IA faite par l'administrateur
+    const handleConfigUpdate = (e: any) => {
+      const detail = e.detail;
+      if (detail) {
+        setBillingConfig(prev => ({ ...prev, ...detail }));
+        loadData(false, true);
+      }
+    };
+    window.addEventListener('studycloud_ai_config_updated', handleConfigUpdate);
+
+    // Écouter les changements de cache provenant d'autres onglets
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === `studycloud_cached_user_credits_${currentUserId}` || e.key === 'studycloud_cached_ai_config') {
+        loadData(false, true);
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
     return () => {
       clearInterval(pollInterval);
       document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleVisibility);
       window.removeEventListener('studycloud_user_credits_updated', handleCreditUpdate);
+      window.removeEventListener('studycloud_ai_config_updated', handleConfigUpdate);
+      window.removeEventListener('storage', handleStorage);
     };
   }, [currentUserId]);
 
@@ -421,7 +462,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
           {/* ── Dashboard stats dans le header ── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-5">
 
-            {/* JAUGE CIRCULAIRE — colonne gauche */}
+            {/* JAUGE CIRCULAIRE — colonne gauche (Stable, fluide et temps réel) */}
             <div className="lg:col-span-1 flex items-center justify-center">
               <div className="relative flex flex-col items-center">
                 {/* SVG Arc */}
@@ -442,29 +483,29 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                     strokeWidth="14"
                     strokeLinecap="round"
                     strokeDasharray={circumference}
-                    strokeDashoffset={loading ? circumference : strokeDashoffset}
+                    strokeDashoffset={strokeDashoffset}
                     transform="rotate(-90 70 70)"
-                    style={{ transition: 'stroke-dashoffset 1s ease-out, stroke 0.5s' }}
+                    style={{ transition: 'stroke-dashoffset 0.6s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.4s ease' }}
                   />
-                  {/* Texte central */}
+                  {/* Texte central : toujours visible immédiatement */}
                   <text x="70" y="64" textAnchor="middle" className="font-black" fill="white" fontSize="22" fontWeight="900">
-                    {loading ? '...' : `${creditsRemaining}`}
+                    {creditsRemaining}
                   </text>
                   <text x="70" y="82" textAnchor="middle" fill="rgba(255,255,255,0.75)" fontSize="10">
                     disponibles
                   </text>
                 </svg>
                 <p className="text-white/80 text-xs mt-1 font-medium text-center">
-                  {loading ? '...' : `${creditsRemaining} Crédits`}
+                  {creditsRemaining} Crédits
                   <span className="text-white/50"> / </span>
                   {totalMaxCredits} Crédits au total
                 </p>
               </div>
             </div>
 
-            {/* STATS RAPIDES — colonnes centrale + droite (4 Cartes Glassmorphism) */}
-            <div className="lg:col-span-2 grid grid-cols-2 gap-3">
-              {/* Crédits gratuits offerts */}
+            {/* STATS RAPIDES — 3 Cartes essentielles Glassmorphism */}
+            <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* 1. Crédits gratuits offerts */}
               <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
                 <div className="flex items-center gap-2 mb-2">
                   <Gift className="w-4 h-4 text-emerald-300" />
@@ -476,7 +517,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                 <p className="text-white/50 text-[10px] mt-1">Pack Bienvenue</p>
               </div>
 
-              {/* Crédits achetés */}
+              {/* 2. Crédits achetés */}
               <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
                 <div className="flex items-center gap-2 mb-2">
                   <CreditCard className="w-4 h-4 text-blue-300" />
@@ -488,7 +529,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                 <p className="text-white/50 text-[10px] mt-1">Extensions validées</p>
               </div>
 
-              {/* Solde restant disponible */}
+              {/* 3. Solde restant disponible */}
               <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
                 <div className="flex items-center gap-2 mb-2">
                   <Zap className="w-4 h-4 text-amber-300" />
@@ -498,18 +539,6 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                   {creditsRemaining}
                 </p>
                 <p className="text-white/50 text-[10px] mt-1">Prêts à l'emploi</p>
-              </div>
-
-              {/* Volume de mots / Requêtes */}
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
-                <div className="flex items-center gap-2 mb-2">
-                  <Bot className="w-4 h-4 text-purple-300" />
-                  <span className="text-white/70 text-[11px] font-semibold uppercase tracking-wider">Consommation</span>
-                </div>
-                <p className="text-xl md:text-2xl font-black text-white leading-none">
-                  {userCredits.tokensUsed.toLocaleString('fr-FR')}
-                </p>
-                <p className="text-white/50 text-[10px] mt-1">Tokens IA utilisés</p>
               </div>
             </div>
           </div>
@@ -602,110 +631,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
             </div>
           )}
 
-          {/* ── CARTE RÉPARTITION DÉTAILLÉE DES USAGES IA ── */}
-          <div className="bg-white dark:bg-[#131b2e] rounded-3xl border-2 border-stone-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            {/* En-tête de la carte */}
-            <div className="px-5 py-4 border-b border-stone-100 dark:border-slate-800 flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-              <h2 className="text-sm font-black uppercase tracking-wider text-stone-800 dark:text-slate-200">
-                Répartition détaillée de vos usages IA
-              </h2>
-            </div>
 
-            {/* Grille 2 colonnes */}
-            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-stone-100 dark:divide-slate-800">
-
-              {/* Assistant d'Étude & Robot Rouge */}
-              <div className="p-5 space-y-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-3">
-                    <span className="p-2.5 rounded-2xl bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-900">
-                      <Bot className="w-5 h-5" />
-                    </span>
-                    <div>
-                      <h3 className="text-sm font-extrabold text-stone-900 dark:text-white leading-tight">
-                        Assistant Robot Rouge & Delmas IA
-                      </h3>
-                      <p className="text-[11px] text-stone-500 dark:text-slate-400 mt-0.5 leading-tight">
-                        Questions, explications de cours, calculs & exercices
-                      </p>
-                    </div>
-                  </div>
-                  <span className="px-2 py-1 bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-bold text-[10px] rounded-lg border border-purple-200 dark:border-purple-900 shrink-0">
-                    Actif
-                  </span>
-                </div>
-
-                {/* Barre indicative */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-black text-purple-600 dark:text-purple-400 text-base">
-                      {creditsRemaining} crédits dispo
-                    </span>
-                    <span className="text-stone-500 dark:text-slate-400 text-[11px]">
-                      1 crédit = {tokensPerCredit.toLocaleString('fr-FR')} tokens IA
-                    </span>
-                  </div>
-                  <div className="w-full h-2.5 bg-stone-100 dark:bg-slate-900 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-purple-500 to-indigo-400 transition-all duration-700"
-                      style={{ width: `${Math.min(100, creditsPercentage)}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1.5 text-[11px] text-stone-500 dark:text-slate-400 bg-stone-50 dark:bg-slate-900/50 p-2.5 rounded-xl border border-stone-100 dark:border-slate-800">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                  <span>Modèles sécurisés à haute précision pédagogique (Gemini 2.0, Llama 3.3, LaTeX).</span>
-                </div>
-              </div>
-
-              {/* Générateur de Fiches & Modules de cours */}
-              <div className="p-5 space-y-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-3">
-                    <span className="p-2.5 rounded-2xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-900">
-                      <Layers className="w-5 h-5" />
-                    </span>
-                    <div>
-                      <h3 className="text-sm font-extrabold text-stone-900 dark:text-white leading-tight">
-                        Génération de Fiches & Modules
-                      </h3>
-                      <p className="text-[11px] text-stone-500 dark:text-slate-400 mt-0.5 leading-tight">
-                        Fiches mémos, synthèses PDF, quiz d'auto-évaluation
-                      </p>
-                    </div>
-                  </div>
-                  <span className="px-2 py-1 bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-bold text-[10px] rounded-lg border border-amber-200 dark:border-amber-900 shrink-0">
-                    Prêt
-                  </span>
-                </div>
-
-                {/* Barre indicative */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-black text-amber-600 dark:text-amber-400 text-base">
-                      {Math.round(creditsRemaining * tokensPerCredit).toLocaleString('fr-FR')} tokens restants
-                    </span>
-                    <span className="text-stone-500 dark:text-slate-400 text-[11px]">
-                      Équivalence Formule 2
-                    </span>
-                  </div>
-                  <div className="w-full h-2.5 bg-stone-100 dark:bg-slate-900 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-400 transition-all duration-700"
-                      style={{ width: `${Math.min(100, creditsPercentage)}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1.5 text-[11px] text-stone-500 dark:text-slate-400 bg-stone-50 dark:bg-slate-900/50 p-2.5 rounded-xl border border-stone-100 dark:border-slate-800">
-                  <Info className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                  <span>Chaque génération sauvegarde automatiquement le document dans vos dossiers.</span>
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* ── ONGLETS DEMANDES & ACHATS ── */}
           <div className="bg-white dark:bg-[#131b2e] rounded-3xl border-2 border-stone-200 dark:border-slate-800 shadow-sm overflow-hidden">

@@ -3226,8 +3226,8 @@ export const formatConsumedCreditsDisplay = (tokens: number, customRate?: number
  */
 export async function getAiBillingConfig(): Promise<{ success: boolean; config: AiBillingConfig }> {
   const candidateUrls = [
-    getWorkerApiUrl().replace(/\/+$/, ''),
     'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev',
+    getWorkerApiUrl().replace(/\/+$/, ''),
     'https://api-worker.dkd-technologies.com',
     'https://studycloud-worker.delmaskouassidibi.workers.dev',
     getAiWorkerUrl().replace(/\/+$/, '')
@@ -3235,14 +3235,18 @@ export async function getAiBillingConfig(): Promise<{ success: boolean; config: 
 
   for (const url of candidateUrls) {
     try {
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timeoutId = controller ? setTimeout(() => controller.abort(), 3500) : null;
       const res = await fetch(`${url}/api/ai/billing/config`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           Pragma: 'no-cache'
-        }
+        },
+        signal: controller ? controller.signal : undefined
       });
+      if (timeoutId) clearTimeout(timeoutId);
       if (res.ok) {
         const data = await res.json();
         if (data && data.success && data.config) {
@@ -3370,8 +3374,8 @@ export async function getUserAiCreditsLive(
   error?: string;
 }> {
   const candidateUrls = [
-    getWorkerApiUrl().replace(/\/+$/, ''),
     'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev',
+    getWorkerApiUrl().replace(/\/+$/, ''),
     'https://api-worker.dkd-technologies.com',
     'https://studycloud-worker.delmaskouassidibi.workers.dev',
     getAiWorkerUrl().replace(/\/+$/, '')
@@ -3379,6 +3383,8 @@ export async function getUserAiCreditsLive(
 
   for (const url of candidateUrls) {
     try {
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timeoutId = controller ? setTimeout(() => controller.abort(), 3500) : null;
       const res = await fetch(`${url}/api/ai/user/credits?userId=${encodeURIComponent(userId)}`, {
         method: 'GET',
         headers: {
@@ -3386,8 +3392,10 @@ export async function getUserAiCreditsLive(
           'x-user-id': userId,
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           Pragma: 'no-cache'
-        }
+        },
+        signal: controller ? controller.signal : undefined
       });
+      if (timeoutId) clearTimeout(timeoutId);
       if (res.ok) {
         const data = await res.json();
         if (data && data.success && data.credits) {
@@ -3531,6 +3539,8 @@ export async function getUserAiPurchases(
 
   for (const url of candidateUrls) {
     try {
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timeoutId = controller ? setTimeout(() => controller.abort(), 3500) : null;
       const res = await fetch(`${url}/api/ai/user/purchases?userId=${encodeURIComponent(currentUserId)}`, {
         method: 'GET',
         headers: {
@@ -3538,8 +3548,10 @@ export async function getUserAiPurchases(
           'x-user-id': currentUserId,
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           Pragma: 'no-cache'
-        }
+        },
+        signal: controller ? controller.signal : undefined
       });
+      if (timeoutId) clearTimeout(timeoutId);
       if (res.ok) {
         const data = await res.json();
         if (data && data.success) {
