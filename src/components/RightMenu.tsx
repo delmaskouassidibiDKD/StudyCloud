@@ -209,6 +209,9 @@ export function RightMenu({
   };
 
   const getCreationCreditsDisplay = (item: any): string => {
+    if (item.status === 'generating' || item.status === 'queued' || (item.content && item.content.status === 'generating')) {
+      return "En cours de génération...";
+    }
     const rawTokens = getCreationTokens(item);
     const rawCredits = item.credits || item.data?.credits || item.content?.credits || item.content_json?.credits || item.credits_deducted;
     if (typeof rawCredits === 'number' && rawCredits > 0 && rawCredits < rawTokens && rawCredits < 30) {
@@ -257,10 +260,19 @@ export function RightMenu({
           };
         });
 
+        // La base Cloudflare D1 est la source de vérité absolue
         const map = new Map<string, any>();
         d1Items.forEach((it: any) => map.set(it.id, it));
+
+        // On n'ajoute du cache local QUE les créations en cours récentes (< 10 min) non encore indexées
+        const now = Date.now();
         localItems.forEach((it: any) => {
-          if (!map.has(it.id)) map.set(it.id, it);
+          if (!map.has(it.id)) {
+            const age = now - new Date(it.createdAt || 0).getTime();
+            if ((it.status === 'generating' || it.status === 'queued') && age < 10 * 60 * 1000) {
+              map.set(it.id, it);
+            }
+          }
         });
 
         const merged = Array.from(map.values()).sort((a, b) => {
@@ -281,6 +293,19 @@ export function RightMenu({
 
   useEffect(() => {
     fetchUserCreations();
+
+    // Synchronisation automatique quand l'onglet ou l'écran du mobile redevient actif
+    const handleSyncEvent = () => fetchUserCreations();
+    window.addEventListener('focus', handleSyncEvent);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') fetchUserCreations();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.removeEventListener('focus', handleSyncEvent);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, []);
 
   useEffect(() => {
@@ -654,11 +679,38 @@ export function RightMenu({
     }));
   };
 
-  // Annulation manuelle de la création
+  // Annulation manuelle de la création depuis l'écran de chargement (Bouton "✕ Annuler" de l'Image 2)
   const handleCancelGeneration = () => {
+    const targetId = activeCreation?.id || savedCreations.find(c => c.status === 'generating' || c.status === 'queued')?.id;
+
+    // 1. Fermeture immédiate de l'écran MagicRings (Image 2)
     setCreationPhase('idle');
     setActiveCreation(null);
-    window.dispatchEvent(new CustomEvent('studycloud-cancel-creation'));
+    setGeneratingToolTitle('');
+    setLiveStatusText('');
+
+    if (targetId) {
+      // 2. Interruption de l'agent en arrière-plan
+      aiBackgroundManager.clearTask(targetId);
+      window.dispatchEvent(new CustomEvent('studycloud-cancel-creation', { detail: { creationId: targetId } }));
+
+      // 3. Retrait immédiat de la liste locale
+      setSavedCreations(prev => {
+        const updated = prev.filter(c => c.id !== targetId);
+        persistCreationsLocally(updated);
+        return updated;
+      });
+
+      // 4. Suppression définitive dans Cloudflare D1
+      const uid = getCurrentUserId() || localStorage.getItem('studycloud_user_id');
+      if (uid && uid !== 'default-user') {
+        StudyCloudAPI.deleteAiContent(targetId, uid).catch(err => {
+          console.warn('[RightMenu] Erreur suppression annulation D1:', err);
+        });
+      }
+    } else {
+      window.dispatchEvent(new CustomEvent('studycloud-cancel-creation'));
+    }
   };
 
   // Utilitaires d'affichage pour les créations
@@ -730,17 +782,26 @@ export function RightMenu({
       return;
     }
 
-    // Suppression immédiate du state et du cache local
+    // 1. Interrompre la tâche en arrière-plan si elle était en cours
+    aiBackgroundManager.clearTask(creationId);
+    window.dispatchEvent(new CustomEvent('studycloud-cancel-creation', { detail: { creationId } }));
+
+    // 2. Si c'était la création en cours affichée sur l'écran (Image 2), refermer et réinitialiser immédiatement
+    if (activeCreation?.id === creationId || creationPhase === 'creating') {
+      setActiveCreation(null);
+      setCreationPhase('idle');
+      setGeneratingToolTitle('');
+      setLiveStatusText('');
+    }
+
+    // 3. Suppression immédiate du state et du cache local
     setSavedCreations(prev => {
       const updated = prev.filter(c => c.id !== creationId);
       persistCreationsLocally(updated);
       return updated;
     });
 
-    if (activeCreation && activeCreation.id === creationId) {
-      setActiveCreation(null);
-    }
-
+    // 4. Suppression définitive dans Cloudflare D1
     const uid = getCurrentUserId() || localStorage.getItem('studycloud_user_id');
     if (uid && uid !== 'default-user') {
       try {
@@ -904,6 +965,24 @@ export function RightMenu({
         persistCreationsLocally(updated);
         return updated;
       });
+
+      // Sauvegarde immédiate dans Cloudflare D1 avec son état initial ('generating' ou 'queued')
+      const uid = getCurrentUserId() || localStorage.getItem('studycloud_user_id');
+      if (uid && uid !== 'default-user') {
+        StudyCloudAPI.saveAiContent({
+          id: placeholder.id,
+          userId: uid,
+          fileId: activePreviewItem?.id || null,
+          conversationId: placeholder.conversationId || null,
+          toolType: placeholder.toolType,
+          title: placeholder.title,
+          contentJson: { status: placeholder.status, title: placeholder.title, sourceFileName: placeholder.sourceFileName },
+          sourceFileName: placeholder.sourceFileName,
+          isPinned: false,
+        }).catch(err => {
+          console.warn('[RightMenu] Erreur enregistrement tâche D1:', err);
+        });
+      }
 
       // Si c'est une création en arrière-plan (ex: lancée depuis le chat pendant que l'utilisateur discute),
       // L'ESPACE CRÉATION NE DOIT PAS BOUGER ! On ne bascule pas l'écran, les tâches tournent discrètement.
@@ -1555,8 +1634,8 @@ export function RightMenu({
                         </p>
                       )}
 
-                      {/* Consommation de la création dépliée */}
-                      {isCreditsOpen && (
+                      {/* Consommation de la création dépliée : UNIQUEMENT pour les créations prêtes/terminées */}
+                      {isCreditsOpen && item.status !== 'generating' && item.status !== 'queued' && (
                         <div className="mt-1.5 px-2 py-0.5 rounded-md bg-zinc-900/90 border border-amber-500/35 text-amber-300 inline-flex items-center gap-1.5 text-[10px] animate-fadeIn w-fit shadow-xs">
                           <Zap className="w-2.5 h-2.5 text-amber-400 shrink-0" />
                           <span className="text-zinc-400">Consommation :</span>
@@ -1565,7 +1644,7 @@ export function RightMenu({
                       )}
                     </div>
 
-                    {/* Actions : Bouton de suppression en haut, Bouton Crédits en bas à droite (Tracé rouge Image 2) */}
+                    {/* Actions : Bouton de suppression en haut, Bouton Crédits en bas à droite (UNIQUEMENT pour créations terminées) */}
                     <div className="shrink-0 flex flex-col items-end justify-between self-stretch gap-1.5 ml-1">
                       <button
                         type="button"
@@ -1582,23 +1661,25 @@ export function RightMenu({
                         )}
                       </button>
 
-                      {/* Bouton Crédits (Tracé rouge Image 2) */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleCreditsCreation(item.id);
-                        }}
-                        className={`px-1.5 py-0.5 rounded-md text-[10px] font-semibold transition-all cursor-pointer flex items-center gap-1 border ${
-                          isCreditsOpen
-                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-xs'
-                            : 'bg-zinc-800/80 text-zinc-400 border-zinc-700/60 hover:text-amber-300 hover:border-amber-500/30 hover:bg-zinc-800'
-                        }`}
-                        title="Afficher/masquer la consommation en crédits"
-                      >
-                        <Zap className="w-2.5 h-2.5 text-amber-400 shrink-0" />
-                        <span>Crédits</span>
-                      </button>
+                      {/* Bouton Crédits : Masqué tant que la création est en cours ou en attente */}
+                      {item.status !== 'generating' && item.status !== 'queued' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleCreditsCreation(item.id);
+                          }}
+                          className={`px-1.5 py-0.5 rounded-md text-[10px] font-semibold transition-all cursor-pointer flex items-center gap-1 border ${
+                            isCreditsOpen
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-xs'
+                              : 'bg-zinc-800/80 text-zinc-400 border-zinc-700/60 hover:text-amber-300 hover:border-amber-500/30 hover:bg-zinc-800'
+                          }`}
+                          title="Afficher/masquer la consommation en crédits"
+                        >
+                          <Zap className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+                          <span>Crédits</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

@@ -3539,6 +3539,21 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
         }
       } catch {}
 
+      // Sauvegarde immédiate dans Cloudflare D1 pour synchronisation mobile et multi-onglets
+      if (params.targetUserId && params.targetUserId !== 'default-user') {
+        StudyCloudAPI.saveAiContent({
+          id: pendingCreation.id,
+          userId: params.targetUserId,
+          fileId: params.activePreviewItem?.id || null,
+          conversationId: params.targetConvId || null,
+          toolType: pendingCreation.toolType,
+          title: pendingCreation.title,
+          contentJson: pendingCreation.content,
+          sourceFileName: pendingCreation.sourceFileName || undefined,
+          isPinned: false,
+        }).catch(err => console.warn('[AssistantChat] Erreur persistance D1 async:', err));
+      }
+
       return {
         response: aiResult.response,
         creation: undefined,
@@ -4163,6 +4178,21 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
             isBackground: true,
           }
         }));
+
+        // Persistance immédiate dans Cloudflare D1 pour affichage direct sur tous les appareils (PC et mobile)
+        if (targetUserId && targetUserId !== 'default-user') {
+          StudyCloudAPI.saveAiContent({
+            id: task.creationId,
+            userId: targetUserId,
+            fileId: activePreviewItem?.id || resolvedActiveItem?.id || null,
+            conversationId: targetConvId || null,
+            toolType: task.explicitToolType,
+            title: task.creationTitle,
+            contentJson: { status: willBeQueued ? 'queued' : 'generating', title: task.creationTitle, sourceFileName: mainDocName },
+            sourceFileName: mainDocName,
+            isPinned: false,
+          }).catch(err => console.warn('[AssistantChat] Erreur persistance D1 creation-enqueued:', err));
+        }
 
         const enqRes = aiBackgroundManager.enqueueCreationTask(
           {
@@ -5673,7 +5703,11 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
   }, [messages, isTyping, activePreviewItem, attachedResources, activeCreation, currentConversationId]);
 
   useEffect(() => {
-    const handleCancelFromCreation = () => {
+    const handleCancelFromCreation = (e: any) => {
+      const creationId = e?.detail?.creationId;
+      if (creationId) {
+        aiBackgroundManager.clearTask(creationId);
+      }
       handleCancelTask();
     };
     window.addEventListener('studycloud-cancel-creation', handleCancelFromCreation as any);

@@ -158,6 +158,21 @@ export const aiBackgroundManager = {
     activeTasks.push(newTask);
     safeSetStorage(activeTasks);
 
+    // Enregistrement immédiat dans la base Cloudflare D1 avec son statut initial
+    if (taskData.userId && taskData.userId !== 'default-user') {
+      StudyCloudAPI.saveAiContent({
+        id: taskData.creationId,
+        userId: taskData.userId,
+        fileId: null,
+        conversationId: taskData.conversationId || null,
+        toolType: taskData.toolType,
+        title: taskData.title,
+        contentJson: { status, title: taskData.title, sourceFileName: taskData.mainDocName },
+        sourceFileName: taskData.mainDocName || undefined,
+        isPinned: false,
+      }).catch(e => console.warn('[aiBackgroundManager] Erreur init D1:', e));
+    }
+
     if (executor) {
       memoryExecutors.set(newTask.taskId, executor);
     }
@@ -305,6 +320,24 @@ export const aiBackgroundManager = {
 
     safeSetStorage(updated);
 
+    // Sauvegarde garantie dans la base de données Cloudflare D1 (indépendamment de la navigation de l'utilisateur)
+    const finalCreationId = completedCreationId || resultCreation?.id;
+    const finalUserId = resultCreation?.userId || (typeof window !== 'undefined' ? localStorage.getItem('unifolder_user_id') : null);
+    if (finalCreationId && finalUserId && finalUserId !== 'default-user' && resultCreation) {
+      const parsedContent = resultCreation.content || resultCreation.data || resultCreation;
+      StudyCloudAPI.saveAiContent({
+        id: finalCreationId,
+        userId: finalUserId,
+        fileId: resultCreation.fileId || null,
+        conversationId: resultCreation.conversationId || (conversationIdOrTaskId !== explicitTaskId ? conversationIdOrTaskId : null),
+        toolType: resultCreation.toolType || resultCreation.type || 'creation',
+        title: resultCreation.title || 'Création Studio',
+        contentJson: parsedContent,
+        sourceFileName: resultCreation.sourceFileName || undefined,
+        isPinned: Boolean(resultCreation.isPinned),
+      }).catch(e => console.warn('[aiBackgroundManager] Erreur sauvegarde D1 dans completeAiTask:', e));
+    }
+
     if (typeof window !== 'undefined') {
       if (completedCreationId || resultCreation) {
         window.dispatchEvent(new CustomEvent('studycloud-creation-status-changed', {
@@ -413,15 +446,23 @@ export const aiBackgroundManager = {
    * Supprime une tâche en cas d'annulation ou d'erreur
    */
   clearTask(conversationIdOrTaskId: string): void {
+    if (!conversationIdOrTaskId) return;
+    const tasks = safeGetStorage();
+    const matched = tasks.find(t => t.taskId === conversationIdOrTaskId || t.creationId === conversationIdOrTaskId || t.conversationId === conversationIdOrTaskId);
+    if (matched) {
+      memoryExecutors.delete(matched.taskId);
+    }
     memoryExecutors.delete(conversationIdOrTaskId);
-    // Si c'est un taskId spécifique, supprimer uniquement cette tâche
+
+    // Supprimer la tâche correspondante (par taskId ou creationId)
     // Si c'est un conversationId, ne nettoyer que les tâches de chat simples sans toucher aux créations en arrière-plan
-    const tasks = safeGetStorage().filter(t => {
+    const remaining = tasks.filter(t => {
       if (t.taskId === conversationIdOrTaskId) return false;
+      if (t.creationId === conversationIdOrTaskId) return false;
       if (t.conversationId === conversationIdOrTaskId && !t.creationId && !t.toolType) return false;
       return true;
     });
-    safeSetStorage(tasks);
+    safeSetStorage(remaining);
     this.processNextInQueue();
   },
 
