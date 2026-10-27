@@ -5670,22 +5670,30 @@ function renderDashboardHtml(data) {
       <!-- Choix Type d'opération -->
       <div class="space-y-1">
         <label class="text-xs font-bold text-slate-300 block">Opération à effectuer :</label>
-        <div class="grid grid-cols-2 gap-2">
+        <div class="grid grid-cols-3 gap-2">
           <button 
             type="button" 
             id="btn-op-add"
             onclick="setCreditOp('add')" 
-            class="py-2 px-3 rounded-xl border-2 border-amber-500 bg-amber-500/20 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+            class="py-2 px-2.5 rounded-xl border-2 border-emerald-500 bg-emerald-500/20 text-emerald-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
           >
             <span>➕</span> <span>Ajouter (+)</span>
           </button>
           <button 
             type="button" 
+            id="btn-op-deduct"
+            onclick="setCreditOp('deduct')" 
+            class="py-2 px-2.5 rounded-xl border border-slate-700 bg-slate-900 text-slate-400 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer hover:border-slate-600"
+          >
+            <span>➖</span> <span>Retirer (−)</span>
+          </button>
+          <button 
+            type="button" 
             id="btn-op-set"
             onclick="setCreditOp('set')" 
-            class="py-2 px-3 rounded-xl border border-slate-700 bg-slate-900 text-slate-400 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer hover:border-slate-600"
+            class="py-2 px-2.5 rounded-xl border border-slate-700 bg-slate-900 text-slate-400 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer hover:border-slate-600"
           >
-            <span>⚖️</span> <span>Fixer Solde (=)</span>
+            <span>⚖️</span> <span>Fixer (=)</span>
           </button>
         </div>
       </div>
@@ -5694,10 +5702,10 @@ function renderDashboardHtml(data) {
       <div class="space-y-1">
         <label class="text-[11px] font-bold text-slate-400 block">Montants rapides :</label>
         <div class="grid grid-cols-4 gap-2">
-          <button type="button" onclick="setCreditAmount(20)" class="py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-300">+20</button>
-          <button type="button" onclick="setCreditAmount(50)" class="py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-300">+50</button>
-          <button type="button" onclick="setCreditAmount(100)" class="py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-300">+100</button>
-          <button type="button" onclick="setCreditAmount(500)" class="py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-300">+500</button>
+          <button type="button" onclick="setCreditAmount(20)" class="py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-300">20</button>
+          <button type="button" onclick="setCreditAmount(50)" class="py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-300">50</button>
+          <button type="button" onclick="setCreditAmount(100)" class="py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-300">100</button>
+          <button type="button" onclick="setCreditAmount(500)" class="py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-300">500</button>
         </div>
       </div>
 
@@ -13851,13 +13859,43 @@ function renderDashboardHtml(data) {
     function setCreditOp(op) {
       document.getElementById('modal-credit-op').value = op;
       const btnAdd = document.getElementById('btn-op-add');
+      const btnDeduct = document.getElementById('btn-op-deduct');
       const btnSet = document.getElementById('btn-op-set');
+      const btnSubmit = document.getElementById('btn-submit-credit');
+      const reasonInput = document.getElementById('modal-credit-reason');
+
+      const inactive = 'py-2 px-2.5 rounded-xl border border-slate-700 bg-slate-900 text-slate-400 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer hover:border-slate-600';
+      if (btnAdd) btnAdd.className = inactive;
+      if (btnDeduct) btnDeduct.className = inactive;
+      if (btnSet) btnSet.className = inactive;
+
       if (op === 'add') {
-        if (btnAdd) btnAdd.className = 'py-2 px-3 rounded-xl border-2 border-amber-500 bg-amber-500/20 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer';
-        if (btnSet) btnSet.className = 'py-2 px-3 rounded-xl border border-slate-700 bg-slate-900 text-slate-400 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer hover:border-slate-600';
+        if (btnAdd) btnAdd.className = 'py-2 px-2.5 rounded-xl border-2 border-emerald-500 bg-emerald-500/20 text-emerald-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer';
+        if (btnSubmit) {
+          btnSubmit.className = 'px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-500 hover:from-emerald-400 hover:to-teal-400 text-stone-900 font-black text-xs shadow-lg shadow-emerald-500/30 flex items-center gap-1.5 transition cursor-pointer active:scale-95';
+          btnSubmit.innerHTML = '<span>➕</span><span>Valider et Ajouter dans D1</span>';
+        }
+        if (reasonInput && (reasonInput.value === 'Déduction manuelle par l\'administrateur' || reasonInput.value === 'Ajustement fixe par l\'administrateur')) {
+          reasonInput.value = 'Recharge manuelle par l\'administrateur';
+        }
+      } else if (op === 'deduct') {
+        if (btnDeduct) btnDeduct.className = 'py-2 px-2.5 rounded-xl border-2 border-rose-500 bg-rose-500/20 text-rose-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer';
+        if (btnSubmit) {
+          btnSubmit.className = 'px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 via-red-500 to-rose-500 hover:from-rose-400 hover:to-red-400 text-white font-black text-xs shadow-lg shadow-rose-500/30 flex items-center gap-1.5 transition cursor-pointer active:scale-95';
+          btnSubmit.innerHTML = '<span>➖</span><span>Valider et Retirer dans D1</span>';
+        }
+        if (reasonInput && (reasonInput.value === 'Recharge manuelle par l\'administrateur' || reasonInput.value === 'Ajustement fixe par l\'administrateur')) {
+          reasonInput.value = 'Déduction manuelle par l\'administrateur';
+        }
       } else {
-        if (btnSet) btnSet.className = 'py-2 px-3 rounded-xl border-2 border-amber-500 bg-amber-500/20 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer';
-        if (btnAdd) btnAdd.className = 'py-2 px-3 rounded-xl border border-slate-700 bg-slate-900 text-slate-400 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer hover:border-slate-600';
+        if (btnSet) btnSet.className = 'py-2 px-2.5 rounded-xl border-2 border-amber-500 bg-amber-500/20 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer';
+        if (btnSubmit) {
+          btnSubmit.className = 'px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 hover:from-amber-400 hover:to-orange-400 text-stone-900 font-black text-xs shadow-lg shadow-amber-500/30 flex items-center gap-1.5 transition cursor-pointer active:scale-95';
+          btnSubmit.innerHTML = '<span>⚖️</span><span>Valider et Fixer dans D1</span>';
+        }
+        if (reasonInput && (reasonInput.value === 'Recharge manuelle par l\'administrateur' || reasonInput.value === 'Déduction manuelle par l\'administrateur')) {
+          reasonInput.value = 'Ajustement fixe par l\'administrateur';
+        }
       }
     }
     window.setCreditOp = setCreditOp;
@@ -13902,7 +13940,11 @@ function renderDashboardHtml(data) {
         });
         const data = await res.json();
         if (data.success) {
-          showToast('✓ ' + (op === 'add' ? ('+' + amount + ' crédits ajoutés') : ('Solde fixé à ' + amount + ' crédits')) + ' !');
+          let msg = '';
+          if (op === 'add') msg = '+' + amount + ' crédits ajoutés';
+          else if (op === 'deduct') msg = '-' + amount + ' crédits retirés';
+          else msg = 'Solde fixé à ' + amount + ' crédits';
+          showToast('✓ ' + msg + ' !');
           closeCreditModal();
           
           const found = (allUsers || []).find(u => (u.user?.id || u.id) === userId);
@@ -14017,25 +14059,27 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
       UPDATE robot_rouge_global_config SET welcome_credits = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'default'
     `, [welcomeCredits]);
 
-    // Mise à jour automatique de tous les portefeuilles étudiants dans D1
-    await safeRun(db, `
-      UPDATE user_ai_credits 
-      SET credits_balance = ? + total_credits_purchased,
-          remaining_credits = ? + total_credits_purchased,
-          total_credits = ? + total_credits_purchased,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE total_credits_consumed = 0 OR total_tokens_consumed = 0
-    `, [welcomeCredits, welcomeCredits, welcomeCredits]);
-
-    if (welcomeCredits > 0) {
+    // Mise à jour automatique de tous les portefeuilles étudiants dans D1 (seulement si demandé explicitement)
+    if (body.apply_welcome_to_all) {
       await safeRun(db, `
         UPDATE user_ai_credits 
-        SET credits_balance = MAX(credits_balance, ? + total_credits_purchased - total_credits_consumed),
-            remaining_credits = MAX(remaining_credits, ? + total_credits_purchased - total_credits_consumed),
+        SET credits_balance = ? + total_credits_purchased,
+            remaining_credits = ? + total_credits_purchased,
             total_credits = ? + total_credits_purchased,
             updated_at = CURRENT_TIMESTAMP
-        WHERE total_credits_consumed < ?
-      `, [welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits]);
+        WHERE total_credits_consumed = 0 OR total_tokens_consumed = 0
+      `, [welcomeCredits, welcomeCredits, welcomeCredits]);
+
+      if (welcomeCredits > 0) {
+        await safeRun(db, `
+          UPDATE user_ai_credits 
+          SET credits_balance = MAX(credits_balance, ? + total_credits_purchased - total_credits_consumed),
+              remaining_credits = MAX(remaining_credits, ? + total_credits_purchased - total_credits_consumed),
+              total_credits = ? + total_credits_purchased,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE total_credits_consumed < ?
+        `, [welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits]);
+      }
     }
 
     try {
@@ -14099,42 +14143,6 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
         userCredits.total_credits_purchased = verifiedPurchased;
       }
 
-      const consumed = Number(userCredits.total_credits_consumed || 0);
-      const minExpectedBalance = Math.max(0, +((welcomeCredits + verifiedPurchased) - consumed).toFixed(2));
-
-      if (Number(userCredits.credits_balance || 0) < minExpectedBalance && consumed < welcomeCredits) {
-        await safeRun(db, "UPDATE user_ai_credits SET credits_balance = ?, remaining_credits = ?, total_credits = ? WHERE user_id = ?", [minExpectedBalance, minExpectedBalance, welcomeCredits + verifiedPurchased, targetUserId]);
-        userCredits.credits_balance = minExpectedBalance;
-      }
-    }
-
-    // GESTION DU RENOUVELLEMENT QUOTIDIEN (+20 / jour) :
-    // RÈGLE COMMANDE STRICTE : Le cadeau de bienvenue DOIT OBLIGATOIREMENT ÊTRE TOTALEMENT ÉPUISÉ D'ABORD
-    // (Consommation totale >= welcomeCredits ET Solde cadeau restant <= 0).
-    // Le solde ne doit JAMAIS augmenter tout seul tant que l'élève utilise son cadeau !
-    if (userCredits && isDailyActive && dailyFreeCredits > 0) {
-      const today = new Date().toISOString().slice(0, 10);
-      const totalConsumed = Number(userCredits.total_credits_consumed || 0);
-      const totalPurchased = Number(userCredits.total_credits_purchased || 0);
-      const currentBal = Number(userCredits.credits_balance || 0);
-
-      // Part gratuite restante dans le solde actuel :
-      const freeGiftRemaining = Math.max(0, +(currentBal - totalPurchased).toFixed(2));
-
-      // Le cadeau de bienvenue initial est épuisé SEULEMENT si la consommation totale a atteint la dotation de départ
-      const isWelcomeGiftExhausted = totalConsumed >= welcomeCredits;
-
-      // La recharge quotidienne ne s'ajoute QUE si le cadeau de départ est épuisé ET qu'il ne reste aucun crédit gratuit
-      if (isWelcomeGiftExhausted && freeGiftRemaining <= 0 && userCredits.last_daily_grant_date !== today) {
-        const updatedBal = +(currentBal + dailyFreeCredits).toFixed(2);
-        await safeRun(db, `
-          UPDATE user_ai_credits 
-          SET credits_balance = ?, last_daily_grant_date = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE user_id = ?
-        `, [updatedBal, today, targetUserId]);
-        userCredits.credits_balance = updatedBal;
-        userCredits.last_daily_grant_date = today;
-      }
     }
 
     return new Response(JSON.stringify({
@@ -14262,6 +14270,10 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
     if (existing) {
       if (operation === 'add') {
         newBalance = +(Number(existing.credits_balance || 0) + amount).toFixed(2);
+      } else if (operation === 'deduct' || operation === 'remove') {
+        newBalance = Math.max(0, +(Number(existing.credits_balance || 0) - amount).toFixed(2));
+      } else {
+        newBalance = amount;
       }
       const newPurchased = operation === 'reset' ? 0 : (isPurchaseGrant ? +(Number(existing.total_credits_purchased || 0) + purchasedDelta).toFixed(2) : Number(existing.total_credits_purchased || 0));
 
@@ -14270,18 +14282,19 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
         SET credits_balance = ?,
             total_credits_purchased = ?,
             remaining_credits = ?,
+            total_credits = CASE WHEN ? > total_credits THEN ? ELSE total_credits END,
             updated_at = CURRENT_TIMESTAMP
         WHERE user_id = ?
-      `, [newBalance, newPurchased, newBalance, userId]);
+      `, [newBalance, newPurchased, newBalance, newBalance, newBalance, userId]);
 
       if (operation === 'reset') {
         await safeRun(db, "DELETE FROM user_ai_purchases WHERE user_id = ? AND payment_method = 'admin_grant'", [userId]);
       }
     } else {
       await safeRun(db, `
-        INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, remaining_credits)
-        VALUES (?, ?, ?, ?)
-      `, [userId, newBalance, purchasedDelta, newBalance]);
+        INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, remaining_credits, total_credits)
+        VALUES (?, ?, ?, ?, ?)
+      `, [userId, newBalance, purchasedDelta, newBalance, newBalance]);
     }
 
     if (isPurchaseGrant && amount > 0) {
@@ -14292,14 +14305,24 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
       `, [purchaseId, userId, amount, reason]);
     }
 
+    let actionType = 'admin_credit_set';
+    let logDeducted = 0;
+    if (operation === 'add') {
+      actionType = 'admin_credit_add';
+      logDeducted = -amount;
+    } else if (operation === 'deduct' || operation === 'remove') {
+      actionType = 'admin_credit_deduct';
+      logDeducted = amount;
+    }
+
     await safeRun(db, `
       INSERT INTO ai_usage_logs (id, user_id, action_type, prompt_tokens, completion_tokens, total_tokens, credits_deducted, balance_after, model_used, created_at)
       VALUES (?, ?, ?, 0, 0, 0, ?, ?, ?, CURRENT_TIMESTAMP)
     `, [
       'ADMIN_' + Math.random().toString(36).substring(2, 9),
       userId,
-      operation === 'add' ? 'admin_credit_add' : 'admin_credit_set',
-      -amount,
+      actionType,
+      logDeducted,
       newBalance,
       reason
     ]);

@@ -13644,31 +13644,6 @@ Lien vers le produit : ${productShareUrl}`;
                 userCredits.total_credits_purchased = verifiedPurchased;
               }
 
-              const consumed = Number(userCredits.total_credits_consumed || 0);
-              const minExpectedBalance = Math.max(0, +((welcomeCredits + verifiedPurchased) - consumed).toFixed(2));
-              if (Number(userCredits.credits_balance || 0) < minExpectedBalance && consumed < welcomeCredits) {
-                await env.DB.prepare("UPDATE user_ai_credits SET credits_balance = ?, remaining_credits = ?, total_credits = ? WHERE user_id = ?").bind(minExpectedBalance, minExpectedBalance, welcomeCredits + verifiedPurchased, targetUserId).run().catch(() => {});
-                userCredits.credits_balance = minExpectedBalance;
-              }
-            }
-
-            // GESTION DU RENOUVELLEMENT QUOTIDIEN (+20 / jour) :
-            // RÈGLE COMMANDE STRICTE : Le cadeau de bienvenue DOIT OBLIGATOIREMENT ÊTRE TOTALEMENT ÉPUISÉ D'ABORD
-            if (userCredits && isDailyActive && dailyFreeCredits > 0) {
-              const today = new Date().toISOString().slice(0, 10);
-              const totalConsumed = Number(userCredits.total_credits_consumed || 0);
-              const totalPurchased = Number(userCredits.total_credits_purchased || 0);
-              const currentBal = Number(userCredits.credits_balance || 0);
-              const freeGiftRemaining = Math.max(0, +(currentBal - totalPurchased).toFixed(2));
-              const isWelcomeGiftExhausted = totalConsumed >= welcomeCredits;
-              if (isWelcomeGiftExhausted && freeGiftRemaining <= 0 && userCredits.last_daily_grant_date !== today) {
-                const updatedBal = +(currentBal + dailyFreeCredits).toFixed(2);
-                await env.DB.prepare(`
-                  UPDATE user_ai_credits SET credits_balance = ?, last_daily_grant_date = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?
-                `).bind(updatedBal, today, targetUserId).run().catch(() => {});
-                userCredits.credits_balance = updatedBal;
-                userCredits.last_daily_grant_date = today;
-              }
             }
           } catch (e) {}
         }

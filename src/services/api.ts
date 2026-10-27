@@ -3329,7 +3329,7 @@ export async function getAiAdminUsers(): Promise<{ success: boolean; users: AiUs
 export async function adjustUserAiCredits(
   userId: string,
   amount: number,
-  action: 'add' | 'set' = 'add',
+  action: 'add' | 'deduct' | 'remove' | 'set' | 'reset' = 'add',
   reason: string = 'Ajustement administrateur'
 ): Promise<{ success: boolean; message?: string; data?: any; error?: string }> {
   const candidateUrls = [
