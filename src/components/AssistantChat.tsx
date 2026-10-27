@@ -3523,15 +3523,37 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     const rawResponseText = (aiResult as any).raw_response || (aiResult as any).rawResponse || aiResult.response || "";
     let finalContent: any = aiResult.creation_data;
 
+    // Extraction JSON robuste multi-tentatives
     if (!finalContent) {
-      const jsonMatch = rawResponseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || rawResponseText.match(/(\{[\s\S]*\})/);
-      const candidate = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : rawResponseText;
-      const parsed = safeJsonParse(candidate);
-      if (parsed && typeof parsed === 'object') {
-        finalContent = parsed.creation_data || (parsed.questions || parsed.affirmations || parsed.cards || parsed.root || parsed.branches || parsed.overview || parsed.exercises || parsed.complete_exam ? parsed : null);
+      // Tentative 1 : bloc ```json ... ``` ou ```...```
+      const codeBlockMatch = rawResponseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (codeBlockMatch) {
+        const parsedBlock = safeJsonParse(codeBlockMatch[1]);
+        if (parsedBlock && typeof parsedBlock === 'object') {
+          finalContent = parsedBlock.creation_data || (parsedBlock.questions || parsedBlock.affirmations || parsedBlock.cards || parsedBlock.root || parsedBlock.branches || parsedBlock.overview || parsedBlock.exercises || parsedBlock.complete_exam || parsedBlock.written_exercise ? parsedBlock : null);
+        }
       }
     }
-
+    if (!finalContent) {
+      // Tentative 2 : premier grand objet JSON dans le texte (glouton)
+      const allBraces = rawResponseText.match(/\{[\s\S]*\}/);
+      if (allBraces) {
+        const parsedBraces = safeJsonParse(allBraces[0]);
+        if (parsedBraces && typeof parsedBraces === 'object') {
+          finalContent = parsedBraces.creation_data || (parsedBraces.questions || parsedBraces.affirmations || parsedBraces.cards || parsedBraces.root || parsedBraces.branches || parsedBraces.overview || parsedBraces.exercises || parsedBraces.complete_exam || parsedBraces.written_exercise ? parsedBraces : null) || (Object.keys(parsedBraces).length > 0 ? parsedBraces : null);
+        }
+      }
+    }
+    if (!finalContent) {
+      // Tentative 3 : tableau JSON brut (ex: [{...}, {...}])
+      const arrayMatch = rawResponseText.match(/\[[\s\S]*\]/);
+      if (arrayMatch) {
+        try {
+          const parsedArr = JSON.parse(arrayMatch[0]);
+          if (Array.isArray(parsedArr) && parsedArr.length > 0) finalContent = parsedArr;
+        } catch {}
+      }
+    }
     const normType = normalizeCreationType(params.explicitToolType);
     if (normType === 'vrai-ou-faux' || normType === 'vrai-ou-faux-test') {
       const rawAffs = Array.isArray(finalContent)
@@ -3660,6 +3682,27 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
           finalContent = built.content;
         }
       } catch (_fallbackErr) {}
+    }
+
+    // Filet de dernier recours : Si finalContent est toujours null/vide apres tous les essais,
+    // construire un contenu minimal valide pour eviter que la creation reste bloquee en 'generating'.
+    if (!finalContent || (typeof finalContent === 'object' && !Array.isArray(finalContent) && Object.keys(finalContent).length === 0)) {
+      console.warn('[executeCreationApiCall] finalContent null pour', normType, '- construction contenu minimal');
+      const rawPreview = rawResponseText.slice(0, 800) || 'Contenu non disponible';
+      switch (normType) {
+        case 'questionnaire': case 'questionnaire-test':
+          finalContent = { questions: [] }; break;
+        case 'vrai-ou-faux': case 'vrai-ou-faux-test':
+          finalContent = { affirmations: [] }; break;
+        case 'carte-memoire':
+          finalContent = { cards: [] }; break;
+        case 'carte-mentale': case 'carte-mentale-2':
+          finalContent = { root: { id: 'root-1', label: params.mainDocName || params.creationTitle, children: [] } }; break;
+        case 'resume':
+          finalContent = { title: params.creationTitle, overview: rawPreview, key_definitions: [], sections: [], formulas: [], traps_and_tips: [], markdown: rawPreview }; break;
+        default:
+          finalContent = { title: params.creationTitle, content: rawPreview };
+      }
     }
 
     const newCreation: AiCreation = {
