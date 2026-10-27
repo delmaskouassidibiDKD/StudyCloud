@@ -3929,6 +3929,9 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
         } else if (isAudioItem(resolvedActiveItem)) {
           activeAudioInfo = await extractAudioContentFromItem(resolvedActiveItem);
         } else if (isDocumentItem(resolvedActiveItem)) {
+          // Marquage _needsCanvas : rendu Canvas PDF uniquement si le prompt contient des termes visuels
+          const visualTerms = /schéma|schema|figure|graphe|graphique|circuit|dessin|tableau|image|diagramme|courbe|illustration|diagram/i;
+          (resolvedActiveItem as any)._needsCanvas = visualTerms.test(userText);
           activeDocumentInfo = await extractDocumentDetails(resolvedActiveItem);
         } else {
           activeImageInfo = await extractImageBase64FromItem(resolvedActiveItem);
@@ -3943,6 +3946,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
             const foundAud = await extractAudioContentFromItem(res);
             if (foundAud) activeAudioInfo = foundAud;
           } else if (!activeDocumentInfo && isDocumentItem(res)) {
+            const visualTerms2 = /schéma|schema|figure|graphe|graphique|circuit|dessin|tableau|image|diagramme|courbe|illustration|diagram/i;
+            (res as any)._needsCanvas = visualTerms2.test(userText);
             const foundDoc = await extractDocumentDetails(res);
             if (foundDoc) activeDocumentInfo = foundDoc;
           } else if (!activeImageInfo) {
@@ -4305,9 +4310,10 @@ CONSIGNES STRICTES POUR TA RÉPONSE DE CHAT :
           attachedFileContent: resolvedAttachedText,
           imageBase64: activeImageInfo?.base64,
           mimeType: activeImageInfo?.mimeType,
-          documentBase64: activeDocumentInfo?.documentBase64,
-          documentMimeType: activeDocumentInfo?.documentMimeType,
-          documentImages: activeDocumentInfo?.documentImages,
+          // Optimisation perf : ne pas ré-envoyer le PDF base64 brut si déjà analysé (économise ~500ms-2s)
+          documentBase64: isMediaAlreadyAnalyzed ? undefined : activeDocumentInfo?.documentBase64,
+          documentMimeType: isMediaAlreadyAnalyzed ? undefined : activeDocumentInfo?.documentMimeType,
+          documentImages: isMediaAlreadyAnalyzed ? undefined : activeDocumentInfo?.documentImages,
           perceptionReport: existingPerception,
           signal: abortSignal,
           abortSignal,

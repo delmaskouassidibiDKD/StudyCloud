@@ -25,6 +25,8 @@ export interface GenerateGeminiOptions {
   videoFrames?: Array<{ base64: string; mimeType?: string; timestamp?: number }>;
   videoMimeType?: string;
   mediaType?: string;
+  /** Callback optionnel pour streaming token par token (affichage immédiat) */
+  onChunk?: (chunk: string) => void;
 }
 
 function cleanTechnicalMediaJargon(text: string): string {
@@ -231,7 +233,25 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
     config.responseMimeType = options.responseMimeType;
   }
 
-  // 4. Appel du modèle via le SDK officiel @google/genai
+  // 4. Appel du modèle via le SDK officiel @google/genai (streaming pour réponse immédiate)
+  // Le streaming permet d'afficher les premiers mots en < 500ms au lieu d'attendre la réponse complète
+  if (options.onChunk && typeof options.onChunk === 'function') {
+    const stream = await ai.models.generateContentStream({
+      model: modelName,
+      contents: sanitizedContents,
+      config,
+    });
+    let fullText = '';
+    for await (const chunk of stream) {
+      const chunkText = chunk.text || '';
+      if (chunkText) {
+        fullText += chunkText;
+        options.onChunk(chunkText);
+      }
+    }
+    return cleanTechnicalMediaJargon(fullText);
+  }
+
   const response = await ai.models.generateContent({
     model: modelName,
     contents: sanitizedContents,

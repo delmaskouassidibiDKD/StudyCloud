@@ -423,31 +423,34 @@ export async function extractDocumentText(item: any): Promise<string> {
       const pdf = await loadingTask.promise;
       let fullText = '';
       
-      // Extraction jusqu'à 100 pages pour couvrir les polycopiés et cours entiers
-      const pagesToExtract = Math.min(pdf.numPages, 100);
-      for (let i = 1; i <= pagesToExtract; i++) {
-        try {
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          const pageText = (content.items || [])
-            .map((it: any) => it.str)
-            .filter(Boolean)
-            .join(' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-
-          if (pageText) {
-            fullText += `\n[--- Page ${i} / ${pdf.numPages} ---]\n${pageText}\n`;
+      // Extraction parallèle jusqu'à 20 pages (Promise.all = 5-10x plus rapide)
+      const pagesToExtract = Math.min(pdf.numPages, 20);
+      const pageResults = await Promise.all(
+        Array.from({ length: pagesToExtract }, async (_, idx) => {
+          const i = idx + 1;
+          try {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            const pageText = (content.items || [])
+              .map((it: any) => it.str)
+              .filter(Boolean)
+              .join(' ')
+              .replace(/\s+/g, ' ')
+              .trim();
+            return pageText ? `\n[--- Page ${i} / ${pdf.numPages} ---]\n${pageText}\n` : '';
+          } catch (pageErr) {
+            console.warn(`[Extractor] Erreur extraction page ${i}:`, pageErr);
+            return '';
           }
-        } catch (pageErr) {
-          console.warn(`[Extractor] Erreur extraction page ${i}:`, pageErr);
-        }
-      }
+        })
+      );
+      fullText = pageResults.join('');
 
-      // 1. Rendu visuel Canvas haute résolution des premières pages (jusqu'à 3 pages)
-      // Permet aux moteurs multimodaux (Llama 3.2 Vision, Gemini Flash) d'observer directement les schémas, circuits, équations et figures
+      // 1. Rendu visuel Canvas haute résolution (uniquement si hint visuel détecté dans le prompt)
+      // Activé uniquement si le prompt contient des termes visuels (schéma, figure, image, dessin, tableau, graphe, circuit)
+      const visualHint = (item as any)._needsCanvas === true;
       const docImages: Array<{ base64: string; mimeType: string; name: string }> = [];
-      if (typeof document !== 'undefined') {
+      if (visualHint && typeof document !== 'undefined') {
         const pagesToRender = Math.min(pdf.numPages, 3);
         for (let pNum = 1; pNum <= pagesToRender; pNum++) {
           try {
