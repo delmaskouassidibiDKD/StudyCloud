@@ -13875,8 +13875,8 @@ function renderDashboardHtml(data) {
           btnSubmit.className = 'px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-500 hover:from-emerald-400 hover:to-teal-400 text-stone-900 font-black text-xs shadow-lg shadow-emerald-500/30 flex items-center gap-1.5 transition cursor-pointer active:scale-95';
           btnSubmit.innerHTML = '<span>➕</span><span>Valider et Ajouter dans D1</span>';
         }
-        if (reasonInput && (reasonInput.value === 'Déduction manuelle par l\'administrateur' || reasonInput.value === 'Ajustement fixe par l\'administrateur')) {
-          reasonInput.value = 'Recharge manuelle par l\'administrateur';
+        if (reasonInput && (reasonInput.value === "Déduction manuelle par l'administrateur" || reasonInput.value === "Ajustement fixe par l'administrateur")) {
+          reasonInput.value = "Recharge manuelle par l'administrateur";
         }
       } else if (op === 'deduct') {
         if (btnDeduct) btnDeduct.className = 'py-2 px-2.5 rounded-xl border-2 border-rose-500 bg-rose-500/20 text-rose-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer';
@@ -13884,8 +13884,8 @@ function renderDashboardHtml(data) {
           btnSubmit.className = 'px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 via-red-500 to-rose-500 hover:from-rose-400 hover:to-red-400 text-white font-black text-xs shadow-lg shadow-rose-500/30 flex items-center gap-1.5 transition cursor-pointer active:scale-95';
           btnSubmit.innerHTML = '<span>➖</span><span>Valider et Retirer dans D1</span>';
         }
-        if (reasonInput && (reasonInput.value === 'Recharge manuelle par l\'administrateur' || reasonInput.value === 'Ajustement fixe par l\'administrateur')) {
-          reasonInput.value = 'Déduction manuelle par l\'administrateur';
+        if (reasonInput && (reasonInput.value === "Recharge manuelle par l'administrateur" || reasonInput.value === "Ajustement fixe par l'administrateur")) {
+          reasonInput.value = "Déduction manuelle par l'administrateur";
         }
       } else {
         if (btnSet) btnSet.className = 'py-2 px-2.5 rounded-xl border-2 border-amber-500 bg-amber-500/20 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer';
@@ -13893,8 +13893,8 @@ function renderDashboardHtml(data) {
           btnSubmit.className = 'px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 hover:from-amber-400 hover:to-orange-400 text-stone-900 font-black text-xs shadow-lg shadow-amber-500/30 flex items-center gap-1.5 transition cursor-pointer active:scale-95';
           btnSubmit.innerHTML = '<span>⚖️</span><span>Valider et Fixer dans D1</span>';
         }
-        if (reasonInput && (reasonInput.value === 'Recharge manuelle par l\'administrateur' || reasonInput.value === 'Déduction manuelle par l\'administrateur')) {
-          reasonInput.value = 'Ajustement fixe par l\'administrateur';
+        if (reasonInput && (reasonInput.value === "Recharge manuelle par l'administrateur" || reasonInput.value === "Déduction manuelle par l'administrateur")) {
+          reasonInput.value = "Ajustement fixe par l'administrateur";
         }
       }
     }
