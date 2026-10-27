@@ -439,6 +439,10 @@ async function ensureStorageTables(db) {
     try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN is_blocked INTEGER DEFAULT 0").run(); } catch (e) {}
     try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN last_daily_grant_date TEXT DEFAULT ''").run(); } catch (e) {}
     try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN last_usage_at TEXT").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN gift_remaining REAL DEFAULT NULL").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN gift_initial REAL DEFAULT 50.0").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN gift_type TEXT DEFAULT 'welcome'").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN purchased_remaining REAL DEFAULT 0.0").run(); } catch (e) {}
 
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS ai_usage_logs (
@@ -14114,15 +14118,20 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
     };
     const welcomeCredits = cfg.welcome_credits !== undefined ? Number(cfg.welcome_credits) : 50.0;
     const dailyFreeCredits = cfg.daily_free_credits !== undefined ? Number(cfg.daily_free_credits) : 0.0;
-    const isDailyActive = Number(cfg.is_daily_renewal_active) === 1;
+    const isDailyActive = Number(cfg.is_daily_renewal_active) === 1 && dailyFreeCredits > 0;
+    const todayStr = new Date().toISOString().slice(0, 10);
 
     let userCredits = await safeFirst(db, "SELECT * FROM user_ai_credits WHERE user_id = ?", [targetUserId]);
 
     if (!userCredits) {
       await safeRun(db, `
-        INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed, plan_tier, remaining_credits, total_credits, used_credits)
-        VALUES (?, ?, 0, 0, 0, 'free', ?, ?, 0)
-      `, [targetUserId, welcomeCredits, welcomeCredits, welcomeCredits]);
+        INSERT INTO user_ai_credits (
+          user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed,
+          plan_tier, remaining_credits, total_credits, used_credits,
+          gift_remaining, gift_initial, gift_type, purchased_remaining, last_daily_grant_date
+        )
+        VALUES (?, ?, 0, 0, 0, 'free', ?, ?, 0, ?, ?, 'welcome', 0.0, ?)
+      `, [targetUserId, welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, todayStr]);
       userCredits = {
         user_id: targetUserId,
         credits_balance: welcomeCredits,
@@ -14132,6 +14141,11 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
         total_credits_purchased: 0,
         total_tokens_consumed: 0,
         total_credits_consumed: 0,
+        gift_remaining: welcomeCredits,
+        gift_initial: welcomeCredits,
+        gift_type: 'welcome',
+        purchased_remaining: 0,
+        last_daily_grant_date: todayStr,
         plan_tier: 'free'
       };
     } else {
@@ -14139,20 +14153,94 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
       const verifiedPurchased = Math.max(Number(userCredits.total_credits_purchased || 0), Number(purSumRow?.total || 0));
 
       if (verifiedPurchased > Number(userCredits.total_credits_purchased || 0)) {
-        await safeRun(db, "UPDATE user_ai_credits SET total_credits_purchased = ? WHERE user_id = ?", [verifiedPurchased, targetUserId]);
+        const delta = verifiedPurchased - Number(userCredits.total_credits_purchased || 0);
+        userCredits.purchased_remaining = +(Number(userCredits.purchased_remaining || 0) + delta).toFixed(2);
         userCredits.total_credits_purchased = verifiedPurchased;
       }
 
+      const currentBal = Number(userCredits.credits_balance !== undefined ? userCredits.credits_balance : welcomeCredits);
+      const totalPurchased = Number(userCredits.total_credits_purchased || 0);
+
+      // Rétrocompatibilité : initialisation du cadeau et des crédits achetés si non définis
+      if (userCredits.gift_remaining === null || userCredits.gift_remaining === undefined) {
+        if (totalPurchased === 0) {
+          userCredits.purchased_remaining = 0;
+          userCredits.gift_remaining = Math.max(0, currentBal);
+        } else {
+          if (currentBal >= totalPurchased) {
+            userCredits.purchased_remaining = totalPurchased;
+            userCredits.gift_remaining = Math.max(0, +(currentBal - totalPurchased).toFixed(2));
+          } else {
+            userCredits.purchased_remaining = Math.max(0, currentBal);
+            userCredits.gift_remaining = 0;
+          }
+        }
+        userCredits.gift_initial = welcomeCredits;
+        userCredits.gift_type = 'welcome';
+      }
+
+      // Relais par le Cadeau du jour : remplace le cadeau épuisé dès qu'il est activé
+      if (isDailyActive && userCredits.last_daily_grant_date !== todayStr) {
+        const currentGiftRem = Number(userCredits.gift_remaining || 0);
+        if (currentGiftRem <= 0 || userCredits.gift_type === 'daily') {
+          userCredits.gift_remaining = dailyFreeCredits;
+          userCredits.gift_initial = dailyFreeCredits;
+          userCredits.gift_type = 'daily';
+          userCredits.last_daily_grant_date = todayStr;
+        }
+      }
+
+      const finalGiftRem = Math.max(0, Number(userCredits.gift_remaining || 0));
+      const finalPaidRem = Math.max(0, Number(userCredits.purchased_remaining || 0));
+      const calculatedBalance = +(finalGiftRem + finalPaidRem).toFixed(2);
+      userCredits.credits_balance = calculatedBalance;
+      userCredits.remaining_credits = calculatedBalance;
+
+      await safeRun(db, `
+        UPDATE user_ai_credits
+        SET credits_balance = ?,
+            remaining_credits = ?,
+            gift_remaining = ?,
+            gift_initial = ?,
+            gift_type = ?,
+            purchased_remaining = ?,
+            total_credits_purchased = ?,
+            last_daily_grant_date = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
+      `, [
+        calculatedBalance,
+        calculatedBalance,
+        finalGiftRem,
+        Number(userCredits.gift_initial || welcomeCredits),
+        userCredits.gift_type || 'welcome',
+        finalPaidRem,
+        Number(userCredits.total_credits_purchased || 0),
+        userCredits.last_daily_grant_date || todayStr,
+        targetUserId
+      ]);
     }
+
+    const giftRem = Math.max(0, Number(userCredits.gift_remaining || 0));
+    const giftInit = Number(userCredits.gift_initial || welcomeCredits);
+    const giftType = userCredits.gift_type || 'welcome';
+    const giftTitle = giftType === 'daily' ? 'Cadeau du jour' : 'Cadeau de base';
+    const paidRem = Math.max(0, Number(userCredits.purchased_remaining || 0));
+    const totalPurchased = Number(userCredits.total_credits_purchased || 0);
 
     return new Response(JSON.stringify({
       success: true,
       credits: {
         balance: Number(userCredits.credits_balance || 0),
+        gift_remaining: giftRem,
+        gift_initial: giftInit,
+        gift_type: giftType,
+        gift_title: giftTitle,
+        purchased_remaining: paidRem,
+        totalPurchased: totalPurchased,
         tokensUsed: Number(userCredits.total_tokens_consumed || 0),
-        totalPurchased: Number(userCredits.total_credits_purchased || 0),
         totalConsumed: Number(userCredits.total_credits_consumed || 0),
-        plan: userCredits.total_credits_purchased > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit',
+        plan: totalPurchased > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit',
         daily_free_credits: dailyFreeCredits,
         tokens_per_credit: Number(cfg.tokens_per_credit || 1000),
         welcome_credits: welcomeCredits,
@@ -14173,35 +14261,136 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
     const actionType = body.actionType || body.action_type || 'chat_deduction';
     const reason = body.reason || 'Consommation IA';
 
-    const cfg = await safeFirst(db, "SELECT * FROM ai_billing_config WHERE id = 'default'") || { tokens_per_credit: 1000, welcome_credits: 50.0 };
+    const cfg = await safeFirst(db, "SELECT * FROM ai_billing_config WHERE id = 'default'") || {
+      tokens_per_credit: 1000,
+      welcome_credits: 50.0,
+      daily_free_credits: 0.0,
+      is_daily_renewal_active: 0
+    };
     const tokensPerCredit = Math.max(1, Number(cfg.tokens_per_credit || 1000));
-    const rawCredits = tokens / tokensPerCredit;
+    const welcomeCredits = cfg.welcome_credits !== undefined ? Number(cfg.welcome_credits) : 50.0;
+    const dailyFreeCredits = cfg.daily_free_credits !== undefined ? Number(cfg.daily_free_credits) : 0.0;
+    const isDailyActive = Number(cfg.is_daily_renewal_active) === 1 && dailyFreeCredits > 0;
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    const rawCredits = body.explicitCredits || body.explicit_credits || (tokens / tokensPerCredit);
     const creditsDeducted = Math.max(0.01, +(rawCredits).toFixed(2));
 
     let userCredits = await safeFirst(db, "SELECT * FROM user_ai_credits WHERE user_id = ?", [targetUserId]);
     if (!userCredits) {
-      const welcomeCredits = cfg.welcome_credits !== undefined ? Number(cfg.welcome_credits) : 50.0;
       await safeRun(db, `
-        INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed, plan_tier)
-        VALUES (?, ?, 0, 0, 0, 'free')
-      `, [targetUserId, welcomeCredits]);
-      userCredits = { user_id: targetUserId, credits_balance: welcomeCredits, total_tokens_consumed: 0, total_credits_consumed: 0, total_credits_purchased: 0 };
+        INSERT INTO user_ai_credits (
+          user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed,
+          plan_tier, remaining_credits, total_credits, used_credits,
+          gift_remaining, gift_initial, gift_type, purchased_remaining, last_daily_grant_date
+        )
+        VALUES (?, ?, 0, 0, 0, 'free', ?, ?, 0, ?, ?, 'welcome', 0.0, ?)
+      `, [targetUserId, welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, todayStr]);
+      userCredits = {
+        user_id: targetUserId,
+        credits_balance: welcomeCredits,
+        gift_remaining: welcomeCredits,
+        gift_initial: welcomeCredits,
+        gift_type: 'welcome',
+        purchased_remaining: 0,
+        total_tokens_consumed: 0,
+        total_credits_consumed: 0,
+        total_credits_purchased: 0,
+        last_daily_grant_date: todayStr
+      };
+    } else {
+      const currentBal = Number(userCredits.credits_balance !== undefined ? userCredits.credits_balance : welcomeCredits);
+      const totalPurchased = Number(userCredits.total_credits_purchased || 0);
+
+      if (userCredits.gift_remaining === null || userCredits.gift_remaining === undefined) {
+        if (totalPurchased === 0) {
+          userCredits.purchased_remaining = 0;
+          userCredits.gift_remaining = Math.max(0, currentBal);
+        } else {
+          if (currentBal >= totalPurchased) {
+            userCredits.purchased_remaining = totalPurchased;
+            userCredits.gift_remaining = Math.max(0, +(currentBal - totalPurchased).toFixed(2));
+          } else {
+            userCredits.purchased_remaining = Math.max(0, currentBal);
+            userCredits.gift_remaining = 0;
+          }
+        }
+        userCredits.gift_initial = welcomeCredits;
+        userCredits.gift_type = 'welcome';
+      }
+
+      if (isDailyActive && userCredits.last_daily_grant_date !== todayStr) {
+        const currentGift = Number(userCredits.gift_remaining || 0);
+        if (currentGift <= 0 || userCredits.gift_type === 'daily') {
+          userCredits.gift_remaining = dailyFreeCredits;
+          userCredits.gift_initial = dailyFreeCredits;
+          userCredits.gift_type = 'daily';
+          userCredits.last_daily_grant_date = todayStr;
+        }
+      }
     }
 
-    const currentBal = Number(userCredits.credits_balance || 0);
-    const newBalance = Math.max(0, +(currentBal - creditsDeducted).toFixed(2));
+    // =========================================================================
+    // RÈGLE FIFO STRICTE DANS LA BASE DE DONNÉES D1 :
+    // 1. Le cadeau (bienvenue ou cadeau du jour) diminue jusqu'à atteindre 0 !
+    // 2. Les crédits achetés restent 100% intacts tant que le cadeau > 0.
+    // 3. Lorsque le cadeau tombe à 0, les crédits achetés commencent à diminuer.
+    // 4. Le solde total disponible = Cadeau restant + Crédits achetés restants.
+    // =========================================================================
+    let giftRem = Math.max(0, Number(userCredits.gift_remaining || 0));
+    let paidRem = Math.max(0, Number(userCredits.purchased_remaining || 0));
+    let deductedFromGift = 0;
+    let deductedFromPaid = 0;
+
+    if (giftRem > 0) {
+      if (giftRem >= creditsDeducted) {
+        deductedFromGift = creditsDeducted;
+        giftRem = +(giftRem - creditsDeducted).toFixed(2);
+      } else {
+        deductedFromGift = giftRem;
+        const leftover = +(creditsDeducted - giftRem).toFixed(2);
+        giftRem = 0;
+        deductedFromPaid = Math.min(paidRem, leftover);
+        paidRem = Math.max(0, +(paidRem - leftover).toFixed(2));
+      }
+    } else {
+      deductedFromPaid = Math.min(paidRem, creditsDeducted);
+      paidRem = Math.max(0, +(paidRem - creditsDeducted).toFixed(2));
+    }
+
+    const newBalance = Math.max(0, +(giftRem + paidRem).toFixed(2));
     const newTotalTokens = (userCredits.total_tokens_consumed || 0) + tokens;
     const newTotalCreditsConsumed = +(Number(userCredits.total_credits_consumed || 0) + creditsDeducted).toFixed(2);
+    const giftInit = Number(userCredits.gift_initial || welcomeCredits);
+    const giftType = userCredits.gift_type || 'welcome';
+    const giftTitle = giftType === 'daily' ? 'Cadeau du jour' : 'Cadeau de base';
 
     await safeRun(db, `
       UPDATE user_ai_credits
       SET credits_balance = ?,
+          remaining_credits = ?,
+          gift_remaining = ?,
+          gift_initial = ?,
+          gift_type = ?,
+          purchased_remaining = ?,
           total_tokens_consumed = ?,
           total_credits_consumed = ?,
+          last_daily_grant_date = ?,
           last_usage_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
       WHERE user_id = ?
-    `, [newBalance, newTotalTokens, newTotalCreditsConsumed, targetUserId]);
+    `, [
+      newBalance,
+      newBalance,
+      giftRem,
+      giftInit,
+      giftType,
+      paidRem,
+      newTotalTokens,
+      newTotalCreditsConsumed,
+      userCredits.last_daily_grant_date || todayStr,
+      targetUserId
+    ]);
 
     const logId = 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     await safeRun(db, `
@@ -14212,7 +14401,16 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
     return new Response(JSON.stringify({
       success: true,
       credits_deducted: creditsDeducted,
+      deducted_from_gift: deductedFromGift,
+      deducted_from_paid: deductedFromPaid,
       new_balance: newBalance,
+      remaining_balance: newBalance,
+      gift_remaining: giftRem,
+      gift_initial: giftInit,
+      gift_type: giftType,
+      gift_title: giftTitle,
+      purchased_remaining: paidRem,
+      total_purchased: Number(userCredits.total_credits_purchased || 0),
       tokens_consumed: tokens,
       total_tokens_consumed: newTotalTokens,
       total_credits_consumed: newTotalCreditsConsumed
@@ -14268,12 +14466,36 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
     const purchasedDelta = isPurchaseGrant ? amount : 0;
 
     if (existing) {
+      let currentGiftRem = Number(existing.gift_remaining !== null && existing.gift_remaining !== undefined ? existing.gift_remaining : (isPurchaseGrant ? 0 : 50.0));
+      let currentPaidRem = Number(existing.purchased_remaining !== null && existing.purchased_remaining !== undefined ? existing.purchased_remaining : Number(existing.total_credits_purchased || 0));
+
       if (operation === 'add') {
-        newBalance = +(Number(existing.credits_balance || 0) + amount).toFixed(2);
+        if (isPurchaseGrant) {
+          currentPaidRem = +(currentPaidRem + amount).toFixed(2);
+        } else {
+          currentGiftRem = +(currentGiftRem + amount).toFixed(2);
+        }
+        newBalance = +(currentGiftRem + currentPaidRem).toFixed(2);
       } else if (operation === 'deduct' || operation === 'remove') {
         newBalance = Math.max(0, +(Number(existing.credits_balance || 0) - amount).toFixed(2));
+        if (currentPaidRem >= amount) {
+          currentPaidRem = +(currentPaidRem - amount).toFixed(2);
+        } else {
+          const rem = amount - currentPaidRem;
+          currentPaidRem = 0;
+          currentGiftRem = Math.max(0, +(currentGiftRem - rem).toFixed(2));
+        }
+      } else if (operation === 'reset') {
+        currentGiftRem = 50.0;
+        currentPaidRem = 0.0;
+        newBalance = 50.0;
       } else {
         newBalance = amount;
+        if (isPurchaseGrant) {
+          currentPaidRem = amount;
+        } else {
+          currentGiftRem = amount;
+        }
       }
       const newPurchased = operation === 'reset' ? 0 : (isPurchaseGrant ? +(Number(existing.total_credits_purchased || 0) + purchasedDelta).toFixed(2) : Number(existing.total_credits_purchased || 0));
 
@@ -14281,20 +14503,24 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
         UPDATE user_ai_credits 
         SET credits_balance = ?,
             total_credits_purchased = ?,
+            gift_remaining = ?,
+            purchased_remaining = ?,
             remaining_credits = ?,
             total_credits = CASE WHEN ? > total_credits THEN ? ELSE total_credits END,
             updated_at = CURRENT_TIMESTAMP
         WHERE user_id = ?
-      `, [newBalance, newPurchased, newBalance, newBalance, newBalance, userId]);
+      `, [newBalance, newPurchased, currentGiftRem, currentPaidRem, newBalance, newBalance, newBalance, userId]);
 
       if (operation === 'reset') {
         await safeRun(db, "DELETE FROM user_ai_purchases WHERE user_id = ? AND payment_method = 'admin_grant'", [userId]);
       }
     } else {
+      const initGift = isPurchaseGrant ? 0 : amount;
+      const initPaid = isPurchaseGrant ? amount : 0;
       await safeRun(db, `
-        INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, remaining_credits, total_credits)
-        VALUES (?, ?, ?, ?, ?)
-      `, [userId, newBalance, purchasedDelta, newBalance, newBalance]);
+        INSERT INTO user_ai_credits (user_id, credits_balance, total_credits_purchased, gift_remaining, purchased_remaining, remaining_credits, total_credits)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [userId, newBalance, purchasedDelta, initGift, initPaid, newBalance, newBalance]);
     }
 
     if (isPurchaseGrant && amount > 0) {
@@ -15166,21 +15392,23 @@ export default {
             user_id, 
             credits_balance, 
             total_credits_purchased, 
+            purchased_remaining,
             total_credits, 
             remaining_credits, 
             used_credits, 
             plan_tier,
             updated_at
           )
-          VALUES (?, ?, ?, ?, ?, 0, 'pro', CURRENT_TIMESTAMP)
+          VALUES (?, ?, ?, ?, ?, ?, 0, 'pro', CURRENT_TIMESTAMP)
           ON CONFLICT(user_id) DO UPDATE SET
             credits_balance = credits_balance + excluded.credits_balance,
             total_credits_purchased = total_credits_purchased + excluded.total_credits_purchased,
+            purchased_remaining = COALESCE(purchased_remaining, 0) + excluded.purchased_remaining,
             total_credits = total_credits + excluded.total_credits,
             remaining_credits = remaining_credits + excluded.remaining_credits,
             plan_tier = 'pro',
             updated_at = CURRENT_TIMESTAMP
-        `, [userId, allocatedWords, allocatedWords, allocatedWords, allocatedWords]);
+        `, [userId, allocatedWords, allocatedWords, allocatedWords, allocatedWords, allocatedWords]);
 
         // 2b. Enregistrer impérativement dans user_ai_purchases sous les crédits achetés
         const aiPurId = 'pur_req_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);

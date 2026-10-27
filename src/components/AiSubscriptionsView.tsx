@@ -97,6 +97,11 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     welcome_credits?: number;
     daily_free_credits?: number;
     tokens_per_credit?: number;
+    gift_remaining?: number;
+    gift_initial?: number;
+    gift_type?: string;
+    gift_title?: string;
+    purchased_remaining?: number;
   }>(() => ({
     balance: Number(cachedCredits?.balance || 0),
     tokensUsed: Number(cachedCredits?.tokensUsed || 0),
@@ -105,7 +110,12 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     plan: cachedCredits?.plan || 'Étudiant Gratuit',
     welcome_credits: cachedCredits?.welcome_credits,
     daily_free_credits: cachedCredits?.daily_free_credits,
-    tokens_per_credit: cachedCredits?.tokens_per_credit
+    tokens_per_credit: cachedCredits?.tokens_per_credit,
+    gift_remaining: cachedCredits?.gift_remaining !== undefined ? Number(cachedCredits.gift_remaining) : undefined,
+    gift_initial: cachedCredits?.gift_initial !== undefined ? Number(cachedCredits.gift_initial) : undefined,
+    gift_type: cachedCredits?.gift_type,
+    gift_title: cachedCredits?.gift_title,
+    purchased_remaining: cachedCredits?.purchased_remaining !== undefined ? Number(cachedCredits.purchased_remaining) : undefined
   }));
 
   // Liste globale de toutes les demandes utilisateur
@@ -155,7 +165,12 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
           plan: cred.plan || (finalPurchased > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit'),
           welcome_credits: cred.welcome_credits !== undefined ? Number(cred.welcome_credits) : undefined,
           daily_free_credits: cred.daily_free_credits,
-          tokens_per_credit: cred.tokens_per_credit
+          tokens_per_credit: cred.tokens_per_credit,
+          gift_remaining: cred.gift_remaining !== undefined ? Number(cred.gift_remaining) : undefined,
+          gift_initial: cred.gift_initial !== undefined ? Number(cred.gift_initial) : undefined,
+          gift_type: cred.gift_type,
+          gift_title: cred.gift_title,
+          purchased_remaining: cred.purchased_remaining !== undefined ? Number(cred.purchased_remaining) : undefined
         };
 
         setUserCredits(updatedCredits);
@@ -262,7 +277,13 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
             ...prev,
             balance: Number(detail.remaining_balance !== undefined ? detail.remaining_balance : prev.balance),
             tokensUsed: Number(detail.total_tokens_consumed !== undefined ? detail.total_tokens_consumed : (prev.tokensUsed + (detail.tokens_consumed || 0))),
-            totalConsumed: Number(detail.total_credits_consumed !== undefined ? detail.total_credits_consumed : (prev.totalConsumed || 0))
+            totalConsumed: Number(detail.total_credits_consumed !== undefined ? detail.total_credits_consumed : (prev.totalConsumed || 0)),
+            gift_remaining: detail.gift_remaining !== undefined ? Number(detail.gift_remaining) : prev.gift_remaining,
+            gift_initial: detail.gift_initial !== undefined ? Number(detail.gift_initial) : prev.gift_initial,
+            gift_type: detail.gift_type || prev.gift_type,
+            gift_title: detail.gift_title || prev.gift_title,
+            purchased_remaining: detail.purchased_remaining !== undefined ? Number(detail.purchased_remaining) : prev.purchased_remaining,
+            totalPurchased: detail.total_purchased !== undefined ? Number(detail.total_purchased) : prev.totalPurchased
           };
           try {
             localStorage.setItem(`studycloud_cached_user_credits_${currentUserId}`, JSON.stringify(updated));
@@ -340,21 +361,33 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
   const rawConsumedCredits = Number(userCredits.totalConsumed !== undefined ? userCredits.totalConsumed : ((userCredits.tokensUsed || 0) / tokensPerCredit));
   const consumedCredits = Math.max(0, +rawConsumedCredits.toFixed(2));
 
-  // Solde restant réel (issu de Cloudflare D1)
+  // Type et titre du cadeau (Bienvenue ou Cadeau du jour qui le remplace)
+  const giftType = userCredits.gift_type || 'welcome';
+  const giftTitle = userCredits.gift_title || (giftType === 'daily' ? 'Cadeau du jour' : 'Cadeau de base');
+  const giftInitial = userCredits.gift_initial !== undefined ? Number(userCredits.gift_initial) : welcomeCredits;
+
+  // Solde restant réel (issu directement de Cloudflare D1)
   const serverBalance = Number(userCredits.balance || 0);
-  const creditsRemaining = (userCredits.totalConsumed === 0 && (userCredits.tokensUsed || 0) === 0)
-    ? +(welcomeCredits + purchasedCredits).toFixed(2)
-    : Math.max(0, serverBalance > 0 ? serverBalance : +((welcomeCredits + purchasedCredits) - consumedCredits).toFixed(2));
 
-  // RÈGLE LOGIQUE STRICTE : La dotation de départ accordée ne peut JAMAIS être inférieure au solde actuel !
-  // Si une recharge a eu lieu, la dotation totale de départ = Solde restant + Déjà consommé.
-  const totalMaxCredits = Math.max(welcomeCredits + purchasedCredits, +(creditsRemaining + consumedCredits).toFixed(2));
+  // RÈGLE FIFO STRICTE DANS LA BASE DE DONNÉES D1 (COMMANDE UTILISATEUR) :
+  // 1. Le cadeau est consommé en premier jusqu'à épuisement complet (décroît vers 0).
+  // 2. Les crédits payés restent 100% préservés tant que le cadeau > 0.
+  // 3. Quand le cadeau est à 0, les crédits payés commencent à diminuer.
+  const giftRemaining = userCredits.gift_remaining !== undefined
+    ? Number(userCredits.gift_remaining)
+    : Math.max(0, +(giftInitial - consumedCredits).toFixed(2));
 
-  // RÈGLE FIFO STRICTE (COMMANDE UTILISATEUR) :
-  // Le cadeau est consommé en premier jusqu'à épuisement complet.
-  // Les crédits payés restent 100% préservés tant que le cadeau n'est pas tombé à zéro !
-  const giftRemaining = Math.max(0, +(welcomeCredits - consumedCredits).toFixed(2));
-  const paidRemaining = Math.max(0, +(creditsRemaining - giftRemaining).toFixed(2));
+  const paidRemaining = userCredits.purchased_remaining !== undefined
+    ? Number(userCredits.purchased_remaining)
+    : Math.max(0, +(serverBalance - giftRemaining).toFixed(2));
+
+  // Crédit disponible total actif
+  const creditsRemaining = (userCredits.gift_remaining !== undefined && userCredits.purchased_remaining !== undefined)
+    ? +(giftRemaining + paidRemaining).toFixed(2)
+    : (serverBalance > 0 ? serverBalance : Math.max(0, +(welcomeCredits + purchasedCredits - consumedCredits).toFixed(2)));
+
+  // Dotation totale de départ = Cadeau accordé + Total acheté
+  const totalMaxCredits = Math.max(giftInitial + purchasedCredits, +(creditsRemaining + consumedCredits).toFixed(2));
 
   // Pourcentage de la jauge (démarre plein au départ, et se vide progressivement vers la gauche)
   const creditsPercentage = totalMaxCredits > 0
@@ -514,31 +547,33 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
 
             {/* STATS RAPIDES — 3 Cartes essentielles Glassmorphism */}
             <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* 1. Crédits gratuits offerts (Consommés en premier) */}
+              {/* 1. Crédits gratuits offerts (Consommés en premier jusqu'à 0) */}
               <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
                 <div className="flex items-center gap-2 mb-2">
                   <Gift className="w-4 h-4 text-emerald-300" />
-                  <span className="text-white/70 text-[11px] font-semibold uppercase tracking-wider">Offerts de base</span>
+                  <span className="text-white/70 text-[11px] font-semibold uppercase tracking-wider">{giftTitle}</span>
                 </div>
                 <p className="text-2xl md:text-3xl font-black text-white leading-none">
-                  {welcomeCredits}
+                  {giftRemaining}
                 </p>
                 <p className="text-emerald-300/90 text-[10px] mt-1 font-medium">
-                  {giftRemaining > 0 ? `${giftRemaining} restants (Prioritaire)` : 'Cadeau épuisé'}
+                  {giftRemaining > 0 ? `sur ${giftInitial} au départ • Prioritaire` : 'Cadeau épuisé'}
                 </p>
               </div>
 
-              {/* 2. Crédits achetés (Préservés tant que le cadeau existe) */}
+              {/* 2. Crédits achetés (Préservés tant que le cadeau existe, puis diminuent) */}
               <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/20">
                 <div className="flex items-center gap-2 mb-2">
                   <CreditCard className="w-4 h-4 text-blue-300" />
                   <span className="text-white/70 text-[11px] font-semibold uppercase tracking-wider">Achetés</span>
                 </div>
                 <p className="text-2xl md:text-3xl font-black text-white leading-none">
-                  {purchasedCredits}
+                  {paidRemaining}
                 </p>
                 <p className="text-blue-200/90 text-[10px] mt-1 font-medium">
-                  {purchasedCredits > 0 ? `${paidRemaining} restants (Préservé)` : 'Extensions validées'}
+                  {purchasedCredits > 0
+                    ? (giftRemaining > 0 ? `sur ${purchasedCredits} achetés (Préservé)` : `sur ${purchasedCredits} achetés (En cours)`)
+                    : 'Extensions validées'}
                 </p>
               </div>
 
@@ -1010,14 +1045,14 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-stone-600 dark:text-slate-400">
                   <Gift className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>Crédits offerts (Bienvenue)</span>
+                  <span>{giftTitle}</span>
                 </div>
                 <div className="text-right">
                   <span className="font-black text-stone-900 dark:text-white">
-                    {welcomeCredits} Crédits
+                    {giftRemaining} Crédits
                   </span>
                   <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block">
-                    {giftRemaining > 0 ? `(${giftRemaining} restants • Prioritaire)` : '(Cadeau épuisé)'}
+                    {giftRemaining > 0 ? `(sur ${giftInitial} au départ • Prioritaire)` : '(Cadeau épuisé)'}
                   </span>
                 </div>
               </div>
@@ -1041,11 +1076,11 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                 </div>
                 <div className="text-right">
                   <span className="font-black text-stone-900 dark:text-white">
-                    {purchasedCredits} Crédits
+                    {paidRemaining} Crédits
                   </span>
                   {purchasedCredits > 0 && (
                     <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold block">
-                      ({paidRemaining} restants • Préservé)
+                      {giftRemaining > 0 ? `(sur ${purchasedCredits} achetés • Préservé)` : `(sur ${purchasedCredits} achetés • En cours)`}
                     </span>
                   )}
                 </div>

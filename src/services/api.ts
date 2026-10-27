@@ -3416,6 +3416,11 @@ export async function getUserAiCreditsLive(
     totalPurchased: number;
     totalConsumed: number;
     plan: string;
+    gift_remaining?: number;
+    gift_initial?: number;
+    gift_type?: string;
+    gift_title?: string;
+    purchased_remaining?: number;
     daily_free_credits?: number;
     tokens_per_credit?: number;
     welcome_credits?: number;
@@ -3505,7 +3510,16 @@ export async function deductUserAiCredits(params: {
 }): Promise<{
   success: boolean;
   credits_deducted: number;
+  deducted_from_gift?: number;
+  deducted_from_paid?: number;
+  new_balance?: number;
   remaining_balance: number;
+  gift_remaining?: number;
+  gift_initial?: number;
+  gift_type?: string;
+  gift_title?: string;
+  purchased_remaining?: number;
+  total_purchased?: number;
   tokens_consumed: number;
   total_tokens_consumed?: number;
   total_credits_consumed?: number;
@@ -3547,7 +3561,13 @@ export async function deductUserAiCredits(params: {
               detail: {
                 userId: currentUserId,
                 credits_deducted: data.credits_deducted,
-                remaining_balance: data.remaining_balance,
+                remaining_balance: data.new_balance !== undefined ? data.new_balance : data.remaining_balance,
+                gift_remaining: data.gift_remaining,
+                gift_initial: data.gift_initial,
+                gift_type: data.gift_type,
+                gift_title: data.gift_title,
+                purchased_remaining: data.purchased_remaining,
+                total_purchased: data.total_purchased,
                 tokens_consumed: data.tokens_consumed,
                 total_tokens_consumed: data.total_tokens_consumed,
                 total_credits_consumed: data.total_credits_consumed
