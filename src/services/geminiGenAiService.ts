@@ -180,6 +180,25 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
     parts: currentParts,
   });
 
+  // Assurer une alternance stricte et absolue user / model pour le SDK Gemini officiel
+  const sanitizedContents: any[] = [];
+  for (const c of contents) {
+    if (!c || !c.parts || c.parts.length === 0) continue;
+    if (sanitizedContents.length === 0) {
+      if (c.role === 'model') {
+        sanitizedContents.push({ role: 'user', parts: [{ text: 'Bonjour' }] });
+      }
+      sanitizedContents.push(c);
+    } else {
+      const prev = sanitizedContents[sanitizedContents.length - 1];
+      if (prev.role === c.role) {
+        prev.parts.push(...c.parts);
+      } else {
+        sanitizedContents.push(c);
+      }
+    }
+  }
+
   // 3. Configuration de génération
   const config: any = {
     temperature: options.temperature ?? 0.7,
@@ -215,7 +234,7 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
   // 4. Appel du modèle via le SDK officiel @google/genai
   const response = await ai.models.generateContent({
     model: modelName,
-    contents,
+    contents: sanitizedContents,
     config,
   });
 

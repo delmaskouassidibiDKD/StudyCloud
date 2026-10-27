@@ -2947,6 +2947,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           let tokens = undefined;
           if (row.metadata) {
             try {
+              const meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
               const rawName = meta?.attachedFileName;
               if (rawName && rawName !== 'Document d\'étude' && rawName !== 'Document source' && rawName !== 'null' && rawName !== 'undefined') {
                 attachedFileName = rawName;
@@ -3368,30 +3369,34 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     attachedResources: any[];
     activePreviewItem: any;
     currentModelDisplay: string;
+    activeDocumentInfo?: any;
+    activeImageInfo?: any;
   }): Promise<{ response?: string; creation?: any }> => {
-    let activeImageInfo: { base64: string; mimeType: string } | null = null;
+    let activeImageInfo: { base64: string; mimeType: string } | null = params.activeImageInfo || null;
     let activeDocumentInfo: {
       textContent: string;
       documentBase64?: string;
       documentMimeType?: string;
       documentImages?: Array<{ base64: string; mimeType: string; name?: string }>;
       fileName?: string;
-    } | null = null;
+    } | null = params.activeDocumentInfo || null;
 
-    if (params.resolvedActiveItem) {
-      if (isDocumentItem(params.resolvedActiveItem)) {
-        activeDocumentInfo = await extractDocumentDetails(params.resolvedActiveItem);
-      } else if (!isVideoItem(params.resolvedActiveItem) && !isAudioItem(params.resolvedActiveItem)) {
-        activeImageInfo = await extractImageBase64FromItem(params.resolvedActiveItem);
+    if (!activeDocumentInfo && !activeImageInfo) {
+      if (params.resolvedActiveItem) {
+        if (isDocumentItem(params.resolvedActiveItem)) {
+          activeDocumentInfo = await extractDocumentDetails(params.resolvedActiveItem);
+        } else if (!isVideoItem(params.resolvedActiveItem) && !isAudioItem(params.resolvedActiveItem)) {
+          activeImageInfo = await extractImageBase64FromItem(params.resolvedActiveItem);
+        }
       }
-    }
 
-    if (Array.isArray(params.attachedResources)) {
-      for (const res of params.attachedResources) {
-        if (!activeDocumentInfo && isDocumentItem(res)) {
-          activeDocumentInfo = await extractDocumentDetails(res);
-        } else if (!activeImageInfo && !isVideoItem(res) && !isAudioItem(res)) {
-          activeImageInfo = await extractImageBase64FromItem(res);
+      if (Array.isArray(params.attachedResources)) {
+        for (const res of params.attachedResources) {
+          if (!activeDocumentInfo && isDocumentItem(res)) {
+            activeDocumentInfo = await extractDocumentDetails(res);
+          } else if (!activeImageInfo && !isVideoItem(res) && !isAudioItem(res)) {
+            activeImageInfo = await extractImageBase64FromItem(res);
+          }
         }
       }
     }
@@ -3897,6 +3902,68 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     const isMediaAlreadyAnalyzed = Boolean(!requiresFreshAnalysis && currentMediaSignature && (sessionMediaSig === currentMediaSignature || existingPerception) && existingPerception);
 
     const hasAttachedDoc = allDocs.length > 0;
+
+    // Pré-extraction universelle des médias pour l'Orchestrateur et les sous-agents
+    let activeVideoInfo: {
+      videoBase64?: string;
+      videoFrames: Array<{ base64: string; mimeType: string; timestamp: number }>;
+      mimeType: string;
+    } | null = null;
+    let activeAudioInfo: {
+      audioBase64: string;
+      mimeType: string;
+    } | null = null;
+    let activeImageInfo: { base64: string; mimeType: string } | null = null;
+    let activeDocumentInfo: {
+      textContent: string;
+      documentBase64?: string;
+      documentMimeType?: string;
+      documentImages?: Array<{ base64: string; mimeType: string; name?: string }>;
+      fileName?: string;
+    } | null = null;
+
+    if (hasAttachedDoc) {
+      if (resolvedActiveItem) {
+        if (isVideoItem(resolvedActiveItem)) {
+          activeVideoInfo = await extractVideoContentFromItem(resolvedActiveItem);
+        } else if (isAudioItem(resolvedActiveItem)) {
+          activeAudioInfo = await extractAudioContentFromItem(resolvedActiveItem);
+        } else if (isDocumentItem(resolvedActiveItem)) {
+          activeDocumentInfo = await extractDocumentDetails(resolvedActiveItem);
+        } else {
+          activeImageInfo = await extractImageBase64FromItem(resolvedActiveItem);
+        }
+      }
+      if (Array.isArray(attachedResources) && attachedResources.length > 0) {
+        for (const res of attachedResources) {
+          if (!activeVideoInfo && isVideoItem(res)) {
+            const foundVid = await extractVideoContentFromItem(res);
+            if (foundVid) activeVideoInfo = foundVid;
+          } else if (!activeAudioInfo && isAudioItem(res)) {
+            const foundAud = await extractAudioContentFromItem(res);
+            if (foundAud) activeAudioInfo = foundAud;
+          } else if (!activeDocumentInfo && isDocumentItem(res)) {
+            const foundDoc = await extractDocumentDetails(res);
+            if (foundDoc) activeDocumentInfo = foundDoc;
+          } else if (!activeImageInfo) {
+            const foundImg = await extractImageBase64FromItem(res);
+            if (foundImg) activeImageInfo = foundImg;
+          }
+        }
+      }
+      if (activeDocumentInfo?.textContent && currentMediaSignature) {
+        cachedDocumentTextRef.current[currentMediaSignature] = activeDocumentInfo.textContent;
+      }
+    }
+
+    const resolvedAttachedText = hasAttachedDoc ? (
+      activeDocumentInfo?.textContent ||
+      (currentMediaSignature ? cachedDocumentTextRef.current[currentMediaSignature] : '') ||
+      (resolvedActiveItem as any)?.content ||
+      (resolvedActiveItem as any)?.text ||
+      (resolvedActiveItem as any)?.rawText ||
+      ''
+    ) : '';
     const hasPromptSubject = detectHasSpecificSubject(userText);
     const hasConversationContext = hasRecentAcademicContext(messages);
 
@@ -4188,6 +4255,8 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
               attachedResources,
               activePreviewItem,
               currentModelDisplay,
+              activeDocumentInfo,
+              activeImageInfo,
             });
           }
         );
@@ -4195,22 +4264,74 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
         taskResults.push({ taskId: task.taskId, title: task.creationTitle, isQueued: enqRes.isQueued });
       });
 
-      // Formulation immédiate et vivante de la réponse par l'IA
+      // L'IA Orchestrateur (Chef d'équipe) analyse le document et le prompt,
+      // formule une vraie réponse dynamique et personnalisée pour le chat,
+      // confirme les missions confiées à ses sous-agents et poursuit le dialogue pédagogique.
       const activeRunningCount = taskResults.filter(t => !t.isQueued).length;
       const queuedCount = taskResults.filter(t => t.isQueued).length;
+      const creationsTitles = tasksToEnqueue.map(t => `« ${t.creationTitle} »`).join(', ');
+
+      const confirmationSystemPrompt = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Agent Delmas).
+L'étudiant vient d'envoyer la demande : "${userText}".
+${mainDocName ? `Document d'étude joint : "${mainDocName}". Tu as analysé le document et la question de l'étudiant.` : ''}
+
+Tu as immédiatement mobilisé tes sous-agents spécialisés en arrière-plan pour concevoir son ou ses modules : ${creationsTitles}.
+État actuel du pool d'agents : ${activeRunningCount} création(s) lancée(s) immédiatement en arrière-plan${queuedCount > 0 ? `, et ${queuedCount} placée(s) en file d'attente automatique (démarrage dès qu'un agent se libère)` : ''}.
+
+CONSIGNES STRICTES POUR TA RÉPONSE DE CHAT :
+1. Réponds DIRECTEMENT, CHALEUREUSEMENT et PERSONNELLEMENT à l'étudiant en français en 2 à 3 phrases fluides.
+2. Fais référence avec précision au contenu analysé (notions clés, sujet du cours, formules, éléments ou thèmes du document ou de la demande).
+3. Confirme clairement que tes agents spécialisés sont au travail en arrière-plan et qu'il retrouvera sa création directement dans l'espace Créations à droite dès qu'elle sera prête.
+4. Continue le dialogue pédagogique : invite-le avec bienveillance à te poser des questions sur son cours, à approfondir une notion ou à échanger ici dans le chat pendant que la conception s'exécute.
+5. INTERDICTION ABSOLUE D'ÉCRIRE DU JSON OU DES ACCOLADES {}. Réponds en texte Markdown naturel.`;
 
       let aiConfirmationText = '';
-      if (tasksToEnqueue.length === 1) {
-        const singleTask = tasksToEnqueue[0];
-        const isQueued = taskResults[0]?.isQueued;
-        aiConfirmationText = isQueued
-          ? `Votre demande pour **${singleTask.creationTitle}** est bien prise en compte ! Comme 3 agents sont déjà au travail en simultané, elle démarrera automatiquement dès qu'une place se libère. Vous la retrouverez dans l'espace Créations à droite. En attendant, n'hésitez pas si vous avez d'autres questions ici !`
-          : `C'est bien noté ! J'ai confié la conception de votre **${singleTask.creationTitle}** à un agent spécialisé en arrière-plan. Vous pouvez suivre son avancement et la retrouver dans l'espace Créations à droite dès qu'elle est prête. En attendant, le chat reste totalement ouvert : vous pouvez continuer à me poser vos questions ici !`;
-      } else {
-        const titlesList = tasksToEnqueue.map(t => `**${t.formatTitle}**`).join(', ');
-        aiConfirmationText = queuedCount > 0
-          ? `C'est bien noté ! J'ai mobilisé mes agents spécialisés pour vos ${tasksToEnqueue.length} créations (${titlesList}). ${activeRunningCount} sont lancées immédiatement et ${queuedCount} démarreront automatiquement dès qu'un agent aura terminé. Vous pouvez suivre leur avancement dans l'espace Créations à droite. En attendant, n'hésitez pas si vous avez d'autres questions !`
-          : `C'est bien noté ! J'ai mobilisé mes agents spécialisés pour vos ${tasksToEnqueue.length} créations en parallèle : ${titlesList}. Elles s'exécutent en arrière-plan dans l'espace Créations à droite. En attendant, le chat reste totalement ouvert : vous pouvez continuer à me poser vos questions ici !`;
+      try {
+        const aiAck = await sendChatMessageToAi({
+          messages: [
+            { role: 'system', content: confirmationSystemPrompt },
+            ...convBaseMessages.slice(-4).map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text })),
+            { role: 'user', content: userText }
+          ],
+          prompt: userText,
+          message: userText,
+          userId: targetUserId,
+          sessionId: targetConvId,
+          conversationId: targetConvId,
+          model: selectedModel,
+          selectedModel,
+          apiKey: getGeminiApiKey() || undefined,
+          attachedFileName: mainDocName,
+          attachedFileContent: resolvedAttachedText,
+          imageBase64: activeImageInfo?.base64,
+          mimeType: activeImageInfo?.mimeType,
+          documentBase64: activeDocumentInfo?.documentBase64,
+          documentMimeType: activeDocumentInfo?.documentMimeType,
+          documentImages: activeDocumentInfo?.documentImages,
+          perceptionReport: existingPerception,
+          signal: abortSignal,
+          abortSignal,
+        });
+        const cand = aiAck.chat_response || aiAck.response || '';
+        aiConfirmationText = cleanChatText(cand);
+      } catch (_ackErr) {
+        console.warn('[AssistantChat] Erreur confirmation IA dynamique:', _ackErr);
+      }
+
+      // Repli courtois uniquement en cas de coupure réseau ou réponse vide
+      if (!aiConfirmationText || aiConfirmationText.trim().startsWith('{') || aiConfirmationText.includes('"creation_data"')) {
+        if (tasksToEnqueue.length === 1) {
+          const singleTask = tasksToEnqueue[0];
+          const isQueued = taskResults[0]?.isQueued;
+          aiConfirmationText = isQueued
+            ? `Votre demande pour **${singleTask.creationTitle}** est bien prise en compte ! Comme 3 agents sont déjà au travail en simultané, elle démarrera automatiquement dès qu'une place se libère. Vous la retrouverez dans l'espace Créations à droite. En attendant, n'hésitez pas si vous avez d'autres questions ici !`
+            : `C'est bien noté ! J'ai confié la conception de votre **${singleTask.creationTitle}** à un agent spécialisé en arrière-plan. Vous pouvez suivre son avancement et la retrouver dans l'espace Créations à droite dès qu'elle est prête. En attendant, le chat reste totalement ouvert : vous pouvez continuer à me poser vos questions ici !`;
+        } else {
+          const titlesList = tasksToEnqueue.map(t => `**${t.formatTitle}**`).join(', ');
+          aiConfirmationText = queuedCount > 0
+            ? `C'est bien noté ! J'ai mobilisé mes agents spécialisés pour vos ${tasksToEnqueue.length} créations (${titlesList}). ${activeRunningCount} sont lancées immédiatement et ${queuedCount} démarreront automatiquement dès qu'un agent aura terminé. Vous pouvez suivre leur avancement dans l'espace Créations à droite. En attendant, n'hésitez pas si vous avez d'autres questions !`
+            : `C'est bien noté ! J'ai mobilisé mes agents spécialisés pour vos ${tasksToEnqueue.length} créations en parallèle : ${titlesList}. Elles s'exécutent en arrière-plan dans l'espace Créations à droite. En attendant, le chat reste totalement ouvert : vous pouvez continuer à me poser vos questions ici !`;
+        }
       }
 
       const effectiveModelName = currentModelDisplay;
@@ -4218,47 +4339,94 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
       const creationTokens = Math.max(68, Math.ceil(creationPromptChars / 3.8));
       const creationCredits = convertTokensToCredits(creationTokens, tokensPerCredit);
 
-      // 4. Mettre à jour le cache local pour targetConvId en finalisant le message
-      const currentConvMsgsRaw = safeGetItem(`studycloud_conv_msgs_${targetConvId}`);
-      let currentConvMsgs: Message[] = [];
-      if (currentConvMsgsRaw) {
-        try { currentConvMsgs = JSON.parse(currentConvMsgsRaw) || []; } catch {}
-      }
-      const finalizedConvMsgs = currentConvMsgs.map(m =>
-        m.id === aiMsgId ? { ...m, text: aiConfirmationText, isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationCredits } : m
-      );
-      if (!finalizedConvMsgs.some(m => m.id === aiMsgId)) {
-        finalizedConvMsgs.push({ id: aiMsgId, text: aiConfirmationText, sender: 'ai', isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationCredits });
-      }
-      safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(finalizedConvMsgs));
-
-      // 5. Sauvegarde Cloudflare D1 avec horodatage strictly ultérieur à celui du message utilisateur
-      StudyCloudAPI.saveAiMessage({
-        id: aiMsgId,
-        conversationId: targetConvId,
-        role: 'assistant',
-        content: aiConfirmationText,
-        created_at: new Date(Date.now() + 100).toISOString(),
-        metadata: { model: effectiveModelName, tokens: creationTokens, credits: creationCredits }
-      }).catch(() => {});
-
-      if (currentConversationIdRef.current === targetConvId) {
-        setMessages(prev => {
-          const exists = prev.some(m => m.id === aiMsgId);
-          if (!exists) {
-            return [...prev, { id: aiMsgId, text: aiConfirmationText, sender: 'ai', isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationTokens }];
-          }
-          return prev.map(m =>
-            m.id === aiMsgId ? { ...m, text: aiConfirmationText, isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationTokens } : m
-          );
-        });
-        setInputValue('');
-        setIsTyping(false);
-        setIsWaitingServer(false);
-        setAiActivityText('');
-        if (scrollContainerRef.current) {
-          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+      const finalizeConfirmation = () => {
+        if (typingTimerRef.current) {
+          clearInterval(typingTimerRef.current);
+          typingTimerRef.current = null;
         }
+        if (watchdogTimerRef.current) {
+          clearTimeout(watchdogTimerRef.current);
+          watchdogTimerRef.current = null;
+        }
+
+        // Mettre à jour le cache local pour targetConvId en finalisant le message
+        const currentConvMsgsRaw = safeGetItem(`studycloud_conv_msgs_${targetConvId}`);
+        let currentConvMsgs: Message[] = [];
+        if (currentConvMsgsRaw) {
+          try { currentConvMsgs = JSON.parse(currentConvMsgsRaw) || []; } catch {}
+        }
+        const finalizedConvMsgs = currentConvMsgs.map(m =>
+          m.id === aiMsgId ? { ...m, text: aiConfirmationText, isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationCredits } : m
+        );
+        if (!finalizedConvMsgs.some(m => m.id === aiMsgId)) {
+          finalizedConvMsgs.push({ id: aiMsgId, text: aiConfirmationText, sender: 'ai', isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationCredits });
+        }
+        safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(finalizedConvMsgs));
+
+        // Sauvegarde Cloudflare D1 avec horodatage ultérieur à celui du message utilisateur
+        StudyCloudAPI.saveAiMessage({
+          id: aiMsgId,
+          conversationId: targetConvId,
+          role: 'assistant',
+          content: aiConfirmationText,
+          created_at: new Date(Date.now() + 100).toISOString(),
+          metadata: { model: effectiveModelName, tokens: creationTokens, credits: creationCredits }
+        }).catch(() => {});
+
+        if (currentConversationIdRef.current === targetConvId) {
+          setMessages(prev => {
+            const exists = prev.some(m => m.id === aiMsgId);
+            if (!exists) {
+              return [...prev, { id: aiMsgId, text: aiConfirmationText, sender: 'ai', isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationCredits }];
+            }
+            return prev.map(m =>
+              m.id === aiMsgId ? { ...m, text: aiConfirmationText, isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationCredits } : m
+            );
+          });
+          setInputValue('');
+          setIsTyping(false);
+          setIsWaitingServer(false);
+          setAiActivityText('');
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+          }
+        }
+      };
+
+      // Animation fluide machine à écrire
+      if (typeof document !== 'undefined' && document.hidden) {
+        finalizeConfirmation();
+      } else {
+        const tickSpeed = 16;
+        const targetDuration = Math.min(800, Math.max(250, aiConfirmationText.length * 2));
+        const totalTicks = Math.max(1, Math.floor(targetDuration / tickSpeed));
+        const chunkSize = Math.max(8, Math.ceil(aiConfirmationText.length / totalTicks));
+        let index = 0;
+
+        watchdogTimerRef.current = setTimeout(() => {
+          finalizeConfirmation();
+        }, targetDuration + 500);
+
+        typingTimerRef.current = setInterval(() => {
+          try {
+            index += chunkSize;
+            if (index >= aiConfirmationText.length) {
+              finalizeConfirmation();
+            } else {
+              const partial = aiConfirmationText.slice(0, index);
+              setMessages(prev =>
+                prev.map(m =>
+                  m.id === aiMsgId ? { ...m, text: partial, model: effectiveModelName } : m
+                )
+              );
+            }
+            if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
+              scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+            }
+          } catch (_err) {
+            finalizeConfirmation();
+          }
+        }, tickSpeed);
       }
 
       // Le chat reste totalement ouvert et disponible pour de nouvelles questions
@@ -4318,52 +4486,16 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
 
       // 3. Contexte du document actif et prompt autonome de décision (Architecture Gemini / StudyCloud)
       const hasRunningBgCreations = aiBackgroundManager.getRunningCount() > 0;
-      let systemContent = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Gemini / Delmas IA).
-Tu es directement connectée à l'espace d'étude de l'étudiant, avec deux modes de fonctionnement distincts selon ton analyse du prompt :
-${hasRunningBgCreations ? `
-ATTENTION CRUCIALE : Des créations pédagogiques sont actuellement en cours d'élaboration en arrière-plan par des sous-agents dédiés.
-Tu es dans le fil de discussion en mode CHAT PUR avec l'étudiant.
-IL EST STRICTEMENT INTERDIT de renvoyer un objet JSON de création. Réponds uniquement à sa question en Markdown direct.
-` : ''}
-1. BRANCHE DISCUSSION SIMPLE DANS LE CHAT (Mode par défaut) :
-Si l'étudiant discute, échange, pose une question, demande une explication de cours, une démonstration, une formule, une méthode ou un exemple — MÊME s'il emploie des termes comme "créer", "faire", "questions" dans un sens conversationnel (ex: "Comment créer une SARL ?", "Quelles questions penses-tu qu'on aura à l'examen ?", "Explique-moi comment faire cet exercice", "Que penses-tu de ce sujet ?") :
--> Tu réponds DIRECTEMENT ET NATURELLEMENT DANS LE CHAT en texte Markdown fluide.
--> Formules mathématiques et scientifiques rédigées impérativement en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc).
--> IMPORTANTISSIME : NE PRODUIS AUCUN CODE JSON, PAS D'ACCOLADES {} NI DE BALISES JSON DANS CETTE RÉPONSE. Parle directement à l'étudiant avec pédagogie, clarté et bienveillance.
+      let systemContent = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Agent Delmas).
+Tu es directement connectée à l'espace d'étude de l'étudiant en mode CHAT ET DISCUSSION PÉDAGOGIQUE DIRECTE.
+Les créations interactives sont entièrement prises en charge et conçues de manière autonome par des sous-agents dédiés en arrière-plan dans l'espace créations.
 
-2. BRANCHE CRÉATION D'UN MODULE D'ÉTUDE (Dans l'espace création à droite) :
-Uniquement si l'étudiant te demande expressément et clairement de CONCEVOIR / FABRIQUER / GÉNÉRER un module d'apprentissage interactif complet parmi les 12 formats officiels StudyCloud :
-- Questionnaires et Tests :
-  * 'questionnaire' : Quiz QCM interactif avec feedback immédiat (questions avec choix A/B/C/D, correctIndex, explanation)
-  * 'questionnaire-test' : Questionnaire Test (épreuve notée avec chronomètre et barème, résultats et corrigé à la fin)
-- Vrai ou Faux :
-  * 'vrai-ou-faux' : Affirmations Vrai ou Faux avec justification détaillée immédiate
-  * 'vrai-ou-faux-test' : Vrai ou Faux Test (épreuve notée avec validation d'ensemble et score final)
-- Cartes Mentales et Conceptuelles :
-  * 'carte-mentale' : Carte Mentale arborescente (thème central, branches principales, sous-branches)
-  * 'carte-mentale-2' : Carte Mentale 2 (carte conceptuelle en blocs hiérarchiques avec piliers et connecteurs)
-- Cartes Mémoires :
-  * 'carte-memoire' : Flashcards mémorisation (recto question/concept, verso réponse/détail)
-- Documents et Fiches de Synthèse :
-  * 'resume' : Fiche de Résumé structurée (overview, keyPoints, definitions, rules)
-- Exercices et Examens :
-  * 'exercices-ecrits' : Série d'exercices d'application avec énoncé pas à pas et correction guidée
-  * 'devoir-complet' : Devoir Complet officiel d'examen avec parties, barème sur 20 points et corrigé
-
-DANS CE CAS DE CRÉATION EXCLUSIVEMENT :
-Tu réponds sous la forme d'un objet JSON strict :
-\`\`\`json
-{
-  "decision": "creation",
-  "mode": "creation",
-  "creation_type": "questionnaire" | "questionnaire-test" | "vrai-ou-faux" | "vrai-ou-faux-test" | "carte-mentale" | "carte-mentale-2" | "carte-memoire" | "resume" | "exercices-ecrits" | "devoir-complet",
-  "creation_title": "Titre explicite de la création",
-  "chat_response": "Court message amical d'une phrase pour le fil de discussion (ex: J'ai conçu votre création dans l'espace Création à droite !)",
-  "creation_data": {
-    // Les données complètes selon le type demandé
-  }
-}
-\`\`\`
+CONSIGNES STRICTES POUR TA RÉPONSE DE CHAT :
+1. Tu réponds DIRECTEMENT, NATURELLEMENT ET CHALEUREUSEMENT à l'étudiant en texte Markdown fluide.
+2. Si l'étudiant discute, pose une question de cours, demande une explication, une méthode, une formule, un résumé explicatif ou la résolution pas à pas d'un exercice : réponds avec clarté, bienveillance et rigueur pédagogique.
+3. Formules mathématiques et scientifiques rédigées impérativement en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré avec \\dfrac{num}{den}).
+4. IMPORTANTISSIME : NE PRODUIS AUCUN CODE JSON, PAS D'ACCOLADES {} NI DE BALISES DE CRÉATION DANS CETTE RÉPONSE. Parle directement à l'étudiant comme un excellent professeur tuteur.
+5. N'invente pas de fausse création et n'écris jamais "J'ai créé votre module" dans ce mode chat : consacre-toi pleinement à répondre et échanger avec l'étudiant.
 
 RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
 0. LANGUE FRANÇAISE STRICTE ET ZÉRO MONOLOGUE INTERNE (ANTI-SCRATCHPAD) :
@@ -4758,23 +4890,7 @@ CAS 2 : DEMANDE DE RÉSOUDRE UN EXERCICE ET DE METTRE ÇA EN PDF (ex: "Résous u
     ]
   }
 
-CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais un PDF complet sur le filtrage analogique", "Rédige un polycopié PDF sur les intégrales") :
-- Tu te places IMMÉDIATEMENT en mode CRÉATION ("decision": "creation", "mode": "creation", "creation_type": "pdf").
-- Tu rédiges tout ce que l'utilisateur demande de manière exhaustive, approfondie et structurée :
-  * Page de couverture avec Titre officiel, Matière et Objectif.
-  * Chapitres complets (I. Définitions & Principes fondamentaux, II. Théorèmes & Formulaire détaillé, III. Applications & Méthodes pratiques).
-  * Explications denses, schémas, tableaux et formules.
-- L'étudiant pourra immédiatement lire et télécharger le vrai fichier .pdf.`;
-
-      if (isExplicitOverride && explicitToolType && (docNames.length > 0 || hasPromptSubject || hasConversationContext)) {
-        systemContent += `\n\nCOMMANDE EXPLICITE DE CRÉATION DEPUIS LE MENU CRÉATION :\nL'étudiant a expressément sélectionné le format de création « ${explicitToolType} » pour le sujet/document d'étude.\nTu DOIS te placer dans la BRANCHE 2 (CRÉATION D'UN MODULE D'ÉTUDE) et répondre avec l'objet JSON strict de création ("decision": "creation", "mode": "creation", "creation_type": "${explicitToolType}", "creation_title": "...", "chat_response": "...", "creation_data": { ... }). Ne produis aucun monologue ni texte Markdown de discussion libre dans ce cas. Remplis directement toutes les données complètes de création.`;
-        if (explicitToolType === 'exercices-ecrits') {
-          systemContent += `\nPOUR CE MODULE D'EXERCICES ÉCRITS : Tu DOIS OBLIGATOIREMENT générer EXACTEMENT 8 à 10 exercices ou questions progressives avec barème totalisant 20 points, énoncés rigoureux et corrigé pas-à-pas. ZÉRO coupure.`;
-        }
-        if (explicitToolType === 'resume') {
-          systemContent += `\nPOUR CE MODULE DE FICHE DE RÉSUMÉ ('resume') : Tu DOIS OBLIGATOIREMENT fournir dans 'creation_data' l'intégralité des notions clés ('key_definitions'), toutes les formules majeures avec KaTeX et démonstrations ('formulas'), le tableau comparatif ('comparison_table'), les pièges et astuces ('traps_and_tips'), l'exemple résolu pas-à-pas ('practical_example') et les sections rédigées ('sections'). ZÉRO coupure.`;
-        }
-      }
+`;
 
       const isContinuation = Boolean(
         options?.isContinuation ||
@@ -4941,24 +5057,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
       const configuredToken = (isWorkerModel || isDeadKey) ? undefined : rawConfiguredToken;
 
       // Résolution multimédia instantanée (Vidéo, Audio, Image ou Document PDF/Word actif à l'écran ou joint)
-      let activeImageInfo: { base64: string; mimeType: string } | null = null;
-      let activeVideoInfo: {
-        videoBase64?: string;
-        videoFrames: Array<{ base64: string; mimeType: string; timestamp: number }>;
-        mimeType: string;
-      } | null = null;
-      let activeAudioInfo: {
-        audioBase64: string;
-        mimeType: string;
-      } | null = null;
-      let activeDocumentInfo: {
-        textContent: string;
-        documentBase64?: string;
-        documentMimeType?: string;
-        documentImages?: Array<{ base64: string; mimeType: string; name?: string }>;
-        fileName?: string;
-      } | null = null;
-
+      // Les médias ont déjà été pré-extraits en amont pour l'Orchestrateur
       // NE RÉ-ANALYSER LE FICHIER QUE S'IL N'A PAS ENCORE ÉTÉ ANALYSÉ DANS CETTE CONVERSATION
       // (Ou si l'utilisateur a changé de fichier pendant la discussion)
       if (!isMediaAlreadyAnalyzed) {
@@ -5468,7 +5567,10 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         }
       } else {
         // BRANCHE DISCUSSION SIMPLE DANS LE CHAT : Réponse directe sans rien déranger dans l'espace création
-        const cleaned = cleanChatText(aiResult.chat_response || rawResponseText);
+        const candidateText = (rawResponseText && !rawResponseText.trim().startsWith('{') && rawResponseText.length > (aiResult.chat_response?.length || 0))
+          ? rawResponseText
+          : (aiResult.response || aiResult.chat_response || rawResponseText);
+        const cleaned = cleanChatText(candidateText);
         fullResponseText = stripAiReasoningScratchpad(cleaned) || "✨ Votre demande a été traitée avec succès.";
         // Aucun événement de création n'est émis : l'espace création reste totalement stable et calme !
       }
