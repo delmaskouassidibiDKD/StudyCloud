@@ -5937,28 +5937,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                               <span className="truncate font-semibold">{displayName}</span>
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
-                              {isChef ? (
-                                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-orange-500/25 text-orange-300 font-extrabold border border-orange-500/40 flex items-center gap-0.5 shadow-xs">
-                                  👑 Agent Delmas (Chef Multi-IA)
-                                </span>
-                              ) : (
-                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 font-medium border border-zinc-700">
-                                  Solo
-                                </span>
-                              )}
                               {isSelected && <Check className="w-3.5 h-3.5 text-orange-400 shrink-0 ml-0.5" />}
                             </div>
-                          </div>
-                          <div className="text-[10px] pl-4 font-normal">
-                            {isChef ? (
-                              <span className="text-orange-400/80">
-                                Orchestre : Gemini Perception (Audio, Vision, Vidéo, Doc) • Maths R1
-                              </span>
-                            ) : (
-                              <span className="text-zinc-500">
-                                Modèle autonome individuel (utilisé seul)
-                              </span>
-                            )}
                           </div>
                         </button>
                       );
