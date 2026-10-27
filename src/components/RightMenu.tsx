@@ -241,7 +241,14 @@ export function RightMenu({
           if (typeof parsedContent === 'string') {
             try { parsedContent = JSON.parse(parsedContent); } catch {}
           }
-          const itemStatus = item.status || (parsedContent && typeof parsedContent === 'object' && parsedContent.status) || 'ready';
+          let itemStatus = item.status || (parsedContent && typeof parsedContent === 'object' && parsedContent.status) || 'ready';
+          // Si une création est restée bloquée en cours depuis plus de 10 minutes, marquer en échec
+          if (itemStatus === 'generating' || itemStatus === 'queued') {
+            const ageMs = Date.now() - new Date(item.created_at || item.createdAt || 0).getTime();
+            if (ageMs > 10 * 60 * 1000) {
+              itemStatus = 'error';
+            }
+          }
           const tokens = item.tokens || (parsedContent && typeof parsedContent === 'object' && (parsedContent.tokens || parsedContent.credits)) || undefined;
           return {
             ...item,
@@ -819,14 +826,21 @@ export function RightMenu({
     setIsRightDrawerOpen(false);
 
     // Si la création est encore en cours de génération ou en attente dans la file
-    if (item.status === 'generating' || item.status === 'queued' || !item.content) {
+    const isStillGenerating =
+      item.status === 'generating' ||
+      item.status === 'queued' ||
+      !item.content ||
+      item.content?.status === 'generating' ||
+      item.content?.status === 'queued';
+
+    if (isStillGenerating) {
       setActiveCreation(item);
       const title = item.title || CREATION_NAME_MAP[item.toolType || item.type] || 'Création Studio';
       setGeneratingToolTitle(title);
       setLiveStatusText(
-        item.status === 'queued'
+        item.status === 'queued' || item.content?.status === 'queued'
           ? "En attente... Démarrage dès qu'une création se termine"
-          : (item.progressText || "L'IA conçoit actuellement votre support en arrière-plan...")
+          : (item.progressText || item.content?.progressText || "L'IA conçoit actuellement votre support en arrière-plan...")
       );
       setCreationPhase('creating');
 
@@ -1144,6 +1158,15 @@ export function RightMenu({
       setActiveCreation(null);
     };
 
+    const handleTriggerCreationGenerate = (e: any) => {
+      const type = e.detail?.type;
+      if (!type) return;
+      const matched = proposalCards.find(c => c.toolType === type || c.id === type);
+      if (matched) {
+        handleSelectCard(matched);
+      }
+    };
+
     window.addEventListener('ai-creation-ready', handleCreationReady as any);
     window.addEventListener('studycloud-creation-enqueued', handleCreationEnqueued as any);
     window.addEventListener('studycloud-creation-status-changed', handleCreationStatusChanged as any);
@@ -1151,6 +1174,7 @@ export function RightMenu({
     window.addEventListener('studycloud-clear-creation', handleClearCreation as any);
     window.addEventListener('ai-creation-status-update', handleCreationStatus as any);
     window.addEventListener('ai-creation-error', handleCreationError as any);
+    window.addEventListener('trigger-creation-generate', handleTriggerCreationGenerate as any);
     window.addEventListener('offline', handleOffline);
 
     return () => {
@@ -1161,6 +1185,7 @@ export function RightMenu({
       window.removeEventListener('studycloud-clear-creation', handleClearCreation as any);
       window.removeEventListener('ai-creation-status-update', handleCreationStatus as any);
       window.removeEventListener('ai-creation-error', handleCreationError as any);
+      window.removeEventListener('trigger-creation-generate', handleTriggerCreationGenerate as any);
       window.removeEventListener('offline', handleOffline);
     };
   }, [proposalCards, resolvedDocName]);

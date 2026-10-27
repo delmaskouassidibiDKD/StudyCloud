@@ -354,8 +354,7 @@ export async function sendChatMessageToAi(params: {
   };
 
   // 1. Appel direct via le SDK officiel @google/genai si une clé Gemini est disponible et que le modèle ciblé est Gemini (ou Power Mode)
-  // NOTE OPTION 2 : On ne court-circuite PAS le Worker si la tâche est demandée en arrière-plan (isAsyncBackground), car le Worker utilise ctx.waitUntil pour garantir la persistance D1 même si le mobile est mis en veille.
-  if (!isAsyncBackground && userGeminiApiKey && userGeminiApiKey.length > 20 && (params.model === 'gemini-2.0-flash' || isPowerMode || params.engine === 'gemini')) {
+  if (userGeminiApiKey && userGeminiApiKey.length > 20 && (params.model === 'gemini-2.0-flash' || isPowerMode || params.engine === 'gemini')) {
     try {
       const isContinuation = Boolean(
         params.isContinuation ||
@@ -675,9 +674,9 @@ export async function sendChatMessageToAi(params: {
     raw_response: rawFull,
     rawResponse: rawFull,
     perceptionReport: data.perceptionReport || undefined,
-    async: Boolean(data.async || (isAsyncBackground && data.status === 'generating')),
+    async: Boolean(data.async),
     isBackground: Boolean(data.isBackground || isAsyncBackground),
-    status: data.status || (isAsyncBackground ? 'generating' : 'ready'),
+    status: data.status || 'ready',
     taskId: data.taskId || data.creation_id || data.creationId || params.creationId,
     tokens: typeof data.tokens === 'number' ? data.tokens : (typeof data.credits === 'number' ? data.credits : (data.usage?.totalTokens || (typeof data.tokens === 'string' ? parseInt(data.tokens, 10) : undefined))),
     credits: typeof data.credits === 'number' ? data.credits : (typeof data.tokens === 'number' ? data.tokens : (data.usage?.totalTokens || undefined)),

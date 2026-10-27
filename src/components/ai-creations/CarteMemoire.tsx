@@ -89,8 +89,35 @@ export default function CarteMemoire({ data }: { data?: any }) {
     setIsTesting(false);
   }, [data]);
 
-  // Si aucune carte mémoire n'est encore générée par l'IA
+  // Si aucune carte mémoire n'est encore générée par l'IA ou en cours de génération
   if (cards.length === 0) {
+    const isGenerating = Boolean(
+      data?.status === 'generating' ||
+      data?.status === 'queued' ||
+      data?.content?.status === 'generating' ||
+      data?.content?.status === 'queued'
+    );
+
+    if (isGenerating) {
+      return (
+        <div id="module-carte-memoire" className="w-full max-w-4xl mx-auto p-6 md:p-8 space-y-6">
+          <div id="carte-memoire-generating-card" className="w-full bg-[#1e2026] border border-orange-500/30 rounded-2xl p-8 md:p-12 text-center space-y-5 shadow-xs animate-pulse">
+            <div className="w-16 h-16 mx-auto rounded-2xl border border-orange-500/30 bg-orange-500/10 flex items-center justify-center text-orange-400">
+              <RotateCcw className="w-8 h-8 animate-spin" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl md:text-2xl font-bold text-white">
+                {data?.status === 'queued' || data?.content?.status === 'queued' ? "En attente dans la file..." : "Création des cartes mémoire en cours..."}
+              </h3>
+              <p className="text-zinc-400 text-sm md:text-base max-w-lg mx-auto leading-relaxed">
+                L'agent IA extrait les définitions, formules et notions clés de votre document pour concevoir vos cartes mémoires.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div id="module-carte-memoire" className="w-full max-w-4xl mx-auto p-6 md:p-8 space-y-6">
         <div id="carte-memoire-empty-card" className="w-full bg-white border border-stone-200 rounded-2xl p-8 md:p-12 text-center space-y-4 shadow-xs">

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Loader2 } from 'lucide-react';
 import Questionnaire from '../../ai-creations/Questionnaire';
 import QuestionnaireTest from '../../ai-creations/QuestionnaireTest';
 import VraiOuFaux from '../../ai-creations/VraiOuFaux';
@@ -21,6 +22,33 @@ interface AiPedagogyRendererProps {
 
 export function AiPedagogyRenderer({ type, data, title, sourceFileName }: AiPedagogyRendererProps) {
   const normType = (type || '').toLowerCase().replace(/_/g, '-');
+
+  const isGenerating = Boolean(
+    data?.status === 'generating' ||
+    data?.status === 'queued' ||
+    data?.content?.status === 'generating' ||
+    data?.content?.status === 'queued'
+  );
+
+  if (isGenerating) {
+    return (
+      <div className="w-full h-full flex items-center justify-center p-6 bg-[#131417]">
+        <div className="flex flex-col items-center gap-4 max-w-sm px-8 py-7 rounded-3xl bg-zinc-900/90 backdrop-blur-md border border-orange-500/25 shadow-[0_0_30px_rgba(249,115,22,0.18)] text-center animate-pulse">
+          <div className="inline-flex items-center px-3 py-1 rounded-full bg-orange-500/20 border border-orange-500/30">
+            <span className="text-[11px] font-bold text-orange-300 uppercase tracking-wider">
+              {data?.status === 'queued' || data?.content?.status === 'queued' ? 'EN ATTENTE' : 'CONCEPTION EN COURS'}
+            </span>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-400">
+            <Loader2 className="w-6 h-6 animate-spin" />
+          </div>
+          <p className="text-sm font-semibold text-white tracking-wide">
+            {data?.progressText || data?.content?.progressText || "L'agent IA conçoit actuellement votre support en arrière-plan..."}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const renderComponent = () => {
     switch (normType) {

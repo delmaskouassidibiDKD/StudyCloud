@@ -110,8 +110,35 @@ export default function VraiOuFaux({ data }: { data?: any }) {
     setCompleted(false);
   }, [data]);
 
-  // Si aucune affirmation n'a encore été générée par l'IA
+  // Si aucune affirmation n'a encore été générée par l'IA ou en cours de génération
   if (affirmations.length === 0) {
+    const isGenerating = Boolean(
+      data?.status === 'generating' ||
+      data?.status === 'queued' ||
+      data?.content?.status === 'generating' ||
+      data?.content?.status === 'queued'
+    );
+
+    if (isGenerating) {
+      return (
+        <div id="module-vrai-ou-faux" className="w-full max-w-4xl mx-auto p-6 md:p-8 space-y-6">
+          <div id="vrai-faux-generating-card" className="w-full bg-[#1e2026] border border-orange-500/30 rounded-2xl p-8 md:p-12 text-center space-y-5 shadow-xs animate-pulse">
+            <div className="w-16 h-16 mx-auto rounded-2xl border border-orange-500/30 bg-orange-500/10 flex items-center justify-center text-orange-400">
+              <RotateCcw className="w-8 h-8 animate-spin" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl md:text-2xl font-bold text-white">
+                {data?.status === 'queued' || data?.content?.status === 'queued' ? "En attente dans la file..." : "Conception des affirmations Vrai ou Faux..."}
+              </h3>
+              <p className="text-zinc-400 text-sm md:text-base max-w-lg mx-auto leading-relaxed">
+                L'agent IA analyse votre document et prépare les affirmations avec leurs justifications détaillées.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div id="module-vrai-ou-faux" className="w-full max-w-4xl mx-auto p-6 md:p-8 space-y-6">
         <div id="vrai-faux-empty-card" className="w-full bg-white border border-stone-200 rounded-2xl p-8 md:p-12 text-center space-y-4 shadow-xs">
