@@ -118,6 +118,14 @@ export function LeftMenu({
   }, []);
 
   useEffect(() => {
+    const handleNewConv = () => {
+      setAttachedResources([]);
+    };
+    window.addEventListener('studycloud_new_conversation', handleNewConv);
+    return () => window.removeEventListener('studycloud_new_conversation', handleNewConv);
+  }, []);
+
+  useEffect(() => {
     const unsub = CloudDataStore.subscribe((state) => {
       if (state.classeurFolders && state.classeurFolders.length > 0) {
         setClasseurFolders(state.classeurFolders);

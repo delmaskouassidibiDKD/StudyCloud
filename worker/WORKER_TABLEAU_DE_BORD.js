@@ -14342,6 +14342,114 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
     });
   }
 
+  // 9. GET /api/ai/file-perception
+  // Récupère la perception d'un fichier analysé pour cet utilisateur (valable strictement 30 minutes)
+  if (request.method === 'GET' && path === '/api/ai/file-perception') {
+    const userId = url.searchParams.get('userId') || request.headers.get('x-user-id') || '';
+    const fileSignature = url.searchParams.get('fileSignature') || '';
+    if (!userId || !fileSignature) {
+      return new Response(JSON.stringify({ success: true, perception: null }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+
+    try {
+      await safeRun(db, `
+        CREATE TABLE IF NOT EXISTS ai_document_perceptions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          file_signature TEXT NOT NULL,
+          file_name TEXT,
+          perception_report TEXT NOT NULL,
+          expires_at INTEGER NOT NULL,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await safeRun(db, `CREATE INDEX IF NOT EXISTS idx_ai_doc_perceptions_user ON ai_document_perceptions(user_id)`);
+    } catch {}
+
+    const nowMs = Date.now();
+    // Auto-purger les perceptions expirées (> 30 minutes)
+    await safeRun(db, `DELETE FROM ai_document_perceptions WHERE expires_at < ?`, [nowMs]);
+
+    const row = await safeFirst(db, `SELECT * FROM ai_document_perceptions WHERE user_id = ? AND file_signature = ? AND expires_at > ?`, [userId, fileSignature, nowMs]);
+    return new Response(JSON.stringify({
+      success: true,
+      perception: row ? row.perception_report : null,
+      fileName: row ? row.file_name : null,
+      createdAt: row ? row.created_at : null
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 10. POST /api/ai/file-perception
+  // Enregistre l'analyse d'un document dans D1 avec un délai d'expiration de 30 minutes.
+  // Si l'utilisateur a changé de fichier, les anciens fichiers de cet utilisateur sont immédiatement purgés.
+  if (request.method === 'POST' && path === '/api/ai/file-perception') {
+    const body = await request.json().catch(() => ({}));
+    const userId = body.userId || body.user_id || request.headers.get('x-user-id') || '';
+    const fileSignature = body.fileSignature || body.file_signature || '';
+    const fileName = body.fileName || body.file_name || '';
+    const perceptionReport = body.perceptionReport || body.perception_report || '';
+
+    if (!userId || !fileSignature || !perceptionReport) {
+      return new Response(JSON.stringify({ success: false, error: "Paramètres manquants pour l'enregistrement de perception" }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+
+    try {
+      await safeRun(db, `
+        CREATE TABLE IF NOT EXISTS ai_document_perceptions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          file_signature TEXT NOT NULL,
+          file_name TEXT,
+          perception_report TEXT NOT NULL,
+          expires_at INTEGER NOT NULL,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await safeRun(db, `CREATE INDEX IF NOT EXISTS idx_ai_doc_perceptions_user ON ai_document_perceptions(user_id)`);
+    } catch {}
+
+    const nowMs = Date.now();
+    const expiresAt = nowMs + 30 * 60 * 1000; // 30 minutes strictes
+    const perceptionId = `percep_${userId}_${Date.now()}`;
+
+    // Règle demandée : quand l'utilisateur choisit un nouveau fichier, l'ancien est effacé pour son ID
+    await safeRun(db, `DELETE FROM ai_document_perceptions WHERE user_id = ? AND file_signature != ?`, [userId, fileSignature]);
+
+    await safeRun(db, `
+      INSERT OR REPLACE INTO ai_document_perceptions (id, user_id, file_signature, file_name, perception_report, expires_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    `, [perceptionId, userId, fileSignature, fileName, perceptionReport, expiresAt]);
+
+    return new Response(JSON.stringify({ success: true, id: perceptionId, expiresAt }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 11. DELETE /api/ai/file-perception
+  // Supprime toutes les perceptions en base de données pour cet utilisateur
+  if (request.method === 'DELETE' && path === '/api/ai/file-perception') {
+    const userId = url.searchParams.get('userId') || request.headers.get('x-user-id') || '';
+    if (userId) {
+      await safeRun(db, `DELETE FROM ai_document_perceptions WHERE user_id = ?`, [userId]);
+    }
+    return new Response(JSON.stringify({ success: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
   return new Response(JSON.stringify({ success: false, error: `Route IA introuvable: ${request.method} ${path}` }), {
     status: 404,
     headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }

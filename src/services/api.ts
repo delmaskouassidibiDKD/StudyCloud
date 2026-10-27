@@ -2189,6 +2189,57 @@ export const StudyCloudAPI = {
   },
 
   // --------------------------------------------------------------------------
+  // Perceptions de Fichiers IA (Base de données Cloudflare D1 avec TTL de 30 min)
+  // Zéro stockage local : lié strictement à l'userId en base D1
+  // --------------------------------------------------------------------------
+  async getAiFilePerception(userId: string, fileSignature: string): Promise<string | null> {
+    if (!userId || userId === 'default-user' || !fileSignature) return null;
+    try {
+      const res = await request<{ success: boolean; perception: string | null }>(
+        `/api/ai/file-perception?userId=${encodeURIComponent(userId)}&fileSignature=${encodeURIComponent(fileSignature)}&_t=${Date.now()}`
+      );
+      if (res && res.success && res.perception) {
+        return res.perception;
+      }
+    } catch (e) {
+      console.warn('[API] Erreur récupération perception D1:', e);
+    }
+    return null;
+  },
+
+  async saveAiFilePerception(data: {
+    userId: string;
+    fileSignature: string;
+    fileName?: string;
+    perceptionReport: string;
+  }): Promise<boolean> {
+    if (!data.userId || data.userId === 'default-user' || !data.fileSignature || !data.perceptionReport) return false;
+    try {
+      const res = await request<{ success: boolean }>('/api/ai/file-perception', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+      return Boolean(res && res.success);
+    } catch (e) {
+      console.warn('[API] Erreur enregistrement perception D1:', e);
+      return false;
+    }
+  },
+
+  async clearAiFilePerceptions(userId: string): Promise<boolean> {
+    if (!userId || userId === 'default-user') return false;
+    try {
+      const res = await request<{ success: boolean }>(`/api/ai/file-perception?userId=${encodeURIComponent(userId)}`, {
+        method: 'DELETE',
+      });
+      return Boolean(res && res.success);
+    } catch (e) {
+      console.warn('[API] Erreur purge perceptions D1:', e);
+      return false;
+    }
+  },
+
+  // --------------------------------------------------------------------------
   // Configuration et Modèles Robot Rouge (Depuis le Tableau de Bord)
   // --------------------------------------------------------------------------
   async getRobotRougeConfig() {

@@ -2403,16 +2403,9 @@ export interface AssistantChatProps {
 }
 
 export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem, attachedResources = [], setAttachedResources }: AssistantChatProps) {
-  // Document actif à l'écran (Orange) : prop direct ou rechargement local de secours
-  const resolvedActiveItem = activePreviewItem || (() => {
-    try {
-      const raw = localStorage.getItem('studycloud_active_preview_item');
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  })();
-  const resolvedActiveName = resolvedActiveItem?.name || resolvedActiveItem?.title || resolvedActiveItem?.fileName;
+  // Document actif à l'écran (Orange) : prop direct uniquement (ZÉRO restauration locale pour éviter toute rémanence)
+  const resolvedActiveItem = activePreviewItem || null;
+  const resolvedActiveName = resolvedActiveItem?.name || resolvedActiveItem?.title || resolvedActiveItem?.fileName || undefined;
 
   const currentUserId = typeof window !== 'undefined'
     ? (safeGetItem('unifolder_user_id') || safeGetItem('studycloud_user_id') || 'default-user')
@@ -2954,8 +2947,10 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           let tokens = undefined;
           if (row.metadata) {
             try {
-              const meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
-              attachedFileName = meta?.attachedFileName;
+              const rawName = meta?.attachedFileName;
+              if (rawName && rawName !== 'Document d\'étude' && rawName !== 'Document source' && rawName !== 'null' && rawName !== 'undefined') {
+                attachedFileName = rawName;
+              }
               modelName = meta?.model;
               tokens = meta?.tokens || meta?.credits;
             } catch {}
@@ -3267,6 +3262,19 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     setIsWaitingServer(false);
     setIsHistoryDrawerOpen(false);
     setShowProposalBar(true);
+
+    // DÉTACHEMENT STRICT : aucun document de la session précédente ne doit persister
+    setAttachedResources?.([]);
+    window.dispatchEvent(new CustomEvent('studycloud_new_conversation'));
+
+    // RÉINITIALISATION COMPLÈTE DE LA MÉMOIRE DE PERCEPTION EN BASE D1
+    cachedPerceptionReportsRef.current = {};
+    analyzedMediaPerConvRef.current = {};
+    cachedDocumentTextRef.current = {};
+    if (currentUserId && currentUserId !== 'default-user') {
+      StudyCloudAPI.clearAiFilePerceptions(currentUserId).catch(() => {});
+    }
+
     safeSetItem('studycloud_current_conversation_id', newId);
     safeLocalStorageRemove(`studycloud_conv_msgs_${newId}`);
     safeLocalStorageRemove(`studycloud_conv_creations_${newId}`);
@@ -3325,6 +3333,10 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
   const handleRemoveAttachment = async (res: any) => {
     setAttachedResources?.((prev: any[]) => prev.filter((r: any) => r.id !== res.id));
+    cachedPerceptionReportsRef.current = {};
+    if (currentUserId && currentUserId !== 'default-user') {
+      StudyCloudAPI.clearAiFilePerceptions(currentUserId).catch(() => {});
+    }
     if (currentUserId && res.id) {
       await removeAiAttachment({
         userId: currentUserId,
@@ -3909,9 +3921,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
       .join('|');
 
     // Clé unique liée au userId ET à la conversation active pour une isolation totale par utilisateur
-    const userSessionMediaKey = `studycloud_analyzed_media_${currentUserId}_${currentConversationId}`;
     const convCacheKey = `${currentUserId}_${currentConversationId}`;
-    const sessionMediaSig = analyzedMediaPerConvRef.current[convCacheKey] || safeGetItem(userSessionMediaKey);
+    const sessionMediaSig = analyzedMediaPerConvRef.current[convCacheKey];
 
     // Détection si l'utilisateur demande explicitement une réanalyse, un réexamen, ou une nouvelle inspection
     const isExplicitReanalysisRequested = /(?:r[ée]-?analyse|r[ée]examine|re-?regarde|regarde\s+[àa]\s*nouveau|revois|refais\s+(?:l'|une\s+)?analyse|nouvelle\s+analyse|analyse\s+encore|inspecte\s+[àa]\s*nouveau|relis\s+attentivement|zoom\s+sur|v[ée]rifie\s+[àa]\s*nouveau|autre\s+analyse|analyse\s+compl[èe]te|scanne\s+[àa]\s*nouveau|re-?v[ée]rifie)/i.test(userText);
@@ -3927,12 +3938,22 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
       isVisualSpecificDetailRequested
     );
 
-    const existingPerception = (currentMediaSignature ? cachedPerceptionReportsRef.current[currentMediaSignature] : '') ||
-      (currentMediaSignature ? safeGetItem(`studycloud_perception_${currentMediaSignature}`) : '') ||
+    let existingPerception = (currentMediaSignature ? cachedPerceptionReportsRef.current[currentMediaSignature] : '') ||
       (currentMediaSignature ? cachedDocumentTextRef.current[currentMediaSignature] : '');
 
+    // Récupération asynchrone sécurisée depuis la base D1 (expire après 30 min) si non présente en mémoire vive
+    if (!existingPerception && currentMediaSignature && currentUserId && currentUserId !== 'default-user' && !requiresFreshAnalysis) {
+      try {
+        const d1Perception = await StudyCloudAPI.getAiFilePerception(currentUserId, currentMediaSignature);
+        if (d1Perception) {
+          existingPerception = d1Perception;
+          cachedPerceptionReportsRef.current[currentMediaSignature] = d1Perception;
+        }
+      } catch {}
+    }
+
     // Le média est considéré comme déjà analysé UNIQUEMENT si on possède déjà son dossier de perception
-    const isMediaAlreadyAnalyzed = Boolean(!requiresFreshAnalysis && currentMediaSignature && sessionMediaSig === currentMediaSignature && existingPerception);
+    const isMediaAlreadyAnalyzed = Boolean(!requiresFreshAnalysis && currentMediaSignature && (sessionMediaSig === currentMediaSignature || existingPerception) && existingPerception);
 
     const hasAttachedDoc = allDocs.length > 0;
     const hasPromptSubject = detectHasSpecificSubject(userText);
@@ -4128,7 +4149,7 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
     // L'IA formule elle-même sa confirmation naturelle (aucun message figé/générique).
     // =========================================================================
     if (isExplicitCreationRequest && detectedFormats.length > 0) {
-      const mainDocName = resolvedActiveName || (attachedResources[0]?.name) || 'Document d\'étude';
+      const mainDocName = hasAttachedDoc ? (resolvedActiveName || (attachedResources[0]?.name) || undefined) : undefined;
 
       // Sauvegarde du titre de conversation si c'est le 1er message
       if (convBaseMessages.length === 0) {
@@ -4144,10 +4165,10 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
       // Préparation des tâches d'agents pour chaque format de création détecté
       const tasksToEnqueue = detectedFormats.map((explicitToolType, index) => {
         const formatTitle = CREATION_NAME_MAP[explicitToolType] || CREATION_FORMAT_LABELS[explicitToolType] || 'Support d\'apprentissage';
-        const creationTitle = `${formatTitle} : ${mainDocName}`;
+        const creationTitle = mainDocName ? `${formatTitle} : ${mainDocName}` : `${formatTitle} : ${userText.slice(0, 30).trim() || 'Thème libre'}`;
         const creationId = 'crea-' + (Date.now() + index + 2).toString();
         const taskId = `task-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 6)}`;
-        const agentPrompt = getSubAgentTargetPrompt(explicitToolType, mainDocName, userText);
+        const agentPrompt = getSubAgentTargetPrompt(explicitToolType, mainDocName || userText.slice(0, 40), userText);
         return {
           explicitToolType,
           formatTitle,
@@ -4170,7 +4191,7 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
             conversationId: targetConvId,
             title: task.creationTitle,
             toolType: task.explicitToolType,
-            sourceFileName: mainDocName,
+            sourceFileName: mainDocName || undefined,
             createdAt: new Date().toISOString(),
             status: willBeQueued ? 'queued' : 'generating',
             progressText: willBeQueued ? 'En attente...' : 'Création en cours...',
@@ -4322,7 +4343,7 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
       }).then(() => loadConversations()).catch(() => {});
     }
 
-    const mainDocName = resolvedActiveName || (attachedResources[0]?.name) || 'Document d\'étude';
+    const mainDocName = hasAttachedDoc ? (resolvedActiveName || (attachedResources[0]?.name) || undefined) : undefined;
 
     try {
       // Sauvegarde immédiate Cloudflare D1 du message utilisateur
@@ -4347,9 +4368,9 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
       const explicitToolType = requestedTypeOverride as AiCreationType | undefined;
 
       if (isExplicitOverride && explicitToolType) {
-        const creationTitle = `${explicitToolType.toUpperCase()} : ${mainDocName}`;
+        const creationTitle = mainDocName ? `${explicitToolType.toUpperCase()} : ${mainDocName}` : explicitToolType.toUpperCase();
         window.dispatchEvent(new CustomEvent('ai-creation-start', {
-          detail: { toolType: explicitToolType, title: creationTitle, sourceFileName: mainDocName }
+          detail: { toolType: explicitToolType, title: creationTitle, sourceFileName: mainDocName || undefined }
         }));
         window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
       }
@@ -4842,14 +4863,14 @@ CAS 3 : DEMANDE D'UN DOCUMENT PDF SUR UN SUJET OU CONTENU SPÉCIFIQUE (ex: "Fais
 
       let effectiveSystemContent = systemContent;
 
-      if (requiresFreshAnalysis && mainDocName) {
+      if (hasAttachedDoc && requiresFreshAnalysis && mainDocName) {
         effectiveSystemContent += `\n\n══════════════════════════════════════════════════════════════════════════════
 [NOUVELLE ANALYSE APPROFONDIE DU FICHIER « ${mainDocName} » DEMANDÉE] :
 L'étudiant a formulé une consigne nécessitant une NOUVELLE analyse minutieuse (ou réexamen visuel ciblé) du document « ${mainDocName} ».
 Observe et inspecte à nouveau avec une attention maximale tous les éléments demandés (texte, formules, schémas, graphiques, figures ou audio/vidéo).
 Réponds précisément et rigoureusement avec bienveillance et clarté.
 ══════════════════════════════════════════════════════════════════════════════`;
-      } else if (isMediaAlreadyAnalyzed && mainDocName) {
+      } else if (hasAttachedDoc && isMediaAlreadyAnalyzed && mainDocName) {
         effectiveSystemContent += `\n\n══════════════════════════════════════════════════════════════════════════════
 [SUITE DE DISCUSSION SUR LE FICHIER « ${mainDocName} » DÉJÀ ANALYSÉ] :
 Tu as DÉJÀ analysé et assimilé le document/média « ${mainDocName} » lors du premier tour de cette discussion.
@@ -4865,7 +4886,7 @@ CONSIGNES STRICTES :
 2. DIALOGUE NATUREL :
    - Poursuis la discussion de manière fluide comme un professeur bienveillant qui est déjà en train de travailler sur le cours avec son élève.
 ══════════════════════════════════════════════════════════════════════════════`;
-      } else if (mainDocName) {
+      } else if (hasAttachedDoc && mainDocName) {
         effectiveSystemContent += `\n\n══════════════════════════════════════════════════════════════════════════════
 [NOUVEAU DOCUMENT ATTACHÉ PAR L'ÉTUDIANT : « ${mainDocName} »] :
 L'étudiant vient d'attacher ou de changer de document pour travailler sur « ${mainDocName} ».
@@ -4877,6 +4898,15 @@ CONSIGNES STRICTES :
    - Réponds directement et précisément à la question de l'élève à propos de ce document « ${mainDocName} ».
    - Ne dis JAMAIS que tu ne vois pas d'image ou de document. Le document est actif à l'écran.
    - Ne demande JAMAIS de renvoyer le document.
+══════════════════════════════════════════════════════════════════════════════`;
+      } else if (!hasAttachedDoc) {
+        effectiveSystemContent += `\n\n══════════════════════════════════════════════════════════════════════════════
+[AUCUN DOCUMENT OU FICHIER JOINT DANS CETTE DISCUSSION] :
+L'étudiant n'a joint AUCUN document, AUCUN fichier, et AUCUNE image dans cette discussion.
+CONSIGNES STRICTES :
+1. NE DIS JAMAIS et N'AFFIRME JAMAIS que tu as un document ou un fichier sous les yeux, que tu analyses un document, ou que tu as reçu un "Document d'étude".
+2. Ne fais référence à aucun document imaginaire et n'utilise pas de formule comme "d'après ton document".
+3. Réponds directement, naturellement et pédagogiquement à l'étudiant en te basant sur son message.
 ══════════════════════════════════════════════════════════════════════════════`;
       }
 
@@ -5040,12 +5070,14 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
 
       const detectedMediaType = activeVideoInfo ? 'video' : (activeAudioInfo ? 'audio' : (activeImageInfo ? 'image' : 'document'));
 
-      const resolvedAttachedText = activeDocumentInfo?.textContent ||
+      const resolvedAttachedText = hasAttachedDoc ? (
+        activeDocumentInfo?.textContent ||
         (currentMediaSignature ? cachedDocumentTextRef.current[currentMediaSignature] : '') ||
         (resolvedActiveItem as any)?.content ||
         (resolvedActiveItem as any)?.text ||
         (resolvedActiveItem as any)?.rawText ||
-        '';
+        ''
+      ) : '';
 
       const aiResult = await sendChatMessageToAi({
         messages: chatHistory,
@@ -5065,20 +5097,20 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         apiToken: configuredToken || undefined,
         geminiApiKey: configuredToken || getGeminiApiKey() || undefined,
         requested_type: explicitToolType || undefined,
-        attachedFileName: mainDocName,
-        attachedFileContent: resolvedAttachedText,
-        perceptionReport: existingPerception || undefined,
-        imageBase64: activeImageInfo?.base64,
-        mimeType: activeImageInfo?.mimeType,
-        videoBase64: activeVideoInfo?.videoBase64,
-        videoFrames: activeVideoInfo?.videoFrames,
-        videoMimeType: activeVideoInfo?.mimeType,
-        audioBase64: activeAudioInfo?.audioBase64,
-        audioMimeType: activeAudioInfo?.mimeType,
-        documentBase64: activeDocumentInfo?.documentBase64,
-        documentMimeType: activeDocumentInfo?.documentMimeType,
-        documentImages: activeDocumentInfo?.documentImages,
-        mediaType: detectedMediaType,
+        attachedFileName: hasAttachedDoc ? mainDocName : undefined,
+        attachedFileContent: hasAttachedDoc ? resolvedAttachedText : undefined,
+        perceptionReport: hasAttachedDoc ? (existingPerception || undefined) : undefined,
+        imageBase64: hasAttachedDoc ? activeImageInfo?.base64 : undefined,
+        mimeType: hasAttachedDoc ? activeImageInfo?.mimeType : undefined,
+        videoBase64: hasAttachedDoc ? activeVideoInfo?.videoBase64 : undefined,
+        videoFrames: hasAttachedDoc ? activeVideoInfo?.videoFrames : undefined,
+        videoMimeType: hasAttachedDoc ? activeVideoInfo?.mimeType : undefined,
+        audioBase64: hasAttachedDoc ? activeAudioInfo?.audioBase64 : undefined,
+        audioMimeType: hasAttachedDoc ? activeAudioInfo?.mimeType : undefined,
+        documentBase64: hasAttachedDoc ? activeDocumentInfo?.documentBase64 : undefined,
+        documentMimeType: hasAttachedDoc ? activeDocumentInfo?.documentMimeType : undefined,
+        documentImages: hasAttachedDoc ? activeDocumentInfo?.documentImages : undefined,
+        mediaType: hasAttachedDoc ? detectedMediaType : undefined,
         signal: abortSignal,
         abortSignal,
       });
@@ -5094,14 +5126,18 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         return;
       }
 
-      // Marquer ce média comme analysé pour cette session de discussion (lié à cet utilisateur)
-      if (currentMediaSignature) {
+      // Enregistrement de la perception dans Cloudflare D1 avec TTL 30 min (Zéro localStorage)
+      if (currentMediaSignature && hasAttachedDoc) {
         if (aiResult?.perceptionReport) {
           cachedPerceptionReportsRef.current[currentMediaSignature] = aiResult.perceptionReport;
-          safeSetItem(`studycloud_perception_${currentMediaSignature}`, aiResult.perceptionReport);
+          StudyCloudAPI.saveAiFilePerception({
+            userId: currentUserId,
+            fileSignature: currentMediaSignature,
+            fileName: mainDocName || 'Document d\'étude',
+            perceptionReport: aiResult.perceptionReport
+          }).catch(err => console.warn('[AssistantChat] Erreur sauvegarde perception D1:', err));
         }
         analyzedMediaPerConvRef.current[convCacheKey] = currentMediaSignature;
-        safeSetItem(userSessionMediaKey, currentMediaSignature);
       }
 
       const fullAiText = (aiResult as any).raw_response || (aiResult as any).rawResponse || aiResult.response || "Désolé, je n'ai pas pu obtenir de réponse.";
@@ -5529,13 +5565,17 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
       // Marquer la tâche comme terminée dans le manager d'arrière-plan
       aiBackgroundManager.completeAiTask(targetConvId, aiMsgId, fullResponseText, (creationParsed as any)?.content ? { title: creationParsed?.title, toolType: creationParsed?.toolType } : undefined);
 
-      if (currentMediaSignature) {
+      if (currentMediaSignature && hasAttachedDoc) {
         if (aiResult?.perceptionReport) {
           cachedPerceptionReportsRef.current[currentMediaSignature] = aiResult.perceptionReport;
-          safeSetItem(`studycloud_perception_${currentMediaSignature}`, aiResult.perceptionReport);
+          StudyCloudAPI.saveAiFilePerception({
+            userId: currentUserId,
+            fileSignature: currentMediaSignature,
+            fileName: mainDocName || 'Document d\'étude',
+            perceptionReport: aiResult.perceptionReport
+          }).catch(err => console.warn('[AssistantChat] Erreur sauvegarde perception D1:', err));
         }
         analyzedMediaPerConvRef.current[convCacheKey] = currentMediaSignature;
-        safeSetItem(userSessionMediaKey, currentMediaSignature);
       }
 
       // Si l'utilisateur est toujours dans CETTE conversation, mise à jour fluide de l'affichage
@@ -6077,13 +6117,15 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                         </span>
                       )}
                     </div>
-                    {msg.attachedFileName && (
+                    {msg.attachedFileName && msg.attachedFileName !== 'Document d\'étude' && msg.attachedFileName !== 'Document source' && (
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        {msg.attachedFileName.split(', ').map((docName, idx) => (
-                          <div key={idx} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-[10px] font-semibold text-orange-300">
-                            <FileText className="w-3 h-3 text-orange-400 shrink-0" />
-                            <span className="truncate max-w-[140px] sm:max-w-[200px]">{docName}</span>
-                          </div>
+                        {msg.attachedFileName.split(', ')
+                          .filter(docName => docName && docName !== 'Document d\'étude' && docName !== 'Document source')
+                          .map((docName, idx) => (
+                            <div key={idx} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-[10px] font-semibold text-orange-300">
+                              <FileText className="w-3 h-3 text-orange-400 shrink-0" />
+                              <span className="truncate max-w-[140px] sm:max-w-[200px]">{docName}</span>
+                            </div>
                         ))}
                       </div>
                     )}

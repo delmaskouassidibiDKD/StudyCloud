@@ -14462,6 +14462,100 @@ a:hover{transform:translateY(-2px)}
       }
 
       // ----------------------------------------------------------------------
+      // PERCEPTIONS IA DE FICHIERS D1 (EXPIRE APRÈS 30 MIN - ISOLATION USER)
+      // ----------------------------------------------------------------------
+      if (path === '/api/ai/file-perception') {
+        const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
+        if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
+
+        if (method === 'GET') {
+          const userId = url.searchParams.get('userId') || request.headers.get('x-user-id') || '';
+          const fileSignature = url.searchParams.get('fileSignature') || '';
+          if (!userId || !fileSignature) {
+            return jsonResponse({ success: true, perception: null }, 200, origin);
+          }
+          try {
+            await targetDb.prepare(`
+              CREATE TABLE IF NOT EXISTS ai_document_perceptions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                file_signature TEXT NOT NULL,
+                file_name TEXT,
+                perception_report TEXT NOT NULL,
+                expires_at INTEGER NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+              )
+            `).run();
+            const nowMs = Date.now();
+            await targetDb.prepare('DELETE FROM ai_document_perceptions WHERE expires_at < ?').bind(nowMs).run().catch(() => {});
+            const row: any = await targetDb.prepare('SELECT * FROM ai_document_perceptions WHERE user_id = ? AND file_signature = ? AND expires_at > ?').bind(userId, fileSignature, nowMs).first();
+            return jsonResponse({
+              success: true,
+              perception: row ? row.perception_report : null,
+              fileName: row ? row.file_name : null,
+              createdAt: row ? row.created_at : null
+            }, 200, origin);
+          } catch (e) {
+            return jsonResponse({ success: true, perception: null }, 200, origin);
+          }
+        }
+
+        if (method === 'POST') {
+          const body: any = await request.json().catch(() => ({}));
+          const userId = body.userId || body.user_id || request.headers.get('x-user-id') || '';
+          const fileSignature = body.fileSignature || body.file_signature || '';
+          const fileName = body.fileName || body.file_name || '';
+          const perceptionReport = body.perceptionReport || body.perception_report || '';
+
+          if (!userId || !fileSignature || !perceptionReport) {
+            return errorResponse('Paramètres manquants pour perception', 400, origin);
+          }
+
+          try {
+            await targetDb.prepare(`
+              CREATE TABLE IF NOT EXISTS ai_document_perceptions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                file_signature TEXT NOT NULL,
+                file_name TEXT,
+                perception_report TEXT NOT NULL,
+                expires_at INTEGER NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+              )
+            `).run();
+
+            const nowMs = Date.now();
+            const expiresAt = nowMs + 30 * 60 * 1000;
+            const perceptionId = `percep_${userId}_${Date.now()}`;
+
+            // Règle stricte : si l'utilisateur choisit un nouveau fichier, l'ancien est effacé pour son user_id
+            await targetDb.prepare('DELETE FROM ai_document_perceptions WHERE user_id = ? AND file_signature != ?').bind(userId, fileSignature).run().catch(() => {});
+
+            await targetDb.prepare(`
+              INSERT OR REPLACE INTO ai_document_perceptions (id, user_id, file_signature, file_name, perception_report, expires_at, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            `).bind(perceptionId, userId, fileSignature, fileName, perceptionReport, expiresAt).run();
+
+            return jsonResponse({ success: true, id: perceptionId, expiresAt }, 200, origin);
+          } catch (e) {
+            return errorResponse('Erreur enregistrement perception', 500, origin);
+          }
+        }
+
+        if (method === 'DELETE') {
+          const userId = url.searchParams.get('userId') || request.headers.get('x-user-id') || '';
+          if (userId) {
+            try {
+              await targetDb.prepare('DELETE FROM ai_document_perceptions WHERE user_id = ?').bind(userId).run();
+            } catch (e) {}
+          }
+          return jsonResponse({ success: true }, 200, origin);
+        }
+      }
+
+      // ----------------------------------------------------------------------
       // DÉLÉGATION DES REQUÊTES D'INFÉRENCE LLM IA VERS LE WORKER IA DÉDIÉ
       // ----------------------------------------------------------------------
       if (path.startsWith('/api/ai/')) {

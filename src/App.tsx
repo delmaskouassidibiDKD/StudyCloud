@@ -678,15 +678,7 @@ export default function App() {
   const loadStagingShareFilesFromD1 = useCallback(async () => {
     refetchStagingFiles();
   }, [refetchStagingFiles]);
-  const [activePreviewItemState, setActivePreviewItemState] = useState<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean; folderName?: string; lockFullscreen?: boolean } | null>(() => {
-    try {
-      const saved = localStorage.getItem('studycloud_active_preview_item');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {}
-    return null;
-  });
+  const [activePreviewItemState, setActivePreviewItemState] = useState<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean; folderName?: string; lockFullscreen?: boolean } | null>(null);
   const [previewOwnerTab, setPreviewOwnerTab] = useState<NavigationTab | null>(() => {
     try {
       const saved = localStorage.getItem('studycloud_preview_owner_tab');
@@ -735,7 +727,7 @@ export default function App() {
     const tabOwner = currentTab || 'folders';
     setPreviewOwnerTab(tabOwner);
     try {
-      localStorage.setItem('studycloud_active_preview_item', JSON.stringify(item));
+      localStorage.removeItem('studycloud_active_preview_item');
       localStorage.setItem('studycloud_preview_owner_tab', tabOwner);
     } catch (e) {}
     if (item.lockFullscreen) {
@@ -747,15 +739,21 @@ export default function App() {
     }, 1000);
   };
 
+  // Nettoyage au démarrage de tout vestige de document en local
   useEffect(() => {
     try {
-      if (activePreviewItemState) {
-        localStorage.setItem('studycloud_active_preview_item', JSON.stringify(activePreviewItemState));
-      } else {
-        localStorage.removeItem('studycloud_active_preview_item');
-      }
+      localStorage.removeItem('studycloud_active_preview_item');
     } catch (e) {}
-  }, [activePreviewItemState]);
+  }, []);
+
+  // Fermer et détacher tout document lorsque l'utilisateur démarre une nouvelle conversation
+  useEffect(() => {
+    const handleNewConv = () => {
+      setActivePreviewItem(null);
+    };
+    window.addEventListener('studycloud_new_conversation', handleNewConv);
+    return () => window.removeEventListener('studycloud_new_conversation', handleNewConv);
+  }, []);
 
   // Synchronise currentTab avec previewOwnerTab si un preview actif est restauré
   useEffect(() => {
@@ -824,16 +822,7 @@ export default function App() {
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [isResizingLeft, setIsResizingLeft] = useState(false);
   const [isResizingRight, setIsResizingRight] = useState(false);
-  const [isCenterFullscreen, setIsCenterFullscreen] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('studycloud_active_preview_item');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed?.lockFullscreen) return true;
-      }
-    } catch (e) {}
-    return false;
-  });
+  const [isCenterFullscreen, setIsCenterFullscreen] = useState<boolean>(false);
   const [isRightFullscreen, setIsRightFullscreen] = useState(false);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 

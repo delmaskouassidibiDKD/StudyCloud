@@ -104,11 +104,8 @@ export function purgeVolatileStorage(): void {
       });
     }
 
-    // Réduire active_preview_item si trop lourd
-    const preview = localStorage.getItem('studycloud_active_preview_item');
-    if (preview && preview.length > 25000) {
-      localStorage.removeItem('studycloud_active_preview_item');
-    }
+    // Purger active_preview_item résiduel si présent
+    try { localStorage.removeItem('studycloud_active_preview_item'); } catch {}
   } catch (err) {
     console.warn('[safeStorage] Erreur durant purge:', err);
   }
