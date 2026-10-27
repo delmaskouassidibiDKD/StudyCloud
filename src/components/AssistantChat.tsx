@@ -3979,8 +3979,42 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     // On doit demander à l'utilisateur de préciser sur quoi il souhaite travailler !
     const needsMultiDocClarification = hasMultipleDocs && !docChoice.targetedDoc && !docChoice.isAllDocs;
 
-    // INTERPELLATION OBLIGATOIRE : Si l'utilisateur demande une création sans document, sans sujet précis et sans contexte de discussion
-    const needsSubjectClarification = isCreationIntent && !hasAttachedDoc && !hasPromptSubject && !hasConversationContext;
+    // 1. Détection rigoureuse d'un document réel pour CETTE création :
+    // Soit un document joint activement à ce message (attachedResources)
+    // Soit un document actif dont le nom ou la référence explicite figure dans le prompt ("sur ce cours", "ce document", etc.)
+    const isDocReferencedInPrompt = Boolean(
+      resolvedActiveItem && (
+        userText.toLowerCase().includes(String(resolvedActiveName || '').toLowerCase().trim()) ||
+        /«[^»]+»/.test(userText) ||
+        /\b(?:ce|mon|le)\s+(?:cours|document|fichier|pdf|sujet|texte)\b/i.test(userText) ||
+        (requestedTypeOverride && resolvedActiveName && (resolvedAttachedText && resolvedAttachedText.length > 30))
+      )
+    );
+
+    const hasRealAttachedDoc = Boolean(
+      (Array.isArray(attachedResources) && attachedResources.length > 0) ||
+      isDocReferencedInPrompt
+    );
+
+    const hasRealDocContent = Boolean(
+      hasRealAttachedDoc && (
+        (resolvedAttachedText && resolvedAttachedText.trim().length > 30) ||
+        activeDocumentInfo?.documentBase64 ||
+        activeImageInfo?.base64 ||
+        activeAudioInfo?.audioBase64 ||
+        activeVideoInfo?.videoBase64
+      )
+    );
+
+    // 2. Le prompt contient-il un sujet précis ou un texte de cours collé ?
+    const hasPastedCourseContent = userText.trim().length >= 100 && !/^(?:bonjour|salut|peux-tu|fais-moi|crée|conçois)/i.test(userText.trim().slice(0, 15));
+    const hasSpecificTopic = hasPromptSubject || hasPastedCourseContent;
+
+    // Contexte éducatif suffisant : document réel avec contenu OU sujet précis dans le prompt
+    const hasEducationalContext = hasRealDocContent || hasSpecificTopic;
+
+    // INTERPELLATION OBLIGATOIRE : Si création demandée sans document réel et sans sujet précis !
+    const needsSubjectClarification = isCreationIntent && !hasEducationalContext;
 
     // Fonction d'interpellation interactive protégée avec animation machine à écrire
     const runInterpellation = (interpellationText: string) => {
@@ -4119,21 +4153,18 @@ ${allDocs.slice(0, 4).map(d => `- Travailler uniquement sur « ${d.name || d.tit
       return;
     }
 
-    // Cas 2 : Demande de création sans aucun document ni sujet
-    if (needsSubjectClarification && detectedFormat) {
-      const formatName = CREATION_FORMAT_LABELS[detectedFormat] || 'création interactive';
-      const suggestions = getSuggestedPromptsForFormat(detectedFormat);
+    // Cas 2 : Demande de création sans aucun document réel ni sujet précis
+    const effectiveClarificationFormat = detectedFormat || (detectedFormats.length > 0 ? detectedFormats[0] : 'questionnaire');
+    if (needsSubjectClarification && effectiveClarificationFormat) {
+      const formatName = CREATION_NAME_MAP[effectiveClarificationFormat] || CREATION_FORMAT_LABELS[effectiveClarificationFormat] || 'support d\'apprentissage';
+      const suggestions = getSuggestedPromptsForFormat(effectiveClarificationFormat);
 
-      const interpellationText = `Pour que je puisse concevoir votre **${formatName}**, vous devez d'abord m'indiquer précisément sur quoi elle doit porter !
+      const interpellationText = `Avec grand plaisir ! Sur quel cours ou sujet souhaites-tu que je crée ce **${formatName}** ?
 
-Je ne peux pas concevoir de support d'étude « dans le vide » sans sujet ni document d'appui.
-
-👉 **Pour m'indiquer votre sujet, vous pouvez :**
-1. **Écrire directement le thème ou chapitre** dans votre message (par exemple : *« Sur les fonctions dérivées en maths »*, *« Sur la Seconde Guerre Mondiale »*, *« Sur les réactions d'oxydoréduction »*...).
-2. Ou **joindre votre fichier de cours** (document PDF, Word, fiche ou photo d'exercice) en cliquant sur le trombone 📎 d'importation en bas.
+Tu peux m'indiquer le thème précis (par exemple : *les lois de Newton*, *la Révolution française*, *les fonctions dérivées*...) ou simplement joindre ton document de cours avec le trombone 📎 !
 
 ---
-Voici quelques exemples concrets sur lesquels vous pouvez lancer votre création immédiatement en un clic :
+Voici quelques exemples concrets que tu peux lancer en un clic :
 
 [QUESTIONS_SUGGÉRÉES]
 ${suggestions.map(s => `- ${s}`).join('\n')}`;
