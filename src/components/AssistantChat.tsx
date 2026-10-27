@@ -4300,77 +4300,47 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
         taskResults.push({ taskId: task.taskId, title: task.creationTitle, isQueued: enqRes.isQueued });
       });
 
-      // L'IA Orchestrateur (Chef d'équipe) analyse le document et le prompt,
-      // formule une vraie réponse dynamique et personnalisée pour le chat,
-      // confirme les missions confiées à ses sous-agents et poursuit le dialogue pédagogique.
+      // L'IA Orchestrateur (Chef d'équipe) confie immédiatement les tâches à ses sous-agents
+      // et formule une réponse de confirmation instantanée, chaleureuse et personnalisée
+      // afin de libérer le chat immédiatement pour que l'étudiant puisse continuer à discuter ou confier d'autres tâches.
       const activeRunningCount = taskResults.filter(t => !t.isQueued).length;
       const queuedCount = taskResults.filter(t => t.isQueued).length;
-      const creationsTitles = tasksToEnqueue.map(t => `« ${t.creationTitle} »`).join(', ');
 
-      const confirmationSystemPrompt = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Agent Delmas).
-L'étudiant vient d'envoyer la demande : "${userText}".
-${mainDocName ? `Document d'étude joint : "${mainDocName}". Tu as analysé le document et la question de l'étudiant.` : ''}
-
-Tu as immédiatement mobilisé tes sous-agents spécialisés en arrière-plan pour concevoir son ou ses modules : ${creationsTitles}.
-État actuel du pool d'agents : ${activeRunningCount} création(s) lancée(s) immédiatement en arrière-plan${queuedCount > 0 ? `, et ${queuedCount} placée(s) en file d'attente automatique (démarrage dès qu'un agent se libère)` : ''}.
-
-CONSIGNES STRICTES POUR TA RÉPONSE DE CHAT :
-1. Réponds DIRECTEMENT, CHALEUREUSEMENT et PERSONNELLEMENT à l'étudiant en français en 2 à 3 phrases fluides.
-2. Fais référence avec précision au contenu analysé (notions clés, sujet du cours, formules, éléments ou thèmes du document ou de la demande).
-3. Confirme clairement que tes agents spécialisés sont au travail en arrière-plan et qu'il retrouvera sa création directement dans l'espace Créations à droite dès qu'elle sera prête.
-4. Continue le dialogue pédagogique : invite-le avec bienveillance à te poser des questions sur son cours, à approfondir une notion ou à échanger ici dans le chat pendant que la conception s'exécute.
-5. INTERDICTION ABSOLUE D'ÉCRIRE DU JSON OU DES ACCOLADES {}. Réponds en texte Markdown naturel.`;
+      // Détection du sujet ou thème ciblé pour une confirmation naturelle et intelligente
+      let targetSubject = mainDocName || '';
+      if (!targetSubject) {
+        const topicMatch = userText.match(/\b(?:sur|concernant|portant\s+sur|à\s+propos\s+de)\s+([a-zA-ZÀ-ÿ0-9\s'’-]{3,35})/i);
+        targetSubject = topicMatch ? topicMatch[1].trim() : '';
+      }
 
       let aiConfirmationText = '';
-      try {
-        const aiAck = await sendChatMessageToAi({
-          messages: [
-            { role: 'system', content: confirmationSystemPrompt },
-            ...convBaseMessages.slice(-4).map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text })),
-            { role: 'user', content: userText }
-          ],
-          prompt: userText,
-          message: userText,
-          userId: targetUserId,
-          sessionId: targetConvId,
-          conversationId: targetConvId,
-          model: selectedModel,
-          selectedModel,
-          apiKey: getGeminiApiKey() || undefined,
-          attachedFileName: mainDocName,
-          attachedFileContent: resolvedAttachedText,
-          imageBase64: activeImageInfo?.base64,
-          mimeType: activeImageInfo?.mimeType,
-          // Optimisation perf : ne pas ré-envoyer le PDF base64 brut si déjà analysé (économise ~500ms-2s)
-          documentBase64: isMediaAlreadyAnalyzed ? undefined : activeDocumentInfo?.documentBase64,
-          documentMimeType: isMediaAlreadyAnalyzed ? undefined : activeDocumentInfo?.documentMimeType,
-          documentImages: isMediaAlreadyAnalyzed ? undefined : activeDocumentInfo?.documentImages,
-          perceptionReport: existingPerception,
-          signal: abortSignal,
-          abortSignal,
-        });
-        const cand = aiAck.chat_response || aiAck.response || '';
-        aiConfirmationText = cleanChatText(cand);
-      } catch (_ackErr) {
-        console.warn('[AssistantChat] Erreur confirmation IA dynamique:', _ackErr);
-      }
+      if (tasksToEnqueue.length === 1) {
+        const singleTask = tasksToEnqueue[0];
+        const isQueued = taskResults[0]?.isQueued;
+        if (isQueued) {
+          aiConfirmationText = `C'est bien noté ! J'ai confié la conception de votre **${singleTask.formatTitle}**${targetSubject ? ` sur *${targetSubject}*` : ''} à un sous-agent dédié en arrière-plan. Comme 3 agents sont déjà au travail en simultané, votre création a été placée en tête de file d'attente et démarrera automatiquement dès qu'un agent se libère.
 
-      // Repli courtois uniquement en cas de coupure réseau ou réponse vide
-      if (!aiConfirmationText || aiConfirmationText.trim().startsWith('{') || aiConfirmationText.includes('"creation_data"')) {
-        if (tasksToEnqueue.length === 1) {
-          const singleTask = tasksToEnqueue[0];
-          const isQueued = taskResults[0]?.isQueued;
-          aiConfirmationText = isQueued
-            ? `Votre demande pour **${singleTask.creationTitle}** est bien prise en compte ! Comme 3 agents sont déjà au travail en simultané, elle démarrera automatiquement dès qu'une place se libère. Vous la retrouverez dans l'espace Créations à droite. En attendant, n'hésitez pas si vous avez d'autres questions ici !`
-            : `C'est bien noté ! J'ai confié la conception de votre **${singleTask.creationTitle}** à un agent spécialisé en arrière-plan. Vous pouvez suivre son avancement et la retrouver dans l'espace Créations à droite dès qu'elle est prête. En attendant, le chat reste totalement ouvert : vous pouvez continuer à me poser vos questions ici !`;
+Vous la retrouverez directement dans le volet **Créations** à droite dès qu'elle est prête.
+
+En attendant, notre discussion continue ici sans interruption : avez-vous des questions sur votre cours ou une autre tâche à me confier ?`;
         } else {
-          const titlesList = tasksToEnqueue.map(t => `**${t.formatTitle}**`).join(', ');
-          aiConfirmationText = queuedCount > 0
-            ? `C'est bien noté ! J'ai mobilisé mes agents spécialisés pour vos ${tasksToEnqueue.length} créations (${titlesList}). ${activeRunningCount} sont lancées immédiatement et ${queuedCount} démarreront automatiquement dès qu'un agent aura terminé. Vous pouvez suivre leur avancement dans l'espace Créations à droite. En attendant, n'hésitez pas si vous avez d'autres questions !`
-            : `C'est bien noté ! J'ai mobilisé mes agents spécialisés pour vos ${tasksToEnqueue.length} créations en parallèle : ${titlesList}. Elles s'exécutent en arrière-plan dans l'espace Créations à droite. En attendant, le chat reste totalement ouvert : vous pouvez continuer à me poser vos questions ici !`;
-        }
-      }
+          aiConfirmationText = `C'est bien noté ! J'ai confié la conception de votre **${singleTask.formatTitle}**${targetSubject ? ` sur *${targetSubject}*` : ''} à un sous-agent spécialisé en arrière-plan.
 
+Son travail s'exécute de façon autonome : vous retrouverez votre création directement dans l'espace **Créations** à droite dès qu'elle sera prête !
+
+En attendant, le chat reste totalement ouvert : vous pouvez me poser vos questions sur le cours, approfondir une notion ou me demander d'autres créations en parallèle !`;
+        }
+      } else {
+        const titlesList = tasksToEnqueue.map(t => `**${t.formatTitle}**`).join(', ');
+        aiConfirmationText = `C'est bien noté ! J'ai mobilisé mes sous-agents spécialisés pour vos ${tasksToEnqueue.length} créations en parallèle : ${titlesList}.
+
+${activeRunningCount > 0 ? `🚀 ${activeRunningCount} création(s) lancée(s) immédiatement en arrière-plan.` : ''}
+${queuedCount > 0 ? `⏳ ${queuedCount} création(s) en file d'attente automatique (démarrage dès libération d'un agent).` : ''}
+
+Vous pouvez suivre leur progression dans l'espace **Créations** à droite.
+
+Pendant que vos modules se construisent, le chat reste 100% disponible : vous pouvez me poser toutes vos questions ou me confier d'autres tâches !`;
+      }
       const effectiveModelName = currentModelDisplay;
       const creationPromptChars = (userText || '').length + aiConfirmationText.length;
       const creationTokens = Math.max(68, Math.ceil(creationPromptChars / 3.8));
@@ -4434,10 +4404,10 @@ CONSIGNES STRICTES POUR TA RÉPONSE DE CHAT :
       if (typeof document !== 'undefined' && document.hidden) {
         finalizeConfirmation();
       } else {
-        const tickSpeed = 16;
-        const targetDuration = Math.min(800, Math.max(250, aiConfirmationText.length * 2));
+        const tickSpeed = 12;
+        const targetDuration = Math.min(300, Math.max(120, aiConfirmationText.length));
         const totalTicks = Math.max(1, Math.floor(targetDuration / tickSpeed));
-        const chunkSize = Math.max(8, Math.ceil(aiConfirmationText.length / totalTicks));
+        const chunkSize = Math.max(16, Math.ceil(aiConfirmationText.length / totalTicks));
         let index = 0;
 
         watchdogTimerRef.current = setTimeout(() => {
