@@ -1651,69 +1651,106 @@ export function detectAllCreationFormats(
   }
   const t = (userText || '').trim().toLowerCase();
 
-  const hasCreationActionVerb = /\b(?:cr[eé][eé]r?|g[eé]n[eé]r(?:er|e)?|fais(?:-moi)?|fait(?:-moi)?|con[çc]ois|conception|pr[eé]pare(?:-moi)?|lance(?:-moi)?|donne(?:-moi)?|produi[st]|construi[st]|r[eé]dige(?:-moi)?|nouveau|nouvelle)\b/i.test(t);
+  const hasCreationActionVerb = /\b(?:cr[eé][eé]r?|g[eé]n[eé]r(?:er|e)?|fais(?:-moi)?|fait(?:-moi)?|con[çc]ois|conception|pr[eé]pare(?:-moi)?|lance(?:-moi)?|donne(?:-moi)?|produi[st]|construi[st]|r[eé]dige(?:-moi)?|nouveau|nouvelle|veux|voudrais|aimerais|besoin\s+d['’]un)\b/i.test(t);
   const isConversationalQuestion = /^(?:pourquoi|comment|qu['’]est-ce|quand|qui|o[uù]|est-ce|peux-tu\s+m['’]expliquer|peux-tu\s+m['’]aider|explique|aide-moi\s+[àa]\s+(?:comprendre|r[eé]soudre)|c['’]est\s+quoi|dis-moi|je\s+ne\s+comprends\s+pas|r[eé]sous|d[eé]taille|salut|bonjour|coucou|hello)\b/i.test(t);
 
   if (isConversationalQuestion && !hasCreationActionVerb && !requestedType) {
     return [];
   }
 
-  const detected: AiCreationType[] = [];
+  const matchedEntries: Array<{ type: AiCreationType; index: number; count: number }> = [];
+
+  const extractQuantityBefore = (matchIndex: number): number => {
+    const prefix = t.slice(Math.max(0, matchIndex - 22), matchIndex);
+    const numMatch = prefix.match(/\b(\d+|deux|trois|quatre|cinq)\s+(?:petits?\s+|nouveaux?\s+|nouvelles?\s+|autres?\s+)?$/i);
+    if (!numMatch) return 1;
+    const raw = numMatch[1].toLowerCase();
+    if (raw === 'deux' || raw === '2') return 2;
+    if (raw === 'trois' || raw === '3') return 3;
+    if (raw === 'quatre' || raw === '4') return 4;
+    if (raw === 'cinq' || raw === '5') return 5;
+    const parsed = parseInt(raw, 10);
+    return (!isNaN(parsed) && parsed >= 1 && parsed <= 5) ? parsed : 1;
+  };
+
+  const addFormat = (type: AiCreationType, regex: RegExp) => {
+    const m = regex.exec(t);
+    if (m) {
+      matchedEntries.push({
+        type,
+        index: m.index,
+        count: extractQuantityBefore(m.index),
+      });
+    }
+  };
 
   if (t) {
     // 1. Vrai ou Faux Test vs Vrai ou Faux
     if (/\b(?:vrai\s+ou\s+faux\s+test|vrai\/faux\s+test|vf\s+test|[eé]preuve\s+vrai\s+ou\s+faux)\b/i.test(t)) {
-      detected.push('vrai-ou-faux-test');
+      addFormat('vrai-ou-faux-test', /\b(?:vrai\s+ou\s+faux\s+test|vrai\/faux\s+test|vf\s+test|[eé]preuve\s+vrai\s+ou\s+faux)\b/i);
     } else if (/\b(?:vrai\s+ou\s+faux|vrai\/faux)\b/i.test(t) || (hasCreationActionVerb && /\baffirmations?\b/i.test(t))) {
-      detected.push('vrai-ou-faux');
+      addFormat('vrai-ou-faux', /\b(?:vrai\s+ou\s+faux|vrai\/faux|affirmations?)\b/i);
     }
 
     // 2. Questionnaire Test vs Questionnaire QCM
     if (/\b(?:questionnaire\s+test|test\s+not[eé]|test\s+chrono|[eé]preuve\s+not[eé]e)\b/i.test(t)) {
-      detected.push('questionnaire-test');
+      addFormat('questionnaire-test', /\b(?:questionnaire\s+test|test\s+not[eé]|test\s+chrono|[eé]preuve\s+not[eé]e)\b/i);
     } else if (/\b(?:questionnaire|quiz|qcm)\b/i.test(t) || (hasCreationActionVerb && /\btest\b/i.test(t) && !/\bvrai\s+ou\s+faux/i.test(t))) {
-      detected.push('questionnaire');
+      addFormat('questionnaire', /\b(?:questionnaire|quiz|qcm|test)\b/i);
     }
 
     // 3. Carte Mentale 2 vs Carte Mentale
     if (/\b(?:carte\s+mentale\s+2|mindmap\s*2|carte\s+conceptuelle)\b/i.test(t)) {
-      detected.push('carte-mentale-2');
+      addFormat('carte-mentale-2', /\b(?:carte\s+mentale\s+2|mindmap\s*2|carte\s+conceptuelle)\b/i);
     } else if (/\b(?:carte\s+mentale|mindmap|mind-map|arborescence)\b/i.test(t)) {
-      detected.push('carte-mentale');
+      addFormat('carte-mentale', /\b(?:carte\s+mentale|mindmap|mind-map|arborescence)\b/i);
     }
 
     // 4. Cartes Mémoires
     if (/\b(?:cartes?\s+m[eé]moires?|flashcards?|fiches?\s+de\s+m[eé]morisation)\b/i.test(t)) {
-      detected.push('carte-memoire');
+      addFormat('carte-memoire', /\b(?:cartes?\s+m[eé]moires?|flashcards?|fiches?\s+de\s+m[eé]morisation)\b/i);
     }
 
     // 5. Devoir Complet / Examen
     if (/\b(?:devoir\s+complet|sujet\s+d['’]examen|[eé]preuve\s+d['’]examen|devoir\s+d['’]examen|examen\s+complet|examen\s+blanc)\b/i.test(t)) {
-      detected.push('devoir-complet');
+      addFormat('devoir-complet', /\b(?:devoir\s+complet|sujet\s+d['’]examen|[eé]preuve\s+d['’]examen|devoir\s+d['’]examen|examen\s+complet|examen\s+blanc)\b/i);
     }
 
-    // 6. Exercices Écrits
-    if (/\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]application|s[eé]rie\s+d['’]exercices)\b/i.test(t) && !detected.includes('devoir-complet')) {
-      detected.push('exercices-ecrits');
-    } else if (hasCreationActionVerb && /\bexercices?\b/i.test(t) && !detected.includes('devoir-complet')) {
-      detected.push('exercices-ecrits');
-    }
-
-    // 7. Résumé / Synthèse
-    if (/\b(?:fiche\s+de\s+r[eé]sum[eé]|fiche\s+de\s+synth[eè]se)\b/i.test(t)) {
-      detected.push('resume');
-    } else if (hasCreationActionVerb && /\b(?:r[eé]sum[eé]|synth[eè]se)\b/i.test(t)) {
-      detected.push('resume');
-    }
-
-    // 8. Infographie
+    // 6. Infographie
     if (/\b(?:infographie|fiche\s+visuelle)\b/i.test(t)) {
-      detected.push('infographie');
+      addFormat('infographie', /\b(?:infographie|fiche\s+visuelle)\b/i);
     }
 
-    // 9. Document PDF
-    if (/\b(?:document\s+pdf|polycopi[eé]|polycopie|g[eé]n[eé]rer\s+un\s+pdf|cr[eé]er\s+un\s+pdf|faire\s+un\s+pdf|export\s+pdf)\b/i.test(t)) {
-      detected.push('pdf');
+    // 7. Document PDF
+    if (/\b(?:document\s+pdf|polycopi[eé]|polycopie|g[eé]n[eé]rer\s+un\s+pdf|cr[eé]er\s+un\s+pdf|faire\s+un\s+pdf|export\s+pdf|(?:un|le)\s+pdf)\b/i.test(t)) {
+      addFormat('pdf', /\b(?:document\s+pdf|polycopi[eé]|polycopie|pdf)\b/i);
+    }
+
+    // 8. Exercices Écrits (accepté avec verbe d'action OU dans une liste de créations OU en début de consigne)
+    const hasDevoir = matchedEntries.some(e => e.type === 'devoir-complet');
+    const isListOrDirectRequest = hasCreationActionVerb || matchedEntries.length > 0 || /^(?:un|une|des|deux|trois|\d+)?\s*(?:exercices?|r[eé]sum[eé]|synth[eè]se)\b/i.test(t) || /\b(?:et|puis|avec|,)\s*(?:un|une|des|deux|trois|\d+)?\s*(?:exercices?|r[eé]sum[eé]|synth[eè]se)\b/i.test(t);
+    if (!hasDevoir) {
+      if (/\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]application|s[eé]rie\s+d['’]exercices)\b/i.test(t)) {
+        addFormat('exercices-ecrits', /\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]application|s[eé]rie\s+d['’]exercices)\b/i);
+      } else if (isListOrDirectRequest && /\bexercices?\b/i.test(t) && !/\bexercice\s+\d+\b/i.test(t)) {
+        addFormat('exercices-ecrits', /\bexercices?\b/i);
+      }
+    }
+
+    // 9. Résumé / Synthèse
+    if (/\b(?:fiche\s+de\s+r[eé]sum[eé]|fiche\s+de\s+synth[eè]se)\b/i.test(t)) {
+      addFormat('resume', /\b(?:fiche\s+de\s+r[eé]sum[eé]|fiche\s+de\s+synth[eè]se)\b/i);
+    } else if ((isListOrDirectRequest || /\b(?:un|une|mon|le)\s+(?:r[eé]sum[eé]|synth[eè]se)\b/i.test(t)) && /\b(?:r[eé]sum[eé]|synth[eè]se)\b/i.test(t)) {
+      addFormat('resume', /\b(?:r[eé]sum[eé]|synth[eè]se)\b/i);
+    }
+  }
+
+  // Trier selon l'ordre d'apparition dans le message de l'étudiant et déplier les quantités (ex: "2 QCM" -> ['questionnaire', 'questionnaire'])
+  matchedEntries.sort((a, b) => a.index - b.index);
+  const detected: AiCreationType[] = [];
+  for (const entry of matchedEntries) {
+    for (let c = 0; c < entry.count; c++) {
+      detected.push(entry.type);
     }
   }
 
@@ -1724,18 +1761,26 @@ export function detectAllCreationFormats(
   // Si l'utilisateur répond à une question de clarification de l'IA (ex: "sur ce fichier", "sur les filtres", "oui vas-y")
   // après avoir demandé une ou plusieurs créations au tour précédent :
   if (detected.length === 0 && !isConversationalQuestion && Array.isArray(conversationMessages) && conversationMessages.length >= 2) {
-    const lastMsg = conversationMessages[conversationMessages.length - 1];
-    const prevUserMsg = conversationMessages[conversationMessages.length - 2];
-    const lastSender = (lastMsg as any)?.sender || (lastMsg as any)?.role;
-    const prevSender = (prevUserMsg as any)?.sender || (prevUserMsg as any)?.role;
-    const lastText = String((lastMsg as any)?.text || (lastMsg as any)?.content || '').trim();
-    const prevUserText = String((prevUserMsg as any)?.text || (prevUserMsg as any)?.content || '').trim();
+    const nonEmptyMsgs = conversationMessages.filter(m => {
+      const txt = String((m as any)?.text || (m as any)?.content || '').trim();
+      return txt.length > 0 && !(m as any)?.isError;
+    });
 
-    if ((lastSender === 'ai' || lastSender === 'assistant') && prevSender === 'user' && prevUserText) {
-      const prevFormats = detectAllCreationFormats(prevUserText, undefined, undefined);
-      const aiAskedForClarification = /\?|quel\s+(?:sujet|cours|chapitre|fichier|document|th[èe]me)|pr[eé]ciser|joindre|s[eé]lectionner|sur\s+quoi/i.test(lastText);
-      if (prevFormats.length > 0 && aiAskedForClarification) {
-        return prevFormats;
+    // Parcourir les derniers échanges (jusqu'aux 6 derniers messages non vides) pour retrouver la demande de création en attente de précision
+    for (let i = nonEmptyMsgs.length - 1; i >= 1 && i >= nonEmptyMsgs.length - 6; i--) {
+      const msgI = nonEmptyMsgs[i];
+      const msgPrev = nonEmptyMsgs[i - 1];
+      const senderI = (msgI as any)?.sender || (msgI as any)?.role;
+      const senderPrev = (msgPrev as any)?.sender || (msgPrev as any)?.role;
+      const textI = String((msgI as any)?.text || (msgI as any)?.content || '').trim();
+      const textPrev = String((msgPrev as any)?.text || (msgPrev as any)?.content || '').trim();
+
+      if ((senderI === 'ai' || senderI === 'assistant') && senderPrev === 'user' && textPrev) {
+        const prevFormats = detectAllCreationFormats(textPrev, undefined, undefined);
+        const aiAskedForClarification = /\?|quel(?:le)?s?\s+(?:sujet|cours|chapitre|fichier|document|th[èe]me|mat[iî]ère|partie)|pr[eé]cis(?:er|ez)|joindre|s[eé]lectionner|sur\s+quoi|QUESTIONS_SUGG[EÉ]R[EÉ]ES/i.test(textI);
+        if (prevFormats.length > 0 && aiAskedForClarification) {
+          return prevFormats;
+        }
       }
     }
   }
@@ -2198,11 +2243,6 @@ const ChatMessageText = ({
           return (
             <div key={idx} className="whitespace-pre-wrap break-words leading-relaxed text-zinc-200 select-text chat-selectable cursor-text">
               <MathText text={line} inline={true} />
-              {isStreaming && isLastLine && (
-                <span className="inline-flex items-center align-middle ml-2 select-none" title="L'IA écrit en temps réel...">
-                  <DnaLogo className="w-4 h-4 animate-dna-spin-float text-orange-500 drop-shadow-[0_0_8px_rgba(243,128,32,0.9)]" glow={true} />
-                </span>
-              )}
             </div>
           );
         })}
@@ -2462,7 +2502,11 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       if (local) {
         try {
           const parsed = JSON.parse(local);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed
+              .filter((m: any) => !(m.sender === 'ai' && (!m.text || !String(m.text).trim()) && !m.isError))
+              .map((m: any) => ({ ...m, isStreaming: false }));
+          }
         } catch {}
       }
     }
@@ -2881,10 +2925,11 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     }
   }, [currentConversationId]);
 
-  // Sauvegarde automatique du fil de discussion actif pour reprise immédiate sans perte
+  // Sauvegarde automatique du fil de discussion actif pour reprise immédiate sans perte (sans persister les bulles IA vides)
   useEffect(() => {
     if (currentConversationId && !currentConversationId.startsWith('creation-') && messages.length > 0) {
-      safeSetItem(`studycloud_conv_msgs_${currentConversationId}`, JSON.stringify(messages));
+      const nonEmptyMsgs = messages.filter(m => !(m.sender === 'ai' && (!m.text || !String(m.text).trim()) && !m.isError));
+      safeSetItem(`studycloud_conv_msgs_${currentConversationId}`, JSON.stringify(nonEmptyMsgs));
     }
   }, [messages, currentConversationId]);
 
@@ -3512,21 +3557,12 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
       systemContent += `\n\nDOCUMENT FOURNI PAR L'ÉTUDIANT : "${params.mainDocName}". Tu as un accès direct au contenu textuel de ce document.`;
     }
 
-    const sanitizedHistory = (params.messages || [])
-      .filter(m => !m.isStreaming && !m.isError && m.text && m.text.trim().length > 0)
-      .slice(-10)
-      .map(m => ({
-        role: m.sender === 'user' ? 'user' : 'assistant',
-        content: m.text
-      }));
-
     const normTypeEarly = normalizeCreationType(params.explicitToolType);
     const formatDisplayTitle = CREATION_NAME_MAP[normTypeEarly] || CREATION_FORMAT_LABELS[normTypeEarly] || normTypeEarly;
-    const agentExplicitPrompt = `Conçois immédiatement le module interactif complet de type "${normTypeEarly}" (${formatDisplayTitle}) sur ${params.mainDocName ? `le document « ${params.mainDocName} »` : `le sujet : ${params.userText}`}. Consigne de l'étudiant : "${params.userText}". Réponds EXCLUSIVEMENT avec l'objet JSON complet entouré de \`\`\`json et \`\`\`.`;
+    const agentExplicitPrompt = `Conçois immédiatement le module interactif complet de type "${normTypeEarly}" (${formatDisplayTitle}) intitulé "${params.creationTitle}" sur ${params.mainDocName ? `le document « ${params.mainDocName} »` : `le sujet : ${params.userText}`}. Consigne de l'étudiant : "${params.userText}". Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normTypeEarly}" entouré de \`\`\`json et \`\`\`.`;
 
     const chatHistory = [
       { role: 'system', content: systemContent },
-      ...sanitizedHistory,
       { role: 'user', content: agentExplicitPrompt }
     ];
 
@@ -3793,7 +3829,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     }).catch(() => {});
 
     if (params.targetUserId && params.targetUserId !== 'default-user') {
-      StudyCloudAPI.saveAiContent({
+      await StudyCloudAPI.saveAiContent({
         id: newCreation.id,
         userId: params.targetUserId,
         fileId: params.activePreviewItem?.id || null,
@@ -3809,14 +3845,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('studycloud-creation-saved', { detail: { id: newCreation.id, creation: newCreation } }));
       window.dispatchEvent(new CustomEvent('studycloud-creation-status-changed', { detail: { creationId: newCreation.id, status: 'ready', creation: newCreation } }));
-            window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
-      window.dispatchEvent(new CustomEvent('studycloud-creation-status-changed', {
-        detail: {
-          creationId: newCreation.id,
-          status: 'ready',
-          creation: newCreation,
-        }
-      }));
+      window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
     }
 
     return { response: "Création terminée", creation: newCreation };
@@ -3833,14 +3862,19 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     const newUserMsgId = Date.now().toString();
     const newUserMsg: Message = { id: newUserMsgId, text: userText, sender: 'user' };
 
-    // Récupérer les messages existants de la conversation cible
+    // Récupérer les messages existants de la conversation cible (en filtrant toute bulle IA vide)
     let convBaseMessages: Message[] = [];
     if (currentConversationIdRef.current === targetConvId && messagesRef.current.length > 0) {
-      convBaseMessages = messagesRef.current;
+      convBaseMessages = messagesRef.current.filter(m => !(m.sender === 'ai' && (!m.text || !String(m.text).trim()) && !m.isError));
     } else {
       const local = safeGetItem(`studycloud_conv_msgs_${targetConvId}`);
       if (local) {
-        try { convBaseMessages = JSON.parse(local) || []; } catch {}
+        try {
+          const parsed = JSON.parse(local) || [];
+          convBaseMessages = Array.isArray(parsed)
+            ? parsed.filter((m: any) => !(m.sender === 'ai' && (!m.text || !String(m.text).trim()) && !m.isError))
+            : [];
+        } catch {}
       }
     }
 
@@ -3872,11 +3906,11 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
 
     const updatedMessages = [...convBaseMessages, newUserMsg];
     const updatedMessagesWithPending = [...updatedMessages, initialAiMsg];
-    safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(updatedMessagesWithPending));
+    safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(updatedMessages));
     isChatRequestInFlightRef.current = true;
 
     if (currentConversationIdRef.current === targetConvId) {
-      messagesRef.current = updatedMessagesWithPending;
+      messagesRef.current = updatedMessages;
       setMessages(updatedMessagesWithPending);
       setInputValue('');
       setIsTyping(true);
@@ -4155,13 +4189,36 @@ ${suggestions.map(s => `- ${s}`).join('\n')}
       } else {
         orchestratorMode = 'agents_launched';
         const dispatchedTasks: Array<{ id: string; title: string; toolType: string; formatLabel: string; isQueued: boolean }> = [];
+        const fmtOccurrences: Record<string, number> = {};
+        const fmtTotals: Record<string, number> = {};
+        for (const f of detectedFormats) {
+          fmtTotals[f] = (fmtTotals[f] || 0) + 1;
+        }
 
         for (let idx = 0; idx < detectedFormats.length; idx++) {
           const fmt = detectedFormats[idx];
-          const formatTitle = CREATION_NAME_MAP[fmt] || CREATION_FORMAT_LABELS[fmt] || "Support d'apprentissage";
+          fmtOccurrences[fmt] = (fmtOccurrences[fmt] || 0) + 1;
+          const baseFormatTitle = CREATION_NAME_MAP[fmt] || CREATION_FORMAT_LABELS[fmt] || "Support d'apprentissage";
+          const formatTitle = fmtTotals[fmt] > 1 ? `${baseFormatTitle} #${fmtOccurrences[fmt]}` : baseFormatTitle;
           const currentCreationId = 'crea-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).slice(2, 6);
           const currentTaskId = 'task-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).slice(2, 6);
           const cTitle = mainDocName ? `${formatTitle} : ${mainDocName}` : `${formatTitle} : ${userText.slice(0, 35).trim() || "Thème d'étude"}`;
+          const willQueuePreview = aiBackgroundManager.getRunningCount() >= 3;
+
+          // Notifier immédiatement le menu de droite AVANT d'enfiler pour que la carte apparaisse sans course critique
+          window.dispatchEvent(new CustomEvent('studycloud-creation-enqueued', {
+            detail: {
+              id: currentCreationId,
+              conversationId: targetConvId,
+              title: cTitle,
+              toolType: fmt,
+              sourceFileName: mainDocName || undefined,
+              createdAt: new Date(Date.now() + idx).toISOString(),
+              status: willQueuePreview ? 'queued' : 'generating',
+              progressText: willQueuePreview ? 'En attente...' : 'Création en cours...',
+              isBackground: !requestedTypeOverride,
+            }
+          }));
 
           const enqRes = aiBackgroundManager.enqueueCreationTask({
             taskId: currentTaskId,
@@ -4203,20 +4260,6 @@ ${suggestions.map(s => `- ${s}`).join('\n')}
             formatLabel: formatTitle,
             isQueued: enqRes.isQueued,
           });
-
-          window.dispatchEvent(new CustomEvent('studycloud-creation-enqueued', {
-            detail: {
-              id: currentCreationId,
-              conversationId: targetConvId,
-              title: cTitle,
-              toolType: fmt,
-              sourceFileName: mainDocName || undefined,
-              createdAt: new Date().toISOString(),
-              status: enqRes.isQueued ? 'queued' : 'generating',
-              progressText: enqRes.isQueued ? 'En attente...' : 'Création en cours...',
-              isBackground: !requestedTypeOverride,
-            }
-          }));
         }
 
         if (requestedTypeOverride && dispatchedTasks.length === 1 && !dispatchedTasks[0].isQueued) {
@@ -5581,7 +5624,9 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             </p>
           </div>
         ) : (
-          messages.map(msg => (
+          messages
+            .filter(msg => !(msg.sender === 'ai' && (!msg.text || !msg.text.trim()) && !msg.isError))
+            .map(msg => (
             <div key={msg.id} className="w-full shrink-0">
               {msg.sender === 'user' ? (
                 <div className="flex justify-end w-full group relative">
@@ -5603,7 +5648,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                     </div>
                   </div>
                 </div>
-              ) : (!msg.text || !msg.text.trim()) && !msg.isError && !msg.isStreaming && !isWaitingServer && !isTyping ? null : (
+              ) : (
                 <div className="flex flex-col w-full text-zinc-100">
                   <div className="mb-2 flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
@@ -5820,7 +5865,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           ))
         )}
         
-        {isWaitingServer && !(messages.length > 0 && messages[messages.length - 1]?.sender === 'ai' && (!messages[messages.length - 1]?.text || !messages[messages.length - 1]?.text.trim())) && (
+        {isWaitingServer && (
           <div className="flex flex-col w-full text-zinc-100 mb-4 animate-fadeIn">
             <div className="flex items-center gap-2.5 bg-[#26282d] px-3.5 py-2.5 rounded-2xl w-fit max-w-[90%] shadow-md">
               <DnaLogo className="w-5 h-5 animate-dna-spin-float shrink-0 text-orange-500" glow={true} />

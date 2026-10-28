@@ -167,7 +167,7 @@ export const aiBackgroundManager = {
         conversationId: taskData.conversationId || null,
         toolType: taskData.toolType,
         title: taskData.title,
-        contentJson: { status, title: taskData.title, sourceFileName: taskData.mainDocName },
+        contentJson: { status: willRunNow ? 'generating' : 'queued', title: taskData.title, sourceFileName: taskData.mainDocName },
         sourceFileName: taskData.mainDocName || undefined,
         isPinned: false,
       }).catch(e => console.warn('[aiBackgroundManager] Erreur init D1:', e));
@@ -308,13 +308,18 @@ export const aiBackgroundManager = {
     let completedCreationId: string | undefined;
 
     const updated = tasks.map(t => {
-      const match =
-        (explicitTaskId && t.taskId === explicitTaskId) ||
-        (t.taskId === conversationIdOrTaskId) ||
-        (t.conversationId === conversationIdOrTaskId && (!aiMsgId || t.aiMsgId === aiMsgId));
+      const match = explicitTaskId
+        ? t.taskId === explicitTaskId
+        : (
+            t.taskId === conversationIdOrTaskId ||
+            t.creationId === conversationIdOrTaskId ||
+            (!t.creationId && !t.toolType && t.conversationId === conversationIdOrTaskId && (!aiMsgId || t.aiMsgId === aiMsgId))
+          );
 
       if (match) {
-        completedCreationId = t.creationId;
+        if (!completedCreationId) {
+          completedCreationId = t.creationId;
+        }
         return {
           ...t,
           status: 'completed' as const,
@@ -385,8 +390,14 @@ export const aiBackgroundManager = {
     let targetCreationId: string | undefined;
 
     const updated = tasks.map(t => {
-      if (t.taskId === taskIdOrConvId || t.conversationId === taskIdOrConvId) {
-        targetCreationId = t.creationId;
+      const match =
+        t.taskId === taskIdOrConvId ||
+        t.creationId === taskIdOrConvId ||
+        (!t.creationId && !t.toolType && t.conversationId === taskIdOrConvId);
+      if (match) {
+        if (!targetCreationId) {
+          targetCreationId = t.creationId;
+        }
         return {
           ...t,
           status: 'error' as const,
@@ -523,7 +534,24 @@ export const aiBackgroundManager = {
             const isReady = match.status === 'ready' || (
               match.content &&
               match.content.status !== 'generating' &&
-              (match.content.questions || match.content.nodes || match.content.resume || match.content.flashcards || match.content.data || typeof match.content === 'object')
+              match.content.status !== 'queued' &&
+              match.content.status !== 'running' &&
+              match.content.status !== 'failed' &&
+              Boolean(
+                match.content.questions ||
+                match.content.affirmations ||
+                match.content.cards ||
+                match.content.flashcards ||
+                match.content.root ||
+                match.content.branches ||
+                match.content.nodes ||
+                match.content.overview ||
+                match.content.resume ||
+                match.content.written_exercise ||
+                match.content.complete_exam ||
+                match.content.sections ||
+                match.content.data
+              )
             );
             const isFailed = match.status === 'failed' || (match.content && match.content.status === 'failed');
 

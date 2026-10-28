@@ -223,9 +223,9 @@ export function RightMenu({
 
   const fetchUserCreations = async () => {
     // 1. Toujours synchroniser avec le cache local pour un affichage immédiat
-    const localItems = getStoredCreations();
-    if (localItems.length > 0) {
-      setSavedCreations(localItems);
+    const initialLocalItems = getStoredCreations();
+    if (initialLocalItems.length > 0) {
+      setSavedCreations(initialLocalItems);
     }
 
     const uid = getCurrentUserId() || localStorage.getItem('studycloud_user_id');
@@ -236,12 +236,19 @@ export function RightMenu({
       setIsLoadingCreations(true);
       const res = await StudyCloudAPI.getAiContents(uid);
       if (res && res.success && Array.isArray(res.data)) {
+        // Relire le cache local et les tâches actives APRES la réponse réseau pour éviter d'écraser les tâches lancées entre-temps
+        const latestLocalItems = getStoredCreations();
+        const activeBgTasks = aiBackgroundManager.getActiveTasks();
+
         const d1Items = res.data.map((item: any) => {
           let parsedContent = item.content || item.data || item.content_json || item.contentJson;
           if (typeof parsedContent === 'string') {
             try { parsedContent = JSON.parse(parsedContent); } catch {}
           }
           let itemStatus = item.status || (parsedContent && typeof parsedContent === 'object' && parsedContent.status) || 'ready';
+          if (itemStatus === 'running') {
+            itemStatus = 'generating';
+          }
           // Si une création est restée bloquée en cours depuis plus de 10 minutes, marquer en échec
           if (itemStatus === 'generating' || itemStatus === 'queued') {
             const ageMs = Date.now() - new Date(item.created_at || item.createdAt || 0).getTime();
@@ -267,17 +274,49 @@ export function RightMenu({
           };
         });
 
-        // La base Cloudflare D1 est la source de vérité absolue
         const map = new Map<string, any>();
         d1Items.forEach((it: any) => map.set(it.id, it));
 
-        // On n'ajoute du cache local QUE les créations en cours récentes (< 10 min) non encore indexées
+        // Fusionner intelligemment avec le cache local le plus récent pour ne jamais perdre les tâches 2, 3, 4+
         const now = Date.now();
-        localItems.forEach((it: any) => {
+        latestLocalItems.forEach((it: any) => {
+          const age = now - new Date(it.createdAt || 0).getTime();
           if (!map.has(it.id)) {
-            const age = now - new Date(it.createdAt || 0).getTime();
-            if ((it.status === 'generating' || it.status === 'queued') && age < 10 * 60 * 1000) {
+            if (((it.status === 'generating' || it.status === 'queued') && age < 10 * 60 * 1000) || (it.status === 'ready' && age < 120 * 1000)) {
               map.set(it.id, it);
+            }
+          } else {
+            const d1It = map.get(it.id);
+            // Si la tâche vient de se terminer localement mais que D1 avait encore 'generating'/'queued'
+            if (it.status === 'ready' && it.content && (d1It.status === 'generating' || d1It.status === 'queued')) {
+              map.set(it.id, it);
+            } else if (it.status === 'generating' && d1It.status === 'queued') {
+              map.set(it.id, { ...d1It, status: 'generating', progressText: it.progressText || 'Création en cours...' });
+            }
+          }
+        });
+
+        // S'assurer que toutes les tâches actives du gestionnaire des 3 agents sont présentes
+        activeBgTasks.forEach(task => {
+          if (!task.creationId || (task.status !== 'running' && task.status !== 'queued')) return;
+          const mappedStatus = task.status === 'running' ? 'generating' : 'queued';
+          if (!map.has(task.creationId)) {
+            map.set(task.creationId, {
+              id: task.creationId,
+              conversationId: task.conversationId,
+              title: task.title || 'Création Studio',
+              toolType: task.toolType || task.requestedType || 'creation',
+              type: task.toolType || task.requestedType || 'creation',
+              sourceFileName: task.mainDocName,
+              createdAt: new Date(task.enqueuedAt || now).toISOString(),
+              status: mappedStatus,
+              progressText: task.progressText || (mappedStatus === 'queued' ? 'En attente...' : 'Création en cours...'),
+              content: null,
+            });
+          } else {
+            const existing = map.get(task.creationId);
+            if (mappedStatus === 'generating' && existing.status === 'queued') {
+              map.set(task.creationId, { ...existing, status: 'generating', progressText: 'Création en cours...' });
             }
           }
         });
@@ -340,9 +379,13 @@ export function RightMenu({
     };
   }, []);
 
-  // Polling automatique pendant qu'au moins une création est au statut 'generating'
+  // Polling automatique pendant qu'au moins une création est au statut 'generating' ou 'queued'
   useEffect(() => {
-    const hasGenerating = savedCreations.some(c => c.status === 'generating' || (c.content && c.content.status === 'generating'));
+    const hasGenerating = savedCreations.some(c =>
+      c.status === 'generating' ||
+      c.status === 'queued' ||
+      (c.content && (c.content.status === 'generating' || c.content.status === 'queued'))
+    );
     if (!hasGenerating) return;
 
     const interval = setInterval(() => {
@@ -351,15 +394,6 @@ export function RightMenu({
 
     return () => clearInterval(interval);
   }, [savedCreations]);
-
-  // Écouteur des changements de statut des créations en direct
-  useEffect(() => {
-    const handleStatusChanged = () => {
-      fetchUserCreations();
-    };
-    window.addEventListener('studycloud-creation-status-changed', handleStatusChanged);
-    return () => window.removeEventListener('studycloud-creation-status-changed', handleStatusChanged);
-  }, []);
 
   useEffect(() => {
     const handleCreationsUpdated = () => {
@@ -1020,25 +1054,47 @@ export function RightMenu({
     };
 
     const handleCreationStatusChanged = (e: any) => {
-      const { creationId, status, progressText, creation, title, errorText } = e.detail || {};
+      const { creationId, status, progressText, creation, title, toolType, errorText } = e.detail || {};
       if (!creationId) return;
 
       setSavedCreations(prev => {
-        const updated = prev.map(c => {
-          if (c.id === creationId) {
-            const newContent = creation?.content || creation?.data || c.content;
-            return {
-              ...c,
-              title: title || creation?.title || c.title,
-              status,
-              tokens: creation?.tokens || (creation?.content && creation.content.tokens) || c.tokens,
-              credits: creation?.credits || (creation?.content && (creation.content.credits || creation.content.tokens)) || c.credits,
-              progressText: progressText || (status === 'queued' ? 'En attente...' : status === 'generating' ? 'Création en cours...' : status === 'ready' ? 'Prêt' : 'Erreur'),
-              content: status === 'ready' ? (newContent || c.content) : c.content,
-            };
-          }
-          return c;
-        });
+        const exists = prev.some(c => c.id === creationId);
+        let updated: any[];
+        if (exists) {
+          updated = prev.map(c => {
+            if (c.id === creationId) {
+              const newContent = creation?.content || creation?.data || c.content;
+              return {
+                ...c,
+                title: title || creation?.title || c.title,
+                status,
+                tokens: creation?.tokens || (creation?.content && creation.content.tokens) || c.tokens,
+                credits: creation?.credits || (creation?.content && (creation.content.credits || creation.content.tokens)) || c.credits,
+                progressText: progressText || (status === 'queued' ? 'En attente...' : status === 'generating' ? 'Création en cours...' : status === 'ready' ? 'Prêt' : 'Erreur'),
+                content: status === 'ready' ? (newContent || c.content) : c.content,
+              };
+            }
+            return c;
+          });
+        } else if (title || creation) {
+          const newContent = creation?.content || creation?.data || null;
+          const newItem = {
+            id: creationId,
+            title: title || creation?.title || 'Création Studio',
+            toolType: toolType || creation?.toolType || creation?.type || 'creation',
+            type: toolType || creation?.toolType || creation?.type || 'creation',
+            sourceFileName: creation?.sourceFileName || resolvedDocName || undefined,
+            createdAt: creation?.createdAt || new Date().toISOString(),
+            status,
+            tokens: creation?.tokens || (creation?.content && creation.content.tokens),
+            credits: creation?.credits || (creation?.content && (creation.content.credits || creation.content.tokens)),
+            progressText: progressText || (status === 'queued' ? 'En attente...' : status === 'generating' ? 'Création en cours...' : status === 'ready' ? 'Prêt' : 'Erreur'),
+            content: status === 'ready' ? newContent : null,
+          };
+          updated = [newItem, ...prev];
+        } else {
+          updated = prev;
+        }
         persistCreationsLocally(updated);
         return updated;
       });

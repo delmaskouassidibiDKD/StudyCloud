@@ -1945,9 +1945,9 @@ CONSIGNES STRICTES DE CONTINUATION :
         // Si Gemini a atteint un quota temporaire (429) ou n'a pas répondu, on laisse basculer automatiquement sur la Branche 3.e (Llama 3.3 70B rapide) sans afficher de message d'erreur bloquant.
 
         // ══════════════════════════════════════════════════════════════════════════════
-        // BRANCHE 2 : AGENT DELMAS (CHEF D'ÉQUIPE MULTI-IA LLAMA 3.3)
+        // BRANCHE 2 : AGENT DELMAS (CHEF D'ÉQUIPE MULTI-IA LLAMA 3.3 - CHAT UNIQUEMENT)
         // ══════════════════════════════════════════════════════════════════════════════
-        if (!answerText && isChefModel(targetModel)) {
+        if (!answerText && isChefModel(targetModel) && !isAgentCreationTask) {
           try {
             const orchResult = await orchestrateMultiAgentTeam({
               targetModel,
@@ -1994,7 +1994,9 @@ CONSIGNES STRICTES DE CONTINUATION :
                   if (activeDocInfo || docName) {
                     cfMessages.push({
                       role: "user",
-                      content: `[DOCUMENT / COURS ACTIF DE L'ÉTUDIANT : « ${docName || "Document d'étude"} »] :\n${activeDocInfo ? activeDocInfo.slice(0, 30000) : "Document d'étude joint par l'étudiant."}\n\n[CONSIGNE PÉDAGOGIQUE POUR LE TUTEUR] :\nL'étudiant travaille sur ce document (« ${docName || "Document d'étude"} ») et pose la question : « ${m.content} ».\nRéponds directement, chaleureusement et précisément à sa question en t'appuyant sur ce document.\nNe fais aucune référence aux éventuels anciens fichiers ou anciennes images de la discussion et ne demande jamais de renvoyer le fichier car tu as déjà tout ce qu'il faut sous les yeux.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
+                      content: isAgentCreationTask
+                        ? `[DOCUMENT / COURS ACTIF DE L'ÉTUDIANT : « ${docName || "Document d'étude"} »] :\n${activeDocInfo ? activeDocInfo.slice(0, 30000) : "Document d'étude joint par l'étudiant."}\n\n[MISSION STRICTE DE L'AGENT DE CRÉATION] :\n${m.content}`
+                        : `[DOCUMENT / COURS ACTIF DE L'ÉTUDIANT : « ${docName || "Document d'étude"} »] :\n${activeDocInfo ? activeDocInfo.slice(0, 30000) : "Document d'étude joint par l'étudiant."}\n\n[CONSIGNE PÉDAGOGIQUE POUR LE TUTEUR] :\nL'étudiant travaille sur ce document (« ${docName || "Document d'étude"} ») et pose la question : « ${m.content} ».\nRéponds directement, chaleureusement et précisément à sa question en t'appuyant sur ce document.\nNe fais aucune référence aux éventuels anciens fichiers ou anciennes images de la discussion et ne demande jamais de renvoyer le fichier car tu as déjà tout ce qu'il faut sous les yeux.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
                     });
                   } else {
                     cfMessages.push({ role: m.role, content: m.content });
