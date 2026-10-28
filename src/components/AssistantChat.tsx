@@ -4303,18 +4303,50 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
 
       // 3. Contexte du document actif et prompt autonome de décision (Architecture Gemini / StudyCloud)
       const hasRunningBgCreations = false;
-      let systemContent = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Agent Delmas).
+      const isTargetCreation = isExplicitCreationRequest || (isExplicitOverride && Boolean(explicitToolType));
+      const targetToolType = (isExplicitOverride && explicitToolType) ? explicitToolType : (detectedFormats[0] || 'carte-memoire');
+      const targetToolTitle = CREATION_NAME_MAP[targetToolType] || CREATION_FORMAT_LABELS[targetToolType] || targetToolType;
+
+      let systemContent = '';
+      if (isTargetCreation) {
+        systemContent = `Tu es l'intelligence pédagogique officielle de StudyCloud.
+L'étudiant te demande explicitement de concevoir un module d'apprentissage interactif de type "${targetToolType}" (${targetToolTitle}) sur son cours ou son document.
+
+CONSIGNES STRICTES DE CRÉATION :
+1. Tu DOIS IMPÉRATIVEMENT concevoir le module complet avec toutes ses données réelles, substantielles et pédagogiques.
+2. TA RÉPONSE DOIT ÊTRE UN BLOC JSON STRICT entouré de \`\`\`json et \`\`\` sans texte narratif superflu avant ni après, avec la structure :
+\`\`\`json
+{
+  "decision": "creation",
+  "mode": "creation",
+  "creation_type": "${targetToolType}",
+  "creation_title": "${targetToolTitle} : ${mainDocName || 'Étude'}",
+  "chat_response": "Voici votre support interactif directement disponible dans votre espace Création !",
+  "creation_data": {
+    ...
+  }
+}
+\`\`\`
+3. Pour les Cartes Mémoires ('carte-memoire' / flashcards) : fournis dans "creation_data" le tableau "cards" contenant au moins 10 à 15 flashcards avec "front" (recto : concept, question, formule) et "back" (verso : explication, réponse complète).
+4. Pour les Questionnaires QCM ('questionnaire' ou 'questionnaire-test') : fournis dans "creation_data" le tableau "questions" avec 12 à 18 questions, options, correct_index aléatoire (0, 1, 2 ou 3) et explanation détaillée.
+5. Pour le Vrai ou Faux ('vrai-ou-faux' ou 'vrai-ou-faux-test') : fournis "affirmations" avec 12 à 18 items équilibrés 50% vrai / 50% faux.
+6. Pour la Carte Mentale ('carte-mentale') : fournis l'arbre hiérarchique avec "root" et "children".
+7. Pour le Résumé ('resume') : fournis "overview", "key_definitions", "formulas", "traps_and_tips", "comparison_table", "markdown".
+8. Formules mathématiques et scientifiques rédigées impérativement en syntaxe LaTeX standard ($...$ en ligne, $...$ en bloc centré avec \\dfrac{num}{den}).
+9. INTERDICTION FORMELLE DE RÉPONDRE SANS LE JSON : Tu dois obligatoirement générer le bloc \`\`\`json { ... } \`\`\` pour que l'application puisse afficher la création interactive !`;
+      } else {
+        systemContent = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Agent Delmas).
 Tu es directement connectée à l'espace d'étude de l'étudiant en mode CHAT ET DISCUSSION PÉDAGOGIQUE DIRECTE.
-Les créations interactives sont entièrement prises en charge et conçues de manière autonome par des sous-agents dédiés en arrière-plan dans l'espace créations.
 
 CONSIGNES STRICTES POUR TA RÉPONSE DE CHAT :
 1. Tu réponds DIRECTEMENT, NATURELLEMENT ET CHALEUREUSEMENT à l'étudiant en texte Markdown fluide.
 2. Si l'étudiant discute, pose une question de cours, demande une explication, une méthode, une formule, un résumé explicatif ou la résolution pas à pas d'un exercice : réponds avec clarté, bienveillance et rigueur pédagogique.
-3. Formules mathématiques et scientifiques rédigées impérativement en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré avec \\dfrac{num}{den}).
-4. IMPORTANTISSIME : NE PRODUIS AUCUN CODE JSON, PAS D'ACCOLADES {} NI DE BALISES DE CRÉATION DANS CETTE RÉPONSE. Parle directement à l'étudiant comme un excellent professeur tuteur.
-5. N'invente pas de fausse création et n'écris jamais "J'ai créé votre module" dans ce mode chat : consacre-toi pleinement à répondre et échanger avec l'étudiant.
+3. Formules mathématiques et scientifiques rédigées impérativement en syntaxe LaTeX standard ($...$ en ligne, $...$ en bloc centré avec \\dfrac{num}{den}).
+4. IMPORTANTISSIME : En mode discussion pure, réponds directement en texte Markdown fluide.
+5. Parle directement à l'étudiant comme un excellent professeur tuteur.`;
+      }
 
-RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
+      systemContent += `\n\nRÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
 0. LANGUE FRANÇAISE STRICTE ET ZÉRO MONOLOGUE INTERNE (ANTI-SCRATCHPAD) :
    - TU RÉPONDS EXCLUSIVEMENT ET TOTALEMENT EN FRANÇAIS SOIGNÉ, CLAIR ET PÉDAGOGIQUE.
    - IL EST STRICTEMENT INTERDIT D'ÉCRIRE EN ANGLAIS ET D'AFFICHER UN MONOLOGUE DE RÉFLEXION INTERNE, DU BRAINSTORMING OU UN BROUILLON ('Let's think', 'Waitcheck', 'The figure caption text', 'Hmm', 'Actually', etc.).
@@ -5390,7 +5422,16 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           : (aiResult.response || aiResult.chat_response || rawResponseText);
         const cleaned = cleanChatText(candidateText);
         fullResponseText = stripAiReasoningScratchpad(cleaned) || "✨ Votre demande a été traitée avec succès.";
-        // Desactiver immediatement l'ecran de creation si l'IA n'a renvoye que du texte de chat
+        // Si une création était en attente mais que l'IA a répondu en simple texte :
+        if (creationId) {
+          window.dispatchEvent(new CustomEvent('studycloud-creation-status-changed', {
+            detail: { creationId, status: 'error', errorText: "L'IA a répondu sous forme de discussion." }
+          }));
+          if (targetUserId && targetUserId !== 'default-user') {
+            StudyCloudAPI.deleteAiContent(creationId, targetUserId).catch(() => {});
+          }
+        }
+        // Désactiver immédiatement l'écran orange de chargement de création
         window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCreation: false, resetToPrompts: true } }));
       }
 
@@ -5563,6 +5604,14 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         setIsWaitingServer(false);
         setIsTyping(false);
         window.dispatchEvent(new CustomEvent('ai-creation-error', { detail: { error: err.message } }));
+        if (creationId) {
+          window.dispatchEvent(new CustomEvent('studycloud-creation-status-changed', {
+            detail: { creationId, status: 'error', errorText: err?.message }
+          }));
+          if (targetUserId && targetUserId !== 'default-user') {
+            StudyCloudAPI.deleteAiContent(creationId, targetUserId).catch(() => {});
+          }
+        }
         window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isError: true, resetToPrompts: true } }));
 
         const isNetwork = isNetworkError(err);

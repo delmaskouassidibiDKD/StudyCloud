@@ -666,10 +666,9 @@ export function RightMenu({
       return;
     }
 
-    // Si un document est présent : passage immédiat en phase "thinking" (Réflexion en cours...)
-    // CE N'EST PAS ENCORE LA CRÉATION ! C'est l'IA qui décidera d'activer l'écran de chargement de création habituel.
+    // C'est l'IA qui active la page de chargement en direct via ses événements
     setActiveCreation(null);
-    setCreationPhase('thinking');
+    setCreationPhase('idle');
     setGeneratingToolTitle(card.title);
     setLiveStatusText("Réflexion en cours...");
 
@@ -822,11 +821,8 @@ export function RightMenu({
 
     // Si la création est encore en cours de génération ou en attente dans la file
     const isStillGenerating =
-      item.status === 'generating' ||
-      item.status === 'queued' ||
-      !item.content ||
-      item.content?.status === 'generating' ||
-      item.content?.status === 'queued';
+      (item.status === 'generating' || item.status === 'queued') ||
+      (item.content && typeof item.content === 'object' && (item.content.status === 'generating' || item.content.status === 'queued'));
 
     if (isStillGenerating) {
       setActiveCreation(item);
