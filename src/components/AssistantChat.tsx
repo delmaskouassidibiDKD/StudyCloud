@@ -4009,30 +4009,27 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     // On doit demander à l'utilisateur de préciser sur quoi il souhaite travailler !
     const needsMultiDocClarification = hasMultipleDocs && !docChoice.targetedDoc && !docChoice.isAllDocs;
 
-    // 1. Détection rigoureuse d'un document réel pour CETTE création :
-    // Soit un document joint activement à ce message (attachedResources)
-    // Soit un document actif dont le nom ou la référence explicite figure dans le prompt ("sur ce cours", "ce document", etc.)
-    const isDocReferencedInPrompt = Boolean(
-      resolvedActiveItem && (
-        userText.toLowerCase().includes(String(resolvedActiveName || '').toLowerCase().trim()) ||
-        /«[^»]+»/.test(userText) ||
-        /\b(?:ce|mon|le)\s+(?:cours|document|fichier|pdf|sujet|texte)\b/i.test(userText) ||
-        (requestedTypeOverride && resolvedActiveName && (resolvedAttachedText && resolvedAttachedText.length > 30))
-      )
-    );
-
+    // Détection d'un document actif ou joint dans l'espace de travail
     const hasRealAttachedDoc = Boolean(
-      (Array.isArray(attachedResources) && attachedResources.length > 0) ||
-      isDocReferencedInPrompt
+      allDocs.length > 0 ||
+      Boolean(resolvedActiveItem) ||
+      Boolean(activePreviewItem) ||
+      (Array.isArray(attachedResources) && attachedResources.length > 0)
     );
 
     const hasRealDocContent = Boolean(
       hasRealAttachedDoc && (
-        (resolvedAttachedText && resolvedAttachedText.trim().length > 30) ||
-        activeDocumentInfo?.documentBase64 ||
-        activeImageInfo?.base64 ||
-        activeAudioInfo?.audioBase64 ||
-        activeVideoInfo?.videoBase64
+        (resolvedAttachedText && resolvedAttachedText.trim().length > 0) ||
+        Boolean(activeDocumentInfo?.documentBase64) ||
+        Boolean(activeDocumentInfo?.textContent && activeDocumentInfo.textContent.trim().length > 0) ||
+        Boolean(activeImageInfo?.base64) ||
+        Boolean(activeAudioInfo?.audioBase64) ||
+        Boolean(activeVideoInfo?.videoBase64) ||
+        Boolean((resolvedActiveItem as any)?.content) ||
+        Boolean((resolvedActiveItem as any)?.text) ||
+        Boolean((resolvedActiveItem as any)?.rawText) ||
+        Boolean(resolvedActiveName && resolvedActiveName.trim().length > 0) ||
+        allDocs.length > 0
       )
     );
 
