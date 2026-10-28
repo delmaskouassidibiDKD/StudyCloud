@@ -1048,60 +1048,80 @@ async function executeGemini20Flash(params: {
     parts: [{ text: effectiveSystemPrompt }]
   };
 
-  // 1. Découverte dynamique des modèles supportés sur la clé de l'utilisateur
-  let dynamicModels: string[] = [];
-  try {
-    const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-    if (listRes.ok) {
-      const listData: any = await listRes.json();
-      dynamicModels = (listData.models || [])
-        .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes("generateContent"))
-        .map((m: any) => String(m.name || "").replace(/^models\//, ""))
-        .filter(Boolean);
-    }
-  } catch (_eList) {}
-
-  const flashModels = dynamicModels.filter(m => m.includes("flash"));
-  const proModels = dynamicModels.filter(m => !m.includes("flash") && (m.includes("pro") || m.includes("gemini")));
-  const candidateModels = Array.from(new Set([
-    ...flashModels,
+  // Sélection directe et ordonnée des modèles Gemini Flash actifs les plus rapides (sans appel /models lent ni modèles TTS/Image/404)
+  const candidateModels = [
+    "gemini-2.5-flash-lite",
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-flash-latest",
     "gemini-2.0-flash",
-    "gemini-2.0-flash-exp",
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-latest",
-    ...proModels,
-    "gemini-1.5-pro",
-  ]));
+  ];
+
+  const hasInlineMedia = currentParts.some((p: any) => Boolean(p?.inlineData));
+  const textOnlyContents = contents.map((c: any, idx: number) => {
+    if (idx === contents.length - 1 && Array.isArray(c.parts)) {
+      const textParts = c.parts.filter((p: any) => !p?.inlineData);
+      return { ...c, parts: textParts.length > 0 ? textParts : [{ text: effectivePrompt }] };
+    }
+    return c;
+  });
+  const textOnlyReqBody = {
+    ...reqBody,
+    contents: textOnlyContents,
+  };
 
   const modelErrors: string[] = [];
+  let consecutiveRateLimits = 0;
   for (const mod of candidateModels) {
-    // Jusqu'à 2 tentatives pour absorber les pics temporaires (503 High Demand)
-    for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      let res: Response;
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${apiKey}`, {
+        res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${apiKey}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(reqBody),
+          signal: controller.signal,
         });
-
-        if (res.ok) {
-          const data: any = await res.json();
-          const txt = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
-          if (txt) return cleanTechnicalMediaJargon(txt);
-        } else {
-          const errText = await res.text().catch(() => "");
-          if (res.status === 503 && attempt === 0) {
-            // Pause brève de 600ms avant réessai du pic
-            await new Promise(r => setTimeout(r, 600));
-            continue;
-          }
-          modelErrors.push(`${mod}:${res.status}`);
-          break; // passer au modèle suivant
-        }
-      } catch (e: any) {
-        modelErrors.push(`${mod}:EXCEPTION:${e?.message || e}`);
-        break;
+      } finally {
+        clearTimeout(timeoutId);
       }
+
+      if (res.ok) {
+        const data: any = await res.json();
+        const txt = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
+        if (txt) return cleanTechnicalMediaJargon(txt);
+      } else {
+        // Si le binaire inlineData (ex: PDF brut) cause un 400 mais que le texte extrait est dans systemPrompt, réessayer immédiatement en mode texte
+        if (res.status === 400 && hasInlineMedia) {
+          const retryCtrl = new AbortController();
+          const retryTid = setTimeout(() => retryCtrl.abort(), 10000);
+          try {
+            const retryRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${apiKey}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(textOnlyReqBody),
+              signal: retryCtrl.signal,
+            });
+            if (retryRes.ok) {
+              const retryData: any = await retryRes.json();
+              const retryTxt = retryData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
+              if (retryTxt) return cleanTechnicalMediaJargon(retryTxt);
+            }
+          } catch (_retryErr) {
+          } finally {
+            clearTimeout(retryTid);
+          }
+        }
+        modelErrors.push(`${mod}:${res.status}`);
+        if (res.status === 429) {
+          consecutiveRateLimits++;
+          if (consecutiveRateLimits >= 2) break; // Basculer immédiatement sur le moteur de secours sans attendre
+        }
+      }
+    } catch (e: any) {
+      modelErrors.push(`${mod}:EXCEPTION:${e?.message || e}`);
     }
   }
 
@@ -1619,7 +1639,15 @@ export default {
         // Gemini Flash intervient en arrière-plan comme moteur de perception universel.
         // Il produit un dossier d'observation haute fidélité qui est transmis au modèle enseignant choisi (Agent Delmas, DeepSeek, Claude...).
         let backgroundPerceptionReport = String(body.perceptionReport || "").trim();
-        if (!backgroundPerceptionReport && hasMedia && !isSelectedGemini) {
+        const needsVisualOrAudioPerception = Boolean(
+          (imageBase64 && imageBase64.length > 50) ||
+          (videoBase64 && videoBase64.length > 50) ||
+          (audioBase64 && audioBase64.length > 50) ||
+          documentImages.length > 0 ||
+          videoFrames.length > 0 ||
+          (documentBase64 && documentBase64.length > 50 && (!docContent || docContent.trim().length < 120))
+        );
+        if (!backgroundPerceptionReport && needsVisualOrAudioPerception && !isSelectedGemini) {
           // 1. D'abord tenter Google Gemini Flash si une clé Gemini semble présente
           if (geminiKeyToUse && !geminiKeyToUse.startsWith("AIzaSyDKct") && geminiKeyToUse.length > 25) {
             try {
@@ -1909,15 +1937,12 @@ CONSIGNES STRICTES DE CONTINUATION :
               effectiveModelUsed = "Google Gemini Flash";
             }
           } catch (g20Err: any) {
-            logger.warn("Gemini Flash call exception", { event: "gemini_flash_error", error: g20Err });
+            logger.warn("Gemini Flash call exception, falling back to Workers AI", { event: "gemini_flash_error", error: g20Err });
             geminiErrorDetail = g20Err?.message || String(g20Err);
           }
         }
 
-        // Si le modèle sélectionné était Gemini et qu'il n'a pas répondu
-        if (!answerText && isSelectedGemini) {
-          answerText = "Désolé, je n'ai pas pu obtenir de réponse via Gemini. " + (geminiErrorDetail ? `[Détail: ${geminiErrorDetail}]` : "");
-        }
+        // Si Gemini a atteint un quota temporaire (429) ou n'a pas répondu, on laisse basculer automatiquement sur la Branche 3.e (Llama 3.3 70B rapide) sans afficher de message d'erreur bloquant.
 
         // ══════════════════════════════════════════════════════════════════════════════
         // BRANCHE 2 : AGENT DELMAS (CHEF D'ÉQUIPE MULTI-IA LLAMA 3.3)
@@ -2096,8 +2121,8 @@ CONSIGNES STRICTES DE CONTINUATION :
           }
         }
 
-        // Secours résilient Google Gemini 2.0 Flash Multimodal
-        if (!answerText && geminiKeyToUse) {
+        // Secours résilient Google Gemini 2.0 Flash Multimodal (uniquement si pas déjà tenté en Branche 1)
+        if (!answerText && geminiKeyToUse && !isSelectedGemini) {
           try {
             const fallbackGText = await executeGemini20Flash({
               apiKey: geminiKeyToUse,

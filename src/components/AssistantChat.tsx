@@ -2534,6 +2534,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
   const [isTyping, setIsTyping] = useState(false);
   const [isWaitingServer, setIsWaitingServer] = useState(false);
+  const isChatRequestInFlightRef = useRef<boolean>(false);
   const [retryingMessageId, setRetryingMessageId] = useState<string | null>(null);
   const [aiActivityText, setAiActivityText] = useState<string>('Je réfléchis...');
   const activityTimerRef = useRef<any>(null);
@@ -2850,6 +2851,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
       if (!isSwitching) {
         activeRequestIdsByConvRef.current[targetId] = (activeRequestIdsByConvRef.current[targetId] || 0) + 1;
+        isChatRequestInFlightRef.current = false;
         setIsWaitingServer(false);
         setIsTyping(false);
         setRetryingMessageId(null);
@@ -2935,6 +2937,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       setMessages([]);
       return;
     }
+    const isThisConvInFlight = Boolean(isChatRequestInFlightRef.current && currentConversationIdRef.current === convId);
+
     // 1. Chargement instantané du cache local (zéro latence)
     const local = safeGetItem(`studycloud_conv_msgs_${convId}`);
     let localParsed: Message[] = [];
@@ -2942,25 +2946,24 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       try {
         localParsed = JSON.parse(local);
         if (Array.isArray(localParsed) && localParsed.length > 0) {
+          if (!isThisConvInFlight) {
+            // Nettoyer tout message IA fantôme vide issu d'un rechargement interrompu
+            localParsed = localParsed.filter(m => !(m.sender === 'ai' && (!m.text || !m.text.trim()) && !m.isError));
+          }
           setMessages(localParsed);
         }
       } catch {}
     }
 
-    // Vérifier si une tâche d'arrière-plan tourne pour cette conversation
-    const activeBgTask = null;
-    // Seules les requêtes textuelles de chat non terminées réactivent le statut d'attente, JAMAIS les créations d'arrière-plan
-    if (activeBgTask && activeBgTask.status === 'running' && !activeBgTask.creationId && !activeBgTask.toolType) {
+    if (isThisConvInFlight) {
       setIsWaitingServer(true);
       setIsTyping(true);
     } else {
-      // Si aucune tâche active pour cette conversation, s'assurer que les messages ne restent pas figés en streaming
+      // Si aucune requête de chat en cours pour cette conversation, s'assurer que les messages ne restent pas figés en streaming
       if (localParsed.length > 0 && localParsed[localParsed.length - 1]?.isStreaming) {
-        if (!activeBgTask || Date.now() - (activeBgTask?.startedAt || 0) > 45000) {
-          localParsed = localParsed.map((m, idx) => idx === localParsed.length - 1 ? { ...m, isStreaming: false } : m);
-          setMessages(localParsed);
-          safeSetItem(`studycloud_conv_msgs_${convId}`, JSON.stringify(localParsed));
-        }
+        localParsed = localParsed.map((m, idx) => idx === localParsed.length - 1 ? { ...m, isStreaming: false } : m);
+        setMessages(localParsed);
+        safeSetItem(`studycloud_conv_msgs_${convId}`, JSON.stringify(localParsed));
       }
       setIsWaitingServer(false);
       setIsTyping(false);
@@ -2988,14 +2991,14 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           return {
             id: row.id,
             text: row.content,
-            sender: row.role === 'user' ? 'user' : 'ai',
+            sender: (row.role === 'user' ? 'user' : 'ai') as 'user' | 'ai',
             attachedFileName,
             model: modelName || row.model,
             createdAt: row.created_at,
             tokens,
             credits: tokens,
           };
-        });
+        }).filter((m) => !(m.sender === 'ai' && (!m.text || !String(m.text).trim())));
 
         // Tri déterministe absolu : Chronologique par createdAt, et en cas d'égalité, le message utilisateur passe toujours AVANT l'IA
         loaded.sort((a, b) => {
@@ -3009,20 +3012,19 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
         // Si l'utilisateur est toujours sur cette conversation, mettre à jour la vue sans écraser les messages en cours de streaming
         if (currentConversationIdRef.current === convId) {
-          if (activeBgTask && loaded.some(m => m.id === activeBgTask.aiMsgId)) {
-      // aiBackgroundManager.completeAiTask(convId, activeBgTask.aiMsgId);
-            setIsWaitingServer(false);
-            setIsTyping(false);
-          }
+          let mergedForStorage = loaded;
           setMessages(prev => {
             const inFlightStreaming = prev.filter(m => m.isStreaming);
             if (inFlightStreaming.length === 0) return loaded;
             const loadedIds = new Set(loaded.map(m => m.id));
             const pending = inFlightStreaming.filter(m => !loadedIds.has(m.id));
-            return [...loaded, ...pending];
+            mergedForStorage = [...loaded, ...pending];
+            return mergedForStorage;
           });
+          safeSetItem(`studycloud_conv_msgs_${convId}`, JSON.stringify(mergedForStorage));
+        } else {
+          safeSetItem(`studycloud_conv_msgs_${convId}`, JSON.stringify(loaded));
         }
-        safeSetItem(`studycloud_conv_msgs_${convId}`, JSON.stringify(loaded));
       }
 
       // Recharger également les créations associées à cette conversation
@@ -3549,7 +3551,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
       attachedFileContent: resolvedAttachedText,
       imageBase64: activeImageInfo?.base64,
       mimeType: activeImageInfo?.mimeType,
-      documentBase64: activeDocumentInfo?.documentBase64,
+      documentBase64: (!resolvedAttachedText || resolvedAttachedText.trim().length < 120) ? activeDocumentInfo?.documentBase64 : undefined,
       documentMimeType: activeDocumentInfo?.documentMimeType,
       documentImages: activeDocumentInfo?.documentImages,
       mediaType: activeDocumentInfo ? 'document' : (activeImageInfo ? 'image' : undefined),
@@ -3871,6 +3873,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     const updatedMessages = [...convBaseMessages, newUserMsg];
     const updatedMessagesWithPending = [...updatedMessages, initialAiMsg];
     safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(updatedMessagesWithPending));
+    isChatRequestInFlightRef.current = true;
 
     if (currentConversationIdRef.current === targetConvId) {
       messagesRef.current = updatedMessagesWithPending;
@@ -3892,7 +3895,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
 
     // Détection immédiate hors ligne avant envoi réseau
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      // aiBackgroundManager.clearTask(targetConvId);
+      isChatRequestInFlightRef.current = false;
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         text: "Veuillez vérifier que votre appareil est bien connecté à Internet (Wi-Fi ou données mobiles).",
@@ -3916,7 +3919,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
       return;
     }
 
-    // 1. Rassemblement et vérification préalable de tous les documents (Actif en Orange + Pièces jointes en Bleu)
+    try {
+      // 1. Rassemblement et vérification préalable de tous les documents (Actif en Orange + Pièces jointes en Bleu)
     const allDocs: any[] = [];
     const currentActive = resolvedActiveItem;
     if (currentActive && (currentActive.id || currentActive.name || currentActive.title || currentActive.file || currentActive.blob)) {
@@ -4267,7 +4271,6 @@ TA MISSION DANS LE CHAT :
       }).then(() => loadConversations()).catch(() => {});
     }
 
-    try {
       StudyCloudAPI.saveAiMessage({
         id: newUserMsgId,
         conversationId: currentConversationId,
@@ -4554,47 +4557,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
       const isDeadKey = Boolean(rawConfiguredToken && (rawConfiguredToken.startsWith('AIzaSyDKct') || rawConfiguredToken.length < 25));
       const configuredToken = (isWorkerModel || isDeadKey) ? undefined : rawConfiguredToken;
 
-      // Résolution multimédia instantanée (Vidéo, Audio, Image ou Document PDF/Word actif à l'écran ou joint)
-      // Les médias ont déjà été pré-extraits en amont pour l'Orchestrateur
-      // NE RÉ-ANALYSER LE FICHIER QUE S'IL N'A PAS ENCORE ÉTÉ ANALYSÉ DANS CETTE CONVERSATION
-      // (Ou si l'utilisateur a changé de fichier pendant la discussion)
-      if (!isMediaAlreadyAnalyzed) {
-        if (resolvedActiveItem) {
-          if (isVideoItem(resolvedActiveItem)) {
-            activeVideoInfo = await extractVideoContentFromItem(resolvedActiveItem);
-          } else if (isAudioItem(resolvedActiveItem)) {
-            activeAudioInfo = await extractAudioContentFromItem(resolvedActiveItem);
-          } else if (isDocumentItem(resolvedActiveItem)) {
-            activeDocumentInfo = await extractDocumentDetails(resolvedActiveItem);
-          } else {
-            activeImageInfo = await extractImageBase64FromItem(resolvedActiveItem);
-          }
-        }
-        if (Array.isArray(attachedResources) && attachedResources.length > 0) {
-          for (const res of attachedResources) {
-            if (!activeVideoInfo && isVideoItem(res)) {
-              const foundVid = await extractVideoContentFromItem(res);
-              if (foundVid) activeVideoInfo = foundVid;
-            } else if (!activeAudioInfo && isAudioItem(res)) {
-              const foundAud = await extractAudioContentFromItem(res);
-              if (foundAud) activeAudioInfo = foundAud;
-            } else if (!activeDocumentInfo && isDocumentItem(res)) {
-              const foundDoc = await extractDocumentDetails(res);
-              if (foundDoc) activeDocumentInfo = foundDoc;
-            } else if (!activeImageInfo) {
-              const foundImg = await extractImageBase64FromItem(res);
-              if (foundImg) activeImageInfo = foundImg;
-            }
-          }
-        }
-
-        // Mise en cache du texte brut extrait pour les tours de suivi légers
-        if (activeDocumentInfo?.textContent && currentMediaSignature) {
-          cachedDocumentTextRef.current[currentMediaSignature] = activeDocumentInfo.textContent;
-        }
-      }
-
-      // Si un média lourd est envoyé dans ce tour, priorité absolue au modèle multimodal Gemini Flash
+      // Les médias (Vidéo, Audio, Image ou Document PDF/Word) ont déjà été pré-extraits en amont dans ce même appel.
       const hasMedia = Boolean(
         activeImageInfo ||
         (activeVideoInfo && (activeVideoInfo.videoFrames.length > 0 || activeVideoInfo.videoBase64)) ||
@@ -4602,20 +4565,15 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         (activeDocumentInfo && (activeDocumentInfo.documentBase64 || (activeDocumentInfo.documentImages && activeDocumentInfo.documentImages.length > 0)))
       );
       // Le modèle sélectionné par l'utilisateur répond directement dans son propre style.
-      // S'il y a un média joint (vidéo, audio, image ou document), Gemini Flash opérera en arrière-plan
-      // comme moteur de perception universel sur le serveur sans remplacer le modèle sélectionné.
       const effectiveModelToSend = selectedModel;
 
       const detectedMediaType = activeVideoInfo ? 'video' : (activeAudioInfo ? 'audio' : (activeImageInfo ? 'image' : 'document'));
 
-      const resolvedAttachedText = hasAttachedDoc ? (
-        activeDocumentInfo?.textContent ||
-        (currentMediaSignature ? cachedDocumentTextRef.current[currentMediaSignature] : '') ||
-        (resolvedActiveItem as any)?.content ||
-        (resolvedActiveItem as any)?.text ||
-        (resolvedActiveItem as any)?.rawText ||
-        ''
-      ) : '';
+      const shouldSendRawDocBase64 = Boolean(
+        hasAttachedDoc &&
+        activeDocumentInfo?.documentBase64 &&
+        (!resolvedAttachedText || resolvedAttachedText.trim().length < 120 || requiresFreshAnalysis)
+      );
 
       const aiResult = await sendChatMessageToAi({
         messages: chatHistory,
@@ -4648,8 +4606,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         videoMimeType: hasAttachedDoc ? activeVideoInfo?.mimeType : undefined,
         audioBase64: hasAttachedDoc ? activeAudioInfo?.audioBase64 : undefined,
         audioMimeType: hasAttachedDoc ? activeAudioInfo?.mimeType : undefined,
-        documentBase64: hasAttachedDoc ? activeDocumentInfo?.documentBase64 : undefined,
-        documentMimeType: hasAttachedDoc ? activeDocumentInfo?.documentMimeType : undefined,
+        documentBase64: shouldSendRawDocBase64 ? activeDocumentInfo?.documentBase64 : undefined,
+        documentMimeType: shouldSendRawDocBase64 ? activeDocumentInfo?.documentMimeType : undefined,
         documentImages: hasAttachedDoc ? activeDocumentInfo?.documentImages : undefined,
         mediaType: hasAttachedDoc ? detectedMediaType : undefined,
         signal: abortSignal,
@@ -4658,6 +4616,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
 
       // Si cette requête a été annulée
       if (abortSignal.aborted) {
+        isChatRequestInFlightRef.current = false;
         if (currentConversationIdRef.current === targetConvId) {
           setIsWaitingServer(false);
           setIsTyping(false);
@@ -5156,6 +5115,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         const finalizeAiMessage = () => {
           if (isAiMsgFinalized || abortSignal.aborted) return;
           isAiMsgFinalized = true;
+          isChatRequestInFlightRef.current = false;
           if (typingTimerRef.current) {
             clearInterval(typingTimerRef.current);
             typingTimerRef.current = null;
@@ -5231,11 +5191,13 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         }, tickSpeed);
       } else {
         // L'utilisateur navigue sur une autre conversation : la tâche d'arrière-plan a persisté en toute discrétion
+        isChatRequestInFlightRef.current = false;
         setIsWaitingServer(false);
         setIsTyping(false);
       }
 
     } catch (err: any) {
+      isChatRequestInFlightRef.current = false;
       if (abortSignal.aborted) {
         return;
       }
@@ -5641,7 +5603,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                     </div>
                   </div>
                 </div>
-              ) : (
+              ) : (!msg.text || !msg.text.trim()) && !msg.isError && !msg.isStreaming && !isWaitingServer && !isTyping ? null : (
                 <div className="flex flex-col w-full text-zinc-100">
                   <div className="mb-2 flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
@@ -5731,6 +5693,13 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                           <span>{retryingMessageId === msg.id && (isWaitingServer || isTyping) ? 'Connexion...' : 'Réessayer'}</span>
                         </button>
                       </div>
+                    </div>
+                  ) : (!msg.text || !msg.text.trim()) ? (
+                    <div className="flex items-center gap-2.5 bg-[#26282d] px-3.5 py-2.5 rounded-2xl w-fit max-w-[90%] shadow-md mt-1 animate-fadeIn">
+                      <DnaLogo className="w-5 h-5 animate-dna-spin-float shrink-0 text-orange-500" glow={true} />
+                      <span className="text-xs sm:text-[13px] font-medium text-zinc-200 animate-pulse tracking-wide select-none">
+                        {aiActivityText || 'Je réfléchis...'}
+                      </span>
                     </div>
                   ) : (
                     <div className="text-[15px] sm:text-[16px] md:text-[17px] leading-[1.8] font-normal text-zinc-100 pl-1 select-text chat-selectable cursor-text">
@@ -5851,7 +5820,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           ))
         )}
         
-        {isWaitingServer && (
+        {isWaitingServer && !(messages.length > 0 && messages[messages.length - 1]?.sender === 'ai' && (!messages[messages.length - 1]?.text || !messages[messages.length - 1]?.text.trim())) && (
           <div className="flex flex-col w-full text-zinc-100 mb-4 animate-fadeIn">
             <div className="flex items-center gap-2.5 bg-[#26282d] px-3.5 py-2.5 rounded-2xl w-fit max-w-[90%] shadow-md">
               <DnaLogo className="w-5 h-5 animate-dna-spin-float shrink-0 text-orange-500" glow={true} />
