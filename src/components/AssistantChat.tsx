@@ -5334,6 +5334,17 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         }
         let newCreation: AiCreation | null = null;
         if (creationParsed && creationParsed.content) {
+          const estimatedPromptTokens = Math.max(55, Math.ceil(((userText || '').length + (aiResult.response || '').length) / 3.8));
+          const respTokens = aiResult.tokens || (typeof aiResult.usage?.totalTokens === 'number' ? aiResult.usage.totalTokens : estimatedPromptTokens);
+          const respCredits = typeof aiResult.credits_deducted === 'number' && aiResult.credits_deducted > 0
+            ? aiResult.credits_deducted
+            : (typeof aiResult.credits === 'number' && aiResult.credits > 0 ? aiResult.credits : convertTokensToCredits(respTokens, tokensPerCredit));
+
+          if (creationParsed.content && typeof creationParsed.content === 'object') {
+            creationParsed.content.tokens = respTokens;
+            creationParsed.content.credits = respCredits;
+          }
+
           newCreation = {
             id: creationId || (aiResult as any).creation_id || ('ai-' + Date.now()),
             userId: targetUserId,
@@ -5345,6 +5356,9 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             sourceFileName: mainDocName,
             createdAt: new Date().toISOString(),
             version: 1,
+            status: 'ready',
+            tokens: respTokens,
+            credits: respCredits,
           };
 
           // Sauvegarde dans le cache local spécifique à CETTE conversation

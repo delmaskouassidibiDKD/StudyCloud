@@ -666,9 +666,10 @@ export function RightMenu({
       return;
     }
 
-    // C'est l'IA qui active la page de chargement en direct via ses événements
+    // Si un document est présent : passage immédiat en phase "thinking" (Réflexion en cours...)
+    // CE N'EST PAS ENCORE LA CRÉATION ! C'est l'IA qui décidera d'activer l'écran de chargement de création habituel.
     setActiveCreation(null);
-    setCreationPhase('idle');
+    setCreationPhase('thinking');
     setGeneratingToolTitle(card.title);
     setLiveStatusText("Réflexion en cours...");
 
@@ -821,8 +822,11 @@ export function RightMenu({
 
     // Si la création est encore en cours de génération ou en attente dans la file
     const isStillGenerating =
-      (item.status === 'generating' || item.status === 'queued') ||
-      (item.content && typeof item.content === 'object' && (item.content.status === 'generating' || item.content.status === 'queued'));
+      item.status === 'generating' ||
+      item.status === 'queued' ||
+      !item.content ||
+      item.content?.status === 'generating' ||
+      item.content?.status === 'queued';
 
     if (isStillGenerating) {
       setActiveCreation(item);
@@ -902,18 +906,26 @@ export function RightMenu({
           content: parsedContent,
           data: parsedContent,
           contentJson: parsedContent,
+          tokens: creation.tokens || (parsedContent && typeof parsedContent === 'object' && parsedContent.tokens) || undefined,
+          credits: creation.credits || (parsedContent && typeof parsedContent === 'object' && (parsedContent.credits || parsedContent.tokens)) || undefined,
           sourceFileName: creation.sourceFileName || resolvedDocName || undefined,
           createdAt: creation.createdAt || creation.created_at || new Date().toISOString(),
           isPinned: Boolean(creation.isPinned),
           status: 'ready',
         };
 
-        // Dès que la création est prête : on DÉSACTIVE immédiatement l'écran "création en cours"
-        // et on affiche directement la création générée
-        setCreationPhase('idle');
-        setActiveCreation(normalizedCreation);
+        // Si l'utilisateur regardait l'écran d'attente (MagicRings) ou avait ouvert cette création spécifique :
+        // on désactive l'écran d'attente et on affiche la création générée.
+        // Si l'utilisateur est en train d'étudier une autre création, on ne l'interrompt pas !
+        setActiveCreation(prev => {
+          if (!prev || prev.id === normalizedCreation.id || prev.status === 'generating' || prev.status === 'queued') {
+            setCreationPhase('idle');
+            return normalizedCreation;
+          }
+          return prev;
+        });
 
-        // Enregistrement immédiat dans la liste locale de créations (en tête de liste)
+        // Enregistrement immédiat dans la liste locale de créations (remplace le placeholder "En cours" par la création prête)
         setSavedCreations(prev => {
           const updated = [normalizedCreation, ...prev.filter(c => c.id !== normalizedCreation.id)];
           persistCreationsLocally(updated);
@@ -1016,6 +1028,8 @@ export function RightMenu({
               ...c,
               title: title || creation?.title || c.title,
               status,
+              tokens: creation?.tokens || (creation?.content && creation.content.tokens) || c.tokens,
+              credits: creation?.credits || (creation?.content && (creation.content.credits || creation.content.tokens)) || c.credits,
               progressText: progressText || (status === 'queued' ? 'En attente...' : status === 'generating' ? 'Création en cours...' : status === 'ready' ? 'Prêt' : 'Erreur'),
               content: status === 'ready' ? (newContent || c.content) : c.content,
             };
@@ -1028,9 +1042,6 @@ export function RightMenu({
 
       if (status === 'ready' || status === 'error') {
         setCreationPhase('idle');
-      }
-      if (status === 'error') {
-        setSavedCreations(prev => prev.filter(c => c.id !== creationId));
       }
 
       setActiveCreation(prev => {
