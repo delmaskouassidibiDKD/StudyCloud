@@ -9,7 +9,6 @@ import DotField from './DotField';
 import MagicRings from './MagicRings';
 import { getCurrentUserId } from '../services/userSync';
 import { StudyCloudAPI, formatConsumedCreditsDisplay, convertTokensToCredits, getActiveTokensPerCredit, getAiBillingConfig } from '../services/api';
-import { aiBackgroundManager } from '../services/aiBackgroundManager';
 
 export type CreationPhase = 'idle' | 'thinking' | 'creating';
 
@@ -697,8 +696,6 @@ export function RightMenu({
     setLiveStatusText('');
 
     if (targetId) {
-      // 2. Interruption de l'agent en arrière-plan
-      aiBackgroundManager.clearTask(targetId);
       window.dispatchEvent(new CustomEvent('studycloud-cancel-creation', { detail: { creationId: targetId } }));
 
       // 3. Retrait immédiat de la liste locale
@@ -789,8 +786,6 @@ export function RightMenu({
       return;
     }
 
-    // 1. Interrompre la tâche en arrière-plan si elle était en cours
-    aiBackgroundManager.clearTask(creationId);
     window.dispatchEvent(new CustomEvent('studycloud-cancel-creation', { detail: { creationId } }));
 
     // 2. Si c'était la création en cours affichée sur l'écran (Image 2), refermer et réinitialiser immédiatement
@@ -917,17 +912,10 @@ export function RightMenu({
           status: 'ready',
         };
 
-        // L'ESPACE NE DOIT PAS BASCULER SEUL :
-        // Si l'utilisateur a ouvert spécifiquement CETTE création (par ex. en cliquant dessus dans "Mes Créations"),
-        // alors on bascule sur son contenu final.
-        // Sinon, la création est simplement prête dans la liste locale et D1, l'espace reste stable !
-        setActiveCreation(prev => {
-          if (prev && prev.id === normalizedCreation.id) {
-            setCreationPhase('idle');
-            return normalizedCreation;
-          }
-          return prev;
-        });
+        // Dès que la création est prête : on DÉSACTIVE immédiatement l'écran "création en cours"
+        // et on affiche directement la création générée
+        setCreationPhase('idle');
+        setActiveCreation(normalizedCreation);
 
         // Enregistrement immédiat dans la liste locale de créations (en tête de liste)
         setSavedCreations(prev => {
@@ -1042,6 +1030,10 @@ export function RightMenu({
         return updated;
       });
 
+      if (status === 'ready' || status === 'error') {
+        setCreationPhase('idle');
+      }
+
       setActiveCreation(prev => {
         if (prev && prev.id === creationId) {
           if (status === 'generating') {
@@ -1056,20 +1048,23 @@ export function RightMenu({
             return { ...prev, status: 'queued', progressText: progressText || 'En attente...' };
           } else if (status === 'ready') {
             const finalContent = creation?.content || creation?.data;
-            if (finalContent) {
-              setCreationPhase('idle');
-              return {
-                ...prev,
-                ...creation,
-                content: finalContent,
-                data: finalContent,
-                status: 'ready',
-              };
-            }
+            setCreationPhase('idle');
+            return {
+              ...prev,
+              ...(creation || {}),
+              content: finalContent || prev.content,
+              data: finalContent || prev.data,
+              status: 'ready',
+            };
           } else if (status === 'error') {
+            setCreationPhase('idle');
             setLiveStatusText(errorText || 'Erreur lors de la création');
             return { ...prev, status: 'error', progressText: errorText };
           }
+        } else if (status === 'ready' && creation && creation.content) {
+          // Si une création est prête alors que l'écran affichait l'animation de chargement
+          setCreationPhase('idle');
+          return creation;
         }
         return prev;
       });
@@ -1095,23 +1090,18 @@ export function RightMenu({
         return;
       }
 
-      // Si des créations d'arrière-plan tournent, ne jamais réinitialiser l'espace création sur un simple reset
-      const runningCount = aiBackgroundManager.getRunningCount();
-
-      // 1. Réinitialisation explicite vers les 12 prompts (IA ne crée pas / pose question / répond en chat / erreur / annulation)
-      if (detail.resetToPrompts || detail.isError || detail.isCancelled) {
-        if (runningCount === 0) {
-          setCreationPhase('idle');
+      // 1. Réinitialisation explicite (IA ne crée pas / pose question / répond en chat / erreur / annulation / fin)
+      if (detail.resetToPrompts || detail.isError || detail.isCancelled || detail.phase === 'idle') {
+        setCreationPhase('idle');
+        if (detail.resetToPrompts || detail.isError || detail.isCancelled) {
           setActiveCreation(null);
         }
         return;
       }
 
-      // 2. Si le chargement est terminé sans création
+      // 2. Si le chargement est terminé sans création, DÉSACTIVER immédiatement l'animation d'attente
       if (detail.isLoading === false) {
-        if (runningCount === 0) {
-          setCreationPhase('idle');
-        }
+        setCreationPhase('idle');
         return;
       }
 

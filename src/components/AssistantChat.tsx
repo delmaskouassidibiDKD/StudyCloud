@@ -5,7 +5,7 @@ import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
 import { MathText, stripAiReasoningScratchpad } from './MathText';
 import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey, safeJsonParse, getWorkerApiUrl, getActiveTokensPerCredit, convertTokensToCredits, formatConsumedCreditsDisplay, getAiBillingConfig } from '../services/api';
-import { aiBackgroundManager } from '../services/aiBackgroundManager';
+// import { aiBackgroundManager } from '../services/aiBackgroundManager';
 import { getFileBlob } from '../services/localFileStorage';
 import { extractDocumentDetails } from '../services/documentTextExtractor';
 
@@ -2803,7 +2803,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       } catch {}
       delete activeControllersByConvRef.current[targetId];
     }
-    aiBackgroundManager.clearTask(targetId);
+      // aiBackgroundManager.clearTask(targetId);
 
     if (targetId === currentConversationIdRef.current) {
       if (typingTimerRef.current) {
@@ -2919,7 +2919,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     }
 
     // Vérifier si une tâche d'arrière-plan tourne pour cette conversation
-    const activeBgTask = aiBackgroundManager.getActiveTaskForConversation(convId);
+    const activeBgTask = null;
     // Seules les requêtes textuelles de chat non terminées réactivent le statut d'attente, JAMAIS les créations d'arrière-plan
     if (activeBgTask && activeBgTask.status === 'running' && !activeBgTask.creationId && !activeBgTask.toolType) {
       setIsWaitingServer(true);
@@ -2981,7 +2981,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         // Si l'utilisateur est toujours sur cette conversation, mettre à jour la vue sans écraser les messages en cours de streaming
         if (currentConversationIdRef.current === convId) {
           if (activeBgTask && loaded.some(m => m.id === activeBgTask.aiMsgId)) {
-            aiBackgroundManager.completeAiTask(convId, activeBgTask.aiMsgId);
+      // aiBackgroundManager.completeAiTask(convId, activeBgTask.aiMsgId);
             setIsWaitingServer(false);
             setIsTyping(false);
           }
@@ -3098,7 +3098,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     let recoveryTimer: any = null;
     const checkRunningTasks = () => {
       // Ignorer les créations : elles ont leur propre cycle de vie dans RightMenu et ne doivent pas reset le chat
-      const activeTasks = aiBackgroundManager.getActiveTasks().filter(t => t.status === 'running' && !t.creationId && !t.toolType);
+      const activeTasks: any[] = [];
       if (activeTasks.length > 0) {
         activeTasks.forEach(task => {
           StudyCloudAPI.getAiConversationMessages(task.conversationId).then(res => {
@@ -3106,7 +3106,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
               // Vérification STRICTEMENT par id unique pour ne jamais confondre avec un ancien message
               const foundMsg = res.data.find((m: any) => m.id === task.aiMsgId);
               if (foundMsg && foundMsg.content && foundMsg.content.trim().length > 0) {
-                aiBackgroundManager.completeAiTask(task.conversationId, task.aiMsgId, foundMsg.content);
+      // aiBackgroundManager.completeAiTask(task.conversationId, task.aiMsgId, foundMsg.content);
                 if (task.conversationId === currentConversationIdRef.current) {
                   loadConversationMessages(task.conversationId);
                   setIsWaitingServer(false);
@@ -3298,7 +3298,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         try { activeControllersByConvRef.current[convId].abort(); } catch {}
         delete activeControllersByConvRef.current[convId];
       }
-      aiBackgroundManager.clearTask(convId);
+      // aiBackgroundManager.clearTask(convId);
 
       await StudyCloudAPI.deleteAiConversation(convId);
       setConversations(prev => prev.filter(c => c.id !== convId));
@@ -3840,24 +3840,10 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
       created_at: new Date(Date.now() - 50).toISOString(),
     }).catch(() => {});
 
-    // Enregistrement de la tâche d'arrière-plan pour reprise post-rechargement (uniquement pour les discussions ordinaires)
-    if (!isExplicitCreationRequest) {
-      aiBackgroundManager.registerAiTask({
-        taskId: `task-${Date.now()}`,
-        conversationId: targetConvId,
-        userId: targetUserId,
-        userMsgId: newUserMsgId,
-        aiMsgId: aiMsgId,
-        prompt: userText,
-        status: 'running',
-        startedAt: Date.now(),
-        lastUpdated: Date.now(),
-      });
-    }
 
     // Détection immédiate hors ligne avant envoi réseau
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      aiBackgroundManager.clearTask(targetConvId);
+      // aiBackgroundManager.clearTask(targetConvId);
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         text: "Veuillez vérifier que votre appareil est bien connecté à Internet (Wi-Fi ou données mobiles).",
@@ -4229,258 +4215,18 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
     const docNames = initialDocNames;
     const attachedFileName = resolvedActiveName || (Array.isArray(attachedResources) ? attachedResources.map((r: any) => r?.name).filter(Boolean).join(', ') : '');
 
-    // =========================================================================
-    // BRANCHE CRÉATION : EXÉCUTION EN ARRIÈRE-PLAN AVEC CONFIRMATION DYNAMIQUE DE L'IA
-    // Limite serveur : 3 requêtes max en simultané (la 4ème et + sont mises en attente)
-    // Le chat est immédiatement libéré pour permettre à l'utilisateur de continuer à discuter.
-    // L'IA formule elle-même sa confirmation naturelle (aucun message figé/générique).
-    // =========================================================================
+    // Activation directe de l'ecran "Creation en cours..." dans l'Espace d'Etude
     if (isExplicitCreationRequest && detectedFormats.length > 0) {
-      const mainDocName = hasAttachedDoc ? (resolvedActiveName || (attachedResources[0]?.name) || undefined) : undefined;
-
-      // Sauvegarde du titre de conversation si c'est le 1er message
-      if (convBaseMessages.length === 0) {
-        const generatedTitle = userText.slice(0, 38).trim() + (userText.length > 38 ? '...' : '');
-        setCurrentConversationTitle(generatedTitle);
-        StudyCloudAPI.createAiConversation({
-          id: targetConvId,
-          userId: targetUserId,
-          title: generatedTitle,
-        }).then(() => loadConversations()).catch(() => {});
-      }
-
-      // Préparation des tâches d'agents pour chaque format de création détecté
-      const tasksToEnqueue = detectedFormats.map((explicitToolType, index) => {
-        const formatTitle = CREATION_NAME_MAP[explicitToolType] || CREATION_FORMAT_LABELS[explicitToolType] || 'Support d\'apprentissage';
-        const creationTitle = mainDocName ? `${formatTitle} : ${mainDocName}` : `${formatTitle} : ${userText.slice(0, 30).trim() || 'Thème libre'}`;
-        const creationId = 'crea-' + (Date.now() + index + 2).toString();
-        const taskId = `task-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 6)}`;
-        const agentPrompt = getSubAgentTargetPrompt(explicitToolType, mainDocName || userText.slice(0, 40), userText);
-        return {
-          explicitToolType,
-          formatTitle,
-          creationTitle,
-          creationId,
-          taskId,
-          agentPrompt,
-        };
-      });
-
-      // Lancement de chaque tâche dans le Pool d'Agents (max 3 en simultané, les suivantes en file d'attente)
-      const taskResults: Array<{ taskId: string; title: string; isQueued: boolean }> = [];
-      tasksToEnqueue.forEach(task => {
-        const runningCount = aiBackgroundManager.getRunningCount();
-        const willBeQueued = runningCount >= aiBackgroundManager.MAX_CONCURRENT_REQUESTS;
-
-        window.dispatchEvent(new CustomEvent('studycloud-creation-enqueued', {
-          detail: {
-            id: task.creationId,
-            conversationId: targetConvId,
-            title: task.creationTitle,
-            toolType: task.explicitToolType,
-            sourceFileName: mainDocName || undefined,
-            createdAt: new Date().toISOString(),
-            status: willBeQueued ? 'queued' : 'generating',
-            progressText: willBeQueued ? 'En attente...' : 'Création en cours...',
-            isQueued: willBeQueued,
-            isBackground: true,
-          }
-        }));
-
-        // Persistance immédiate dans Cloudflare D1 pour affichage direct sur tous les appareils (PC et mobile)
-        if (targetUserId && targetUserId !== 'default-user') {
-          StudyCloudAPI.saveAiContent({
-            id: task.creationId,
-            userId: targetUserId,
-            fileId: activePreviewItem?.id || resolvedActiveItem?.id || null,
-            conversationId: targetConvId || null,
-            toolType: task.explicitToolType,
-            title: task.creationTitle,
-            contentJson: { status: willBeQueued ? 'queued' : 'generating', title: task.creationTitle, sourceFileName: mainDocName },
-            sourceFileName: mainDocName,
-            isPinned: false,
-          }).catch(err => console.warn('[AssistantChat] Erreur persistance D1 creation-enqueued:', err));
+      window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
+        detail: {
+          phase: 'creating',
+          isCreating: true,
+          isLoading: true,
+          isCreation: true,
+          toolType: detectedFormats[0],
+          statusText: "L'IA concoit votre support d'apprentissage..."
         }
-
-        const enqRes = aiBackgroundManager.enqueueCreationTask(
-          {
-            taskId: task.taskId,
-            conversationId: targetConvId,
-            userId: targetUserId,
-            userMsgId: newUserMsgId,
-            aiMsgId: aiMsgId,
-            creationId: task.creationId,
-            title: task.creationTitle,
-            toolType: task.explicitToolType,
-            prompt: task.agentPrompt,
-            mainDocName: mainDocName,
-          },
-          async () => {
-            return executeCreationApiCall({
-              userText: task.agentPrompt,
-              targetConvId,
-              targetUserId,
-              explicitToolType: task.explicitToolType,
-              mainDocName,
-              creationId: task.creationId,
-              creationTitle: task.creationTitle,
-              allDocs,
-              messages: convBaseMessages,
-              selectedModel,
-              availableModels,
-              currentConversationId: targetConvId,
-              sessionCreations,
-              resolvedActiveItem,
-              attachedResources,
-              activePreviewItem,
-              currentModelDisplay,
-              activeDocumentInfo,
-              activeImageInfo,
-            });
-          }
-        );
-
-        taskResults.push({ taskId: task.taskId, title: task.creationTitle, isQueued: enqRes.isQueued });
-      });
-
-      // L'IA Orchestrateur (Chef d'équipe) confie immédiatement les tâches à ses sous-agents
-      // et formule une réponse de confirmation instantanée, chaleureuse et personnalisée
-      // afin de libérer le chat immédiatement pour que l'étudiant puisse continuer à discuter ou confier d'autres tâches.
-      const activeRunningCount = taskResults.filter(t => !t.isQueued).length;
-      const queuedCount = taskResults.filter(t => t.isQueued).length;
-
-      // Détection du sujet ou thème ciblé pour une confirmation naturelle et intelligente
-      let targetSubject = mainDocName || '';
-      if (!targetSubject) {
-        const topicMatch = userText.match(/\b(?:sur|concernant|portant\s+sur|à\s+propos\s+de)\s+([a-zA-ZÀ-ÿ0-9\s'’-]{3,35})/i);
-        targetSubject = topicMatch ? topicMatch[1].trim() : '';
-      }
-
-      let aiConfirmationText = '';
-      if (tasksToEnqueue.length === 1) {
-        const singleTask = tasksToEnqueue[0];
-        const isQueued = taskResults[0]?.isQueued;
-        if (isQueued) {
-          aiConfirmationText = `C'est bien noté ! J'ai confié la conception de votre **${singleTask.formatTitle}**${targetSubject ? ` sur *${targetSubject}*` : ''} à un sous-agent dédié en arrière-plan. Comme 3 agents sont déjà au travail en simultané, votre création a été placée en tête de file d'attente et démarrera automatiquement dès qu'un agent se libère.
-
-Vous la retrouverez directement dans le volet **Créations** à droite dès qu'elle est prête.
-
-En attendant, notre discussion continue ici sans interruption : avez-vous des questions sur votre cours ou une autre tâche à me confier ?`;
-        } else {
-          aiConfirmationText = `C'est bien noté ! J'ai confié la conception de votre **${singleTask.formatTitle}**${targetSubject ? ` sur *${targetSubject}*` : ''} à un sous-agent spécialisé en arrière-plan.
-
-Son travail s'exécute de façon autonome : vous retrouverez votre création directement dans l'espace **Créations** à droite dès qu'elle sera prête !
-
-En attendant, le chat reste totalement ouvert : vous pouvez me poser vos questions sur le cours, approfondir une notion ou me demander d'autres créations en parallèle !`;
-        }
-      } else {
-        const titlesList = tasksToEnqueue.map(t => `**${t.formatTitle}**`).join(', ');
-        aiConfirmationText = `C'est bien noté ! J'ai mobilisé mes sous-agents spécialisés pour vos ${tasksToEnqueue.length} créations en parallèle : ${titlesList}.
-
-${activeRunningCount > 0 ? `🚀 ${activeRunningCount} création(s) lancée(s) immédiatement en arrière-plan.` : ''}
-${queuedCount > 0 ? `⏳ ${queuedCount} création(s) en file d'attente automatique (démarrage dès libération d'un agent).` : ''}
-
-Vous pouvez suivre leur progression dans l'espace **Créations** à droite.
-
-Pendant que vos modules se construisent, le chat reste 100% disponible : vous pouvez me poser toutes vos questions ou me confier d'autres tâches !`;
-      }
-      const effectiveModelName = currentModelDisplay;
-      const creationPromptChars = (userText || '').length + aiConfirmationText.length;
-      const creationTokens = Math.max(68, Math.ceil(creationPromptChars / 3.8));
-      const creationCredits = convertTokensToCredits(creationTokens, tokensPerCredit);
-
-      const finalizeConfirmation = () => {
-        if (typingTimerRef.current) {
-          clearInterval(typingTimerRef.current);
-          typingTimerRef.current = null;
-        }
-        if (watchdogTimerRef.current) {
-          clearTimeout(watchdogTimerRef.current);
-          watchdogTimerRef.current = null;
-        }
-
-        // Mettre à jour le cache local pour targetConvId en finalisant le message
-        const currentConvMsgsRaw = safeGetItem(`studycloud_conv_msgs_${targetConvId}`);
-        let currentConvMsgs: Message[] = [];
-        if (currentConvMsgsRaw) {
-          try { currentConvMsgs = JSON.parse(currentConvMsgsRaw) || []; } catch {}
-        }
-        const finalizedConvMsgs = currentConvMsgs.map(m =>
-          m.id === aiMsgId ? { ...m, text: aiConfirmationText, isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationCredits } : m
-        );
-        if (!finalizedConvMsgs.some(m => m.id === aiMsgId)) {
-          finalizedConvMsgs.push({ id: aiMsgId, text: aiConfirmationText, sender: 'ai', isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationCredits });
-        }
-        safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(finalizedConvMsgs));
-
-        // Sauvegarde Cloudflare D1 avec horodatage ultérieur à celui du message utilisateur
-        StudyCloudAPI.saveAiMessage({
-          id: aiMsgId,
-          conversationId: targetConvId,
-          role: 'assistant',
-          content: aiConfirmationText,
-          created_at: new Date(Date.now() + 100).toISOString(),
-          metadata: { model: effectiveModelName, tokens: creationTokens, credits: creationCredits }
-        }).catch(() => {});
-
-        if (currentConversationIdRef.current === targetConvId) {
-          setMessages(prev => {
-            const exists = prev.some(m => m.id === aiMsgId);
-            if (!exists) {
-              return [...prev, { id: aiMsgId, text: aiConfirmationText, sender: 'ai', isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationCredits }];
-            }
-            return prev.map(m =>
-              m.id === aiMsgId ? { ...m, text: aiConfirmationText, isStreaming: false, model: effectiveModelName, tokens: creationTokens, credits: creationCredits } : m
-            );
-          });
-          setInputValue('');
-          setIsTyping(false);
-          setIsWaitingServer(false);
-          setAiActivityText('');
-          if (scrollContainerRef.current) {
-            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
-          }
-        }
-      };
-
-      // Animation fluide machine à écrire
-      if (typeof document !== 'undefined' && document.hidden) {
-        finalizeConfirmation();
-      } else {
-        const tickSpeed = 12;
-        const targetDuration = Math.min(300, Math.max(120, aiConfirmationText.length));
-        const totalTicks = Math.max(1, Math.floor(targetDuration / tickSpeed));
-        const chunkSize = Math.max(16, Math.ceil(aiConfirmationText.length / totalTicks));
-        let index = 0;
-
-        watchdogTimerRef.current = setTimeout(() => {
-          finalizeConfirmation();
-        }, targetDuration + 500);
-
-        typingTimerRef.current = setInterval(() => {
-          try {
-            index += chunkSize;
-            if (index >= aiConfirmationText.length) {
-              finalizeConfirmation();
-            } else {
-              const partial = aiConfirmationText.slice(0, index);
-              setMessages(prev =>
-                prev.map(m =>
-                  m.id === aiMsgId ? { ...m, text: partial, model: effectiveModelName } : m
-                )
-              );
-            }
-            if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
-              scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
-            }
-          } catch (_err) {
-            finalizeConfirmation();
-          }
-        }, tickSpeed);
-      }
-
-      // Le chat reste totalement ouvert et disponible pour de nouvelles questions
-      return;
+      }));
     }
 
     const initialLiveStatus = (requiresFreshAnalysis && hasAttachedDoc
@@ -4535,7 +4281,7 @@ Pendant que vos modules se construisent, le chat reste 100% disponible : vous po
       }
 
       // 3. Contexte du document actif et prompt autonome de décision (Architecture Gemini / StudyCloud)
-      const hasRunningBgCreations = aiBackgroundManager.getRunningCount() > 0;
+      const hasRunningBgCreations = false;
       let systemContent = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Agent Delmas).
 Tu es directement connectée à l'espace d'étude de l'étudiant en mode CHAT ET DISCUSSION PÉDAGOGIQUE DIRECTE.
 Les créations interactives sont entièrement prises en charge et conçues de manière autonome par des sous-agents dédiés en arrière-plan dans l'espace créations.
@@ -5622,7 +5368,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           : (aiResult.response || aiResult.chat_response || rawResponseText);
         const cleaned = cleanChatText(candidateText);
         fullResponseText = stripAiReasoningScratchpad(cleaned) || "✨ Votre demande a été traitée avec succès.";
-        // Aucun événement de création n'est émis : l'espace création reste totalement stable et calme !
+        // Desactiver immediatement l'ecran de creation si l'IA n'a renvoye que du texte de chat
+        window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCreation: false, resetToPrompts: true } }));
       }
 
       const effectiveModelName = aiResult.model || currentModelDisplay;
@@ -5656,7 +5403,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
       }).catch(() => {});
 
       // Marquer la tâche comme terminée dans le manager d'arrière-plan
-      aiBackgroundManager.completeAiTask(targetConvId, aiMsgId, fullResponseText, (creationParsed as any)?.content ? { title: creationParsed?.title, toolType: creationParsed?.toolType } : undefined);
+      // aiBackgroundManager.completeAiTask(targetConvId, aiMsgId, fullResponseText, (creationParsed as any)?.content ? { title: creationParsed?.title, toolType: creationParsed?.toolType } : undefined);
 
       if (currentMediaSignature && hasAttachedDoc) {
         if (aiResult?.perceptionReport) {
@@ -5769,7 +5516,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
       if (abortSignal.aborted) {
         return;
       }
-      aiBackgroundManager.clearTask(targetConvId);
+      // aiBackgroundManager.clearTask(targetConvId);
 
       // Nettoyer le streaming dans le cache local
       const convMsgsRaw = safeGetItem(`studycloud_conv_msgs_${targetConvId}`);
@@ -5839,7 +5586,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
     const handleCancelFromCreation = (e: any) => {
       const creationId = e?.detail?.creationId;
       if (creationId) {
-        aiBackgroundManager.clearTask(creationId);
+      // aiBackgroundManager.clearTask(creationId);
       }
       handleCancelTask();
     };
