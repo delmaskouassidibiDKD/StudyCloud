@@ -3760,7 +3760,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('studycloud-creation-saved', { detail: { id: newCreation.id, creation: newCreation } }));
-      window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
+      window.dispatchEvent(new CustomEvent('studycloud-creation-status-changed', { detail: { creationId: newCreation.id, status: 'ready', creation: newCreation } }));
+            window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
       window.dispatchEvent(new CustomEvent('studycloud-creation-status-changed', {
         detail: {
           creationId: newCreation.id,
@@ -4215,15 +4216,35 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
     const docNames = initialDocNames;
     const attachedFileName = resolvedActiveName || (Array.isArray(attachedResources) ? attachedResources.map((r: any) => r?.name).filter(Boolean).join(', ') : '');
 
-    // Activation directe de l'ecran "Creation en cours..." dans l'Espace d'Etude
+    const mainDocName = hasAttachedDoc ? (resolvedActiveName || (attachedResources[0]?.name) || undefined) : undefined;
+
+    // Activation de la creation et ajout immediat dans "Mes Creations" avec statut "En cours"
     if (isExplicitCreationRequest && detectedFormats.length > 0) {
+      const explicitToolType = detectedFormats[0];
+      const formatTitle = CREATION_NAME_MAP[explicitToolType] || CREATION_FORMAT_LABELS[explicitToolType] || "Support d'apprentissage";
+      const cTitle = mainDocName ? `${formatTitle} : ${mainDocName}` : `${formatTitle} : ${userText.slice(0, 30).trim() || "Theme libre"}`;
+
+      window.dispatchEvent(new CustomEvent('studycloud-creation-enqueued', {
+        detail: {
+          id: creationId,
+          conversationId: targetConvId,
+          title: cTitle,
+          toolType: explicitToolType,
+          sourceFileName: mainDocName || undefined,
+          createdAt: new Date().toISOString(),
+          status: 'generating',
+          progressText: 'Creation en cours...',
+          isBackground: false,
+        }
+      }));
+
       window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
         detail: {
           phase: 'creating',
           isCreating: true,
           isLoading: true,
           isCreation: true,
-          toolType: detectedFormats[0],
+          toolType: explicitToolType,
           statusText: "L'IA concoit votre support d'apprentissage..."
         }
       }));
@@ -4248,7 +4269,7 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
       }).then(() => loadConversations()).catch(() => {});
     }
 
-    const mainDocName = hasAttachedDoc ? (resolvedActiveName || (attachedResources[0]?.name) || undefined) : undefined;
+//     const mainDocName = hasAttachedDoc ? (resolvedActiveName || (attachedResources[0]?.name) || undefined) : undefined;
 
     try {
       // Sauvegarde immédiate Cloudflare D1 du message utilisateur
@@ -5282,7 +5303,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         let newCreation: AiCreation | null = null;
         if (creationParsed && creationParsed.content) {
           newCreation = {
-            id: (aiResult as any).creation_id || creationId || ('ai-' + Date.now()),
+            id: creationId || (aiResult as any).creation_id || ('ai-' + Date.now()),
             userId: targetUserId,
             fileId: activePreviewItem?.id,
             conversationId: targetConvId,
@@ -5348,6 +5369,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           if (currentConversationIdRef.current === targetConvId) {
             setActiveCreation(newCreation);
             setSessionCreations(updatedConvCreas);
+            window.dispatchEvent(new CustomEvent('studycloud-creation-status-changed', { detail: { creationId: newCreation.id, status: 'ready', creation: newCreation } }));
             window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
             window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false } }));
             window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));

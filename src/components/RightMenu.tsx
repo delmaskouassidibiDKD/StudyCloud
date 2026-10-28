@@ -1033,6 +1033,9 @@ export function RightMenu({
       if (status === 'ready' || status === 'error') {
         setCreationPhase('idle');
       }
+      if (status === 'error') {
+        setSavedCreations(prev => prev.filter(c => c.id !== creationId));
+      }
 
       setActiveCreation(prev => {
         if (prev && prev.id === creationId) {
