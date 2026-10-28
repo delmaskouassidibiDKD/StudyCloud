@@ -1461,6 +1461,9 @@ export default {
         const creationId = String(body.creationId || `crea-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`).trim();
         const creationTitle = String(body.creationTitle || body.title || 'Création Studio').trim();
         const requestedType = String(body.requested_type || body.toolType || 'creation').trim();
+        const isAgentCreationTask = Boolean(body.isAgentCreationTask || body.mode === 'agent_creation');
+        const orchestratorMode = String(body.orchestratorMode || '').trim();
+        const orchestratorInstruction = String(body.orchestratorInstruction || '').trim();
 
         const userPrompt = String(body.message || body.prompt || "").trim();
         let targetModel = String(body.model || body.requested_model || "gemini-2.0-flash").trim();
@@ -1744,10 +1747,30 @@ Donne une description exhaustive pour que le tuteur puisse résoudre et enseigne
           /^(?:oui\s*,?\s*)?(?:continue|la suite|poursuis|poursuivre|encha[îi]ne|suite\s+s'il\s+te\s+pla[îi]t)/i.test(effectivePrompt)
         );
 
-        // Construction du system prompt via le module centralisé des 12 créations
-        let systemPrompt = getBasePedagogicalRules();
-        if (body.requested_type) {
-          systemPrompt += "\n\n" + getCreationSpecificRule(body.requested_type);
+        // Construction du system prompt : distinction stricte entre Agent de Création (JSON) et IA sélectionnée de Chat (Discussion & Orchestration)
+        const clientSystemMsg = Array.isArray(history)
+          ? (history.find((h: any) => h && h.role === "system")?.content || "")
+          : "";
+
+        let systemPrompt = "";
+        if (isAgentCreationTask) {
+          systemPrompt = getBasePedagogicalRules();
+          if (body.requested_type) {
+            systemPrompt += "\n\n" + getCreationSpecificRule(body.requested_type);
+          }
+          if (clientSystemMsg) {
+            systemPrompt += "\n\n" + String(clientSystemMsg).trim();
+          }
+          systemPrompt += `\n\n[MISSION AGENT SPÉCIALISÉ DE CRÉATION STUDYCLOUD] :
+Tu es l'un des 3 Agents de Création spécialisés travaillant en arrière-plan pour concevoir le support « ${body.requested_type || requestedType} » (${creationTitle}).
+RÈGLE ABSOLUE : Ta réponse DOIT ÊTRE EXCLUSIVEMENT un objet JSON strict entouré de \`\`\`json et \`\`\` contenant "decision": "creation", "mode": "creation", "creation_type": "${body.requested_type || requestedType}", "creation_title": "${creationTitle}", "chat_response": "Création terminée", et "creation_data": { ... } avec l'intégralité des données pédagogiques. N'écris AUCUN texte avant ou après le bloc JSON.`;
+        } else {
+          systemPrompt = clientSystemMsg
+            ? String(clientSystemMsg).trim()
+            : getBasePedagogicalRules();
+          if (orchestratorInstruction) {
+            systemPrompt += "\n\n" + orchestratorInstruction;
+          }
         }
 
         if (docContent) {
@@ -1760,7 +1783,7 @@ Donne une description exhaustive pour que le tuteur puisse résoudre et enseigne
           systemPrompt += `\n\n[ATTENTION - AUCUN DOCUMENT FOURNI] : L'étudiant n'a joint aucun fichier de cours. Si sa demande porte sur une création (QCM, carte mentale, résumé, devoir, etc.) mais qu'il ne précise aucun sujet ni chapitre précis et que la conversation n'a pas abordé de matière : TU NE DOIS EN AUCUN CAS CRÉER DANS LE VIDE. Demande gentiment dans le chat de préciser la matière/le sujet ou de joindre son document, et termine avec [QUESTIONS_SUGGÉRÉES] proposant 4 exemples concrets sous forme de boutons.`;
         }
 
-        if (body.requested_type) {
+        if (isAgentCreationTask && body.requested_type) {
           systemPrompt += `\n\n[ORIENTATION PARTICULIÈRE] : L'étudiant a orienté son souhait vers un module de type "${body.requested_type}". Adapte ta création en conséquence.`;
         }
 
@@ -2100,7 +2123,17 @@ CONSIGNES STRICTES DE CONTINUATION :
         // ══════════════════════════════════════════════════════════════════════════════
         // VALIDATION & NORMALISATION DES 12 CRÉATIONS (MODULE DÉDIÉ)
         // ══════════════════════════════════════════════════════════════════════════════
-        const creationRes = validateAndFormatCreation(answerText, body.requested_type, docName);
+        const creationRes = isAgentCreationTask
+          ? validateAndFormatCreation(answerText, body.requested_type, docName)
+          : {
+              is_creation: false,
+              mode: "chat" as const,
+              decision: "chat" as const,
+              chat_response: answerText,
+              creation_type: undefined,
+              creation_title: undefined,
+              creation_data: undefined,
+            };
 
         // ══════════════════════════════════════════════════════════════════════════════
         // SAUVEGARDE AUTOMATIQUE EN ARRIÈRE-PLAN DANS CLOUDFLARE D1
@@ -2190,8 +2223,8 @@ CONSIGNES STRICTES DE CONTINUATION :
                 )
               `).run().catch(() => {});
 
-              // Si message utilisateur fourni, l'insérer si pas déjà présent
-              if (userMsgId && userPrompt) {
+              // Si message utilisateur fourni (uniquement pour le chat principal, jamais pour les agents de création en arrière-plan)
+              if (!isAgentCreationTask && userMsgId && userPrompt) {
                 await db.prepare(`
                   INSERT OR IGNORE INTO messages (id, conversation_id, role, content, metadata, created_at)
                   VALUES (?, ?, 'user', ?, ?, datetime('now'))
@@ -2203,13 +2236,14 @@ CONSIGNES STRICTES DE CONTINUATION :
                 ).run().catch(() => {});
               }
 
-              // Insérer le message assistant complété avec les crédits consommés
+              // Insérer le message assistant complété avec les crédits consommés (uniquement pour le chat principal)
               const assistantContent = creationRes.chat_response || answerText;
-              await db.prepare(`
-                INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
-                VALUES (?, ?, 'assistant', ?, ?, datetime('now'))
-                ON CONFLICT(id) DO UPDATE SET content = excluded.content, metadata = excluded.metadata
-              `).bind(
+              if (!isAgentCreationTask) {
+                await db.prepare(`
+                  INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
+                  VALUES (?, ?, 'assistant', ?, ?, datetime('now'))
+                  ON CONFLICT(id) DO UPDATE SET content = excluded.content, metadata = excluded.metadata
+                `).bind(
                 aiMsgId,
                 convId,
                 assistantContent,
@@ -2222,7 +2256,8 @@ CONSIGNES STRICTES DE CONTINUATION :
                   tokens: calculatedTokens,
                   credits: creditsDeducted,
                 })
-              ).run().catch(() => {});
+                ).run().catch(() => {});
+              }
 
               // Mettre à jour l'horodatage de la conversation parente
               await db.prepare(`

@@ -9,6 +9,7 @@ import DotField from './DotField';
 import MagicRings from './MagicRings';
 import { getCurrentUserId } from '../services/userSync';
 import { StudyCloudAPI, formatConsumedCreditsDisplay, convertTokensToCredits, getActiveTokensPerCredit, getAiBillingConfig } from '../services/api';
+import { aiBackgroundManager } from '../services/aiBackgroundManager';
 
 export type CreationPhase = 'idle' | 'thinking' | 'creating';
 
@@ -657,7 +658,7 @@ export function RightMenu({
       window.dispatchEvent(new CustomEvent('studycloud-trigger-creation', {
         detail: {
           prompt: promptToSend,
-          toolType: undefined,
+          toolType: card.toolType,
           isCreation: false,
           hasDocument: hasDoc,
           source: 'right-menu-cards'
@@ -696,6 +697,7 @@ export function RightMenu({
     setLiveStatusText('');
 
     if (targetId) {
+      aiBackgroundManager.clearTask(targetId);
       window.dispatchEvent(new CustomEvent('studycloud-cancel-creation', { detail: { creationId: targetId } }));
 
       // 3. Retrait immédiat de la liste locale
@@ -786,6 +788,7 @@ export function RightMenu({
       return;
     }
 
+    aiBackgroundManager.clearTask(creationId);
     window.dispatchEvent(new CustomEvent('studycloud-cancel-creation', { detail: { creationId } }));
 
     // 2. Si c'était la création en cours affichée sur l'écran (Image 2), refermer et réinitialiser immédiatement
@@ -918,7 +921,7 @@ export function RightMenu({
         // on désactive l'écran d'attente et on affiche la création générée.
         // Si l'utilisateur est en train d'étudier une autre création, on ne l'interrompt pas !
         setActiveCreation(prev => {
-          if (!prev || prev.id === normalizedCreation.id || prev.status === 'generating' || prev.status === 'queued') {
+          if (!prev || prev.id === normalizedCreation.id) {
             setCreationPhase('idle');
             return normalizedCreation;
           }
@@ -1040,11 +1043,10 @@ export function RightMenu({
         return updated;
       });
 
-      if (status === 'ready' || status === 'error') {
-        setCreationPhase('idle');
-      }
-
       setActiveCreation(prev => {
+        if (!prev && (status === 'ready' || status === 'error')) {
+          setCreationPhase('idle');
+        }
         if (prev && prev.id === creationId) {
           if (status === 'generating') {
             setCreationPhase('creating');
@@ -1071,8 +1073,8 @@ export function RightMenu({
             setLiveStatusText(errorText || 'Erreur lors de la création');
             return { ...prev, status: 'error', progressText: errorText };
           }
-        } else if (status === 'ready' && creation && creation.content) {
-          // Si une création est prête alors que l'écran affichait l'animation de chargement
+        } else if (status === 'ready' && creation && creation.content && !prev) {
+          // Si aucune autre création n'était ouverte à l'écran, afficher celle qui vient de se terminer
           setCreationPhase('idle');
           return creation;
         }

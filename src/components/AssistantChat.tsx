@@ -5,7 +5,7 @@ import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
 import { MathText, stripAiReasoningScratchpad } from './MathText';
 import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey, safeJsonParse, getWorkerApiUrl, getActiveTokensPerCredit, convertTokensToCredits, formatConsumedCreditsDisplay, getAiBillingConfig } from '../services/api';
-// import { aiBackgroundManager } from '../services/aiBackgroundManager';
+import { aiBackgroundManager } from '../services/aiBackgroundManager';
 import { getFileBlob } from '../services/localFileStorage';
 import { extractDocumentDetails } from '../services/documentTextExtractor';
 
@@ -1640,79 +1640,104 @@ RÈGLES CRUCIALES POUR LES VRAI OU FAUX :
   }
 }
 
-// Détection de tous les formats de création demandés (support multi-agents)
-export function detectAllCreationFormats(userText: string, requestedType?: string): AiCreationType[] {
+// Détection de tous les formats de création demandés (support multi-agents + héritage de clarification)
+export function detectAllCreationFormats(
+  userText: string,
+  requestedType?: string,
+  conversationMessages?: Array<{ sender?: string; text?: string; role?: string; content?: string }>
+): AiCreationType[] {
   if (requestedType && typeof requestedType === 'string' && requestedType.trim()) {
     return [normalizeCreationType(requestedType) as AiCreationType];
   }
-  if (!userText || typeof userText !== 'string') return [];
-  const t = userText.trim().toLowerCase();
+  const t = (userText || '').trim().toLowerCase();
 
-  // Si c'est une question ou discussion conversationnelle (ex: "C'est quoi un exercice ?", "Explique-moi le cours", "Pourquoi...", "Comment..."),
-  // ce n'est PAS une commande de création de support studio, sauf s'il y a un verbe explicite d'action de création ("crée", "génère", "fais-moi un", "conçois").
   const hasCreationActionVerb = /\b(?:cr[eé][eé]r?|g[eé]n[eé]r(?:er|e)?|fais(?:-moi)?|fait(?:-moi)?|con[çc]ois|conception|pr[eé]pare(?:-moi)?|lance(?:-moi)?|donne(?:-moi)?|produi[st]|construi[st]|r[eé]dige(?:-moi)?|nouveau|nouvelle)\b/i.test(t);
-  
   const isConversationalQuestion = /^(?:pourquoi|comment|qu['’]est-ce|quand|qui|o[uù]|est-ce|peux-tu\s+m['’]expliquer|peux-tu\s+m['’]aider|explique|aide-moi\s+[àa]\s+(?:comprendre|r[eé]soudre)|c['’]est\s+quoi|dis-moi|je\s+ne\s+comprends\s+pas|r[eé]sous|d[eé]taille|salut|bonjour|coucou|hello)\b/i.test(t);
 
-  if (isConversationalQuestion && !hasCreationActionVerb) {
+  if (isConversationalQuestion && !hasCreationActionVerb && !requestedType) {
     return [];
   }
 
   const detected: AiCreationType[] = [];
 
-  // 1. Vrai ou Faux Test vs Vrai ou Faux (vérifié avant questionnaire pour ne pas confondre 'test')
-  if (/\b(?:vrai\s+ou\s+faux\s+test|vrai\/faux\s+test|vf\s+test|[eé]preuve\s+vrai\s+ou\s+faux)\b/i.test(t)) {
-    detected.push('vrai-ou-faux-test');
-  } else if (/\b(?:vrai\s+ou\s+faux|vrai\/faux)\b/i.test(t) || (hasCreationActionVerb && /\baffirmations?\b/i.test(t))) {
-    detected.push('vrai-ou-faux');
+  if (t) {
+    // 1. Vrai ou Faux Test vs Vrai ou Faux
+    if (/\b(?:vrai\s+ou\s+faux\s+test|vrai\/faux\s+test|vf\s+test|[eé]preuve\s+vrai\s+ou\s+faux)\b/i.test(t)) {
+      detected.push('vrai-ou-faux-test');
+    } else if (/\b(?:vrai\s+ou\s+faux|vrai\/faux)\b/i.test(t) || (hasCreationActionVerb && /\baffirmations?\b/i.test(t))) {
+      detected.push('vrai-ou-faux');
+    }
+
+    // 2. Questionnaire Test vs Questionnaire QCM
+    if (/\b(?:questionnaire\s+test|test\s+not[eé]|test\s+chrono|[eé]preuve\s+not[eé]e)\b/i.test(t)) {
+      detected.push('questionnaire-test');
+    } else if (/\b(?:questionnaire|quiz|qcm)\b/i.test(t) || (hasCreationActionVerb && /\btest\b/i.test(t) && !/\bvrai\s+ou\s+faux/i.test(t))) {
+      detected.push('questionnaire');
+    }
+
+    // 3. Carte Mentale 2 vs Carte Mentale
+    if (/\b(?:carte\s+mentale\s+2|mindmap\s*2|carte\s+conceptuelle)\b/i.test(t)) {
+      detected.push('carte-mentale-2');
+    } else if (/\b(?:carte\s+mentale|mindmap|mind-map|arborescence)\b/i.test(t)) {
+      detected.push('carte-mentale');
+    }
+
+    // 4. Cartes Mémoires
+    if (/\b(?:cartes?\s+m[eé]moires?|flashcards?|fiches?\s+de\s+m[eé]morisation)\b/i.test(t)) {
+      detected.push('carte-memoire');
+    }
+
+    // 5. Devoir Complet / Examen
+    if (/\b(?:devoir\s+complet|sujet\s+d['’]examen|[eé]preuve\s+d['’]examen|devoir\s+d['’]examen|examen\s+complet|examen\s+blanc)\b/i.test(t)) {
+      detected.push('devoir-complet');
+    }
+
+    // 6. Exercices Écrits
+    if (/\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]application|s[eé]rie\s+d['’]exercices)\b/i.test(t) && !detected.includes('devoir-complet')) {
+      detected.push('exercices-ecrits');
+    } else if (hasCreationActionVerb && /\bexercices?\b/i.test(t) && !detected.includes('devoir-complet')) {
+      detected.push('exercices-ecrits');
+    }
+
+    // 7. Résumé / Synthèse
+    if (/\b(?:fiche\s+de\s+r[eé]sum[eé]|fiche\s+de\s+synth[eè]se)\b/i.test(t)) {
+      detected.push('resume');
+    } else if (hasCreationActionVerb && /\b(?:r[eé]sum[eé]|synth[eè]se)\b/i.test(t)) {
+      detected.push('resume');
+    }
+
+    // 8. Infographie
+    if (/\b(?:infographie|fiche\s+visuelle)\b/i.test(t)) {
+      detected.push('infographie');
+    }
+
+    // 9. Document PDF
+    if (/\b(?:document\s+pdf|polycopi[eé]|polycopie|g[eé]n[eé]rer\s+un\s+pdf|cr[eé]er\s+un\s+pdf|faire\s+un\s+pdf|export\s+pdf)\b/i.test(t)) {
+      detected.push('pdf');
+    }
   }
 
-  // 2. Questionnaire Test vs Questionnaire QCM
-  if (/\b(?:questionnaire\s+test|test\s+not[eé]|test\s+chrono|[eé]preuve\s+not[eé]e)\b/i.test(t)) {
-    detected.push('questionnaire-test');
-  } else if (/\b(?:questionnaire|quiz|qcm)\b/i.test(t) || (hasCreationActionVerb && /\btest\b/i.test(t) && !/\bvrai\s+ou\s+faux/i.test(t))) {
-    detected.push('questionnaire');
+  if (detected.length === 0 && requestedType && typeof requestedType === 'string' && requestedType.trim()) {
+    return [normalizeCreationType(requestedType) as AiCreationType];
   }
 
-  // 3. Carte Mentale 2 vs Carte Mentale
-  if (/\b(?:carte\s+mentale\s+2|mindmap\s*2|carte\s+conceptuelle)\b/i.test(t)) {
-    detected.push('carte-mentale-2');
-  } else if (/\b(?:carte\s+mentale|mindmap|mind-map|arborescence)\b/i.test(t)) {
-    detected.push('carte-mentale');
-  }
+  // Si l'utilisateur répond à une question de clarification de l'IA (ex: "sur ce fichier", "sur les filtres", "oui vas-y")
+  // après avoir demandé une ou plusieurs créations au tour précédent :
+  if (detected.length === 0 && !isConversationalQuestion && Array.isArray(conversationMessages) && conversationMessages.length >= 2) {
+    const lastMsg = conversationMessages[conversationMessages.length - 1];
+    const prevUserMsg = conversationMessages[conversationMessages.length - 2];
+    const lastSender = (lastMsg as any)?.sender || (lastMsg as any)?.role;
+    const prevSender = (prevUserMsg as any)?.sender || (prevUserMsg as any)?.role;
+    const lastText = String((lastMsg as any)?.text || (lastMsg as any)?.content || '').trim();
+    const prevUserText = String((prevUserMsg as any)?.text || (prevUserMsg as any)?.content || '').trim();
 
-  // 4. Cartes Mémoires
-  if (/\b(?:cartes?\s+m[eé]moires?|flashcards?|fiches?\s+de\s+m[eé]morisation)\b/i.test(t)) {
-    detected.push('carte-memoire');
-  }
-
-  // 5. Devoir Complet / Examen
-  if (/\b(?:devoir\s+complet|sujet\s+d['’]examen|[eé]preuve\s+d['’]examen|devoir\s+d['’]examen|examen\s+complet|examen\s+blanc)\b/i.test(t)) {
-    detected.push('devoir-complet');
-  }
-
-  // 6. Exercices Écrits
-  if (/\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]application|s[eé]rie\s+d['’]exercices)\b/i.test(t) && !detected.includes('devoir-complet')) {
-    detected.push('exercices-ecrits');
-  } else if (hasCreationActionVerb && /\bexercices?\b/i.test(t) && !detected.includes('devoir-complet')) {
-    detected.push('exercices-ecrits');
-  }
-
-  // 7. Résumé / Synthèse
-  if (/\b(?:fiche\s+de\s+r[eé]sum[eé]|fiche\s+de\s+synth[eè]se)\b/i.test(t)) {
-    detected.push('resume');
-  } else if (hasCreationActionVerb && /\b(?:r[eé]sum[eé]|synth[eè]se)\b/i.test(t)) {
-    detected.push('resume');
-  }
-
-  // 8. Infographie
-  if (/\b(?:infographie|fiche\s+visuelle)\b/i.test(t)) {
-    detected.push('infographie');
-  }
-
-  // 9. Document PDF
-  if (/\b(?:document\s+pdf|polycopi[eé]|polycopie|g[eé]n[eé]rer\s+un\s+pdf|cr[eé]er\s+un\s+pdf|faire\s+un\s+pdf|export\s+pdf)\b/i.test(t)) {
-    detected.push('pdf');
+    if ((lastSender === 'ai' || lastSender === 'assistant') && prevSender === 'user' && prevUserText) {
+      const prevFormats = detectAllCreationFormats(prevUserText, undefined, undefined);
+      const aiAskedForClarification = /\?|quel\s+(?:sujet|cours|chapitre|fichier|document|th[èe]me)|pr[eé]ciser|joindre|s[eé]lectionner|sur\s+quoi/i.test(lastText);
+      if (prevFormats.length > 0 && aiAskedForClarification) {
+        return prevFormats;
+      }
+    }
   }
 
   return detected;
@@ -1779,6 +1804,10 @@ function detectHasSpecificSubject(text: string): boolean {
     'avec plusieurs parties, barème de points et corrigé',
     'avec repères visuels, chiffres clés, métriques',
     'pour évaluer mes acquis en conditions réelles',
+    'extrais et structure l\'ensemble des',
+    'extrais l\'ensemble des',
+    'modélisant l\'architecture et les relations',
+    'où toutes les réponses sont validées ensemble',
   ];
   for (const gp of genericPhrases) {
     if (t.toLowerCase().includes(gp.toLowerCase())) {
@@ -3489,27 +3518,33 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
         content: m.text
       }));
 
+    const normTypeEarly = normalizeCreationType(params.explicitToolType);
+    const formatDisplayTitle = CREATION_NAME_MAP[normTypeEarly] || CREATION_FORMAT_LABELS[normTypeEarly] || normTypeEarly;
+    const agentExplicitPrompt = `Conçois immédiatement le module interactif complet de type "${normTypeEarly}" (${formatDisplayTitle}) sur ${params.mainDocName ? `le document « ${params.mainDocName} »` : `le sujet : ${params.userText}`}. Consigne de l'étudiant : "${params.userText}". Réponds EXCLUSIVEMENT avec l'objet JSON complet entouré de \`\`\`json et \`\`\`.`;
+
     const chatHistory = [
       { role: 'system', content: systemContent },
       ...sanitizedHistory,
-      { role: 'user', content: params.userText }
+      { role: 'user', content: agentExplicitPrompt }
     ];
 
     const aiResult = await sendChatMessageToAi({
       messages: chatHistory,
-      prompt: params.userText,
-      message: params.userText,
+      prompt: agentExplicitPrompt,
+      message: agentExplicitPrompt,
       userId: params.targetUserId,
       sessionId: params.targetConvId,
       conversationId: params.targetConvId,
       userMsgId: Date.now().toString(),
-      aiMsgId: 'ai-bg-' + Date.now(),
+      aiMsgId: 'ai-bg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
       creationId: params.creationId,
       creationTitle: params.creationTitle,
       model: params.selectedModel,
       selectedModel: params.selectedModel,
       apiKey: getGeminiApiKey() || undefined,
-      requested_type: params.explicitToolType,
+      requested_type: normTypeEarly,
+      isAgentCreationTask: true,
+      mode: 'agent_creation',
       attachedFileName: params.mainDocName,
       attachedFileContent: resolvedAttachedText,
       imageBase64: activeImageInfo?.base64,
@@ -3705,6 +3740,15 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
       }
     }
 
+    const activeTpc = getActiveTokensPerCredit();
+    const respTokens = Number(aiResult?.tokens || (aiResult as any)?.usage?.totalTokens || 0) || Math.max(120, Math.ceil((rawResponseText.length + (resolvedAttachedText || '').slice(0, 4000).length) / 3.8));
+    const respCredits = Number(aiResult?.credits_deducted || aiResult?.credits || (aiResult as any)?.usage?.creditsDeducted || 0) || convertTokensToCredits(respTokens, activeTpc);
+
+    if (finalContent && typeof finalContent === 'object' && !Array.isArray(finalContent)) {
+      finalContent.tokens = respTokens;
+      finalContent.credits = respCredits;
+    }
+
     const newCreation: AiCreation = {
       id: params.creationId,
       userId: params.targetUserId,
@@ -3717,6 +3761,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
       createdAt: new Date().toISOString(),
       version: 1,
       status: 'ready',
+      tokens: respTokens,
+      credits: respCredits,
     };
 
     try {
@@ -3785,7 +3831,20 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     const newUserMsgId = Date.now().toString();
     const newUserMsg: Message = { id: newUserMsgId, text: userText, sender: 'user' };
 
-    const detectedFormats = detectAllCreationFormats(userText, requestedTypeOverride);
+    // Récupérer les messages existants de la conversation cible
+    let convBaseMessages: Message[] = [];
+    if (currentConversationIdRef.current === targetConvId && messagesRef.current.length > 0) {
+      convBaseMessages = messagesRef.current;
+    } else {
+      const local = safeGetItem(`studycloud_conv_msgs_${targetConvId}`);
+      if (local) {
+        try { convBaseMessages = JSON.parse(local) || []; } catch {}
+      }
+    }
+
+    const directFormatsInText = detectAllCreationFormats(userText, requestedTypeOverride, undefined);
+    const detectedFormats = detectAllCreationFormats(userText, requestedTypeOverride, convBaseMessages);
+    const isInheritedFromClarification = directFormatsInText.length === 0 && detectedFormats.length > 0;
     const isCreationIntent = detectedFormats.length > 0;
     const detectedFormat = detectedFormats.length > 0 ? detectedFormats[0] : null;
     const effectiveRequestedType = requestedTypeOverride || (isCreationIntent ? (detectedFormat as any) : undefined);
@@ -3808,17 +3867,6 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
       isStreaming: true,
       model: currentModelDisplay,
     };
-
-    // Récupérer les messages existants de la conversation cible
-    let convBaseMessages: Message[] = [];
-    if (currentConversationIdRef.current === targetConvId && messagesRef.current.length > 0) {
-      convBaseMessages = messagesRef.current;
-    } else {
-      const local = safeGetItem(`studycloud_conv_msgs_${targetConvId}`);
-      if (local) {
-        try { convBaseMessages = JSON.parse(local) || []; } catch {}
-      }
-    }
 
     const updatedMessages = [...convBaseMessages, newUserMsg];
     const updatedMessagesWithPending = [...updatedMessages, initialAiMsg];
@@ -4037,170 +4085,13 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     const hasPastedCourseContent = userText.trim().length >= 100 && !/^(?:bonjour|salut|peux-tu|fais-moi|crée|conçois)/i.test(userText.trim().slice(0, 15));
     const hasSpecificTopic = hasPromptSubject || hasPastedCourseContent;
 
-    // Contexte éducatif suffisant : document réel avec contenu OU sujet précis dans le prompt
-    const hasEducationalContext = hasRealDocContent || hasSpecificTopic;
+    // Contexte éducatif suffisant : document actif/joint OU sujet précis dans le prompt OU contexte de discussion / réponse à clarification
+    const isMeaningfulClarificationAnswer = isInheritedFromClarification && userText.trim().length >= 3 && !/^(?:oui|ok|d'accord|vas-y|lance|fais-le)$/i.test(userText.trim());
+    const hasEducationalContext = hasRealDocContent || hasSpecificTopic || hasConversationContext || isMeaningfulClarificationAnswer;
 
-    // INTERPELLATION OBLIGATOIRE : Si création demandée sans document réel et sans sujet précis !
+    // Si création demandée sans document actif/joint et sans sujet précis : l'IA sélectionnée demandera naturellement de préciser !
     const needsSubjectClarification = isCreationIntent && !hasEducationalContext;
 
-    // Fonction d'interpellation interactive protégée avec animation machine à écrire
-    const runInterpellation = (interpellationText: string) => {
-      setIsWaitingServer(false);
-      setRetryingMessageId(null);
-      window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
-        detail: { phase: 'idle', isLoading: false, isCreation: false, resetToPrompts: true }
-      }));
-      window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
-
-      // Ouvrir immédiatement le menu de chat pour afficher l'interpellation
-      window.dispatchEvent(new CustomEvent('open-assistant-chat'));
-      window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
-
-      // Animation machine à écrire adaptative et protégée pour l'interpellation
-      const aiMsgId = (Date.now() + 1).toString();
-      const initialAiMsg: Message = {
-        id: aiMsgId,
-        text: '',
-        sender: 'ai',
-        isStreaming: true,
-        model: currentModelDisplay,
-        isPowerMode: false,
-      };
-      setMessages(prev => [...prev, initialAiMsg]);
-
-      try {
-        safeSetItem(`studycloud_conv_msgs_${currentConversationId}`, JSON.stringify([...updatedMessages, { ...initialAiMsg, text: interpellationText, isStreaming: false, model: currentModelDisplay }]));
-      } catch {}
-
-      if (typingTimerRef.current) {
-        clearInterval(typingTimerRef.current);
-        typingTimerRef.current = null;
-      }
-      if (watchdogTimerRef.current) {
-        clearTimeout(watchdogTimerRef.current);
-        watchdogTimerRef.current = null;
-      }
-
-      let isInterpellationFinalized = false;
-      const finalizeInterpellation = () => {
-        if (isInterpellationFinalized) return;
-        isInterpellationFinalized = true;
-        if (typingTimerRef.current) {
-          clearInterval(typingTimerRef.current);
-          typingTimerRef.current = null;
-        }
-        if (watchdogTimerRef.current) {
-          clearTimeout(watchdogTimerRef.current);
-          watchdogTimerRef.current = null;
-        }
-        setMessages(prev =>
-          prev.map(m =>
-            m.id === aiMsgId ? { ...m, text: interpellationText, isStreaming: false, model: currentModelDisplay } : m
-          )
-        );
-        setIsTyping(false);
-        StudyCloudAPI.saveAiMessage({
-          id: aiMsgId,
-          conversationId: currentConversationId,
-          role: 'assistant',
-          content: interpellationText,
-          metadata: { model: currentModelDisplay }
-        }).catch(() => {});
-
-        window.dispatchEvent(new CustomEvent('open-assistant-chat'));
-        window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
-
-        if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
-          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
-        }
-      };
-
-      // Si le document est en arrière-plan ou masqué, finaliser immédiatement
-      if (typeof document !== 'undefined' && document.hidden) {
-        finalizeInterpellation();
-        return;
-      }
-
-      const tickSpeed = 16;
-      const targetDuration = Math.min(800, Math.max(250, interpellationText.length * 2));
-      const totalTicks = Math.max(1, Math.floor(targetDuration / tickSpeed));
-      const chunkSize = Math.max(8, Math.ceil(interpellationText.length / totalTicks));
-      let index = 0;
-
-      // Watchdog de sécurité absolue
-      watchdogTimerRef.current = setTimeout(() => {
-        finalizeInterpellation();
-      }, targetDuration + 500);
-
-      typingTimerRef.current = setInterval(() => {
-        try {
-          index += chunkSize;
-          if (index >= interpellationText.length) {
-            finalizeInterpellation();
-          } else {
-            const partial = interpellationText.slice(0, index);
-            setMessages(prev =>
-              prev.map(m =>
-                m.id === aiMsgId ? { ...m, text: partial, model: currentModelDisplay } : m
-              )
-            );
-          }
-
-          if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
-            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
-          }
-        } catch (_err) {
-          finalizeInterpellation();
-        }
-      }, tickSpeed);
-    };
-
-    // Cas 1 : Plusieurs documents joints et demande non ciblée -> Clarification obligatoire
-    if (needsMultiDocClarification) {
-      const formatName = detectedFormat ? (CREATION_FORMAT_LABELS[detectedFormat] || 'création') : 'tâche d\'étude';
-      const docList = allDocs.map((d, i) => `${i + 1}. 📄 **${d.name || d.title || `Document ${i + 1}`}**`).join('\n');
-
-      const interpellationText = `J'ai bien détecté **${allDocs.length} documents joints** dans votre espace d'étude :
-${docList}
-
-Pour que je puisse concevoir votre **${formatName}** (ou répondre à votre demande), sur quoi souhaitez-vous que je me concentre ?
-
-- Vous pouvez choisir de travailler **exclusivement sur l'un de ces documents**.
-- Ou me demander une **synthèse globale** combinant l'ensemble de vos documents.
-- Ou m'indiquer un chapitre particulier.
-
-👉 **Choisissez directement l'une des options ci-dessous en un clic :**
-
-[QUESTIONS_SUGGÉRÉES]
-${allDocs.slice(0, 4).map(d => `- Travailler uniquement sur « ${d.name || d.title} » pour mon ${formatName}`).join('\n')}
-- Réaliser une synthèse transversale combinant TOUS les documents pour mon ${formatName}
-- Poser une question spécifique sur ces documents`;
-
-      runInterpellation(interpellationText);
-      return;
-    }
-
-    // Cas 2 : Demande de création sans aucun document réel ni sujet précis
-    const effectiveClarificationFormat = detectedFormat || (detectedFormats.length > 0 ? detectedFormats[0] : 'questionnaire');
-    if (needsSubjectClarification && effectiveClarificationFormat) {
-      const formatName = CREATION_NAME_MAP[effectiveClarificationFormat] || CREATION_FORMAT_LABELS[effectiveClarificationFormat] || 'support d\'apprentissage';
-      const suggestions = getSuggestedPromptsForFormat(effectiveClarificationFormat);
-
-      const interpellationText = `Avec grand plaisir ! Sur quel cours ou sujet souhaites-tu que je crée ce **${formatName}** ?
-
-Tu peux m'indiquer le thème précis (par exemple : *les lois de Newton*, *la Révolution française*, *les fonctions dérivées*...) ou simplement joindre ton document de cours avec le trombone 📎 !
-
----
-Voici quelques exemples concrets que tu peux lancer en un clic :
-
-[QUESTIONS_SUGGÉRÉES]
-${suggestions.map(s => `- ${s}`).join('\n')}`;
-
-      runInterpellation(interpellationText);
-      return;
-    }
-
-    // Initialisation du statut dynamique à l'instant T (avec confirmation d'un document ou d'un sujet)
     if (activityTimerRef.current) clearInterval(activityTimerRef.current);
     const startTimestamp = Date.now();
     const activeDocName = resolvedActiveItem?.name || resolvedActiveItem?.title || '';
@@ -4212,39 +4103,150 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
     }
     const docNames = initialDocNames;
     const attachedFileName = resolvedActiveName || (Array.isArray(attachedResources) ? attachedResources.map((r: any) => r?.name).filter(Boolean).join(', ') : '');
-
     const mainDocName = hasAttachedDoc ? (resolvedActiveName || (attachedResources[0]?.name) || undefined) : undefined;
 
-    // Activation de la creation et ajout immediat dans "Mes Creations" avec statut "En cours"
+    // ══════════════════════════════════════════════════════════════════════════
+    // ORCHESTRATION PAR L'IA SÉLECTIONNÉE & POOL DES 3 AGENTS EN PARALLÈLE
+    // - Si ce n'est pas une création : l'IA sélectionnée répond directement.
+    // - Si c'est une création SANS contexte ni fichier : l'IA sélectionnée demande naturellement à l'étudiant de préciser.
+    // - Si c'est une création AVEC contexte ou fichier joint/actif :
+    //   1 tâche -> 1 Agent | 2 tâches -> 2 Agents | 3 tâches -> 3 Agents max
+    //   4ème tâche et + -> En attente (prise automatiquement dès qu'un agent finit)
+    //   Et l'IA sélectionnée vient discuter avec l'utilisateur pendant que les agents travaillent !
+    // ══════════════════════════════════════════════════════════════════════════
+    let orchestratorMode: '' | 'agents_launched' | 'clarify_subject' | 'clarify_multidoc' = '';
+    let orchestratorInstruction = '';
+
     if (isExplicitCreationRequest && detectedFormats.length > 0) {
-      const explicitToolType = detectedFormats[0];
-      const formatTitle = CREATION_NAME_MAP[explicitToolType] || CREATION_FORMAT_LABELS[explicitToolType] || "Support d'apprentissage";
-      const cTitle = mainDocName ? `${formatTitle} : ${mainDocName}` : `${formatTitle} : ${userText.slice(0, 30).trim() || "Theme libre"}`;
+      const requestedLabels = detectedFormats.map(f => CREATION_NAME_MAP[f] || CREATION_FORMAT_LABELS[f] || f).join(', ');
 
-      window.dispatchEvent(new CustomEvent('studycloud-creation-enqueued', {
-        detail: {
-          id: creationId,
-          conversationId: targetConvId,
-          title: cTitle,
-          toolType: explicitToolType,
-          sourceFileName: mainDocName || undefined,
-          createdAt: new Date().toISOString(),
-          status: 'generating',
-          progressText: 'Creation en cours...',
-          isBackground: false,
-        }
-      }));
+      if (needsMultiDocClarification) {
+        orchestratorMode = 'clarify_multidoc';
+        const docList = allDocs.map((d, i) => `${i + 1}. "${d.name || d.title || `Document ${i + 1}`}"`).join(', ');
+        orchestratorInstruction = `══════════════════════════════════════════════════════════════════════════════
+[ORCHESTRATION : PLUSIEURS DOCUMENTS DÉTECTÉS - PRÉCISION REQUISE] :
+L'étudiant souhaite créer : ${requestedLabels}.
+Il a actuellement plusieurs documents dans son espace (${docList}) sans avoir précisé sur lequel travailler.
+Aucun agent de création n'a encore été lancé.
+TA MISSION :
+1. Réponds naturellement et chaleureusement avec tes propres mots pour lui demander sur lequel de ces documents il souhaite que tu lances le(s) agent(s) pour concevoir son support (${requestedLabels}), ou s'il préfère une synthèse globale de tous les documents.
+2. Termine ta réponse par un bloc [QUESTIONS_SUGGÉRÉES] proposant chaque document en bouton cliquable.
+3. N'écris AUCUN bloc JSON.
+══════════════════════════════════════════════════════════════════════════════`;
+      } else if (needsSubjectClarification) {
+        orchestratorMode = 'clarify_subject';
+        const suggestions = getSuggestedPromptsForFormat(detectedFormats[0]);
+        orchestratorInstruction = `══════════════════════════════════════════════════════════════════════════════
+[ORCHESTRATION : AUCUN FICHIER JOINT NI SUJET PRÉCISÉ - DEMANDE DE PRÉCISION PAR L'IA] :
+L'étudiant souhaite créer : ${requestedLabels}.
+Cependant, aucun fichier n'est actuellement sélectionné ou joint dans l'espace d'étude, et l'étudiant n'a précisé aucun cours, chapitre ou sujet dans son message ni dans la discussion.
+Aucun agent de création n'a été lancé pour ne pas créer dans le vide.
+TA MISSION :
+1. Réponds directement, naturellement et chaleureusement avec tes propres mots pour demander à l'étudiant de préciser sur quel cours, sujet ou chapitre il souhaite créer ce support (${requestedLabels}), ou invite-le à sélectionner/joindre son fichier de cours.
+2. Termine ta réponse par le bloc [QUESTIONS_SUGGÉRÉES] avec 3 ou 4 exemples d'idées :
+[QUESTIONS_SUGGÉRÉES]
+${suggestions.map(s => `- ${s}`).join('\n')}
+3. N'écris AUCUN bloc JSON.
+══════════════════════════════════════════════════════════════════════════════`;
+      } else {
+        orchestratorMode = 'agents_launched';
+        const dispatchedTasks: Array<{ id: string; title: string; toolType: string; formatLabel: string; isQueued: boolean }> = [];
 
-      window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
-        detail: {
-          phase: 'creating',
-          isCreating: true,
-          isLoading: true,
-          isCreation: true,
-          toolType: explicitToolType,
-          statusText: "L'IA concoit votre support d'apprentissage..."
+        for (let idx = 0; idx < detectedFormats.length; idx++) {
+          const fmt = detectedFormats[idx];
+          const formatTitle = CREATION_NAME_MAP[fmt] || CREATION_FORMAT_LABELS[fmt] || "Support d'apprentissage";
+          const currentCreationId = 'crea-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).slice(2, 6);
+          const currentTaskId = 'task-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).slice(2, 6);
+          const cTitle = mainDocName ? `${formatTitle} : ${mainDocName}` : `${formatTitle} : ${userText.slice(0, 35).trim() || "Thème d'étude"}`;
+
+          const enqRes = aiBackgroundManager.enqueueCreationTask({
+            taskId: currentTaskId,
+            conversationId: targetConvId,
+            userId: targetUserId,
+            creationId: currentCreationId,
+            title: cTitle,
+            toolType: fmt,
+            prompt: userText,
+            mainDocName: mainDocName || undefined,
+          }, async () => {
+            return await executeCreationApiCall({
+              userText,
+              targetConvId,
+              targetUserId,
+              explicitToolType: fmt,
+              mainDocName: mainDocName || '',
+              creationId: currentCreationId,
+              creationTitle: cTitle,
+              allDocs,
+              messages: updatedMessages,
+              selectedModel,
+              availableModels,
+              currentConversationId: targetConvId,
+              sessionCreations,
+              resolvedActiveItem,
+              attachedResources,
+              activePreviewItem,
+              currentModelDisplay,
+              activeDocumentInfo,
+              activeImageInfo,
+            });
+          });
+
+          dispatchedTasks.push({
+            id: currentCreationId,
+            title: cTitle,
+            toolType: fmt,
+            formatLabel: formatTitle,
+            isQueued: enqRes.isQueued,
+          });
+
+          window.dispatchEvent(new CustomEvent('studycloud-creation-enqueued', {
+            detail: {
+              id: currentCreationId,
+              conversationId: targetConvId,
+              title: cTitle,
+              toolType: fmt,
+              sourceFileName: mainDocName || undefined,
+              createdAt: new Date().toISOString(),
+              status: enqRes.isQueued ? 'queued' : 'generating',
+              progressText: enqRes.isQueued ? 'En attente...' : 'Création en cours...',
+              isBackground: !requestedTypeOverride,
+            }
+          }));
         }
-      }));
+
+        if (requestedTypeOverride && dispatchedTasks.length === 1 && !dispatchedTasks[0].isQueued) {
+          window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
+            detail: {
+              phase: 'creating',
+              isCreating: true,
+              isLoading: true,
+              isCreation: true,
+              toolType: dispatchedTasks[0].toolType,
+              statusText: "L'IA conçoit votre support d'apprentissage..."
+            }
+          }));
+        }
+
+        const activeAgentTasks = dispatchedTasks.filter(t => !t.isQueued);
+        const queuedAgentTasks = dispatchedTasks.filter(t => t.isQueued);
+        const activeListStr = activeAgentTasks.map((t, i) => `Agent ${i + 1} : "${t.formatLabel}" (En cours)`).join(', ');
+        const queuedListStr = queuedAgentTasks.length > 0
+          ? ` | En file d'attente (démarrage automatique dès qu'un agent termine) : ${queuedAgentTasks.map(t => `"${t.formatLabel}" (En attente)`).join(', ')}`
+          : '';
+
+        orchestratorInstruction = `══════════════════════════════════════════════════════════════════════════════
+[ORCHESTRATION : LANCEMENT EFFECTIF DES AGENTS DE CRÉATION EN ARRIÈRE-PLAN] :
+L'étudiant a demandé ${dispatchedTasks.length} création(s) (${dispatchedTasks.map(t => t.formatLabel).join(', ')}) sur ${mainDocName ? `le document actif « ${mainDocName} »` : `le sujet « ${userText} »`}.
+Tu viens de lancer automatiquement les agents spécialisés en arrière-plan (maximum 3 agents en parallèle) :
+- Agents au travail maintenant (${activeAgentTasks.length} agent(s)) : ${activeListStr}${queuedListStr}
+- L'étudiant voit dès maintenant ces créations marquées "En cours" (et "En attente" le cas échéant) dans son menu "Mes Créations" à droite.
+TA MISSION DANS LE CHAT :
+1. Réponds directement, naturellement et chaleureusement avec tes propres mots (en 2 à 4 phrases courtes) pour confirmer à l'étudiant que tu viens de lancer ${activeAgentTasks.length === 1 ? "un agent" : `${activeAgentTasks.length} agents en parallèle`} sur ${mainDocName ? `son fichier « ${mainDocName} »` : "son sujet"} pour préparer ${dispatchedTasks.map(t => t.formatLabel).join(' et ')}${queuedAgentTasks.length > 0 ? ` (en précisant que ${queuedAgentTasks.map(t => t.formatLabel).join(', ')} est en attente et sera pris en charge dès qu'un agent aura fini)` : ''}.
+2. Dis-lui qu'il peut surveiller l'avancement dans "Mes Créations" et que tu es disponible immédiatement pour continuer à discuter du cours, répondre à ses questions ou lancer d'autres tâches avec lui.
+3. INTERDICTION FORMELLE : Ne génère AUCUN bloc JSON et ne rédige PAS le contenu du quiz, de la carte mentale ou du résumé dans le chat ! Les agents en arrière-plan s'en chargent intégralement.
+══════════════════════════════════════════════════════════════════════════════`;
+      }
     }
 
     const initialLiveStatus = (requiresFreshAnalysis && hasAttachedDoc
@@ -4253,7 +4255,6 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
           ? "Je réfléchis à votre question..." 
           : getLiveAiActivity(userText, initialDocNames, 0, effectiveRequestedType)));
     setAiActivityText(initialLiveStatus);
-
 
     // Mise à jour du titre de conversation si c'est le 1er message
     if (messages.length === 0) {
@@ -4266,10 +4267,7 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
       }).then(() => loadConversations()).catch(() => {});
     }
 
-//     const mainDocName = hasAttachedDoc ? (resolvedActiveName || (attachedResources[0]?.name) || undefined) : undefined;
-
     try {
-      // Sauvegarde immédiate Cloudflare D1 du message utilisateur
       StudyCloudAPI.saveAiMessage({
         id: newUserMsgId,
         conversationId: currentConversationId,
@@ -4278,69 +4276,26 @@ ${suggestions.map(s => `- ${s}`).join('\n')}`;
         metadata: { model: selectedModel }
       }).catch(() => {});
 
-      // 2. ANALYSE D'HÉSITATION ÉTUDIANTE (Suggestions d'aide douce)
       const isHesitating = /(je ne sais pas|que (peux|doit|puis)-tu|propose|id[eé]es|aide-moi à (choisir|r[eé]viser)|quelles options|que me conseilles-tu|conseille-moi|que faire)/i.test(userText);
       if (isHesitating) {
         setShowProposalBar(true);
       }
 
-      // AUCUN mot clé client ne déclenche ou n'intercepte la discussion.
-      // Le prompt de l'utilisateur va DIRECTEMENT à l'IA sans rien déranger.
-      // Seul un clic explicite sur un bouton d'action (override) définit explicitToolType.
       const isExplicitOverride = Boolean(requestedTypeOverride);
       const explicitToolType = requestedTypeOverride as AiCreationType | undefined;
 
-      if (isExplicitOverride && explicitToolType) {
-        const creationTitle = mainDocName ? `${explicitToolType.toUpperCase()} : ${mainDocName}` : explicitToolType.toUpperCase();
-        window.dispatchEvent(new CustomEvent('ai-creation-start', {
-          detail: { toolType: explicitToolType, title: creationTitle, sourceFileName: mainDocName || undefined }
-        }));
-        window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
-      }
-
-      // 3. Contexte du document actif et prompt autonome de décision (Architecture Gemini / StudyCloud)
-      const hasRunningBgCreations = false;
-      const isTargetCreation = isExplicitCreationRequest || (isExplicitOverride && Boolean(explicitToolType));
-      const targetToolType = (isExplicitOverride && explicitToolType) ? explicitToolType : (detectedFormats[0] || 'carte-memoire');
-      const targetToolTitle = CREATION_NAME_MAP[targetToolType] || CREATION_FORMAT_LABELS[targetToolType] || targetToolType;
-
-      let systemContent = '';
-      if (isTargetCreation) {
-        systemContent = `Tu es l'intelligence pédagogique officielle de StudyCloud.
-L'étudiant te demande explicitement de concevoir un module d'apprentissage interactif de type "${targetToolType}" (${targetToolTitle}) sur son cours ou son document.
-
-CONSIGNES STRICTES DE CRÉATION :
-1. Tu DOIS IMPÉRATIVEMENT concevoir le module complet avec toutes ses données réelles, substantielles et pédagogiques.
-2. TA RÉPONSE DOIT ÊTRE UN BLOC JSON STRICT entouré de \`\`\`json et \`\`\` sans texte narratif superflu avant ni après, avec la structure :
-\`\`\`json
-{
-  "decision": "creation",
-  "mode": "creation",
-  "creation_type": "${targetToolType}",
-  "creation_title": "${targetToolTitle} : ${mainDocName || 'Étude'}",
-  "chat_response": "Voici votre support interactif directement disponible dans votre espace Création !",
-  "creation_data": {
-    ...
-  }
-}
-\`\`\`
-3. Pour les Cartes Mémoires ('carte-memoire' / flashcards) : fournis dans "creation_data" le tableau "cards" contenant au moins 10 à 15 flashcards avec "front" (recto : concept, question, formule) et "back" (verso : explication, réponse complète).
-4. Pour les Questionnaires QCM ('questionnaire' ou 'questionnaire-test') : fournis dans "creation_data" le tableau "questions" avec 12 à 18 questions, options, correct_index aléatoire (0, 1, 2 ou 3) et explanation détaillée.
-5. Pour le Vrai ou Faux ('vrai-ou-faux' ou 'vrai-ou-faux-test') : fournis "affirmations" avec 12 à 18 items équilibrés 50% vrai / 50% faux.
-6. Pour la Carte Mentale ('carte-mentale') : fournis l'arbre hiérarchique avec "root" et "children".
-7. Pour le Résumé ('resume') : fournis "overview", "key_definitions", "formulas", "traps_and_tips", "comparison_table", "markdown".
-8. Formules mathématiques et scientifiques rédigées impérativement en syntaxe LaTeX standard ($...$ en ligne, $...$ en bloc centré avec \\dfrac{num}{den}).
-9. INTERDICTION FORMELLE DE RÉPONDRE SANS LE JSON : Tu dois obligatoirement générer le bloc \`\`\`json { ... } \`\`\` pour que l'application puisse afficher la création interactive !`;
-      } else {
-        systemContent = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Agent Delmas).
-Tu es directement connectée à l'espace d'étude de l'étudiant en mode CHAT ET DISCUSSION PÉDAGOGIQUE DIRECTE.
+      let systemContent = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (${currentModelDisplay || 'Agent Delmas'}).
+Tu es directement connectée à l'espace d'étude de l'étudiant en mode CHAT, RAISONNEMENT ET ORCHESTRATION PÉDAGOGIQUE DIRECTE.
 
 CONSIGNES STRICTES POUR TA RÉPONSE DE CHAT :
-1. Tu réponds DIRECTEMENT, NATURELLEMENT ET CHALEUREUSEMENT à l'étudiant en texte Markdown fluide.
-2. Si l'étudiant discute, pose une question de cours, demande une explication, une méthode, une formule, un résumé explicatif ou la résolution pas à pas d'un exercice : réponds avec clarté, bienveillance et rigueur pédagogique.
+1. Tu réponds DIRECTEMENT, NATURELLEMENT ET CHALEUREUSEMENT à l'étudiant en texte Markdown fluide avec ton propre raisonnement.
+2. Si l'étudiant discute, pose une question de cours, demande une explication, une méthode, une formule, ou la résolution pas à pas d'un exercice : réponds avec clarté, bienveillance et rigueur pédagogique complète.
 3. Formules mathématiques et scientifiques rédigées impérativement en syntaxe LaTeX standard ($...$ en ligne, $...$ en bloc centré avec \\dfrac{num}{den}).
-4. IMPORTANTISSIME : En mode discussion pure, réponds directement en texte Markdown fluide.
+4. N'inclus JAMAIS de bloc JSON brut dans le chat : toutes les créations de supports interactifs sont gérées par les 3 agents spécialisés en arrière-plan dans "Mes Créations".
 5. Parle directement à l'étudiant comme un excellent professeur tuteur.`;
+
+      if (orchestratorInstruction) {
+        systemContent += "\n\n" + orchestratorInstruction;
       }
 
       systemContent += `\n\nRÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
@@ -4431,312 +4386,9 @@ ou
    - Si la demande est vague ou imprécise (ex: "fais un résumé", "aide-moi", "crée un qcm" sans précision du chapitre ou du sujet souhaité) :
      -> Pose des questions de clarification pédagogiques et propose 3 à 4 options d'angles d'attaque claires sous [QUESTIONS_SUGGÉRÉES].`;
 
-      systemContent += `\n\n8. POSITION ALÉATOIRE, DIVERSITÉ ET NOMBRE MAXIMUM (18 MAXIMUM) POUR QUESTIONNAIRES ET VRAI OU FAUX :
-- RÈGLE STRICTE SUR LE NOMBRE DE QUESTIONS / AFFIRMATIONS :
-  * Si l'étudiant ne spécifie aucun nombre exact : GÉNÈRE LE MAXIMUM POSSIBLE pour couvrir exhaustivement le document ou le cours (entre 15 et 18 questions ou affirmations).
-  * Si l'étudiant demande un nombre spécifique : respecte scrupuleusement sa demande SANS JAMAIS DÉPASSER 18.
-  * Si l'étudiant demande plus de 18 (par exemple 20, 25, 30, 50, etc.) : TU DOIS OBLIGATOIREMENT LIMITER À STRICTEMENT 18 MAXIMUM. Ne crée JAMAIS plus de 18 items.
-  * Cette règle est ABSOLUE pour les questionnaires ('questionnaire', 'questionnaire-test') et pour les vrai ou faux ('vrai-ou-faux', 'vrai-ou-faux-test').
-- POSITION STRICTEMENT ALÉATOIRE DANS LES QCM ET QUIZ ('questionnaire', 'questionnaire-test') :
-  * IL EST STRICTEMENT INTERDIT de placer systématiquement la bonne réponse en première ou deuxième position (index 0 ou 1) !
-  * La bonne réponse DOIT se cacher dedans de manière totalement aléatoire : répartis-la équitablement entre toutes les positions (tantôt A [index 0], tantôt B [index 1], tantôt C [index 2], tantôt D [index 3]).
-  * Les distracteurs (fausses options) doivent être plausibles et éducatifs (erreurs typiques d'étudiants, pièges d'unités, formules approchées, faux théorèmes).
-  * Dans "explanation", explique directement la réalité scientifique ou le calcul sans faire référence à une lettre statique ("L'option A...").
-- DIVERSITÉ MAXIMALE ET NON-RÉPÉTITION SUR UN MÊME DOCUMENT (ANTI-DOUBLONS INTRA ET INTER-MODULES) :
-  * Sur un polycopié, PDF ou cours, il y a des centaines de questions possibles. NE REPOSE JAMAIS LES MÊMES QUESTIONS d'un module à l'autre !
-  * Si l'étudiant te demande un questionnaire, puis un vrai/faux, un test, des flashcards ou des exercices :
-    -> Interdiction absolue de répéter les mêmes questions ou les mêmes 3 définitions introductives.
-    -> Explore d'AUTRES SECTIONS, d'autres chapitres, théorèmes et paragraphes du document.
-    -> INTÈGRE DES CALCULS ET PROBLÈMES CONCRETS : Ne te limite pas à des définitions verbales. Pose des vrais calculs numériques chiffrés dès que le cours comporte des formules ($f_0$, bande passante \\Delta f, facteur de qualité Q_0, valeurs numériques réelles, dérivées, impédances, intégrales, lois physiques).
-- FORMAT STRICT ET OBLIGATOIRE POUR VRAI OU FAUX ('vrai-ou-faux', 'vrai-ou-faux-test') :
-  * Équilibre rigoureusement environ 50% de VRAI et 50% de FAUX avec affirmations stimulantes, subtiles et calculs réels.
-  * Structure JSON obligatoire dans 'creation_data' :
-    \`\`\`json
-    {
-      "affirmations": [
-        {
-          "id": 1,
-          "statement": "Énoncé précis avec formule KaTeX ($...$)",
-          "is_true": true,
-          "explanation": "Démonstration pédagogique complète expliquant pourquoi c'est vrai ou faux."
-        }
-      ]
-    }
-    \`\`\``;
-
-      systemContent += `\n\n9. CONSIGNE STRICTE DE STRUCTURATION HIÉRARCHIQUE (CARTE MENTALE - 'carte-mentale' et 'carte-mentale-2') :
-Tu es le moteur de structuration pédagogique universel de l'application StudyCloud.
-Lorsque l'utilisateur te soumet un cours, un document ou un sujet (quel que soit le domaine : Droit, Sciences, Économie, Informatique, Médecine, Lettres, Gestion, etc.), tu dois OBLIGATOIREMENT construire une arborescence logique et équilibrée à 3 NIVEAUX MINIMUM (Niveau 0 -> Niveau 1 -> Niveau 2 -> Niveau 3).
-
-RÈGLE D'ADAPTATION AU CONTENU RÉEL DU DOCUMENT :
-- Analyse le sujet exact du document fourni par l'utilisateur.
-- NE JAMAIS inventer de sujets hors-sujet ni plaquer d'exemples d'un autre domaine. Les branches de Niveau 1 doivent être les VRAIS grands piliers thématiques du document fourni.
-
-INTERDICTION FORMELLE DE FAIRE UNE STRUCTURE À PLAT ("hérisson" de 20 ou 30 branches connectées au centre).
-IL EST STRICTEMENT INTERDIT de connecter directement plus de 4 à 6 branches principales au nœud central.
-
-STRUCTURE OBLIGATOIRE EN 4 PALIERS :
-- NIVEAU 0 (Racine) : Le Sujet Global du document uniquement (Titre du cours ou document fourni).
-- NIVEAU 1 (Branches Principales - Max 4 à 6 piliers) : Les 4 à 6 grands piliers thématiques ou parties majeures du document fourni.
-- NIVEAU 2 (Sous-branches par catégorie) : Les sous-thèmes, mécanismes, règles ou caractéristiques de chaque grand pilier.
-- NIVEAU 3 (Feuilles de détails) : Les expressions exactes, définitions précises, formules/articles ou valeurs concrètes.
-  Exemple générique de cheminement :
-  Niveau 0 ("Titre du Cours") -> Niveau 1 ("Grand Pilier 1") -> Niveau 2 ("Mécanisme / Condition") -> Niveau 3 ("Règle exacte / Formule / Définition")
-
-RÈGLE ABSOLUE POUR LES FORMULES (SI DOMAINE SCIENTIFIQUE) :
-- Si le sujet est scientifique ou mathématique, toutes les formules LaTeX doivent être valides, proprement échappées avec double antislash dans les chaînes JSON (ex: "$\\\\Delta U = R \\\\cdot I$", "$f_c = \\\\dfrac{1}{2\\\\pi RC}$").
-- Les formules se placent UNIQUEMENT dans les nœuds finaux de détails (Niveau 3), jamais mélangées en vrac au niveau 1.
-- Si le sujet est non scientifique (Droit, Histoire, Littérature, Gestion...), ne mets PAS de formules mathématiques : mets des articles, notions, dates ou critères juridiques/techniques.
-- CHAQUE NŒUD EST UN BLOC / BOÎTE FERMÉE ("type": "box").
-- PAS DE PHRASES NARRATIVES NI DE LONGS PARAGRAPHES : utilise des mots-clés courts et percutants.
-- INTERDICTION FORMELLE d'utiliser des placeholders vides ('Sous-notion 1', 'Branche 1') ou du Mermaid brut pour les cartes mentales.
-
-EXEMPLE STRICT DU SCHÉMA JSON HIÉRARCHIQUE DANS 'creation_data' :
-\`\`\`json
-{
-  "id": "root",
-  "label": "Titre du Document",
-  "type": "box",
-  "children": [
-    {
-      "id": "b1",
-      "label": "Grand Pilier Thématique 1",
-      "type": "box",
-      "children": [
-        {
-          "id": "b1-1",
-          "label": "Sous-Notion / Règle A",
-          "type": "box",
-          "children": [{ "id": "b1-1-1", "label": "Définition concise ou Critère essentiel", "type": "box" }]
-        },
-        {
-          "id": "b1-2",
-          "label": "Sous-Notion / Règle B",
-          "type": "box",
-          "children": [{ "id": "b1-2-1", "label": "Formule, Article de loi ou Principe clé", "type": "box" }]
-        }
-      ]
-    },
-    {
-      "id": "b2",
-      "label": "Grand Pilier Thématique 2",
-      "type": "box",
-      "children": [
-        {
-          "id": "b2-1",
-          "label": "Méthode ou Procédure",
-          "type": "box",
-          "children": [{ "id": "b2-1-1", "label": "Étape d'application ou Cas pratique", "type": "box" }]
-        }
-      ]
-    }
-  ]
-}
-\`\`\``;
-
       if (docNames.length > 0) {
         systemContent += `\n\nDOCUMENTS FOURNIS PAR L'ÉTUDIANT :\nL'utilisateur a ouvert ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct et complet au contenu textuel de ces documents.`;
       }
-
-      if (activeCreation) {
-        systemContent += `\n\nCRÉATION ACTUELLE DANS L'ESPACE DE DROITE ("${activeCreation.title}", type: "${activeCreation.toolType}") : Si l'utilisateur demande explicitement de la modifier, l'enrichir ou la mettre à jour, réponds en mode création JSON avec la version actualisée.`;
-      }
-
-      systemContent += `\n\n10. CONSIGNE UNIVERSELLE - MOTEUR PÉDAGOGIQUE POUR TOUT COURS OU DOCUMENT ('resume') :
-Tu es un professeur expert et un ingénieur pédagogique universel. Ton rôle est d'analyser n'importe quel document, cours ou sujet fourni par l'utilisateur (quel que soit le domaine : sciences, droit, économie, informatique, lettres, médecine, gestion, etc.) et de le transformer en un support de révision parfait et structuré.
-
-RÈGLES D'ADAPTATION DYNAMIQUE AU DOMAINE DU DOCUMENT :
-1. DÉTECTION DU DOMAINE :
-   - Droit & Sciences Juridiques : focalise-toi sur les articles de loi, principes juridiques fondamentaux, conditions légales d'application, jurisprudences clés, exceptions et qualifications des faits.
-   - Sciences / Physique / Ingénierie / Mathématiques : focalise-toi sur les théorèmes, lois fondamentales, formules canoniques avec rendu KaTeX propre, variables et unités exactes, démonstrations algébriques pas à pas et calculs sans sauter d'étapes.
-   - Informatique / Programmation / Algorithmique : focalise-toi sur la logique algorithmique, les structures de données, la complexité, les design patterns, les exemples de syntaxe et les cas d'utilisation concrets.
-   - Économie / Gestion / Finance / Comptabilité : focalise-toi sur les mécanismes économiques, bilans, écritures comptables, ratios financiers, règles fiscales et démarches chiffrées pas à pas.
-   - Médecine / Biologie / Pharmacie : focalise-toi sur les mécanismes physiologiques, classifications, pathologies, diagnostics, protocoles et posologies.
-   - Lettres / Histoire / Philosophie : focalise-toi sur les concepts clés, thèses, contextes historiques, arguments majeurs, citations textuelles et analyses critiques.
-
-2. INTERDICTION DES RÉSUMÉS VAGUES : Ne fais jamais de simples paragraphes littéraires superficiels. Structure toujours ta sortie avec des sections claires, des définitions exactes, des méthodes et des pièges.
-
-CONSIGNE DE RENDER LATEX STRICT (SI FORMULES MATHÉMATIQUES PRÉSENTES) :
-- N'écris JAMAIS deux fois les symboles de dollars ($$ $$ ou $ $).
-- Pour une formule centrée hors-ligne, mets EXACTEMENT un seul double dollar avant et un seul après : $$ formule $$.
-- Pour une formule en ligne dans une phrase, mets EXACTEMENT un seul dollar avant et un après : $formule$.
-- Ne colle JAMAIS du texte avec une commande LaTeX sans espace : écris toujours " pulsation $\\\\omega_0$ " avec un espace, et JAMAIS "pulsation\\\\omega_0" sans les dollars.
-- N'utilise JAMAIS de commande \\\\text{} mal fermée. N'imbrique JAMAIS de commande mathématique à l'intérieur de \\\\text{}.
-- Toutes les expressions LaTeX doivent être pures, valides KaTeX et séparées du texte par un espace.
-
-INTERDICTIONS ABSOLUES :
-- Interdit de mettre des phrases génériques ou creuses de remplissage comme "application directe du cours", "selon les lois fondamentales" ou "démonstration par application des lois fondamentales".
-- Interdit de sauter des étapes de démonstration ou de raisonnement.
-- Interdit de plaquer des notions d'un domaine étranger au document (ne jamais forcer des formules d'électronique ou de filtres si le document traite d'un autre sujet).
-
-STRUCTURE UNIVERSELLE DE LA FICHE :
----
-### 📌 1. INTRODUCTION & LOGIQUE GLOBALE DU SUJET
-- Quel problème ce cours ou ce document résout-il ? Pourquoi ce sujet est-il important ?
-- Les grands axes et enjeux majeurs abordés dans le document.
-
----
-### 🧮 2. NOTIONS CLÉS, FORMULES OU RÈGLES FONDAMENTALES
-Pour CHAQUE notion, loi, formule, article ou grand principe technique/théorique présent dans le document :
-- **Nom du concept / Formule / Article :** L'intitulé exact.
-- **Objectif & Utilité :** Dans quel cas exact l'utiliser ? Quel besoin concret cela résout-il ?
-- **Méthode / Démonstration / Logique pas à pas :** Comment l'appliquer, la calculer ou la déduire rigoureusement étape par étape.
-- **Variables & Unités** (pour les sciences) ou **Conditions & Définitions légales/techniques** (pour le droit et les autres disciplines).
-- **Piège classique à l'examen** sur cette notion.
-
----
-### 📊 3. TABLEAU SYNTHÉTIQUE COMPARATIF
-Grand tableau Markdown comparatif structuré mettant en regard les différents concepts, régimes, méthodes, catégories ou cas d'application du document.
-
----
-### ⚠️ 4. PIÈGES À ÉVITER & ASTUCES MÉTHODOLOGIQUES (NB)
-- Confusions fréquentes des étudiants sur ce document précis.
-- Les erreurs de calcul, de méthode, d'unités ou de qualification à ne surtout pas faire dans une copie d'examen.
-
----
-### 🛠️ 5. EXEMPLE PRATIQUE OU CAS CONCRET D'APPLICATION
-- Un cas concret extrait ou extrapolé du document résolu étape par étape pour montrer la logique d'application réelle (exercice chiffré si sciences, cas pratique syllogistique si droit, cas concret si gestion/informatique).
-
-Dans 'creation_data', fournis ces blocs sous forme structurée et exhaustive avec les champs :
-{
-  "title": "Titre du cours ou document",
-  "theme": "Domaine d'étude détecté",
-  "overview": "Introduction expliquant la logique globale et pourquoi ce sujet est important...",
-  "key_definitions": [
-    { "concept": "Nom du concept clé", "definition": "Définition rigoureuse et précise...", "objective": "Utilité et cas d'usage..." }
-  ],
-  "formulas": [
-    {
-      "name": "Nom de la formule ou règle fondamentale",
-      "latex": "Formule LaTeX valide KaTeX sans double dollar interne si scientifique, ou vide si non mathématique",
-      "target_goal": "Objectif exact : quand et pourquoi l'utiliser",
-      "variables": "Variables, unités ou termes techniques précis",
-      "when_to_use": "Condition d'application exacte",
-      "how_to_derive": "Logique de déduction ou démonstration étape par étape",
-      "demonstration_steps": [
-        "1. Point de départ ou principe fondamental",
-        "2. Remplacement et développement étape par étape",
-        "3. Forme finale et conclusion"
-      ],
-      "exam_trap": "Erreur classique à éviter sur cette notion"
-    }
-  ],
-  "comparison_table": {
-    "headers": ["Catégorie / Notions", "Caractéristiques", "Conditions / Formules", "Points de vigilance"],
-    "rows": [
-      ["Élément 1", "Rôle principal", "Expression ou critère", "Spécificité"],
-      ["Élément 2", "Rôle principal", "Expression ou critère", "Spécificité"]
-    ]
-  },
-  "traps_and_tips": [
-    { "type": "trap", "title": "PIÈGE CLASSIQUE", "content": "Erreur fréquente des étudiants à ne pas commettre..." },
-    { "type": "tip", "title": "ASTUCE MÉTHODOLOGIQUE (NB)", "content": "Règle de méthode pour réussir l'examen ou l'exercice..." }
-  ],
-  "practical_example": {
-    "statement": "Énoncé réaliste d'un cas concret extrait ou adapté du document...",
-    "resolution_steps": [
-      "1. Analyse des données et identification de la règle/méthode...",
-      "2. Résolution pas à pas...",
-      "3. Conclusion et interprétation du résultat..."
-    ]
-  },
-  "sections": [
-    {
-      "heading": "I. Titre de la première grande partie",
-      "content": "Développement pédagogique approfondi...",
-      "key_takeaways": ["Point essentiel 1", "Point essentiel 2"]
-    }
-  ],
-  "markdown": "# 📑 TITRE\\n..."
-};
-`;
-
-      systemContent += `\n\n10.bis RÈGLE STRICTE ET ABSOLUE : SÉRIE D'EXERCICES ÉCRITS D'APPLICATION ('exercices-ecrits') :
-Tu es le moteur pédagogique officiel d'exercices d'application de StudyCloud.
-Ton rôle est d'analyser en profondeur le document fourni pour générer une épreuve d'exercices complète, technique, rigoureuse et ancrée dans le cours.
-
-RÈGLES DE GÉNÉRATION ABSOLUES :
-1. QUANTITÉ STRICTE : Tu dois obligatoirement générer EXACTEMENT 8 à 10 exercices ou questions d'application progressives et détaillées (JAMAIS seulement 2 ou 3 questions, JAMAIS de questions vagues ou de simples résumés).
-2. ANALYSE DU COURS ET RIGUEUR SCIENTIFIQUE / TECHNIQUE :
-   - Analyse méticuleusement les formules, théorèmes, lois, schémas, fonctions de transfert et valeurs numériques réelles présentes dans le document ou PDF fourni.
-   - Crée des questions sur-mesure exigeant de vrais calculs, des démonstrations algébriques, des études de cas limites, des applications numériques précises avec unités.
-   - Toutes les formules mathématiques/physiques doivent être écrites avec KaTeX ($...$ ou $$...$$) avec \\dfrac{}{}.
-3. BARÈME CLAIR TOTALISANT 20 POINTS :
-   - Attribue un barème précis pour chaque question (par exemple 2 points par question pour 10 questions, ou 2.5 pts pour 8 questions, total = 20 points).
-4. INTERDICTION FORMELLE DE COUPER OU DEMANDER DE POURSUIVRE :
-   - Tu NE DOIS EN AUCUN CAS couper ta réponse en demandant "Voulez-vous que je poursuive ?" ni afficher du bavardage ("J'ai conçu...").
-   - Tu génères l'intégralité des 8 à 10 questions D'UN SEUL BLOC dans l'objet JSON.
-5. FORMAT DE SORTIE OBLIGATOIRE DANS 'creation_data' :
-{
-  "title": "Titre explicite de la série d'exercices (ex: Exercices d'Application : Filtres Analogiques du 1er et 2nd Ordre)",
-  "context": "Énoncé complet et mise en situation détaillée du problème, présentant le système, les équations directrices et les paramètres avec KaTeX...",
-  "questions": [
-    {
-      "id": "q_1",
-      "number": 1,
-      "text": "Énoncé précis et technique de la question 1 avec formules KaTeX...",
-      "points": 2,
-      "sampleAnswer": "Correction détaillée pas à pas de la question 1..."
-    },
-    {
-      "id": "q_2",
-      "number": 2,
-      "text": "Énoncé précis et technique de la question 2 avec formules KaTeX...",
-      "points": 2,
-      "sampleAnswer": "Correction détaillée pas à pas de la question 2..."
-    }
-  ],
-  "correction": {
-    "steps": "Résolution détaillée étape par étape de toutes les questions avec démonstrations...",
-    "examples": [
-      "Exemple concret 1 d'application directe de la méthode...",
-      "Exemple concret 2 sur un cas piège d'examen..."
-    ]
-  }
-}
-`;
-
-      systemContent += `\n\n11. RÈGLE STRICTE ET SPÉCIALE : GÉNÉRATION DE DOCUMENTS PDF ('pdf') ET GESTION DES FICHIERS JOINTS :
-Tu disposes d'un moteur officiel de génération et téléchargement de documents PDF ('pdf').
-Tu dois appliquer rigoureusement les 3 CAS suivants :
-
-CAS 1 : FICHIER JOINT ET DEMANDE DE PDF GÉNÉRIQUE OU NON PRÉCISÉE (ex: "Fais un document PDF", "Je veux un PDF", ou clic sur le bouton Document PDF) :
-- IL EST STRICTEMENT INTERDIT de générer un PDF à l'aveugle sans savoir ce que l'étudiant désire !
-- Tu dois IMPÉRATIVEMENT répondre DANS LE CHAT (en texte Markdown direct, sans JSON de création immédiat) :
-  1. Confirme que tu as analysé son document joint avec attention.
-  2. Demande-lui clairement ce qu'il souhaite voir dans son document PDF téléchargeable (cours complet, exercices résolus, formulaire officiel, devoir d'entraînement, etc.). "Il faut toujours demander".
-  3. Termine OBLIGATOIREMENT par le bloc [QUESTIONS_SUGGÉRÉES] avec 3 à 4 options concrètes adaptées au document joint sous forme de boutons cliquables :
-     - Polycopié de cours complet et structuré en PDF sur [Thème du document]
-     - Résolution détaillée pas à pas des exercices du document en PDF
-     - Formulaire & Fiche méthode officielle d'examen en PDF
-     - Devoir d'entraînement type examen avec corrigé barémé en PDF
-
-CAS 2 : DEMANDE DE RÉSOUDRE UN EXERCICE ET DE METTRE ÇA EN PDF (ex: "Résous un exercice et mets ça en PDF", "Résous cet exercice en PDF", "Résous l'exercice 1 en PDF") :
-- Tu te places IMMÉDIATEMENT en mode CRÉATION ("decision": "creation", "mode": "creation", "creation_type": "pdf").
-- Tu résous l'exercice de A à Z avec une rigueur absolue :
-  * Énoncé de l'exercice et rappel des hypothèses.
-  * Formules mathématiques et physiques complètes avec LaTeX (\\dfrac{}{}).
-  * Logique de calcul étape par étape sans sauter d'étape.
-  * Résultats finaux encadrés \\boxed{...}.
-  * Schémas vectoriels SVG si circuit ou géométrie.
-- Tu structures le tout dans 'creation_data' avec les chapitres/exercices résolus :
-  {
-    "title": "Résolution Officielle : [Titre de l'exercice]",
-    "subtitle": "Correction méthodique et détaillée pas à pas",
-    "objective": "Comprendre les étapes de calcul et la justification rigoureuse.",
-    "chapters": [
-      {
-        "chapterNumber": 1,
-        "title": "Exercice : [Titre de l'exercice]",
-        "sections": [
-          { "heading": "Énoncé & Données", "body": "Texte de l'énoncé...", "points": ["Donnée 1", "Donnée 2"] },
-          { "heading": "Résolution détaillée & Calculs pas à pas", "body": "Démonstration complète...", "points": ["Résultat clé 1", "Résultat clé 2"] }
-        ]
-      }
-    ]
-  }
-
-`;
 
       const isContinuation = Boolean(
         options?.isContinuation ||
@@ -4982,7 +4634,10 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         apiKey: configuredToken || getGeminiApiKey() || undefined,
         apiToken: configuredToken || undefined,
         geminiApiKey: configuredToken || getGeminiApiKey() || undefined,
-        requested_type: explicitToolType || undefined,
+        requested_type: undefined,
+        isOrchestratorChat: Boolean(orchestratorMode),
+        orchestratorMode: orchestratorMode || undefined,
+        orchestratorInstruction: orchestratorInstruction || undefined,
         attachedFileName: hasAttachedDoc ? mainDocName : undefined,
         attachedFileContent: hasAttachedDoc ? resolvedAttachedText : undefined,
         perceptionReport: hasAttachedDoc ? (existingPerception || undefined) : undefined,
@@ -5278,7 +4933,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
       // Si l'étudiant n'a pas expressément demandé une création (isExplicitCreationRequest est faux),
       // ou si des créations d'arrière-plan sont actives : le message reste STRICTEMENT une discussion de chat !
       // Aucune création n'est créée, l'espace création ne bouge pas et ne bascule pas.
-      if (!isExplicitCreationRequest && !isExplicitOverride) {
+      // Toutes les créations demandées sont exécutées par le pool des 3 agents en arrière-plan
+      if (!isExplicitCreationRequest || Boolean(orchestratorMode)) {
         creationParsed = null;
       }
 
@@ -5433,17 +5089,10 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           : (aiResult.response || aiResult.chat_response || rawResponseText);
         const cleaned = cleanChatText(candidateText);
         fullResponseText = stripAiReasoningScratchpad(cleaned) || "✨ Votre demande a été traitée avec succès.";
-        // Si une création était en attente mais que l'IA a répondu en simple texte :
-        if (creationId) {
-          window.dispatchEvent(new CustomEvent('studycloud-creation-status-changed', {
-            detail: { creationId, status: 'error', errorText: "L'IA a répondu sous forme de discussion." }
-          }));
-          if (targetUserId && targetUserId !== 'default-user') {
-            StudyCloudAPI.deleteAiContent(creationId, targetUserId).catch(() => {});
-          }
+        // Si aucun agent de création ne tourne en arrière-plan, s'assurer que l'écran d'attente est au repos
+        if (orchestratorMode !== 'agents_launched' && aiBackgroundManager.getRunningCount() === 0 && aiBackgroundManager.getQueuedCount() === 0) {
+          window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCreation: false, resetToPrompts: false } }));
         }
-        // Désactiver immédiatement l'écran orange de chargement de création
-        window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCreation: false, resetToPrompts: true } }));
       }
 
       const effectiveModelName = aiResult.model || currentModelDisplay;
@@ -5520,10 +5169,10 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             setMessages(prev => {
               const exists = prev.some(m => m.id === aiMsgId);
               if (!exists) {
-                return [...prev, { id: aiMsgId, text: fullResponseText, sender: 'ai', isStreaming: false, model: effectiveModelName, tokens: respTokens, credits: respTokens }];
+                return [...prev, { id: aiMsgId, text: fullResponseText, sender: 'ai', isStreaming: false, model: effectiveModelName, tokens: respTokens, credits: respCredits }];
               }
               return prev.map(m =>
-                m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName, tokens: respTokens, credits: respTokens } : m
+                m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName, tokens: respTokens, credits: respCredits } : m
               );
             });
             setIsTyping(false);
@@ -5668,9 +5317,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
     const handleCancelFromCreation = (e: any) => {
       const creationId = e?.detail?.creationId;
       if (creationId) {
-      // aiBackgroundManager.clearTask(creationId);
+        aiBackgroundManager.clearTask(creationId);
       }
-      handleCancelTask();
     };
     window.addEventListener('studycloud-cancel-creation', handleCancelFromCreation as any);
     return () => window.removeEventListener('studycloud-cancel-creation', handleCancelFromCreation as any);

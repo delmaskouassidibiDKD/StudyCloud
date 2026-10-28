@@ -87,7 +87,7 @@ export const aiBackgroundManager = {
    * Récupère les tâches actuellement en cours d'exécution
    */
   getRunningTasks(): BackgroundAiTask[] {
-    return this.getActiveTasks().filter(t => t.status === 'running');
+    return this.getActiveTasks().filter(t => t.status === 'running' && Boolean(t.creationId || t.toolType));
   },
 
   /**
@@ -102,7 +102,7 @@ export const aiBackgroundManager = {
    */
   getQueuedTasks(): BackgroundAiTask[] {
     return this.getActiveTasks()
-      .filter(t => t.status === 'queued')
+      .filter(t => t.status === 'queued' && Boolean(t.creationId || t.toolType))
       .sort((a, b) => a.enqueuedAt - b.enqueuedAt);
   },
 
@@ -141,7 +141,7 @@ export const aiBackgroundManager = {
     executor?: TaskExecutor
   ): { status: 'running' | 'queued'; isQueued: boolean } {
     const activeTasks = this.getActiveTasks().filter(t => t.taskId !== taskData.taskId && t.creationId !== taskData.creationId);
-    const runningCount = activeTasks.filter(t => t.status === 'running').length;
+    const runningCount = activeTasks.filter(t => t.status === 'running' && Boolean(t.creationId || t.toolType)).length;
     const willRunNow = runningCount < MAX_CONCURRENT_REQUESTS;
     const status: 'running' | 'queued' = willRunNow ? 'running' : 'queued';
 
@@ -276,14 +276,22 @@ export const aiBackgroundManager = {
    * Vérifie la file d'attente et lance la tâche suivante si un slot est libre
    */
   processNextInQueue(): void {
-    const runningCount = this.getRunningCount();
-    if (runningCount >= MAX_CONCURRENT_REQUESTS) return;
+    while (this.getRunningCount() < MAX_CONCURRENT_REQUESTS) {
+      const queuedTasks = this.getQueuedTasks();
+      if (queuedTasks.length === 0) break;
 
-    const queuedTasks = this.getQueuedTasks();
-    if (queuedTasks.length === 0) return;
-
-    const nextTask = queuedTasks[0];
-    this.executeTask(nextTask.taskId);
+      const nextTask = queuedTasks[0];
+      const tasks = safeGetStorage();
+      const target = tasks.find(t => t.taskId === nextTask.taskId);
+      if (target) {
+        target.status = 'running';
+        target.startedAt = Date.now();
+        target.lastUpdated = Date.now();
+        target.progressText = 'Création en cours...';
+        safeSetStorage(tasks);
+      }
+      this.executeTask(nextTask.taskId);
+    }
   },
 
   /**
