@@ -2254,12 +2254,13 @@ CONSIGNES STRICTES DE CONTINUATION :
               if (!isAgentCreationTask && userMsgId && userPrompt) {
                 await db.prepare(`
                   INSERT OR IGNORE INTO messages (id, conversation_id, role, content, metadata, created_at)
-                  VALUES (?, ?, 'user', ?, ?, datetime('now'))
+                  VALUES (?, ?, 'user', ?, ?, ?)
                 `).bind(
                   userMsgId,
                   convId,
                   userPrompt,
-                  JSON.stringify({ attachedFileName: docName || undefined })
+                  JSON.stringify({ attachedFileName: docName || undefined }),
+                  new Date(Date.now() - 50).toISOString()
                 ).run().catch(() => {});
               }
 
@@ -2268,7 +2269,7 @@ CONSIGNES STRICTES DE CONTINUATION :
               if (!isAgentCreationTask) {
                 await db.prepare(`
                   INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
-                  VALUES (?, ?, 'assistant', ?, ?, datetime('now'))
+                  VALUES (?, ?, 'assistant', ?, ?, ?)
                   ON CONFLICT(id) DO UPDATE SET content = excluded.content, metadata = excluded.metadata
                 `).bind(
                 aiMsgId,
@@ -2282,7 +2283,8 @@ CONSIGNES STRICTES DE CONTINUATION :
                   attachedFileName: docName || undefined,
                   tokens: calculatedTokens,
                   credits: creditsDeducted,
-                })
+                }),
+                new Date().toISOString()
                 ).run().catch(() => {});
               }
 
@@ -2629,7 +2631,7 @@ CONSIGNES STRICTES DE CONTINUATION :
         `).run().catch(() => {});
 
         const { results } = await db.prepare(
-          "SELECT id, conversation_id, role, content, metadata, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC"
+          "SELECT id, conversation_id, role, content, metadata, created_at FROM messages WHERE conversation_id = ? AND id NOT LIKE 'ai-bg-%' AND id NOT LIKE 'agent-%' ORDER BY REPLACE(created_at, ' ', 'T') ASC, rowid ASC"
         ).bind(conversationId).all();
 
         return new Response(JSON.stringify({

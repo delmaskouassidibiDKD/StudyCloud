@@ -1686,62 +1686,62 @@ export function detectAllCreationFormats(
 
   if (t) {
     // 1. Vrai ou Faux Test vs Vrai ou Faux
-    if (/\b(?:vrai\s+ou\s+faux\s+test|vrai\/faux\s+test|vf\s+test|[eé]preuve\s+vrai\s+ou\s+faux)\b/i.test(t)) {
-      addFormat('vrai-ou-faux-test', /\b(?:vrai\s+ou\s+faux\s+test|vrai\/faux\s+test|vf\s+test|[eé]preuve\s+vrai\s+ou\s+faux)\b/i);
-    } else if (/\b(?:vrai\s+ou\s+faux|vrai\/faux)\b/i.test(t) || (hasCreationActionVerb && /\baffirmations?\b/i.test(t))) {
-      addFormat('vrai-ou-faux', /\b(?:vrai\s+ou\s+faux|vrai\/faux|affirmations?)\b/i);
+    if (/\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux\s+teste?s?|v\s*\/?\s*f\s+teste?s?|[eé]preuves?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)\b/i.test(t)) {
+      addFormat('vrai-ou-faux-test', /\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux\s+teste?s?|v\s*\/?\s*f\s+teste?s?|[eé]preuves?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)\b/i);
+    } else if (/\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux|v\/f)\b/i.test(t) || (hasCreationActionVerb && /\baffirmations?\b/i.test(t))) {
+      addFormat('vrai-ou-faux', /\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux|v\/f|affirmations?)\b/i);
     }
 
-    // 2. Questionnaire Test vs Questionnaire QCM
-    if (/\b(?:questionnaire\s+test|test\s+not[eé]|test\s+chrono|[eé]preuve\s+not[eé]e)\b/i.test(t)) {
-      addFormat('questionnaire-test', /\b(?:questionnaire\s+test|test\s+not[eé]|test\s+chrono|[eé]preuve\s+not[eé]e)\b/i);
-    } else if (/\b(?:questionnaire|quiz|qcm)\b/i.test(t) || (hasCreationActionVerb && /\btest\b/i.test(t) && !/\bvrai\s+ou\s+faux/i.test(t))) {
-      addFormat('questionnaire', /\b(?:questionnaire|quiz|qcm|test)\b/i);
+    // 2. Questionnaire Test vs Questionnaire QCM (tolère "qestionnaire", "teste", "qcm test", "quiz test")
+    if (/\b(?:q[u]?estion+aires?\s+teste?s?|q\.?c\.?m\.?\s+teste?s?|quizz?\s+teste?s?|teste?s?\s+not[eé]s?|teste?s?\s+chronos?|[eé]preuves?\s+not[eé]es?)\b/i.test(t)) {
+      addFormat('questionnaire-test', /\b(?:q[u]?estion+aires?\s+teste?s?|q\.?c\.?m\.?\s+teste?s?|quizz?\s+teste?s?|teste?s?\s+not[eé]s?|teste?s?\s+chronos?|[eé]preuves?\s+not[eé]es?)\b/i);
+    } else if (/\b(?:q[u]?estion+aires?|quizz?|q\.?c\.?m\.?)\b/i.test(t) || (hasCreationActionVerb && /\bteste?s?\b/i.test(t) && !/\bvrai(?:e?s)?\s*(?:ou|\/|-)\s*faux/i.test(t))) {
+      addFormat('questionnaire', /\b(?:q[u]?estion+aires?|quizz?|q\.?c\.?m\.?|teste?s?)\b/i);
     }
 
-    // 3. Carte Mentale 2 vs Carte Mentale
-    if (/\b(?:carte\s+mentale\s+2|mindmap\s*2|carte\s+conceptuelle)\b/i.test(t)) {
-      addFormat('carte-mentale-2', /\b(?:carte\s+mentale\s+2|mindmap\s*2|carte\s+conceptuelle)\b/i);
-    } else if (/\b(?:carte\s+mentale|mindmap|mind-map|arborescence)\b/i.test(t)) {
-      addFormat('carte-mentale', /\b(?:carte\s+mentale|mindmap|mind-map|arborescence)\b/i);
+    // 3. Carte Mentale 2 vs Carte Mentale (tolère "carte mental", "carte conceptuel", "mind map", "arborescence")
+    if (/\b(?:cartes?\s*mentale?s?\s*2|mind\s*-?\s*maps?\s*2|cartes?\s*conceptuelle?s?)\b/i.test(t)) {
+      addFormat('carte-mentale-2', /\b(?:cartes?\s*mentale?s?\s*2|mind\s*-?\s*maps?\s*2|cartes?\s*conceptuelle?s?)\b/i);
+    } else if (/\b(?:cartes?\s*mentale?s?|mind\s*-?\s*maps?|arborescences?|sch[eé]mas?\s*heuristiques?)\b/i.test(t)) {
+      addFormat('carte-mentale', /\b(?:cartes?\s*mentale?s?|mind\s*-?\s*maps?|arborescences?|sch[eé]mas?\s*heuristiques?)\b/i);
     }
 
-    // 4. Cartes Mémoires
-    if (/\b(?:cartes?\s+m[eé]moires?|flashcards?|fiches?\s+de\s+m[eé]morisation)\b/i.test(t)) {
-      addFormat('carte-memoire', /\b(?:cartes?\s+m[eé]moires?|flashcards?|fiches?\s+de\s+m[eé]morisation)\b/i);
+    // 4. Cartes Mémoires / Flashcards (tolère "carte memoire", "flashcard", "fiche de memorisation")
+    if (/\b(?:cartes?\s*m[eé]moires?|flash\s*-?\s*cards?|fiches?\s+de\s+m[eé]morisations?|cartes?\s+flash)\b/i.test(t)) {
+      addFormat('carte-memoire', /\b(?:cartes?\s*m[eé]moires?|flash\s*-?\s*cards?|fiches?\s+de\s+m[eé]morisations?|cartes?\s+flash)\b/i);
     }
 
     // 5. Devoir Complet / Examen
-    if (/\b(?:devoir\s+complet|sujet\s+d['’]examen|[eé]preuve\s+d['’]examen|devoir\s+d['’]examen|examen\s+complet|examen\s+blanc)\b/i.test(t)) {
-      addFormat('devoir-complet', /\b(?:devoir\s+complet|sujet\s+d['’]examen|[eé]preuve\s+d['’]examen|devoir\s+d['’]examen|examen\s+complet|examen\s+blanc)\b/i);
+    if (/\b(?:devoirs?\s+complets?|sujets?\s+d['’]examens?|[eé]preuves?\s+d['’]examens?|devoirs?\s+d['’]examens?|examens?\s+complets?|examens?\s+blancs?|devoirs?\s+surveill[eé]s?)\b/i.test(t)) {
+      addFormat('devoir-complet', /\b(?:devoirs?\s+complets?|sujets?\s+d['’]examens?|[eé]preuves?\s+d['’]examens?|devoirs?\s+d['’]examens?|examens?\s+complets?|examens?\s+blancs?|devoirs?\s+surveill[eé]s?)\b/i);
     }
 
     // 6. Infographie
-    if (/\b(?:infographie|fiche\s+visuelle)\b/i.test(t)) {
-      addFormat('infographie', /\b(?:infographie|fiche\s+visuelle)\b/i);
+    if (/\b(?:infographies?|fiches?\s+visuelles?|posters?\s+p[eé]dagogiques?)\b/i.test(t)) {
+      addFormat('infographie', /\b(?:infographies?|fiches?\s+visuelles?|posters?\s+p[eé]dagogiques?)\b/i);
     }
 
     // 7. Document PDF
-    if (/\b(?:document\s+pdf|polycopi[eé]|polycopie|g[eé]n[eé]rer\s+un\s+pdf|cr[eé]er\s+un\s+pdf|faire\s+un\s+pdf|export\s+pdf|(?:un|le)\s+pdf)\b/i.test(t)) {
-      addFormat('pdf', /\b(?:document\s+pdf|polycopi[eé]|polycopie|pdf)\b/i);
+    if (/\b(?:documents?\s+pdf|polycopi[eé]s?|polycopies?|g[eé]n[eé]rer\s+un\s+pdf|cr[eé]er\s+un\s+pdf|faire\s+un\s+pdf|export\s+pdf|(?:un|le)\s+pdf)\b/i.test(t)) {
+      addFormat('pdf', /\b(?:documents?\s+pdf|polycopi[eé]s?|polycopies?|pdf)\b/i);
     }
 
     // 8. Exercices Écrits (accepté avec verbe d'action OU dans une liste de créations OU en début de consigne)
     const hasDevoir = matchedEntries.some(e => e.type === 'devoir-complet');
-    const isListOrDirectRequest = hasCreationActionVerb || matchedEntries.length > 0 || /^(?:un|une|des|deux|trois|\d+)?\s*(?:exercices?|r[eé]sum[eé]|synth[eè]se)\b/i.test(t) || /\b(?:et|puis|avec|,)\s*(?:un|une|des|deux|trois|\d+)?\s*(?:exercices?|r[eé]sum[eé]|synth[eè]se)\b/i.test(t);
+    const isListOrDirectRequest = hasCreationActionVerb || matchedEntries.length > 0 || /^(?:un|une|des|deux|trois|\d+)?\s*(?:exercices?|exos?|r[eé]sum[eé]s?|synth[eè]ses?|fiches?)\b/i.test(t) || /\b(?:et|puis|avec|,)\s*(?:un|une|des|deux|trois|\d+)?\s*(?:exercices?|exos?|r[eé]sum[eé]s?|synth[eè]ses?|fiches?)\b/i.test(t);
     if (!hasDevoir) {
-      if (/\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]application|s[eé]rie\s+d['’]exercices)\b/i.test(t)) {
-        addFormat('exercices-ecrits', /\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]application|s[eé]rie\s+d['’]exercices)\b/i);
-      } else if (isListOrDirectRequest && /\bexercices?\b/i.test(t) && !/\bexercice\s+\d+\b/i.test(t)) {
-        addFormat('exercices-ecrits', /\bexercices?\b/i);
+      if (/\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]applications?|s[eé]ries?\s+d['’]exercices?|exos?\s+[eé]crits?)\b/i.test(t)) {
+        addFormat('exercices-ecrits', /\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]applications?|s[eé]ries?\s+d['’]exercices?|exos?\s+[eé]crits?)\b/i);
+      } else if (isListOrDirectRequest && /\b(?:exercices?|exos?)\b/i.test(t) && !/\b(?:exercice|exo)\s+\d+\b/i.test(t)) {
+        addFormat('exercices-ecrits', /\b(?:exercices?|exos?)\b/i);
       }
     }
 
-    // 9. Résumé / Synthèse
-    if (/\b(?:fiche\s+de\s+r[eé]sum[eé]|fiche\s+de\s+synth[eè]se)\b/i.test(t)) {
-      addFormat('resume', /\b(?:fiche\s+de\s+r[eé]sum[eé]|fiche\s+de\s+synth[eè]se)\b/i);
-    } else if ((isListOrDirectRequest || /\b(?:un|une|mon|le)\s+(?:r[eé]sum[eé]|synth[eè]se)\b/i.test(t)) && /\b(?:r[eé]sum[eé]|synth[eè]se)\b/i.test(t)) {
-      addFormat('resume', /\b(?:r[eé]sum[eé]|synth[eè]se)\b/i);
+    // 9. Résumé / Synthèse / Fiche de Révision (tolère "fiche de revision", "fiche de résumé", "fiche de synthèse", "fiche de cours")
+    if (/\b(?:fiches?\s+de\s+r[eé]visions?|fiches?\s+de\s+r[eé]sum[eé]s?|fiches?\s+de\s+synth[eè]ses?|fiches?\s+de\s+cours|fiches?\s+r[eé]visions?|fiches?\s+synth[eè]ses?)\b/i.test(t)) {
+      addFormat('resume', /\b(?:fiches?\s+de\s+r[eé]visions?|fiches?\s+de\s+r[eé]sum[eé]s?|fiches?\s+de\s+synth[eè]ses?|fiches?\s+de\s+cours|fiches?\s+r[eé]visions?|fiches?\s+synth[eè]ses?)\b/i);
+    } else if ((isListOrDirectRequest || /\b(?:un|une|mon|le)\s+(?:r[eé]sum[eé]|synth[eè]se)\b/i.test(t)) && /\b(?:r[eé]sum[eé]s?|synth[eè]ses?)\b/i.test(t)) {
+      addFormat('resume', /\b(?:r[eé]sum[eé]s?|synth[eè]ses?)\b/i);
     }
   }
 
@@ -1759,27 +1759,31 @@ export function detectAllCreationFormats(
   }
 
   // Si l'utilisateur répond à une question de clarification de l'IA (ex: "sur ce fichier", "sur les filtres", "oui vas-y")
-  // après avoir demandé une ou plusieurs créations au tour précédent :
+  // après avoir demandé une ou plusieurs créations aux tours précédents :
   if (detected.length === 0 && !isConversationalQuestion && Array.isArray(conversationMessages) && conversationMessages.length >= 2) {
     const nonEmptyMsgs = conversationMessages.filter(m => {
       const txt = String((m as any)?.text || (m as any)?.content || '').trim();
       return txt.length > 0 && !(m as any)?.isError;
     });
 
-    // Parcourir les derniers échanges (jusqu'aux 6 derniers messages non vides) pour retrouver la demande de création en attente de précision
-    for (let i = nonEmptyMsgs.length - 1; i >= 1 && i >= nonEmptyMsgs.length - 6; i--) {
-      const msgI = nonEmptyMsgs[i];
-      const msgPrev = nonEmptyMsgs[i - 1];
-      const senderI = (msgI as any)?.sender || (msgI as any)?.role;
-      const senderPrev = (msgPrev as any)?.sender || (msgPrev as any)?.role;
-      const textI = String((msgI as any)?.text || (msgI as any)?.content || '').trim();
-      const textPrev = String((msgPrev as any)?.text || (msgPrev as any)?.content || '').trim();
+    const recentSlice = nonEmptyMsgs.slice(-8);
+    const hasRecentClarificationPrompt = recentSlice.some(m => {
+      const sender = (m as any)?.sender || (m as any)?.role;
+      const txt = String((m as any)?.text || (m as any)?.content || '').trim();
+      return (sender === 'ai' || sender === 'assistant') &&
+        /\?|quel(?:le)?s?\s+(?:sujet|cours|chapitre|fichier|document|th[èe]me|mat[iî]ère|partie)|pr[eé]cis(?:er|ez)|joindre|s[eé]lectionner|sur\s+quoi|QUESTIONS_SUGG[EÉ]R[EÉ]ES/i.test(txt);
+    });
 
-      if ((senderI === 'ai' || senderI === 'assistant') && senderPrev === 'user' && textPrev) {
-        const prevFormats = detectAllCreationFormats(textPrev, undefined, undefined);
-        const aiAskedForClarification = /\?|quel(?:le)?s?\s+(?:sujet|cours|chapitre|fichier|document|th[èe]me|mat[iî]ère|partie)|pr[eé]cis(?:er|ez)|joindre|s[eé]lectionner|sur\s+quoi|QUESTIONS_SUGG[EÉ]R[EÉ]ES/i.test(textI);
-        if (prevFormats.length > 0 && aiAskedForClarification) {
-          return prevFormats;
+    if (hasRecentClarificationPrompt) {
+      for (let i = recentSlice.length - 1; i >= 0; i--) {
+        const msgI = recentSlice[i];
+        const senderI = (msgI as any)?.sender || (msgI as any)?.role;
+        const textI = String((msgI as any)?.text || (msgI as any)?.content || '').trim();
+        if (senderI === 'user' && textI) {
+          const prevFormats = detectAllCreationFormats(textI, undefined, undefined);
+          if (prevFormats.length > 0) {
+            return prevFormats;
+          }
         }
       }
     }
@@ -3043,12 +3047,23 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             tokens,
             credits: tokens,
           };
-        }).filter((m) => !(m.sender === 'ai' && (!m.text || !String(m.text).trim())));
+        }).filter((m) => {
+          if (String(m.id || '').startsWith('ai-bg-') || String(m.id || '').startsWith('agent-')) return false;
+          if (m.sender === 'user' && String(m.text || '').startsWith('Conçois immédiatement le module interactif complet')) return false;
+          if (m.sender === 'ai') {
+            const rawTxt = String(m.text || '').trim();
+            if (!rawTxt) return false;
+            const cleanedTxt = cleanChatText(stripAiReasoningScratchpad(rawTxt)).trim();
+            if (!cleanedTxt) return false;
+          }
+          return true;
+        });
 
-        // Tri déterministe absolu : Chronologique par createdAt, et en cas d'égalité, le message utilisateur passe toujours AVANT l'IA
+        // Tri déterministe absolu : Chronologique par createdAt (normalisé ISO), et en cas d'égalité, le message utilisateur passe toujours AVANT l'IA
         loaded.sort((a, b) => {
-          const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          const normDate = (d?: string) => d ? new Date(d.includes('T') ? d : d.replace(' ', 'T') + 'Z').getTime() : 0;
+          const timeA = normDate(a.createdAt);
+          const timeB = normDate(b.createdAt);
           if (timeA !== timeB) return timeA - timeB;
           if (a.sender === 'user' && b.sender === 'ai') return -1;
           if (a.sender === 'ai' && b.sender === 'user') return 1;
@@ -4154,6 +4169,106 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     // ══════════════════════════════════════════════════════════════════════════
     let orchestratorMode: '' | 'agents_launched' | 'clarify_subject' | 'clarify_multidoc' = '';
     let orchestratorInstruction = '';
+    let hasDispatchedAgents = false;
+
+    const dispatchAgentsForFormats = (
+      formatsToDispatch: AiCreationType[]
+    ): Array<{ id: string; title: string; toolType: string; formatLabel: string; isQueued: boolean }> => {
+      if (hasDispatchedAgents || !Array.isArray(formatsToDispatch) || formatsToDispatch.length === 0) {
+        return [];
+      }
+      hasDispatchedAgents = true;
+      orchestratorMode = 'agents_launched';
+
+      const dispatchedTasks: Array<{ id: string; title: string; toolType: string; formatLabel: string; isQueued: boolean }> = [];
+      const fmtOccurrences: Record<string, number> = {};
+      const fmtTotals: Record<string, number> = {};
+      for (const f of formatsToDispatch) {
+        fmtTotals[f] = (fmtTotals[f] || 0) + 1;
+      }
+
+      for (let idx = 0; idx < formatsToDispatch.length; idx++) {
+        const fmt = formatsToDispatch[idx];
+        fmtOccurrences[fmt] = (fmtOccurrences[fmt] || 0) + 1;
+        const baseFormatTitle = CREATION_NAME_MAP[fmt] || CREATION_FORMAT_LABELS[fmt] || "Support d'apprentissage";
+        const formatTitle = fmtTotals[fmt] > 1 ? `${baseFormatTitle} #${fmtOccurrences[fmt]}` : baseFormatTitle;
+        const currentCreationId = 'crea-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).slice(2, 6);
+        const currentTaskId = 'task-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).slice(2, 6);
+        const cTitle = mainDocName ? `${formatTitle} : ${mainDocName}` : `${formatTitle} : ${userText.slice(0, 35).trim() || "Thème d'étude"}`;
+        const willQueuePreview = aiBackgroundManager.getRunningCount() >= 3;
+
+        // Notifier immédiatement le menu de droite AVANT d'enfiler pour que la carte apparaisse sans course critique
+        window.dispatchEvent(new CustomEvent('studycloud-creation-enqueued', {
+          detail: {
+            id: currentCreationId,
+            conversationId: targetConvId,
+            title: cTitle,
+            toolType: fmt,
+            sourceFileName: mainDocName || undefined,
+            createdAt: new Date(Date.now() + idx).toISOString(),
+            status: willQueuePreview ? 'queued' : 'generating',
+            progressText: willQueuePreview ? 'En attente...' : 'Création en cours...',
+            isBackground: !requestedTypeOverride,
+          }
+        }));
+
+        const enqRes = aiBackgroundManager.enqueueCreationTask({
+          taskId: currentTaskId,
+          conversationId: targetConvId,
+          userId: targetUserId,
+          creationId: currentCreationId,
+          title: cTitle,
+          toolType: fmt,
+          prompt: userText,
+          mainDocName: mainDocName || undefined,
+        }, async () => {
+          return await executeCreationApiCall({
+            userText,
+            targetConvId,
+            targetUserId,
+            explicitToolType: fmt,
+            mainDocName: mainDocName || '',
+            creationId: currentCreationId,
+            creationTitle: cTitle,
+            allDocs,
+            messages: updatedMessages,
+            selectedModel,
+            availableModels,
+            currentConversationId: targetConvId,
+            sessionCreations,
+            resolvedActiveItem,
+            attachedResources,
+            activePreviewItem,
+            currentModelDisplay,
+            activeDocumentInfo,
+            activeImageInfo,
+          });
+        });
+
+        dispatchedTasks.push({
+          id: currentCreationId,
+          title: cTitle,
+          toolType: fmt,
+          formatLabel: formatTitle,
+          isQueued: enqRes.isQueued,
+        });
+      }
+
+      if (requestedTypeOverride && dispatchedTasks.length === 1 && !dispatchedTasks[0].isQueued) {
+        window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
+          detail: {
+            phase: 'creating',
+            isCreating: true,
+            isLoading: true,
+            isCreation: true,
+            toolType: dispatchedTasks[0].toolType,
+            statusText: "L'IA conçoit votre support d'apprentissage..."
+          }
+        }));
+      }
+
+      return dispatchedTasks;
+    };
 
     if (isExplicitCreationRequest && detectedFormats.length > 0) {
       const requestedLabels = detectedFormats.map(f => CREATION_NAME_MAP[f] || CREATION_FORMAT_LABELS[f] || f).join(', ');
@@ -4187,94 +4302,7 @@ ${suggestions.map(s => `- ${s}`).join('\n')}
 3. N'écris AUCUN bloc JSON.
 ══════════════════════════════════════════════════════════════════════════════`;
       } else {
-        orchestratorMode = 'agents_launched';
-        const dispatchedTasks: Array<{ id: string; title: string; toolType: string; formatLabel: string; isQueued: boolean }> = [];
-        const fmtOccurrences: Record<string, number> = {};
-        const fmtTotals: Record<string, number> = {};
-        for (const f of detectedFormats) {
-          fmtTotals[f] = (fmtTotals[f] || 0) + 1;
-        }
-
-        for (let idx = 0; idx < detectedFormats.length; idx++) {
-          const fmt = detectedFormats[idx];
-          fmtOccurrences[fmt] = (fmtOccurrences[fmt] || 0) + 1;
-          const baseFormatTitle = CREATION_NAME_MAP[fmt] || CREATION_FORMAT_LABELS[fmt] || "Support d'apprentissage";
-          const formatTitle = fmtTotals[fmt] > 1 ? `${baseFormatTitle} #${fmtOccurrences[fmt]}` : baseFormatTitle;
-          const currentCreationId = 'crea-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).slice(2, 6);
-          const currentTaskId = 'task-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).slice(2, 6);
-          const cTitle = mainDocName ? `${formatTitle} : ${mainDocName}` : `${formatTitle} : ${userText.slice(0, 35).trim() || "Thème d'étude"}`;
-          const willQueuePreview = aiBackgroundManager.getRunningCount() >= 3;
-
-          // Notifier immédiatement le menu de droite AVANT d'enfiler pour que la carte apparaisse sans course critique
-          window.dispatchEvent(new CustomEvent('studycloud-creation-enqueued', {
-            detail: {
-              id: currentCreationId,
-              conversationId: targetConvId,
-              title: cTitle,
-              toolType: fmt,
-              sourceFileName: mainDocName || undefined,
-              createdAt: new Date(Date.now() + idx).toISOString(),
-              status: willQueuePreview ? 'queued' : 'generating',
-              progressText: willQueuePreview ? 'En attente...' : 'Création en cours...',
-              isBackground: !requestedTypeOverride,
-            }
-          }));
-
-          const enqRes = aiBackgroundManager.enqueueCreationTask({
-            taskId: currentTaskId,
-            conversationId: targetConvId,
-            userId: targetUserId,
-            creationId: currentCreationId,
-            title: cTitle,
-            toolType: fmt,
-            prompt: userText,
-            mainDocName: mainDocName || undefined,
-          }, async () => {
-            return await executeCreationApiCall({
-              userText,
-              targetConvId,
-              targetUserId,
-              explicitToolType: fmt,
-              mainDocName: mainDocName || '',
-              creationId: currentCreationId,
-              creationTitle: cTitle,
-              allDocs,
-              messages: updatedMessages,
-              selectedModel,
-              availableModels,
-              currentConversationId: targetConvId,
-              sessionCreations,
-              resolvedActiveItem,
-              attachedResources,
-              activePreviewItem,
-              currentModelDisplay,
-              activeDocumentInfo,
-              activeImageInfo,
-            });
-          });
-
-          dispatchedTasks.push({
-            id: currentCreationId,
-            title: cTitle,
-            toolType: fmt,
-            formatLabel: formatTitle,
-            isQueued: enqRes.isQueued,
-          });
-        }
-
-        if (requestedTypeOverride && dispatchedTasks.length === 1 && !dispatchedTasks[0].isQueued) {
-          window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
-            detail: {
-              phase: 'creating',
-              isCreating: true,
-              isLoading: true,
-              isCreation: true,
-              toolType: dispatchedTasks[0].toolType,
-              statusText: "L'IA conçoit votre support d'apprentissage..."
-            }
-          }));
-        }
-
+        const dispatchedTasks = dispatchAgentsForFormats(detectedFormats);
         const activeAgentTasks = dispatchedTasks.filter(t => !t.isQueued);
         const queuedAgentTasks = dispatchedTasks.filter(t => t.isQueued);
         const activeListStr = activeAgentTasks.map((t, i) => `Agent ${i + 1} : "${t.formatLabel}" (En cours)`).join(', ');
@@ -4314,14 +4342,6 @@ TA MISSION DANS LE CHAT :
       }).then(() => loadConversations()).catch(() => {});
     }
 
-      StudyCloudAPI.saveAiMessage({
-        id: newUserMsgId,
-        conversationId: currentConversationId,
-        role: 'user',
-        content: userText,
-        metadata: { model: selectedModel }
-      }).catch(() => {});
-
       const isHesitating = /(je ne sais pas|que (peux|doit|puis)-tu|propose|id[eé]es|aide-moi à (choisir|r[eé]viser)|quelles options|que me conseilles-tu|conseille-moi|que faire)/i.test(userText);
       if (isHesitating) {
         setShowProposalBar(true);
@@ -4342,6 +4362,12 @@ CONSIGNES STRICTES POUR TA RÉPONSE DE CHAT :
 
       if (orchestratorInstruction) {
         systemContent += "\n\n" + orchestratorInstruction;
+      } else if (hasEducationalContext && !needsMultiDocClarification) {
+        systemContent += `\n\n[RÈGLE D'ORCHESTRATION DES AGENTS DE CRÉATION] :
+- Si le message de l'étudiant est une question de cours, un exercice à résoudre ou une discussion normale : réponds directement et pédagogiquement sans parler de création.
+- Si l'étudiant te demande de créer un ou plusieurs supports interactifs (Carte Mentale, Questionnaire QCM, Questionnaire Test, Vrai ou Faux, Vrai ou Faux Test, Cartes Mémoires, Fiche de Résumé / Révision, Exercices Écrits, Devoir Complet, Infographie, Document PDF), confirme-lui chaleureusement le lancement de ses supports sur ${mainDocName ? `son document actif « ${mainDocName} »` : 'son sujet'} et ajoute OBLIGATOIREMENT à la toute fin de ta réponse la balise :
+[LANCER_AGENTS: format1, format2]
+(valeurs possibles : carte-mentale, carte-mentale-2, questionnaire, questionnaire-test, vrai-ou-faux, vrai-ou-faux-test, carte-memoire, resume, exercices-ecrits, devoir-complet, infographie, pdf).`;
       }
 
       systemContent += `\n\nRÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
@@ -4424,16 +4450,19 @@ ou
      -> TU DOIS IMPÉRATIVEMENT L'INTERPELLER DANS LE CHAT en lui demandant avec bienveillance d'indiquer la matière ou le chapitre précis qu'il souhaite réviser, ou de joindre son fichier de cours.
      -> TU DOIS OBLIGATOIREMENT terminer ta réponse par le bloc [QUESTIONS_SUGGÉRÉES] avec 4 exemples concrets de prompts de création portant sur des matières variées (Maths, Physique, SVT, Informatique, etc.) sous forme de boutons cliquables.
 
-7.bis GESTION MULTI-DOCUMENTS & DEMANDES IMPRÉCISES :
-   - Si l'étudiant a joint plusieurs documents distincts et que sa demande est générale ou non ciblée sur un fichier précis :
+7.bis GESTION DES DOCUMENTS JOINTS/ACTIFS (1 DOCUMENT VS PLUSIEURS DOCUMENTS) :
+   - RÈGLE ABSOLUE SI 1 SEUL DOCUMENT EST JOINT OU ACTIF :
+     -> Lorsque l'étudiant a 1 seul document sélectionné ou joint dans son espace (ex: PDF, Word, image), IL EST STRICTEMENT INTERDIT de lui demander sur quel document, cours ou chapitre il souhaite travailler !
+     -> Toute demande de l'étudiant porte AUTOMATIQUEMENT et DIRECTEMENT sur ce document unique joint/actif.
+   - Si l'étudiant a joint PLUSIEURS documents distincts (>= 2) et que sa demande est générale ou non ciblée sur un fichier précis :
      -> Ne choisis pas un document au hasard et ne produis pas de création confuse à l'aveugle.
-     -> Présente brièvement les documents joints et demande-lui clairement dans le chat sur quel document ou quel chapitre il souhaite se concentrer, ou s'il préfère une synthèse globale croisée de l'ensemble des documents.
+     -> Présente brièvement les documents joints et demande-lui clairement dans le chat sur quel document il souhaite se concentrer, ou s'il préfère une synthèse globale croisée de l'ensemble des documents.
      -> Termine OBLIGATOIREMENT par le bloc [QUESTIONS_SUGGÉRÉES] proposant chaque document en bouton cliquable direct.
-   - Si la demande est vague ou imprécise (ex: "fais un résumé", "aide-moi", "crée un qcm" sans précision du chapitre ou du sujet souhaité) :
+   - UNIQUEMENT SI AUCUN DOCUMENT N'EST JOINT (0 document) et qu'aucun sujet n'est précisé dans le message ni dans la conversation :
      -> Pose des questions de clarification pédagogiques et propose 3 à 4 options d'angles d'attaque claires sous [QUESTIONS_SUGGÉRÉES].`;
 
       if (docNames.length > 0) {
-        systemContent += `\n\nDOCUMENTS FOURNIS PAR L'ÉTUDIANT :\nL'utilisateur a ouvert ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct et complet au contenu textuel de ces documents.`;
+        systemContent += `\n\nDOCUMENTS FOURNIS PAR L'ÉTUDIANT :\nL'utilisateur a ouvert ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct et complet au contenu textuel de ces documents.${docNames.length === 1 ? ` Ce document unique (« ${docNames[0]} ») est la source directe de travail : ne demande JAMAIS à l'étudiant de confirmer s'il veut travailler dessus.` : ''}`;
       }
 
       const isContinuation = Boolean(
@@ -5091,8 +5120,43 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           : (aiResult.response || aiResult.chat_response || rawResponseText);
         const cleaned = cleanChatText(candidateText);
         fullResponseText = stripAiReasoningScratchpad(cleaned) || "✨ Votre demande a été traitée avec succès.";
+
+        // FILET DE SÉCURITÉ D'ORCHESTRATION POST-RÉPONSE :
+        // Si les agents n'avaient pas encore été lancés en amont (ex: faute de frappe inédite ou formulation libre)
+        // MAIS que l'IA sélectionnée a compris qu'il s'agit d'une demande de création (via [LANCER_AGENTS: ...] ou en annonçant la génération dans "Mes Créations"),
+        // on déclenche immédiatement les agents en arrière-plan !
+        const agentTagMatch = fullResponseText.match(/\[LANCER_AGENTS\s*:\s*([^\]]+)\]/i);
+        if (agentTagMatch) {
+          fullResponseText = fullResponseText.replace(/\[LANCER_AGENTS\s*:\s*[^\]]+\]/gi, '').trim();
+        }
+        const aiAnnouncedGeneration = Boolean(
+          agentTagMatch ||
+          /(?:en\s+cours\s+de\s+g[eé]n[eé]ration|lance\s+(?:imm[eé]diatement\s+)?la\s+(?:conception|cr[eé]ation|g[eé]n[eé]ration)|dans\s+(?:ton|votre|l['’])?\s*(?:onglet|menu|espace)\s*["«*]*Mes\s+Cr[eé]ations)/i.test(fullResponseText)
+        );
+        if (!hasDispatchedAgents && hasEducationalContext && !needsMultiDocClarification && aiAnnouncedGeneration) {
+          let postDetectedFormats: AiCreationType[] = [];
+          if (agentTagMatch && agentTagMatch[1]) {
+            const rawTokens = agentTagMatch[1].split(/[,;|]+/).map(s => s.trim()).filter(Boolean);
+            for (const tok of rawTokens) {
+              const fromTok = detectAllCreationFormats(tok, undefined, undefined);
+              if (fromTok.length > 0) {
+                postDetectedFormats.push(...fromTok);
+              } else {
+                postDetectedFormats.push(normalizeCreationType(tok) as AiCreationType);
+              }
+            }
+          }
+          if (postDetectedFormats.length === 0) {
+            postDetectedFormats = detectAllCreationFormats(`${userText}\n${fullResponseText}`, undefined, convBaseMessages);
+          }
+          if (postDetectedFormats.length === 0) {
+            postDetectedFormats = ['resume'];
+          }
+          dispatchAgentsForFormats(postDetectedFormats);
+        }
+
         // Si aucun agent de création ne tourne en arrière-plan, s'assurer que l'écran d'attente est au repos
-        if (orchestratorMode !== 'agents_launched' && aiBackgroundManager.getRunningCount() === 0 && aiBackgroundManager.getQueuedCount() === 0) {
+        if (!hasDispatchedAgents && aiBackgroundManager.getRunningCount() === 0 && aiBackgroundManager.getQueuedCount() === 0) {
           window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCreation: false, resetToPrompts: false } }));
         }
       }
@@ -5625,7 +5689,15 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           </div>
         ) : (
           messages
-            .filter(msg => !(msg.sender === 'ai' && (!msg.text || !msg.text.trim()) && !msg.isError))
+            .filter(msg => {
+              if (String(msg.id || '').startsWith('ai-bg-') || String(msg.id || '').startsWith('agent-')) return false;
+              if (msg.sender === 'ai' && !msg.isError) {
+                const raw = String(msg.text || '').trim();
+                if (!raw) return false;
+                if (!msg.isStreaming && !cleanChatText(stripAiReasoningScratchpad(raw)).trim()) return false;
+              }
+              return true;
+            })
             .map(msg => (
             <div key={msg.id} className="w-full shrink-0">
               {msg.sender === 'user' ? (
