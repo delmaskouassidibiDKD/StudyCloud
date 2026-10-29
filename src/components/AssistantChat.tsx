@@ -1599,9 +1599,9 @@ RÈGLES CRUCIALES POUR LES CARTES MÉMOIRES :
   "creation_title": "${title}",
   "chat_response": "Fiche de synthèse et révision prête !",
   "creation_data": {
-    "title": "${title}",
-    "theme": "${docName}",
-    "overview": "Synthèse globale approfondie (2 à 3 paragraphes denses) expliquant l'objectif fondamental du cours, le contexte scientifique et les compétences clés ciblées.",
+    "title": "Titre thématique valorisant du cours (ex: Filtres Analogiques - ne JAMAIS mettre de nom de fichier avec .pdf)",
+    "theme": "Discipline ou Thème précis (ex: Électronique Analogique)",
+    "overview": "Synthèse globale approfondie (2 à 3 paragraphes denses) expliquant l'objectif fondamental du cours, le contexte scientifique et les compétences clés ciblées (INTERDICTION FORMELLE de mentionner des phrases méta comme 'L'étudiant a dit...' ou 'Le système me demande...').",
     "key_definitions": [
       { "concept": "Nom exact du concept", "definition": "Définition complète, rigoureuse et explication des subtilités", "objective": "Rôle concret et application dans le cours/TD" }
     ],
@@ -3811,7 +3811,29 @@ ${agentPerception.slice(0, 30000)}
 
     const normTypeEarly = normalizeCreationType(params.explicitToolType);
     const formatDisplayTitle = CREATION_NAME_MAP[normTypeEarly] || CREATION_FORMAT_LABELS[normTypeEarly] || normTypeEarly;
-    const agentExplicitPrompt = `Conçois immédiatement le module interactif complet, exhaustif et d'une richesse académique impressionnante de type "${normTypeEarly}" (${formatDisplayTitle}) intitulé "${params.creationTitle}" sur ${params.mainDocName ? `le document « ${params.mainDocName} »` : `le sujet : ${params.userText}`}. Exploite l'intégralité du document (tous les chapitres, toutes les formules en LaTeX avec \\dfrac{}{}, la logique profonde, les démonstrations, toutes les zones d'ombre/pièges d'examen et les TD). Consigne de l'étudiant : "${params.userText}". Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normTypeEarly}" entouré de \`\`\`json et \`\`\`.`;
+
+    const isPurelyConversational = /^(?:merci|ok|d['’]?accord|bonjour|salut|super|merci\s+beaucoup|mercii+|tr[eè]s\s+bien|parfait|cool|yes|oui)\s*[!.?]*$/i.test((params.userText || '').trim());
+    const studentInstructionPrompt = (!isPurelyConversational && params.userText && params.userText.trim().length > 3 && !params.userText.toLowerCase().includes('lancer_agents'))
+      ? `Consigne spécifique de l'étudiant : "${params.userText.trim()}".`
+      : '';
+
+    // Nettoyer le titre pour qu'il soit un vrai thème académique et pas un nom de fichier brut
+    const cleanDocTitle = (params.mainDocName || '')
+      .replace(/\.(?:pdf|docx|pptx|txt|xlsx)\b/gi, '')
+      .replace(/\s*\(\d+\)/g, '')
+      .replace(/[_]/g, ' ')
+      .replace(/^CH(?:\s*[0-9IVXLCDM]+)?\s*[:\s\-–—]\s*/i, '')
+      .replace(/^CHAPITRE\s*[0-9IVXLCDM]+\s*[:\s\-–—]\s*/i, '')
+      .trim();
+    const effectiveThemeTitle = cleanDocTitle && cleanDocTitle.length > 2 ? cleanDocTitle : 'Cours et Synthèse';
+
+    const agentExplicitPrompt = `Conçois immédiatement le module interactif complet, exhaustif et d'une richesse académique impressionnante de type "${normTypeEarly}" (${formatDisplayTitle}) sur le thème « ${effectiveThemeTitle} » ${params.mainDocName ? `(document source : « ${params.mainDocName} »)` : ''}.
+Exploite l'intégralité du contenu (tous les chapitres, toutes les formules en LaTeX avec \\dfrac{}{}, la logique profonde, les démonstrations, toutes les zones d'ombre/pièges d'examen et les TD).
+${studentInstructionPrompt}
+CONSIGNES STRICTES DE RÉDACTION :
+1. LE TITRE ('title') ET LE THÈME ('theme') DOIVENT ÊTRE LE VRAI THÈME DU COURS (ex: "Filtres Analogiques", "Diagrammes de Bode"), JAMAIS un nom de fichier brut avec extension .pdf ou parenthèses (1).
+2. INTERDICTION FORMELLE DE RÉDIGER DU TEXTE MÉTA : Ne commence JAMAIS l'overview par des phrases comme "L'étudiant a dit...", "Le système me demande...", "J'ai conçu...". Rédige DIRECTEMENT la synthèse pédagogique pour l'étudiant.
+Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normTypeEarly}" entouré de \`\`\`json et \`\`\`.`;
 
     const chatHistory = [
       { role: 'system', content: systemContent },
@@ -5460,10 +5482,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         if (agentTagMatch) {
           fullResponseText = fullResponseText.replace(/\[LANCER_AGENTS\s*:\s*[^\]]+\]/gi, '').trim();
         }
-        const aiAnnouncedGeneration = Boolean(
-          agentTagMatch ||
-          /(?:en\s+cours\s+de\s+g[eé]n[eé]ration|lance\s+(?:imm[eé]diatement\s+)?la\s+(?:conception|cr[eé]ation|g[eé]n[eé]ration)|dans\s+(?:ton|votre|l['’])?\s*(?:onglet|menu|espace)\s*["«*]*Mes\s+Cr[eé]ations)/i.test(fullResponseText)
-        );
+        const isPurelyConversationalUser = /^(?:merci|ok|d['’]?accord|bonjour|salut|super|merci\s+beaucoup|mercii+|tr[eè]s\s+bien|parfait|cool|yes|oui)\s*[!.?]*$/i.test((userText || '').trim());
+        const aiAnnouncedGeneration = Boolean(agentTagMatch) && !isPurelyConversationalUser;
         if (!hasDispatchedAgents && hasEducationalContext && !needsMultiDocClarification && aiAnnouncedGeneration) {
           let postDetectedFormats: AiCreationType[] = [];
           if (agentTagMatch && agentTagMatch[1]) {
@@ -5477,8 +5497,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
               }
             }
           }
-          if (postDetectedFormats.length === 0) {
-            postDetectedFormats = detectAllCreationFormats(userText, undefined, convBaseMessages);
+          if (postDetectedFormats.length === 0 && !isPurelyConversationalUser) {
+            postDetectedFormats = detectAllCreationFormats(userText, undefined, undefined);
           }
           // Déduplication stricte des formats pour ne jamais lancer deux fois la même création ni ajouter de format non demandé
           const uniquePostFormats: AiCreationType[] = [];

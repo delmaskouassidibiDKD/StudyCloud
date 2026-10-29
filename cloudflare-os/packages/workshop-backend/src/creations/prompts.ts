@@ -282,9 +282,9 @@ RÈGLE FORMAT : FICHE DE RÉSUMÉ & SYNTHÈSE DE COURS ('resume')
 
 - Format JSON strict dans 'creation_data' :
 {
-  "title": "Titre Officiel et Exhaustif du Cours",
-  "theme": "Domaine d'Étude & Discipline Précise",
-  "overview": "Synthèse globale approfondie posant le cadre conceptuel, les hypothèses physiques, les objectifs pédagogiques et les enjeux théoriques (3 à 5 paragraphes denses et limpides)...",
+  "title": "Titre Thématique et Académique du Cours (ex: Filtres Analogiques - ZÉRO nom de fichier avec .pdf ou code brut)",
+  "theme": "Discipline ou Domaine d'Étude Précis (ex: Électronique Analogique)",
+  "overview": "Synthèse globale approfondie posant le cadre conceptuel, les hypothèses physiques, les objectifs pédagogiques et les enjeux théoriques (3 à 5 paragraphes denses et limpides - INTERDICTION FORMELLE d'écrire des phrases méta comme 'L'étudiant a dit...' ou 'Le système me demande...')...",
   "sections": [
     {
       "number": 1,

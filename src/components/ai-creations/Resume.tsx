@@ -33,6 +33,58 @@ interface ResumeProps {
   sourceFileName?: string;
 }
 
+function cleanDisplayThemeTitle(titleCandidate: string, themeCandidate?: string): string {
+  let cleaned = (titleCandidate || '').trim();
+  cleaned = cleaned.replace(/^Fiche de R[ée]sum[ée]\s*:\s*/i, '');
+  cleaned = cleaned.replace(/\.(?:pdf|docx|pptx|txt|xlsx|png|jpg|jpeg)\b/gi, '');
+  cleaned = cleaned.replace(/\s*\(\d+\)/g, ''); // supprime (1), (2), (1) (1)
+  cleaned = cleaned.replace(/[_]/g, ' '); // remplace les underscores par des espaces
+
+  // Si themeCandidate est disponible et n'est pas un nom de fichier brut
+  if (themeCandidate && typeof themeCandidate === 'string') {
+    let cleanTheme = themeCandidate.trim();
+    cleanTheme = cleanTheme.replace(/\.(?:pdf|docx|pptx|txt)\b/gi, '');
+    cleanTheme = cleanTheme.replace(/\s*\(\d+\)/g, '');
+    cleanTheme = cleanTheme.replace(/[_]/g, ' ');
+    if (cleanTheme && cleanTheme.length > 3 && !/\b(?:pdf|docx)\b/i.test(cleanTheme)) {
+      if (/^CH\s*[0-9IVXLCDM]+\s+/i.test(cleaned) || cleaned.length < 5) {
+        return cleanTheme.charAt(0).toUpperCase() + cleanTheme.slice(1);
+      }
+    }
+  }
+
+  // Nettoyer les préfixes techniques comme "CH IV ", "CHAPITRE 4 "
+  cleaned = cleaned.replace(/^CH(?:\s*[0-9IVXLCDM]+)?\s*[:\s\-–—]\s*/i, '');
+  cleaned = cleaned.replace(/^CHAPITRE\s*[0-9IVXLCDM]+\s*[:\s\-–—]\s*/i, '');
+  cleaned = cleaned.replace(/^TD\s*[0-9IVXLCDM]*\s*[:\s\-–—]\s*/i, '');
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+  // Remplacements ciblés pour les sujets courants
+  if (/^filtres?$/i.test(cleaned)) {
+    return 'Filtres Analogiques';
+  }
+
+  if (!cleaned || cleaned.length < 3) {
+    return (themeCandidate && themeCandidate.length > 3 && !/\.pdf/i.test(themeCandidate)) ? themeCandidate : 'Fiche de Synthèse & Révision';
+  }
+
+  // Si tout est en majuscules (ex: "FILTRES ET CIRCUITS"), convertir en casse de titre
+  if (cleaned === cleaned.toUpperCase() && cleaned.length > 3) {
+    cleaned = cleaned.toLowerCase().replace(/(?:^|\s)\S/g, a => a.toUpperCase());
+  }
+
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+function cleanOverviewText(text?: string): string {
+  if (!text) return '';
+  let cleaned = text;
+  cleaned = cleaned.replace(/^L['’]étudiant\s+a\s+dit\s+["«][^"»]+["»]\s+et\s+le\s+système\s+me\s+demande\s+de\s+créer[^\n.—–—]*[—–—.:\n]*/i, '');
+  cleaned = cleaned.replace(/^L['’]étudiant\s+(?:souhaite|veut|demande|a\s+demandé)[^\n.—–—]*[—–—.:\n]*/i, '');
+  cleaned = cleaned.replace(/^(?:Le\s+système\s+me\s+demande\s+de\s+créer[^\n.—–—]*[—–—.:\n]*)/i, '');
+  return cleaned.trim();
+}
+
 function cleanFormulaLatex(latex?: any): string {
   if (!latex) return '';
   const str =
@@ -446,13 +498,22 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       }
     }
 
+    safeTitle = cleanDisplayThemeTitle(safeTitle, safeTheme);
+
     const rawOverview =
       raw?.overview ||
       (typeof raw?.summary === 'string' ? raw.summary : '') ||
       raw?.description ||
       '';
-    const isCompanion = typeof rawOverview === 'string' && /^(?:j'ai\s+con[çc]u|j'ai\s+cr[ée][ée]|voici\s+votre|✨|\*\(Le calcul)/i.test(rawOverview.trim());
-    const safeOverview = isCompanion ? '' : rawOverview;
+    let safeOverview = typeof rawOverview === 'string' ? rawOverview : '';
+    // Nettoyer les phrases parasites méta (ex: "L'étudiant a dit 'MERCI' et le système me demande de créer...")
+    safeOverview = safeOverview
+      .replace(/^L['’]étudiant\s+a\s+dit\s+["«][^"»]+["»][^:.\n]*[:.\n]*/i, '')
+      .replace(/^L['’]étudiant\s+(?:souhaite|veut|demande)[^:.\n]*[:.\n]*/i, '')
+      .replace(/^(?:Le\s+système\s+me\s+demande\s+de\s+créer[^:.\n]*[:.\n]*)/i, '')
+      .trim();
+    const isCompanion = /^(?:j'ai\s+con[çc]u|j'ai\s+cr[ée][ée]|voici\s+votre|✨|\*\(Le calcul)/i.test(safeOverview.trim());
+    if (isCompanion) safeOverview = '';
 
     // 1. Notions Clés & Définitions - Normalisation ultra-défensive
     const candidateDefs = Array.isArray(raw?.key_definitions)
@@ -1113,44 +1174,24 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
           id="resume-document-content"
           className="w-full max-w-4xl bg-white text-stone-900 shadow-md sm:shadow-lg border border-stone-200/80 rounded-2xl sm:rounded-3xl p-6 sm:p-10 md:p-14 space-y-7 sm:space-y-8 print:shadow-none print:border-none print:p-0 print:max-w-none print:rounded-none font-sans"
         >
-          {/* En-tête : Titre en violet profond à gauche, Stamp / Métadonnées de fiche à droite */}
-          <header className="flex flex-col sm:flex-row items-start justify-between gap-4 pb-4 border-b border-stone-100">
-            <div className="space-y-1.5 flex-1 min-w-0">
-              <h1 className="text-2xl sm:text-3xl md:text-[32px] font-extrabold text-[#581c87] tracking-tight leading-tight">
+          {/* En-tête : Titre centré, encadré avec élégance, pas grand et sans nom de fichier brut */}
+          <header className="w-full flex flex-col items-center justify-center text-center pb-5 border-b border-stone-100">
+            <div className="inline-flex items-center justify-center px-6 sm:px-8 py-2 sm:py-2.5 rounded-2xl border-2 border-purple-200/90 bg-purple-50/70 shadow-2xs max-w-xl">
+              <h1 className="text-base sm:text-lg md:text-xl font-black text-[#581c87] tracking-tight leading-snug">
                 <MathText text={docTitle} inline={true} />
               </h1>
-              {docTheme && docTheme !== docTitle && (
-                <p className="text-xs sm:text-sm font-semibold text-stone-500">
-                  <MathText text={docTheme} inline={true} />
-                </p>
-              )}
             </div>
-
-            <div className="shrink-0 text-left sm:text-right w-full sm:w-auto pt-1 sm:pt-0 border-t sm:border-t-0 border-stone-100 sm:border-0 flex sm:flex-col justify-between sm:justify-start items-center sm:items-end">
-              <div>
-                <div className="text-xs sm:text-sm font-black tracking-wider uppercase text-stone-900">
-                  FICHE {ficheNum}
-                </div>
-                <div className="text-xs sm:text-sm text-purple-700 font-semibold truncate max-w-[160px] sm:max-w-[220px]">
-                  {subjectLabel}
-                </div>
-              </div>
-              <div className="hidden sm:block w-20 sm:w-24 border-t border-purple-200 my-1 ml-auto" />
-              <div className="text-right">
-                <div className="text-[10px] uppercase tracking-wider text-stone-400 font-semibold">
-                  Niveau
-                </div>
-                <div className="text-xs sm:text-sm font-bold text-stone-800">
-                  {levelLabel}
-                </div>
-              </div>
-            </div>
+            {docTheme && docTheme !== docTitle && !/\.(?:pdf|docx|txt)/i.test(docTheme) && (
+              <p className="text-xs sm:text-sm font-semibold text-stone-500 mt-2">
+                <MathText text={docTheme} inline={true} />
+              </p>
+            )}
           </header>
 
           {/* Synthèse globale / Vue d'ensemble rédigée directement sur le fond de la page */}
-          {docOverview && (
+          {cleanOverviewText(docOverview) && (
             <div className="text-stone-700 text-sm sm:text-base leading-relaxed border-l-2 border-purple-300 pl-3.5 py-0.5">
-              <MathText text={docOverview} />
+              <MathText text={cleanOverviewText(docOverview)} />
             </div>
           )}
 
