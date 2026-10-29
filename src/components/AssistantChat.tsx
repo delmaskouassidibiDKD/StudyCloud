@@ -752,13 +752,13 @@ function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: numbe
     ]);
   }
 
-  // 3. Carte Mentale 2 (Conceptuelle)
-  if (normType.includes('carte-mentale-2') || normType.includes('mindmap2') || /(carte mentale 2|carte conceptuelle|mindmap 2)/i.test(cleanPrompt)) {
+  // 3. Carte Conceptuelle (carte-mentale-2)
+  if (normType.includes('carte-mentale-2') || normType.includes('mindmap2') || /(carte conceptuelle)/i.test(cleanPrompt)) {
     return pickReassuringStep([
       "J'analyse les piliers et relations conceptuelles de votre cours...",
       "Je structure les concepts en blocs hiérarchiques et connecteurs...",
       "Je relie les notions maîtresses pour une vue d'ensemble limpide...",
-      "Votre carte mentale 2 (conceptuelle) est bientôt prête..."
+      "Votre carte conceptuelle est bientôt prête..."
     ]);
   }
 
@@ -1075,8 +1075,8 @@ const CREATION_FORMAT_LABELS: Record<string, string> = {
   'questionnaire-test': 'Questionnaire Test noté avec chronomètre',
   'carte-mentale': 'Carte Mentale arborescente',
   'mindmap': 'Carte Mentale arborescente',
-  'carte-mentale-2': 'Carte Mentale 2 (Conceptuelle)',
-  'mindmap2': 'Carte Mentale 2 (Conceptuelle)',
+  'carte-mentale-2': 'Carte Conceptuelle',
+  'mindmap2': 'Carte Conceptuelle',
   'carte-memoire': 'Cartes Mémoires (Flashcards)',
   'flashcards': 'Cartes Mémoires (Flashcards)',
   'resume': 'Fiche de Résumé structurée',
@@ -1099,8 +1099,8 @@ const CREATION_NAME_MAP: Record<string, string> = {
   'test': 'Questionnaire Test',
   'carte-mentale': 'Carte Mentale',
   'mindmap': 'Carte Mentale',
-  'carte-mentale-2': 'Carte Mentale 2',
-  'mindmap2': 'Carte Mentale 2',
+  'carte-mentale-2': 'Carte Conceptuelle',
+  'mindmap2': 'Carte Conceptuelle',
   'carte-memoire': 'Cartes Mémoires',
   'flashcards': 'Cartes Mémoires',
   'resume': 'Fiche de Résumé',
@@ -1121,10 +1121,10 @@ function getSuggestedPromptsForFormat(formatType: string): string[] {
   const norm = (formatType || '').toLowerCase().replace(/_/g, '-');
   if (norm.includes('carte-mentale-2') || norm.includes('mindmap2')) {
     return [
-      'Carte Mentale 2 sur les Fonctions et Dérivées en Mathématiques',
-      'Carte Mentale 2 sur l\'Architecture des Systèmes Informatiques',
-      'Carte Mentale 2 sur les Réactions d\'Oxydoréduction en Chimie',
-      'Carte Mentale 2 sur les Structures de Données et Graphes'
+      'Carte Conceptuelle sur les Fonctions et Dérivées en Mathématiques',
+      'Carte Conceptuelle sur l\'Architecture des Systèmes Informatiques',
+      'Carte Conceptuelle sur les Réactions d\'Oxydoréduction en Chimie',
+      'Carte Conceptuelle sur les Structures de Données et Graphes'
     ];
   }
   if (norm.includes('carte-mentale') || norm.includes('mindmap')) {
@@ -1742,19 +1742,19 @@ export function hasExplicitCreationIntent(userText: string): boolean {
   if (!t) return false;
 
   // 1. Verbes d'action impératifs ou déclaratifs de création explicite
-  // Ex: "crée", "génère", "fais-moi", "conçois", "prépare", "fabrique", "construis", "produis", "peux-tu me créer", "je veux créer"
-  const hasStrongCreationCommand = /\b(?:cr[eé][eé]r?|cr[eé]ez|g[eé]n[eé]r(?:er|e|ez)?|fais(?:-moi)?|fait(?:-moi)?|faites(?:-moi)?|con[çc]ois|conception|construi[st]|construisez|fabrique|fabriquer|produi[st]|produisez|pr[eé]pare(?:-moi)?|pr[eé]parez(?:-moi)?|lance(?:-moi)?|lancez(?:-moi)?|r[eé]dige(?:-moi)?|r[eé]digez(?:-moi)?)\b/i.test(t) ||
-    /\b(?:peux-tu|pourrais-tu|merci\s+de)\s+(?:me\s+)?(?:faire|cr[eé]er|g[eé]n[eé]rer|pr[eé]parer|concevoir|construire|fabriquer|produire|sortir|pondre)\b/i.test(t) ||
-    /\b(?:je\s+(?:veux|voudrais|souhaite|aimerais)|besoin\s+de)\s+(?:cr[eé]er|g[eé]n[eé]rer|faire|avoir)\s+(?:un|une|des|\d+)\b/i.test(t);
+  // Ex: "crée", "génère", "fais-moi", "conçois", "prépare", "fabrique", "construis", "produis", "peux-tu me créer", "je veux créer", "donne-moi"
+  const hasStrongCreationCommand = /\b(?:cr[eé][eé]r?|cr[eé]ez|g[eé]n[eé]r(?:er|e|ez)?|fais(?:-moi)?|fait(?:-moi)?|faites(?:-moi)?|con[çc]ois|conception|construi[st]|construisez|fabrique|fabriquer|produi[st]|produisez|pr[eé]pare(?:-moi)?|pr[eé]parez(?:-moi)?|lance(?:-moi)?|lancez(?:-moi)?|r[eé]dige(?:-moi)?|r[eé]digez(?:-moi)?|donne(?:-moi)?|propose(?:-moi)?)\b/i.test(t) ||
+    /\b(?:peux-tu|pourrais-tu|merci\s+de)\s+(?:me\s+)?(?:faire|cr[eé]er|g[eé]n[eé]rer|pr[eé]parer|concevoir|construire|fabriquer|produire|sortir|pondre|donner)\b/i.test(t) ||
+    /\b(?:je\s+(?:veux|voudrais|souhaite|aimerais)|besoin\s+de)\s+(?:(?:cr[eé]er|g[eé]n[eé]rer|faire|avoir)\s+)?(?:un|une|des|\d+)\b/i.test(t);
 
   // 2. Formulations courtes directes débutant par une quantité ou un article + support
-  // Ex: "2 QCM sur le chapitre", "une carte mentale", "3 flashcards", "un résumé complet"
-  const isDirectCreationPhrase = /^(?:un|une|des|\d+|deux|trois|quatre)\s+(?:nouvelles?\s+|autres?\s+)?(?:cartes?\s*mentales?|mind\s*-?maps?|qcms?|questionnaires?|flashcards?|cartes?\s*m[eé]moires?|r[eé]sum[eé]s?|fiches?\s+de\s+r[eé]visions?|exercices?|devoirs?|vrai\s+ou\s+faux)\b/i.test(t);
+  // Ex: "2 QCM sur le chapitre", "une carte mentale", "3 flashcards", "un résumé complet", "des QCM"
+  const isDirectCreationPhrase = /^(?:un|une|des|\d+|deux|trois|quatre)\s+(?:nouvelles?\s+|autres?\s+)?(?:cartes?\s*mentales?|cartes?\s*conceptuelles?|mind\s*-?maps?|mind\s*maps?|qcms?|q\.?c\.?m\.?|questionnaires?|flashcards?|cartes?\s*m[eé]moires?|r[eé]sum[eé]s?|fiches?\s+de\s+r[eé]visions?|exercices?|devoirs?|vrai\s+ou\s+faux)\b/i.test(t);
 
   // 3. Questions de discussion, compréhension, correction ou analyse (JAMAIS une création sauf si commande forte de création)
   // Ex: "C'est quoi une carte mentale ?", "Explique la carte mentale", "Dans le QCM pourquoi...", "Je n'ai pas compris le résumé"
-  const isDiscussionOrMetaQuery = /^(?:pourquoi|comment|qu['’]est-ce|quand|qui|o[uù]|est-ce|peux-tu\s+m['’]expliquer|peux-tu\s+m['’]aider|explique|aide-moi\s+[àa]\s+(?:comprendre|r[eé]soudre)|c['’]est\s+quoi|dis-moi|je\s+ne\s+comprends\s+pas|r[eé]sous|d[eé]taille|salut|bonjour|coucou|hello|que\s+penses-tu|donne\s+ton\s+avis|analyse|v[eé]rifie|corrige)\b/i.test(t) ||
-    /\b(?:dans\s+(?:la|le|mon|ton|cette|ce)|sur\s+(?:la|le|mon|ton|cette|ce)|parle(?:-moi)?\s+de|lis\s+(?:la|le)|corrige\s+(?:la|le|mon|ton)|avis\s+sur|que\s+veut\s+dire|signifie|o[uù]\s+est|retrouver|afficher|voir\s+(?:la|le|mon|ton))\b/i.test(t);
+  const isDiscussionOrMetaQuery = /^(?:pourquoi|comment|qu['’]est-ce|quand|qui|o[uù]|est-ce\s+que|peux-tu\s+m['’]expliquer|peux-tu\s+m['’]aider|explique|aide-moi\s+[àa]\s+(?:comprendre|r[eé]soudre)|c['’]est\s+quoi|dis-moi|je\s+ne\s+comprends\s+pas|r[eé]sous|d[eé]taille|salut|bonjour|coucou|hello|que\s+penses-tu|donne\s+ton\s+avis|analyse|v[eé]rifie|corrige)\b/i.test(t) ||
+    /\b(?:parle(?:-moi)?\s+de|lis\s+(?:la|le)|corrige\s+(?:la|le|mon|ton)|avis\s+sur|que\s+veut\s+dire|signifie|o[uù]\s+est|retrouver|afficher|voir\s+(?:la|le|mon|ton))\b/i.test(t);
 
   if (isDiscussionOrMetaQuery && !hasStrongCreationCommand) {
     return false;
@@ -1817,48 +1817,78 @@ export function detectAllCreationFormats(
   const matchedEntries: Array<{ type: AiCreationType; index: number; count: number }> = [];
 
   const extractQuantityBefore = (matchIndex: number): number => {
-    const prefix = t.slice(Math.max(0, matchIndex - 22), matchIndex);
-    const numMatch = prefix.match(/\b(\d+|deux|trois|quatre|cinq)\s+(?:petits?\s+|nouveaux?\s+|nouvelles?\s+|autres?\s+)?$/i);
+    // Analyse des 28 caractères précédant immédiatement le début du mot-clé
+    const prefix = t.slice(Math.max(0, matchIndex - 28), matchIndex);
+
+    // 1. Si le chiffre est un numéro de liste / énumération (ex: "1.", "2.", "1)", "2)", "1 -", "2 -", "n°1", "n°2"), c'est un rang, JAMAIS une quantité !
+    if (/(?:^|[\s\n])(?:\d+|[ivx]+|[a-z])\s*[\.\)\-:]\s*$/i.test(prefix)) {
+      return 1;
+    }
+
+    // 2. Si le chiffre qualifie un terme générique global (ex: "2 créations :", "2 supports :", "2 formats :", "2 choses :", "2 exemples :"), ce n'est PAS un multiplicateur individuel
+    if (/\b(?:\d+|deux|trois|quatre|cinq)\s+(?:cr[eé]ations?|supports?|formats?|choses?|types?|fichiers?|modules?|exemples?)\b/i.test(prefix)) {
+      return 1;
+    }
+
+    // 3. Correspondance d'un nombre immédiat qualifiant ce format spécifique (ex: "2 ", "deux ", "3 nouveaux ")
+    const numMatch = prefix.match(/\b(2|3|4|5|deux|trois|quatre|cinq)\s+(?:petits?\s+|nouveaux?\s+|nouvelles?\s+|autres?\s+)?$/i);
     if (!numMatch) return 1;
+
     const raw = numMatch[1].toLowerCase();
     if (raw === 'deux' || raw === '2') return 2;
     if (raw === 'trois' || raw === '3') return 3;
     if (raw === 'quatre' || raw === '4') return 4;
     if (raw === 'cinq' || raw === '5') return 5;
-    const parsed = parseInt(raw, 10);
-    return (!isNaN(parsed) && parsed >= 1 && parsed <= 5) ? parsed : 1;
+    return 1;
   };
 
   const addFormat = (type: AiCreationType, regex: RegExp) => {
-    const m = regex.exec(t);
-    if (m) {
-      matchedEntries.push({
-        type,
-        index: m.index,
-        count: extractQuantityBefore(m.index),
-      });
+    const globalRegex = new RegExp(regex.source, regex.flags.includes('g') ? regex.flags : regex.flags + 'g');
+    let m: RegExpExecArray | null;
+    let found = false;
+
+    while ((m = globalRegex.exec(t)) !== null) {
+      const idx = m.index;
+      const count = extractQuantityBefore(idx);
+
+      // Si le format a déjà été détecté dans ce même message, on évite les doublons accidentels
+      const existing = matchedEntries.find(e => e.type === type);
+      if (existing) {
+        if (count > existing.count) {
+          existing.count = count;
+        }
+      } else {
+        matchedEntries.push({
+          type,
+          index: idx,
+          count,
+        });
+      }
+      found = true;
     }
+    return found;
   };
 
-  // 1. Vrai ou Faux Test vs Vrai ou Faux
+  // 1. Vrai ou Faux Test vs Vrai ou Faux (SEULEMENT sur demande explicite, JAMAIS sur simple mot "affirmations")
   if (/\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux\s+teste?s?|v\s*\/?\s*f\s+teste?s?|[eé]preuves?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)\b/i.test(t)) {
     addFormat('vrai-ou-faux-test', /\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux\s+teste?s?|v\s*\/?\s*f\s+teste?s?|[eé]preuves?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)\b/i);
-  } else if (/\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux|v\/f|affirmations?)\b/i.test(t)) {
-    addFormat('vrai-ou-faux', /\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux|v\/f|affirmations?)\b/i);
+  } else if (/\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux|v\/f|affirmations?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)\b/i.test(t)) {
+    addFormat('vrai-ou-faux', /\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux|v\/f|affirmations?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)\b/i);
   }
 
-  // 2. Questionnaire Test vs Questionnaire QCM
-  if (/\b(?:q[u]?estion+aires?\s+teste?s?|q\.?c\.?m\.?\s+teste?s?|quizz?\s+teste?s?|teste?s?\s+not[eé]s?|teste?s?\s+chronos?|[eé]preuves?\s+not[eé]es?)\b/i.test(t)) {
-    addFormat('questionnaire-test', /\b(?:q[u]?estion+aires?\s+teste?s?|q\.?c\.?m\.?\s+teste?s?|quizz?\s+teste?s?|teste?s?\s+not[eé]s?|teste?s?\s+chronos?|[eé]preuves?\s+not[eé]es?)\b/i);
-  } else if (/\b(?:q[u]?estion+aires?|quizz?|q\.?c\.?m\.?|teste?s?)\b/i.test(t)) {
-    addFormat('questionnaire', /\b(?:q[u]?estion+aires?|quizz?|q\.?c\.?m\.?|teste?s?)\b/i);
+  // 2. Questionnaire Test vs Questionnaire QCM (Détection exhaustive : QCM, QCMs, Quiz, Quizzes, Questionnaires, Choix Multiples)
+  if (/\b(?:q[u]?estion+aires?\s+teste?s?|q\.?c\.?m\.?s?\s+teste?s?|quizz?\s+teste?s?|teste?s?\s+not[eé]s?|teste?s?\s+chronos?|[eé]preuves?\s+(?:not[eé]es?|qcm|quizz?))\b/i.test(t)) {
+    addFormat('questionnaire-test', /\b(?:q[u]?estion+aires?\s+teste?s?|q\.?c\.?m\.?s?\s+teste?s?|quizz?\s+teste?s?|teste?s?\s+not[eé]s?|teste?s?\s+chronos?|[eé]preuves?\s+(?:not[eé]es?|qcm|quizz?))\b/i);
+  } else if (/\b(?:q\.?c\.?m\.?s?|quizz?|quizzes|q[u]?estion+aires?|questions?\s+[àa]\s+choix\s+multiples?|questions?\s+qcm|qcu)\b/i.test(t)) {
+    addFormat('questionnaire', /\b(?:q\.?c\.?m\.?s?|quizz?|quizzes|q[u]?estion+aires?|questions?\s+[àa]\s+choix\s+multiples?|questions?\s+qcm|qcu)\b/i);
   }
 
-  // 3. Carte Mentale 2 vs Carte Mentale
-  if (/\b(?:cartes?\s*mentale?s?\s*2|mind\s*-?\s*maps?\s*2|cartes?\s*conceptuelle?s?)\b/i.test(t)) {
-    addFormat('carte-mentale-2', /\b(?:cartes?\s*mentale?s?\s*2|mind\s*-?\s*maps?\s*2|cartes?\s*conceptuelle?s?)\b/i);
-  } else if (/\b(?:cartes?\s*mentale?s?|mind\s*-?\s*maps?|arborescences?|sch[eé]mas?\s*heuristiques?)\b/i.test(t)) {
-    addFormat('carte-mentale', /\b(?:cartes?\s*mentale?s?|mind\s*-?\s*maps?|arborescences?|sch[eé]mas?\s*heuristiques?)\b/i);
+  // 3. Carte Conceptuelle (carte-mentale-2) vs Carte Mentale arborescente (carte-mentale)
+  // Toute demande standard de carte mentale est 'carte-mentale' (jamais étiquetée '2')
+  if (/\b(?:cartes?\s*conceptuelle?s?|mind\s*-?\s*maps?\s*conceptuelle?s?|cartes?\s*mentale?s?\s*conceptuelle?s?)\b/i.test(t)) {
+    addFormat('carte-mentale-2', /\b(?:cartes?\s*conceptuelle?s?|mind\s*-?\s*maps?\s*conceptuelle?s?|cartes?\s*mentale?s?\s*conceptuelle?s?)\b/i);
+  } else if (/\b(?:cartes?\s*mentale?s?|mind\s*-?\s*maps?|mind\s*maps?|arborescences?|sch[eé]mas?\s*heuristiques?)\b/i.test(t)) {
+    addFormat('carte-mentale', /\b(?:cartes?\s*mentale?s?|mind\s*-?\s*maps?|mind\s*maps?|arborescences?|sch[eé]mas?\s*heuristiques?)\b/i);
   }
 
   // 4. Cartes Mémoires / Flashcards
@@ -1878,7 +1908,7 @@ export function detectAllCreationFormats(
 
   // 7. Document PDF
   if (/\b(?:documents?\s+pdf|polycopi[eé]s?|polycopies?|g[eé]n[eé]rer\s+un\s+pdf|cr[eé]er\s+un\s+pdf|faire\s+un\s+pdf|export\s+pdf)\b/i.test(t)) {
-    addFormat('pdf', /\b(?:documents?\s+pdf|polycopi[eé]s?|polycopies?|pdf)\b/i);
+    addFormat('pdf', /\b(?:documents?\s+pdf|polycopi[eé]s?|polycopies?|export\s+pdf)\b/i);
   }
 
   // 8. Exercices Écrits
@@ -1898,11 +1928,14 @@ export function detectAllCreationFormats(
     addFormat('resume', /\b(?:r[eé]sum[eé]s?|synth[eè]ses?)\b/i);
   }
 
-  // Trier selon l'ordre d'apparition dans le message de l'étudiant et déplier les quantités
+  // Trier selon l'ordre chronologique d'apparition dans le message de l'étudiant
   matchedEntries.sort((a, b) => a.index - b.index);
+
+  // Déplier les formats détectés en respectant scrupuleusement les quantités
   const detected: AiCreationType[] = [];
   for (const entry of matchedEntries) {
-    for (let c = 0; c < entry.count; c++) {
+    const qty = Math.min(Math.max(entry.count || 1, 1), 3);
+    for (let c = 0; c < qty; c++) {
       detected.push(entry.type);
     }
   }
@@ -2742,6 +2775,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const [isTyping, setIsTyping] = useState(false);
   const [isWaitingServer, setIsWaitingServer] = useState(false);
   const isChatRequestInFlightRef = useRef<boolean>(false);
+  const lastSendTimeRef = useRef<number>(0);
+  const lastSendTextRef = useRef<string>('');
   const [retryingMessageId, setRetryingMessageId] = useState<string | null>(null);
   const [aiActivityText, setAiActivityText] = useState<string>('Je réfléchis...');
   const activityTimerRef = useRef<any>(null);
@@ -4124,13 +4159,27 @@ ${agentPerception.slice(0, 30000)}
   };
 
   const sendMessage = async (textToSend: string, requestedTypeOverride?: string, options?: { isContinuation?: boolean; forceReanalysis?: boolean }) => {
-    if (!textToSend.trim()) return;
+    const userText = (textToSend || '').trim();
+    if (!userText) return;
+
+    // Protection anti-rebond et anti-doublon (empêche tout double lancement accidentel par double-clic ou répétition instantanée)
+    const now = Date.now();
+    if (isChatRequestInFlightRef.current) {
+      console.warn('[AssistantChat] Une requête est déjà en cours de traitement, envoi ignoré.');
+      return;
+    }
+    if (userText === lastSendTextRef.current && (now - lastSendTimeRef.current) < 1200) {
+      console.warn('[AssistantChat] Double soumission détectée dans un intervalle < 1200ms, envoi ignoré.');
+      return;
+    }
+    lastSendTimeRef.current = now;
+    lastSendTextRef.current = userText;
+    isChatRequestInFlightRef.current = true;
 
     // Fixer la conversation cible de manière immuable pour cette requête
     const targetConvId = currentConversationIdRef.current;
     const targetUserId = currentUserId;
 
-    const userText = textToSend.trim();
     const newUserMsgId = Date.now().toString();
     const newUserMsg: Message = { id: newUserMsgId, text: userText, sender: 'user' };
 
@@ -5159,7 +5208,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         // Si l'utilisateur a explicitement cliqué sur un bouton d'action ou demandé un module dans son message avec une véritable intention
         const explicitOrInferredType = explicitToolType || (hasExplicitCreationIntent(userText) ? (
           /vrai.*faux/i.test(userText) ? (/test/i.test(userText) ? 'vrai-ou-faux-test' : 'vrai-ou-faux') :
-            /questionnaire|quiz|qcm/i.test(userText) ? (/test/i.test(userText) ? 'questionnaire-test' : 'questionnaire') :
+            /(?:questionnaire|quiz|quizz|qcms?|q\.?c\.?m\.?|choix\s+multiples?)/i.test(userText) ? (/test/i.test(userText) ? 'questionnaire-test' : 'questionnaire') :
               /carte\s*mentale|mindmap/i.test(userText) ? 'carte-mentale' :
                 /flashcard|carte\s*m[ée]moire/i.test(userText) ? 'carte-memoire' :
                   /r[ée]sum[ée]|synth[èe]se/i.test(userText) ? 'resume' :
@@ -5202,7 +5251,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
       // Sécurité anti-création dans le vide pour TOUS les modèles IA (actuels et futurs) :
       if (creationParsed && (!allDocs || allDocs.length === 0) && !hasPromptSubject && !hasConversationContext) {
         creationParsed = null;
-        fullResponseText = `Pour que je puisse concevoir votre **création**, merci de me préciser sur quel cours ou sujet elle doit porter, ou de joindre votre fichier de cours (PDF, Word, photo d'exercice).\n\n[QUESTIONS_SUGGÉRÉES]\n- Questionnaire Test noté sur les Lois de Newton en Physique\n- Vrai ou Faux Test sur la Génétique et l'ADN en SVT\n- Carte Mentale 2 sur les Fonctions et Dérivées en Mathématiques\n- Devoir Complet d'examen officiel sur la Thermodynamique`;
+        fullResponseText = `Pour que je puisse concevoir votre **création**, merci de me préciser sur quel cours ou sujet elle doit porter, ou de joindre votre fichier de cours (PDF, Word, photo d'exercice).\n\n[QUESTIONS_SUGGÉRÉES]\n- Questionnaire Test noté sur les Lois de Newton en Physique\n- Vrai ou Faux Test sur la Génétique et l'ADN en SVT\n- Carte Conceptuelle sur les Fonctions et Dérivées en Mathématiques\n- Devoir Complet d'examen officiel sur la Thermodynamique`;
         window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCreation: false, resetToPrompts: true } }));
       }
       // RÈGLE ANTI-DÉTOURNEMENT POUR LES QUESTIONS CONVERSATIONNELLES OU D'OBSERVATION D'IMAGE :
@@ -5404,12 +5453,18 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             }
           }
           if (postDetectedFormats.length === 0) {
-            postDetectedFormats = detectAllCreationFormats(`${userText}\n${fullResponseText}`, undefined, convBaseMessages);
+            postDetectedFormats = detectAllCreationFormats(userText, undefined, convBaseMessages);
           }
-          if (postDetectedFormats.length === 0) {
-            postDetectedFormats = ['resume'];
+          // Déduplication stricte des formats pour ne jamais lancer deux fois la même création ni ajouter de format non demandé
+          const uniquePostFormats: AiCreationType[] = [];
+          for (const f of postDetectedFormats) {
+            if (!uniquePostFormats.includes(f)) {
+              uniquePostFormats.push(f);
+            }
           }
-          dispatchAgentsForFormats(postDetectedFormats);
+          if (uniquePostFormats.length > 0) {
+            dispatchAgentsForFormats(uniquePostFormats);
+          }
         }
 
         // Si aucun agent de création ne tourne en arrière-plan, s'assurer que l'écran d'attente est au repos
@@ -5651,7 +5706,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
   }, []);
 
   const handleSend = () => {
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || isChatRequestInFlightRef.current || isWaitingServer) return;
     sendMessage(inputValue);
   };
 

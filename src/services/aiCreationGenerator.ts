@@ -1335,7 +1335,7 @@ export function parseOrBuildAiCreation(
           if (Array.isArray(dataObj.columns) || Array.isArray(dataObj.piliers) || dataObj.noeud_central || Array.isArray(dataObj.cards)) {
             const rootLabel = sanitizeText(dataObj.root_title || dataObj.rootTitle || dataObj.noeud_central?.nom || dataObj.noeud_central?.label || dataObj.title || safeDocName);
             const defaultMmTitle = normType.includes('carte-mentale-2') || normType.includes('mindmap2')
-              ? `Carte Mentale 2 : ${safeDocName}`
+              ? `Carte Conceptuelle : ${safeDocName}`
               : `Carte Mentale : ${safeDocName}`;
             return {
               title: sanitizeText(parsed.creation_title || dataObj.title) || defaultMmTitle,
@@ -1350,7 +1350,7 @@ export function parseOrBuildAiCreation(
               : (Array.isArray(dataObj.branches) ? dataObj.branches : (Array.isArray(dataObj.columns) ? dataObj.columns : (Array.isArray(dataObj.nodes) ? dataObj.nodes : (Array.isArray(dataObj.children) ? dataObj.children : []))));
             const rootLabel = sanitizeText(root.label || root.title || dataObj.root_title || dataObj.title || safeDocName);
             const defaultMmTitle = normType.includes('carte-mentale-2') || normType.includes('mindmap2')
-              ? `Carte Mentale 2 : ${safeDocName}`
+              ? `Carte Conceptuelle : ${safeDocName}`
               : `Carte Mentale : ${safeDocName}`;
             return {
               title: sanitizeText(parsed.creation_title || dataObj.title) || defaultMmTitle,
@@ -1442,7 +1442,7 @@ export function parseOrBuildAiCreation(
     return { title: `Fiche de Résumé : ${safeDocName}`, content: parsedSummary };
   } else if (['carte-mentale', 'carte-mentale-2', 'mindmap'].includes(normType)) {
     const parsedMindMap = parseMindMapFromText(cleanText, safeDocName);
-    const title = (normType.includes('carte-mentale-2') || normType.includes('mindmap2')) ? `Carte Mentale 2 : ${safeDocName}` : `Carte Mentale : ${safeDocName}`;
+    const title = (normType.includes('carte-mentale-2') || normType.includes('mindmap2')) ? `Carte Conceptuelle : ${safeDocName}` : `Carte Mentale : ${safeDocName}`;
     return { title, content: parsedMindMap };
   } else if (['infographie', 'infographic'].includes(normType)) {
     const parsedInfographic = parseInfographicFromText(cleanText, safeDocName);

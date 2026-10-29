@@ -41,9 +41,9 @@ const CREATION_NAME_MAP: Record<string, string> = {
   'test': 'Questionnaire Test',
   'carte-mentale': 'Carte Mentale',
   'mindmap': 'Carte Mentale',
-  'carte-mentale-2': 'Carte Mentale 2',
-  'carte-mentale-conceptuelle': 'Carte Mentale 2',
-  'mindmap2': 'Carte Mentale 2',
+  'carte-mentale-2': 'Carte Conceptuelle',
+  'carte-mentale-conceptuelle': 'Carte Conceptuelle',
+  'mindmap2': 'Carte Conceptuelle',
   'carte-memoire': 'Cartes Mémoires',
   'flashcards': 'Cartes Mémoires',
   'resume': 'Fiche de Résumé',
@@ -594,7 +594,7 @@ export function RightMenu({
     },
     {
       id: 'carte-mentale-2',
-      title: 'Carte Mentale 2',
+      title: 'Carte Conceptuelle',
       badge: 'Conceptuelle',
       iconColor: '#0284c7',
       icon: (
@@ -610,8 +610,8 @@ export function RightMenu({
       ),
       toolType: 'carte-mentale-2',
       getPrompt: (doc) => doc
-        ? `Conçois une Carte Mentale 2 (Conceptuelle) modélisant l'architecture et les relations de « ${doc} » en blocs hiérarchiques et connecteurs.`
-        : "Conçois une Carte Mentale 2 (Conceptuelle) modélisant l'architecture et les relations clés en blocs hiérarchiques et connecteurs."
+        ? `Conçois une Carte Conceptuelle modélisant l'architecture et les relations de « ${doc} » en blocs hiérarchiques et connecteurs.`
+        : "Conçois une Carte Conceptuelle modélisant l'architecture et les relations clés en blocs hiérarchiques et connecteurs."
     },
     {
       id: 'carte-memoire',
