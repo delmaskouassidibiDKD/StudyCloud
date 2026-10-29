@@ -1219,7 +1219,7 @@ export default {
           )
         `).run().catch(() => {});
       } catch (e) {
-        logger.warn("Erreur création tables facturation IA D1", { error: e });
+        logger.warn("Erreur création tables facturation IA D1", { event: "ai.billing.tables_error", error: e });
       }
     }
 
@@ -1470,7 +1470,7 @@ export default {
     }
 
     // Endpoint officiel de discussion IA pour l'espace d'étude StudyCloud (Robot Rouge)
-    if (url.pathname === "/api/ai/chat" && req.method === "POST") {
+    if ((url.pathname === "/api/ai/chat" || url.pathname === "/api/ai/async-create") && req.method === "POST") {
       try {
         const body: any = await req.json().catch(() => ({}));
         const isAsync = Boolean(body.async || body.isBackground || body.runInBackground || url.pathname === "/api/ai/async-create");
@@ -1599,7 +1599,7 @@ export default {
               Date.now()
             ).run().catch(() => {});
           } catch (initD1Err) {
-            logger.warn("Pré-enregistrement D1 création async échoué", { error: initD1Err });
+            logger.warn("Pré-enregistrement D1 création async échoué", { event: "ai.creation.d1_init_error", error: initD1Err });
           }
         }
 
@@ -2216,7 +2216,7 @@ CONSIGNES STRICTES DE CONTINUATION :
               effectiveModelUsed
             ).run().catch(() => {});
           } catch (deductErr) {
-            logger.warn("Erreur mise à jour crédits D1", { error: deductErr });
+            logger.warn("Erreur mise à jour crédits D1", { event: "ai.billing.deduct_error", error: deductErr });
           }
         }
 
@@ -2384,7 +2384,7 @@ CONSIGNES STRICTES DE CONTINUATION :
         if (isAsync) {
           // OPTION 2 : Le worker répond en ~150ms au mobile et continue l'exécution + écriture D1 via ctx.waitUntil
           const bgPromise = executeGenerationAndPersist().catch(async (bgErr) => {
-            logger.error("Erreur génération arrière-plan ctx.waitUntil", { error: bgErr });
+            logger.error("Erreur génération arrière-plan ctx.waitUntil", { event: "ai.creation.bg_error", error: bgErr });
             if (db && creationId) {
               await db.prepare(`
                 UPDATE ai_generated_contents
