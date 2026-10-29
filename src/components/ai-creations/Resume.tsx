@@ -874,12 +874,72 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
     }
   };
 
+  const ficheNum = useMemo(() => {
+    const m = (docTitle + ' ' + (sourceFileName || '')).match(/(?:fiche|ch(?:apitre)?|chap|partie|td|le[çc]on|module)\s*(\d+)/i);
+    if (m && m[1]) {
+      const num = parseInt(m[1], 10);
+      return num < 10 ? `0${num}` : `${num}`;
+    }
+    return '01';
+  }, [docTitle, sourceFileName]);
+
+  const subjectLabel = useMemo(() => {
+    if (docTheme && docTheme !== docTitle) {
+      return docTheme.slice(0, 24);
+    }
+    const full = (docTitle + ' ' + (sourceFileName || '')).toLowerCase();
+    if (/filtre|circuit|elec|physique|bode|signal|aop|rlc|onde/i.test(full)) return 'Physique / Électronique';
+    if (/math|derivee|integrale|geometrie|algebre|fonction|probabilite/i.test(full)) return 'Mathématiques';
+    if (/economie|gestion|droit|commerce|pib|croissance/i.test(full)) return 'Économie';
+    if (/chimie|reaction|acide|base|oxydo/i.test(full)) return 'Chimie';
+    if (/svt|biologie|adn|cellule|mitose/i.test(full)) return 'SVT / Biologie';
+    return 'Synthèse de Cours';
+  }, [docTheme, docTitle, sourceFileName]);
+
+  const levelLabel = useMemo(() => {
+    const full = (docTitle + ' ' + (sourceFileName || '')).toLowerCase();
+    const match = full.match(/\b(terminale|prepa|licence\s*\d?|master\s*\d?|bts|dut)\b/i);
+    if (match) return match[1].charAt(0).toUpperCase() + match[1].slice(1);
+    return 'Terminale / Supérieur';
+  }, [docTitle, sourceFileName]);
+
+  const keyTakeaways = useMemo(() => {
+    if (parsedSummary.keyPoints && parsedSummary.keyPoints.length > 0) {
+      return parsedSummary.keyPoints;
+    }
+    const collected: string[] = [];
+    if (parsedSummary.sections && parsedSummary.sections.length > 0) {
+      for (const sec of parsedSummary.sections) {
+        if (Array.isArray(sec.points)) {
+          for (const p of sec.points) {
+            if (p && !collected.includes(p)) {
+              collected.push(p);
+            }
+          }
+        }
+      }
+    }
+    if (collected.length > 0) {
+      return collected.slice(0, 5);
+    }
+    if (parsedSummary.trapsAndTips && parsedSummary.trapsAndTips.length > 0) {
+      return parsedSummary.trapsAndTips.map(t => `${t.title ? `${t.title} : ` : ''}${t.content}`).slice(0, 4);
+    }
+    return [];
+  }, [parsedSummary]);
+
   const handlePrint = () => {
     window.print();
   };
 
+  let secIndex = 0;
+  const nextSecNum = () => {
+    secIndex += 1;
+    return secIndex;
+  };
+
   return (
-    <div id="module-resume" className="w-full min-h-full bg-white flex flex-col font-sans">
+    <div id="module-resume" className="w-full min-h-full bg-slate-100 dark:bg-[#0f1115] flex flex-col font-sans">
       {/* 
         1. BANDE HORIZONTALE D'ACTIONS STICKY
       */}
@@ -888,7 +948,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
         className="sticky top-0 z-30 w-full px-4 sm:px-6 md:px-8 py-2.5 bg-white/95 backdrop-blur-md border-b border-stone-200 flex items-center justify-between gap-3 shadow-xs shrink-0 no-print"
       >
         <div className="flex items-center gap-2 text-stone-800 text-xs sm:text-sm font-bold min-w-0">
-          <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+          <FileText className="w-4 h-4 text-purple-700 shrink-0" />
           <span className="truncate">Fiche de Résumé Synthétique</span>
         </div>
 
@@ -929,7 +989,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             id="btn-download-resume"
             onClick={handleDownload}
             disabled={isExportingPdf}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs sm:text-sm font-semibold transition-all shadow-xs active:scale-95 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white text-xs sm:text-sm font-semibold transition-all shadow-xs active:scale-95 cursor-pointer"
             title="Télécharger la fiche en PDF"
           >
             {downloaded ? (
@@ -953,309 +1013,159 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       </div>
 
       {/* 
-        2. ZONE PRINCIPALE DE LECTURE : STRUCTURE PÉDAGOGIQUE COLORÉE & ÉLÉGANTE SUR FOND BLANC
+        2. ZONE PRINCIPALE DE LECTURE : STYLE FICHE FEUILLE BLANCHE AÉRÉE ÉPURÉE (SANS CARTONS DE BORDURES ENCADRÉS)
       */}
-      <div className="flex-1 w-full bg-white px-4 sm:px-8 md:px-12 py-8">
-        <article id="resume-document-content" className="w-full max-w-4xl mx-auto space-y-8 text-black bg-white">
-          
-          {/* En-tête avec cadre élégant : Thème bien encadré et Titre en grand noir profond */}
-          <header className="w-full rounded-2xl border-2 border-stone-200 bg-white p-6 sm:p-8 shadow-xs text-center space-y-4">
-            {/* Boîte / Encadré du Thème adaptatif avec contour net */}
-            <div className="inline-flex max-w-full items-center justify-center gap-2.5 px-4 sm:px-6 py-2 rounded-xl border-2 border-indigo-200 bg-indigo-50/90 text-indigo-950 font-black text-xs sm:text-sm tracking-wider uppercase shadow-2xs">
-              <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
-              <span className="break-words">
-                <MathText text={docTheme || docTitle} inline={true} />
-              </span>
+      <div className="flex-1 w-full bg-slate-100 dark:bg-[#0f1115] px-2 sm:px-6 md:px-10 py-6 sm:py-10 flex justify-center print:bg-white print:p-0">
+        <article
+          id="resume-document-content"
+          className="w-full max-w-4xl bg-white text-stone-900 shadow-md sm:shadow-lg border border-stone-200/80 rounded-2xl sm:rounded-3xl p-6 sm:p-10 md:p-14 space-y-7 sm:space-y-8 print:shadow-none print:border-none print:p-0 print:max-w-none print:rounded-none font-sans"
+        >
+          {/* En-tête : Titre en violet profond à gauche, Stamp / Métadonnées de fiche à droite */}
+          <header className="flex flex-col sm:flex-row items-start justify-between gap-4 pb-4 border-b border-stone-100">
+            <div className="space-y-1.5 flex-1 min-w-0">
+              <h1 className="text-2xl sm:text-3xl md:text-[32px] font-extrabold text-[#581c87] tracking-tight leading-tight">
+                <MathText text={docTitle} inline={true} />
+              </h1>
+              {docTheme && docTheme !== docTitle && (
+                <p className="text-xs sm:text-sm font-semibold text-stone-500">
+                  <MathText text={docTheme} inline={true} />
+                </p>
+              )}
             </div>
 
-            {/* Titre du Cours en écriture bien noire, nette et aérée */}
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-black tracking-tight px-2 leading-snug break-words">
-              <MathText text={docTitle} inline={true} />
-            </h1>
-
-            {/* Badge de sous-titre explicatif */}
-            <div className="flex items-center justify-center gap-2 text-stone-500 text-xs sm:text-sm font-semibold pt-1">
-              <BookOpen className="w-4 h-4 text-indigo-600" />
-              <span>Fiche de Révision & Masterclass Synthétique</span>
+            <div className="shrink-0 text-left sm:text-right w-full sm:w-auto pt-1 sm:pt-0 border-t sm:border-t-0 border-stone-100 sm:border-0 flex sm:flex-col justify-between sm:justify-start items-center sm:items-end">
+              <div>
+                <div className="text-xs sm:text-sm font-black tracking-wider uppercase text-stone-900">
+                  FICHE {ficheNum}
+                </div>
+                <div className="text-xs sm:text-sm text-purple-700 font-semibold truncate max-w-[160px] sm:max-w-[220px]">
+                  {subjectLabel}
+                </div>
+              </div>
+              <div className="hidden sm:block w-20 sm:w-24 border-t border-purple-200 my-1 ml-auto" />
+              <div className="text-right">
+                <div className="text-[10px] uppercase tracking-wider text-stone-400 font-semibold">
+                  Niveau
+                </div>
+                <div className="text-xs sm:text-sm font-bold text-stone-800">
+                  {levelLabel}
+                </div>
+              </div>
             </div>
           </header>
 
-          {/* Vue d'ensemble / Synthèse Globale du Chapitre */}
+          {/* Synthèse globale / Vue d'ensemble rédigée directement sur le fond de la page */}
           {docOverview && (
-            <div className="rounded-2xl bg-white border-2 border-indigo-200 p-5 sm:p-6 shadow-xs space-y-2.5">
-              <div className="flex items-center gap-2 text-indigo-900 font-black text-xs sm:text-sm uppercase tracking-wider">
-                <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
-                <span>Synthèse Globale & Objectifs du Chapitre</span>
-              </div>
-              <div className="text-black text-base sm:text-lg leading-relaxed font-normal">
-                <MathText text={docOverview} />
-              </div>
+            <div className="text-stone-700 text-sm sm:text-base leading-relaxed border-l-2 border-purple-300 pl-3.5 py-0.5">
+              <MathText text={docOverview} />
             </div>
           )}
 
-          {/* Piliers Thématiques & Développements Approfondis du Cours */}
-          {parsedSummary.sections.length > 0 && (
-            <section className="space-y-6 pt-2">
-              <div className="flex items-center gap-3 pb-3 border-b-2 border-indigo-300">
-                <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
-                  ★
-                </div>
-                <h2 className="text-xl sm:text-2xl font-black text-black tracking-tight">
-                  Piliers Fondamentaux & Développements Pédagogiques
-                </h2>
-              </div>
+          {/* 1. Définitions & Notions clés rédigées directement sans boîte */}
+          {parsedSummary.keyDefinitions.length > 0 && (
+            <section className="space-y-3.5 pt-1">
+              <h2 className="text-base sm:text-lg font-extrabold text-[#581c87] flex items-baseline gap-2">
+                <span>{nextSecNum()}.</span>
+                <span>Définitions</span>
+              </h2>
 
-              <div className="space-y-6">
-                {parsedSummary.sections.map((sec, sidx) => {
-                  const headingText = String(sec?.heading || `Pilier ${sidx + 1}`);
+              <div className="space-y-4 pl-0.5">
+                {parsedSummary.keyDefinitions.map((kd, kidx) => {
+                  const cleanConcept = String(kd?.concept || 'Notion clé').replace(/[:\s]+$/, '').trim();
+                  const cleanDef = String(kd?.definition || '').replace(/^[:\s]+/, '').trim();
                   return (
-                    <div
-                      key={sidx}
-                      className="bg-white rounded-2xl border-2 border-stone-200 p-6 sm:p-7 space-y-4 shadow-xs hover:border-indigo-300 transition-all"
-                    >
-                      <div className="flex items-center gap-3 pb-3 border-b border-stone-200">
-                        <span className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-900 text-xs font-black flex items-center justify-center shrink-0">
-                          {sec.number || sidx + 1}
-                        </span>
-                        <h3 className="text-lg sm:text-xl font-black text-black">
-                          <MathText text={headingText.replace(/^\s*\d+[\.\-\)]\s*/, '') || headingText} inline={true} />
-                        </h3>
-                      </div>
+                    <div key={kidx} className="space-y-1">
+                      <h3 className="text-sm sm:text-base font-bold text-[#6b21a8]">
+                        <MathText text={cleanConcept} inline={true} />
+                      </h3>
+                      <p className="text-sm sm:text-base text-stone-700 leading-relaxed">
+                        <MathText text={cleanDef} />
+                      </p>
+                      {kd.objective && (
+                        <p className="text-xs text-stone-500 italic">
+                          Objectif : <MathText text={kd.objective} inline={true} />
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
-                      <div className="text-black leading-relaxed text-base sm:text-lg whitespace-pre-line font-normal">
+          {/* 2. Piliers & Développements pédagogiques du cours */}
+          {parsedSummary.sections.length > 0 && (
+            <>
+              {parsedSummary.sections.map((sec, sidx) => {
+                const headingText = String(sec?.heading || `Développement ${sidx + 1}`).replace(/^\s*\d+[\.\-\)]\s*/, '').trim();
+                return (
+                  <section key={sidx} className="space-y-2.5 pt-1">
+                    <h2 className="text-base sm:text-lg font-extrabold text-[#581c87] flex items-baseline gap-2">
+                      <span>{nextSecNum()}.</span>
+                      <span>
+                        <MathText text={headingText} inline={true} />
+                      </span>
+                    </h2>
+
+                    {sec.body && (
+                      <div className="text-sm sm:text-base text-stone-700 leading-relaxed whitespace-pre-line pl-0.5">
                         <MathText text={sec.body} />
                       </div>
+                    )}
 
-                      {sec.points && sec.points.length > 0 && (
-                        <div className="pt-2">
-                          <p className="text-xs font-black uppercase tracking-wider text-indigo-950 pb-2">
-                            Points directeurs à retenir :
-                          </p>
-                          <ul className="space-y-2">
-                            {sec.points.map((pt: string, pidx: number) => (
-                              <li key={pidx} className="flex items-start gap-2.5 text-black text-sm sm:text-base leading-relaxed bg-stone-50/80 p-2.5 rounded-xl border border-stone-200">
-                                <span className="text-indigo-600 font-black mt-0.5">•</span>
-                                <div className="flex-1">
-                                  <MathText text={pt} inline={true} />
-                                </div>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-
-          {/* I. Notions Clés & Définitions */}
-          {(parsedSummary.keyDefinitions.length > 0 || parsedSummary.keyPoints.length > 0) && (
-            <section className="space-y-4 pt-2">
-              <div className="flex items-center gap-3 pb-3 border-b-2 border-indigo-200">
-                <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
-                  I
-                </div>
-                <h2 className="text-xl sm:text-2xl font-black text-black tracking-tight">
-                  Notions Fondamentales & Définitions
-                </h2>
-              </div>
-
-              {parsedSummary.keyDefinitions.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {parsedSummary.keyDefinitions.map((kd, kidx) => {
-                    const cleanConcept = String(kd?.concept || 'Notion clé').replace(/[:\s]+$/, '').trim();
-                    const cleanDef = String(kd?.definition || '').replace(/^[:\s]+/, '').trim();
-                    const rawObj = kd?.objective ? String(kd.objective) : '';
-                    const cleanObj = rawObj ? rawObj.replace(/^[:\s]+/, '').trim() : '';
-
-                    return (
-                      <div
-                        key={kidx}
-                        className="bg-white rounded-xl border-2 border-stone-200 hover:border-indigo-300 shadow-xs hover:shadow-md transition-all p-4 border-l-4 border-l-indigo-600 flex flex-col justify-between space-y-2.5"
-                      >
-                        <div className="space-y-1.5">
-                          <div className="flex items-center gap-2 text-indigo-950 font-black text-base sm:text-lg">
-                            <BookmarkCheck className="w-4 h-4 text-indigo-600 shrink-0" />
-                            <MathText text={cleanConcept} inline={true} />
-                          </div>
-                          <div className="text-black text-sm sm:text-base leading-relaxed">
-                            <MathText text={cleanDef} inline={true} />
-                          </div>
-                        </div>
-                        {cleanObj && (
-                          <div className="pt-1">
-                            <span className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-900 border border-indigo-200 rounded-lg px-2.5 py-1 text-xs font-semibold">
-                              <Target className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                              <span>Objectif : <MathText text={cleanObj} inline={true} /></span>
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <ul className="space-y-2.5 pl-1">
-                  {parsedSummary.keyPoints.map((kp, kidx) => (
-                    <li key={kidx} className="flex items-start gap-2.5 text-black text-base leading-relaxed bg-white p-3 rounded-xl border border-stone-200">
-                      <span className="text-indigo-600 font-bold mt-1 text-sm">•</span>
-                      <div className="flex-1">
-                        <MathText text={kp} inline={true} />
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          )}
-
-          {/* II. Formulaire, Règles & Méthodes de Calcul */}
-          {parsedSummary.formulas.length > 0 && (
-            <section className="space-y-6 pt-4">
-              <div className="flex items-center gap-3 pb-3 border-b-2 border-blue-200">
-                <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
-                  II
-                </div>
-                <h2 className="text-xl sm:text-2xl font-black text-black tracking-tight">
-                  Formules, Lois & Règles Fondamentales
-                </h2>
-              </div>
-
-              <div className="space-y-6">
-                {parsedSummary.formulas.map((formula, fidx) => {
-                  const cleanedLatex = cleanFormulaLatex(formula.latex);
-                  const hasObjective = Boolean(formula.target_goal || (!isFillerText(formula.when_to_use) ? formula.when_to_use : null));
-                  const hasSteps = Boolean(formula.demonstration_steps && formula.demonstration_steps.length > 0);
-                  const hasDerivation = Boolean(formula.how_to_derive && !isFillerText(formula.how_to_derive));
-                  const hasTraps = Boolean(formula.exam_trap);
-
-                  return (
-                    <div
-                      key={fidx}
-                      className="bg-white rounded-2xl border-2 border-stone-200 shadow-xs hover:shadow-md transition-all p-5 sm:p-6 space-y-4"
-                    >
-                      {/* En-tête avec badge et titre */}
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-3">
-                        <div className="flex items-center gap-2.5">
-                          <span className="px-2.5 py-0.5 rounded-full bg-blue-600 text-white text-xs font-black uppercase tracking-wider shadow-2xs">
-                            #{fidx + 1}
-                          </span>
-                          <h3 className="text-base sm:text-lg font-black text-black">
-                            <MathText text={formula.name || `Formule ${fidx + 1}`} inline={true} />
-                          </h3>
-                        </div>
-                        {formula.target_goal && (
-                          <span className="text-xs font-semibold text-blue-800 bg-blue-50 border border-blue-200 rounded-full px-3 py-0.5">
-                            Formule Clé
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Encadré de Formule LaTeX Bleu Vibrant */}
-                      {cleanedLatex && (
-                        <div className="py-3.5 px-4 rounded-xl bg-blue-50/70 border-2 border-blue-300 text-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden print:overflow-visible shadow-inner my-2">
-                          <div className="text-xl sm:text-2xl font-bold text-blue-950 inline-block max-w-full">
-                            <MathText text={`$$ ${cleanedLatex} $$`} />
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Objectif & Application */}
-                      {hasObjective && (
-                        <div className="bg-blue-50/70 border-l-4 border-blue-600 rounded-r-xl p-3 text-sm text-black">
-                          <strong className="font-bold text-blue-950">🎯 Objectif & Utilité : </strong>
-                          <MathText text={formula.target_goal || formula.when_to_use || ''} inline={true} />
-                        </div>
-                      )}
-
-                      {/* Démonstration ou Méthode pas à pas */}
-                      {(hasSteps || hasDerivation) && (
-                        <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 space-y-2.5">
-                          <p className="font-bold text-black text-sm flex items-center gap-2">
-                            <span>🛠️ Démonstration & Méthode d'application pas à pas :</span>
-                          </p>
-                          {hasSteps ? (
-                            <ol className="space-y-2">
-                              {formula.demonstration_steps!.map((step, sidx) => (
-                                <li key={sidx} className="flex items-start gap-2.5 text-black text-sm sm:text-base leading-relaxed">
-                                  <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
-                                    {sidx + 1}
-                                  </span>
-                                  <div className="flex-1">
-                                    <MathText text={step} inline={true} />
-                                  </div>
-                                </li>
-                              ))}
-                            </ol>
-                          ) : (
-                            <div className="text-black text-sm sm:text-base leading-relaxed pl-2">
-                              <MathText text={formula.how_to_derive!} inline={true} />
+                    {sec.points && sec.points.length > 0 && (
+                      <ul className="space-y-1.5 pt-1 pl-1">
+                        {sec.points.map((pt: string, pidx: number) => (
+                          <li key={pidx} className="flex items-start gap-2.5 text-stone-800 text-sm sm:text-base leading-relaxed">
+                            <span className="text-stone-900 font-bold shrink-0 mt-0.5">•</span>
+                            <div className="flex-1">
+                              <MathText text={pt} inline={true} />
                             </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Variables & Unités */}
-                      {formula.variables && (
-                        <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3 text-sm text-black flex items-start gap-2.5">
-                          <span className="text-amber-600 text-base shrink-0">📐</span>
-                          <div>
-                            <strong className="font-bold text-amber-950">Variables, Unités & Conditions : </strong>
-                            <MathText text={formula.variables} inline={true} />
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Piège classique pour cette formule */}
-                      {hasTraps && (
-                        <div className="bg-rose-50/90 border border-rose-200 rounded-xl p-3 text-sm text-rose-950 flex items-start gap-2.5">
-                          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                          <div>
-                            <strong className="font-bold text-rose-900">Piège classique à l'examen : </strong>
-                            <MathText text={formula.exam_trap!} inline={true} />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                );
+              })}
+            </>
           )}
 
-          {/* III. Tableau Synthétique Comparatif */}
+          {/* 3. Indicateurs clés & Tableau synthétique (Design Menthe Pastel conforme à l'image) */}
           {parsedSummary.comparisonTable && (
-            <section className="space-y-4 pt-4">
-              <div className="flex items-center gap-3 pb-3 border-b-2 border-purple-200">
-                <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
-                  III
-                </div>
-                <h2 className="text-xl sm:text-2xl font-black text-black tracking-tight">
-                  Tableau Synthétique Comparatif
-                </h2>
-              </div>
+            <section className="space-y-3 pt-1">
+              <h2 className="text-base sm:text-lg font-extrabold text-[#581c87] flex items-baseline gap-2">
+                <span>{nextSecNum()}.</span>
+                <span>Indicateurs clés & Comparatifs</span>
+              </h2>
 
-              <div className="w-full overflow-x-auto rounded-2xl border-2 border-purple-200 shadow-xs bg-white [scrollbar-width:none] [&::-webkit-scrollbar]:hidden print:overflow-visible">
+              <div className="w-full overflow-x-auto rounded-xl border border-emerald-100 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden print:overflow-visible">
                 <table className="w-full text-left border-collapse text-xs sm:text-sm">
                   <thead>
-                    <tr className="bg-purple-700 text-white font-extrabold">
+                    <tr className="bg-[#cbf3e4] text-[#065f46]">
                       {parsedSummary.comparisonTable.headers.map((h, hidx) => (
-                        <th key={hidx} className="py-3.5 px-4 uppercase tracking-wider text-xs">
+                        <th
+                          key={hidx}
+                          className="py-2.5 px-3.5 font-bold text-xs sm:text-sm first:rounded-tl-lg last:rounded-tr-lg"
+                        >
                           <MathText text={h} inline={true} />
                         </th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-purple-100">
+                  <tbody className="divide-y divide-emerald-50/70">
                     {parsedSummary.comparisonTable.rows.map((row, ridx) => (
                       <tr
                         key={ridx}
-                        className={ridx % 2 === 0 ? 'bg-white hover:bg-purple-50/40' : 'bg-purple-50/20 hover:bg-purple-50/50 transition-colors'}
+                        className={ridx % 2 === 1 ? 'bg-[#f4fbf8]' : 'bg-white'}
                       >
                         {row.map((cell, cidx) => (
-                          <td key={cidx} className="py-3 px-4 text-black font-medium leading-relaxed">
+                          <td
+                            key={cidx}
+                            className={`py-2.5 px-3.5 leading-relaxed ${
+                              cidx === 0 ? 'font-bold text-[#065f46]' : 'text-stone-700'
+                            }`}
+                          >
                             <MathText text={cell} inline={true} />
                           </td>
                         ))}
@@ -1267,64 +1177,83 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             </section>
           )}
 
-          {/* IV. Pièges à Éviter & Astuces Méthodologiques (NB) */}
-          {parsedSummary.trapsAndTips.length > 0 && (
-            <section className="space-y-4 pt-4">
-              <div className="flex items-center gap-3 pb-3 border-b-2 border-amber-200">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
-                  IV
-                </div>
-                <h2 className="text-xl sm:text-2xl font-black text-black tracking-tight">
-                  Pièges à Éviter & Astuces Méthodologiques (NB)
-                </h2>
-              </div>
+          {/* Formules, Lois & Formulaire (Si présent) */}
+          {parsedSummary.formulas.length > 0 && (
+            <section className="space-y-3 pt-1">
+              <h2 className="text-base sm:text-lg font-extrabold text-[#581c87] flex items-baseline gap-2">
+                <span>{nextSecNum()}.</span>
+                <span>Formules & relations fondamentales</span>
+              </h2>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {parsedSummary.trapsAndTips.map((item, tidx) => {
-                  const isTrap = item.type === 'trap' || /pi[èe]ge/i.test(item.title || '');
-                  return isTrap ? (
-                    <div
-                      key={tidx}
-                      className="bg-white border-2 border-rose-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-2 flex flex-col justify-between"
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-600 text-white text-xs font-black uppercase tracking-wider shadow-2xs">
-                            <AlertTriangle className="w-3.5 h-3.5" />
-                            PIÈGE CLASSIQUE
-                          </span>
-                          {item.title && !/^(pi[èe]ge|astuce)/i.test(item.title) && (
-                            <span className="font-extrabold text-rose-950 text-sm">
-                              {item.title}
-                            </span>
+              <div className="space-y-4 pl-0.5">
+                {parsedSummary.formulas.map((formula, fidx) => {
+                  const cleanedLatex = cleanFormulaLatex(formula.latex);
+                  const hasObjective = Boolean(formula.target_goal || (!isFillerText(formula.when_to_use) ? formula.when_to_use : null));
+                  const hasSteps = Boolean(formula.demonstration_steps && formula.demonstration_steps.length > 0);
+                  const hasDerivation = Boolean(formula.how_to_derive && !isFillerText(formula.how_to_derive));
+                  const hasTraps = Boolean(formula.exam_trap);
+
+                  return (
+                    <div key={fidx} className="space-y-2 pb-2 border-b border-stone-100 last:border-b-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-purple-700 uppercase tracking-wider">
+                          Formule {fidx + 1} :
+                        </span>
+                        <h3 className="text-sm sm:text-base font-bold text-stone-900">
+                          <MathText text={formula.name || `Relation ${fidx + 1}`} inline={true} />
+                        </h3>
+                      </div>
+
+                      {cleanedLatex && (
+                        <div className="py-2.5 px-4 rounded-xl bg-[#f5f3ff] text-purple-950 text-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden print:overflow-visible my-1">
+                          <div className="text-lg sm:text-xl font-bold inline-block max-w-full">
+                            <MathText text={`$$ ${cleanedLatex} $$`} />
+                          </div>
+                        </div>
+                      )}
+
+                      {hasObjective && (
+                        <p className="text-xs sm:text-sm text-stone-700">
+                          <strong className="text-purple-900">🎯 Utilité : </strong>
+                          <MathText text={formula.target_goal || formula.when_to_use || ''} inline={true} />
+                        </p>
+                      )}
+
+                      {formula.variables && (
+                        <p className="text-xs sm:text-sm text-stone-600">
+                          <strong className="text-stone-800">Variables : </strong>
+                          <MathText text={formula.variables} inline={true} />
+                        </p>
+                      )}
+
+                      {(hasSteps || hasDerivation) && (
+                        <div className="text-xs sm:text-sm text-stone-700 space-y-1">
+                          <span className="font-bold text-stone-800">Démonstration & étapes :</span>
+                          {hasSteps ? (
+                            <ol className="space-y-1 pl-3">
+                              {formula.demonstration_steps!.map((step, sidx) => (
+                                <li key={sidx} className="flex items-start gap-2">
+                                  <span className="font-bold text-purple-700">{sidx + 1}.</span>
+                                  <div className="flex-1">
+                                    <MathText text={step} inline={true} />
+                                  </div>
+                                </li>
+                              ))}
+                            </ol>
+                          ) : (
+                            <p className="pl-3">
+                              <MathText text={formula.how_to_derive!} inline={true} />
+                            </p>
                           )}
                         </div>
-                        <div className="text-black text-sm sm:text-base leading-relaxed">
-                          <MathText text={item.content} inline={true} />
+                      )}
+
+                      {hasTraps && (
+                        <div className="pl-3 py-1 border-l-2 border-rose-400 text-xs sm:text-sm text-rose-900 bg-rose-50/50 rounded-r">
+                          <strong>⚠️ Piège à l'examen : </strong>
+                          <MathText text={formula.exam_trap!} inline={true} />
                         </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div
-                      key={tidx}
-                      className="bg-white border-2 border-amber-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-2 flex flex-col justify-between"
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-600 text-white text-xs font-black uppercase tracking-wider shadow-2xs">
-                            <Lightbulb className="w-3.5 h-3.5" />
-                            ASTUCE (NB)
-                          </span>
-                          {item.title && !/^(pi[èe]ge|astuce)/i.test(item.title) && (
-                            <span className="font-extrabold text-amber-950 text-sm">
-                              {item.title}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-black text-sm sm:text-base leading-relaxed">
-                          <MathText text={item.content} inline={true} />
-                        </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1332,60 +1261,106 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
             </section>
           )}
 
-          {/* V. Exemple Pratique d'Application Résolu */}
-          {parsedSummary.practicalExample && (
-            <section className="space-y-4 pt-4">
-              <div className="flex items-center gap-3 pb-3 border-b-2 border-emerald-200">
-                <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-sm shadow-xs shrink-0">
-                  V
-                </div>
-                <h2 className="text-xl sm:text-2xl font-black text-black tracking-tight">
-                  Exemple Pratique Résolu Pas à Pas
-                </h2>
-              </div>
+          {/* Points de vigilance & Astuces (Pièges & Astuces épurés sans cartes) */}
+          {parsedSummary.trapsAndTips.length > 0 && (
+            <section className="space-y-2.5 pt-1">
+              <h2 className="text-base sm:text-lg font-extrabold text-[#581c87] flex items-baseline gap-2">
+                <span>{nextSecNum()}.</span>
+                <span>Points de vigilance & astuces</span>
+              </h2>
 
-              <div className="bg-white border-2 border-emerald-200 rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
-                {/* Énoncé */}
-                <div className="bg-emerald-50/50 border border-emerald-200 rounded-xl p-4 shadow-2xs space-y-1.5">
-                  <div className="flex items-center gap-2 text-emerald-900 font-black text-xs sm:text-sm uppercase tracking-wider">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>Énoncé du problème</span>
-                  </div>
-                  <div className="text-black text-sm sm:text-base leading-relaxed italic pl-1">
-                    <MathText text={parsedSummary.practicalExample.statement} inline={true} />
-                  </div>
-                </div>
-
-                {/* Étapes de résolution */}
-                <div className="space-y-3 pt-1">
-                  <p className="font-black text-black text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2">
-                    <span>🔍 Résolution détaillée étape par étape :</span>
-                  </p>
-                  <ol className="space-y-2.5">
-                    {parsedSummary.practicalExample.resolution_steps.map((step, sidx) => {
-                      const stepStr = typeof step === 'string' ? step : String(step || '');
-                      return (
-                        <li key={sidx} className="flex items-start gap-3 bg-white border border-stone-200 rounded-xl p-3 shadow-2xs text-black text-sm sm:text-base leading-relaxed">
-                          <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
-                            {sidx + 1}
+              <div className="space-y-2 pl-0.5">
+                {parsedSummary.trapsAndTips.map((item, tidx) => {
+                  const isTrap = item.type === 'trap' || /pi[èe]ge/i.test(item.title || '');
+                  return (
+                    <div
+                      key={tidx}
+                      className={`pl-3 py-1.5 border-l-4 rounded-r-lg ${
+                        isTrap
+                          ? 'border-rose-400 bg-rose-50/40 text-stone-800'
+                          : 'border-amber-400 bg-amber-50/40 text-stone-800'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold text-xs sm:text-sm">
+                        {isTrap ? (
+                          <span className="text-rose-600 uppercase tracking-wider font-extrabold flex items-center gap-1">
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            {item.title || 'Piège classique'}
                           </span>
-                          <div className="flex-1">
-                            <MathText text={stepStr.replace(/^\s*\d+[\.\-\)]\s*/, '') || stepStr} inline={true} />
-                          </div>
-                        </li>
-                      );
-                    })}
+                        ) : (
+                          <span className="text-amber-700 uppercase tracking-wider font-extrabold flex items-center gap-1">
+                            <Lightbulb className="w-3.5 h-3.5" />
+                            {item.title || 'Astuce méthodologique'}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs sm:text-sm text-stone-700 mt-0.5 leading-relaxed">
+                        <MathText text={item.content} inline={true} />
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {/* Exemple pratique résolu (Épuré) */}
+          {parsedSummary.practicalExample && (
+            <section className="space-y-2.5 pt-1">
+              <h2 className="text-base sm:text-lg font-extrabold text-[#581c87] flex items-baseline gap-2">
+                <span>{nextSecNum()}.</span>
+                <span>Exemple pratique résolu</span>
+              </h2>
+
+              <div className="space-y-2 pl-0.5">
+                <div className="bg-[#f0fdf4] border-l-4 border-emerald-500 p-3 rounded-r-lg text-xs sm:text-sm text-stone-800">
+                  <span className="font-bold text-emerald-900 block mb-0.5">Énoncé :</span>
+                  <MathText text={parsedSummary.practicalExample.statement} inline={true} />
+                </div>
+
+                <div className="space-y-1 pl-1">
+                  <span className="text-xs font-bold text-stone-600 uppercase tracking-wider">
+                    Résolution pas à pas :
+                  </span>
+                  <ol className="space-y-1.5 text-xs sm:text-sm text-stone-700">
+                    {parsedSummary.practicalExample.resolution_steps.map((step, sidx) => (
+                      <li key={sidx} className="flex items-start gap-2">
+                        <span className="font-bold text-emerald-700">{sidx + 1}.</span>
+                        <div className="flex-1">
+                          <MathText text={String(step).replace(/^\s*\d+[\.\-\)]\s*/, '')} inline={true} />
+                        </div>
+                      </li>
+                    ))}
                   </ol>
                 </div>
               </div>
             </section>
           )}
 
+          {/* 5. Idées clés à retenir avec coches vertes ✅ (exactement comme dans l'image de référence) */}
+          {keyTakeaways.length > 0 && (
+            <section className="space-y-2.5 pt-1">
+              <h2 className="text-base sm:text-lg font-extrabold text-[#581c87] flex items-baseline gap-2">
+                <span>{nextSecNum()}.</span>
+                <span>Idées clés à retenir</span>
+              </h2>
 
+              <ul className="space-y-2 pl-0.5">
+                {keyTakeaways.map((kp, kidx) => (
+                  <li key={kidx} className="flex items-start gap-2.5 text-stone-800 text-xs sm:text-sm leading-relaxed">
+                    <span className="text-emerald-600 shrink-0 select-none">✅</span>
+                    <div className="flex-1 font-medium text-stone-800">
+                      <MathText text={kp} inline={true} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
-          {/* Rendu Markdown propre de repli (uniquement si aucune formule/section et si markdown assaini) */}
+          {/* Rendu Markdown propre de repli si aucune section structurée */}
           {parsedSummary.markdown && parsedSummary.markdown.length > 50 && !parsedSummary.markdown.includes('```json') && !parsedSummary.markdown.startsWith('{') && parsedSummary.sections.length === 0 && parsedSummary.formulas.length === 0 && parsedSummary.keyDefinitions.length === 0 && (
-            <div className="bg-white rounded-2xl border border-stone-200 p-6 shadow-xs space-y-4 text-stone-800 leading-relaxed text-base">
+            <div className="space-y-4 text-stone-800 leading-relaxed text-sm sm:text-base">
               <MathText text={parsedSummary.markdown} />
             </div>
           )}
@@ -1394,11 +1369,11 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
           {!hasDynamicData && (
             <div
               id="resume-empty-card"
-              className="w-full text-center py-16 space-y-4 bg-white rounded-2xl border border-stone-200 shadow-xs"
+              className="w-full text-center py-16 space-y-4 bg-white rounded-2xl border border-stone-200"
             >
               <FileText className="w-12 h-12 text-stone-400 mx-auto" />
               <div className="space-y-2">
-                <h3 className="text-xl font-bold text-stone-800">
+                <h3 className="text-lg font-bold text-stone-800">
                   Fiche de Résumé non disponible
                 </h3>
                 <p className="text-stone-600 text-sm max-w-md mx-auto">

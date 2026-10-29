@@ -130,7 +130,7 @@ export function convertAsciiMathToLatex(text: string): string {
   res = res.replace(/\\dfrac\{([^{}]+)\}\{\\dfrac\}\{([^{}]+)\}/g, '\\dfrac{$1}{$2}');
 
   // 2. Conversion de pi et symboles grecs
-  res = res.replace(/π/g, '\\pi');
+  res = res.replace(/π/g, '\\pi').replace(/ω_0|ω0|ω₀/g, '\\omega_0').replace(/ω/g, '\\omega').replace(/(?<=[0-9\s])kΩ\b/gi, '\\text{ k}\\Omega').replace(/(?<=[0-9\s])MΩ\b/gi, '\\text{ M}\\Omega').replace(/Ω/g, '\\Omega').replace(/µ/g, '\\mu').replace(/≠/g, '\\neq').replace(/≈/g, '\\approx').replace(/≤/g, '\\le').replace(/≥/g, '\\ge');
 
   // 3. Conversion de la racine carrée Unicode √ ou sqrt
   res = res
@@ -430,7 +430,7 @@ function sanitizeLatexInput(rawText: string, inlineMode: boolean): string {
  * Extrait proprement une commande LaTeX complète avec équilibrage parfait des accolades imbriquées
  */
 function extractBalancedLatexCommand(str: string, startIdx: number): { fullMatch: string; endIdx: number } | null {
-  const cmdMatch = str.slice(startIdx).match(/^\\(?:d?frac|sqrt|boxed)\b/);
+  const cmdMatch = str.slice(startIdx).match(/^\\(?:d?frac|sqrt|boxed|underline|text|mathrm|mathbf)\b/);
   if (!cmdMatch) return null;
   const cmd = cmdMatch[0];
   let idx = startIdx + cmd.length;
@@ -461,6 +461,10 @@ function extractBalancedLatexCommand(str: string, startIdx: number): { fullMatch
 
   if (args.length === expectedArgs) {
     return { fullMatch: str.slice(startIdx, idx), endIdx: idx };
+  }
+  const symbolMatch = str.slice(startIdx).match(/^\\(?:omega|Omega|tau|pi|Delta|theta|alpha|beta|gamma|lambda|mu|rho|sigma|phi|infty|approx|pm|times|cdot)(?:_[0-9a-zA-Z]+|\^[0-9a-zA-Z]+)?\b/);
+  if (symbolMatch) {
+    return { fullMatch: symbolMatch[0], endIdx: startIdx + symbolMatch[0].length };
   }
   return null;
 }
