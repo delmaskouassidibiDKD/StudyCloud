@@ -423,36 +423,63 @@ RÈGLE FORMAT : INFOGRAPHIE PÉDAGOGIQUE ('infographie')
   if (t === 'exercices-ecrits') {
     return `
 ══════════════════════════════════════════════════════════════════════════════
-RÈGLE FORMAT : EXERCICES ÉCRITS D'APPLICATION ('exercices-ecrits')
+RÈGLE FORMAT : ÉPREUVE D'EXERCICES ÉCRITS D'APPLICATION ('exercices-ecrits')
 ══════════════════════════════════════════════════════════════════════════════
-- Extraction logique et rigoureuse du document selon la même arborescence à 4 PALIERS OBLIGATOIRES que la Carte Mentale, adaptée en épreuve d'Exercices Écrits :
-  * Niveau 0 (Titre Global) : Titre officiel exact du cours ou de l'épreuve analysée.
-  * Niveau 1 (4 à 6 Piliers Thématiques majeurs extraits du document) : Les grands axes directeurs du sujet (ex: 1. Filtre passif RC et modélisation, 2. Amplificateur opérationnel et montages actifs, 3. Analyse nodale / Théorème de Millman, 4. Fonctions de transfert canoniques & Bode).
-  * Niveau 2 (Sous-problèmes & Concepts par pilier) : Modélisation, circuits/figures (ex: Figure 1), hypothèses théoriques, équations directrices et grandeurs physiques à déterminer.
-  * Niveau 3 (Calculs exacts, formules KaTeX et Corrigé pas-à-pas) : Formules avec fractions verticales \\dfrac{}{}, paramètres canoniques, calculs asymptotiques, pulsations de coupure à -3dB, valeurs numériques avec unités SI, et corrigé pas-à-pas modèle pour chaque question.
-- Organisation en Épreuve d'Exercices Écrits :
-  * Génère EXACTEMENT 8 à 10 questions/exercices progressifs couvrant l'ensemble des Paliers 1, 2 et 3.
-  * Barème strict totalisant EXACTEMENT 20 POINTS (ex: 8 questions à 2.5 pts, ou répartition équilibrant 20 points au total).
-  * Toutes les expressions mathématiques DOIVENT être écrites avec KaTeX ($...$).
-  * Chaque question a sa correction complète et détaillée étape par étape dans 'sampleAnswer'.
+0. LANGUE ET STYLE OBLIGATOIRES :
+   - STRICTEMENT ET INTÉGRALEMENT EN FRANÇAIS ACADÉMIQUE SOIGNÉ.
+   - INTERDICTION ABSOLUE DE TOUT MOT EN ANGLAIS (pas de "Theory: ...", pas de "Types: ...", pas de "The user wants me to...").
+   - AUCUN MONOLOGUE INTERNE, AUCUN SCRATCHPAD OU TEXTE MÉTA DANS LES VALEURS DU JSON.
+
+1. CRÉATION D'UN NOUVEAU SUJET ORIGINAL, RÉALISTE ET SÉRIEUX (PAS DE RECOPIE DU DOCUMENT) :
+   - INTERDICTION FORMELLE DE RECOPIER LES EXERCICES OU TD DÉJÀ PRÉSENTS DANS LE DOCUMENT DE L'ÉTUDIANT.
+   - Tu dois créer un VRAI NOUVEAU SUJET D'ÉPREUVE ORIGINALE ET CONCRÈTE, fondé sur les lois, concepts, théorèmes et montages du cours.
+   - Sujet de haut niveau académique (niveau BTS, IUT, Licence ou Classe Préparatoire).
+
+2. ÉNONCÉ & CONTEXTE DU PROBLÈME ('context') :
+   - Rédige une mise en situation technique, scientifique ou industrielle concrète (ex: chaîne d'acquisition de capteur biomédical ECG, étage de filtrage audio haute fidélité, régulation de vitesse de moteur, etc.).
+   - Précise le schéma/montage étudié, les composants ($R_1, R_2, C_1, C_2, L$, AOP supposé idéal en régime linéaire...), les hypothèses physiques de travail et un jeu complet de valeurs numériques réalistes avec unités SI.
+
+3. SÉRIE DE 8 QUESTIONS PROGRESSIVES TOTALISANT STRICTEMENT 20 POINTS :
+   - Génère EXACTEMENT 8 questions numérotées de 1 à 8, avec un barème clair de 2.5 points chacune (8 × 2.5 = 20 points).
+   - Chaque question doit être une VRAIE consigne d'épreuve écrite rigoureuse avec KaTeX ($...$) :
+     * Question 1 (2.5 pts) : Définitions fondamentales, rôle du montage et hypothèses physiques.
+     * Question 2 (2.5 pts) : Établissement littéral pas à pas de la loi ou fonction de transfert \\underline{H}(j\\omega) via les théorèmes généraux (Millman, diviseur de tension, lois de Kirchhoff).
+     * Question 3 (2.5 pts) : Mise sous forme canonique et identification analytique des paramètres caractéristiques (gain statique $A_0$, pulsation propre $\\omega_0$, facteur de qualité $Q$ ou amortissement $m$).
+     * Question 4 (2.5 pts) : Étude du comportement asymptotique aux régimes limites (basses fréquences $\\omega \\to 0$ et hautes fréquences $\\omega \\to +\\infty$) avec pentes en dB/décade.
+     * Question 5 (2.5 pts) : Détermination analytique de la pulsation ou fréquence de coupure à $-3\\text{ dB}$ ($f_c$).
+     * Question 6 (2.5 pts) : Application numérique complète et détaillée avec calcul intermédiaire et conformité des unités SI.
+     * Question 7 (2.5 pts) : Analyse graphique (allure du diagramme de Bode en gain et en phase, étude de l'éventuelle résonance).
+     * Question 8 (2.5 pts) : Analyse critique des performances vis-à-vis d'un cahier des charges et proposition d'ajustement des composants.
+
+4. CORRIGÉ OFFICIEL PAS-À-PAS MODÈLE DANS 'sampleAnswer' :
+   - Pour CHAQUE question, rédige la solution complète démontrée pas à pas :
+     * Rappel du théorème ou de la formule appliquée,
+     * Développement littéral complet avec vraies fractions verticales \\dfrac{num}{den},
+     * Calculs numériques intermédiaires,
+     * Résultat final encadré avec \\boxed{...}.
+
+5. SYNTHÈSE MÉTHODOLOGIQUE DANS 'correction' :
+   - 'steps' : Méthode générale de résolution et grille d'évaluation pas à pas.
+   - 'examples' : Deux astuces ou pièges classiques d'examen à éviter.
+
 - Format JSON strict dans 'creation_data' :
 {
-  "title": "Série d'Exercices Écrits : Titre Global du Cours",
-  "context": "Mise en situation complète issue des Paliers 1 & 2 : présentation du système, schémas/figures, hypothèses physiques et données numériques.",
+  "title": "Thème académique du cours (ex: Filtres Analogiques Actifs)",
+  "context": "Mise en situation concrète du problème : présentation du système, composants, hypothèses physiques et données numériques complètes en français.",
   "questions": [
     {
       "id": "q1",
       "number": 1,
-      "text": "Énoncé précis de la question (Palier 2) avec formules KaTeX ($...$)",
+      "text": "1. Énoncé précis et complet de la question 1 avec formules KaTeX ($...$)",
       "points": 2.5,
-      "sampleAnswer": "Correction exhaustive pas-à-pas (Palier 3) avec démonstration complète, étapes intermédiaires et formules KaTeX ($...$)"
+      "sampleAnswer": "Correction exhaustive pas-à-pas avec théorèmes, fractions verticales \\\\dfrac{}{}, calcul numérique et résultat encadré $$ \\\\boxed{...} $$"
     }
   ],
   "correction": {
     "steps": "Synthèse méthodologique globale de résolution étape par étape...",
     "examples": [
-      "Exemple concret 1 : Cas d'application numérique avec unités et vérification physique",
-      "Exemple concret 2 : Piège classique d'examen et méthode de contrôle rapide"
+      "Application numérique concrète avec unités et vérification physique",
+      "Piège classique d'examen et méthode de contrôle rapide"
     ]
   }
 }`;

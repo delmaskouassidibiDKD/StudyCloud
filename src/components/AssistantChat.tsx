@@ -1486,38 +1486,57 @@ RÈGLES CRUCIALES POUR LA CARTE MENTALE :
 - Chaque Pilier DOIT comporter 3 à 5 sous-branches, et chaque sous-branche DOIT comporter 3 à 4 feuilles détaillant les définitions, TOUTES les formules en LaTeX avec \\\\dfrac{}{}, la logique physique et les zones d'ombre éclaircies.`;
 
     case 'exercices-ecrits':
-      return `FORMAT JSON ATTENDU :
+      return `FORMAT JSON ATTENDU POUR L'ÉPREUVE D'EXERCICES ÉCRITS ('exercices-ecrits') :
 \`\`\`json
 {
   "decision": "creation",
   "mode": "creation",
   "creation_type": "exercices-ecrits",
   "creation_title": "${title}",
-  "chat_response": "Exercices écrits rédigés avec succès !",
+  "chat_response": "Votre épreuve d'exercices d'application a été rédigée avec succès !",
   "creation_data": {
     "written_exercise": {
       "title": "${title}",
       "theme": "${docName}",
-      "context": "Présentation complète du système étudié dans le document, schémas/montages, hypothèses physiques et données.",
+      "context": "Mise en situation technique concrète et réaliste : présentation du système étudié (ex: chaîne d'acquisition de capteur biomédical, étage de filtrage audio, alimentation à découpage), schéma du montage, composants ($R_1 = 10\\\\text{ k}\\\\Omega$, $C_1 = 100\\\\text{ nF}$...), hypothèses physiques et valeurs numériques complètes. STRICTEMENT EN FRANÇAIS.",
       "questions": [
         {
           "id": "q1",
           "number": 1,
-          "text": "Énoncé précis et complet de la question avec formules KaTeX ($...$)",
+          "text": "1. Énoncé précis et rigoureux de la première question avec formules KaTeX ($...$)",
           "points": 2.5,
-          "sampleAnswer": "Correction détaillée pas à pas : rappel du théorème/loi, développement littéral avec \\\\dfrac{}{}, éclaircissement de la zone d'ombre et résultat encadré $$ \\\\boxed{...} $$"
+          "sampleAnswer": "Correction officielle exhaustive pas à pas : rappel du théorème/loi, développement littéral avec fractions verticales \\\\dfrac{}{}, calcul numérique avec unités SI et résultat encadré $$ \\\\boxed{...} $$"
+        },
+        {
+          "id": "q2",
+          "number": 2,
+          "text": "2. Énoncé précis de la deuxième question (ex: établir l'expression de la fonction de transfert sous forme canonique)",
+          "points": 2.5,
+          "sampleAnswer": "Démonstration complète pas à pas avec \\\\dfrac{}{} et résultat encadré $$ \\\\boxed{...} $$"
         }
       ],
       "correction": {
-        "steps": "Synthèse méthodologique globale de résolution étape par étape...",
-        "examples": ["Application numérique concrète avec unités SI", "Vérification asymptotique et piège d'examen à éviter"]
+        "steps": "Méthode générale de résolution étape par étape et critères de notation...",
+        "examples": [
+          "Exemple d'application numérique avec contrôle de cohérence des unités SI",
+          "Piège classique d'examen à éviter (ex: condition de validité du régime linéaire)"
+        ]
       }
     }
   }
 }
 \`\`\`
-RÈGLES CRUCIALES POUR LES EXERCICES ÉCRITS :
-- Génère 8 à 10 questions/exercices progressifs exploitant directement le cours et les TD du document joint, totalisant 20 points avec corrigés complets pas à pas.`;
+RÈGLES IMPÉRATIVES POUR LES EXERCICES ÉCRITS :
+0. LANGUE ET STYLE OBLIGATOIRES :
+   - STRICTEMENT ET INTÉGRALEMENT EN FRANÇAIS ACADÉMIQUE SOIGNÉ.
+   - INTERDICTION ABSOLUE DE TOUT MOT EN ANGLAIS (pas de 'Theory: ...', pas de 'Types: ...', pas de 'The user wants me to...').
+   - AUCUN MONOLOGUE INTERNE, AUCUN SCRATCHPAD OU TEXTE MÉTA DANS LES VALEURS DU JSON.
+1. CONCEPTION D'UN NOUVEAU SUJET ORIGINAL ET SÉRIEUX (PAS DE RECOPIE DU DOCUMENT) :
+   - INTERDICTION FORMELLE DE RECOPIER LES EXERCICES OU TD DÉJÀ PRÉSENTS DANS LE DOCUMENT DE L'UTILISATEUR.
+   - Tu dois concevoir un VRAI NOUVEAU SUJET D'EXAMEN inédit, inspiré des lois, principes et montages du document, avec une mise en situation technique réaliste, des composants et des valeurs numériques complètes.
+2. 8 QUESTIONS PROGRESSIVES TOTALISANT STRICTEMENT 20 POINTS (8 questions de 2.5 points chacune).
+   - Chaque question doit être une vraie question d'épreuve (Définitions, Démonstration de formule avec \\\\dfrac{}{}, Forme canonique, Comportement asymptotique, Fréquence de coupure, Application numérique chiffrée, Analyse de courbe/Bode, Conclusion critique).
+3. CORRIGÉ MODÈLE EXHAUSTIF DANS 'sampleAnswer' pour chaque question (formules, étapes littérales, calculs et \\\\boxed{}).`;
 
     case 'devoir-complet':
       return `FORMAT JSON ATTENDU :
@@ -3827,12 +3846,28 @@ ${agentPerception.slice(0, 30000)}
       .trim();
     const effectiveThemeTitle = cleanDocTitle && cleanDocTitle.length > 2 ? cleanDocTitle : 'Cours et Synthèse';
 
+    let specificCreationInstructions = "";
+    if (normTypeEarly === 'exercices-ecrits') {
+      specificCreationInstructions = `
+DIRECTIVES PARTICULIÈRES POUR L'ÉPREUVE D'EXERCICES ÉCRITS :
+1. LANGUE 100% FRANÇAISE : Tous les champs ('context', 'text', 'sampleAnswer', 'steps') DOIVENT être intégralement en français. Interdiction absolue de l'anglais et du méta-texte ("The user wants me to...", "I need to...", "Theory: ...").
+2. NOUVEAU SUJET ORIGINAL ET SÉRIEUX : Ne recopie JAMAIS un exercice déjà existant du document de l'utilisateur. Conçois un SUJET D'EXAMEN TOTALEMENT INÉDIT ET SÉRIEUX (mise en situation d'un cas réel ou technique avec données chiffrées, composants ou paramètres, hypothèses claires).
+3. 8 QUESTIONS D'EXAMEN PROGRESSIVES SUR 20 POINTS (exactement 2.5 pts par question). Chaque question est une véritable consigne académique (ex: "1. Définir les grandeurs...", "2. Établir l'expression littérale...", "3. Mettre sous forme canonique...", "4. Calculer la fréquence de coupure à -3 dB...").
+4. CORRIGÉ PAS À PAS OFFICIEL DANS 'sampleAnswer' avec formules LaTeX \\dfrac{}{} et résultat encadré \\boxed{}.`;
+    } else if (normTypeEarly === 'devoir-complet') {
+      specificCreationInstructions = `
+DIRECTIVES PARTICULIÈRES POUR LE DEVOIR COMPLET :
+1. LANGUE 100% FRANÇAISE : Zéro anglais, zéro texte méta.
+2. NOUVEAU DEVOIR D'EXAMEN INÉDIT : Sujet original structuré en 3 parties (Problème 8 pts, QCM 6 pts, Vrai/Faux 6 pts = 20 pts au total).`;
+    }
+
     const agentExplicitPrompt = `Conçois immédiatement le module interactif complet, exhaustif et d'une richesse académique impressionnante de type "${normTypeEarly}" (${formatDisplayTitle}) sur le thème « ${effectiveThemeTitle} » ${params.mainDocName ? `(document source : « ${params.mainDocName} »)` : ''}.
 Exploite l'intégralité du contenu (tous les chapitres, toutes les formules en LaTeX avec \\dfrac{}{}, la logique profonde, les démonstrations, toutes les zones d'ombre/pièges d'examen et les TD).
 ${studentInstructionPrompt}
 CONSIGNES STRICTES DE RÉDACTION :
 1. LE TITRE ('title') ET LE THÈME ('theme') DOIVENT ÊTRE LE VRAI THÈME DU COURS (ex: "Filtres Analogiques", "Diagrammes de Bode"), JAMAIS un nom de fichier brut avec extension .pdf ou parenthèses (1).
-2. INTERDICTION FORMELLE DE RÉDIGER DU TEXTE MÉTA : Ne commence JAMAIS l'overview par des phrases comme "L'étudiant a dit...", "Le système me demande...", "J'ai conçu...". Rédige DIRECTEMENT la synthèse pédagogique pour l'étudiant.
+2. INTERDICTION FORMELLE DE RÉDIGER DU TEXTE MÉTA : Ne commence JAMAIS l'overview ou le context par des phrases comme "L'étudiant a dit...", "Le système me demande...", "The user wants me to...", "J'ai conçu...". Rédige DIRECTEMENT le sujet pédagogique pour l'étudiant.
+${specificCreationInstructions}
 Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normTypeEarly}" entouré de \`\`\`json et \`\`\`.`;
 
     const chatHistory = [
@@ -4007,11 +4042,35 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
         const we = finalContent.written_exercise || finalContent;
         const rawExs = Array.isArray(we.questions) ? we.questions : (Array.isArray(we.exercises) ? we.exercises : (Array.isArray(we.exercices) ? we.exercices : (Array.isArray(finalContent) ? finalContent : null)));
         if (Array.isArray(rawExs) && rawExs.length > 0) {
+          // Nettoyage rigoureux du titre
+          const rawTitle = we.title || params.creationTitle || effectiveThemeTitle;
+          const cleanTitle = rawTitle
+            .replace(/\.(?:pdf|docx|pptx|txt|xlsx)\b/gi, '')
+            .replace(/\s*\(\d+\)/g, '')
+            .replace(/[_]/g, ' ')
+            .replace(/^Exercices\s+[EÉ]crits\s*:\s*/i, '')
+            .replace(/^CH(?:\s*[0-9IVXLCDM]+)?\s*[:\s\-–—]\s*/i, '')
+            .replace(/^CHAPITRE\s*[0-9IVXLCDM]+\s*[:\s\-–—]\s*/i, '')
+            .trim() || effectiveThemeTitle;
+
+          // Nettoyage du contexte pour éliminer tout scratchpad anglais ou texte méta
+          let cleanCtx = String(we.context || we.enonce || '').trim();
+          cleanCtx = cleanCtx
+            .replace(/(?:```|""")(?:json)?[\s\S]*?(?:```|""")/gi, '')
+            .replace(/^(?:the\s+user\s+wants\s+me\s+to|i\s+need\s+to\s+create|i\s+will\s+create|based\s+on\s+the\s+document)[^\n]*\n*/gi, '')
+            .replace(/^(?:the\s+user\s+wants[\s\S]*?(?:exploiting|points[^\n:]*:)[:\s]*)/gi, '')
+            .replace(/^(?:l['’]étudiant\s+a\s+dit|le\s+système\s+me\s+demande|l['’]utilisateur\s+(?:veut|demande))[^\n]*\n*/gi, '')
+            .trim();
+
+          if (/^the\s+user\s+wants/i.test(cleanCtx) || /^i\s+(?:need|will)\s+/i.test(cleanCtx)) {
+            cleanCtx = "";
+          }
+
           finalContent = {
             written_exercise: {
-              title: we.title || params.creationTitle,
-              theme: we.theme || params.mainDocName,
-              context: we.context || we.enonce || '',
+              title: cleanTitle,
+              theme: effectiveThemeTitle,
+              context: cleanCtx || `Mise en situation d'évaluation : Étude technique approfondie et modélisation appliquée basée sur le thème « ${effectiveThemeTitle} ». Rédigez vos démonstrations pas à pas et justifiez chaque résultat avec rigueur.`,
               questions: rawExs,
               correction: we.correction || undefined
             }

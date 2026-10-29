@@ -38,16 +38,70 @@ export interface NormalizedExercise {
   isTemplate: boolean;
 }
 
-// Nettoie le contexte pour retirer tout bavardage préliminaire de l'IA
-function cleanExerciseContext(ctx?: string): string {
+// Nettoie le titre pour retirer les extensions de fichiers (.pdf, .docx), les numéros de copie et préfixes techniques
+export function cleanDisplayThemeTitle(raw?: string): string {
+  if (!raw) return "Épreuve d'Exercices Écrits d'Application";
+  let t = raw
+    .replace(/\.(?:pdf|docx|pptx|txt|xlsx)\b/gi, "")
+    .replace(/\s*\(\d+\)/g, "")
+    .replace(/[_]/g, " ")
+    .replace(/^Exercices\s+[EÉ]crits\s*:\s*/i, "")
+    .replace(/^S[eé]rie\s+d['’]exercices\s*:\s*/i, "")
+    .replace(/^CH(?:\s*[0-9IVXLCDM]+)?\s*[:\s\-–—]\s*/i, "")
+    .replace(/^CHAPITRE\s*[0-9IVXLCDM]+\s*[:\s\-–—]\s*/i, "")
+    .replace(/^TD(?:\s*[0-9IVXLCDM]+)?\s*[:\s\-–—]\s*/i, "")
+    .trim();
+  if (!t || t.length < 2) return "Épreuve d'Exercices Écrits d'Application";
+  return t;
+}
+
+// Convertit les points en chaîne propre sans bug de virgule flottante (évite 2.4000000000000004)
+export function formatPoints(points: number): string {
+  const rounded = Math.round(points * 10) / 10;
+  return rounded % 1 === 0 ? rounded.toString() : rounded.toFixed(1);
+}
+
+// Nettoie le contexte pour retirer tout bavardage préliminaire de l'IA, le scratchpad ou l'anglais méta
+export function cleanExerciseContext(ctx?: string, fallbackTheme?: string): string {
   if (!ctx) return "";
   let cleaned = ctx
-    .replace(/(?:```|""")(?:json)?[\s\S]*?(?:```|""")/gi, '')
-    .replace(/^(?:j'ai\s+con[çc]u|voici\s+votre|j'ai\s+cr[ée][ée]|je\s+vous\s+propose)[^\n]*\n*/i, '')
-    .replace(/(?:voulez-vous\s+que\s+je\s+continue|souhaitez-vous\s+la\s+suite)[^\n]*$/i, '')
+    .replace(/(?:```|""")(?:json)?[\s\S]*?(?:```|""")/gi, "")
+    .replace(/^(?:l['’]étudiant\s+a\s+dit[^\n]*\n*)/gi, "")
+    .replace(/^(?:le\s+système\s+me\s+demande[^\n]*\n*)/gi, "")
+    .replace(/^(?:l['’]utilisateur\s+(?:veut|demande|a\s+dit)[^\n]*\n*)/gi, "")
+    .replace(/^(?:j'ai\s+con[çc]u|voici\s+votre|j'ai\s+cr[ée][ée]|je\s+vous\s+propose)[^\n]*\n*/gi, "")
+    .replace(/^(?:the\s+user\s+wants\s+me\s+to[^\n]*\n*)/gi, "")
+    .replace(/^(?:i\s+need\s+to\s+create[^\n]*\n*)/gi, "")
+    .replace(/^(?:i\s+will\s+create[^\n]*\n*)/gi, "")
+    .replace(/^(?:based\s+on\s+the\s+document[^\n]*\n*)/gi, "")
+    .replace(/^(?:the\s+user\s+wants[\s\S]*?(?:exploiting|points[^\n:]*:)[:\s]*)/gi, "")
+    .replace(/(?:voulez-vous\s+que\s+je\s+continue|souhaitez-vous\s+la\s+suite)[^\n]*$/gi, "")
     .trim();
-  if (cleaned.startsWith('{') && cleaned.endsWith('}')) return "";
+
+  if (/^the\s+user\s+wants/i.test(cleaned) || /^i\s+(?:need|will|must)\s+/i.test(cleaned) || /^here\s+is\s+a\s+complete/i.test(cleaned)) {
+    cleaned = "";
+  }
+
+  if (cleaned.startsWith("{") && cleaned.endsWith("}")) return "";
+
+  if (!cleaned || cleaned.length < 20) {
+    const themeName = fallbackTheme && fallbackTheme.length > 2 ? `« ${fallbackTheme} »` : "ce domaine d'ingénierie";
+    return `Mise en situation d'évaluation : Étude technique et modélisation appliquée basée sur les lois fondamentales et les concepts directeurs de ${themeName}. Analysez les hypothèses, formulez vos démonstrations algébriques pas à pas et vérifiez la cohérence physique de vos résultats numériques.`;
+  }
+
   return cleaned;
+}
+
+// Nettoie l'énoncé d'une question pour corriger d'éventuels résidus de puces ou de pseudo-titres anglais
+function sanitizeQuestionText(rawText: string, index: number, fallbackTheme?: string): string {
+  let t = (rawText || "").trim();
+  if (/^theory\s*:\s*/i.test(t)) {
+    return "Définir la fonction de transfert harmonique $\\underline{H}(j\\omega)$, rappeler la définition de la bande passante à $-3\\text{ dB}$ et expliciter le principe fondamental de fonctionnement de ce filtre.";
+  }
+  if (/^types\s*:\s*passive\s+vs\s+active/i.test(t) || /^types\s*:\s*/i.test(t)) {
+    return "Distinguer rigoureusement les filtres passifs et les filtres actifs en précisant les avantages, les limitations et l'intérêt d'utiliser un amplificateur opérationnel.";
+  }
+  return t;
 }
 
 // Gabarit pédagogique par défaut avec 8 questions progressives totalisant 20 points
@@ -146,9 +200,10 @@ function normalizeWrittenExercise(input: any, fallbackTitle?: string): Normalize
     return normalizeWrittenExercise(root.written_exercise, fallbackTitle);
   }
 
-  const title = root?.title || root?.label || root?.root?.label || fallbackTitle || "Épreuve d'Exercices Écrits d'Application";
+  const rawTitle = root?.title || root?.label || root?.root?.label || fallbackTitle || "Épreuve d'Exercices Écrits d'Application";
+  const title = cleanDisplayThemeTitle(rawTitle);
   const rawContext = root?.context || root?.enonce || root?.description || root?.overview || "";
-  const context = cleanExerciseContext(rawContext) || (fallbackTitle ? `Énoncé d'application et de réflexion basé sur le cours « ${fallbackTitle} ».` : "");
+  const context = cleanExerciseContext(rawContext, title);
 
   // 2. Normalisation des questions
   let rawQuestions: any[] = [];
@@ -199,7 +254,7 @@ function normalizeWrittenExercise(input: any, fallbackTitle?: string): Normalize
       return {
         id: q.id || `q_${idx + 1}`,
         number: typeof q.number === 'number' ? q.number : idx + 1,
-        text: q.text || q.question || q.enonce || `Question ${idx + 1}`,
+        text: sanitizeQuestionText(q.text || q.question || q.enonce || `Question ${idx + 1}`, idx, title),
         points: Number(q.points) || 0,
         sampleAnswer: q.sampleAnswer || q.reponse || q.correction || q.answer || ''
       };
@@ -269,16 +324,36 @@ function normalizeWrittenExercise(input: any, fallbackTitle?: string): Normalize
     ];
   }
 
-  // 3. Répartition rigoureuse des points sur 20 au total
-  const qCount = questions.length;
-  const basePts = Math.floor((20 / qCount) * 10) / 10;
-  const distributedPts = basePts * qCount;
-  const remainder = Math.round((20 - distributedPts) * 10) / 10;
+  // 3. Répartition rigoureuse des points sur 20 au total sans glitch flottant
+  const qCount = Math.max(1, questions.length);
+  const totalExisting = questions.reduce((sum, q) => sum + (Number(q.points) || 0), 0);
+  const hasValidPoints = questions.every((q) => typeof q.points === "number" && q.points > 0);
 
-  questions = questions.map((q, idx) => ({
-    ...q,
-    points: q.points > 0 ? q.points : basePts + (idx === 0 ? remainder : 0)
-  }));
+  if (!hasValidPoints || Math.abs(totalExisting - 20) > 0.5) {
+    const rawStep = 20 / qCount;
+    let basePts = Math.round(rawStep * 2) / 2;
+    if (basePts * qCount !== 20) {
+      basePts = Math.floor(rawStep * 10) / 10;
+    }
+    const currentSum = Math.round(basePts * qCount * 10) / 10;
+    const remainder = Math.round((20 - currentSum) * 10) / 10;
+
+    questions = questions.map((q, idx) => {
+      let p = basePts;
+      if (idx === 0) {
+        p = Math.round((p + remainder) * 10) / 10;
+      }
+      return {
+        ...q,
+        points: p
+      };
+    });
+  } else {
+    questions = questions.map((q) => ({
+      ...q,
+      points: Math.round((Number(q.points) || 0) * 10) / 10
+    }));
+  }
 
   // 4. Normalisation de la correction (steps + 2 examples)
   let steps = "";
@@ -790,7 +865,7 @@ export default function ExercicesEcrits({ data, title }: { data?: any; title?: s
                           <MathText text={q.text} />
                         </div>
                         <span className="text-[11px] text-stone-500 font-mono mt-0.5 block font-bold">
-                          Barème : {q.points} {q.points > 1 ? 'points' : 'point'}
+                          Barème : {formatPoints(q.points)} {q.points > 1 ? "points" : "point"}
                         </span>
                       </div>
                     </div>
