@@ -1546,6 +1546,29 @@ export default {
 
             // Vérification stricte du solde : si 0 crédit restant, refus immédiat de la requête
             if (userBilling.credits_balance <= 0) {
+              if (creationId && db && isAsync) {
+                try {
+                  await db.prepare(`
+                    INSERT INTO ai_generated_contents (
+                      id, user_id, conversation_id, tool_type, title, content_json, source_file_name, is_pinned, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                      content_json = excluded.content_json,
+                      updated_at = excluded.updated_at
+                  `).bind(
+                    creationId,
+                    userId,
+                    convId || null,
+                    requestedType,
+                    creationTitle,
+                    JSON.stringify({ status: "insufficient_credits", error: "Crédit insuffisant", title: creationTitle, toolType: requestedType }),
+                    docName || null,
+                    Date.now(),
+                    Date.now()
+                  ).run().catch(() => {});
+                } catch {}
+              }
               return new Response(JSON.stringify({
                 success: false,
                 error: "Votre solde de crédits IA est épuisé (0 crédit restant). Veuillez recharger vos crédits depuis le menu « Mes Crédits IA » pour continuer à interagir avec l'IA.",
@@ -2385,13 +2408,14 @@ CONSIGNES STRICTES DE CONTINUATION :
           // OPTION 2 : Le worker répond en ~150ms au mobile et continue l'exécution + écriture D1 via ctx.waitUntil
           const bgPromise = executeGenerationAndPersist().catch(async (bgErr) => {
             logger.error("Erreur génération arrière-plan ctx.waitUntil", { event: "ai.creation.bg_error", error: bgErr });
+            const isInsufficient = bgErr?.code === 'INSUFFICIENT_CREDITS' || String(bgErr?.message || '').includes('INSUFFICIENT_CREDITS') || String(bgErr?.message || '').toLowerCase().includes('crédit');
             if (db && creationId) {
               await db.prepare(`
                 UPDATE ai_generated_contents
                 SET content_json = ?, updated_at = ?
                 WHERE id = ?
               `).bind(
-                JSON.stringify({ status: "failed", error: bgErr?.message || "Erreur de génération", title: creationTitle, toolType: requestedType }),
+                JSON.stringify({ status: isInsufficient ? "insufficient_credits" : "failed", error: isInsufficient ? "Crédit insuffisant" : (bgErr?.message || "Erreur de génération"), title: creationTitle, toolType: requestedType }),
                 Date.now(),
                 creationId
               ).run().catch(() => {});

@@ -32,6 +32,7 @@ export interface BackgroundAiTask {
   resultResponse?: string;
   resultCreation?: any;
   errorText?: string;
+  creditError?: boolean;
 }
 
 export type TaskExecutor = () => Promise<{ response?: string; creation?: any; async?: boolean; status?: string } | void>;
@@ -39,6 +40,7 @@ export type TaskExecutor = () => Promise<{ response?: string; creation?: any; as
 const STORAGE_KEY = 'studycloud_active_ai_tasks';
 const memoryExecutors = new Map<string, TaskExecutor>();
 let cloudPollerTimer: any = null;
+let isQueuePausedForCredits = false;
 
 function safeGetStorage(): BackgroundAiTask[] {
   if (typeof window === 'undefined' || !window.localStorage) return [];
@@ -263,11 +265,18 @@ export const aiBackgroundManager = {
         })
         .catch((err: any) => {
           console.error('[aiBackgroundManager] Échec tâche IA:', err);
-          this.failAiTask(target.taskId, err?.message || 'Erreur réseau');
+          const isCredit = err?.isInsufficientCredits || err?.code === 'INSUFFICIENT_CREDITS' || String(err?.message || '').toLowerCase().includes('crédit');
+          if (isCredit) {
+            this.handleInsufficientCredits(target.taskId, err?.message || 'Crédit insuffisant');
+          } else {
+            memoryExecutors.delete(taskId);
+            this.failAiTask(target.taskId, err?.message || 'Erreur réseau');
+          }
         })
         .finally(() => {
-          memoryExecutors.delete(taskId);
-          this.processNextInQueue();
+          if (!isQueuePausedForCredits) {
+            this.processNextInQueue();
+          }
         });
     }
   },
@@ -276,6 +285,10 @@ export const aiBackgroundManager = {
    * Vérifie la file d'attente et lance la tâche suivante si un slot est libre
    */
   processNextInQueue(): void {
+    if (isQueuePausedForCredits) {
+      console.warn('[aiBackgroundManager] File d\'attente suspendue : crédits insuffisants.');
+      return;
+    }
     while (this.getRunningCount() < MAX_CONCURRENT_REQUESTS) {
       const queuedTasks = this.getQueuedTasks();
       if (queuedTasks.length === 0) break;
@@ -428,6 +441,117 @@ export const aiBackgroundManager = {
     }
 
     this.processNextInQueue();
+  },
+
+  /**
+   * Suspend une tâche pour crédit insuffisant : la tâche RESTE EN ATTENTE ('queued')
+   * et affiche l'alerte « Crédit insuffisant » sans jamais générer de contenu improvisé.
+   */
+  handleInsufficientCredits(taskIdOrConvId: string, errorText?: string): void {
+    const tasks = safeGetStorage();
+    let targetCreationId: string | undefined;
+
+    const updated = tasks.map(t => {
+      const match =
+        t.taskId === taskIdOrConvId ||
+        t.creationId === taskIdOrConvId ||
+        (!t.creationId && !t.toolType && t.conversationId === taskIdOrConvId);
+      if (match) {
+        targetCreationId = t.creationId;
+        return {
+          ...t,
+          status: 'queued' as const, // Reste en attente !
+          creditError: true,
+          progressText: 'Crédit insuffisant',
+          errorText: errorText || 'Crédit insuffisant',
+          lastUpdated: Date.now(),
+        };
+      }
+      return t;
+    });
+
+    safeSetStorage(updated);
+    isQueuePausedForCredits = true;
+
+    // Mise à jour D1 pour persistance
+    const targetUserId = (typeof window !== 'undefined' ? localStorage.getItem('unifolder_user_id') : null) || 'default-user';
+    if (targetCreationId && targetUserId && targetUserId !== 'default-user') {
+      StudyCloudAPI.saveAiContent({
+        id: targetCreationId,
+        userId: targetUserId,
+        fileId: null,
+        toolType: 'creation',
+        title: 'Création Studio',
+        contentJson: { status: 'insufficient_credits', error: errorText || 'Crédit insuffisant' },
+        isPinned: false,
+      }).catch(() => {});
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('studycloud_insufficient_credits', {
+        detail: {
+          taskId: taskIdOrConvId,
+          creationId: targetCreationId,
+          error: errorText || 'Crédit IA insuffisant',
+          code: 'INSUFFICIENT_CREDITS'
+        }
+      }));
+
+      window.dispatchEvent(new CustomEvent('studycloud-creation-status-changed', {
+        detail: {
+          creationId: targetCreationId,
+          taskId: taskIdOrConvId,
+          status: 'insufficient_credits',
+          creditError: true,
+          progressText: 'Crédit insuffisant',
+          errorText: errorText || 'Crédit insuffisant',
+        }
+      }));
+    }
+  },
+
+  /**
+   * Reprend la file d'attente suite à un rechargement de crédits
+   */
+  resumeQueue(): void {
+    isQueuePausedForCredits = false;
+    const tasks = safeGetStorage();
+    const cleaned = tasks.map(t => t.creditError ? { ...t, creditError: false, progressText: 'En attente...' } : t);
+    safeSetStorage(cleaned);
+    this.processNextInQueue();
+  },
+
+  /**
+   * Relance une tâche suspendue pour crédits après vérification du solde
+   */
+  retryTask(taskIdOrCreationId: string): void {
+    isQueuePausedForCredits = false;
+    const tasks = safeGetStorage();
+    const target = tasks.find(t => t.taskId === taskIdOrCreationId || t.creationId === taskIdOrCreationId);
+    if (!target) return;
+
+    target.creditError = false;
+    target.status = 'running';
+    target.startedAt = Date.now();
+    target.lastUpdated = Date.now();
+    target.progressText = 'Création en cours...';
+    safeSetStorage(tasks);
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('studycloud-creation-status-changed', {
+        detail: {
+          creationId: target.creationId,
+          taskId: target.taskId,
+          status: 'generating',
+          creditError: false,
+          title: target.title,
+          toolType: target.toolType,
+          progressText: 'Création en cours...',
+        }
+      }));
+    }
+
+    this.executeTask(target.taskId);
   },
 
   /**

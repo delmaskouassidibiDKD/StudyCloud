@@ -834,9 +834,17 @@ export default function App() {
     };
     window.addEventListener('open-assistant-chat', handleOpenChat);
     window.addEventListener('studycloud-trigger-creation', handleOpenChat);
+
+    const handleOpenAiSubs = () => {
+      setActivePreviewItem(null);
+      setIsStudySpaceOpen(false);
+      handleSetTab('ai-subscriptions');
+    };
+    window.addEventListener('studycloud_open_ai_subscriptions', handleOpenAiSubs);
     return () => {
       window.removeEventListener('open-assistant-chat', handleOpenChat);
       window.removeEventListener('studycloud-trigger-creation', handleOpenChat);
+      window.removeEventListener('studycloud_open_ai_subscriptions', handleOpenAiSubs);
     };
   }, []);
   

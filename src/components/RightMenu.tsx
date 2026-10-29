@@ -2,13 +2,13 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Maximize, Minimize, ArrowLeftRight, X, Menu, ChevronRight, History, Sparkles, Brain,
   Trash2, Search, RefreshCw, FolderOpen, AlertCircle, Clock, BookOpen, Layers, CheckCircle2,
-  FileText, Loader2, Zap
+  FileText, Loader2, Zap, RotateCw, AlertTriangle
 } from 'lucide-react';
 import { UniversalContentRenderer } from './universal-render/UniversalContentRenderer';
 import DotField from './DotField';
 import MagicRings from './MagicRings';
 import { getCurrentUserId } from '../services/userSync';
-import { StudyCloudAPI, formatConsumedCreditsDisplay, convertTokensToCredits, getActiveTokensPerCredit, getAiBillingConfig } from '../services/api';
+import { StudyCloudAPI, formatConsumedCreditsDisplay, convertTokensToCredits, getActiveTokensPerCredit, getAiBillingConfig, getUserAiCreditsLive } from '../services/api';
 import { aiBackgroundManager } from '../services/aiBackgroundManager';
 
 export type CreationPhase = 'idle' | 'thinking' | 'creating';
@@ -164,6 +164,40 @@ export function RightMenu({
   const [creationSearch, setCreationSearch] = useState<string>('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [openCreditsCreationIds, setOpenCreditsCreationIds] = useState<Set<string>>(new Set());
+  const [retryingCreationId, setRetryingCreationId] = useState<string | null>(null);
+  const [creditAlertCreationId, setCreditAlertCreationId] = useState<string | null>(null);
+
+  const handleRetryCreationWithCredits = async (item: any) => {
+    const uid = getCurrentUserId() || (typeof window !== 'undefined' ? localStorage.getItem('unifolder_user_id') : null) || 'default-user';
+    setRetryingCreationId(item.id);
+
+    try {
+      // 1. Vérification du solde de crédits en direct dans D1
+      const creditRes = await getUserAiCreditsLive(uid);
+      const balance = Number(creditRes?.credits?.balance ?? (creditRes?.credits as any)?.credits_balance ?? 0);
+
+      if (balance <= 0) {
+        // Le solde est TOUJOURS insuffisant : on réaffiche le message en rouge avec pulsation
+        setCreditAlertCreationId(item.id);
+        setTimeout(() => setCreditAlertCreationId(null), 3000);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('studycloud_insufficient_credits', {
+            detail: { error: "Votre solde de crédits IA est insuffisant (0 crédit restant)." }
+          }));
+        }
+        return;
+      }
+
+      // 2. Le solde a été rechargé (> 0) : relancer la création suspendue
+      setSavedCreations(prev => prev.map(c => c.id === item.id ? { ...c, creditError: false, status: 'generating', progressText: 'Création en cours...' } : c));
+      aiBackgroundManager.retryTask(item.taskId || item.id);
+      aiBackgroundManager.resumeQueue();
+    } catch (e) {
+      console.warn('[RightMenu] Erreur relance création:', e);
+    } finally {
+      setRetryingCreationId(null);
+    }
+  };
 
   const toggleCreditsCreation = (id: string) => {
     setOpenCreditsCreationIds(prev => {
@@ -1677,7 +1711,7 @@ export function RightMenu({
                             <Loader2 className="w-2.5 h-2.5 animate-spin text-orange-400" />
                             En cours
                           </span>
-                        ) : item.status === 'queued' ? (
+                        ) : (item.status === 'queued' || item.status === 'insufficient_credits' || item.creditError || item.content?.status === 'insufficient_credits') ? (
                           <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-semibold flex items-center gap-1">
                             <Clock className="w-2.5 h-2.5 text-amber-400" />
                             En attente
@@ -1744,8 +1778,28 @@ export function RightMenu({
                         )}
                       </button>
 
-                      {/* Bouton Crédits : Masqué tant que la création est en cours ou en attente */}
-                      {item.status !== 'generating' && item.status !== 'queued' && (
+                      {/* Bouton Crédits ou Alerte Crédit Insuffisant en rouge avec bouton Réessayer devant */}
+                      {(item.creditError || item.status === 'insufficient_credits' || item.content?.status === 'insufficient_credits') ? (
+                        <div className="flex items-center gap-1.5 animate-fadeIn">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRetryCreationWithCredits(item);
+                            }}
+                            disabled={retryingCreationId === item.id}
+                            className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white border border-zinc-600 transition-all cursor-pointer flex items-center gap-1 shadow-xs active:scale-95 disabled:opacity-50"
+                            title="Vérifier le solde et relancer cette création"
+                          >
+                            <RotateCw className={`w-2.5 h-2.5 text-orange-400 ${retryingCreationId === item.id ? 'animate-spin' : ''}`} />
+                            <span>Réessayer</span>
+                          </button>
+                          <span className={`text-[10px] font-bold text-rose-400 flex items-center gap-1 bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.5 rounded-md select-none ${creditAlertCreationId === item.id ? 'animate-bounce ring-1 ring-rose-400' : ''}`}>
+                            <AlertTriangle className="w-2.5 h-2.5 text-rose-400 shrink-0" />
+                            <span>Crédit insuffisant</span>
+                          </span>
+                        </div>
+                      ) : (item.status !== 'generating' && item.status !== 'queued' && (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -1762,7 +1816,7 @@ export function RightMenu({
                           <Zap className="w-2.5 h-2.5 text-amber-400 shrink-0" />
                           <span>Crédits</span>
                         </button>
-                      )}
+                      ))}
                     </div>
                   </div>
                 );

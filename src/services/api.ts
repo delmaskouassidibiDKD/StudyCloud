@@ -468,6 +468,26 @@ export async function sendChatMessageToAi(params: {
     const err = await response.json().catch(() => ({ error: response.statusText }));
     const errorText = String(err.error || response.statusText || '');
 
+    // 0. Détection stricte d'épuisement des crédits IA (Code HTTP 402 ou INSUFFICIENT_CREDITS)
+    if (response.status === 402 || err.code === 'INSUFFICIENT_CREDITS' || (errorText.toLowerCase().includes('crédit') && errorText.toLowerCase().includes('épuisé'))) {
+      try {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('studycloud_insufficient_credits', {
+            detail: {
+              userId: currentUserId,
+              error: err.error || "Votre solde de crédits IA est épuisé.",
+              code: "INSUFFICIENT_CREDITS"
+            }
+          }));
+        }
+      } catch {}
+      const insufficientErr = new Error(err.error || "Votre solde de crédits IA est épuisé (0 crédit restant).");
+      (insufficientErr as any).code = 'INSUFFICIENT_CREDITS';
+      (insufficientErr as any).status = 402;
+      (insufficientErr as any).isInsufficientCredits = true;
+      throw insufficientErr;
+    }
+
     // 1. Détection du quota Cloudflare Workers AI gratuit (Erreur 4006 : 10,000 neurons épuisés)
     const isNeuronQuotaExhausted = errorText.includes('4006') || errorText.toLowerCase().includes('neurons') || errorText.toLowerCase().includes('daily free allocation');
 
@@ -3488,6 +3508,8 @@ export async function getUserAiCreditsLive(
 /**
  * Récupère le journal chronologique des consommations IA
  */
+export const getUserAiCredits = getUserAiCreditsLive;
+
 export async function getAiUsageLogs(): Promise<{ success: boolean; logs: AiUsageLogItem[]; error?: string }> {
   try {
     const workerUrl = getAiWorkerUrl();

@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap, Palette, HelpCircle, Download, Square, WifiOff, RotateCw, AlertTriangle, Coins } from 'lucide-react';
+import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap, Palette, HelpCircle, Download, Square, WifiOff, RotateCw, AlertTriangle, Coins, ArrowRight } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
 import { MathText, stripAiReasoningScratchpad } from './MathText';
-import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey, safeJsonParse, getWorkerApiUrl, getActiveTokensPerCredit, convertTokensToCredits, formatConsumedCreditsDisplay, getAiBillingConfig } from '../services/api';
+import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey, safeJsonParse, getWorkerApiUrl, getActiveTokensPerCredit, convertTokensToCredits, formatConsumedCreditsDisplay, getAiBillingConfig, getUserAiCreditsLive } from '../services/api';
 import { aiBackgroundManager } from '../services/aiBackgroundManager';
 import { getFileBlob } from '../services/localFileStorage';
 import { extractDocumentDetails } from '../services/documentTextExtractor';
@@ -1732,6 +1732,37 @@ RÈGLES CRUCIALES POUR LE QUESTIONNAIRE QCM :
   }
 }
 
+/**
+ * Détermine si le message de l'étudiant exprime une véritable INTENTION de créer un support,
+ * et NON une simple mention, question, explication ou discussion sur un support existant.
+ */
+export function hasExplicitCreationIntent(userText: string): boolean {
+  if (!userText || typeof userText !== 'string') return false;
+  const t = userText.trim().toLowerCase();
+  if (!t) return false;
+
+  // 1. Verbes d'action impératifs ou déclaratifs de création explicite
+  // Ex: "crée", "génère", "fais-moi", "conçois", "prépare", "fabrique", "construis", "produis", "peux-tu me créer", "je veux créer"
+  const hasStrongCreationCommand = /\b(?:cr[eé][eé]r?|cr[eé]ez|g[eé]n[eé]r(?:er|e|ez)?|fais(?:-moi)?|fait(?:-moi)?|faites(?:-moi)?|con[çc]ois|conception|construi[st]|construisez|fabrique|fabriquer|produi[st]|produisez|pr[eé]pare(?:-moi)?|pr[eé]parez(?:-moi)?|lance(?:-moi)?|lancez(?:-moi)?|r[eé]dige(?:-moi)?|r[eé]digez(?:-moi)?)\b/i.test(t) ||
+    /\b(?:peux-tu|pourrais-tu|merci\s+de)\s+(?:me\s+)?(?:faire|cr[eé]er|g[eé]n[eé]rer|pr[eé]parer|concevoir|construire|fabriquer|produire|sortir|pondre)\b/i.test(t) ||
+    /\b(?:je\s+(?:veux|voudrais|souhaite|aimerais)|besoin\s+de)\s+(?:cr[eé]er|g[eé]n[eé]rer|faire|avoir)\s+(?:un|une|des|\d+)\b/i.test(t);
+
+  // 2. Formulations courtes directes débutant par une quantité ou un article + support
+  // Ex: "2 QCM sur le chapitre", "une carte mentale", "3 flashcards", "un résumé complet"
+  const isDirectCreationPhrase = /^(?:un|une|des|\d+|deux|trois|quatre)\s+(?:nouvelles?\s+|autres?\s+)?(?:cartes?\s*mentales?|mind\s*-?maps?|qcms?|questionnaires?|flashcards?|cartes?\s*m[eé]moires?|r[eé]sum[eé]s?|fiches?\s+de\s+r[eé]visions?|exercices?|devoirs?|vrai\s+ou\s+faux)\b/i.test(t);
+
+  // 3. Questions de discussion, compréhension, correction ou analyse (JAMAIS une création sauf si commande forte de création)
+  // Ex: "C'est quoi une carte mentale ?", "Explique la carte mentale", "Dans le QCM pourquoi...", "Je n'ai pas compris le résumé"
+  const isDiscussionOrMetaQuery = /^(?:pourquoi|comment|qu['’]est-ce|quand|qui|o[uù]|est-ce|peux-tu\s+m['’]expliquer|peux-tu\s+m['’]aider|explique|aide-moi\s+[àa]\s+(?:comprendre|r[eé]soudre)|c['’]est\s+quoi|dis-moi|je\s+ne\s+comprends\s+pas|r[eé]sous|d[eé]taille|salut|bonjour|coucou|hello|que\s+penses-tu|donne\s+ton\s+avis|analyse|v[eé]rifie|corrige)\b/i.test(t) ||
+    /\b(?:dans\s+(?:la|le|mon|ton|cette|ce)|sur\s+(?:la|le|mon|ton|cette|ce)|parle(?:-moi)?\s+de|lis\s+(?:la|le)|corrige\s+(?:la|le|mon|ton)|avis\s+sur|que\s+veut\s+dire|signifie|o[uù]\s+est|retrouver|afficher|voir\s+(?:la|le|mon|ton))\b/i.test(t);
+
+  if (isDiscussionOrMetaQuery && !hasStrongCreationCommand) {
+    return false;
+  }
+
+  return hasStrongCreationCommand || isDirectCreationPhrase;
+}
+
 // Détection de tous les formats de création demandés (support multi-agents + héritage de clarification)
 export function detectAllCreationFormats(
   userText: string,
@@ -1742,11 +1773,44 @@ export function detectAllCreationFormats(
     return [normalizeCreationType(requestedType) as AiCreationType];
   }
   const t = (userText || '').trim().toLowerCase();
+  if (!t) return [];
 
-  const hasCreationActionVerb = /\b(?:cr[eé][eé]r?|g[eé]n[eé]r(?:er|e)?|fais(?:-moi)?|fait(?:-moi)?|con[çc]ois|conception|pr[eé]pare(?:-moi)?|lance(?:-moi)?|donne(?:-moi)?|produi[st]|construi[st]|r[eé]dige(?:-moi)?|nouveau|nouvelle|veux|voudrais|aimerais|besoin\s+d['’]un)\b/i.test(t);
-  const isConversationalQuestion = /^(?:pourquoi|comment|qu['’]est-ce|quand|qui|o[uù]|est-ce|peux-tu\s+m['’]expliquer|peux-tu\s+m['’]aider|explique|aide-moi\s+[àa]\s+(?:comprendre|r[eé]soudre)|c['’]est\s+quoi|dis-moi|je\s+ne\s+comprends\s+pas|r[eé]sous|d[eé]taille|salut|bonjour|coucou|hello)\b/i.test(t);
+  // RÈGLE CARDINALE : Un mot-clé seul ne doit JAMAIS déclencher de création.
+  // Seule une véritable INTENTION de création explicite déclenche les agents !
+  const hasIntent = hasExplicitCreationIntent(userText);
 
-  if (isConversationalQuestion && !hasCreationActionVerb && !requestedType) {
+  // Si l'utilisateur n'a pas formulé d'intention de création directe dans ce message,
+  // on vérifie uniquement s'il répond à une demande de précision récente de l'IA (héritage de clarification)
+  if (!hasIntent) {
+    if (Array.isArray(conversationMessages) && conversationMessages.length >= 2) {
+      const nonEmptyMsgs = conversationMessages.filter(m => {
+        const txt = String((m as any)?.text || (m as any)?.content || '').trim();
+        return txt.length > 0 && !(m as any)?.isError;
+      });
+
+      const recentSlice = nonEmptyMsgs.slice(-8);
+      const hasRecentClarificationPrompt = recentSlice.some(m => {
+        const sender = (m as any)?.sender || (m as any)?.role;
+        const txt = String((m as any)?.text || (m as any)?.content || '').trim();
+        return (sender === 'ai' || sender === 'assistant') &&
+          /\?|quel(?:le)?s?\s+(?:sujet|cours|chapitre|fichier|document|th[èe]me|mat[iî]ère|partie)|pr[eé]cis(?:er|ez)|joindre|s[eé]lectionner|sur\s+quoi|QUESTIONS_SUGG[EÉ]R[EÉ]ES/i.test(txt);
+      });
+
+      if (hasRecentClarificationPrompt) {
+        for (let i = recentSlice.length - 1; i >= 0; i--) {
+          const msgI = recentSlice[i];
+          const senderI = (msgI as any)?.sender || (msgI as any)?.role;
+          const textI = String((msgI as any)?.text || (msgI as any)?.content || '').trim();
+          if (senderI === 'user' && textI && hasExplicitCreationIntent(textI)) {
+            const prevFormats = detectAllCreationFormats(textI, undefined, undefined);
+            if (prevFormats.length > 0) {
+              return prevFormats;
+            }
+          }
+        }
+      }
+    }
+    // Pas d'intention de création : simple discussion de chat, aucun agent ne sera lancé
     return [];
   }
 
@@ -1776,68 +1840,65 @@ export function detectAllCreationFormats(
     }
   };
 
-  if (t) {
-    // 1. Vrai ou Faux Test vs Vrai ou Faux
-    if (/\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux\s+teste?s?|v\s*\/?\s*f\s+teste?s?|[eé]preuves?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)\b/i.test(t)) {
-      addFormat('vrai-ou-faux-test', /\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux\s+teste?s?|v\s*\/?\s*f\s+teste?s?|[eé]preuves?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)\b/i);
-    } else if (/\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux|v\/f)\b/i.test(t) || (hasCreationActionVerb && /\baffirmations?\b/i.test(t))) {
-      addFormat('vrai-ou-faux', /\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux|v\/f|affirmations?)\b/i);
-    }
+  // 1. Vrai ou Faux Test vs Vrai ou Faux
+  if (/\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux\s+teste?s?|v\s*\/?\s*f\s+teste?s?|[eé]preuves?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)\b/i.test(t)) {
+    addFormat('vrai-ou-faux-test', /\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux\s+teste?s?|v\s*\/?\s*f\s+teste?s?|[eé]preuves?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)\b/i);
+  } else if (/\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux|v\/f|affirmations?)\b/i.test(t)) {
+    addFormat('vrai-ou-faux', /\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux|v\/f|affirmations?)\b/i);
+  }
 
-    // 2. Questionnaire Test vs Questionnaire QCM (tolère "qestionnaire", "teste", "qcm test", "quiz test")
-    if (/\b(?:q[u]?estion+aires?\s+teste?s?|q\.?c\.?m\.?\s+teste?s?|quizz?\s+teste?s?|teste?s?\s+not[eé]s?|teste?s?\s+chronos?|[eé]preuves?\s+not[eé]es?)\b/i.test(t)) {
-      addFormat('questionnaire-test', /\b(?:q[u]?estion+aires?\s+teste?s?|q\.?c\.?m\.?\s+teste?s?|quizz?\s+teste?s?|teste?s?\s+not[eé]s?|teste?s?\s+chronos?|[eé]preuves?\s+not[eé]es?)\b/i);
-    } else if (/\b(?:q[u]?estion+aires?|quizz?|q\.?c\.?m\.?)\b/i.test(t) || (hasCreationActionVerb && /\bteste?s?\b/i.test(t) && !/\bvrai(?:e?s)?\s*(?:ou|\/|-)\s*faux/i.test(t))) {
-      addFormat('questionnaire', /\b(?:q[u]?estion+aires?|quizz?|q\.?c\.?m\.?|teste?s?)\b/i);
-    }
+  // 2. Questionnaire Test vs Questionnaire QCM
+  if (/\b(?:q[u]?estion+aires?\s+teste?s?|q\.?c\.?m\.?\s+teste?s?|quizz?\s+teste?s?|teste?s?\s+not[eé]s?|teste?s?\s+chronos?|[eé]preuves?\s+not[eé]es?)\b/i.test(t)) {
+    addFormat('questionnaire-test', /\b(?:q[u]?estion+aires?\s+teste?s?|q\.?c\.?m\.?\s+teste?s?|quizz?\s+teste?s?|teste?s?\s+not[eé]s?|teste?s?\s+chronos?|[eé]preuves?\s+not[eé]es?)\b/i);
+  } else if (/\b(?:q[u]?estion+aires?|quizz?|q\.?c\.?m\.?|teste?s?)\b/i.test(t)) {
+    addFormat('questionnaire', /\b(?:q[u]?estion+aires?|quizz?|q\.?c\.?m\.?|teste?s?)\b/i);
+  }
 
-    // 3. Carte Mentale 2 vs Carte Mentale (tolère "carte mental", "carte conceptuel", "mind map", "arborescence")
-    if (/\b(?:cartes?\s*mentale?s?\s*2|mind\s*-?\s*maps?\s*2|cartes?\s*conceptuelle?s?)\b/i.test(t)) {
-      addFormat('carte-mentale-2', /\b(?:cartes?\s*mentale?s?\s*2|mind\s*-?\s*maps?\s*2|cartes?\s*conceptuelle?s?)\b/i);
-    } else if (/\b(?:cartes?\s*mentale?s?|mind\s*-?\s*maps?|arborescences?|sch[eé]mas?\s*heuristiques?)\b/i.test(t)) {
-      addFormat('carte-mentale', /\b(?:cartes?\s*mentale?s?|mind\s*-?\s*maps?|arborescences?|sch[eé]mas?\s*heuristiques?)\b/i);
-    }
+  // 3. Carte Mentale 2 vs Carte Mentale
+  if (/\b(?:cartes?\s*mentale?s?\s*2|mind\s*-?\s*maps?\s*2|cartes?\s*conceptuelle?s?)\b/i.test(t)) {
+    addFormat('carte-mentale-2', /\b(?:cartes?\s*mentale?s?\s*2|mind\s*-?\s*maps?\s*2|cartes?\s*conceptuelle?s?)\b/i);
+  } else if (/\b(?:cartes?\s*mentale?s?|mind\s*-?\s*maps?|arborescences?|sch[eé]mas?\s*heuristiques?)\b/i.test(t)) {
+    addFormat('carte-mentale', /\b(?:cartes?\s*mentale?s?|mind\s*-?\s*maps?|arborescences?|sch[eé]mas?\s*heuristiques?)\b/i);
+  }
 
-    // 4. Cartes Mémoires / Flashcards (tolère "carte memoire", "flashcard", "fiche de memorisation")
-    if (/\b(?:cartes?\s*m[eé]moires?|flash\s*-?\s*cards?|fiches?\s+de\s+m[eé]morisations?|cartes?\s+flash)\b/i.test(t)) {
-      addFormat('carte-memoire', /\b(?:cartes?\s*m[eé]moires?|flash\s*-?\s*cards?|fiches?\s+de\s+m[eé]morisations?|cartes?\s+flash)\b/i);
-    }
+  // 4. Cartes Mémoires / Flashcards
+  if (/\b(?:cartes?\s*m[eé]moires?|flash\s*-?\s*cards?|fiches?\s+de\s+m[eé]morisations?|cartes?\s+flash)\b/i.test(t)) {
+    addFormat('carte-memoire', /\b(?:cartes?\s*m[eé]moires?|flash\s*-?\s*cards?|fiches?\s+de\s+m[eé]morisations?|cartes?\s+flash)\b/i);
+  }
 
-    // 5. Devoir Complet / Examen
-    if (/\b(?:devoirs?\s+complets?|sujets?\s+d['’]examens?|[eé]preuves?\s+d['’]examens?|devoirs?\s+d['’]examens?|examens?\s+complets?|examens?\s+blancs?|devoirs?\s+surveill[eé]s?)\b/i.test(t)) {
-      addFormat('devoir-complet', /\b(?:devoirs?\s+complets?|sujets?\s+d['’]examens?|[eé]preuves?\s+d['’]examens?|devoirs?\s+d['’]examens?|examens?\s+complets?|examens?\s+blancs?|devoirs?\s+surveill[eé]s?)\b/i);
-    }
+  // 5. Devoir Complet / Examen
+  if (/\b(?:devoirs?\s+complets?|sujets?\s+d['’]examens?|[eé]preuves?\s+d['’]examens?|devoirs?\s+d['’]examens?|examens?\s+complets?|examens?\s+blancs?|devoirs?\s+surveill[eé]s?)\b/i.test(t)) {
+    addFormat('devoir-complet', /\b(?:devoirs?\s+complets?|sujets?\s+d['’]examens?|[eé]preuves?\s+d['’]examens?|devoirs?\s+d['’]examens?|examens?\s+complets?|examens?\s+blancs?|devoirs?\s+surveill[eé]s?)\b/i);
+  }
 
-    // 6. Infographie
-    if (/\b(?:infographies?|fiches?\s+visuelles?|posters?\s+p[eé]dagogiques?)\b/i.test(t)) {
-      addFormat('infographie', /\b(?:infographies?|fiches?\s+visuelles?|posters?\s+p[eé]dagogiques?)\b/i);
-    }
+  // 6. Infographie
+  if (/\b(?:infographies?|fiches?\s+visuelles?|posters?\s+p[eé]dagogiques?)\b/i.test(t)) {
+    addFormat('infographie', /\b(?:infographies?|fiches?\s+visuelles?|posters?\s+p[eé]dagogiques?)\b/i);
+  }
 
-    // 7. Document PDF
-    if (/\b(?:documents?\s+pdf|polycopi[eé]s?|polycopies?|g[eé]n[eé]rer\s+un\s+pdf|cr[eé]er\s+un\s+pdf|faire\s+un\s+pdf|export\s+pdf|(?:un|le)\s+pdf)\b/i.test(t)) {
-      addFormat('pdf', /\b(?:documents?\s+pdf|polycopi[eé]s?|polycopies?|pdf)\b/i);
-    }
+  // 7. Document PDF
+  if (/\b(?:documents?\s+pdf|polycopi[eé]s?|polycopies?|g[eé]n[eé]rer\s+un\s+pdf|cr[eé]er\s+un\s+pdf|faire\s+un\s+pdf|export\s+pdf)\b/i.test(t)) {
+    addFormat('pdf', /\b(?:documents?\s+pdf|polycopi[eé]s?|polycopies?|pdf)\b/i);
+  }
 
-    // 8. Exercices Écrits (accepté avec verbe d'action OU dans une liste de créations OU en début de consigne)
-    const hasDevoir = matchedEntries.some(e => e.type === 'devoir-complet');
-    const isListOrDirectRequest = hasCreationActionVerb || matchedEntries.length > 0 || /^(?:un|une|des|deux|trois|\d+)?\s*(?:exercices?|exos?|r[eé]sum[eé]s?|synth[eè]ses?|fiches?)\b/i.test(t) || /\b(?:et|puis|avec|,)\s*(?:un|une|des|deux|trois|\d+)?\s*(?:exercices?|exos?|r[eé]sum[eé]s?|synth[eè]ses?|fiches?)\b/i.test(t);
-    if (!hasDevoir) {
-      if (/\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]applications?|s[eé]ries?\s+d['’]exercices?|exos?\s+[eé]crits?)\b/i.test(t)) {
-        addFormat('exercices-ecrits', /\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]applications?|s[eé]ries?\s+d['’]exercices?|exos?\s+[eé]crits?)\b/i);
-      } else if (isListOrDirectRequest && /\b(?:exercices?|exos?)\b/i.test(t) && !/\b(?:exercice|exo)\s+\d+\b/i.test(t)) {
-        addFormat('exercices-ecrits', /\b(?:exercices?|exos?)\b/i);
-      }
-    }
-
-    // 9. Résumé / Synthèse / Fiche de Révision (tolère "fiche de revision", "fiche de résumé", "fiche de synthèse", "fiche de cours")
-    if (/\b(?:fiches?\s+de\s+r[eé]visions?|fiches?\s+de\s+r[eé]sum[eé]s?|fiches?\s+de\s+synth[eè]ses?|fiches?\s+de\s+cours|fiches?\s+r[eé]visions?|fiches?\s+synth[eè]ses?)\b/i.test(t)) {
-      addFormat('resume', /\b(?:fiches?\s+de\s+r[eé]visions?|fiches?\s+de\s+r[eé]sum[eé]s?|fiches?\s+de\s+synth[eè]ses?|fiches?\s+de\s+cours|fiches?\s+r[eé]visions?|fiches?\s+synth[eè]ses?)\b/i);
-    } else if ((isListOrDirectRequest || /\b(?:un|une|mon|le)\s+(?:r[eé]sum[eé]|synth[eè]se)\b/i.test(t)) && /\b(?:r[eé]sum[eé]s?|synth[eè]ses?)\b/i.test(t)) {
-      addFormat('resume', /\b(?:r[eé]sum[eé]s?|synth[eè]ses?)\b/i);
+  // 8. Exercices Écrits
+  const hasDevoir = matchedEntries.some(e => e.type === 'devoir-complet');
+  if (!hasDevoir) {
+    if (/\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]applications?|s[eé]ries?\s+d['’]exercices?|exos?\s+[eé]crits?)\b/i.test(t)) {
+      addFormat('exercices-ecrits', /\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]applications?|s[eé]ries?\s+d['’]exercices?|exos?\s+[eé]crits?)\b/i);
+    } else if (/\b(?:exercices?|exos?)\b/i.test(t) && !/\b(?:exercice|exo)\s+\d+\b/i.test(t)) {
+      addFormat('exercices-ecrits', /\b(?:exercices?|exos?)\b/i);
     }
   }
 
-  // Trier selon l'ordre d'apparition dans le message de l'étudiant et déplier les quantités (ex: "2 QCM" -> ['questionnaire', 'questionnaire'])
+  // 9. Résumé / Synthèse / Fiche de Révision
+  if (/\b(?:fiches?\s+de\s+r[eé]visions?|fiches?\s+de\s+r[eé]sum[eé]s?|fiches?\s+de\s+synth[eè]ses?|fiches?\s+de\s+cours|fiches?\s+r[eé]visions?|fiches?\s+synth[eè]ses?)\b/i.test(t)) {
+    addFormat('resume', /\b(?:fiches?\s+de\s+r[eé]visions?|fiches?\s+de\s+r[eé]sum[eé]s?|fiches?\s+de\s+synth[eè]ses?|fiches?\s+de\s+cours|fiches?\s+r[eé]visions?|fiches?\s+synth[eè]ses?)\b/i);
+  } else if (/\b(?:r[eé]sum[eé]s?|synth[eè]ses?)\b/i.test(t)) {
+    addFormat('resume', /\b(?:r[eé]sum[eé]s?|synth[eè]ses?)\b/i);
+  }
+
+  // Trier selon l'ordre d'apparition dans le message de l'étudiant et déplier les quantités
   matchedEntries.sort((a, b) => a.index - b.index);
   const detected: AiCreationType[] = [];
   for (const entry of matchedEntries) {
@@ -1848,37 +1909,6 @@ export function detectAllCreationFormats(
 
   if (detected.length === 0 && requestedType && typeof requestedType === 'string' && requestedType.trim()) {
     return [normalizeCreationType(requestedType) as AiCreationType];
-  }
-
-  // Si l'utilisateur répond à une question de clarification de l'IA (ex: "sur ce fichier", "sur les filtres", "oui vas-y")
-  // après avoir demandé une ou plusieurs créations aux tours précédents :
-  if (detected.length === 0 && !isConversationalQuestion && Array.isArray(conversationMessages) && conversationMessages.length >= 2) {
-    const nonEmptyMsgs = conversationMessages.filter(m => {
-      const txt = String((m as any)?.text || (m as any)?.content || '').trim();
-      return txt.length > 0 && !(m as any)?.isError;
-    });
-
-    const recentSlice = nonEmptyMsgs.slice(-8);
-    const hasRecentClarificationPrompt = recentSlice.some(m => {
-      const sender = (m as any)?.sender || (m as any)?.role;
-      const txt = String((m as any)?.text || (m as any)?.content || '').trim();
-      return (sender === 'ai' || sender === 'assistant') &&
-        /\?|quel(?:le)?s?\s+(?:sujet|cours|chapitre|fichier|document|th[èe]me|mat[iî]ère|partie)|pr[eé]cis(?:er|ez)|joindre|s[eé]lectionner|sur\s+quoi|QUESTIONS_SUGG[EÉ]R[EÉ]ES/i.test(txt);
-    });
-
-    if (hasRecentClarificationPrompt) {
-      for (let i = recentSlice.length - 1; i >= 0; i--) {
-        const msgI = recentSlice[i];
-        const senderI = (msgI as any)?.sender || (msgI as any)?.role;
-        const textI = String((msgI as any)?.text || (msgI as any)?.content || '').trim();
-        if (senderI === 'user' && textI) {
-          const prevFormats = detectAllCreationFormats(textI, undefined, undefined);
-          if (prevFormats.length > 0) {
-            return prevFormats;
-          }
-        }
-      }
-    }
   }
 
   return detected;
@@ -2642,6 +2672,43 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     window.addEventListener('studycloud_billing_config_updated', handleConfigUpdate);
     return () => window.removeEventListener('studycloud_billing_config_updated', handleConfigUpdate);
   }, []);
+
+  const [isCreditInsufficient, setIsCreditInsufficient] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleInsufficientCredits = () => {
+      setIsCreditInsufficient(true);
+    };
+    const handleCreditsUpdated = (e: any) => {
+      if (typeof e.detail?.remaining_balance === 'number') {
+        setIsCreditInsufficient(e.detail.remaining_balance <= 0);
+      }
+    };
+    window.addEventListener('studycloud_insufficient_credits', handleInsufficientCredits);
+    window.addEventListener('studycloud_user_credits_updated', handleCreditsUpdated);
+
+    // Contrôle initial du solde de crédits
+    const uid = currentUserId || (typeof window !== 'undefined' ? localStorage.getItem('unifolder_user_id') : null);
+    if (uid && uid !== 'default-user') {
+      getUserAiCreditsLive(uid).then(res => {
+        if (res && res.credits) {
+          const bal = Number(res.credits.balance ?? (res.credits as any).credits_balance ?? 0);
+          setIsCreditInsufficient(bal <= 0);
+        }
+      }).catch(() => {});
+    }
+
+    return () => {
+      window.removeEventListener('studycloud_insufficient_credits', handleInsufficientCredits);
+      window.removeEventListener('studycloud_user_credits_updated', handleCreditsUpdated);
+    };
+  }, [currentUserId]);
+
+  const handleOpenAiSubscriptions = () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('studycloud_open_ai_subscriptions'));
+    }
+  };
 
   const getMessageTokens = (msg: Message): number => {
     if (typeof msg.tokens === 'number' && msg.tokens > 0) return msg.tokens;
@@ -3720,6 +3787,14 @@ ${agentPerception.slice(0, 30000)}
       documentImages: activeDocumentInfo?.documentImages,
       mediaType: activeDocumentInfo ? 'document' : (activeImageInfo ? 'image' : undefined),
     });
+
+    if ((aiResult as any)?.code === 'INSUFFICIENT_CREDITS' || (aiResult as any)?.status === 402 || (aiResult as any)?.isInsufficientCredits) {
+      const creditErr = new Error((aiResult as any)?.error || "Crédit IA insuffisant");
+      (creditErr as any).isInsufficientCredits = true;
+      (creditErr as any).code = 'INSUFFICIENT_CREDITS';
+      (creditErr as any).status = 402;
+      throw creditErr;
+    }
 
     const rawResponseText = (aiResult as any).raw_response || (aiResult as any).rawResponse || aiResult.response || "";
     let finalContent: any = aiResult.creation_data;
@@ -5081,8 +5156,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           }
         }
 
-        // Si l'utilisateur a explicitement cliqué sur un bouton d'action ou demandé un module dans son message
-        const explicitOrInferredType = explicitToolType || (
+        // Si l'utilisateur a explicitement cliqué sur un bouton d'action ou demandé un module dans son message avec une véritable intention
+        const explicitOrInferredType = explicitToolType || (hasExplicitCreationIntent(userText) ? (
           /vrai.*faux/i.test(userText) ? (/test/i.test(userText) ? 'vrai-ou-faux-test' : 'vrai-ou-faux') :
             /questionnaire|quiz|qcm/i.test(userText) ? (/test/i.test(userText) ? 'questionnaire-test' : 'questionnaire') :
               /carte\s*mentale|mindmap/i.test(userText) ? 'carte-mentale' :
@@ -5091,7 +5166,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                     /(?:document\s+pdf|polycopi[eé]|en\s+pdf|sous\s+forme\s+de\s+(?:document\s+)?pdf)/i.test(userText) ? 'pdf' :
                       /exercice|devoir/i.test(userText) ? (/devoir/i.test(userText) ? 'devoir-complet' : 'exercices-ecrits') :
                         /infographie/i.test(userText) ? 'infographie' : null
-        );
+        ) : null);
 
         if (!creationParsed && explicitOrInferredType) {
           const p = parseOrBuildAiCreation(explicitOrInferredType as any, fullAiText, mainDocName, userText);
@@ -6139,6 +6214,35 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
 
       {/* ZONE BASSE : FORMULAIRE */}
       <div className="px-3 sm:px-5 pt-2 pb-6 sm:pb-8 shrink-0">
+        {/* BANDEAU CRÉDIT INSUFFISANT EN HAUT DU CLAVIER DE SAISIE */}
+        {isCreditInsufficient && (
+          <div className="mx-2 md:mx-4 mb-2.5 px-3.5 py-2.5 rounded-2xl bg-[#1e1315]/95 border-2 border-rose-500/50 shadow-[0_4px_20px_rgba(244,63,94,0.25)] flex items-center justify-between gap-2.5 animate-fadeIn z-20">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-1.5 rounded-xl bg-rose-500/20 text-rose-400 shrink-0">
+                <Coins className="w-4 h-4 animate-pulse" />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-xs font-bold text-rose-300 truncate">
+                  Crédit IA insuffisant
+                </span>
+                <span className="text-[10px] text-zinc-300 truncate">
+                  Votre solde de crédits est épuisé. Rechargez pour continuer.
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleOpenAiSubscriptions}
+              className="shrink-0 px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-stone-950 font-black text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+              title="Accéder au menu Crédits IA"
+            >
+              <span>Recharger</span>
+              <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+            </button>
+          </div>
+        )}
+
         <div className="relative mx-2 md:mx-4 rounded-3xl p-[1.5px] overflow-hidden bg-zinc-700/60 shadow-lg group">
           {/* Liseré fin arc-en-ciel rotatif à 360° qui fait le tour complet */}
           <div
