@@ -1368,6 +1368,41 @@ Tu es strictement dédié à ce module Polycopié PDF.`;
   }
 }
 
+// Consigne commune d'analyse approfondie, d'exploitation intégrale du document joint, des zones d'ombre, des formules et de la logique
+function getCommonDeepCreationDirective(docName?: string): string {
+  const safeDoc = docName ? `« ${docName} »` : 'le document/cours étudié';
+  return `══════════════════════════════════════════════════════════════════════════════
+[CONSIGNE COMMUNE OBLIGATOIRE POUR TOUS LES AGENTS DE CRÉATION — ANALYSE APPROFONDIE, ZONES D'OMBRE, FORMULES COMPLÈTES & LOGIQUE DU DOCUMENT] :
+══════════════════════════════════════════════════════════════════════════════
+Tu es un Agent de Conception Académique d'Élite de StudyCloud. Quelle que soit la nature du support que tu fabriques (Carte Mentale, Questionnaire QCM, Questionnaire Test, Vrai ou Faux, Vrai ou Faux Test, Cartes Mémoires, Fiche de Résumé/Révision, Exercices Écrits, Devoir Complet, Infographie ou Polycopié PDF) sur ${safeDoc}, tu dois appliquer ce PROTOCOLE COMMUN D'EXCELLENCE avant et pendant la construction de ton JSON :
+
+1. INTERDICTION ABSOLUE DU TRAVAIL SUPERFICIEL OU EXPÉDITIF :
+   - Ne construis JAMAIS un support rapide, générique, survolé ou incomplet.
+   - Analyse méticuleusement l'INTÉGRALITÉ du document joint (du premier chapitre jusqu'au dernier exercice ou Travaux Dirigés / TD, y compris les schémas, circuits, courbes, diagrammes de Bode, tableaux et remarques).
+   - Extrais TOUTE la substance du document : chaque chapitre, chaque sous-partie, chaque théorème, chaque montage ou configuration, chaque cas particulier et chaque application. Ce que tu livres à l'étudiant doit être IMPRESSIONNANT de richesse, de précision et de profondeur académique.
+
+2. ÉCLAIRCISSEMENT SYSTÉMATIQUE DES « ZONES D'OMBRE » (SUBTILITÉS, HYPOTHÈSES CACHÉES & PIÈGES) :
+   - Dans tout support de cours, il existe des « zones d'ombre » : étapes de démonstration sous-entendues par l'enseignant, hypothèses physiques ou mathématiques implicites (ex: régime linéaire vs saturé d'un AOP, impédance d'entrée infinie $i^+ = i^- = 0$, approximations basses/hautes fréquences $\\omega \\to 0$ et $\\omega \\to \\infty$, conditions de validité d'une loi, conventions de signe, cas limites).
+   - Tu dois DÉBUSQUER et EXPLIQUER clairement toutes ces zones d'ombre dans ton support (dans les explications des QCM/Vrai-Faux, dans les branches/feuilles de la Carte Mentale, dans les sections/pièges du Résumé, au verso des Cartes Mémoires, et dans les corrigés des Exercices/Devoirs) pour que l'étudiant comprenne ce qui n'est pas dit explicitement et ne soit jamais bloqué en examen.
+
+3. EXTRACTION EXHAUSTIVE DE TOUTES LES FORMULES ET DE LEUR LOGIQUE :
+   - Extrais et intègre TOUTES les formules mathématiques, physiques ou scientifiques du document (lois fondamentales, fonctions de transfert, formes canoniques, pulsations propres $\\omega_0$, fréquences de coupure $f_c$, facteurs de qualité $Q_0$, gains $A_0$ ou $T_0$, déphasages $\\varphi$, pentes asymptotiques en dB/décade, etc.).
+   - Écris OBLIGATOIREMENT chaque formule en LaTeX irréprochable ($...$ ou $$...$$) avec de VRAIES fractions verticales \\dfrac{numérateur}{dénominateur} (ZÉRO slash '/').
+   - Explique toujours la LOGIQUE de chaque formule : d'où elle vient (quel théorème ou quelle loi permet de l'établir : diviseur de tension, Millman, loi des mailles/nœuds, impédances complexes $Z_C = \\dfrac{1}{jC\\omega}$, $Z_L = jL\\omega$...), que signifie physiquement chaque terme avec son unité SI, et comment on passe d'une expression brute à la forme canonique.
+
+4. MAÎTRISE DE LA LOGIQUE PROFONDE (« LE POURQUOI ET LE COMMENT ») :
+   - Fais ressortir la logique interne du cours : le lien de cause à effet entre les concepts, l'intuition physique ou logique (ex: pourquoi un condensateur se comporte comme un interrupteur ouvert en basse fréquence $\\omega \\to 0$ et comme un fil en haute fréquence $\\omega \\to \\infty$, comment reconnaître immédiatement la nature d'un filtre ou d'une équation avant même de calculer), et les méthodes de vérification rapide.
+
+5. EXIGENCE DE DENSITÉ MAXIMALE SELON TON FORMAT INDIVIDUEL :
+   - Tout en respectant strictement le schéma JSON propre à ton module individuel :
+     * Si tu crées un RÉSUMÉ ('resume') : couvre 100 % des parties du document dans 'sections' (5 à 8 grandes sections très développées éclaircissant chaque notion et chaque zone d'ombre), inclus toutes les définitions dans 'key_definitions' (8 à 15 concepts), toutes les formules du document avec leurs étapes de démonstration et pièges dans 'formulas' (6 à 12 formules complètes), un tableau comparatif exhaustif dans 'comparison_table', au moins 6 à 8 pièges et astuces méthodologiques dans 'traps_and_tips', et un exercice type complet du document résolu de A à Z dans 'practical_example'.
+     * Si tu crées une CARTE MENTALE ('carte-mentale', 'carte-mentale-2') : déploie une arborescence ultra-complète à 4 paliers couvrant tous les chapitres, tous les montages/cas et les TD du document (5 à 7 Grands Piliers de niveau 1, chacun divisé en 3 à 5 sous-branches de niveau 2, chacune portant des feuilles de niveau 3 riches contenant les formules exactes en LaTeX \\dfrac{}{}, la logique clé et les zones d'ombre éclaircies).
+     * Si tu crées un QUESTIONNAIRE QCM ('questionnaire', 'questionnaire-test') ou VRAI/FAUX ('vrai-ou-faux', 'vrai-ou-faux-test') : génère 15 à 18 questions/affirmations de haut niveau couvrant tout le document (concepts, formules canoniques en LaTeX, logique physique, zones d'ombre/pièges d'examen et calculs issus des TD du document). Chaque 'explanation' doit être une véritable mini-leçon détaillée expliquant la logique complète, la formule utilisée avec \\dfrac{}{} et la zone d'ombre ou le piège à éviter.
+     * Si tu crées des CARTES MÉMOIRES ('carte-memoire') : génère 15 à 20 flashcards denses couvrant toutes les définitions, toutes les formules canoniques, les méthodes de démonstration et les zones d'ombre du document, avec au verso ('back'/'answer') la réponse complète, la formule LaTeX \\dfrac{}{} et l'explication logique.
+     * Si tu crées des EXERCICES ÉCRITS ('exercices-ecrits') ou un DEVOIR COMPLET ('devoir-complet') : exploite directement les montages, schémas et Travaux Dirigés du document pour construire une épreuve complète sur 20 points avec des corrigés pas-à-pas intégralement démontrés (formules littérales avec \\dfrac{}{}, explication de chaque étape logique et résultat encadré \\boxed{}).
+══════════════════════════════════════════════════════════════════════════════`;
+}
+
 // Spécification formelle du schéma JSON attendu pour chaque sous-agent dans le prompt système
 function getTargetJsonInstructions(type: AiCreationType, docName: string, title: string): string {
   const norm = normalizeCreationType(type);
@@ -1386,22 +1421,22 @@ function getTargetJsonInstructions(type: AiCreationType, docName: string, title:
     "affirmations": [
       {
         "id": "vf_1",
-        "statement": "Énoncé complet et précis de la première affirmation sans placeholder",
+        "statement": "Énoncé complet, subtil et précis d'une affirmation scientifique avec formules KaTeX ($...$) ciblant une propriété, une formule ou une zone d'ombre du document",
         "is_true": true,
-        "explanation": "Justification détaillée prouvant pourquoi cette affirmation est vraie ou fausse"
+        "explanation": "Justification pédagogique approfondie démontrant la logique physique/mathématique complète, la formule exacte avec \\\\dfrac{}{} et le piège à éviter"
       }
     ]
   }
 }
 \`\`\`
 RÈGLES CRUCIALES POUR LES VRAI OU FAUX :
-- Rédige entre 10 et 18 affirmations distinctes et pertinentes.
-- Chaque affirmation DOIT avoir un énoncé textuel complet dans "statement" (ou "affirmation").
+- Rédige entre 15 et 18 affirmations distinctes, subtiles et exigeantes couvrant tout le document (chapitres, formules, conditions de validité, zones d'ombre et TD).
+- Chaque affirmation DOIT avoir un énoncé textuel complet dans "statement" et une démonstration pédagogique détaillée dans "explanation".
 - INTERDICTION FORMELLE d'écrire seulement 'Affirmation 1' ou 'Affirmation n°1' sans énoncé.`;
 
     case 'carte-mentale':
     case 'carte-mentale-2':
-      return `FORMAT JSON ATTENDU :
+      return `FORMAT JSON ATTENDU (ARBORESCENCE PROFONDE ET EXHAUSTIVE À 4 PALIERS COUVRANT TOUT LE DOCUMENT) :
 \`\`\`json
 {
   "decision": "creation",
@@ -1415,25 +1450,28 @@ RÈGLES CRUCIALES POUR LES VRAI OU FAUX :
       "label": "${docName}",
       "children": [
         {
-          "id": "branch-1",
-          "label": "Titre Branche Principale 1",
+          "id": "pilier-1",
+          "label": "1. Premier Grand Pilier / Chapitre du Document",
           "children": [
-            { "id": "sub-1-1", "label": "Sous-notion ou point clé 1" },
-            { "id": "sub-1-2", "label": "Sous-notion ou point clé 2" }
-          ]
-        },
-        {
-          "id": "branch-2",
-          "label": "Titre Branche Principale 2",
-          "children": [
-            { "id": "sub-2-1", "label": "Sous-notion ou point clé" }
+            {
+              "id": "sub-1-1",
+              "label": "A. Concept / Montage / Loi fondamentale",
+              "children": [
+                { "id": "leaf-1-1-1", "label": "Définition & Logique physique complète" },
+                { "id": "leaf-1-1-2", "label": "Formule canonique : $$ T(j\\\\omega) = \\\\dfrac{T_0}{1 + j\\\\dfrac{\\\\omega}{\\\\omega_0}} $$" },
+                { "id": "leaf-1-1-3", "label": "Zone d'ombre & Piège d'examen : condition de validité et comportement asymptotique" }
+              ]
+            }
           ]
         }
       ]
     }
   }
 }
-\`\`\``;
+\`\`\`
+RÈGLES CRUCIALES POUR LA CARTE MENTALE :
+- Génère 5 à 7 Grands Piliers principaux (children de root) couvrant 100 % des parties et TD du document.
+- Chaque Pilier DOIT comporter 3 à 5 sous-branches, et chaque sous-branche DOIT comporter 3 à 4 feuilles détaillant les définitions, TOUTES les formules en LaTeX avec \\\\dfrac{}{}, la logique physique et les zones d'ombre éclaircies.`;
 
     case 'exercices-ecrits':
       return `FORMAT JSON ATTENDU :
@@ -1448,23 +1486,26 @@ RÈGLES CRUCIALES POUR LES VRAI OU FAUX :
     "written_exercise": {
       "title": "${title}",
       "theme": "${docName}",
+      "context": "Présentation complète du système étudié dans le document, schémas/montages, hypothèses physiques et données.",
       "questions": [
         {
-          "id": "ex_1",
-          "title": "Exercice 1 : Application des principes fondamentaux",
-          "statement": "Énoncé complet de l'exercice avec données numériques, contexte ou texte d'étude.",
-          "hints": ["Indice méthodologique pour démarrer"],
-          "solution": {
-            "steps": ["Étape 1 : rappel de la règle ou formule", "Étape 2 : calcul ou démonstration"],
-            "answer": "Solution rédigée complète et pédagogique",
-            "final_answer": "Résultat final"
-          }
+          "id": "q1",
+          "number": 1,
+          "text": "Énoncé précis et complet de la question avec formules KaTeX ($...$)",
+          "points": 2.5,
+          "sampleAnswer": "Correction détaillée pas à pas : rappel du théorème/loi, développement littéral avec \\\\dfrac{}{}, éclaircissement de la zone d'ombre et résultat encadré $$ \\\\boxed{...} $$"
         }
-      ]
+      ],
+      "correction": {
+        "steps": "Synthèse méthodologique globale de résolution étape par étape...",
+        "examples": ["Application numérique concrète avec unités SI", "Vérification asymptotique et piège d'examen à éviter"]
+      }
     }
   }
 }
-\`\`\``;
+\`\`\`
+RÈGLES CRUCIALES POUR LES EXERCICES ÉCRITS :
+- Génère 8 à 10 questions/exercices progressifs exploitant directement le cours et les TD du document joint, totalisant 20 points avec corrigés complets pas à pas.`;
 
     case 'devoir-complet':
       return `FORMAT JSON ATTENDU :
@@ -1482,24 +1523,25 @@ RÈGLES CRUCIALES POUR LES VRAI OU FAUX :
       "time_allowed": "2 heures",
       "sections": [
         {
-          "title": "Partie 1 : Restitution organisée des connaissances (6 points)",
-          "points": 6,
-          "questions": [
-            { "id": "q1", "text": "Énoncé complet de la question 1", "points": 3, "correction": "Corrigé pas à pas", "criteria": ["Clarté de la définition", "Exemple pertinent"] }
-          ]
-        },
-        {
-          "title": "Partie 2 : Analyse et application guidée (8 points)",
+          "title": "Exercice 1 : Problème Majeur & Modélisation Analytique (8 points)",
+          "problem_statement": "Mise en situation complète issue du document avec hypothèses et données.",
           "points": 8,
           "questions": [
-            { "id": "q2", "text": "Énoncé détaillé de l'exercice", "points": 4, "correction": "Calcul et justification", "criteria": ["Formule appliquée", "Unité correcte"] }
+            { "id": "p1_q1", "number": "1.", "texte": "Énoncé complet de la question avec KaTeX ($...$)", "points": 3, "sampleAnswer": "Démonstration complète pas à pas avec \\\\dfrac{}{} et résultat encadré $$ \\\\boxed{...} $$" }
           ]
         },
         {
-          "title": "Partie 3 : Problème de synthèse (6 points)",
+          "title": "Exercice 2 : Questionnaire d'Analyse Approfondie QCM (6 points)",
           "points": 6,
           "questions": [
-            { "id": "q3", "text": "Énoncé du problème ouvert", "points": 6, "correction": "Résolution rédigée", "criteria": ["Raisonnement logique"] }
+            { "id": "p2_q1", "number": "1.", "texte": "Question d'analyse avec formules KaTeX ($...$)", "points": 1.5, "options": ["Choix A", "Choix B", "Choix C", "Choix D"], "correctIndex": 0, "explication": "Justification théorique et logique détaillée" }
+          ]
+        },
+        {
+          "title": "Exercice 3 : Test de Discrimination Conceptuelle Vrai/Faux (6 points)",
+          "points": 6,
+          "questions": [
+            { "id": "p3_q1", "number": "1.", "texte": "Affirmation pointue ciblant une zone d'ombre ou formule du cours", "points": 1.5, "correctValue": true, "explication": "Démonstration pédagogique complète" }
           ]
         }
       ]
@@ -1521,17 +1563,22 @@ RÈGLES CRUCIALES POUR LES VRAI OU FAUX :
     "cards": [
       {
         "id": "fc_1",
-        "question": "Question ou notion clé au recto ?",
-        "answer": "Définition ou réponse concise et percutante au verso",
-        "hint": "Indice mnémotechnique"
+        "front": "Question précise, notion clé, formule ou zone d'ombre au recto ?",
+        "back": "Réponse complète au verso : définition rigoureuse, formule en LaTeX avec \\\\dfrac{}{}, logique physique et piège à éviter.",
+        "question": "Question précise, notion clé, formule ou zone d'ombre au recto ?",
+        "answer": "Réponse complète au verso : définition rigoureuse, formule en LaTeX avec \\\\dfrac{}{}, logique physique et piège à éviter.",
+        "hint": "Indice méthodologique ou mnémotechnique",
+        "tag": "Chapitre / Thème"
       }
     ]
   }
 }
-\`\`\``;
+\`\`\`
+RÈGLES CRUCIALES POUR LES CARTES MÉMOIRES :
+- Génère 15 à 20 flashcards riches couvrant toutes les définitions, toutes les formules canoniques, les démonstrations et les zones d'ombre du document.`;
 
     case 'resume':
-      return `FORMAT JSON ATTENDU :
+      return `FORMAT JSON ATTENDU (MASTERCLASS EXHAUSTIVE EXPLOITANT 100 % DU DOCUMENT) :
 \`\`\`json
 {
   "decision": "creation",
@@ -1542,28 +1589,47 @@ RÈGLES CRUCIALES POUR LES VRAI OU FAUX :
   "creation_data": {
     "title": "${title}",
     "theme": "${docName}",
-    "overview": "Synthèse globale rédigée et claire du cours.",
+    "overview": "Synthèse globale approfondie (3 à 5 paragraphes denses) expliquant la logique générale du cours, les objectifs physiques/mathématiques et le fil conducteur du document.",
     "key_definitions": [
-      { "concept": "Concept clé", "definition": "Définition précise et rigoureuse", "objective": "Application directe" }
+      { "concept": "Nom exact du concept", "definition": "Définition complète, rigoureuse et explication des subtilités", "objective": "Rôle concret et application dans le cours/TD" }
     ],
     "formulas": [
-      { "name": "Nom de la relation", "formula": "$$ \\dfrac{a}{b} $$", "meaning": "Sens de chaque variable", "exam_trap": "Erreur classique à éviter" }
+      {
+        "name": "Nom officiel de la loi ou fonction de transfert",
+        "latex": "T(j\\\\omega) = \\\\dfrac{T_0}{1 + j\\\\dfrac{\\\\omega}{\\\\omega_0}}",
+        "target_goal": "Ce que cette formule permet de calculer et sa signification physique",
+        "variables": "Détail de chaque variable et son unité SI",
+        "when_to_use": "Conditions exactes de validité (zones d'ombre éclaircies)",
+        "how_to_derive": "Logique physique et théorème utilisé pour l'établir (ex: pont diviseur, Millman...)",
+        "demonstration_steps": ["Étape 1 : ...", "Étape 2 : ...", "Étape 3 : mise sous forme canonique"],
+        "exam_trap": "Piège classique d'examen sur cette formule et comment l'éviter"
+      }
     ],
     "comparison_table": {
-      "headers": ["Critère", "Élément A", "Élément B"],
-      "rows": [["Propriété clé", "Valeur A", "Valeur B"]]
+      "headers": ["Type / Montage", "Fonction de transfert canonique", "Comportement BF (ω→0) & HF (ω→∞)", "Propriétés clés", "Piège / Zone d'ombre"],
+      "rows": [["Élément 1 du cours", "$$ ... $$", "Comportement aux limites", "Propriétés", "Vigilance"]]
     },
-    "traps_and_tips": ["Conseil d'examen 1", "Astuce de mémorisation 2"],
+    "traps_and_tips": [
+      { "type": "trap", "title": "ZONE D'OMBRE & PIÈGE D'EXAMEN", "content": "Explication détaillée d'une subtilité cachée du document et comment ne pas se tromper." },
+      { "type": "tip", "title": "LOGIQUE & ASTUCE DE VÉRIFICATION", "content": "Méthode rapide pour retrouver ou vérifier les formules sans hésiter." }
+    ],
     "practical_example": {
-      "statement": "Énoncé d'un cas pratique ou exemple type",
-      "resolution_steps": ["Étape 1 : identifier", "Étape 2 : appliquer"]
+      "statement": "Énoncé complet d'un exercice ou cas pratique tiré directement du document (ou de ses TD)",
+      "resolution_steps": ["1. Analyse physique et hypothèses...", "2. Pose du théorème directeur et calcul littéral avec \\\\dfrac{}{}...", "3. Identification canonique et conclusion encadrée."]
     },
     "sections": [
-      { "number": "1", "heading": "I. Grand axe thématique", "body": "Développement pédagogique soigné", "points": ["Point clé"] }
+      {
+        "number": 1,
+        "heading": "I. Titre de la Première Partie du Document",
+        "body": "Explication magistrale très détaillée et approfondie de toute cette partie du document : logique physique, démonstrations pas à pas avec formules $$ ... $$ et \\\\dfrac{}{}, éclaircissement de toutes les zones d'ombre.",
+        "points": ["Point fondamental 1 avec formule", "Point fondamental 2", "Subtilité / Zone d'ombre à maîtriser"]
+      }
     ]
   }
 }
-\`\`\``;
+\`\`\`
+RÈGLES CRUCIALES POUR LA FICHE DE RÉSUMÉ / RÉVISION :
+- Rédige 5 à 8 grandes sections dans "sections" couvrant l'intégralité du document (cours + TD), 8 à 15 définitions dans "key_definitions", TOUTES les formules du document (6 à 12 formules) dans "formulas" avec leurs étapes de démonstration, un tableau comparatif complet, et 6 à 8 "traps_and_tips" éclaircissant toutes les zones d'ombre.`;
 
     case 'questionnaire':
     case 'questionnaire-test':
@@ -1579,15 +1645,19 @@ RÈGLES CRUCIALES POUR LES VRAI OU FAUX :
     "questions": [
       {
         "id": "q_1",
-        "question": "Énoncé précis de la question ?",
+        "question": "Énoncé précis et rigoureux de la question (cours, formule en LaTeX $...$, zone d'ombre ou calcul du TD) ?",
         "options": ["Choix A", "Choix B", "Choix C", "Choix D"],
-        "correctAnswer": 0,
-        "explanation": "Explication pédagogique prouvant pourquoi cette option est la bonne."
+        "correctIndex": 2,
+        "correct_index": 2,
+        "explanation": "Explication pédagogique complète : démonstration de la formule avec \\\\dfrac{}{}, explication de la logique physique et pourquoi les autres choix sont des pièges."
       }
     ]
   }
 }
-\`\`\``;
+\`\`\`
+RÈGLES CRUCIALES POUR LE QUESTIONNAIRE QCM :
+- Génère 15 à 18 questions riches et variées couvrant 100 % du document (définitions, toutes les formules canoniques en LaTeX, logique de démonstration, zones d'ombre/pièges d'examen et exercices/TD du document).
+- Répartis aléatoirement "correctIndex" entre 0, 1, 2 et 3.`;
 
     case 'infographie':
       return `FORMAT JSON ATTENDU :
@@ -1600,9 +1670,11 @@ RÈGLES CRUCIALES POUR LES VRAI OU FAUX :
   "chat_response": "Infographie pédagogique prête !",
   "creation_data": {
     "title": "${title}",
-    "subtitle": "Synthèse visuelle de ${docName}",
-    "stats": [{ "label": "Indicateur clé", "value": "100%" }],
-    "keyConcepts": [{ "title": "Concept 1", "description": "Explication claire" }]
+    "subtitle": "Synthèse visuelle complète de ${docName}",
+    "metrics": [{ "label": "Repère / Formule clé", "value": "Valeur ou relation" }],
+    "keyConcepts": [{ "title": "Concept majeur", "desc": "Explication complète avec formule LaTeX et logique" }],
+    "steps": [{ "step_number": 1, "title": "Étape logique 1", "description": "Détail méthodologique" }],
+    "highlights": [{ "type": "warning", "title": "Zone d'ombre à maîtriser", "text": "Explication précise" }]
   }
 }
 \`\`\``;
@@ -1618,8 +1690,16 @@ RÈGLES CRUCIALES POUR LES VRAI OU FAUX :
   "chat_response": "Document de cours prêt pour le PDF !",
   "creation_data": {
     "title": "${title}",
+    "subtitle": "Polycopié académique complet — ${docName}",
     "sections": [
-      { "heading": "Section 1 : Introduction", "content": "Contenu détaillé du polycopié." }
+      {
+        "number": 1,
+        "heading": "Chapitre I : Fondements, Formules et Démonstrations",
+        "title": "Chapitre I : Fondements, Formules et Démonstrations",
+        "body": "Développement académique exhaustif du chapitre avec toutes les formules en LaTeX ($$ ... $$ avec \\\\dfrac{}{}), démonstrations et éclaircissement des zones d'ombre.",
+        "content": "Développement académique exhaustif du chapitre avec toutes les formules en LaTeX ($$ ... $$ avec \\\\dfrac{}{}), démonstrations et éclaircissement des zones d'ombre.",
+        "bulletPoints": ["Point clé 1", "Point clé 2"]
+      }
     ]
   }
 }
@@ -3475,6 +3555,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     if (!activeDocumentInfo && !activeImageInfo) {
       if (params.resolvedActiveItem) {
         if (isDocumentItem(params.resolvedActiveItem)) {
+          (params.resolvedActiveItem as any)._needsCanvas = true;
           activeDocumentInfo = await extractDocumentDetails(params.resolvedActiveItem);
         } else if (!isVideoItem(params.resolvedActiveItem) && !isAudioItem(params.resolvedActiveItem)) {
           activeImageInfo = await extractImageBase64FromItem(params.resolvedActiveItem);
@@ -3484,6 +3565,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       if (Array.isArray(params.attachedResources)) {
         for (const res of params.attachedResources) {
           if (!activeDocumentInfo && isDocumentItem(res)) {
+            (res as any)._needsCanvas = true;
             activeDocumentInfo = await extractDocumentDetails(res);
           } else if (!activeImageInfo && !isVideoItem(res) && !isAudioItem(res)) {
             activeImageInfo = await extractImageBase64FromItem(res);
@@ -3492,7 +3574,18 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       }
     }
 
+    const agentAllDocs = [
+      ...(params.resolvedActiveItem ? [params.resolvedActiveItem] : []),
+      ...(Array.isArray(params.attachedResources) ? params.attachedResources.filter(Boolean) : [])
+    ];
+    const agentMediaSig = agentAllDocs
+      .map(getMediaItemSignature)
+      .filter(sig => sig && sig !== '::::')
+      .sort()
+      .join('|');
+    const agentPerception = (agentMediaSig ? cachedPerceptionReportsRef.current[agentMediaSig] : '') || '';
     const resolvedAttachedText = activeDocumentInfo?.textContent ||
+      (agentMediaSig ? cachedDocumentTextRef.current[agentMediaSig] : '') ||
       (params.resolvedActiveItem as any)?.content ||
       (params.resolvedActiveItem as any)?.text ||
       (params.resolvedActiveItem as any)?.rawText ||
@@ -3501,26 +3594,26 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     const getAgentRoleDescription = (type: string): string => {
       switch (type) {
         case 'resume':
-          return "Tu es le Sous-Agent Spécialiste de la Synthèse et des Fiches de Révision. Ton rôle exclusif est de synthétiser le cours avec clarté, rigueur, grands points clés et définitions incontournables.";
+          return "Tu es le Sous-Agent Spécialiste de la Synthèse et des Fiches de Révision Masterclass. Ton rôle exclusif est d'analyser l'intégralité du document joint et de rédiger une fiche de révision d'une richesse exceptionnelle : toutes les définitions, toutes les formules avec \\dfrac{}{} et étapes de démonstration, la logique profonde et toutes les zones d'ombre éclaircies.";
         case 'questionnaire':
         case 'questionnaire-test':
-          return "Tu es le Sous-Agent Spécialiste de la Docimologie et des Évaluations Formatives (QCM). Ton rôle exclusif est de créer des questions percutantes, des distracteurs plausibles et des explications limpides.";
+          return "Tu es le Sous-Agent Spécialiste de la Docimologie et des Évaluations Formatives (QCM). Ton rôle exclusif est de créer 15 à 18 questions d'excellence couvrant tout le document (concepts, formules canoniques en LaTeX, logique, zones d'ombre et calculs de TD) avec des explications détaillées.";
         case 'vrai-ou-faux':
         case 'vrai-ou-faux-test':
-          return "Tu es le Sous-Agent Spécialiste de l'Analyse Critique et des Épreuves Vrai/Faux. Ton rôle exclusif est de tester la précision conceptuelle de l'étudiant avec des affirmations subtiles et des justifications détaillées.";
+          return "Tu es le Sous-Agent Spécialiste de l'Analyse Critique et des Épreuves Vrai/Faux. Ton rôle exclusif est de tester la précision conceptuelle de l'étudiant sur toutes les subtilités, conditions de validité, formules et zones d'ombre du document.";
         case 'carte-mentale':
         case 'carte-mentale-2':
-          return "Tu es le Sous-Agent Cartographe Conceptuel. Ton rôle exclusif est de décomposer le cours en arborescences visuelles, hiérarchies claires et connecteurs logiques.";
+          return "Tu es le Sous-Agent Cartographe Conceptuel. Ton rôle exclusif est de décomposer l'intégralité du cours et de ses TD en une arborescence profonde à 4 paliers avec toutes les formules en LaTeX, la logique et les zones d'ombre.";
         case 'carte-memoire':
-          return "Tu es le Sous-Agent Spécialiste de la Mémorisation Active et Répétition Espacée. Ton rôle exclusif est de fabriquer des cartes mémoires (flashcards) recto/verso à fort impact mémoriel.";
+          return "Tu es le Sous-Agent Spécialiste de la Mémorisation Active et Répétition Espacée. Ton rôle exclusif est de fabriquer 15 à 20 cartes mémoires (flashcards) ultra-riches couvrant toutes les définitions, formules, démonstrations et zones d'ombre du document.";
         case 'devoir-complet':
-          return "Tu es le Sous-Agent Concepteur d'Épreuves d'Examen et Concours. Ton rôle exclusif est de rédiger un devoir complet avec barème précis sur 20 points, énoncés rigoureux et corrigé type pas à pas.";
+          return "Tu es le Sous-Agent Concepteur d'Épreuves d'Examen et Concours. Ton rôle exclusif est de rédiger un devoir complet sur 20 points exploitant tout le document et ses TD, avec corrigé type démontré pas à pas.";
         case 'exercices-ecrits':
-          return "Tu es le Sous-Agent Rédacteur d'Exercices d'Application. Ton rôle exclusif est de concevoir des exercices progressifs avec énoncés détaillés et démarches de résolution guidées.";
+          return "Tu es le Sous-Agent Rédacteur d'Exercices d'Application. Ton rôle exclusif est de concevoir 8 à 10 exercices progressifs sur 20 points basés sur le cours et les TD du document avec solutions démontrées étape par étape.";
         case 'infographie':
-          return "Tu es le Sous-Agent Infographiste Pédagogique. Ton rôle exclusif est de structurer les notions clés sous forme de tableau de bord visuel et de repères visuels.";
+          return "Tu es le Sous-Agent Infographiste Pédagogique. Ton rôle exclusif est de structurer toutes les notions, formules, étapes logiques et zones d'ombre du document sous forme de tableau de bord visuel complet.";
         case 'pdf':
-          return "Tu es le Sous-Agent Rédacteur Académique. Ton rôle exclusif est de rédiger un polycopié complet, structuré et prêt pour l'exportation PDF.";
+          return "Tu es le Sous-Agent Rédacteur Académique. Ton rôle exclusif est de rédiger un polycopié complet, structuré et approfondi couvrant tout le document et prêt pour l'exportation PDF.";
         default:
           return `Tu es le Sous-Agent Pédagogique Spécialisé pour le support "${type}".`;
       }
@@ -3530,6 +3623,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 ${getAgentRoleDescription(params.explicitToolType)}
 Tu es en mission de conception officielle StudyCloud pour fabriquer le support : "${params.explicitToolType}".
 
+${getCommonDeepCreationDirective(params.mainDocName)}
+
 ${getTargetJsonInstructions(params.explicitToolType, params.mainDocName, params.creationTitle)}
 
 RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
@@ -3538,10 +3633,10 @@ RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
    - IL EST STRICTEMENT INTERDIT D'ÉCRIRE EN ANGLAIS ET D'AFFICHER UN MONOLOGUE DE RÉFLEXION INTERNE ('Let's think', 'Waitcheck', 'Hmm', etc.).
 1. INTERDICTION FORMELLE D'ÉCRIRE DES FRACTIONS AVEC LE SLASH '/' :
    - TOUTE fraction mathématique ou scientifique DOIT IMPÉRATIVEMENT être écrite avec \\dfrac{numérateur}{dénominateur} : $$ \\omega_0 = \\dfrac{1}{\\sqrt{LC}} $$.
-2. POSITION ALÉATOIRE ET DIVERSITÉ (18 MAXIMUM POUR QUESTIONNAIRES ET VRAI OU FAUX) :
-   - Limite à STRICTEMENT 18 items maximum.
+2. POSITION ALÉATOIRE ET DIVERSITÉ (15 À 18 ITEMS POUR QUESTIONNAIRES ET VRAI OU FAUX, 18 MAXIMUM) :
+   - Génère entre 15 et 18 questions/affirmations riches couvrant tout le document (sans jamais dépasser 18).
    - Bonne réponse répartie de façon équitable et aléatoire entre A, B, C, D (ne jamais la mettre toujours au début).
-   - Distracteurs plausibles et pédagogiques.`;
+   - Distracteurs plausibles ciblant les erreurs classiques et zones d'ombre.`;
 
     // Mémoire des créations de cette conversation pour anti-répétition
     let relevantCreations: AiCreation[] = params.sessionCreations;
@@ -3569,12 +3664,25 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     }
 
     if (params.mainDocName) {
-      systemContent += `\n\nDOCUMENT FOURNI PAR L'ÉTUDIANT : "${params.mainDocName}". Tu as un accès direct au contenu textuel de ce document.`;
+      systemContent += `\n\nDOCUMENT FOURNI PAR L'ÉTUDIANT : "${params.mainDocName}". Tu as un accès direct et intégral au contenu textuel et visuel de ce document.`;
+    }
+    if (resolvedAttachedText && resolvedAttachedText.trim().length > 0) {
+      systemContent += `\n\n══════════════════════════════════════════════════════════════════════════════
+[CONTENU TEXTUEL INTÉGRAL DU DOCUMENT JOINT (« ${params.mainDocName || "Document d'étude"} »)] :
+Exploite 100 % de ce document (tous les chapitres, toutes les formules avec \\dfrac{}{}, toutes les démonstrations, la logique physique/mathématique, les zones d'ombre et les TD) :
+${resolvedAttachedText.slice(0, 45000)}
+══════════════════════════════════════════════════════════════════════════════`;
+    }
+    if (agentPerception && agentPerception.trim().length > 0 && agentPerception.trim() !== resolvedAttachedText.trim()) {
+      systemContent += `\n\n══════════════════════════════════════════════════════════════════════════════
+[DOSSIER D'OBSERVATION VISUELLE & SCHÉMAS DU DOCUMENT (« ${params.mainDocName || "Document d'étude"} »)] :
+${agentPerception.slice(0, 30000)}
+══════════════════════════════════════════════════════════════════════════════`;
     }
 
     const normTypeEarly = normalizeCreationType(params.explicitToolType);
     const formatDisplayTitle = CREATION_NAME_MAP[normTypeEarly] || CREATION_FORMAT_LABELS[normTypeEarly] || normTypeEarly;
-    const agentExplicitPrompt = `Conçois immédiatement le module interactif complet de type "${normTypeEarly}" (${formatDisplayTitle}) intitulé "${params.creationTitle}" sur ${params.mainDocName ? `le document « ${params.mainDocName} »` : `le sujet : ${params.userText}`}. Consigne de l'étudiant : "${params.userText}". Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normTypeEarly}" entouré de \`\`\`json et \`\`\`.`;
+    const agentExplicitPrompt = `Conçois immédiatement le module interactif complet, exhaustif et d'une richesse académique impressionnante de type "${normTypeEarly}" (${formatDisplayTitle}) intitulé "${params.creationTitle}" sur ${params.mainDocName ? `le document « ${params.mainDocName} »` : `le sujet : ${params.userText}`}. Exploite l'intégralité du document (tous les chapitres, toutes les formules en LaTeX avec \\dfrac{}{}, la logique profonde, les démonstrations, toutes les zones d'ombre/pièges d'examen et les TD). Consigne de l'étudiant : "${params.userText}". Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normTypeEarly}" entouré de \`\`\`json et \`\`\`.`;
 
     const chatHistory = [
       { role: 'system', content: systemContent },
@@ -3600,6 +3708,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
       mode: 'agent_creation',
       attachedFileName: params.mainDocName,
       attachedFileContent: resolvedAttachedText,
+      perceptionReport: agentPerception || undefined,
       imageBase64: activeImageInfo?.base64,
       mimeType: activeImageInfo?.mimeType,
       documentBase64: (!resolvedAttachedText || resolvedAttachedText.trim().length < 120) ? activeDocumentInfo?.documentBase64 : undefined,
@@ -3688,19 +3797,50 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
       if (Array.isArray(rawQs) && rawQs.length > 0) {
         finalContent = {
           ...(typeof finalContent === 'object' && !Array.isArray(finalContent) ? finalContent : {}),
-          questions: rawQs.slice(0, 18)
+          questions: rawQs.slice(0, 18).map((q: any, idx: number) => {
+            const opts = Array.isArray(q?.options) ? q.options : (Array.isArray(q?.choices) ? q.choices : []);
+            const rawIdx = q?.correct_index !== undefined
+              ? q.correct_index
+              : (q?.correctIndex !== undefined
+                ? q.correctIndex
+                : (q?.answerIndex !== undefined
+                  ? q.answerIndex
+                  : (q?.correctAnswer !== undefined ? q.correctAnswer : 0)));
+            let corrIdx = Number(rawIdx);
+            if (isNaN(corrIdx) || corrIdx < 0 || (opts.length > 0 && corrIdx >= opts.length)) corrIdx = 0;
+            return {
+              ...q,
+              id: q?.id || `q_${idx + 1}`,
+              question: q?.question || q?.texte || q?.title || `Question ${idx + 1}`,
+              options: opts,
+              correct_index: corrIdx,
+              correctIndex: corrIdx,
+              answerIndex: corrIdx,
+              correctAnswer: corrIdx,
+              explanation: q?.explanation || q?.explication || ''
+            };
+          })
         };
       }
     } else if (normType === 'carte-memoire') {
       const rawCards = Array.isArray(finalContent) ? finalContent : (finalContent?.cards || finalContent?.flashcards || finalContent?.data);
       if (Array.isArray(rawCards) && rawCards.length > 0) {
         finalContent = {
-          cards: rawCards.map((c: any, idx: number) => ({
-            id: c?.id || `card_${idx + 1}`,
-            question: typeof c === 'string' ? c : (c?.question || c?.front || c?.recto || c?.terme || c?.term || `Concept ${idx + 1}`),
-            answer: typeof c === 'string' ? '' : (c?.answer || c?.back || c?.verso || c?.definition || c?.explication || ''),
-            hint: typeof c === 'object' ? (c?.hint || c?.indice || '') : ''
-          }))
+          cards: rawCards.map((c: any, idx: number) => {
+            const qText = typeof c === 'string' ? c : (c?.question || c?.front || c?.recto || c?.terme || c?.term || `Concept ${idx + 1}`);
+            const aText = typeof c === 'string' ? '' : (c?.answer || c?.back || c?.verso || c?.definition || c?.explication || '');
+            const hText = typeof c === 'object' ? (c?.hint || c?.indice || '') : '';
+            const tText = typeof c === 'object' ? (c?.tag || c?.theme || c?.chapitre || 'Général') : 'Général';
+            return {
+              id: c?.id || `card_${idx + 1}`,
+              front: qText,
+              back: aText,
+              question: qText,
+              answer: aText,
+              hint: hText,
+              tag: tText
+            };
+          })
         };
       }
     } else if (normType === 'exercices-ecrits') {
@@ -3712,7 +3852,9 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
             written_exercise: {
               title: we.title || params.creationTitle,
               theme: we.theme || params.mainDocName,
-              questions: rawExs
+              context: we.context || we.enonce || '',
+              questions: rawExs,
+              correction: we.correction || undefined
             }
           };
         }
@@ -3723,9 +3865,12 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
         if (Array.isArray(ce.sections) && ce.sections.length > 0) {
           finalContent = {
             complete_exam: {
-              exam_title: ce.exam_title || params.creationTitle,
-              total_points: ce.total_points || 20,
-              time_allowed: ce.time_allowed || '2 heures',
+              exam_title: ce.exam_title || ce.title || params.creationTitle,
+              title: ce.title || ce.exam_title || params.creationTitle,
+              total_points: ce.total_points || ce.baremeTotal || 20,
+              baremeTotal: ce.baremeTotal || ce.total_points || 20,
+              time_allowed: ce.time_allowed || ce.duree || '2 heures',
+              duree: ce.duree || ce.time_allowed || '2h00',
               sections: ce.sections
             }
           };
@@ -3733,27 +3878,60 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
       }
     } else if (normType === 'carte-mentale' || normType === 'carte-mentale-2') {
       if (finalContent && typeof finalContent === 'object') {
-        if (!finalContent.root && (finalContent.branches || finalContent.nodes || finalContent.children)) {
+        const rootNode = finalContent.root || finalContent;
+        const rawChildren = Array.isArray(rootNode?.children)
+          ? rootNode.children
+          : (Array.isArray(finalContent.branches) ? finalContent.branches : (Array.isArray(finalContent.nodes) ? finalContent.nodes : (Array.isArray(finalContent.columns) ? finalContent.columns : (Array.isArray(finalContent.children) ? finalContent.children : []))));
+        const rootLabel = rootNode?.label || rootNode?.title || finalContent.title || params.mainDocName || params.creationTitle;
+        if (rawChildren.length > 0 || finalContent.root) {
           finalContent = {
+            ...finalContent,
             root: {
-              id: 'root-1',
-              label: finalContent.title || params.mainDocName,
-              children: finalContent.branches || finalContent.nodes || finalContent.children || []
-            }
+              id: rootNode?.id || 'root-1',
+              label: rootLabel,
+              details: rootNode?.details || 'Thème central',
+              children: rawChildren
+            },
+            root_title: rootLabel,
+            columns: rawChildren
           };
         }
       }
     } else if (normType === 'resume') {
       const rObj = finalContent?.summary || finalContent?.creation_data || finalContent;
       if (rObj && typeof rObj === 'object') {
+        const rawFormulas = Array.isArray(rObj.formulas) ? rObj.formulas : [];
+        const normFormulas = rawFormulas.map((f: any) => ({
+          ...f,
+          name: f?.name || f?.title || 'Relation fondamentale',
+          latex: String(f?.latex || f?.formula || '').replace(/(?<!\\)\$/g, '').trim(),
+          formula: f?.formula || f?.latex || '',
+          variables: f?.variables || f?.meaning || f?.units || '',
+          meaning: f?.meaning || f?.variables || '',
+          target_goal: f?.target_goal || f?.when_to_use || '',
+          when_to_use: f?.when_to_use || f?.target_goal || '',
+          how_to_derive: f?.how_to_derive || '',
+          demonstration_steps: Array.isArray(f?.demonstration_steps) ? f.demonstration_steps : [],
+          exam_trap: f?.exam_trap || f?.trap || ''
+        }));
+        const rawTraps = Array.isArray(rObj.traps_and_tips) ? rObj.traps_and_tips : [];
+        const normTraps = rawTraps.map((t: any, idx: number) =>
+          typeof t === 'string'
+            ? { type: idx % 2 === 0 ? 'trap' : 'tip', title: idx % 2 === 0 ? "ZONE D'OMBRE & PIÈGE D'EXAMEN" : 'ASTUCE MÉTHODOLOGIQUE', content: t }
+            : {
+                type: t?.type || 'trap',
+                title: t?.title || (t?.type === 'tip' ? 'ASTUCE MÉTHODOLOGIQUE' : "ZONE D'OMBRE & PIÈGE D'EXAMEN"),
+                content: t?.content || t?.text || t?.description || ''
+              }
+        );
         finalContent = {
           title: rObj.title || params.creationTitle,
           theme: rObj.theme || rObj.domaine || '',
           overview: typeof rObj.overview === 'string' ? rObj.overview : '',
           key_definitions: Array.isArray(rObj.key_definitions) ? rObj.key_definitions : (Array.isArray(rObj.definitions) ? rObj.definitions : []),
-          formulas: Array.isArray(rObj.formulas) ? rObj.formulas : [],
+          formulas: normFormulas,
           comparison_table: rObj.comparison_table || null,
-          traps_and_tips: Array.isArray(rObj.traps_and_tips) ? rObj.traps_and_tips : [],
+          traps_and_tips: normTraps,
           practical_example: rObj.practical_example || null,
           sections: Array.isArray(rObj.sections) ? rObj.sections : [],
           markdown: typeof rObj.markdown === 'string' ? rObj.markdown : '',
@@ -4060,9 +4238,9 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
         } else if (isAudioItem(resolvedActiveItem)) {
           activeAudioInfo = await extractAudioContentFromItem(resolvedActiveItem);
         } else if (isDocumentItem(resolvedActiveItem)) {
-          // Marquage _needsCanvas : rendu Canvas PDF uniquement si le prompt contient des termes visuels
+          // Marquage _needsCanvas : rendu Canvas PDF si le prompt contient des termes visuels ou s'il s'agit d'une création
           const visualTerms = /schéma|schema|figure|graphe|graphique|circuit|dessin|tableau|image|diagramme|courbe|illustration|diagram/i;
-          (resolvedActiveItem as any)._needsCanvas = visualTerms.test(userText);
+          (resolvedActiveItem as any)._needsCanvas = visualTerms.test(userText) || isCreationIntent;
           activeDocumentInfo = await extractDocumentDetails(resolvedActiveItem);
         } else {
           activeImageInfo = await extractImageBase64FromItem(resolvedActiveItem);
@@ -4078,7 +4256,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
             if (foundAud) activeAudioInfo = foundAud;
           } else if (!activeDocumentInfo && isDocumentItem(res)) {
             const visualTerms2 = /schéma|schema|figure|graphe|graphique|circuit|dessin|tableau|image|diagramme|courbe|illustration|diagram/i;
-            (res as any)._needsCanvas = visualTerms2.test(userText);
+            (res as any)._needsCanvas = visualTerms2.test(userText) || isCreationIntent;
             const foundDoc = await extractDocumentDetails(res);
             if (foundDoc) activeDocumentInfo = foundDoc;
           } else if (!activeImageInfo) {

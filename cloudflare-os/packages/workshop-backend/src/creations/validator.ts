@@ -170,7 +170,14 @@ export function validateAndFormatCreation(
       : (payloadData?.questions || (Array.isArray(parsed.questions) ? parsed.questions : []));
     const cleanQs = (Array.isArray(rawQs) ? rawQs : []).slice(0, 18).map((q: any, idx: number) => {
       const opts = Array.isArray(q.options) ? q.options : (Array.isArray(q.choices) ? q.choices : []);
-      let corrIdx = Number(q.correct_index !== undefined ? q.correct_index : (q.correctIndex !== undefined ? q.correctIndex : (q.answerIndex !== undefined ? q.answerIndex : 0)));
+      const rawIdx = q.correct_index !== undefined
+        ? q.correct_index
+        : (q.correctIndex !== undefined
+          ? q.correctIndex
+          : (q.answerIndex !== undefined
+            ? q.answerIndex
+            : (q.correctAnswer !== undefined ? q.correctAnswer : 0)));
+      let corrIdx = Number(rawIdx);
       if (isNaN(corrIdx) || corrIdx < 0 || corrIdx >= opts.length) corrIdx = 0;
       return {
         id: q.id || `q_${idx + 1}`,
@@ -178,6 +185,8 @@ export function validateAndFormatCreation(
         options: opts,
         correct_index: corrIdx,
         correctIndex: corrIdx,
+        answerIndex: corrIdx,
+        correctAnswer: corrIdx,
         explanation: q.explanation || q.explication || ''
       };
     });
@@ -186,22 +195,54 @@ export function validateAndFormatCreation(
     const rawCards = Array.isArray(payloadData)
       ? payloadData
       : (payloadData?.cards || payloadData?.flashcards || (Array.isArray(parsed.cards) ? parsed.cards : []));
-    const cleanCards = (Array.isArray(rawCards) ? rawCards : []).slice(0, 25).map((c: any, idx: number) => ({
-      id: c.id || `c_${idx + 1}`,
-      front: c.front || c.recto || c.question || c.notion || `Notion ${idx + 1}`,
-      back: c.back || c.verso || c.reponse || c.definition || '',
-      tag: c.tag || c.theme || c.chapitre || 'Général'
-    }));
+    const cleanCards = (Array.isArray(rawCards) ? rawCards : []).slice(0, 25).map((c: any, idx: number) => {
+      const frontText = c.front || c.recto || c.question || c.notion || `Notion ${idx + 1}`;
+      const backText = c.back || c.verso || c.answer || c.reponse || c.definition || '';
+      const hintText = c.hint || c.indice || '';
+      return {
+        id: c.id || `c_${idx + 1}`,
+        front: frontText,
+        back: backText,
+        question: frontText,
+        answer: backText,
+        hint: hintText,
+        tag: c.tag || c.theme || c.chapitre || 'Général'
+      };
+    });
     creationData = { title: creationTitle, cards: cleanCards };
   } else if (creationType === 'resume') {
+    const rawFormulas = Array.isArray(creationData.formulas) ? creationData.formulas : [];
+    const normFormulas = rawFormulas.map((f: any) => ({
+      ...f,
+      name: f.name || f.title || 'Relation fondamentale',
+      latex: f.latex || f.formula || '',
+      formula: f.formula || f.latex || '',
+      variables: f.variables || f.meaning || f.units || '',
+      meaning: f.meaning || f.variables || '',
+      target_goal: f.target_goal || f.when_to_use || '',
+      when_to_use: f.when_to_use || f.target_goal || '',
+      how_to_derive: f.how_to_derive || '',
+      demonstration_steps: Array.isArray(f.demonstration_steps) ? f.demonstration_steps : [],
+      exam_trap: f.exam_trap || f.trap || ''
+    }));
+    const rawTraps = Array.isArray(creationData.traps_and_tips) ? creationData.traps_and_tips : [];
+    const normTraps = rawTraps.map((t: any, idx: number) =>
+      typeof t === 'string'
+        ? { type: idx % 2 === 0 ? 'trap' : 'tip', title: idx % 2 === 0 ? "PIÈGE D'EXAMEN" : 'ASTUCE MÉTHODOLOGIQUE', content: t }
+        : {
+            type: t?.type || 'trap',
+            title: t?.title || (t?.type === 'tip' ? 'ASTUCE MÉTHODOLOGIQUE' : "PIÈGE D'EXAMEN"),
+            content: t?.content || t?.text || t?.description || ''
+          }
+    );
     creationData = {
       title: creationData.title || creationTitle,
       theme: creationData.theme || 'Synthèse Globale',
       overview: creationData.overview || '',
       key_definitions: Array.isArray(creationData.key_definitions) ? creationData.key_definitions : [],
-      formulas: Array.isArray(creationData.formulas) ? creationData.formulas : [],
+      formulas: normFormulas,
       comparison_table: creationData.comparison_table || { headers: [], rows: [] },
-      traps_and_tips: Array.isArray(creationData.traps_and_tips) ? creationData.traps_and_tips : [],
+      traps_and_tips: normTraps,
       practical_example: creationData.practical_example || { statement: '', resolution_steps: [] },
       sections: Array.isArray(creationData.sections) ? creationData.sections : []
     };

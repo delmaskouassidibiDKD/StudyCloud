@@ -34,7 +34,7 @@ import { serveSiteLogo, SITE_LOGO_PATH } from "./site-logo.js";
 import { createWorkshopLogger } from "./observability";
 import { retryOnDoReset, wrapDoStubForTelemetry } from "./do-retry";
 
-import { getBasePedagogicalRules, getCreationSpecificRule } from "./creations/prompts";
+import { getBasePedagogicalRules, getCreationSpecificRule, getCommonDeepCreationDirective } from "./creations/prompts";
 import { validateAndFormatCreation } from "./creations/validator";
 import { isChefModel, orchestrateMultiAgentTeam } from "./ai-team/orchestrator";
 
@@ -1075,7 +1075,7 @@ async function executeGemini20Flash(params: {
   for (const mod of candidateModels) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const timeoutId = setTimeout(() => controller.abort(), 28000);
       let res: Response;
       try {
         res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${apiKey}`, {
@@ -1096,7 +1096,7 @@ async function executeGemini20Flash(params: {
         // Si le binaire inlineData (ex: PDF brut) cause un 400 mais que le texte extrait est dans systemPrompt, réessayer immédiatement en mode texte
         if (res.status === 400 && hasInlineMedia) {
           const retryCtrl = new AbortController();
-          const retryTid = setTimeout(() => retryCtrl.abort(), 10000);
+          const retryTid = setTimeout(() => retryCtrl.abort(), 20000);
           try {
             const retryRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${apiKey}`, {
               method: "POST",
@@ -1783,14 +1783,16 @@ Donne une description exhaustive pour que le tuteur puisse résoudre et enseigne
         let systemPrompt = "";
         if (isAgentCreationTask) {
           systemPrompt = getBasePedagogicalRules();
-          if (body.requested_type) {
-            systemPrompt += "\n\n" + getCreationSpecificRule(body.requested_type);
-          }
           if (clientSystemMsg) {
             systemPrompt += "\n\n" + String(clientSystemMsg).trim();
           }
+          systemPrompt += "\n\n" + getCommonDeepCreationDirective(docName);
+          if (body.requested_type) {
+            systemPrompt += "\n\n" + getCreationSpecificRule(body.requested_type);
+          }
           systemPrompt += `\n\n[MISSION AGENT SPÉCIALISÉ DE CRÉATION STUDYCLOUD] :
 Tu es l'un des 3 Agents de Création spécialisés travaillant en arrière-plan pour concevoir le support « ${body.requested_type || requestedType} » (${creationTitle}).
+Exploite 100 % du document joint (toutes les sections, toutes les formules avec \\dfrac{}{}, toutes les démonstrations, la logique profonde et toutes les zones d'ombre / subtilités d'examen).
 RÈGLE ABSOLUE : Ta réponse DOIT ÊTRE EXCLUSIVEMENT un objet JSON strict entouré de \`\`\`json et \`\`\` contenant "decision": "creation", "mode": "creation", "creation_type": "${body.requested_type || requestedType}", "creation_title": "${creationTitle}", "chat_response": "Création terminée", et "creation_data": { ... } avec l'intégralité des données pédagogiques. N'écris AUCUN texte avant ou après le bloc JSON.`;
         } else {
           systemPrompt = clientSystemMsg
@@ -1803,7 +1805,7 @@ RÈGLE ABSOLUE : Ta réponse DOIT ÊTRE EXCLUSIVEMENT un objet JSON strict entou
 
         if (docContent) {
           if (!isContinuation) {
-            systemPrompt += `\n\n[DOCUMENTS FOURNIS PAR L'ÉTUDIANT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 30000)}`;
+            systemPrompt += `\n\n[DOCUMENTS FOURNIS PAR L'ÉTUDIANT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 45000)}`;
           } else {
             systemPrompt += `\n\n[DOCUMENT D'APPUI EN ARCHIVE DE RÉFÉRENCE - NE PAS RÉANALYSER DU DÉBUT] :\n${docContent.slice(0, 4000)}`;
           }

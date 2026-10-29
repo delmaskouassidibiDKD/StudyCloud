@@ -364,6 +364,14 @@ export async function sendChatMessageToAi(params: {
 
       const sysMsg = (Array.isArray(params.history) ? params.history : (Array.isArray(params.messages) ? params.messages : [])).find((m: any) => m.role === 'system')?.content;
       let systemText = sysMsg || "Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Gemini / Delmas IA). Réponds en français structuré avec rigueur pédagogique et formules LaTeX si nécessaire.";
+      const docBody = String(params.attachedFileContent || params.documentContent || params.file_content || '').trim();
+      const docTitle = String(params.attachedFileName || params.fileName || params.file_name || "Document d'étude").trim();
+      if (docBody && !systemText.includes(docBody.slice(0, 120))) {
+        systemText += `\n\n[CONTENU INTÉGRAL DU DOCUMENT JOINT : « ${docTitle} »] :\n${docBody.slice(0, 45000)}`;
+      }
+      if (params.perceptionReport && !systemText.includes(String(params.perceptionReport).slice(0, 120))) {
+        systemText += `\n\n[DOSSIER D'OBSERVATION DU FICHIER JOINT : « ${docTitle} »] :\n${String(params.perceptionReport).slice(0, 30000)}`;
+      }
       if (isContinuation) {
         systemText += "\n\n[ORDRE DE CONTINUATION DIRECTE] : L'étudiant demande de poursuivre la réponse précédente. Ne recommence pas du début, ne répète rien et commence directement par la suite utile (ex: numéro de question suivante ou calcul suivant).";
       }
