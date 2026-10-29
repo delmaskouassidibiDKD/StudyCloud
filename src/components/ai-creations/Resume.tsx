@@ -288,6 +288,26 @@ function getFallbackSummary(safeTitle: string, safeTheme: string, safeDocName: s
             "Asymptote en haute fréquence : pente de -20n dB/décade (n étant l'ordre du filtre)."
           ]
         }
+      ],
+      activeRecall: [
+        {
+          question: "Quelle est la condition nécessaire et suffisante pour qu'un filtre passe-bas du 2nd ordre présente une résonance ?",
+          answer: "Il y a résonance si et seulement si son facteur de qualité vérifie Q_0 > \\dfrac{1}{\\sqrt{2}} \\approx 0.707."
+        },
+        {
+          question: "Quelle est la relation fondamentale liant la pulsation de coupure \\omega_0 et la fréquence f_0 ?",
+          answer: "\\omega_0 = 2\\pi f_0, d'où f_0 = \\dfrac{\\omega_0}{2\\pi}."
+        },
+        {
+          question: "Quel est le déphasage introduit par un filtre passe-bas du 1er ordre à sa pulsation de coupure ?",
+          answer: "À \\omega = \\omega_0, le déphasage vaut rigoureusement \\phi = -45° (ou -\\dfrac{\\pi}{4} rad)."
+        }
+      ],
+      keyTakeaways: [
+        "✅ Toujours vérifier les limites asymptotiques en BF (p -> 0) et HF (p -> \\infty) pour valider la nature du filtre.",
+        "✅ Ne jamais confondre pulsation \\omega_0 (rad/s) et fréquence f_0 (Hz).",
+        "✅ Le facteur de qualité Q_0 détermine la sélectivité et l'existence d'une résonance.",
+        "✅ Formuler systématiquement les fonctions de transfert sous forme canonique normalisée."
       ]
     };
   }
@@ -347,6 +367,21 @@ function getFallbackSummary(safeTitle: string, safeTheme: string, safeDocName: s
         body: `Synthèse approfondie des principes directeurs présentés dans ${safeTitle}.`,
         points: ['Point clé fondamental', 'Méthode de résolution recommandée']
       }
+    ],
+    activeRecall: [
+      {
+        question: `Quel est l'objectif premier et le principe directeur du cours « ${safeTitle} » ?`,
+        answer: `Assimiler et appliquer les notions fondamentales de « ${safeTitle} » avec rigueur et méthode.`
+      },
+      {
+        question: "Quelles sont les conditions indispensables pour appliquer la règle générale ?",
+        answer: "Vérifier la validité des hypothèses préliminaires avant d'enclencher la résolution."
+      }
+    ],
+    keyTakeaways: [
+      "✅ Maîtriser les définitions fondamentales et le vocabulaire précis.",
+      "✅ Identifier systématiquement le cadre et les hypothèses de travail.",
+      "✅ Appliquer la méthode par étapes sans sauter de justification."
     ]
   };
 }
@@ -354,6 +389,10 @@ function getFallbackSummary(safeTitle: string, safeTheme: string, safeDocName: s
 export default function Resume({ data, title, sourceFileName }: ResumeProps) {
   const [copied, setCopied] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
+  const [revealedAnswers, setRevealedAnswers] = useState<Record<number, boolean>>({});
+  const toggleAnswer = (idx: number) => {
+    setRevealedAnswers(prev => ({ ...prev, [idx]: !prev[idx] }));
+  };
 
   // Normalisation unifiée et robuste des données (support JSON structuré, Markdown et enrichissement didactique)
   const parsedSummary = useMemo(() => {
@@ -724,6 +763,36 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
     let finalSecs = sections;
     let finalOverview = safeOverview;
 
+    const rawActiveRecall = (
+      Array.isArray(raw?.active_recall)
+        ? raw.active_recall
+        : Array.isArray(raw?.activeRecall)
+        ? raw.activeRecall
+        : Array.isArray(data?.active_recall)
+        ? data.active_recall
+        : Array.isArray(data?.activeRecall)
+        ? data.activeRecall
+        : []
+    ).map((ar: any) => ({
+      question: typeof ar?.question === 'string' ? ar.question : String(ar?.q || ar?.title || ''),
+      answer: typeof ar?.answer === 'string' ? ar.answer : String(ar?.a || ar?.response || ar?.reponse || ar?.solution || ''),
+    })).filter((ar: any) => ar.question && ar.question.trim().length > 0);
+
+    const rawKeyTakeaways = (
+      Array.isArray(raw?.key_takeaways)
+        ? raw.key_takeaways
+        : Array.isArray(raw?.keyTakeaways)
+        ? raw.keyTakeaways
+        : Array.isArray(data?.key_takeaways)
+        ? data.key_takeaways
+        : Array.isArray(data?.keyTakeaways)
+        ? data.keyTakeaways
+        : []
+    ).map((kt: any) => typeof kt === 'string' ? kt : String(kt || '')).filter(Boolean);
+
+    let finalActiveRecall = rawActiveRecall;
+    let finalKeyTakeaways = rawKeyTakeaways;
+
     // Si le cours n'a aucune formule ni définition ni section (échec du parsing JSON ou sortie tronquée),
     // injecter immédiatement la structure pédagogique complète et riche
     const isVirtuallyEmpty = finalDefs.length === 0 && finalFormulas.length === 0 && finalSecs.length === 0;
@@ -736,6 +805,8 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       if (finalTraps.length === 0) finalTraps = fb.trapsAndTips;
       if (!finalPe) finalPe = fb.practicalExample;
       if (finalSecs.length === 0) finalSecs = fb.sections;
+      if (finalActiveRecall.length === 0 && (fb as any).activeRecall) finalActiveRecall = (fb as any).activeRecall;
+      if (finalKeyTakeaways.length === 0 && (fb as any).keyTakeaways) finalKeyTakeaways = (fb as any).keyTakeaways;
     }
 
     const hasData = Boolean(
@@ -746,6 +817,7 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
         finalTraps.length > 0 ||
         finalPe ||
         finalSecs.length > 0 ||
+        finalActiveRecall.length > 0 ||
         rawKeyPoints.length > 0
     );
 
@@ -759,6 +831,8 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       comparisonTable: finalTable,
       trapsAndTips: finalTraps,
       practicalExample: finalPe,
+      activeRecall: finalActiveRecall,
+      keyTakeaways: finalKeyTakeaways,
       keyPoints: rawKeyPoints,
       sections: finalSecs,
       markdown: rawMarkdown && rawMarkdown.length > 50 && !rawMarkdown.includes('```json') ? rawMarkdown : '',
@@ -843,6 +917,22 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
       });
     }
 
+    if (parsedSummary.activeRecall && parsedSummary.activeRecall.length > 0) {
+      out += `\nVI. MÉMORISATION ACTIVE (QUESTIONS D'AUTO-ÉVALUATION) :\n`;
+      parsedSummary.activeRecall.forEach((ar, aidx) => {
+        out += `  Q${aidx + 1} : ${ar.question}\n`;
+        out += `  -> Réponse attendue : ${ar.answer}\n\n`;
+      });
+    }
+
+    if (parsedSummary.keyTakeaways && parsedSummary.keyTakeaways.length > 0) {
+      out += `\nVII. IDÉES CLÉS À RETENIR :\n`;
+      parsedSummary.keyTakeaways.forEach((kt) => {
+        out += `  ${kt}\n`;
+      });
+      out += `\n`;
+    }
+
     if (!parsedSummary.overview && !parsedSummary.keyDefinitions.length && !parsedSummary.formulas.length && parsedSummary.markdown) {
       out += `${parsedSummary.markdown}\n`;
     }
@@ -904,6 +994,9 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
   }, [docTitle, sourceFileName]);
 
   const keyTakeaways = useMemo(() => {
+    if (parsedSummary.keyTakeaways && parsedSummary.keyTakeaways.length > 0) {
+      return parsedSummary.keyTakeaways;
+    }
     if (parsedSummary.keyPoints && parsedSummary.keyPoints.length > 0) {
       return parsedSummary.keyPoints;
     }
@@ -1336,6 +1429,94 @@ export default function Resume({ data, title, sourceFileName }: ResumeProps) {
               </div>
             </section>
           )}
+
+          {/* Mémorisation active : Questions d'Auto-évaluation interactive */}
+          {parsedSummary.activeRecall && parsedSummary.activeRecall.length > 0 && (
+            <section className="space-y-3 pt-1">
+              <div className="flex items-center justify-between gap-2 flex-wrap pb-1">
+                <h2 className="text-base sm:text-lg font-extrabold text-[#581c87] flex items-baseline gap-2">
+                  <span>{nextSecNum()}.</span>
+                  <span>Mémorisation active (Auto-évaluation)</span>
+                </h2>
+                <span className="text-[11px] font-semibold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200">
+                  🎯 Testez-vous sans regarder la fiche
+                </span>
+              </div>
+
+              <div className="space-y-2.5 pl-0.5">
+                {parsedSummary.activeRecall.map((ar, aidx) => {
+                  const isRevealed = Boolean(revealedAnswers[aidx]);
+                  return (
+                    <div
+                      key={aidx}
+                      className="bg-purple-50/40 border border-purple-100 rounded-xl p-3 sm:p-3.5 space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2.5 flex-1 text-xs sm:text-sm font-bold text-stone-900 leading-snug">
+                          <span className="w-5 h-5 rounded-full bg-purple-700 text-white text-[10px] font-extrabold flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
+                            {aidx + 1}
+                          </span>
+                          <div className="flex-1">
+                            <MathText text={ar.question} inline={true} />
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => toggleAnswer(aidx)}
+                          className="shrink-0 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-white border border-purple-200 hover:bg-purple-50 text-purple-800 transition-all cursor-pointer shadow-2xs select-none"
+                        >
+                          {isRevealed ? 'Masquer' : 'Voir la réponse'}
+                        </button>
+                      </div>
+
+                      {isRevealed && (
+                        <div className="pt-2 border-t border-purple-100/80 text-xs sm:text-sm text-stone-700 bg-white/90 p-2.5 rounded-lg border-l-2 border-emerald-500">
+                          <span className="font-bold text-emerald-800 block text-[11px] uppercase tracking-wider mb-0.5">
+                            Réponse attendue :
+                          </span>
+                          <MathText text={ar.answer} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {/* Protocole de révision espacée (J+1, J+3, J+7) */}
+          <div className="bg-gradient-to-r from-purple-50/70 via-indigo-50/40 to-emerald-50/60 border border-purple-100 rounded-2xl p-4 sm:p-5 space-y-2.5">
+            <div className="flex items-center gap-2 text-xs sm:text-sm font-extrabold text-purple-950 uppercase tracking-wider">
+              <span>🗓️ Calendrier de révision espacée recommandée</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+              <div className="bg-white/95 p-3 rounded-xl border border-purple-100 shadow-2xs space-y-1">
+                <span className="inline-block px-2 py-0.5 rounded-md bg-purple-100 text-purple-900 font-extrabold text-[10px]">
+                  J + 1 (24 heures)
+                </span>
+                <p className="text-stone-700 leading-relaxed font-medium">
+                  Relire les définitions clés et réécrire les formules directrices sans regarder la fiche.
+                </p>
+              </div>
+              <div className="bg-white/95 p-3 rounded-xl border border-indigo-100 shadow-2xs space-y-1">
+                <span className="inline-block px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-900 font-extrabold text-[10px]">
+                  J + 3 (3 jours)
+                </span>
+                <p className="text-stone-700 leading-relaxed font-medium">
+                  Refaire l'exemple pratique résolu étape par étape et réviser les pièges classiques.
+                </p>
+              </div>
+              <div className="bg-white/95 p-3 rounded-xl border border-emerald-100 shadow-2xs space-y-1">
+                <span className="inline-block px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 font-extrabold text-[10px]">
+                  J + 7 (1 semaine)
+                </span>
+                <p className="text-stone-700 leading-relaxed font-medium">
+                  Se tester à haute voix sur les questions d'auto-évaluation active sans afficher les réponses.
+                </p>
+              </div>
+            </div>
+          </div>
 
           {/* 5. Idées clés à retenir avec coches vertes ✅ (exactement comme dans l'image de référence) */}
           {keyTakeaways.length > 0 && (

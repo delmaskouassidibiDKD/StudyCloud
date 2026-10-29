@@ -538,6 +538,8 @@ function parseSummaryFromText(rawText: string, safeDocName: string): SummaryCont
         comparison_table: d.comparison_table || undefined,
         traps_and_tips: Array.isArray(d.traps_and_tips) ? d.traps_and_tips : undefined,
         practical_example: d.practical_example || undefined,
+        active_recall: Array.isArray(d.active_recall) ? d.active_recall : (Array.isArray(d.activeRecall) ? d.activeRecall : undefined),
+        key_takeaways: Array.isArray(d.key_takeaways) ? d.key_takeaways : (Array.isArray(d.keyTakeaways) ? d.keyTakeaways : undefined),
         sections: Array.isArray(d.sections) ? d.sections : undefined,
         markdown: typeof d.markdown === 'string' && !d.markdown.includes('{"decision":') && !d.markdown.includes('"""json') ? d.markdown : '',
         rules: Array.isArray(d.rules) ? d.rules : [],
@@ -919,7 +921,7 @@ function parseExercicesFromText(rawText: string, safeDocName: string): any {
           };
         }
       }
-    } catch {}
+    } catch { }
   }
 
   let context = '';
@@ -1285,44 +1287,51 @@ export function parseOrBuildAiCreation(
                 .map((d: any) => typeof d === 'string'
                   ? { concept: 'Notion clé', definition: d, objective: '' }
                   : {
-                      concept: sanitizeText(d?.concept || d?.term || d?.notion || d?.title || 'Notion clé'),
-                      definition: sanitizeText(d?.definition || d?.desc || d?.description || d?.explication || ''),
-                      objective: sanitizeText(d?.objective || d?.application || d?.objectif || ''),
-                    }
+                    concept: sanitizeText(d?.concept || d?.term || d?.notion || d?.title || 'Notion clé'),
+                    definition: sanitizeText(d?.definition || d?.desc || d?.description || d?.explication || ''),
+                    objective: sanitizeText(d?.objective || d?.application || d?.objectif || ''),
+                  }
                 ),
               formulas: Array.isArray(dataObj.formulas)
                 ? dataObj.formulas.map((f: any) => ({
-                    name: sanitizeText(f.name || f.title || 'Formule clé'),
-                    latex: cleanFormulaLatex(f.latex || f.formula || ''),
-                    target_goal: f.target_goal || f.when_to_use,
-                    when_to_use: f.when_to_use || f.target_goal,
-                    variables: f.variables || f.units,
-                    how_to_derive: isFillerText(f.how_to_derive) ? undefined : f.how_to_derive,
-                    demonstration_steps: Array.isArray(f.demonstration_steps) ? f.demonstration_steps : undefined,
-                    exam_trap: f.exam_trap || f.trap,
-                  }))
+                  name: sanitizeText(f.name || f.title || 'Formule clé'),
+                  latex: cleanFormulaLatex(f.latex || f.formula || ''),
+                  target_goal: f.target_goal || f.when_to_use,
+                  when_to_use: f.when_to_use || f.target_goal,
+                  variables: f.variables || f.units,
+                  how_to_derive: isFillerText(f.how_to_derive) ? undefined : f.how_to_derive,
+                  demonstration_steps: Array.isArray(f.demonstration_steps) ? f.demonstration_steps : undefined,
+                  exam_trap: f.exam_trap || f.trap,
+                }))
                 : [],
               comparison_table: dataObj.comparison_table || null,
               traps_and_tips: Array.isArray(dataObj.traps_and_tips) ? dataObj.traps_and_tips : [],
               practical_example: dataObj.practical_example && typeof dataObj.practical_example === 'object'
                 ? {
-                    statement: sanitizeText(dataObj.practical_example.statement || dataObj.practical_example.enonce || ''),
-                    resolution_steps: (Array.isArray(dataObj.practical_example.resolution_steps)
-                      ? dataObj.practical_example.resolution_steps
-                      : (Array.isArray(dataObj.practical_example.steps) ? dataObj.practical_example.steps : [])
-                    ).map((s: any) => typeof s === 'string' ? s : String(s?.text || s || '')),
-                  }
+                  statement: sanitizeText(dataObj.practical_example.statement || dataObj.practical_example.enonce || ''),
+                  resolution_steps: (Array.isArray(dataObj.practical_example.resolution_steps)
+                    ? dataObj.practical_example.resolution_steps
+                    : (Array.isArray(dataObj.practical_example.steps) ? dataObj.practical_example.steps : [])
+                  ).map((s: any) => typeof s === 'string' ? s : String(s?.text || s || '')),
+                }
                 : null,
+              active_recall: (Array.isArray(dataObj.active_recall) ? dataObj.active_recall : (Array.isArray(dataObj.activeRecall) ? dataObj.activeRecall : []))
+                .map((ar: any) => ({
+                  question: sanitizeText(ar?.question || ar?.q || ar?.title || ''),
+                  answer: sanitizeText(ar?.answer || ar?.a || ar?.response || ar?.reponse || ar?.solution || ''),
+                })).filter((ar: any) => ar.question && ar.question.length > 0),
+              key_takeaways: (Array.isArray(dataObj.key_takeaways) ? dataObj.key_takeaways : (Array.isArray(dataObj.keyTakeaways) ? dataObj.keyTakeaways : []))
+                .map(sanitizeText).filter(Boolean),
               sections: Array.isArray(dataObj.sections)
                 ? dataObj.sections.map((sec: any, sidx: number) => ({
-                    number: sec?.number || `${sidx + 1}`,
-                    heading: sanitizeText(sec?.heading || sec?.section_title || sec?.title || `Section ${sidx + 1}`),
-                    body: sanitizeText(sec?.body || sec?.content || sec?.texte || ''),
-                    points: (Array.isArray(sec?.points)
-                      ? sec.points
-                      : (Array.isArray(sec?.keyPoints) ? sec.keyPoints : [])
-                    ).map(sanitizeText),
-                  }))
+                  number: sec?.number || `${sidx + 1}`,
+                  heading: sanitizeText(sec?.heading || sec?.section_title || sec?.title || `Section ${sidx + 1}`),
+                  body: sanitizeText(sec?.body || sec?.content || sec?.texte || ''),
+                  points: (Array.isArray(sec?.points)
+                    ? sec.points
+                    : (Array.isArray(sec?.keyPoints) ? sec.keyPoints : [])
+                  ).map(sanitizeText),
+                }))
                 : [],
               markdown: dataObj.markdown || (typeof dataObj.text === 'string' ? dataObj.text : ''),
               rules: Array.isArray(dataObj.rules) ? dataObj.rules.map(sanitizeText) : [],

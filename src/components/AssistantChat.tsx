@@ -1590,20 +1590,28 @@ RÈGLES CRUCIALES POUR LES CARTES MÉMOIRES :
 - Génère 15 à 20 flashcards riches couvrant toutes les définitions, toutes les formules canoniques, les démonstrations et les zones d'ombre du document.`;
 
     case 'resume':
-      return `FORMAT JSON ATTENDU (MASTERCLASS EXHAUSTIVE EXPLOITANT 100 % DU DOCUMENT) :
+      return `FORMAT JSON ATTENDU (FICHE DE RÉVISION ULTRA-EFFICACE SELON LES 5 CLÉS DE LA MÉMORISATION ACTIVE) :
 \`\`\`json
 {
   "decision": "creation",
   "mode": "creation",
   "creation_type": "resume",
   "creation_title": "${title}",
-  "chat_response": "Fiche de synthèse prête !",
+  "chat_response": "Fiche de synthèse et révision prête !",
   "creation_data": {
     "title": "${title}",
     "theme": "${docName}",
-    "overview": "Synthèse globale approfondie (3 à 5 paragraphes denses) expliquant la logique générale du cours, les objectifs physiques/mathématiques et le fil conducteur du document.",
+    "overview": "Synthèse globale approfondie (2 à 3 paragraphes denses) expliquant l'objectif fondamental du cours, le contexte scientifique et les compétences clés ciblées.",
     "key_definitions": [
       { "concept": "Nom exact du concept", "definition": "Définition complète, rigoureuse et explication des subtilités", "objective": "Rôle concret et application dans le cours/TD" }
+    ],
+    "sections": [
+      {
+        "number": 1,
+        "heading": "I. Titre du Premier Pilier du Cours",
+        "body": "Explication magistrale très détaillée et approfondie de toute cette partie du document : logique physique, démonstrations pas à pas avec formules $$ ... $$ et \\\\dfrac{}{}, éclaircissement de toutes les zones d'ombre.",
+        "points": ["Point fondamental 1 avec formule", "Point fondamental 2", "Subtilité / Zone d'ombre à maîtriser"]
+      }
     ],
     "formulas": [
       {
@@ -1629,19 +1637,34 @@ RÈGLES CRUCIALES POUR LES CARTES MÉMOIRES :
       "statement": "Énoncé complet d'un exercice ou cas pratique tiré directement du document (ou de ses TD)",
       "resolution_steps": ["1. Analyse physique et hypothèses...", "2. Pose du théorème directeur et calcul littéral avec \\\\dfrac{}{}...", "3. Identification canonique et conclusion encadrée."]
     },
-    "sections": [
+    "active_recall": [
       {
-        "number": 1,
-        "heading": "I. Titre de la Première Partie du Document",
-        "body": "Explication magistrale très détaillée et approfondie de toute cette partie du document : logique physique, démonstrations pas à pas avec formules $$ ... $$ et \\\\dfrac{}{}, éclaircissement de toutes les zones d'ombre.",
-        "points": ["Point fondamental 1 avec formule", "Point fondamental 2", "Subtilité / Zone d'ombre à maîtriser"]
+        "question": "Question d'auto-évaluation 1 pour tester la compréhension active sans regarder la fiche ?",
+        "answer": "Réponse concise et exacte que l'étudiant doit pouvoir énoncer de mémoire."
+      },
+      {
+        "question": "Question d'auto-évaluation 2 sur une formule ou condition de validité ?",
+        "answer": "Formule canonique et justification."
+      },
+      {
+        "question": "Question d'auto-évaluation 3 sur un piège classique d'examen ?",
+        "answer": "Erreur fréquente et réflexe de vérification."
       }
+    ],
+    "key_takeaways": [
+      "✅ Idée clé n°1 indispensable pour réussir",
+      "✅ Idée clé n°2 à mémoriser impérativement",
+      "✅ Idée clé n°3 (règle d'or de l'évaluation)"
     ]
   }
 }
 \`\`\`
-RÈGLES CRUCIALES POUR LA FICHE DE RÉSUMÉ / RÉVISION :
-- Rédige 5 à 8 grandes sections dans "sections" couvrant l'intégralité du document (cours + TD), 8 à 15 définitions dans "key_definitions", TOUTES les formules du document (6 à 12 formules) dans "formulas" avec leurs étapes de démonstration, un tableau comparatif complet, et 6 à 8 "traps_and_tips" éclaircissant toutes les zones d'ombre.`;
+RÈGLES CRUCIALES POUR LA FICHE DE RÉSUMÉ / RÉVISION (LES 5 CLÉS DE LA MÉMORISATION ACTIVE) :
+1. SÉLECTIONNER L'ESSENTIEL : Zéro verbiage inutile. Ne retiens que les notions charnières, définitions officielles, dates et formules indispensables.
+2. SYNTHÉTISER & REFORMULER : Explique la logique avec clarté, ne recopie pas mot à mot.
+3. STRUCTURER POUR MÉMORISER : 4 à 6 grandes sections hiérarchisées dans 'sections', 6 à 10 définitions clés dans 'key_definitions', TOUTES les formules (6 à 12) dans 'formulas' avec démonstrations \\\\dfrac{}{}, tableau comparatif pastel dans 'comparison_table'.
+4. REPÈRES VISUELS & PIÈGES : 4 à 8 'traps_and_tips' ciblant les zones d'ombre d'examen.
+5. MÉMORISATION ACTIVE (OBLIGATOIRE) : Rédige 3 à 5 questions d'auto-évaluation stimulantes avec réponses dans 'active_recall' et 3 à 5 idées maîtresses avec coches dans 'key_takeaways'.`;
 
     case 'questionnaire':
     case 'questionnaire-test':
@@ -5072,6 +5095,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             comparison_table: rObj.comparison_table || null,
             traps_and_tips: Array.isArray(rObj.traps_and_tips) ? rObj.traps_and_tips : [],
             practical_example: rObj.practical_example || null,
+            active_recall: Array.isArray(rObj.active_recall) ? rObj.active_recall : (Array.isArray(rObj.activeRecall) ? rObj.activeRecall : []),
+            key_takeaways: Array.isArray(rObj.key_takeaways) ? rObj.key_takeaways : (Array.isArray(rObj.keyTakeaways) ? rObj.keyTakeaways : (Array.isArray(rObj.keyPoints) ? rObj.keyPoints : [])),
             sections: Array.isArray(rObj.sections) ? rObj.sections : [],
             markdown: typeof rObj.markdown === 'string' ? rObj.markdown : '',
           };

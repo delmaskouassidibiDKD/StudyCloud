@@ -346,8 +346,34 @@ RÈGLE FORMAT : FICHE DE RÉSUMÉ & SYNTHÈSE DE COURS ('resume')
       "3. Calcul littéral avec fractions verticales...",
       "4. Application numérique avec unités et conclusion physique."
     ]
-  }
-}`;
+  },
+  "active_recall": [
+    {
+      "question": "Question d'auto-évaluation 1 pour tester la compréhension sans regarder la fiche ?",
+      "answer": "Réponse synthétique et exacte que l'étudiant doit pouvoir énoncer de mémoire."
+    },
+    {
+      "question": "Question d'auto-évaluation 2 portant sur une condition ou formule clé ?",
+      "answer": "Formule canonique et justification."
+    },
+    {
+      "question": "Question d'auto-évaluation 3 portant sur un piège classique d'examen ?",
+      "answer": "Erreur fréquente et réflexe de vérification."
+    }
+  ],
+  "key_takeaways": [
+    "✅ Idée clé n°1 indispensable pour réussir",
+    "✅ Idée clé n°2 à mémoriser impérativement",
+    "✅ Idée clé n°3 (règle d'or de l'évaluation)"
+  ]
+}
+══════════════════════════════════════════════════════════════════════════════
+RÈGLES CRUCIALES POUR LA FICHE DE RÉSUMÉ / RÉVISION (LES 5 CLÉS DE LA MÉMORISATION ACTIVE) :
+1. SÉLECTIONNER L'ESSENTIEL : Zéro verbiage inutile. Ne retiens que les notions charnières, définitions officielles, dates et formules indispensables.
+2. SYNTHÉTISER & REFORMULER : Explique la logique avec clarté, ne recopie pas mot à mot.
+3. STRUCTURER POUR MÉMORISER : 4 à 6 grandes sections hiérarchisées dans 'sections', 6 à 10 définitions clés dans 'key_definitions', TOUTES les formules (6 à 12) dans 'formulas' avec démonstrations \\dfrac{}{}, tableau comparatif pastel dans 'comparison_table'.
+4. REPÈRES VISUELS & PIÈGES : 4 à 8 'traps_and_tips' ciblant les zones d'ombre d'examen.
+5. MÉMORISATION ACTIVE (OBLIGATOIRE) : Rédige 3 à 5 questions d'auto-évaluation stimulantes avec réponses dans 'active_recall' et 3 à 5 idées maîtresses avec coches dans 'key_takeaways'.`;
   }
 
   // 9 : Polycopié PDF

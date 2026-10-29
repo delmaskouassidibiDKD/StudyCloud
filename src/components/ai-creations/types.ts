@@ -113,6 +113,11 @@ export interface SummaryTrapOrTip {
   content: string;
 }
 
+export interface SummaryActiveRecall {
+  question: string;
+  answer: string;
+}
+
 export interface SummaryPracticalExample {
   statement: string;
   resolution_steps: string[];
@@ -129,6 +134,10 @@ export interface SummaryContent {
   comparison_table?: SummaryComparisonTable;
   traps_and_tips?: SummaryTrapOrTip[];
   practical_example?: SummaryPracticalExample;
+  active_recall?: Array<{ question: string; answer: string }>;
+  activeRecall?: Array<{ question: string; answer: string }>;
+  key_takeaways?: string[];
+  keyTakeaways?: string[];
   sections?: Array<{
     number?: number;
     heading: string;
