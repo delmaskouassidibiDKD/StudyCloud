@@ -34,7 +34,7 @@ const safeLocalStorageRemove = (key: string): void => {
   if (typeof window === 'undefined' || !window.localStorage) return;
   try {
     localStorage.removeItem(key);
-  } catch {}
+  } catch { }
 };
 import { parseOrBuildAiCreation } from '../services/aiCreationGenerator';
 import { AiCreation, AiCreationType, ModuleId } from './ai-creations/types';
@@ -210,13 +210,13 @@ async function extractImageBase64FromItem(item: any): Promise<{ base64: string; 
     try {
       const b64 = await blobToBase64(item.file);
       return { base64: b64, mimeType: item.file.type || mimeType };
-    } catch {}
+    } catch { }
   }
   if (item.blob instanceof Blob) {
     try {
       const b64 = await blobToBase64(item.blob);
       return { base64: b64, mimeType: item.blob.type || mimeType };
-    } catch {}
+    } catch { }
   }
 
   // 3. IndexedDB local via getFileBlob(item.id)
@@ -367,7 +367,7 @@ async function extractVideoContentFromItem(item: any): Promise<{
 
         const cleanup = () => {
           if (isBlob) {
-            try { URL.revokeObjectURL(objectUrl); } catch {}
+            try { URL.revokeObjectURL(objectUrl); } catch { }
           }
           video.src = '';
         };
@@ -428,7 +428,7 @@ async function extractVideoContentFromItem(item: any): Promise<{
             if (isBlob && (source as Blob).size <= 10 * 1024 * 1024) {
               try {
                 directBase64 = await blobToBase64(source as Blob);
-              } catch {}
+              } catch { }
             }
 
             clearTimeout(timeout);
@@ -492,7 +492,7 @@ async function extractVideoContentFromItem(item: any): Promise<{
   if (targetBlob && targetBlob.size <= 28 * 1024 * 1024) {
     try {
       directVideoBase64 = await blobToBase64(targetBlob);
-    } catch {}
+    } catch { }
   }
 
   const res = await extractFramesFromSource(targetBlob || targetUrl, mimeType);
@@ -631,7 +631,7 @@ async function extractAudioContentFromItem(item: any): Promise<{
     try {
       const b = await getFileBlob(item.id);
       if (b) targetBlob = b;
-    } catch {}
+    } catch { }
   }
 
   if (!targetBlob) {
@@ -646,7 +646,7 @@ async function extractAudioContentFromItem(item: any): Promise<{
         if (resp.ok) {
           targetBlob = await resp.blob();
         }
-      } catch {}
+      } catch { }
     }
   }
 
@@ -654,7 +654,7 @@ async function extractAudioContentFromItem(item: any): Promise<{
     try {
       const b64 = await blobToBase64(targetBlob);
       return { audioBase64: b64, mimeType: targetBlob.type || mimeType };
-    } catch {}
+    } catch { }
   }
 
   return null;
@@ -699,6 +699,18 @@ function getMediaItemSignature(item: any): string {
   return `${id}::${name}::${size}::${lastMod}`.trim();
 }
 
+function computeActiveMediaSignature(activeItem: any, attachedList?: any[]): string {
+  const allDocs = [
+    ...(activeItem ? [activeItem] : []),
+    ...(Array.isArray(attachedList) ? attachedList.filter(Boolean) : [])
+  ];
+  return allDocs
+    .map(getMediaItemSignature)
+    .filter(sig => sig && sig !== '::::')
+    .sort()
+    .join('|');
+}
+
 // Détermine dynamiquement ce que l'IA réalise en temps réel (à l'instant T) selon le contexte et le délai
 // Rédigé avec des messages pédagogiques rassurants, fluides et sans jargon technique
 function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: number, requestedType?: string): string {
@@ -712,8 +724,8 @@ function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: numbe
     const idx = Math.min(Math.floor(elapsedSec / 3), steps.length - 1);
     if (Math.floor(elapsedSec / 3) >= steps.length) {
       const extraIdx = (Math.floor(elapsedSec / 3) - steps.length) % 2;
-      return extraIdx === 0 
-        ? steps[steps.length - 1] 
+      return extraIdx === 0
+        ? steps[steps.length - 1]
         : "Je peaufine les derniers détails pour vous...";
     }
     return steps[idx];
@@ -1883,7 +1895,7 @@ function detectCreationFormat(userText: string, requestedType?: string): string 
 function detectTargetDocumentChoice(text: string, docs: any[]): { isAllDocs: boolean; targetedDoc: any | null } {
   if (!text || !Array.isArray(docs) || docs.length <= 1) return { isAllDocs: false, targetedDoc: null };
   const lower = text.toLowerCase();
-  
+
   if (
     lower.includes('tous les documents') ||
     lower.includes('tous mes documents') ||
@@ -2070,7 +2082,7 @@ function SvgDiagramCard({ svgContent }: { svgContent: string; key?: any }) {
           </button>
         </div>
       </div>
-      <div 
+      <div
         className="p-4 sm:p-6 overflow-x-auto custom-scrollbar flex items-center justify-center [&_svg]:max-w-full [&_svg]:h-auto [&_svg]:mx-auto"
         dangerouslySetInnerHTML={{ __html: svgContent }}
       />
@@ -2078,14 +2090,14 @@ function SvgDiagramCard({ svgContent }: { svgContent: string; key?: any }) {
   );
 }
 
-const ChatMessageText = ({ 
-  text, 
-  isUser, 
+const ChatMessageText = ({
+  text,
+  isUser,
   isStreaming,
-  onSelectSuggestion 
-}: { 
-  text: string; 
-  isUser: boolean; 
+  onSelectSuggestion
+}: {
+  text: string;
+  isUser: boolean;
   isStreaming?: boolean;
   onSelectSuggestion?: (question: string) => void;
 }) => {
@@ -2102,9 +2114,9 @@ const ChatMessageText = ({
           {displayText}
         </p>
         {isLongUserMsg && (
-          <button 
+          <button
             type="button"
-            onClick={() => setExpanded(!expanded)} 
+            onClick={() => setExpanded(!expanded)}
             className="mt-1.5 text-[10px] font-bold underline transition-colors cursor-pointer text-orange-200 hover:text-white"
           >
             {expanded ? 'Masquer' : 'Démasquer'}
@@ -2591,7 +2603,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
               .filter((m: any) => !(m.sender === 'ai' && (!m.text || !String(m.text).trim()) && !m.isError))
               .map((m: any) => ({ ...m, isStreaming: false }));
           }
-        } catch {}
+        } catch { }
       }
     }
     return [];
@@ -2620,7 +2632,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       if (res && res.success && res.config?.tokens_per_credit) {
         setTokensPerCredit(Number(res.config.tokens_per_credit));
       }
-    }).catch(() => {});
+    }).catch(() => { });
 
     const handleConfigUpdate = (e: any) => {
       if (e.detail?.tokens_per_credit) {
@@ -2636,7 +2648,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     if (typeof (msg as any).usage?.totalTokens === 'number' && (msg as any).usage.totalTokens > 0) return (msg as any).usage.totalTokens;
     if (typeof (msg as any).metadata?.tokens === 'number' && (msg as any).metadata.tokens > 0) return (msg as any).metadata.tokens;
     if (typeof msg.credits === 'number' && msg.credits > 20) return msg.credits;
-    
+
     // Estimation proportionnelle réaliste au volume textuel (entrées + sorties)
     const textLen = (msg.text || '').length;
     return Math.max(55, Math.ceil(textLen / 3.8));
@@ -2672,7 +2684,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const cachedPerceptionReportsRef = useRef<Record<string, string>>({});
   // Barre de propositions collée au clavier
   const [showProposalBar, setShowProposalBar] = useState(true);
-  
+
   // Création active suivie pour modification et itération continue
   const [activeCreation, setActiveCreation] = useState<AiCreation | null>(null);
 
@@ -2685,7 +2697,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         try {
           const parsed = JSON.parse(local);
           if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        } catch {}
+        } catch { }
       }
       try {
         const genCache = safeGetItem('studycloud_saved_creations_cache');
@@ -2696,7 +2708,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             if (filtered.length > 0) return filtered;
           }
         }
-      } catch {}
+      } catch { }
     }
     return [];
   });
@@ -2716,7 +2728,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           }));
         }
       }
-    } catch (e) {}
+    } catch (e) { }
     return [];
   };
 
@@ -2778,7 +2790,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
               let id = m.id || m.model_id;
               if (id === '@cf/meta/llama-3.3-70b-instruct') id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
               if (id === 'gemini-3.8-flash' || id === 'gemini-2.5-flash') id = 'gemini-2.0-flash';
-              
+
               // Priorité absolue au surnom personnalisé configuré
               const cleanNick = (m.nickname && typeof m.nickname === 'string') ? stripWorkerAi(m.nickname) : '';
               const rawName = stripWorkerAi(m.name || id);
@@ -2896,7 +2908,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       welcomeAnimTimeoutRef.current = [];
     };
   }, [selectedModel, currentConversationId, messages.length === 0, resolvedActiveName, currentModelDisplay]);
-  
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimerRef = useRef<any>(null);
@@ -2958,10 +2970,10 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     if (activeControllersByConvRef.current[targetId]) {
       try {
         activeControllersByConvRef.current[targetId].abort();
-      } catch {}
+      } catch { }
       delete activeControllersByConvRef.current[targetId];
     }
-      // aiBackgroundManager.clearTask(targetId);
+    // aiBackgroundManager.clearTask(targetId);
 
     if (targetId === currentConversationIdRef.current) {
       if (typingTimerRef.current) {
@@ -3046,7 +3058,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           if (Array.isArray(parsed)) {
             setConversations(parsed.filter((c: any) => !c.id?.startsWith('creation-') && !c.title?.startsWith('Conçois un ')));
           }
-        } catch {}
+        } catch { }
       }
     }
   };
@@ -3081,7 +3093,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           }
           setMessages(localParsed);
         }
-      } catch {}
+      } catch { }
     }
 
     if (isThisConvInFlight) {
@@ -3115,7 +3127,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
               }
               modelName = meta?.model;
               tokens = meta?.tokens || meta?.credits;
-            } catch {}
+            } catch { }
           }
           return {
             id: row.id,
@@ -3173,7 +3185,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         const localConvCreasRaw = safeGetItem(`studycloud_conv_creations_${convId}`);
         let localCreas: AiCreation[] = [];
         if (localConvCreasRaw) {
-          try { localCreas = JSON.parse(localConvCreasRaw) || []; } catch {}
+          try { localCreas = JSON.parse(localConvCreasRaw) || []; } catch { }
         }
         if (localCreas.length === 0) {
           const genCache = safeGetItem('studycloud_saved_creations_cache');
@@ -3183,7 +3195,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
               if (Array.isArray(parsedGen)) {
                 localCreas = parsedGen.filter((c: any) => c.conversationId === convId);
               }
-            } catch {}
+            } catch { }
           }
         }
         if (localCreas.length > 0 && currentConversationIdRef.current === convId) {
@@ -3199,7 +3211,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           const mappedFromD1: AiCreation[] = crRes.data.map((c: any) => {
             let contentParsed = c.content;
             if (typeof contentParsed === 'string') {
-              try { contentParsed = JSON.parse(contentParsed); } catch {}
+              try { contentParsed = JSON.parse(contentParsed); } catch { }
             }
             return {
               id: c.id,
@@ -3277,7 +3289,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
               // Vérification STRICTEMENT par id unique pour ne jamais confondre avec un ancien message
               const foundMsg = res.data.find((m: any) => m.id === task.aiMsgId);
               if (foundMsg && foundMsg.content && foundMsg.content.trim().length > 0) {
-      // aiBackgroundManager.completeAiTask(task.conversationId, task.aiMsgId, foundMsg.content);
+                // aiBackgroundManager.completeAiTask(task.conversationId, task.aiMsgId, foundMsg.content);
                 if (task.conversationId === currentConversationIdRef.current) {
                   loadConversationMessages(task.conversationId);
                   setIsWaitingServer(false);
@@ -3285,7 +3297,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
                 }
               }
             }
-          }).catch(() => {});
+          }).catch(() => { });
         });
       }
     };
@@ -3319,7 +3331,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           type: creationWithConv.toolType,
           title: creationWithConv.title,
           content: creationWithConv.content,
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       setSessionCreations(prev => {
@@ -3366,7 +3378,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             localStorage.setItem('studycloud_saved_creations_cache', JSON.stringify(updatedGlobal));
             localStorage.setItem('unifolder_ai_history', JSON.stringify(updatedGlobal));
           }
-        } catch {}
+        } catch { }
 
         if (e.detail?.isFromChat) {
           StudyCloudAPI.saveAiCreationRecord({
@@ -3375,7 +3387,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             type: activeCreation.toolType,
             title: activeCreation.title,
             content: e.detail.updatedContent,
-          }).catch(() => {});
+          }).catch(() => { });
         }
 
         // Mise à jour dans la base D1
@@ -3444,7 +3456,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     analyzedMediaPerConvRef.current = {};
     cachedDocumentTextRef.current = {};
     if (currentUserId && currentUserId !== 'default-user') {
-      StudyCloudAPI.clearAiFilePerceptions(currentUserId).catch(() => {});
+      StudyCloudAPI.clearAiFilePerceptions(currentUserId).catch(() => { });
     }
 
     safeSetItem('studycloud_current_conversation_id', newId);
@@ -3458,7 +3470,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       id: newId,
       userId: currentUserId,
       title: 'Nouvelle discussion',
-    }).catch(() => {});
+    }).catch(() => { });
   };
 
   // Suppression d'une session
@@ -3466,7 +3478,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     e.stopPropagation();
     try {
       if (activeControllersByConvRef.current[convId]) {
-        try { activeControllersByConvRef.current[convId].abort(); } catch {}
+        try { activeControllersByConvRef.current[convId].abort(); } catch { }
         delete activeControllersByConvRef.current[convId];
       }
       // aiBackgroundManager.clearTask(convId);
@@ -3507,7 +3519,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     setAttachedResources?.((prev: any[]) => prev.filter((r: any) => r.id !== res.id));
     cachedPerceptionReportsRef.current = {};
     if (currentUserId && currentUserId !== 'default-user') {
-      StudyCloudAPI.clearAiFilePerceptions(currentUserId).catch(() => {});
+      StudyCloudAPI.clearAiFilePerceptions(currentUserId).catch(() => { });
     }
     if (currentUserId && res.id) {
       await removeAiAttachment({
@@ -3574,15 +3586,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       }
     }
 
-    const agentAllDocs = [
-      ...(params.resolvedActiveItem ? [params.resolvedActiveItem] : []),
-      ...(Array.isArray(params.attachedResources) ? params.attachedResources.filter(Boolean) : [])
-    ];
-    const agentMediaSig = agentAllDocs
-      .map(getMediaItemSignature)
-      .filter(sig => sig && sig !== '::::')
-      .sort()
-      .join('|');
+    const agentMediaSig = computeActiveMediaSignature(params.resolvedActiveItem, params.attachedResources || []);
     const agentPerception = (agentMediaSig ? cachedPerceptionReportsRef.current[agentMediaSig] : '') || '';
     const resolvedAttachedText = activeDocumentInfo?.textContent ||
       (agentMediaSig ? cachedDocumentTextRef.current[agentMediaSig] : '') ||
@@ -3647,7 +3651,7 @@ RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
           const parsed = JSON.parse(rawLocal);
           if (Array.isArray(parsed)) relevantCreations = parsed;
         }
-      } catch {}
+      } catch { }
     }
 
     if (relevantCreations && relevantCreations.length > 0) {
@@ -3748,7 +3752,7 @@ ${agentPerception.slice(0, 30000)}
         try {
           const parsedArr = JSON.parse(arrayMatch[0]);
           if (Array.isArray(parsedArr) && parsedArr.length > 0) finalContent = parsedArr;
-        } catch {}
+        } catch { }
       }
     }
     const normType = normalizeCreationType(params.explicitToolType);
@@ -3919,10 +3923,10 @@ ${agentPerception.slice(0, 30000)}
           typeof t === 'string'
             ? { type: idx % 2 === 0 ? 'trap' : 'tip', title: idx % 2 === 0 ? "ZONE D'OMBRE & PIÈGE D'EXAMEN" : 'ASTUCE MÉTHODOLOGIQUE', content: t }
             : {
-                type: t?.type || 'trap',
-                title: t?.title || (t?.type === 'tip' ? 'ASTUCE MÉTHODOLOGIQUE' : "ZONE D'OMBRE & PIÈGE D'EXAMEN"),
-                content: t?.content || t?.text || t?.description || ''
-              }
+              type: t?.type || 'trap',
+              title: t?.title || (t?.type === 'tip' ? 'ASTUCE MÉTHODOLOGIQUE' : "ZONE D'OMBRE & PIÈGE D'EXAMEN"),
+              content: t?.content || t?.text || t?.description || ''
+            }
         );
         finalContent = {
           title: rObj.title || params.creationTitle,
@@ -3947,7 +3951,7 @@ ${agentPerception.slice(0, 30000)}
         if (built?.content && hasRealCreationData(normType, built.content)) {
           finalContent = built.content;
         }
-      } catch (_fallbackErr) {}
+      } catch (_fallbackErr) { }
     }
 
     // Filet de dernier recours : Si finalContent est toujours null/vide apres tous les essais,
@@ -4000,7 +4004,7 @@ ${agentPerception.slice(0, 30000)}
       const localConvCreasRaw = safeGetItem(`studycloud_conv_creations_${params.targetConvId}`);
       let localConvCreas: AiCreation[] = [];
       if (localConvCreasRaw) {
-        try { localConvCreas = JSON.parse(localConvCreasRaw) || []; } catch {}
+        try { localConvCreas = JSON.parse(localConvCreasRaw) || []; } catch { }
       }
       const updatedConvCreas = [newCreation, ...localConvCreas.filter(c => c.id !== newCreation.id)];
       safeSetItem(`studycloud_conv_creations_${params.targetConvId}`, JSON.stringify(updatedConvCreas));
@@ -4011,7 +4015,7 @@ ${agentPerception.slice(0, 30000)}
       const updatedList = [newCreation, ...currentList.filter((c: any) => c.id !== newCreation.id)].slice(0, 50);
       localStorage.setItem('studycloud_saved_creations_cache', JSON.stringify(updatedList));
       localStorage.setItem('unifolder_ai_history', JSON.stringify(updatedList));
-    } catch {}
+    } catch { }
 
     StudyCloudAPI.saveAiCreationRecord({
       id: newCreation.id,
@@ -4019,7 +4023,7 @@ ${agentPerception.slice(0, 30000)}
       type: normType,
       title: newCreation.title,
       content: newCreation.content,
-    }).catch(() => {});
+    }).catch(() => { });
 
     if (params.targetUserId && params.targetUserId !== 'default-user') {
       await StudyCloudAPI.saveAiContent({
@@ -4032,7 +4036,7 @@ ${agentPerception.slice(0, 30000)}
         contentJson: newCreation.content,
         sourceFileName: params.mainDocName || undefined,
         isPinned: false,
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     if (typeof window !== 'undefined') {
@@ -4067,7 +4071,7 @@ ${agentPerception.slice(0, 30000)}
           convBaseMessages = Array.isArray(parsed)
             ? parsed.filter((m: any) => !(m.sender === 'ai' && (!m.text || !String(m.text).trim()) && !m.isError))
             : [];
-        } catch {}
+        } catch { }
       }
     }
 
@@ -4117,7 +4121,7 @@ ${agentPerception.slice(0, 30000)}
       role: 'user',
       content: userText,
       created_at: new Date(Date.now() - 50).toISOString(),
-    }).catch(() => {});
+    }).catch(() => { });
 
 
     // Détection immédiate hors ligne avant envoi réseau
@@ -4148,313 +4152,313 @@ ${agentPerception.slice(0, 30000)}
 
     try {
       // 1. Rassemblement et vérification préalable de tous les documents (Actif en Orange + Pièces jointes en Bleu)
-    const allDocs: any[] = [];
-    const currentActive = resolvedActiveItem;
-    if (currentActive && (currentActive.id || currentActive.name || currentActive.title || currentActive.file || currentActive.blob)) {
-      allDocs.push({ ...currentActive, isOrangeActive: true });
-    }
-    if (Array.isArray(attachedResources)) {
-      for (const res of attachedResources) {
-        if (res) {
-          const alreadyIn = allDocs.some(d =>
-            (d.id && res.id && d.id === res.id) ||
-            (d.name && res.name && d.name === res.name) ||
-            (d.title && res.title && d.title === res.title)
-          );
-          if (!alreadyIn) {
-            allDocs.push({ ...res, isOrangeActive: false });
-          }
-        }
+      const allDocs: any[] = [];
+      const currentActive = resolvedActiveItem;
+      if (currentActive && (currentActive.id || currentActive.name || currentActive.title || currentActive.file || currentActive.blob)) {
+        allDocs.push({ ...currentActive, isOrangeActive: true });
       }
-    }
-
-    // Signature stable des médias présents dans ce tour pour la session active
-    const currentMediaSignature = allDocs
-      .map(getMediaItemSignature)
-      .filter(sig => sig && sig !== '::::')
-      .sort()
-      .join('|');
-
-    // Clé unique liée au userId ET à la conversation active pour une isolation totale par utilisateur
-    const convCacheKey = `${currentUserId}_${currentConversationId}`;
-    const sessionMediaSig = analyzedMediaPerConvRef.current[convCacheKey];
-
-    // Détection si l'utilisateur demande explicitement une réanalyse, un réexamen, ou une nouvelle inspection
-    const isExplicitReanalysisRequested = /(?:r[ée]-?analyse|r[ée]examine|re-?regarde|regarde\s+[àa]\s*nouveau|revois|refais\s+(?:l'|une\s+)?analyse|nouvelle\s+analyse|analyse\s+encore|inspecte\s+[àa]\s*nouveau|relis\s+attentivement|zoom\s+sur|v[ée]rifie\s+[àa]\s*nouveau|autre\s+analyse|analyse\s+compl[èe]te|scanne\s+[àa]\s*nouveau|re-?v[ée]rifie)/i.test(userText);
-
-    // Détection si la demande porte spécifiquement sur des détails visuels nécessitant une observation directe
-    const isVisualSpecificDetailRequested = /(?:sch[ée]ma|diagramme|circuit|figure|graphique|dessin|illustration|courbe|tableau\s+visuel|photo|planche|image|fichier|document)/i.test(userText) &&
-      /(?:d[ée]tail|zoom|pr[ée]cis|regarde|observe|montre|identifie|lis|d[ée]crit|explique\s+le\s+sch[ée]ma|r[ée]sous\s+avec|d'apr[èe]s\s+le\s+sch[ée]ma|dans\s+l'image|sur\s+la\s+photo|as[- ]tu\s+vu|tu\s+as\s+vu|tu\s+vois|mon\s+image|ma\s+photo|mon\s+fichier|mon\s+document)/i.test(userText);
-
-    // Si la situation ou la question nécessite une nouvelle analyse approfondie
-    const requiresFreshAnalysis = Boolean(
-      options?.forceReanalysis ||
-      isExplicitReanalysisRequested ||
-      isVisualSpecificDetailRequested
-    );
-
-    let existingPerception = (currentMediaSignature ? cachedPerceptionReportsRef.current[currentMediaSignature] : '') ||
-      (currentMediaSignature ? cachedDocumentTextRef.current[currentMediaSignature] : '');
-
-    // Récupération asynchrone sécurisée depuis la base D1 (expire après 30 min) si non présente en mémoire vive
-    if (!existingPerception && currentMediaSignature && currentUserId && currentUserId !== 'default-user' && !requiresFreshAnalysis) {
-      try {
-        const d1Perception = await StudyCloudAPI.getAiFilePerception(currentUserId, currentMediaSignature);
-        if (d1Perception) {
-          existingPerception = d1Perception;
-          cachedPerceptionReportsRef.current[currentMediaSignature] = d1Perception;
-        }
-      } catch {}
-    }
-
-    // Le média est considéré comme déjà analysé UNIQUEMENT si on possède déjà son dossier de perception
-    const isMediaAlreadyAnalyzed = Boolean(!requiresFreshAnalysis && currentMediaSignature && (sessionMediaSig === currentMediaSignature || existingPerception) && existingPerception);
-
-    const hasAttachedDoc = allDocs.length > 0;
-
-    // Pré-extraction universelle des médias pour l'Orchestrateur et les sous-agents
-    let activeVideoInfo: {
-      videoBase64?: string;
-      videoFrames: Array<{ base64: string; mimeType: string; timestamp: number }>;
-      mimeType: string;
-    } | null = null;
-    let activeAudioInfo: {
-      audioBase64: string;
-      mimeType: string;
-    } | null = null;
-    let activeImageInfo: { base64: string; mimeType: string } | null = null;
-    let activeDocumentInfo: {
-      textContent: string;
-      documentBase64?: string;
-      documentMimeType?: string;
-      documentImages?: Array<{ base64: string; mimeType: string; name?: string }>;
-      fileName?: string;
-    } | null = null;
-
-    if (hasAttachedDoc) {
-      if (resolvedActiveItem) {
-        if (isVideoItem(resolvedActiveItem)) {
-          activeVideoInfo = await extractVideoContentFromItem(resolvedActiveItem);
-        } else if (isAudioItem(resolvedActiveItem)) {
-          activeAudioInfo = await extractAudioContentFromItem(resolvedActiveItem);
-        } else if (isDocumentItem(resolvedActiveItem)) {
-          // Marquage _needsCanvas : rendu Canvas PDF si le prompt contient des termes visuels ou s'il s'agit d'une création
-          const visualTerms = /schéma|schema|figure|graphe|graphique|circuit|dessin|tableau|image|diagramme|courbe|illustration|diagram/i;
-          (resolvedActiveItem as any)._needsCanvas = visualTerms.test(userText) || isCreationIntent;
-          activeDocumentInfo = await extractDocumentDetails(resolvedActiveItem);
-        } else {
-          activeImageInfo = await extractImageBase64FromItem(resolvedActiveItem);
-        }
-      }
-      if (Array.isArray(attachedResources) && attachedResources.length > 0) {
+      if (Array.isArray(attachedResources)) {
         for (const res of attachedResources) {
-          if (!activeVideoInfo && isVideoItem(res)) {
-            const foundVid = await extractVideoContentFromItem(res);
-            if (foundVid) activeVideoInfo = foundVid;
-          } else if (!activeAudioInfo && isAudioItem(res)) {
-            const foundAud = await extractAudioContentFromItem(res);
-            if (foundAud) activeAudioInfo = foundAud;
-          } else if (!activeDocumentInfo && isDocumentItem(res)) {
-            const visualTerms2 = /schéma|schema|figure|graphe|graphique|circuit|dessin|tableau|image|diagramme|courbe|illustration|diagram/i;
-            (res as any)._needsCanvas = visualTerms2.test(userText) || isCreationIntent;
-            const foundDoc = await extractDocumentDetails(res);
-            if (foundDoc) activeDocumentInfo = foundDoc;
-          } else if (!activeImageInfo) {
-            const foundImg = await extractImageBase64FromItem(res);
-            if (foundImg) activeImageInfo = foundImg;
+          if (res) {
+            const alreadyIn = allDocs.some(d =>
+              (d.id && res.id && d.id === res.id) ||
+              (d.name && res.name && d.name === res.name) ||
+              (d.title && res.title && d.title === res.title)
+            );
+            if (!alreadyIn) {
+              allDocs.push({ ...res, isOrangeActive: false });
+            }
           }
         }
       }
-      if (activeDocumentInfo?.textContent && currentMediaSignature) {
-        cachedDocumentTextRef.current[currentMediaSignature] = activeDocumentInfo.textContent;
-      }
-    }
 
-    const resolvedAttachedText = hasAttachedDoc ? (
-      activeDocumentInfo?.textContent ||
-      (currentMediaSignature ? cachedDocumentTextRef.current[currentMediaSignature] : '') ||
-      (resolvedActiveItem as any)?.content ||
-      (resolvedActiveItem as any)?.text ||
-      (resolvedActiveItem as any)?.rawText ||
-      ''
-    ) : '';
-    const hasPromptSubject = detectHasSpecificSubject(userText);
-    const hasConversationContext = hasRecentAcademicContext(messages);
+      // Signature stable des médias présents dans ce tour pour la session active
+      const currentMediaSignature = allDocs
+        .map(getMediaItemSignature)
+        .filter(sig => sig && sig !== '::::')
+        .sort()
+        .join('|');
 
-    // Vérification multi-documents : si l'utilisateur a joint plusieurs fichiers (>= 2)
-    const docChoice = detectTargetDocumentChoice(userText, allDocs);
-    const hasMultipleDocs = allDocs.length > 1;
-    // Si plusieurs documents sont joints et qu'aucun document précis n'est ciblé ni une synthèse globale demandée :
-    // On doit demander à l'utilisateur de préciser sur quoi il souhaite travailler !
-    const needsMultiDocClarification = hasMultipleDocs && !docChoice.targetedDoc && !docChoice.isAllDocs;
+      // Clé unique liée au userId ET à la conversation active pour une isolation totale par utilisateur
+      const convCacheKey = `${currentUserId}_${currentConversationId}`;
+      const sessionMediaSig = analyzedMediaPerConvRef.current[convCacheKey];
 
-    // Détection d'un document actif ou joint dans l'espace de travail
-    const hasRealAttachedDoc = Boolean(
-      allDocs.length > 0 ||
-      Boolean(resolvedActiveItem) ||
-      Boolean(activePreviewItem) ||
-      (Array.isArray(attachedResources) && attachedResources.length > 0)
-    );
+      // Détection si l'utilisateur demande explicitement une réanalyse, un réexamen, ou une nouvelle inspection
+      const isExplicitReanalysisRequested = /(?:r[ée]-?analyse|r[ée]examine|re-?regarde|regarde\s+[àa]\s*nouveau|revois|refais\s+(?:l'|une\s+)?analyse|nouvelle\s+analyse|analyse\s+encore|inspecte\s+[àa]\s*nouveau|relis\s+attentivement|zoom\s+sur|v[ée]rifie\s+[àa]\s*nouveau|autre\s+analyse|analyse\s+compl[èe]te|scanne\s+[àa]\s*nouveau|re-?v[ée]rifie)/i.test(userText);
 
-    const hasRealDocContent = Boolean(
-      hasRealAttachedDoc && (
-        (resolvedAttachedText && resolvedAttachedText.trim().length > 0) ||
-        Boolean(activeDocumentInfo?.documentBase64) ||
-        Boolean(activeDocumentInfo?.textContent && activeDocumentInfo.textContent.trim().length > 0) ||
-        Boolean(activeImageInfo?.base64) ||
-        Boolean(activeAudioInfo?.audioBase64) ||
-        Boolean(activeVideoInfo?.videoBase64) ||
-        Boolean((resolvedActiveItem as any)?.content) ||
-        Boolean((resolvedActiveItem as any)?.text) ||
-        Boolean((resolvedActiveItem as any)?.rawText) ||
-        Boolean(resolvedActiveName && resolvedActiveName.trim().length > 0) ||
-        allDocs.length > 0
-      )
-    );
+      // Détection si la demande porte spécifiquement sur des détails visuels nécessitant une observation directe
+      const isVisualSpecificDetailRequested = /(?:sch[ée]ma|diagramme|circuit|figure|graphique|dessin|illustration|courbe|tableau\s+visuel|photo|planche|image|fichier|document)/i.test(userText) &&
+        /(?:d[ée]tail|zoom|pr[ée]cis|regarde|observe|montre|identifie|lis|d[ée]crit|explique\s+le\s+sch[ée]ma|r[ée]sous\s+avec|d'apr[èe]s\s+le\s+sch[ée]ma|dans\s+l'image|sur\s+la\s+photo|as[- ]tu\s+vu|tu\s+as\s+vu|tu\s+vois|mon\s+image|ma\s+photo|mon\s+fichier|mon\s+document)/i.test(userText);
 
-    // 2. Le prompt contient-il un sujet précis ou un texte de cours collé ?
-    const hasPastedCourseContent = userText.trim().length >= 100 && !/^(?:bonjour|salut|peux-tu|fais-moi|crée|conçois)/i.test(userText.trim().slice(0, 15));
-    const hasSpecificTopic = hasPromptSubject || hasPastedCourseContent;
+      // Si la situation ou la question nécessite une nouvelle analyse approfondie
+      const requiresFreshAnalysis = Boolean(
+        options?.forceReanalysis ||
+        isExplicitReanalysisRequested ||
+        isVisualSpecificDetailRequested
+      );
 
-    // Contexte éducatif suffisant : document actif/joint OU sujet précis dans le prompt OU contexte de discussion / réponse à clarification
-    const isMeaningfulClarificationAnswer = isInheritedFromClarification && userText.trim().length >= 3 && !/^(?:oui|ok|d'accord|vas-y|lance|fais-le)$/i.test(userText.trim());
-    const hasEducationalContext = hasRealDocContent || hasSpecificTopic || hasConversationContext || isMeaningfulClarificationAnswer;
+      let existingPerception = (currentMediaSignature ? cachedPerceptionReportsRef.current[currentMediaSignature] : '') ||
+        (currentMediaSignature ? cachedDocumentTextRef.current[currentMediaSignature] : '');
 
-    // Si création demandée sans document actif/joint et sans sujet précis : l'IA sélectionnée demandera naturellement de préciser !
-    const needsSubjectClarification = isCreationIntent && !hasEducationalContext;
-
-    if (activityTimerRef.current) clearInterval(activityTimerRef.current);
-    const startTimestamp = Date.now();
-    const activeDocName = resolvedActiveItem?.name || resolvedActiveItem?.title || '';
-    const initialDocNames: string[] = activeDocName ? [activeDocName] : [];
-    if (Array.isArray(attachedResources)) {
-      for (const r of attachedResources) {
-        if (r?.name && !initialDocNames.includes(r.name)) initialDocNames.push(r.name);
-      }
-    }
-    const docNames = initialDocNames;
-    const attachedFileName = resolvedActiveName || (Array.isArray(attachedResources) ? attachedResources.map((r: any) => r?.name).filter(Boolean).join(', ') : '');
-    const mainDocName = hasAttachedDoc ? (resolvedActiveName || (attachedResources[0]?.name) || undefined) : undefined;
-
-    // ══════════════════════════════════════════════════════════════════════════
-    // ORCHESTRATION PAR L'IA SÉLECTIONNÉE & POOL DES 3 AGENTS EN PARALLÈLE
-    // - Si ce n'est pas une création : l'IA sélectionnée répond directement.
-    // - Si c'est une création SANS contexte ni fichier : l'IA sélectionnée demande naturellement à l'étudiant de préciser.
-    // - Si c'est une création AVEC contexte ou fichier joint/actif :
-    //   1 tâche -> 1 Agent | 2 tâches -> 2 Agents | 3 tâches -> 3 Agents max
-    //   4ème tâche et + -> En attente (prise automatiquement dès qu'un agent finit)
-    //   Et l'IA sélectionnée vient discuter avec l'utilisateur pendant que les agents travaillent !
-    // ══════════════════════════════════════════════════════════════════════════
-    let orchestratorMode: '' | 'agents_launched' | 'clarify_subject' | 'clarify_multidoc' = '';
-    let orchestratorInstruction = '';
-    let hasDispatchedAgents = false;
-
-    const dispatchAgentsForFormats = (
-      formatsToDispatch: AiCreationType[]
-    ): Array<{ id: string; title: string; toolType: string; formatLabel: string; isQueued: boolean }> => {
-      if (hasDispatchedAgents || !Array.isArray(formatsToDispatch) || formatsToDispatch.length === 0) {
-        return [];
-      }
-      hasDispatchedAgents = true;
-      orchestratorMode = 'agents_launched';
-
-      const dispatchedTasks: Array<{ id: string; title: string; toolType: string; formatLabel: string; isQueued: boolean }> = [];
-      const fmtOccurrences: Record<string, number> = {};
-      const fmtTotals: Record<string, number> = {};
-      for (const f of formatsToDispatch) {
-        fmtTotals[f] = (fmtTotals[f] || 0) + 1;
+      // Récupération asynchrone sécurisée depuis la base D1 (expire après 30 min) si non présente en mémoire vive
+      if (!existingPerception && currentMediaSignature && currentUserId && currentUserId !== 'default-user' && !requiresFreshAnalysis) {
+        try {
+          const d1Perception = await StudyCloudAPI.getAiFilePerception(currentUserId, currentMediaSignature);
+          if (d1Perception) {
+            existingPerception = d1Perception;
+            cachedPerceptionReportsRef.current[currentMediaSignature] = d1Perception;
+          }
+        } catch { }
       }
 
-      for (let idx = 0; idx < formatsToDispatch.length; idx++) {
-        const fmt = formatsToDispatch[idx];
-        fmtOccurrences[fmt] = (fmtOccurrences[fmt] || 0) + 1;
-        const baseFormatTitle = CREATION_NAME_MAP[fmt] || CREATION_FORMAT_LABELS[fmt] || "Support d'apprentissage";
-        const formatTitle = fmtTotals[fmt] > 1 ? `${baseFormatTitle} #${fmtOccurrences[fmt]}` : baseFormatTitle;
-        const currentCreationId = 'crea-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).slice(2, 6);
-        const currentTaskId = 'task-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).slice(2, 6);
-        const cTitle = mainDocName ? `${formatTitle} : ${mainDocName}` : `${formatTitle} : ${userText.slice(0, 35).trim() || "Thème d'étude"}`;
-        const willQueuePreview = aiBackgroundManager.getRunningCount() >= 3;
+      // Le média est considéré comme déjà analysé UNIQUEMENT si on possède déjà son dossier de perception
+      const isMediaAlreadyAnalyzed = Boolean(!requiresFreshAnalysis && currentMediaSignature && (sessionMediaSig === currentMediaSignature || existingPerception) && existingPerception);
 
-        // Notifier immédiatement le menu de droite AVANT d'enfiler pour que la carte apparaisse sans course critique
-        window.dispatchEvent(new CustomEvent('studycloud-creation-enqueued', {
-          detail: {
-            id: currentCreationId,
+      const hasAttachedDoc = allDocs.length > 0;
+
+      // Pré-extraction universelle des médias pour l'Orchestrateur et les sous-agents
+      let activeVideoInfo: {
+        videoBase64?: string;
+        videoFrames: Array<{ base64: string; mimeType: string; timestamp: number }>;
+        mimeType: string;
+      } | null = null;
+      let activeAudioInfo: {
+        audioBase64: string;
+        mimeType: string;
+      } | null = null;
+      let activeImageInfo: { base64: string; mimeType: string } | null = null;
+      let activeDocumentInfo: {
+        textContent: string;
+        documentBase64?: string;
+        documentMimeType?: string;
+        documentImages?: Array<{ base64: string; mimeType: string; name?: string }>;
+        fileName?: string;
+      } | null = null;
+
+      if (hasAttachedDoc) {
+        if (resolvedActiveItem) {
+          if (isVideoItem(resolvedActiveItem)) {
+            activeVideoInfo = await extractVideoContentFromItem(resolvedActiveItem);
+          } else if (isAudioItem(resolvedActiveItem)) {
+            activeAudioInfo = await extractAudioContentFromItem(resolvedActiveItem);
+          } else if (isDocumentItem(resolvedActiveItem)) {
+            // Marquage _needsCanvas : rendu Canvas PDF si le prompt contient des termes visuels ou s'il s'agit d'une création
+            const visualTerms = /schéma|schema|figure|graphe|graphique|circuit|dessin|tableau|image|diagramme|courbe|illustration|diagram/i;
+            (resolvedActiveItem as any)._needsCanvas = visualTerms.test(userText) || isCreationIntent;
+            activeDocumentInfo = await extractDocumentDetails(resolvedActiveItem);
+          } else {
+            activeImageInfo = await extractImageBase64FromItem(resolvedActiveItem);
+          }
+        }
+        if (Array.isArray(attachedResources) && attachedResources.length > 0) {
+          for (const res of attachedResources) {
+            if (!activeVideoInfo && isVideoItem(res)) {
+              const foundVid = await extractVideoContentFromItem(res);
+              if (foundVid) activeVideoInfo = foundVid;
+            } else if (!activeAudioInfo && isAudioItem(res)) {
+              const foundAud = await extractAudioContentFromItem(res);
+              if (foundAud) activeAudioInfo = foundAud;
+            } else if (!activeDocumentInfo && isDocumentItem(res)) {
+              const visualTerms2 = /schéma|schema|figure|graphe|graphique|circuit|dessin|tableau|image|diagramme|courbe|illustration|diagram/i;
+              (res as any)._needsCanvas = visualTerms2.test(userText) || isCreationIntent;
+              const foundDoc = await extractDocumentDetails(res);
+              if (foundDoc) activeDocumentInfo = foundDoc;
+            } else if (!activeImageInfo) {
+              const foundImg = await extractImageBase64FromItem(res);
+              if (foundImg) activeImageInfo = foundImg;
+            }
+          }
+        }
+        if (activeDocumentInfo?.textContent && currentMediaSignature) {
+          cachedDocumentTextRef.current[currentMediaSignature] = activeDocumentInfo.textContent;
+        }
+      }
+
+      const resolvedAttachedText = hasAttachedDoc ? (
+        activeDocumentInfo?.textContent ||
+        (currentMediaSignature ? cachedDocumentTextRef.current[currentMediaSignature] : '') ||
+        (resolvedActiveItem as any)?.content ||
+        (resolvedActiveItem as any)?.text ||
+        (resolvedActiveItem as any)?.rawText ||
+        ''
+      ) : '';
+      const hasPromptSubject = detectHasSpecificSubject(userText);
+      const hasConversationContext = hasRecentAcademicContext(messages);
+
+      // Vérification multi-documents : si l'utilisateur a joint plusieurs fichiers (>= 2)
+      const docChoice = detectTargetDocumentChoice(userText, allDocs);
+      const hasMultipleDocs = allDocs.length > 1;
+      // Si plusieurs documents sont joints et qu'aucun document précis n'est ciblé ni une synthèse globale demandée :
+      // On doit demander à l'utilisateur de préciser sur quoi il souhaite travailler !
+      const needsMultiDocClarification = hasMultipleDocs && !docChoice.targetedDoc && !docChoice.isAllDocs;
+
+      // Détection d'un document actif ou joint dans l'espace de travail
+      const hasRealAttachedDoc = Boolean(
+        allDocs.length > 0 ||
+        Boolean(resolvedActiveItem) ||
+        Boolean(activePreviewItem) ||
+        (Array.isArray(attachedResources) && attachedResources.length > 0)
+      );
+
+      const hasRealDocContent = Boolean(
+        hasRealAttachedDoc && (
+          (resolvedAttachedText && resolvedAttachedText.trim().length > 0) ||
+          Boolean(activeDocumentInfo?.documentBase64) ||
+          Boolean(activeDocumentInfo?.textContent && activeDocumentInfo.textContent.trim().length > 0) ||
+          Boolean(activeImageInfo?.base64) ||
+          Boolean(activeAudioInfo?.audioBase64) ||
+          Boolean(activeVideoInfo?.videoBase64) ||
+          Boolean((resolvedActiveItem as any)?.content) ||
+          Boolean((resolvedActiveItem as any)?.text) ||
+          Boolean((resolvedActiveItem as any)?.rawText) ||
+          Boolean(resolvedActiveName && resolvedActiveName.trim().length > 0) ||
+          allDocs.length > 0
+        )
+      );
+
+      // 2. Le prompt contient-il un sujet précis ou un texte de cours collé ?
+      const hasPastedCourseContent = userText.trim().length >= 100 && !/^(?:bonjour|salut|peux-tu|fais-moi|crée|conçois)/i.test(userText.trim().slice(0, 15));
+      const hasSpecificTopic = hasPromptSubject || hasPastedCourseContent;
+
+      // Contexte éducatif suffisant : document actif/joint OU sujet précis dans le prompt OU contexte de discussion / réponse à clarification
+      const isMeaningfulClarificationAnswer = isInheritedFromClarification && userText.trim().length >= 3 && !/^(?:oui|ok|d'accord|vas-y|lance|fais-le)$/i.test(userText.trim());
+      const hasEducationalContext = hasRealDocContent || hasSpecificTopic || hasConversationContext || isMeaningfulClarificationAnswer;
+
+      // Si création demandée sans document actif/joint et sans sujet précis : l'IA sélectionnée demandera naturellement de préciser !
+      const needsSubjectClarification = isCreationIntent && !hasEducationalContext;
+
+      if (activityTimerRef.current) clearInterval(activityTimerRef.current);
+      const startTimestamp = Date.now();
+      const activeDocName = resolvedActiveItem?.name || resolvedActiveItem?.title || '';
+      const initialDocNames: string[] = activeDocName ? [activeDocName] : [];
+      if (Array.isArray(attachedResources)) {
+        for (const r of attachedResources) {
+          if (r?.name && !initialDocNames.includes(r.name)) initialDocNames.push(r.name);
+        }
+      }
+      const docNames = initialDocNames;
+      const attachedFileName = resolvedActiveName || (Array.isArray(attachedResources) ? attachedResources.map((r: any) => r?.name).filter(Boolean).join(', ') : '');
+      const mainDocName = hasAttachedDoc ? (resolvedActiveName || (attachedResources[0]?.name) || undefined) : undefined;
+
+      // ══════════════════════════════════════════════════════════════════════════
+      // ORCHESTRATION PAR L'IA SÉLECTIONNÉE & POOL DES 3 AGENTS EN PARALLÈLE
+      // - Si ce n'est pas une création : l'IA sélectionnée répond directement.
+      // - Si c'est une création SANS contexte ni fichier : l'IA sélectionnée demande naturellement à l'étudiant de préciser.
+      // - Si c'est une création AVEC contexte ou fichier joint/actif :
+      //   1 tâche -> 1 Agent | 2 tâches -> 2 Agents | 3 tâches -> 3 Agents max
+      //   4ème tâche et + -> En attente (prise automatiquement dès qu'un agent finit)
+      //   Et l'IA sélectionnée vient discuter avec l'utilisateur pendant que les agents travaillent !
+      // ══════════════════════════════════════════════════════════════════════════
+      let orchestratorMode: '' | 'agents_launched' | 'clarify_subject' | 'clarify_multidoc' = '';
+      let orchestratorInstruction = '';
+      let hasDispatchedAgents = false;
+
+      const dispatchAgentsForFormats = (
+        formatsToDispatch: AiCreationType[]
+      ): Array<{ id: string; title: string; toolType: string; formatLabel: string; isQueued: boolean }> => {
+        if (hasDispatchedAgents || !Array.isArray(formatsToDispatch) || formatsToDispatch.length === 0) {
+          return [];
+        }
+        hasDispatchedAgents = true;
+        orchestratorMode = 'agents_launched';
+
+        const dispatchedTasks: Array<{ id: string; title: string; toolType: string; formatLabel: string; isQueued: boolean }> = [];
+        const fmtOccurrences: Record<string, number> = {};
+        const fmtTotals: Record<string, number> = {};
+        for (const f of formatsToDispatch) {
+          fmtTotals[f] = (fmtTotals[f] || 0) + 1;
+        }
+
+        for (let idx = 0; idx < formatsToDispatch.length; idx++) {
+          const fmt = formatsToDispatch[idx];
+          fmtOccurrences[fmt] = (fmtOccurrences[fmt] || 0) + 1;
+          const baseFormatTitle = CREATION_NAME_MAP[fmt] || CREATION_FORMAT_LABELS[fmt] || "Support d'apprentissage";
+          const formatTitle = fmtTotals[fmt] > 1 ? `${baseFormatTitle} #${fmtOccurrences[fmt]}` : baseFormatTitle;
+          const currentCreationId = 'crea-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).slice(2, 6);
+          const currentTaskId = 'task-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).slice(2, 6);
+          const cTitle = mainDocName ? `${formatTitle} : ${mainDocName}` : `${formatTitle} : ${userText.slice(0, 35).trim() || "Thème d'étude"}`;
+          const willQueuePreview = aiBackgroundManager.getRunningCount() >= 3;
+
+          // Notifier immédiatement le menu de droite AVANT d'enfiler pour que la carte apparaisse sans course critique
+          window.dispatchEvent(new CustomEvent('studycloud-creation-enqueued', {
+            detail: {
+              id: currentCreationId,
+              conversationId: targetConvId,
+              title: cTitle,
+              toolType: fmt,
+              sourceFileName: mainDocName || undefined,
+              createdAt: new Date(Date.now() + idx).toISOString(),
+              status: willQueuePreview ? 'queued' : 'generating',
+              progressText: willQueuePreview ? 'En attente...' : 'Création en cours...',
+              isBackground: !requestedTypeOverride,
+            }
+          }));
+
+          const enqRes = aiBackgroundManager.enqueueCreationTask({
+            taskId: currentTaskId,
             conversationId: targetConvId,
+            userId: targetUserId,
+            creationId: currentCreationId,
             title: cTitle,
             toolType: fmt,
-            sourceFileName: mainDocName || undefined,
-            createdAt: new Date(Date.now() + idx).toISOString(),
-            status: willQueuePreview ? 'queued' : 'generating',
-            progressText: willQueuePreview ? 'En attente...' : 'Création en cours...',
-            isBackground: !requestedTypeOverride,
-          }
-        }));
-
-        const enqRes = aiBackgroundManager.enqueueCreationTask({
-          taskId: currentTaskId,
-          conversationId: targetConvId,
-          userId: targetUserId,
-          creationId: currentCreationId,
-          title: cTitle,
-          toolType: fmt,
-          prompt: userText,
-          mainDocName: mainDocName || undefined,
-        }, async () => {
-          return await executeCreationApiCall({
-            userText,
-            targetConvId,
-            targetUserId,
-            explicitToolType: fmt,
-            mainDocName: mainDocName || '',
-            creationId: currentCreationId,
-            creationTitle: cTitle,
-            allDocs,
-            messages: updatedMessages,
-            selectedModel,
-            availableModels,
-            currentConversationId: targetConvId,
-            sessionCreations,
-            resolvedActiveItem,
-            attachedResources,
-            activePreviewItem,
-            currentModelDisplay,
-            activeDocumentInfo,
-            activeImageInfo,
+            prompt: userText,
+            mainDocName: mainDocName || undefined,
+          }, async () => {
+            return await executeCreationApiCall({
+              userText,
+              targetConvId,
+              targetUserId,
+              explicitToolType: fmt,
+              mainDocName: mainDocName || '',
+              creationId: currentCreationId,
+              creationTitle: cTitle,
+              allDocs,
+              messages: updatedMessages,
+              selectedModel,
+              availableModels,
+              currentConversationId: targetConvId,
+              sessionCreations,
+              resolvedActiveItem,
+              attachedResources,
+              activePreviewItem,
+              currentModelDisplay,
+              activeDocumentInfo,
+              activeImageInfo,
+            });
           });
-        });
 
-        dispatchedTasks.push({
-          id: currentCreationId,
-          title: cTitle,
-          toolType: fmt,
-          formatLabel: formatTitle,
-          isQueued: enqRes.isQueued,
-        });
-      }
+          dispatchedTasks.push({
+            id: currentCreationId,
+            title: cTitle,
+            toolType: fmt,
+            formatLabel: formatTitle,
+            isQueued: enqRes.isQueued,
+          });
+        }
 
-      if (requestedTypeOverride && dispatchedTasks.length === 1 && !dispatchedTasks[0].isQueued) {
-        window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
-          detail: {
-            phase: 'creating',
-            isCreating: true,
-            isLoading: true,
-            isCreation: true,
-            toolType: dispatchedTasks[0].toolType,
-            statusText: "L'IA conçoit votre support d'apprentissage..."
-          }
-        }));
-      }
+        if (requestedTypeOverride && dispatchedTasks.length === 1 && !dispatchedTasks[0].isQueued) {
+          window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
+            detail: {
+              phase: 'creating',
+              isCreating: true,
+              isLoading: true,
+              isCreation: true,
+              toolType: dispatchedTasks[0].toolType,
+              statusText: "L'IA conçoit votre support d'apprentissage..."
+            }
+          }));
+        }
 
-      return dispatchedTasks;
-    };
+        return dispatchedTasks;
+      };
 
-    if (isExplicitCreationRequest && detectedFormats.length > 0) {
-      const requestedLabels = detectedFormats.map(f => CREATION_NAME_MAP[f] || CREATION_FORMAT_LABELS[f] || f).join(', ');
+      if (isExplicitCreationRequest && detectedFormats.length > 0) {
+        const requestedLabels = detectedFormats.map(f => CREATION_NAME_MAP[f] || CREATION_FORMAT_LABELS[f] || f).join(', ');
 
-      if (needsMultiDocClarification) {
-        orchestratorMode = 'clarify_multidoc';
-        const docList = allDocs.map((d, i) => `${i + 1}. "${d.name || d.title || `Document ${i + 1}`}"`).join(', ');
-        orchestratorInstruction = `══════════════════════════════════════════════════════════════════════════════
+        if (needsMultiDocClarification) {
+          orchestratorMode = 'clarify_multidoc';
+          const docList = allDocs.map((d, i) => `${i + 1}. "${d.name || d.title || `Document ${i + 1}`}"`).join(', ');
+          orchestratorInstruction = `══════════════════════════════════════════════════════════════════════════════
 [ORCHESTRATION : PLUSIEURS DOCUMENTS DÉTECTÉS - PRÉCISION REQUISE] :
 L'étudiant souhaite créer : ${requestedLabels}.
 Il a actuellement plusieurs documents dans son espace (${docList}) sans avoir précisé sur lequel travailler.
@@ -4464,10 +4468,10 @@ TA MISSION :
 2. Termine ta réponse par un bloc [QUESTIONS_SUGGÉRÉES] proposant chaque document en bouton cliquable.
 3. N'écris AUCUN bloc JSON.
 ══════════════════════════════════════════════════════════════════════════════`;
-      } else if (needsSubjectClarification) {
-        orchestratorMode = 'clarify_subject';
-        const suggestions = getSuggestedPromptsForFormat(detectedFormats[0]);
-        orchestratorInstruction = `══════════════════════════════════════════════════════════════════════════════
+        } else if (needsSubjectClarification) {
+          orchestratorMode = 'clarify_subject';
+          const suggestions = getSuggestedPromptsForFormat(detectedFormats[0]);
+          orchestratorInstruction = `══════════════════════════════════════════════════════════════════════════════
 [ORCHESTRATION : AUCUN FICHIER JOINT NI SUJET PRÉCISÉ - DEMANDE DE PRÉCISION PAR L'IA] :
 L'étudiant souhaite créer : ${requestedLabels}.
 Cependant, aucun fichier n'est actuellement sélectionné ou joint dans l'espace d'étude, et l'étudiant n'a précisé aucun cours, chapitre ou sujet dans son message ni dans la discussion.
@@ -4479,16 +4483,16 @@ TA MISSION :
 ${suggestions.map(s => `- ${s}`).join('\n')}
 3. N'écris AUCUN bloc JSON.
 ══════════════════════════════════════════════════════════════════════════════`;
-      } else {
-        const dispatchedTasks = dispatchAgentsForFormats(detectedFormats);
-        const activeAgentTasks = dispatchedTasks.filter(t => !t.isQueued);
-        const queuedAgentTasks = dispatchedTasks.filter(t => t.isQueued);
-        const activeListStr = activeAgentTasks.map((t, i) => `Agent ${i + 1} : "${t.formatLabel}" (En cours)`).join(', ');
-        const queuedListStr = queuedAgentTasks.length > 0
-          ? ` | En file d'attente (démarrage automatique dès qu'un agent termine) : ${queuedAgentTasks.map(t => `"${t.formatLabel}" (En attente)`).join(', ')}`
-          : '';
+        } else {
+          const dispatchedTasks = dispatchAgentsForFormats(detectedFormats);
+          const activeAgentTasks = dispatchedTasks.filter(t => !t.isQueued);
+          const queuedAgentTasks = dispatchedTasks.filter(t => t.isQueued);
+          const activeListStr = activeAgentTasks.map((t, i) => `Agent ${i + 1} : "${t.formatLabel}" (En cours)`).join(', ');
+          const queuedListStr = queuedAgentTasks.length > 0
+            ? ` | En file d'attente (démarrage automatique dès qu'un agent termine) : ${queuedAgentTasks.map(t => `"${t.formatLabel}" (En attente)`).join(', ')}`
+            : '';
 
-        orchestratorInstruction = `══════════════════════════════════════════════════════════════════════════════
+          orchestratorInstruction = `══════════════════════════════════════════════════════════════════════════════
 [ORCHESTRATION : LANCEMENT EFFECTIF DES AGENTS DE CRÉATION EN ARRIÈRE-PLAN] :
 L'étudiant a demandé ${dispatchedTasks.length} création(s) (${dispatchedTasks.map(t => t.formatLabel).join(', ')}) sur ${mainDocName ? `le document actif « ${mainDocName} »` : `le sujet « ${userText} »`}.
 Tu viens de lancer automatiquement les agents spécialisés en arrière-plan (maximum 3 agents en parallèle) :
@@ -4499,26 +4503,26 @@ TA MISSION DANS LE CHAT :
 2. Dis-lui qu'il peut surveiller l'avancement dans "Mes Créations" et que tu es disponible immédiatement pour continuer à discuter du cours, répondre à ses questions ou lancer d'autres tâches avec lui.
 3. INTERDICTION FORMELLE : Ne génère AUCUN bloc JSON et ne rédige PAS le contenu du quiz, de la carte mentale ou du résumé dans le chat ! Les agents en arrière-plan s'en chargent intégralement.
 ══════════════════════════════════════════════════════════════════════════════`;
+        }
       }
-    }
 
-    const initialLiveStatus = (requiresFreshAnalysis && hasAttachedDoc
-      ? "Nouvelle analyse approfondie en cours..."
-      : (isMediaAlreadyAnalyzed 
-          ? "Je réfléchis à votre question..." 
+      const initialLiveStatus = (requiresFreshAnalysis && hasAttachedDoc
+        ? "Nouvelle analyse approfondie en cours..."
+        : (isMediaAlreadyAnalyzed
+          ? "Je réfléchis à votre question..."
           : getLiveAiActivity(userText, initialDocNames, 0, effectiveRequestedType)));
-    setAiActivityText(initialLiveStatus);
+      setAiActivityText(initialLiveStatus);
 
-    // Mise à jour du titre de conversation si c'est le 1er message
-    if (messages.length === 0) {
-      const generatedTitle = userText.slice(0, 38).trim() + (userText.length > 38 ? '...' : '');
-      setCurrentConversationTitle(generatedTitle);
-      StudyCloudAPI.createAiConversation({
-        id: currentConversationId,
-        userId: currentUserId,
-        title: generatedTitle,
-      }).then(() => loadConversations()).catch(() => {});
-    }
+      // Mise à jour du titre de conversation si c'est le 1er message
+      if (messages.length === 0) {
+        const generatedTitle = userText.slice(0, 38).trim() + (userText.length > 38 ? '...' : '');
+        setCurrentConversationTitle(generatedTitle);
+        StudyCloudAPI.createAiConversation({
+          id: currentConversationId,
+          userId: currentUserId,
+          title: generatedTitle,
+        }).then(() => loadConversations()).catch(() => { });
+      }
 
       const isHesitating = /(je ne sais pas|que (peux|doit|puis)-tu|propose|id[eé]es|aide-moi à (choisir|r[eé]viser)|quelles options|que me conseilles-tu|conseille-moi|que faire)/i.test(userText);
       if (isHesitating) {
@@ -4760,7 +4764,7 @@ CONSIGNES STRICTES DE CONTINUATION :
               }
             }
           }
-        } catch {}
+        } catch { }
       }
 
       if (relevantCreations && relevantCreations.length > 0) {
@@ -5080,13 +5084,13 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         // Si l'utilisateur a explicitement cliqué sur un bouton d'action ou demandé un module dans son message
         const explicitOrInferredType = explicitToolType || (
           /vrai.*faux/i.test(userText) ? (/test/i.test(userText) ? 'vrai-ou-faux-test' : 'vrai-ou-faux') :
-          /questionnaire|quiz|qcm/i.test(userText) ? (/test/i.test(userText) ? 'questionnaire-test' : 'questionnaire') :
-          /carte\s*mentale|mindmap/i.test(userText) ? 'carte-mentale' :
-          /flashcard|carte\s*m[ée]moire/i.test(userText) ? 'carte-memoire' :
-          /r[ée]sum[ée]|synth[èe]se/i.test(userText) ? 'resume' :
-          /(?:document\s+pdf|polycopi[eé]|en\s+pdf|sous\s+forme\s+de\s+(?:document\s+)?pdf)/i.test(userText) ? 'pdf' :
-          /exercice|devoir/i.test(userText) ? (/devoir/i.test(userText) ? 'devoir-complet' : 'exercices-ecrits') :
-          /infographie/i.test(userText) ? 'infographie' : null
+            /questionnaire|quiz|qcm/i.test(userText) ? (/test/i.test(userText) ? 'questionnaire-test' : 'questionnaire') :
+              /carte\s*mentale|mindmap/i.test(userText) ? 'carte-mentale' :
+                /flashcard|carte\s*m[ée]moire/i.test(userText) ? 'carte-memoire' :
+                  /r[ée]sum[ée]|synth[èe]se/i.test(userText) ? 'resume' :
+                    /(?:document\s+pdf|polycopi[eé]|en\s+pdf|sous\s+forme\s+de\s+(?:document\s+)?pdf)/i.test(userText) ? 'pdf' :
+                      /exercice|devoir/i.test(userText) ? (/devoir/i.test(userText) ? 'devoir-complet' : 'exercices-ecrits') :
+                        /infographie/i.test(userText) ? 'infographie' : null
         );
 
         if (!creationParsed && explicitOrInferredType) {
@@ -5227,7 +5231,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           const localConvCreasRaw = safeGetItem(`studycloud_conv_creations_${targetConvId}`);
           let localConvCreas: AiCreation[] = [];
           if (localConvCreasRaw) {
-            try { localConvCreas = JSON.parse(localConvCreasRaw) || []; } catch {}
+            try { localConvCreas = JSON.parse(localConvCreasRaw) || []; } catch { }
           }
           const updatedConvCreas = [newCreation, ...localConvCreas.filter(c => c.id !== newCreation!.id)];
           safeSetItem(`studycloud_conv_creations_${targetConvId}`, JSON.stringify(updatedConvCreas));
@@ -5241,7 +5245,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             localStorage.setItem('studycloud_saved_creations_cache', JSON.stringify(updatedList));
             localStorage.setItem('unifolder_ai_history', JSON.stringify(updatedList));
             localStorage.setItem('studycloud_active_creation', JSON.stringify(newCreation));
-          } catch {}
+          } catch { }
 
           // Sauvegarde dans la table Cloudflare D1 ai_creations liée à targetConvId
           StudyCloudAPI.saveAiCreationRecord({
@@ -5349,7 +5353,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
       const currentConvMsgsRaw = safeGetItem(`studycloud_conv_msgs_${targetConvId}`);
       let currentConvMsgs: Message[] = [];
       if (currentConvMsgsRaw) {
-        try { currentConvMsgs = JSON.parse(currentConvMsgsRaw) || []; } catch {}
+        try { currentConvMsgs = JSON.parse(currentConvMsgsRaw) || []; } catch { }
       }
       const finalizedConvMsgs = currentConvMsgs.map(m =>
         m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName, tokens: respTokens, credits: respCredits } : m
@@ -5367,7 +5371,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         content: fullResponseText,
         created_at: new Date(Date.now() + 100).toISOString(),
         metadata: { model: effectiveModelName, tokens: respTokens, credits: respCredits }
-      }).catch(() => {});
+      }).catch(() => { });
 
       // Marquer la tâche comme terminée dans le manager d'arrière-plan
       // aiBackgroundManager.completeAiTask(targetConvId, aiMsgId, fullResponseText, (creationParsed as any)?.content ? { title: creationParsed?.title, toolType: creationParsed?.toolType } : undefined);
@@ -5497,7 +5501,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             const cleanedList = list.filter(m => m.id !== aiMsgId);
             safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(cleanedList));
           }
-        } catch {}
+        } catch { }
       }
 
       if (currentConversationIdRef.current === targetConvId) {
@@ -5516,7 +5520,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             detail: { creationId, status: 'error', errorText: err?.message }
           }));
           if (targetUserId && targetUserId !== 'default-user') {
-            StudyCloudAPI.deleteAiContent(creationId, targetUserId).catch(() => {});
+            StudyCloudAPI.deleteAiContent(creationId, targetUserId).catch(() => { });
           }
         }
         window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isError: true, resetToPrompts: true } }));
@@ -5526,7 +5530,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
 
         const errorMsg: Message = {
           id: (Date.now() + 1).toString(),
-          text: isNetwork 
+          text: isNetwork
             ? "Veuillez vérifier que votre appareil est bien connecté à Internet (Wi-Fi ou données mobiles)."
             : (isFriendlyMsg ? `⚠️ ${err.message}` : `⚠️ Erreur : ${err.message || "L'assistante StudyCloud n'est pas disponible pour le moment."}`),
           sender: 'ai',
@@ -5607,13 +5611,13 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
   };
 
   // Groupement temporel des conversations façon Gemini (Aujourd'hui, Hier, 7 derniers jours, Plus ancien)
-  const filteredConversations = conversations.filter(c => 
+  const filteredConversations = conversations.filter(c =>
     !historySearch.trim() || c.title.toLowerCase().includes(historySearch.toLowerCase())
   );
 
   return (
     <div className="flex flex-col h-full bg-[#1e2024] font-nunito relative z-50 overflow-hidden">
-      
+
       {/* EN-TÊTE SUPÉRIEUR (BOUTON HISTORIQUE, NOUVELLE CONVERSATION, PUISSANT/MOYEN, FERMER) */}
       <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 bg-[#23252a] border-b border-zinc-700/60 shrink-0 z-10 shadow-sm">
         <div className="flex items-center gap-1.5 min-w-0">
@@ -5683,8 +5687,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                       const isChef = isChefModelId(modelIdStr);
                       const providerColor =
                         m.provider === 'google' ? 'bg-blue-400' :
-                        m.provider === 'cloudflare' ? 'bg-orange-400' :
-                        m.provider === 'anthropic' ? 'bg-amber-400' : 'bg-emerald-400';
+                          m.provider === 'cloudflare' ? 'bg-orange-400' :
+                            m.provider === 'anthropic' ? 'bg-amber-400' : 'bg-emerald-400';
                       const displayName = stripWorkerAi(m.nickname || m.name || m.model_id || m.id);
 
                       return (
@@ -5695,9 +5699,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                             setSelectedModel(m.id || m.model_id);
                             setIsModelDropdownOpen(false);
                           }}
-                          className={`w-full flex flex-col gap-1 px-3 py-2 text-left text-xs transition-colors cursor-pointer border-b border-zinc-800/40 last:border-b-0 ${
-                            isSelected ? 'bg-orange-500/15 text-orange-400 font-bold' : 'text-zinc-300 hover:bg-zinc-800/80 hover:text-white'
-                          }`}
+                          className={`w-full flex flex-col gap-1 px-3 py-2 text-left text-xs transition-colors cursor-pointer border-b border-zinc-800/40 last:border-b-0 ${isSelected ? 'bg-orange-500/15 text-orange-400 font-bold' : 'text-zinc-300 hover:bg-zinc-800/80 hover:text-white'
+                            }`}
                         >
                           <div className="w-full flex items-center justify-between">
                             <div className="flex items-center gap-2 truncate pr-2">
@@ -5736,11 +5739,11 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
 
       {/* TIROIR HISTORIQUE COULISSANT STYLE GEMINI */}
       {isHistoryDrawerOpen && (
-        <div 
+        <div
           className="absolute inset-0 z-50 bg-black/60 backdrop-blur-xs flex animate-fadeIn"
           onClick={() => setIsHistoryDrawerOpen(false)}
         >
-          <div 
+          <div
             className="w-full max-w-[310px] sm:max-w-[340px] h-full bg-[#1e2024] border-r border-zinc-800 flex flex-col p-4 shadow-2xl animate-slideInLeft"
             onClick={e => e.stopPropagation()}
           >
@@ -5796,11 +5799,10 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                         setCurrentConversationTitle(conv.title);
                         setIsHistoryDrawerOpen(false);
                       }}
-                      className={`p-2.5 rounded-xl border transition-all cursor-pointer group flex items-center justify-between gap-2 ${
-                        isActive
+                      className={`p-2.5 rounded-xl border transition-all cursor-pointer group flex items-center justify-between gap-2 ${isActive
                           ? 'bg-orange-500/15 border-orange-500/50 text-white shadow-sm'
                           : 'bg-[#26282d] border-zinc-800 text-zinc-300 hover:bg-[#2c2f35] hover:border-zinc-700'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-2 min-w-0 flex-1">
                         <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-orange-400' : 'text-zinc-400'}`} />
@@ -5827,7 +5829,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
       )}
 
       {/* Messages Area */}
-      <div 
+      <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-6 flex flex-col select-text chat-selectable"
@@ -5877,244 +5879,240 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
               return true;
             })
             .map(msg => (
-            <div key={msg.id} className="w-full shrink-0">
-              {msg.sender === 'user' ? (
-                <div className="flex justify-end w-full group relative">
-                  <div className="flex items-center gap-1.5 max-w-[85%]">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(msg.text);
-                        setCopiedMsgId(msg.id);
-                        setTimeout(() => setCopiedMsgId(null), 2000);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 cursor-pointer shrink-0"
-                      title="Copier mon message"
-                    >
-                      {copiedMsgId === msg.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    </button>
-                    <div className="bg-[#2a2b2f] text-zinc-100 px-4 py-2.5 rounded-[24px] rounded-tr-[4px] text-[14px] sm:text-[15px] md:text-[16px] break-words shadow-sm select-text chat-selectable cursor-text">
-                      <ChatMessageText text={msg.text} isUser={true} />
+              <div key={msg.id} className="w-full shrink-0">
+                {msg.sender === 'user' ? (
+                  <div className="flex justify-end w-full group relative">
+                    <div className="flex items-center gap-1.5 max-w-[85%]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(msg.text);
+                          setCopiedMsgId(msg.id);
+                          setTimeout(() => setCopiedMsgId(null), 2000);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 cursor-pointer shrink-0"
+                        title="Copier mon message"
+                      >
+                        {copiedMsgId === msg.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                      <div className="bg-[#2a2b2f] text-zinc-100 px-4 py-2.5 rounded-[24px] rounded-tr-[4px] text-[14px] sm:text-[15px] md:text-[16px] break-words shadow-sm select-text chat-selectable cursor-text">
+                        <ChatMessageText text={msg.text} isUser={true} />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="flex flex-col w-full text-zinc-100">
-                  <div className="mb-2 flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-2">
-                      <DnaLogo className="w-5 h-5 drop-shadow-[0_0_2px_rgba(0,0,0,1)] text-orange-500" glow={true} />
-                      <span className="text-xs font-bold text-orange-500/90 tracking-wide uppercase">Assistant StudyCloud</span>
-                      {(msg.model || currentModelDisplay) && (
-                        <span 
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold shadow-xs ${
-                            isChefModelId(msg.model || selectedModel)
-                              ? 'bg-orange-500/15 border-orange-500/30 text-orange-300'
-                              : 'bg-zinc-800/95 border-zinc-700 text-zinc-300'
-                          }`}
-                          title={`Modèle ayant généré cette réponse : ${stripWorkerAi(msg.model || currentModelDisplay)}`}
-                        >
-                          {isChefModelId(msg.model || selectedModel) && <span className="text-[10px]">👑</span>}
-                          <span>{stripWorkerAi(msg.model || currentModelDisplay)}</span>
-                        </span>
-                      )}
-                      {msg.isPowerMode && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700 text-[10px] font-bold text-zinc-300 shadow-xs">
-                          <Zap className="w-3 h-3 text-amber-400" />
-                          <span>Puissant</span>
-                        </span>
+                ) : (
+                  <div className="flex flex-col w-full text-zinc-100">
+                    <div className="mb-2 flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <DnaLogo className="w-5 h-5 drop-shadow-[0_0_2px_rgba(0,0,0,1)] text-orange-500" glow={true} />
+                        <span className="text-xs font-bold text-orange-500/90 tracking-wide uppercase">Assistant StudyCloud</span>
+                        {(msg.model || currentModelDisplay) && (
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold shadow-xs ${isChefModelId(msg.model || selectedModel)
+                                ? 'bg-orange-500/15 border-orange-500/30 text-orange-300'
+                                : 'bg-zinc-800/95 border-zinc-700 text-zinc-300'
+                              }`}
+                            title={`Modèle ayant généré cette réponse : ${stripWorkerAi(msg.model || currentModelDisplay)}`}
+                          >
+                            {isChefModelId(msg.model || selectedModel) && <span className="text-[10px]">👑</span>}
+                            <span>{stripWorkerAi(msg.model || currentModelDisplay)}</span>
+                          </span>
+                        )}
+                        {msg.isPowerMode && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700 text-[10px] font-bold text-zinc-300 shadow-xs">
+                            <Zap className="w-3 h-3 text-amber-400" />
+                            <span>Puissant</span>
+                          </span>
+                        )}
+                      </div>
+                      {msg.attachedFileName && msg.attachedFileName !== 'Document d\'étude' && msg.attachedFileName !== 'Document source' && (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {msg.attachedFileName.split(', ')
+                            .filter(docName => docName && docName !== 'Document d\'étude' && docName !== 'Document source')
+                            .map((docName, idx) => (
+                              <div key={idx} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-[10px] font-semibold text-orange-300">
+                                <FileText className="w-3 h-3 text-orange-400 shrink-0" />
+                                <span className="truncate max-w-[140px] sm:max-w-[200px]">{docName}</span>
+                              </div>
+                            ))}
+                        </div>
                       )}
                     </div>
-                    {msg.attachedFileName && msg.attachedFileName !== 'Document d\'étude' && msg.attachedFileName !== 'Document source' && (
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {msg.attachedFileName.split(', ')
-                          .filter(docName => docName && docName !== 'Document d\'étude' && docName !== 'Document source')
-                          .map((docName, idx) => (
-                            <div key={idx} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-[10px] font-semibold text-orange-300">
-                              <FileText className="w-3 h-3 text-orange-400 shrink-0" />
-                              <span className="truncate max-w-[140px] sm:max-w-[200px]">{docName}</span>
-                            </div>
-                        ))}
+
+                    {isNetworkErrorMessage(msg) ? (
+                      <NetworkErrorCard
+                        retryPrompt={msg.retryPrompt}
+                        isRetrying={retryingMessageId === msg.id && (isWaitingServer || isTyping)}
+                        onRetry={() => {
+                          const targetPrompt = msg.retryPrompt || (() => {
+                            const idx = messages.findIndex(m => m.id === msg.id);
+                            const before = idx >= 0 ? messages.slice(0, idx) : messages;
+                            const lastUser = [...before].reverse().find(m => m.sender === 'user');
+                            return lastUser?.text || '';
+                          })();
+                          setRetryingMessageId(msg.id);
+                          if (targetPrompt) {
+                            sendMessage(targetPrompt);
+                          } else {
+                            setRetryingMessageId(null);
+                          }
+                        }}
+                      />
+                    ) : msg.isError ? (
+                      <div className="my-2 p-3 sm:p-3.5 rounded-2xl bg-[#1e2026] border border-zinc-700/80 text-zinc-200 flex items-start gap-3 w-full max-w-xl animate-fadeIn">
+                        <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-xs sm:text-sm text-white mb-1">Service temporairement indisponible</div>
+                          <div className="text-xs text-zinc-300 leading-relaxed font-normal">
+                            {msg.text.replace(/^⚠️\s*(Erreur\s*(du\s*serveur|IA)?\s*:\s*)?/i, '')}
+                          </div>
+                          <button
+                            type="button"
+                            disabled={retryingMessageId === msg.id && (isWaitingServer || isTyping)}
+                            onClick={() => {
+                              const targetPrompt = msg.retryPrompt || (() => {
+                                const idx = messages.findIndex(m => m.id === msg.id);
+                                const before = idx >= 0 ? messages.slice(0, idx) : messages;
+                                const lastUser = [...before].reverse().find(m => m.sender === 'user');
+                                return lastUser?.text || '';
+                              })();
+                              setRetryingMessageId(msg.id);
+                              if (targetPrompt) {
+                                sendMessage(targetPrompt);
+                              } else {
+                                setRetryingMessageId(null);
+                              }
+                            }}
+                            className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold transition-all cursor-pointer border border-zinc-700 active:scale-95 disabled:opacity-60"
+                          >
+                            <RotateCw className={`w-3 h-3 text-orange-400 ${retryingMessageId === msg.id && (isWaitingServer || isTyping) ? 'animate-spin' : ''}`} />
+                            <span>{retryingMessageId === msg.id && (isWaitingServer || isTyping) ? 'Connexion...' : 'Réessayer'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (!msg.text || !msg.text.trim()) ? (
+                      <div className="flex items-center gap-2.5 bg-[#26282d] px-3.5 py-2.5 rounded-2xl w-fit max-w-[90%] shadow-md mt-1 animate-fadeIn">
+                        <DnaLogo className="w-5 h-5 animate-dna-spin-float shrink-0 text-orange-500" glow={true} />
+                        <span className="text-xs sm:text-[13px] font-medium text-zinc-200 animate-pulse tracking-wide select-none">
+                          {aiActivityText || 'Je réfléchis...'}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="text-[15px] sm:text-[16px] md:text-[17px] leading-[1.8] font-normal text-zinc-100 pl-1 select-text chat-selectable cursor-text">
+                        <ChatMessageText text={msg.text} isUser={false} isStreaming={msg.isStreaming} onSelectSuggestion={(q) => sendMessage(q)} />
                       </div>
                     )}
-                  </div>
-                  
-                  {isNetworkErrorMessage(msg) ? (
-                    <NetworkErrorCard
-                      retryPrompt={msg.retryPrompt}
-                      isRetrying={retryingMessageId === msg.id && (isWaitingServer || isTyping)}
-                      onRetry={() => {
-                        const targetPrompt = msg.retryPrompt || (() => {
-                          const idx = messages.findIndex(m => m.id === msg.id);
-                          const before = idx >= 0 ? messages.slice(0, idx) : messages;
-                          const lastUser = [...before].reverse().find(m => m.sender === 'user');
-                          return lastUser?.text || '';
-                        })();
-                        setRetryingMessageId(msg.id);
-                        if (targetPrompt) {
-                          sendMessage(targetPrompt);
-                        } else {
-                          setRetryingMessageId(null);
-                        }
-                      }}
-                    />
-                  ) : msg.isError ? (
-                    <div className="my-2 p-3 sm:p-3.5 rounded-2xl bg-[#1e2026] border border-zinc-700/80 text-zinc-200 flex items-start gap-3 w-full max-w-xl animate-fadeIn">
-                      <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-bold text-xs sm:text-sm text-white mb-1">Service temporairement indisponible</div>
-                        <div className="text-xs text-zinc-300 leading-relaxed font-normal">
-                          {msg.text.replace(/^⚠️\s*(Erreur\s*(du\s*serveur|IA)?\s*:\s*)?/i, '')}
+
+                    {!msg.isStreaming && msg.text && !msg.isError && !isNetworkErrorMessage(msg) && (() => {
+                      const isLastAssistant = msg.id === messages[messages.length - 1]?.id;
+                      const offersContinuation = isLastAssistant && /(voulez-vous|souhaitez-vous|veux-tu|on continue|continuer\s*\?|la suite\s*\?|je poursuis|dois-je continuer|on passe à la suite|continuer\s*:\s*oui|calcul\s+est\s+vaste)/i.test(msg.text);
+                      if (!offersContinuation) return null;
+
+                      const lastHeadingMatches = [...msg.text.matchAll(/(?:^|\n)(#{1,3}\s+[^\n]+|Question\s+\d+|Exercice\s+\d+|[EÉ]tape\s+\d+|Partie\s+[A-Z0-9]+)/gi)];
+                      const lastHeading = lastHeadingMatches.length > 0
+                        ? lastHeadingMatches[lastHeadingMatches.length - 1][1].trim().replace(/^#{1,3}\s*/, '')
+                        : '';
+
+                      const continuePrompt = lastHeading
+                        ? `Oui, continue s'il te plaît avec la suite exacte (tu t'es arrêté à « ${lastHeading} », enchaîne directement sans répéter le début).`
+                        : `Oui, continue s'il te plaît avec la suite exacte de ce que tu viens d'expliquer (enchaîne directement là où tu t'es arrêté, sans répéter ce qui a déjà été dit).`;
+
+                      return (
+                        <div className="mt-3.5 mb-1 pl-1 flex items-center gap-2 flex-wrap animate-fadeIn">
+                          <button
+                            type="button"
+                            onClick={() => sendMessage(continuePrompt, undefined, { isContinuation: true })}
+                            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs sm:text-sm font-extrabold shadow-lg shadow-orange-500/30 active:scale-95 transition-all cursor-pointer border border-amber-300/40 group"
+                          >
+                            <Sparkles className="w-4 h-4 text-yellow-100 animate-pulse" />
+                            <span>Poursuivre la suite exacte</span>
+                            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          disabled={retryingMessageId === msg.id && (isWaitingServer || isTyping)}
-                          onClick={() => {
-                            const targetPrompt = msg.retryPrompt || (() => {
-                              const idx = messages.findIndex(m => m.id === msg.id);
-                              const before = idx >= 0 ? messages.slice(0, idx) : messages;
-                              const lastUser = [...before].reverse().find(m => m.sender === 'user');
-                              return lastUser?.text || '';
-                            })();
-                            setRetryingMessageId(msg.id);
-                            if (targetPrompt) {
-                              sendMessage(targetPrompt);
-                            } else {
-                              setRetryingMessageId(null);
-                            }
-                          }}
-                          className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold transition-all cursor-pointer border border-zinc-700 active:scale-95 disabled:opacity-60"
-                        >
-                          <RotateCw className={`w-3 h-3 text-orange-400 ${retryingMessageId === msg.id && (isWaitingServer || isTyping) ? 'animate-spin' : ''}`} />
-                          <span>{retryingMessageId === msg.id && (isWaitingServer || isTyping) ? 'Connexion...' : 'Réessayer'}</span>
-                        </button>
-                      </div>
-                    </div>
-                  ) : (!msg.text || !msg.text.trim()) ? (
-                    <div className="flex items-center gap-2.5 bg-[#26282d] px-3.5 py-2.5 rounded-2xl w-fit max-w-[90%] shadow-md mt-1 animate-fadeIn">
-                      <DnaLogo className="w-5 h-5 animate-dna-spin-float shrink-0 text-orange-500" glow={true} />
-                      <span className="text-xs sm:text-[13px] font-medium text-zinc-200 animate-pulse tracking-wide select-none">
-                        {aiActivityText || 'Je réfléchis...'}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="text-[15px] sm:text-[16px] md:text-[17px] leading-[1.8] font-normal text-zinc-100 pl-1 select-text chat-selectable cursor-text">
-                      <ChatMessageText text={msg.text} isUser={false} isStreaming={msg.isStreaming} onSelectSuggestion={(q) => sendMessage(q)} />
-                    </div>
-                  )}
+                      );
+                    })()}
 
-                  {!msg.isStreaming && msg.text && !msg.isError && !isNetworkErrorMessage(msg) && (() => {
-                    const isLastAssistant = msg.id === messages[messages.length - 1]?.id;
-                    const offersContinuation = isLastAssistant && /(voulez-vous|souhaitez-vous|veux-tu|on continue|continuer\s*\?|la suite\s*\?|je poursuis|dois-je continuer|on passe à la suite|continuer\s*:\s*oui|calcul\s+est\s+vaste)/i.test(msg.text);
-                    if (!offersContinuation) return null;
+                    {!msg.isStreaming && msg.text && !msg.isError && !isNetworkErrorMessage(msg) && (
+                      <div className="flex flex-col mt-3 pl-1">
+                        {/* Affichage dépliable de la consommation totale en crédits (Tracé rouge Image 1) */}
+                        {openCreditsMsgIds.has(msg.id) && (
+                          <div className="mb-2.5 px-2.5 py-1 rounded-lg bg-zinc-900/95 border border-amber-500/35 text-amber-300 inline-flex items-center gap-1.5 text-xs animate-fadeIn shadow-xs w-fit">
+                            <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span className="text-[11px] font-medium text-zinc-300">Consommation :</span>
+                            <span className="text-xs font-bold text-amber-300">{getMessageCreditsDisplay(msg)}</span>
+                          </div>
+                        )}
 
-                    const lastHeadingMatches = [...msg.text.matchAll(/(?:^|\n)(#{1,3}\s+[^\n]+|Question\s+\d+|Exercice\s+\d+|[EÉ]tape\s+\d+|Partie\s+[A-Z0-9]+)/gi)];
-                    const lastHeading = lastHeadingMatches.length > 0 
-                      ? lastHeadingMatches[lastHeadingMatches.length - 1][1].trim().replace(/^#{1,3}\s*/, '') 
-                      : '';
-
-                    const continuePrompt = lastHeading 
-                      ? `Oui, continue s'il te plaît avec la suite exacte (tu t'es arrêté à « ${lastHeading} », enchaîne directement sans répéter le début).`
-                      : `Oui, continue s'il te plaît avec la suite exacte de ce que tu viens d'expliquer (enchaîne directement là où tu t'es arrêté, sans répéter ce qui a déjà été dit).`;
-
-                    return (
-                      <div className="mt-3.5 mb-1 pl-1 flex items-center gap-2 flex-wrap animate-fadeIn">
-                        <button
-                          type="button"
-                          onClick={() => sendMessage(continuePrompt, undefined, { isContinuation: true })}
-                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs sm:text-sm font-extrabold shadow-lg shadow-orange-500/30 active:scale-95 transition-all cursor-pointer border border-amber-300/40 group"
-                        >
-                          <Sparkles className="w-4 h-4 text-yellow-100 animate-pulse" />
-                          <span>Poursuivre la suite exacte</span>
-                          <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                        </button>
-                      </div>
-                    );
-                  })()}
-
-                  {!msg.isStreaming && msg.text && !msg.isError && !isNetworkErrorMessage(msg) && (
-                    <div className="flex flex-col mt-3 pl-1">
-                      {/* Affichage dépliable de la consommation totale en crédits (Tracé rouge Image 1) */}
-                      {openCreditsMsgIds.has(msg.id) && (
-                        <div className="mb-2.5 px-2.5 py-1 rounded-lg bg-zinc-900/95 border border-amber-500/35 text-amber-300 inline-flex items-center gap-1.5 text-xs animate-fadeIn shadow-xs w-fit">
-                          <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                          <span className="text-[11px] font-medium text-zinc-300">Consommation :</span>
-                          <span className="text-xs font-bold text-amber-300">{getMessageCreditsDisplay(msg)}</span>
-                        </div>
-                      )}
-
-                      <div className="flex items-center">
-                        <div className="flex items-center gap-1 sm:gap-2 text-zinc-400">
-                          <button 
-                            type="button"
-                            onClick={() => handleReaction(msg.id, 'like')}
-                            className={`p-1.5 sm:p-2 rounded-full transition-colors cursor-pointer ${
-                              msg.reaction === 'like'
-                                ? 'text-emerald-400 bg-emerald-500/20 hover:bg-emerald-500/30'
-                                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                            }`}
-                            title="Bonne réponse (j'aime)"
-                          >
-                            <ThumbsUp className="w-4 h-4" />
-                          </button>
-                          <button 
-                            type="button"
-                            onClick={() => handleReaction(msg.id, 'dislike')}
-                            className={`p-1.5 sm:p-2 rounded-full transition-colors cursor-pointer ${
-                              msg.reaction === 'dislike'
-                                ? 'text-rose-400 bg-rose-500/20 hover:bg-rose-500/30'
-                                : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                            }`}
-                            title="Mauvaise réponse"
-                          >
-                            <ThumbsDown className="w-4 h-4" />
-                          </button>
-                          <div className="w-1 sm:w-2" />
-                          <button 
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(msg.text);
-                              setCopiedMsgId(msg.id);
-                              setTimeout(() => setCopiedMsgId(null), 2000);
-                            }}
-                            className="p-1.5 sm:p-2 hover:bg-zinc-800 rounded-full transition-colors cursor-pointer text-zinc-400 hover:text-white flex items-center gap-1.5"
-                            title="Copier la réponse"
-                          >
-                            {copiedMsgId === msg.id ? (
-                              <>
-                                <Check className="w-4 h-4 text-emerald-400" />
-                                <span className="text-[11px] font-bold text-emerald-400">Copié</span>
-                              </>
-                            ) : (
-                              <Copy className="w-4 h-4" />
-                            )}
-                          </button>
-
-                          {/* Bouton Crédits de même taille avec texte 'credits' en bas (Tracé bleu Image 1) */}
-                          <div className="flex flex-col items-center">
-                            <button 
+                        <div className="flex items-center">
+                          <div className="flex items-center gap-1 sm:gap-2 text-zinc-400">
+                            <button
                               type="button"
-                              onClick={() => toggleCreditsVisibility(msg.id)}
-                              className={`p-1.5 sm:p-2 rounded-full transition-all cursor-pointer flex items-center justify-center ${
-                                openCreditsMsgIds.has(msg.id)
-                                  ? 'text-amber-400 bg-amber-500/20 hover:bg-amber-500/30 ring-1 ring-amber-500/40'
-                                  : 'text-zinc-400 hover:text-amber-300 hover:bg-zinc-800'
-                              }`}
-                              title="Afficher la consommation en crédits de cette réponse"
+                              onClick={() => handleReaction(msg.id, 'like')}
+                              className={`p-1.5 sm:p-2 rounded-full transition-colors cursor-pointer ${msg.reaction === 'like'
+                                  ? 'text-emerald-400 bg-emerald-500/20 hover:bg-emerald-500/30'
+                                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                                }`}
+                              title="Bonne réponse (j'aime)"
                             >
-                              <Coins className="w-4 h-4 text-amber-400" />
+                              <ThumbsUp className="w-4 h-4" />
                             </button>
-                            <span className="text-[8.5px] font-semibold text-zinc-400 -mt-0.5 select-none leading-none">credits</span>
+                            <button
+                              type="button"
+                              onClick={() => handleReaction(msg.id, 'dislike')}
+                              className={`p-1.5 sm:p-2 rounded-full transition-colors cursor-pointer ${msg.reaction === 'dislike'
+                                  ? 'text-rose-400 bg-rose-500/20 hover:bg-rose-500/30'
+                                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                                }`}
+                              title="Mauvaise réponse"
+                            >
+                              <ThumbsDown className="w-4 h-4" />
+                            </button>
+                            <div className="w-1 sm:w-2" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(msg.text);
+                                setCopiedMsgId(msg.id);
+                                setTimeout(() => setCopiedMsgId(null), 2000);
+                              }}
+                              className="p-1.5 sm:p-2 hover:bg-zinc-800 rounded-full transition-colors cursor-pointer text-zinc-400 hover:text-white flex items-center gap-1.5"
+                              title="Copier la réponse"
+                            >
+                              {copiedMsgId === msg.id ? (
+                                <>
+                                  <Check className="w-4 h-4 text-emerald-400" />
+                                  <span className="text-[11px] font-bold text-emerald-400">Copié</span>
+                                </>
+                              ) : (
+                                <Copy className="w-4 h-4" />
+                              )}
+                            </button>
+
+                            {/* Bouton Crédits de même taille avec texte 'credits' en bas (Tracé bleu Image 1) */}
+                            <div className="flex flex-col items-center">
+                              <button
+                                type="button"
+                                onClick={() => toggleCreditsVisibility(msg.id)}
+                                className={`p-1.5 sm:p-2 rounded-full transition-all cursor-pointer flex items-center justify-center ${openCreditsMsgIds.has(msg.id)
+                                    ? 'text-amber-400 bg-amber-500/20 hover:bg-amber-500/30 ring-1 ring-amber-500/40'
+                                    : 'text-zinc-400 hover:text-amber-300 hover:bg-zinc-800'
+                                  }`}
+                                title="Afficher la consommation en crédits de cette réponse"
+                              >
+                                <Coins className="w-4 h-4 text-amber-400" />
+                              </button>
+                              <span className="text-[8.5px] font-semibold text-zinc-400 -mt-0.5 select-none leading-none">credits</span>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))
+                    )}
+                  </div>
+                )}
+              </div>
+            ))
         )}
-        
+
         {isWaitingServer && (
           <div className="flex flex-col w-full text-zinc-100 mb-4 animate-fadeIn">
             <div className="flex items-center gap-2.5 bg-[#26282d] px-3.5 py-2.5 rounded-2xl w-fit max-w-[90%] shadow-md">
@@ -6157,93 +6155,93 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             }}
             className="relative flex flex-col gap-2 bg-[#282a2f] rounded-[22.5px] p-3 sm:p-3.5 transition-all w-full h-full"
           >
-          <textarea
-            ref={textareaRef}
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Posez votre question ou collez votre cours..."
-            rows={3}
-            className="w-full bg-transparent text-white placeholder-zinc-400 text-sm outline-none resize-none overflow-y-auto select-text"
-          />
+            <textarea
+              ref={textareaRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Posez votre question ou collez votre cours..."
+              rows={3}
+              className="w-full bg-transparent text-white placeholder-zinc-400 text-sm outline-none resize-none overflow-y-auto select-text"
+            />
 
-          <div className="flex items-center justify-between pt-0.5">
-            <div className="flex items-center gap-2 overflow-x-auto flex-1 mr-2 custom-scrollbar pb-1">
-               {!resolvedActiveName && attachedResources.length === 0 && (
-                 <div className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800/60 border border-zinc-700/60 rounded-lg text-zinc-400 text-[10px] sm:text-[11px] font-medium shrink-0 select-none" title="Aucun fichier d'étude n'est actuellement sélectionné">
-                   <FileText className="w-3 h-3 text-zinc-500 shrink-0" />
-                   <span>Aucun fichier sélectionné</span>
-                 </div>
-               )}
+            <div className="flex items-center justify-between pt-0.5">
+              <div className="flex items-center gap-2 overflow-x-auto flex-1 mr-2 custom-scrollbar pb-1">
+                {!resolvedActiveName && attachedResources.length === 0 && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800/60 border border-zinc-700/60 rounded-lg text-zinc-400 text-[10px] sm:text-[11px] font-medium shrink-0 select-none" title="Aucun fichier d'étude n'est actuellement sélectionné">
+                    <FileText className="w-3 h-3 text-zinc-500 shrink-0" />
+                    <span>Aucun fichier sélectionné</span>
+                  </div>
+                )}
 
-               {resolvedActiveName && (
-                 <div 
-                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg max-w-[160px] sm:max-w-[210px] shrink-0 border bg-orange-500/10 border-orange-500/40" 
-                   title="Document ouvert à l'écran"
-                 >
-                   <div className="shrink-0 flex items-center justify-center">
-                     <FileIconBadge fileName={resolvedActiveName} size={16} />
-                   </div>
-                   <span className="text-[10px] sm:text-[11px] font-bold text-orange-300 truncate">
-                     {resolvedActiveName}
-                   </span>
-                   <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-orange-500/25 text-orange-400 shrink-0">
-                     Actif
-                   </span>
-                 </div>
-               )}
-               
-               {attachedResources.map(res => (
-                 <div 
-                   key={res.id || res.name} 
-                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg max-w-[160px] sm:max-w-[210px] shrink-0 border bg-blue-500/10 border-blue-500/40" 
-                   title="Document joint"
-                 >
-                   <div className="shrink-0 flex items-center justify-center">
-                     <FileIconBadge fileName={res.name} size={16} />
-                   </div>
-                   <span className="text-[10px] sm:text-[11px] font-bold text-blue-300 truncate">
-                     {res.name}
-                   </span>
-                   <button 
-                     type="button"
-                     onClick={(e) => {
-                       e.preventDefault();
-                       e.stopPropagation();
-                       handleRemoveAttachment(res);
-                     }}
-                     className="ml-1 text-blue-400 hover:text-white p-0.5 rounded-full hover:bg-blue-700/50 transition-colors cursor-pointer"
-                     title="Retirer ce document"
-                   >
-                     <X className="w-3 h-3" />
-                   </button>
-                 </div>
-               ))}
-            </div>
+                {resolvedActiveName && (
+                  <div
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg max-w-[160px] sm:max-w-[210px] shrink-0 border bg-orange-500/10 border-orange-500/40"
+                    title="Document ouvert à l'écran"
+                  >
+                    <div className="shrink-0 flex items-center justify-center">
+                      <FileIconBadge fileName={resolvedActiveName} size={16} />
+                    </div>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-orange-300 truncate">
+                      {resolvedActiveName}
+                    </span>
+                    <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-orange-500/25 text-orange-400 shrink-0">
+                      Actif
+                    </span>
+                  </div>
+                )}
 
-            <div className="flex items-center gap-1.5 shrink-0 self-end">
-              {isWaitingServer && (
+                {attachedResources.map(res => (
+                  <div
+                    key={res.id || res.name}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg max-w-[160px] sm:max-w-[210px] shrink-0 border bg-blue-500/10 border-blue-500/40"
+                    title="Document joint"
+                  >
+                    <div className="shrink-0 flex items-center justify-center">
+                      <FileIconBadge fileName={res.name} size={16} />
+                    </div>
+                    <span className="text-[10px] sm:text-[11px] font-bold text-blue-300 truncate">
+                      {res.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleRemoveAttachment(res);
+                      }}
+                      className="ml-1 text-blue-400 hover:text-white p-0.5 rounded-full hover:bg-blue-700/50 transition-colors cursor-pointer"
+                      title="Retirer ce document"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0 self-end">
+                {isWaitingServer && (
+                  <button
+                    type="button"
+                    onClick={handleCancelTask}
+                    className="px-3 py-2 font-bold rounded-full flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs shrink-0"
+                    title="Arrêter la réponse en cours"
+                  >
+                    <Square className="w-3.5 h-3.5 fill-current text-rose-400" />
+                    <span>Arrêter</span>
+                  </button>
+                )}
                 <button
-                  type="button"
-                  onClick={handleCancelTask}
-                  className="px-3 py-2 font-bold rounded-full flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs shrink-0"
-                  title="Arrêter la réponse en cours"
+                  type="submit"
+                  disabled={!inputValue.trim()}
+                  className="p-2.5 font-bold rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0 bg-[#70a5ff] hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-slate-950"
+                  title="Envoyer"
                 >
-                  <Square className="w-3.5 h-3.5 fill-current text-rose-400" />
-                  <span>Arrêter</span>
+                  <Send className="w-4 h-4" />
                 </button>
-              )}
-              <button
-                type="submit"
-                disabled={!inputValue.trim()}
-                className="p-2.5 font-bold rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0 bg-[#70a5ff] hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-slate-950"
-                title="Envoyer"
-              >
-                <Send className="w-4 h-4" />
-              </button>
+              </div>
             </div>
-          </div>
-        </form>
+          </form>
         </div>
       </div>
 
