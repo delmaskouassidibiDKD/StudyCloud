@@ -228,6 +228,68 @@ function cleanConceptText(text: any): string {
   return cleaned.replace(/^[\s*#\-–—]+/, '').replace(/[*_#`]/g, '').trim();
 }
 
+/**
+ * Calcule dynamiquement la hauteur nécessaire pour une carte conceptuelle
+ * en tenant compte fidèlement des textes explicatifs, puces et formules KaTeX
+ * (fractions superposées, symboles mathématiques volumineux, etc.) sans coupure.
+ */
+export function computeConceptCardHeight(
+  desc: string,
+  colWidth: number,
+  isHeader: boolean = false
+): number {
+  const text = (desc || '').trim();
+  if (!text) return isHeader ? 90 : 130;
+
+  const totalFracMatches = text.match(/\\+(?:d?frac)/g) || [];
+  const totalFracCount = totalFracMatches.length;
+  const nestedFracMatches = text.match(/\\+(?:d?frac)\s*\{[^{}]*\\+(?:d?frac)/g) || [];
+  const nestedFracCount = nestedFracMatches.length;
+  const sqrtMatches = text.match(/\\+sqrt/g) || [];
+  const sqrtCount = sqrtMatches.length;
+  const bigMathMatches = text.match(/\\+(?:sum|int|prod|oint|bigcap|bigcup|matrix|pmatrix|bmatrix|cases)/g) || [];
+  const bigMathCount = bigMathMatches.length;
+  const bulletCount = (text.match(/•/g) || []).length;
+
+  const cleanChars = text
+    .replace(/\\+[a-zA-Z]+/g, ' ')
+    .replace(/[\{\}\$\_^]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const explicitLines = text.split(/\r?\n|\\{2,}(?![a-zA-Z])|\n/).length;
+  const innerWidth = colWidth - 32;
+  const charsPerLine = Math.max(20, Math.floor(innerWidth / 7.2));
+  const estimatedWrappedLines = Math.ceil(cleanChars.length / charsPerLine);
+  const lineCount = Math.max(explicitLines, estimatedWrappedLines);
+
+  const baseTextH = lineCount * 22;
+  const extraNestedH = nestedFracCount * 48;
+  const simpleFracCount = Math.max(0, totalFracCount - nestedFracCount * 2);
+  const extraSimpleFracH = simpleFracCount * 22;
+  const extraSqrtH = sqrtCount * 28;
+  const extraBigMathH = bigMathCount * 32;
+  const extraBulletsH = bulletCount * 8;
+
+  // Dégagement du badge supérieur (pill) et des marges intérieures
+  const clearance = isHeader ? 46 : 68;
+  const minH = isHeader ? 90 : 130;
+
+  let calculatedH = baseTextH + extraNestedH + extraSimpleFracH + extraSqrtH + extraBigMathH + extraBulletsH + clearance;
+
+  if (!isHeader) {
+    if (nestedFracCount >= 2) {
+      calculatedH = Math.max(calculatedH, 230);
+    } else if (nestedFracCount >= 1) {
+      calculatedH = Math.max(calculatedH, 165);
+    } else if (totalFracCount >= 1 || sqrtCount >= 1) {
+      calculatedH = Math.max(calculatedH, 145);
+    }
+  }
+
+  return Math.max(minH, Math.round(calculatedH));
+}
+
 function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDataset | null {
   if (!data) return null;
   let raw = data;
@@ -252,7 +314,13 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
         badge: 'Généré par IA',
         rootTitle: (actualData.root_title || actualData.rootTitle || actualData.title || fallbackTitle || 'CARTE CONCEPTUELLE').toUpperCase(),
         rootColor: actualData.rootColor || '#F59E0B',
-        cards: validCards
+        cards: validCards.map((c: any) => {
+          const autoH = computeConceptCardHeight(c.description, c.width || 240, c.level === 1);
+          return {
+            ...c,
+            height: Math.max(c.height || 0, autoH)
+          };
+        })
       };
     }
   }
@@ -414,15 +482,16 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
 
       const neededCardPillW = Math.max(140, Math.ceil(cardTitle.length * 9.6 + 40));
       maxW = Math.max(maxW, neededCardPillW + 26);
-      if (cardDesc.length > 90 || cardDesc.includes('$')) {
+      if (cardDesc.includes('\\frac') || cardDesc.includes('\\sqrt') || cardDesc.length > 120) {
+        maxW = Math.max(maxW, Math.min(460, Math.max(340, Math.round(cardDesc.length * 1.4 + 180))));
+      } else if (cardDesc.length > 70 || cardDesc.includes('$')) {
         maxW = Math.max(maxW, 310);
       }
       if (cardTitle.length > 22) {
         maxW = Math.max(maxW, Math.min(420, cardTitle.length * 9.8 + 48));
       }
 
-      const lineCount = (cardDesc.match(/\n/g) || []).length;
-      const cardH = Math.max(120, Math.min(380, 75 + Math.ceil(cardDesc.length / 24) * 20 + lineCount * 14));
+      const cardH = computeConceptCardHeight(cardDesc, maxW, false);
 
       return {
         id: `${colId}_c_${iIdx + 1}`,
@@ -435,8 +504,7 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
 
     const colWidth = maxW;
     const colPillW = Math.max(150, Math.min(colWidth - 20, neededColPillW));
-    const lineCount = (colDesc.match(/\n/g) || []).length;
-    const colHeight = Math.max(90, Math.min(220, 56 + Math.ceil(colDesc.length / 26) * 18 + lineCount * 14));
+    const colHeight = computeConceptCardHeight(colDesc, colWidth, true);
 
     return {
       colId,
@@ -864,10 +932,13 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
             ...curr,
             cards: curr.cards.map((c) => {
               if (c.id === editingCardId) {
+                const newDesc = editDesc.trim();
+                const newHeight = computeConceptCardHeight(newDesc, c.width, c.level === 1);
                 return {
                   ...c,
                   pillTitle: editPill.trim().toUpperCase(),
-                  description: editDesc.trim(),
+                  description: newDesc,
+                  height: Math.max(c.height, newHeight),
                   pillWidth: Math.max(editPill.trim().length * 10 + 40, 140)
                 };
               }
@@ -1459,14 +1530,15 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
 
                   {/* Body Text via foreignObject */}
                   <foreignObject
-                    x={-halfW + 14}
+                    x={-halfW + 12}
                     y={-halfH + 26}
-                    width={card.width - 28}
-                    height={card.height - 34}
+                    width={card.width - 24}
+                    height={card.height - 32}
                     className="pointer-events-none select-none"
+                    style={{ overflow: 'visible' }}
                   >
-                    <div className={`w-full h-full flex items-center ${card.description?.includes('•') ? 'justify-start text-left overflow-y-auto custom-scrollbar' : 'justify-center text-center'} px-1`}>
-                      <div className={`text-[12px] leading-relaxed text-slate-700 font-normal select-none whitespace-pre-line ${card.description?.includes('•') ? 'text-left' : 'text-center'}`}>
+                    <div className={`w-full h-full flex ${card.height > 140 || card.description?.includes('•') || card.description?.includes('\n') ? 'items-start pt-2 justify-start text-left' : 'items-center justify-center text-center'} px-1`}>
+                      <div className={`w-full text-[12px] leading-relaxed text-slate-700 font-normal select-none whitespace-pre-line ${card.height > 140 || card.description?.includes('•') || card.description?.includes('\n') ? 'text-left' : 'text-center'}`}>
                         <MathText text={card.description} />
                       </div>
                     </div>

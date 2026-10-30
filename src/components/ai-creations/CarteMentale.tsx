@@ -50,78 +50,100 @@ export function computeNodeDimensions(
   const text = (rawText || '').trim();
   if (!text) {
     return {
-      width: isCentral ? 240 : (level === 1 ? 190 : 160),
-      height: isCentral ? 68 : (level === 1 ? 52 : 46)
+      width: isCentral ? 260 : (level === 1 ? 210 : 170),
+      height: isCentral ? 72 : (level === 1 ? 54 : 48)
     };
   }
 
   // 1. Nœud central (Sujet principal)
   if (isCentral) {
-    const cleanChars = text.replace(/\\[a-zA-Z]+/g, 'X').replace(/[\{\}\$\_\^]/g, '');
-    const lines = text.split(/\r?\n|\\\\/);
+    const lines = text.split(/\r?\n|\\{2,}(?![a-zA-Z])|\n/);
     const lineCount = lines.length;
-    const maxLineLen = Math.max(...lines.map(l => l.length));
-    const width = Math.min(480, Math.max(220, Math.round(maxLineLen * 10 + 56)));
-    const height = Math.max(70, lineCount > 1 ? lineCount * 28 + 36 : 68);
+    const cleanChars = text
+      .replace(/\\+[a-zA-Z]+/g, ' ')
+      .replace(/[\{\}\$\_^]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const maxLineLen = Math.max(...lines.map(l => l.length), cleanChars.length);
+    const width = Math.min(540, Math.max(240, Math.round(maxLineLen * 9.8 + 64)));
+    const height = Math.max(76, lineCount > 1 ? lineCount * 28 + 42 : 72);
     return { width, height };
   }
 
-  // 2. Analyse des formules LaTeX / KaTeX
-  const fracMatches = text.match(/\\(?:d?frac)/g);
-  const fracCount = fracMatches ? fracMatches.length : 0;
-  // Détection de fractions multi-étages / imbriquées (ex: \frac{... \frac ...} ou plusieurs \frac)
-  const isNestedFrac = /\\(?:d?frac)\s*\{[^{}]*\\(?:d?frac)/.test(text) || fracCount >= 2;
-  const hasFrac = fracCount >= 1;
-  const hasBigMath = /\\(?:sqrt|sum|int|prod|oint|bigcap|bigcup|matrix|pmatrix|bmatrix)/.test(text);
-  const hasSuperSub = /[\^_]/.test(text);
+  // 2. Analyse précise des formules LaTeX / KaTeX
+  const totalFracMatches = text.match(/\\+(?:d?frac)/g) || [];
+  const totalFracCount = totalFracMatches.length;
+  // Détection des fractions multi-étages / imbriquées (ex: \frac{... \frac ...} ou dénominateur complexe avec fraction)
+  const nestedFracMatches = text.match(/\\+(?:d?frac)\s*\{[^{}]*\\+(?:d?frac)/g) || [];
+  const nestedFracCount = nestedFracMatches.length;
+  const sqrtMatches = text.match(/\\+sqrt/g) || [];
+  const sqrtCount = sqrtMatches.length;
+  const bigMathMatches = text.match(/\\+(?:sum|int|prod|oint|bigcap|bigcup|matrix|pmatrix|bmatrix|cases)/g) || [];
+  const bigMathCount = bigMathMatches.length;
 
-  // Analyse textuelle
-  const cleanChars = text.replace(/\\[a-zA-Z]+/g, 'X').replace(/[\{\}\$\_\^]/g, '');
-  const lines = text.split(/\r?\n|\\\\/);
-  const lineCount = lines.length;
+  // Analyse textuelle (sans les balises et commandes LaTeX pour quantifier la prose réelle)
+  const cleanChars = text
+    .replace(/\\+[a-zA-Z]+/g, ' ')
+    .replace(/[\{\}\$\_^]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 
-  let width = 160;
-  let height = 46;
+  // Découpage strict selon les retours à la ligne réels (en évitant de découper sur un simple antislash LaTeX !)
+  const lines = text.split(/\r?\n|\\{2,}(?![a-zA-Z])|\n/);
+  const explicitLineCount = lines.length;
 
-  if (isNestedFrac) {
-    // Cas critique des fractions multi-étages / imbriquées :
-    // ex: Ordre 2 : T = \frac{T_0}{1 + j \frac{\omega}{Q \omega_0} + (j \frac{\omega}{\omega_0})^2}
-    // ex: Forme canonique : T = \frac{T_0 [ 1 + (j \frac{\omega}{\omega_0})^2 ]}{...}
-    // Nécessite 118px à 128px de hauteur pour que le numérateur et les fractions du dénominateur respirent sans être tronqués
-    height = fracCount >= 3 ? 128 : 118;
-    // Largeur généreuse pour accueillir les termes développés
-    width = Math.min(540, Math.max(380, Math.round(cleanChars.length * 9.0 + 80)));
-  } else if (hasFrac) {
-    // Fraction simple (ex: \Delta f = \frac{f_0}{Q_0} ou Ordre 1 simple)
-    height = hasSuperSub ? 88 : 80;
-    width = Math.min(480, Math.max(260, Math.round(cleanChars.length * 8.6 + 60)));
-  } else if (hasBigMath) {
-    // Racines carrées (ex: f_0 = \sqrt{f_B \cdot f_H}), intégrales, sommes
-    height = 74;
-    width = Math.min(460, Math.max(220, Math.round(cleanChars.length * 8.5 + 50)));
-  } else if (lineCount > 1) {
-    // Retours à la ligne explicites
-    height = Math.max(54, lineCount * 26 + 24);
-    const maxLineLen = Math.max(...lines.map(l => l.length));
-    width = Math.min(460, Math.max(160, Math.round(maxLineLen * 8.5 + 46)));
-  } else if (cleanChars.length > 60) {
-    // Texte descriptif long (paragraphe court se repliant sur plusieurs lignes)
-    height = 80;
-    width = Math.min(480, Math.max(300, Math.round(cleanChars.length * 7.5 + 40)));
-  } else if (cleanChars.length > 35) {
-    // Texte moyen (ex: "Bande passante : [0; f_H] avec f_H fréquence de coupure haute")
-    // Espace élargi pour tenir sur 1 ligne ou 2 lignes très confortables
-    height = 64;
-    width = Math.min(440, Math.max(260, Math.round(cleanChars.length * 8.0 + 40)));
+  // Largeur dynamique intelligente : s'adapte pour que les formules développées et les définitions respirent
+  let width = 170;
+  if (nestedFracCount >= 2 || (nestedFracCount >= 1 && cleanChars.length > 110) || cleanChars.length > 190) {
+    // Cas lourd : plusieurs formules d'ordre supérieur ou paragraphes explicatifs détaillés
+    width = Math.min(620, Math.max(480, Math.round(cleanChars.length * 6.2 + 250)));
+  } else if (nestedFracCount >= 1 || totalFracCount >= 2 || cleanChars.length > 85) {
+    // Cas intermédiaire : formule développée ou phrase d'explication de cours
+    width = Math.min(540, Math.max(360, Math.round(cleanChars.length * 7.2 + 150)));
+  } else if (totalFracCount >= 1 || sqrtCount >= 1 || cleanChars.length > 40) {
+    // Cas formule simple ou court descriptif
+    width = Math.min(460, Math.max(280, Math.round(cleanChars.length * 8.0 + 80)));
   } else {
     // Nœud court classique
-    height = level === 1 ? 52 : 46;
     width = level === 1
-      ? Math.min(360, Math.max(160, Math.round(cleanChars.length * 8.5 + 40)))
-      : Math.min(320, Math.max(140, Math.round(cleanChars.length * 8.0 + 36)));
+      ? Math.min(360, Math.max(180, Math.round(cleanChars.length * 8.8 + 48)))
+      : Math.min(320, Math.max(150, Math.round(cleanChars.length * 8.4 + 38)));
   }
 
-  return { width, height };
+  // Calcul dynamique de la hauteur selon le volume réel et la hauteur intrinsèque des composants KaTeX
+  const innerWidth = width - 32;
+  const charsPerLine = Math.max(24, Math.floor(innerWidth / 7.2));
+  const estimatedWrappedLines = Math.ceil(cleanChars.length / charsPerLine);
+  const lineCount = Math.max(explicitLineCount, estimatedWrappedLines);
+
+  // Hauteur de base des lignes de texte (~22px par ligne)
+  const baseTextH = lineCount * 22;
+
+  // Surcoût vertical des fractions imbriquées (chaque étage supplémentaire de fraction nécessite ~48px)
+  const extraNestedH = nestedFracCount * 48;
+  // Surcoût des fractions simples (~22px en plus du texte de base)
+  const simpleFracCount = Math.max(0, totalFracCount - nestedFracCount * 2);
+  const extraSimpleFracH = simpleFracCount * 22;
+  // Surcoût des racines carrées et symboles mathématiques volumineux
+  const extraSqrtH = sqrtCount * 28;
+  const extraBigMathH = bigMathCount * 32;
+
+  // Marge de respiration interne (padding haut + bas + marge de sécurité)
+  const paddingH = 36;
+  const minH = level === 1 ? 54 : 48;
+
+  let calculatedH = baseTextH + extraNestedH + extraSimpleFracH + extraSqrtH + extraBigMathH + paddingH;
+
+  // Planchers de sécurité selon les types de formules pour garantir un affichage 100% net sans coupure
+  if (nestedFracCount >= 2) {
+    calculatedH = Math.max(calculatedH, 215);
+  } else if (nestedFracCount >= 1) {
+    calculatedH = Math.max(calculatedH, 140);
+  } else if (totalFracCount >= 1 || sqrtCount >= 1) {
+    calculatedH = Math.max(calculatedH, 92);
+  }
+
+  return { width, height: Math.round(calculatedH) };
 }
 
 // Nodes with layout precisely matching Box / Card containers
@@ -1564,17 +1586,19 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
                     y={-boxH / 2 + 3}
                     width={boxW - (node.level === 1 ? 20 : 16)}
                     height={boxH - 6}
-                    className="pointer-events-none select-none overflow-hidden"
+                    className="pointer-events-none select-none"
+                    style={{ overflow: 'visible' }}
                   >
                     <div
                       style={{
                         width: '100%',
                         height: '100%',
                         display: 'flex',
-                        alignItems: 'center',
+                        flexDirection: 'column',
+                        alignItems: boxH > 75 ? 'flex-start' : 'center',
                         justifyContent: 'center',
                         textAlign: 'center',
-                        padding: '2px 4px',
+                        padding: boxH > 75 ? '10px 8px 6px 8px' : '2px 4px',
                         userSelect: 'none',
                         boxSizing: 'border-box'
                       }}
@@ -1587,7 +1611,7 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
                             ? 'font-bold text-[13px] text-slate-900 tracking-tight'
                             : 'font-semibold text-[12px] text-slate-800'
                         }`}
-                        style={{ lineHeight: '1.3' }}
+                        style={{ lineHeight: '1.38' }}
                       >
                         <MathText text={node.text} inline />
                       </div>
