@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap, Palette, HelpCircle, Download, Square, WifiOff, RotateCw, AlertTriangle, Coins, ArrowRight } from 'lucide-react';
+import { Globe, Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap, Palette, HelpCircle, Download, Square, WifiOff, RotateCw, AlertTriangle, Coins, ArrowRight } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
@@ -38,6 +38,88 @@ const safeLocalStorageRemove = (key: string): void => {
 };
 import { parseOrBuildAiCreation } from '../services/aiCreationGenerator';
 import { AiCreation, AiCreationType, ModuleId } from './ai-creations/types';
+
+
+export interface SupportedChatLanguage {
+  code: string;
+  name: string;
+  nativeName: string;
+  flag: string;
+  promptInstruction: string;
+}
+
+export const SUPPORTED_CHAT_LANGUAGES: SupportedChatLanguage[] = [
+  {
+    code: 'fr',
+    name: 'Français',
+    nativeName: 'Français',
+    flag: '🇫🇷',
+    promptInstruction: 'TU RÉPONDS EXCLUSIVEMENT ET TOTALEMENT EN FRANÇAIS SOIGNÉ, CLAIR ET PÉDAGOGIQUE. Toutes les réponses de discussion et toutes les créations de modules doivent être rédigées à 100% en français.'
+  },
+  {
+    code: 'en',
+    name: 'English',
+    nativeName: 'English',
+    flag: '🇬🇧',
+    promptInstruction: 'YOU MUST RESPOND EXCLUSIVELY AND TOTALLY IN HIGH-QUALITY, PEDAGOGICAL ENGLISH. All chat responses, explanations, problem statements, questions and learning creations must be strictly 100% in English.'
+  },
+  {
+    code: 'zh',
+    name: 'Chinois',
+    nativeName: '中文',
+    flag: '🇨🇳',
+    promptInstruction: '你必须完全使用标准、严谨且富有教学性的中文进行回答。所有的对话、解析以及生成的交互式学习模块都必须严格100%使用中文 (All responses and creations must be 100% in Chinese).'
+  },
+  {
+    code: 'ja',
+    name: 'Japonais',
+    nativeName: '日本語',
+    flag: '🇯🇵',
+    promptInstruction: 'すべての回答、解説、および生成される学習モジュールは、完全に丁寧でわかりやすい日本語で100%記述してください (All responses and creations must be 100% in Japanese).'
+  },
+  {
+    code: 'de',
+    name: 'Allemand',
+    nativeName: 'Deutsch',
+    flag: '🇩🇪',
+    promptInstruction: 'DU MUSST AUSSCHLIESSLICH UND VOLLSTÄNDIG AUF DEUTSCH ANTWORTEN. Alle Antworten, Erklärungen und erstellten interaktiven Lernmodule müssen zu 100% auf Deutsch verfasst sein (All responses and creations must be 100% in German).'
+  },
+  {
+    code: 'es',
+    name: 'Espagnol',
+    nativeName: 'Español',
+    flag: '🇪🇸',
+    promptInstruction: 'DEBES RESPONDER EXCLUSIVA Y TOTALMENTE EN ESPAÑOL CLARO Y PEDAGÓGICO. Todas las respuestas, explicaciones y creaciones de aprendizaje deben estar al 100% en español (All responses and creations must be 100% in Spanish).'
+  },
+  {
+    code: 'ar',
+    name: 'Arabe',
+    nativeName: 'العربية',
+    flag: '🇸🇦',
+    promptInstruction: 'يجب عليك الإجابة حصرياً وبالكامل باللغة العربية الفصحى الواضحة والتعليمية. جميع الردود والشروحات والوحدات التعليمية التفاعلية المنشأة يجب أن تكون بنسبة 100% باللغة العربية (All responses and creations must be 100% in Arabic).'
+  },
+  {
+    code: 'ru',
+    name: 'Russe',
+    nativeName: 'Русский',
+    flag: '🇷🇺',
+    promptInstruction: 'ВЫ ДОЛЖНЫ ОТВЕЧАТЬ ИСКЛЮЧИТЕЛЬНО И ПОЛНОСТЬЮ НА РУССКОМ ЯЗЫКЕ. Все ответы, пояснения и интерактивные учебные модули должны быть строго на 100% на русском языке (All responses and creations must be 100% in Russian).'
+  },
+  {
+    code: 'pt',
+    name: 'Portugais',
+    nativeName: 'Português',
+    flag: '🇵🇹',
+    promptInstruction: 'DEVE RESPONDER EXCLUSIVA E TOTALMENTE EM PORTUGUÊS CLARO E PEDAGÓGICO. Todas as respostas, explicações e módulos de estudo devem estar 100% em português (All responses and creations must be 100% in Portuguese).'
+  },
+  {
+    code: 'it',
+    name: 'Italien',
+    nativeName: 'Italiano',
+    flag: '🇮🇹',
+    promptInstruction: 'DEVI RISPONDERE ESCLUSIVAMENTE E TOTALMENTE IN ITALIANO CHIARO E PEDAGOGICO. Tutte le risposte, le spiegazioni e i moduli interattivi creati devono essere rigorosamente al 100% in italiano (All responses and creations must be 100% in Italian).'
+  }
+];
 
 interface Message {
   id: string;
@@ -2693,6 +2775,43 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
   // Tiroir Historique Gemini
   const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
+  // Langue active sélectionnée pour l'IA (par défaut 'fr')
+  const [chatLanguage, setChatLanguage] = useState<string>(() => {
+    return safeGetItem('studycloud_chat_language', 'fr');
+  });
+  const [isDrawerLangMenuOpen, setIsDrawerLangMenuOpen] = useState(false);
+  const [isMainLangMenuOpen, setIsMainLangMenuOpen] = useState(false);
+  const [langChangeFeedback, setLangChangeFeedback] = useState<string | null>(null);
+  const drawerLangMenuRef = useRef<HTMLDivElement>(null);
+  const mainLangMenuRef = useRef<HTMLDivElement>(null);
+
+  const currentChatLangObj = useMemo(() => {
+    return SUPPORTED_CHAT_LANGUAGES.find(l => l.code === chatLanguage) || SUPPORTED_CHAT_LANGUAGES[0];
+  }, [chatLanguage]);
+
+  const handleSelectLanguage = (code: string) => {
+    setChatLanguage(code);
+    safeSetItem('studycloud_chat_language', code);
+    const target = SUPPORTED_CHAT_LANGUAGES.find(l => l.code === code) || SUPPORTED_CHAT_LANGUAGES[0];
+    setLangChangeFeedback(`Langue IA : ${target.flag} ${target.name}`);
+    setTimeout(() => setLangChangeFeedback(null), 3000);
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (drawerLangMenuRef.current && !drawerLangMenuRef.current.contains(e.target as Node)) {
+        setIsDrawerLangMenuOpen(false);
+      }
+      if (mainLangMenuRef.current && !mainLangMenuRef.current.contains(e.target as Node)) {
+        setIsMainLangMenuOpen(false);
+      }
+    };
+    if (isDrawerLangMenuOpen || isMainLangMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isDrawerLangMenuOpen, isMainLangMenuOpen]);
+
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [historySearch, setHistorySearch] = useState('');
 
@@ -3767,6 +3886,10 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       }
     };
 
+    const normTypeEarly = normalizeCreationType(params.explicitToolType);
+    const activeChatLangCode = safeGetItem('studycloud_chat_language', 'fr');
+    const activeCreationLang = SUPPORTED_CHAT_LANGUAGES.find(l => l.code === activeChatLangCode) || SUPPORTED_CHAT_LANGUAGES[0];
+
     let systemContent = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (${params.currentModelDisplay || 'IA'}).
 ${getAgentRoleDescription(params.explicitToolType)}
 Tu es en mission de conception officielle StudyCloud pour fabriquer le support : "${params.explicitToolType}".
@@ -3776,9 +3899,10 @@ ${getCommonDeepCreationDirective(params.mainDocName)}
 ${getTargetJsonInstructions(params.explicitToolType, params.mainDocName, params.creationTitle)}
 
 RÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
-0. LANGUE FRANÇAISE STRICTE ET ZÉRO MONOLOGUE INTERNE (ANTI-SCRATCHPAD) :
-   - TU RÉPONDS EXCLUSIVEMENT ET TOTALEMENT EN FRANÇAIS SOIGNÉ, CLAIR ET PÉDAGOGIQUE.
-   - IL EST STRICTEMENT INTERDIT D'ÉCRIRE EN ANGLAIS ET D'AFFICHER UN MONOLOGUE DE RÉFLEXION INTERNE ('Let's think', 'Waitcheck', 'Hmm', etc.).
+0. LANGUE OBLIGATOIRE DU SUPPORT CRÉÉ ET ZÉRO MONOLOGUE INTERNE (ANTI-SCRATCHPAD) :
+   - ${activeCreationLang.promptInstruction}
+   - LANGUE DU SUPPORT INTERACTIF : ${activeCreationLang.name} (${activeCreationLang.nativeName}). L'étudiant a sélectionné cette langue : TOUTES les données de ce support interactif "${normTypeEarly}" (titre, énoncé, questions, options, flashcards, corrigé et explications) DOIVENT être 100% rédigées dans cette langue (${activeCreationLang.name}).
+   - IL EST STRICTEMENT INTERDIT D'AFFICHER UN MONOLOGUE DE RÉFLEXION INTERNE ('Let's think', 'Waitcheck', 'Hmm', etc.).
 1. INTERDICTION FORMELLE D'ÉCRIRE DES FRACTIONS AVEC LE SLASH '/' :
    - TOUTE fraction mathématique ou scientifique DOIT IMPÉRATIVEMENT être écrite avec \\dfrac{numérateur}{dénominateur} : $$ \\omega_0 = \\dfrac{1}{\\sqrt{LC}} $$.
 2. POSITION ALÉATOIRE ET DIVERSITÉ (15 À 18 ITEMS POUR QUESTIONNAIRES ET VRAI OU FAUX, 18 MAXIMUM) :
@@ -3828,7 +3952,6 @@ ${agentPerception.slice(0, 30000)}
 ══════════════════════════════════════════════════════════════════════════════`;
     }
 
-    const normTypeEarly = normalizeCreationType(params.explicitToolType);
     const formatDisplayTitle = CREATION_NAME_MAP[normTypeEarly] || CREATION_FORMAT_LABELS[normTypeEarly] || normTypeEarly;
 
     const isPurelyConversational = /^(?:merci|ok|d['’]?accord|bonjour|salut|super|merci\s+beaucoup|mercii+|tr[eè]s\s+bien|parfait|cool|yes|oui)\s*[!.?]*$/i.test((params.userText || '').trim());
@@ -3862,6 +3985,7 @@ DIRECTIVES PARTICULIÈRES POUR LE DEVOIR COMPLET :
     }
 
     const agentExplicitPrompt = `Conçois immédiatement le module interactif complet, exhaustif et d'une richesse académique impressionnante de type "${normTypeEarly}" (${formatDisplayTitle}) sur le thème « ${effectiveThemeTitle} » ${params.mainDocName ? `(document source : « ${params.mainDocName} »)` : ''}.
+LANGUE OBLIGATOIRE DE RÉDACTION : ${activeCreationLang.name} (${activeCreationLang.nativeName}). Tout le contenu textuel de ce support doit être rédigé à 100% dans cette langue.
 Exploite l'intégralité du contenu (tous les chapitres, toutes les formules en LaTeX avec \\dfrac{}{}, la logique profonde, les démonstrations, toutes les zones d'ombre/pièges d'examen et les TD).
 ${studentInstructionPrompt}
 CONSIGNES STRICTES DE RÉDACTION :
@@ -4780,10 +4904,14 @@ CONSIGNES STRICTES POUR TA RÉPONSE DE CHAT :
 (valeurs possibles : carte-mentale, carte-mentale-2, questionnaire, questionnaire-test, vrai-ou-faux, vrai-ou-faux-test, carte-memoire, resume, exercices-ecrits, devoir-complet, infographie, pdf).`;
       }
 
+      const activeChatLangObj = SUPPORTED_CHAT_LANGUAGES.find(l => l.code === chatLanguage) || SUPPORTED_CHAT_LANGUAGES[0];
+
       systemContent += `\n\nRÈGLES D'EXCELLENCE POUR LA MISE EN PAGE, LES TITRES ET LES FRACTIONS :
-0. LANGUE FRANÇAISE STRICTE ET ZÉRO MONOLOGUE INTERNE (ANTI-SCRATCHPAD) :
-   - TU RÉPONDS EXCLUSIVEMENT ET TOTALEMENT EN FRANÇAIS SOIGNÉ, CLAIR ET PÉDAGOGIQUE.
-   - IL EST STRICTEMENT INTERDIT D'ÉCRIRE EN ANGLAIS ET D'AFFICHER UN MONOLOGUE DE RÉFLEXION INTERNE, DU BRAINSTORMING OU UN BROUILLON ('Let's think', 'Waitcheck', 'The figure caption text', 'Hmm', 'Actually', etc.).
+0. LANGUE CIBLE OBLIGATOIRE ET ZÉRO MONOLOGUE INTERNE (ANTI-SCRATCHPAD) :
+   - ${activeChatLangObj.promptInstruction}
+   - LANGUE SÉLECTIONNÉE PAR L'ÉTUDIANT : ${activeChatLangObj.name} (${activeChatLangObj.nativeName}). Tu DOIS répondre exclusivement et par défaut dans cette langue pour toutes tes réponses, analyses et explications dans le chat.
+   - IL EST STRICTEMENT INTERDIT D'AFFICHER UN MONOLOGUE DE RÉFLEXION INTERNE, DU BRAINSTORMING OU UN BROUILLON ('Let\'s think', 'Waitcheck', 'The figure caption text', 'Hmm', 'Actually', etc.).
+
    - NE DIVAGUE PAS. DONNE DIRECTEMENT LA RÉPONSE PÉDAGOGIQUE COMPLÈTE ET STRUCTURÉE POUR L'ÉTUDIANT.
    - AÈRE AU MAXIMUM : GRANDS TITRES (#, ##, ###), DOUBLES SAUTS DE LIGNE ENTRE CHAQUE ÉTAPE, ET FORMULES ISOLÉES EN BLOC $$ ... $$.
 
@@ -5956,6 +6084,56 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {/* Sélecteur de langue dans la barre supérieure */}
+          <div className="relative" ref={mainLangMenuRef}>
+            <button
+              type="button"
+              onClick={() => setIsMainLangMenuOpen(!isMainLangMenuOpen)}
+              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg bg-[#282a2f] hover:bg-[#32353b] border border-zinc-700/80 text-zinc-200 text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+              title={`Langue de l'IA : ${currentChatLangObj.name}`}
+            >
+              <Globe className="w-3.5 h-3.5 text-orange-400" />
+              <span>{currentChatLangObj.flag}</span>
+              <span className="hidden sm:inline text-[11px] font-semibold">{currentChatLangObj.code.toUpperCase()}</span>
+              <ChevronDown className="w-3 h-3 text-zinc-400" />
+            </button>
+            {isMainLangMenuOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-52 bg-[#181a20] border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-50 animate-fadeIn backdrop-blur-md">
+                <div className="px-3 py-1.5 border-b border-zinc-800/80 text-[10px] font-black text-zinc-400 uppercase tracking-wider flex items-center justify-between">
+                  <span>Langue de l'IA</span>
+                  <span className="text-[9px] text-orange-400 font-semibold">{currentChatLangObj.name}</span>
+                </div>
+                <div className="max-h-60 overflow-y-auto py-1 custom-scrollbar">
+                  {SUPPORTED_CHAT_LANGUAGES.map((lang) => {
+                    const isSelected = chatLanguage === lang.code;
+                    return (
+                      <button
+                        key={lang.code}
+                        type="button"
+                        onClick={() => {
+                          handleSelectLanguage(lang.code);
+                          setIsMainLangMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left cursor-pointer transition-colors ${
+                          isSelected
+                            ? 'bg-orange-500/15 text-orange-400 font-bold'
+                            : 'text-zinc-300 hover:bg-zinc-800/80 hover:text-white'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">{lang.flag}</span>
+                          <span>{lang.name}</span>
+                          <span className="text-[10px] text-zinc-500">({lang.nativeName})</span>
+                        </div>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Bouton Fermer */}
           {onClose && (
             <button
@@ -5987,12 +6165,63 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                 <Clock className="w-4 h-4 text-orange-400" />
                 <h3 className="text-sm font-black text-white uppercase tracking-wider">Discussions Récentes</h3>
               </div>
-              <button
-                onClick={() => setIsHistoryDrawerOpen(false)}
-                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1.5 relative" ref={drawerLangMenuRef}>
+                {/* Bouton sélecteur de langue (emplacement demandé) */}
+                <button
+                  type="button"
+                  onClick={() => setIsDrawerLangMenuOpen(!isDrawerLangMenuOpen)}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/80 text-zinc-200 text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+                  title={`Langue de l'IA : ${currentChatLangObj.name} (${currentChatLangObj.nativeName})`}
+                >
+                  <Globe className="w-3.5 h-3.5 text-orange-400" />
+                  <span className="text-xs">{currentChatLangObj.flag} {currentChatLangObj.code.toUpperCase()}</span>
+                  <ChevronDown className="w-3 h-3 text-zinc-400" />
+                </button>
+
+                {/* Dropdown Menu des Langues */}
+                {isDrawerLangMenuOpen && (
+                  <div className="absolute right-6 top-full mt-1.5 w-52 bg-[#181a20] border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-50 animate-fadeIn backdrop-blur-md">
+                    <div className="px-3 py-1.5 border-b border-zinc-800/80 text-[10px] font-black text-zinc-400 uppercase tracking-wider flex items-center justify-between">
+                      <span>Langue de l'IA</span>
+                      <span className="text-[9px] text-orange-400 font-semibold">{currentChatLangObj.name}</span>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto py-1 custom-scrollbar">
+                      {SUPPORTED_CHAT_LANGUAGES.map((lang) => {
+                        const isSelected = chatLanguage === lang.code;
+                        return (
+                          <button
+                            key={lang.code}
+                            type="button"
+                            onClick={() => {
+                              handleSelectLanguage(lang.code);
+                              setIsDrawerLangMenuOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'bg-orange-500/15 text-orange-400 font-bold'
+                                : 'text-zinc-300 hover:bg-zinc-800/80 hover:text-white'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm">{lang.flag}</span>
+                              <span>{lang.name}</span>
+                              <span className="text-[10px] text-zinc-500">({lang.nativeName})</span>
+                            </div>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => setIsHistoryDrawerOpen(false)}
+                  className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {/* New Conversation Button inside drawer */}
