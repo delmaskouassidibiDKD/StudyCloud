@@ -19,6 +19,8 @@ import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { useStudyLanguage } from '../utils/studyTranslations';
 import { getWorkerApiUrl } from '../services/api';
+import { CloudDataStore } from '../services/cloudDataStore';
+import { CloudStorageAPI } from '../services/cloudStorageService';
 
 // Worker configuration for pdfjsLib
 if (typeof window !== 'undefined') {
@@ -497,21 +499,59 @@ export function CenterMenu({
           console.warn('Erreur décodage PPTX:', err);
         }
       } else if (isText) {
+        let loadedText = '';
         if (blob) {
           try {
-            const text = await blob.text();
-            if (isMounted) {
-              setFileTextContent(text);
-              setExtractedDocText(text);
-            }
+            loadedText = await blob.text();
           } catch (e) {
             console.warn('Erreur lecture texte blob:', e);
           }
-        } else if (file.textContent) {
-          if (isMounted) {
-            setFileTextContent(file.textContent);
-            setExtractedDocText(file.textContent);
+        }
+
+        if (!loadedText) {
+          const directTitle = file.noteTitle || (file as any).notepadTitle || '';
+          const directBody = file.content || file.textContent || (file as any).notepadContent || '';
+          if (directTitle || directBody) {
+            loadedText = [directTitle, directBody].filter(Boolean).join('\n\n');
           }
+        }
+
+        // Si le contenu n'est pas encore en mémoire, chercher dans CloudDataStore
+        if (!loadedText && file.id) {
+          try {
+            const fMap = CloudDataStore.getState().folderFilesMap;
+            for (const list of Object.values(fMap)) {
+              if (Array.isArray(list)) {
+                const found = list.find((item: any) => item.id === file.id || item.name === file.name) as any;
+                if (found && (found.content || found.noteTitle || found.textContent || found.notepadContent)) {
+                  const t = found.noteTitle || found.notepadTitle || '';
+                  const c = found.content || found.textContent || found.notepadContent || '';
+                  loadedText = [t, c].filter(Boolean).join('\n\n');
+                  break;
+                }
+              }
+            }
+          } catch (e) {}
+        }
+
+        // Si toujours introuvable (ex: première ouverture après rafraîchissement), charger directement depuis Cloudflare D1
+        if (!loadedText && file.id && (file.isNotepad || (file.name && file.name.endsWith('.txt')) || file.extension === 'txt')) {
+          try {
+            const remoteFiles = await CloudStorageAPI.getClasseurFiles(file.folderId);
+            if (remoteFiles && Array.isArray(remoteFiles)) {
+              const found = remoteFiles.find((f: any) => f.id === file.id || f.name === file.name);
+              if (found && (found.content || found.noteTitle)) {
+                loadedText = [found.noteTitle, found.content].filter(Boolean).join('\n\n');
+              }
+            }
+          } catch (err) {
+            console.warn('[CenterMenu] Erreur fetch note from API:', err);
+          }
+        }
+
+        if (isMounted && loadedText) {
+          setFileTextContent(loadedText);
+          setExtractedDocText(loadedText);
         }
       }
 
@@ -613,13 +653,17 @@ export function CenterMenu({
 
   const getDocumentText = async (item: any): Promise<string> => {
     if (!item) return '';
-    if (extractedDocText && extractedDocText.trim().length > 5) {
+    if (extractedDocText && extractedDocText.trim().length > 0) {
       return extractedDocText.trim();
     }
-    if (item.textContent && item.textContent.trim().length > 5) {
+    const directNote = [item.noteTitle || item.notepadTitle, item.content || item.textContent || item.notepadContent].filter(Boolean).join('\n\n');
+    if (directNote && directNote.trim().length > 0) {
+      return directNote.trim();
+    }
+    if (item.textContent && item.textContent.trim().length > 0) {
       return item.textContent.trim();
     }
-    if (fileTextContent && fileTextContent.trim().length > 5) {
+    if (fileTextContent && fileTextContent.trim().length > 0) {
       return fileTextContent.trim();
     }
 
@@ -812,7 +856,7 @@ export function CenterMenu({
       }
       // 5. TEXT / CODE
       else if (isText) {
-        let raw = fileTextContent || activePreviewItem.textContent || '';
+        let raw = fileTextContent || [activePreviewItem.noteTitle || activePreviewItem.notepadTitle, activePreviewItem.content || activePreviewItem.textContent || activePreviewItem.notepadContent].filter(Boolean).join('\n\n') || activePreviewItem.textContent || '';
         if (!raw && activePreviewItem) {
           raw = await getDocumentText(activePreviewItem);
         }
@@ -1659,7 +1703,10 @@ export function CenterMenu({
                     <span>{activePreviewItem.name}</span>
                   </div>
                   <button
-                    onClick={() => handleCopyText(fileTextContent || activePreviewItem.textContent || '')}
+                    onClick={() => {
+                      const noteText = [activePreviewItem.noteTitle || activePreviewItem.notepadTitle, activePreviewItem.content || activePreviewItem.textContent || activePreviewItem.notepadContent].filter(Boolean).join('\n\n');
+                      handleCopyText(fileTextContent || noteText || activePreviewItem.textContent || '');
+                    }}
                     className="px-2.5 py-1 bg-stone-700 hover:bg-stone-600 rounded text-[10px] font-semibold text-white flex items-center gap-1 cursor-pointer transition-colors"
                   >
                     {copiedText ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
@@ -1673,7 +1720,8 @@ export function CenterMenu({
                   style={{ zoom: `${effectiveZoom}%` }}
                 >
                   {(() => {
-                    const rawText = fileTextContent || activePreviewItem.textContent || '';
+                    const noteText = [activePreviewItem.noteTitle || activePreviewItem.notepadTitle, activePreviewItem.content || activePreviewItem.textContent || activePreviewItem.notepadContent].filter(Boolean).join('\n\n');
+                    const rawText = fileTextContent || noteText || activePreviewItem.textContent || '';
                     if (!rawText.trim()) {
                       return <p className="text-stone-500 italic">Fichier texte vide.</p>;
                     }

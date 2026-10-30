@@ -925,6 +925,28 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const i = byteLength > 0 ? Math.floor(Math.log(byteLength) / Math.log(k)) : 0;
     const sizeStr = byteLength > 0 ? parseFloat((byteLength / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i] : '0 o';
 
+    // 0. Enregistrer immédiatement le Blob dans IndexedDB pour lecture universelle
+    try {
+      const textBlob = new Blob([combinedContent], { type: 'text/plain;charset=utf-8' });
+      storeFileBlob(targetId, textBlob).catch(() => {});
+    } catch (e) {}
+
+    try {
+      CloudDataStore.updateFile(targetId, {
+        content: newText,
+        noteTitle: titleToSave,
+        size: sizeStr,
+        sizeBytes: byteLength
+      });
+      LocalSyncReplication.recordLocalUpsert(targetId, 'classeur', {
+        id: targetId,
+        content: newText,
+        noteTitle: titleToSave,
+        size: sizeStr,
+        sizeBytes: byteLength
+      });
+    } catch (e) {}
+
     // 1. Mettre à jour folderFilesMap pour tous les dossiers contenant cette note
     setFolderFilesMap(prev => {
       let changed = false;

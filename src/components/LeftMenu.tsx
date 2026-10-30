@@ -987,8 +987,12 @@ export function LeftMenu({
                const nextFolder = isImportedSection 
                  ? (currentFolderName || 'Mes fichiers') 
                  : (f.matiere || f.folderName || (selectedSource ? selectedSource.title : currentFolderName) || (isAud ? 'Son' : 'Mes fichiers'));
+               const noteFullText = [f.noteTitle || f.notepadTitle, f.content || f.textContent || f.notepadContent].filter(Boolean).join('\n\n');
                setActivePreviewItem({
                  ...f,
+                 content: f.content || f.notepadContent || '',
+                 noteTitle: f.noteTitle || f.notepadTitle || '',
+                 textContent: noteFullText || f.textContent || '',
                  isAudio: isAud || f.isAudio,
                  category: isAud ? 'audio' : (f.category || 'documents'),
                  folderName: nextFolder
@@ -1291,8 +1295,12 @@ export function LeftMenu({
           // Filtrer rigoureusement : uniquement des fichiers réels, pas de dossiers ni sous-dossiers
           const isActuallyFolder = f.isFolder === true || f.type === 'folder' || !!f.model;
           if (f && f.id && !isActuallyFolder && !importedIds.includes(f.id)) {
+            const noteFullText = [f.noteTitle || f.notepadTitle, f.content || f.textContent || f.notepadContent].filter(Boolean).join('\n\n');
             map.set(f.id, {
               ...f,
+              content: f.content || f.notepadContent || '',
+              noteTitle: f.noteTitle || f.notepadTitle || '',
+              textContent: noteFullText || f.textContent || '',
               matiere: selectedSource.title,
               folderName: selectedSource.title,
               extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
