@@ -85,12 +85,13 @@ const isExcludedFromVideos = (d: any): boolean => {
   if (!d) return true;
   if (d.category === 'classeur' || d.category === 'classeur_folder' || d.category === 'mes-fichiers' || d.category === 'trash' || d.category === 'secure') return true;
   const fId = d.folderId || d.folder_id || d.originalFolderId;
-  if (fId && !['videos', 'root', 'default-folder'].includes(fId)) return true;
-  if (typeof d.id === 'string' && (d.id.startsWith('cf-') || d.id.startsWith('cf_') || d.id.startsWith('folder_') || d.id.startsWith('cf_folder_'))) return true;
+  if (fId && !['videos', 'root', 'default-folder', 'menu-videos'].includes(fId)) return true;
+  if (typeof d.id === 'string' && (d.id.startsWith('folder_') || d.id.startsWith('cf_folder_') || d.id.startsWith('cf-folder-'))) return true;
   if (d.r2Key && (d.r2Key.includes('/classeur/') || d.r2Key.includes('/mes-fichiers/'))) return true;
   if ((d as any).uploadSource === 'mes-fichiers' || d.source === 'mes-fichiers' || d.source === 'Mes fichiers' || d.source === 'Classeur' || d.source === 'Dossier 3D') return true;
-  if (d.matiere || (d as any).matiereId) return true;
-  if (d.folderName && d.folderName !== 'Vidéos' && d.folderName !== 'root' && d.folderName !== 'default-folder') return true;
+  if (d.matiere && d.matiere !== 'Vidéos' && d.matiere !== 'menu-videos') return true;
+  if (d.matiereId && d.matiereId !== 'menu-videos' && d.matiereId !== 'videos' && !d.matiereId.startsWith('menu-videos')) return true;
+  if (d.folderName && !['Vidéos', 'root', 'default-folder', 'menu-videos'].includes(d.folderName)) return true;
   if (d.isFolder || d.is_folder || d.isClasseurFolder) return true;
   return false;
 };

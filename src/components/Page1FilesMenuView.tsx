@@ -103,8 +103,8 @@ import { CloudStorageAPI, type CloudOverviewData } from '../services/cloudStorag
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
 import { AudioCardPreview } from './AudioCardPreview';
-import { generatePdfThumbnail, generateVideoThumbnail, extractAudioCover, generateAudioCreatorCover, getCachedMediaThumbnail, setCachedMediaThumbnail, isRealEmbeddedArtwork } from '../services/mediaPreviewService';
-import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob } from '../services/localFileStorage';
+import { generatePdfThumbnail, generateVideoThumbnail, extractAudioCover, generateAudioCreatorCover, extractAudioMetadataWithTags, getCachedMediaThumbnail, setCachedMediaThumbnail, isRealEmbeddedArtwork } from '../services/mediaPreviewService';
+import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
@@ -121,6 +121,7 @@ import {
   detectFileCategoryWithMagic,
   validateFilesForMenu,
   validateFilesForMenuAsync,
+  validateFilesForHomeAsync,
   CATEGORY_LABELS,
   isWhatsAppAudio,
   isWhatsAppVideo,
@@ -2694,6 +2695,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       filesToProcess = filesToProcess.slice(0, MAX_IMPORT_FILES);
     }
 
+    // 1. VALIDATION BINAIRE STRICTE PAR MAGIC NUMBERS : BLOCAGE DES APPLICATIONS / APK / EXE
+    const validationRes = await validateFilesForHomeAsync(filesToProcess, "Espace Cloud");
+    if (validationRes.rejectedFiles.length > 0) {
+      const first = validationRes.rejectedFiles[0];
+      setIncompatibleAlertInfo({
+        fileName: first.file.name,
+        detectedCategory: first.detectedLabel,
+        menuLabel: "Espace Cloud",
+        reason: first.reason,
+      });
+
+      if (validationRes.validFiles.length === 0) {
+        return; // Blocage strict : aucune application ni fichier interdit n'est importé
+      }
+    }
+
+    filesToProcess = validationRes.validFiles;
+    if (filesToProcess.length === 0) return;
+
     showToast(filesToProcess.length === 1 
       ? `Importation de « ${filesToProcess[0].name} »...` 
       : `Importation de ${filesToProcess.length} fichiers en cours...`
@@ -2708,7 +2728,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
       const dupes: string[] = [];
       for (const file of filesToProcess) {
-        const cat = await detectFileCategoryWithMagic(file);
+        const cat = validationRes.fileCategories.get(file) || (await detectFileCategoryWithMagic(file));
         const nameLower = (file.name || '').trim().toLowerCase();
         if (cat === 'videos' && videoNames.has(nameLower)) dupes.push(file.name);
         else if (cat === 'audio' && audioNames.has(nameLower)) dupes.push(file.name);
@@ -2735,32 +2755,71 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     const newItemsWithFiles = await Promise.all(filesToProcess.map(async (file, idx) => {
       // Détection infaillible par Magic Numbers (signature binaire réelle des octets)
-      const autoCat = await detectFileCategoryWithMagic(file);
+      const autoCat = validationRes.fileCategories.get(file) || (await detectFileCategoryWithMagic(file));
       // Compression client universelle tout en préservant les vraies valeurs d'origine
       const compResult = await compressFile(file, autoCat);
       const fileToUpload = compResult.file;
       const localBlobUrl = URL.createObjectURL(fileToUpload);
       const normName = file.name.toLowerCase();
       const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
-      const fileId = `cf-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+
+      // Préfixes propres pour identification infaillible
+      const prefix = autoCat === 'audio' ? 'aud' : (autoCat === 'videos' ? 'vid' : (autoCat === 'images' ? 'img' : 'doc'));
+      const fileId = `${prefix}-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
 
       // Sauvegarde binaire locale immédiate dans IndexedDB
       storeFileBlob(fileId, fileToUpload as any).catch(() => {});
 
+      // Extraction des métadonnées pour les fichiers audio (y compris audios WhatsApp)
+      let audioMeta: any = {};
+      let songTitle = file.name;
+      let songArtist = 'Artiste inconnu';
+      let hasRealCover = false;
+      let initialCover: string | undefined = undefined;
+
+      if (autoCat === 'audio') {
+        try {
+          audioMeta = await extractAudioMetadataWithTags(fileToUpload);
+          songTitle = audioMeta.title || file.name;
+          songArtist = audioMeta.artist || 'Artiste inconnu';
+          hasRealCover = Boolean(audioMeta.coverUrl && isRealEmbeddedArtwork(audioMeta.coverUrl));
+          initialCover = hasRealCover
+            ? audioMeta.coverUrl
+            : generateAudioCreatorCover(songTitle, songArtist);
+
+          if (hasRealCover && audioMeta.coverUrl) {
+            setCachedMediaThumbnail(fileId, audioMeta.coverUrl);
+            setCachedMediaThumbnail(localBlobUrl, audioMeta.coverUrl);
+            storeThumbnailData(fileId, audioMeta.coverUrl).catch(() => {});
+            CloudStorageAPI.saveMediaThumbnail(fileId, 'audio', audioMeta.coverUrl, songTitle).catch(() => {});
+          } else if (initialCover) {
+            setCachedMediaThumbnail(fileId, initialCover);
+            setCachedMediaThumbnail(localBlobUrl, initialCover);
+          }
+        } catch (e) {
+          initialCover = generateAudioCreatorCover(file.name, 'Artiste inconnu');
+        }
+      }
+
       // L'utilisateur voit TOUJOURS sa vraie taille brute originale non compressée
       const item: FileItem = {
         id: fileId,
-        name: file.name,
+        name: autoCat === 'audio' ? songTitle : file.name,
         category: autoCat,
-        source: 'StudyCloud Local',
+        source: autoCat === 'audio' ? 'Audio' : (autoCat === 'videos' ? 'Vidéos' : (autoCat === 'images' ? 'Images' : 'Documents')),
         size: compResult.originalSizeFormatted,
         sizeBytes: compResult.originalSizeBytes,
         date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
         extension: ext,
         url: localBlobUrl,
-        previewUrl: autoCat === 'audio' ? undefined : localBlobUrl,
+        previewUrl: autoCat === 'audio' ? (hasRealCover ? audioMeta.coverUrl : undefined) : localBlobUrl,
         videoUrl: autoCat === 'videos' ? localBlobUrl : undefined,
         audioUrl: autoCat === 'audio' ? localBlobUrl : undefined,
+        coverUrl: initialCover,
+        thumbnailUrl: initialCover,
+        artist: autoCat === 'audio' ? songArtist : undefined,
+        album: autoCat === 'audio' ? audioMeta.album : undefined,
+        isAudio: autoCat === 'audio',
         isUploading: true,
       };
       return { 
@@ -2809,6 +2868,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         extension: item.extension || 'FICHIER',
         r2Key: null,
         fileUrl: item.url || '',
+        thumbnailUrl: item.thumbnailUrl || null,
+        previewUrl: item.previewUrl || null,
         isFavorite: false,
         isImported: true,
         lastImported: Date.now()

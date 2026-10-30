@@ -157,7 +157,8 @@ export const isRecentEligible = (file: any): boolean => {
   if (file.originalFolderId) return false;
 
   // 3. Exclure les matières et chemins R2 dédiés
-  if (file.matiere || file.matiereId) return false;
+  if (file.matiere && !['menu-audio', 'menu-videos', 'menu-images', 'menu-documents', 'Audio', 'Vidéos', 'Images', 'Documents'].includes(file.matiere)) return false;
+  if (file.matiereId && !file.matiereId.startsWith('menu-')) return false;
   if (file.r2Key && (file.r2Key.includes('/mes-fichiers/') || file.r2Key.includes('/classeur/'))) return false;
 
   // 4. Exclure notes, bloc-notes et fichiers textes

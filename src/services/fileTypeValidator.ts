@@ -132,16 +132,26 @@ export function isWhatsAppAudio(name?: string, mime?: string): boolean {
     return false;
   }
 
-  // Préfixes WhatsApp Audio spécifiques (Android, iOS, Web)
-  // Même si le MIME est video/mp4 (cas classique où Android/WhatsApp enregistre avec extension .mp4)
+  // Préfixes WhatsApp Audio et vocaux spécifiques (Android, iOS, Web, Desktop)
   if (
     normName.startsWith('aud-') ||
+    normName.startsWith('aud_') ||
     normName.startsWith('ptt-') ||
+    normName.startsWith('ptt_') ||
+    normName.startsWith('audio_') ||
+    normName.startsWith('audio-') ||
+    normName.startsWith('voice_') ||
+    normName.startsWith('voice-') ||
+    normName.startsWith('son_') ||
+    normName.startsWith('son-') ||
     normName.includes('whatsapp audio') ||
-    normName.includes('voice_') ||
-    normName.includes('audio_') ||
+    normName.includes('whatsapp ptt') ||
+    normName.includes('whatsapp voice') ||
+    normName.includes('note vocale') ||
+    normName.includes('note-vocale') ||
     normName.includes('vocal') ||
-    normName.includes('enregistrement')
+    normName.includes('enregistrement') ||
+    normName.includes('recording')
   ) {
     return true;
   }
@@ -157,23 +167,34 @@ export function isWhatsAppAudio(name?: string, mime?: string): boolean {
     normName.endsWith('.mp3') ||
     normName.endsWith('.wav') ||
     normName.endsWith('.flac') ||
-    normName.endsWith('.weba')
+    normName.endsWith('.weba') ||
+    normName.endsWith('.wma') ||
+    normName.endsWith('.m4b') ||
+    normName.endsWith('.m4p') ||
+    normName.endsWith('.alac') ||
+    normName.endsWith('.aiff') ||
+    normName.endsWith('.caf') ||
+    normName.endsWith('.mid') ||
+    normName.endsWith('.midi')
   ) {
     return true;
   }
-  if (normName.endsWith('.3gp') && (normMime.includes('audio') || normMime.includes('amr') || normName.startsWith('aud-') || normName.startsWith('ptt-'))) {
+  if (normName.endsWith('.3gp') && (normMime.includes('audio') || normMime.includes('amr') || normName.startsWith('aud-') || normName.startsWith('ptt-') || normName.startsWith('aud_') || normName.startsWith('ptt_'))) {
     return true;
   }
   if (normMime.includes('opus') || normMime.includes('audio/ogg') || normMime.includes('audio/amr') || normMime.includes('audio/3gpp') || normMime.startsWith('audio/')) {
     return true;
   }
+
+  // Mots-clés audio explicites dans le nom (si non vidéo)
+  const isAudioKeyword = /\b(beat|instru|son|song|chanson|musique|audio|vocal|voice|rap|melody|track)\b/i.test(normName);
+  if (isAudioKeyword && !normName.includes('video') && !normName.includes('clip') && !normName.includes('film') && !normMime.startsWith('video/')) {
+    return true;
+  }
+
   return false;
 }
 
-/**
- * Détecte la véritable nature d'un fichier en lisant ses Magic Numbers (signature binaire des premiers octets).
- * Réalisé en quelques millisecondes sur seulement 64 octets du Blob / File.
- */
 export async function detectFileCategoryWithMagic(
   file: File | Blob,
   fallbackName?: string,
@@ -311,6 +332,8 @@ export async function detectFileCategoryWithMagic(
 
     // 8. MP3 : tag ID3 ou octets de synchronisation MPEG Audio Frame
     if (len >= 3 && ascii(0, 3) === 'ID3') return 'audio';
+    // AAC ADTS Frame Sync
+    if (len >= 2 && bytes[0] === 0xFF && (bytes[1] & 0xF6) === 0xF0) return 'audio';
     if (len >= 2 && bytes[0] === 0xFF && (bytes[1] & 0xE0) === 0xE0 && (bytes[1] & 0x18) !== 0x08) {
       return 'audio';
     }
@@ -658,3 +681,104 @@ export async function validateFilesForCreationMenuAsync(
   return { validFiles, rejectedFiles };
 }
 
+
+export interface HomeImportRejectedItem {
+  file: File;
+  detectedCategory: 'apps' | 'unsupported';
+  detectedLabel: string;
+  dedicatedMenu: string;
+  reason: string;
+}
+
+export interface HomeImportValidationResult {
+  validFiles: File[];
+  rejectedFiles: HomeImportRejectedItem[];
+  fileCategories: Map<File, 'images' | 'videos' | 'audio' | 'documents'>;
+}
+
+/**
+ * Validation ASYNCHRONE par Magic Numbers & signatures binaires réelles pour le bouton + Importer de l'Espace Cloud.
+ * Autorise STRICTEMENT les fichiers multimédia et documents d'étude :
+ *  - Vidéos (MP4, MKV, AVI, WEBM, MOV, WhatsApp vidéos, etc.) -> routé vers Vidéos
+ *  - Images (JPEG, PNG, WEBP, SVG, GIF, WhatsApp images, etc.) -> routé vers Images
+ *  - Sons / Audios (MP3, WAV, M4A, OGG, OPUS, FLAC, vocaux WhatsApp, etc.) -> routé vers Audio / Musique
+ *  - Documents (PDF, Word DOCX/DOC, Excel XLSX/XLS/CSV, PowerPoint PPTX/PPT, Textes TXT/MD/etc.) -> routé vers Documents
+ *
+ * Bloque STRICTEMENT :
+ *  - Applications, logiciels, APK, AAB, EXE, MSI, DMG, PKG, DEB, scripts exécutables, binaires système, etc.
+ *  - Tout format non adapté ou non autorisé.
+ */
+export async function validateFilesForHomeAsync(
+  files: File[],
+  menuTitle: string = 'Espace Cloud'
+): Promise<HomeImportValidationResult> {
+  const validFiles: File[] = [];
+  const rejectedFiles: HomeImportRejectedItem[] = [];
+  const fileCategories = new Map<File, 'images' | 'videos' | 'audio' | 'documents'>();
+
+  for (const file of files) {
+    const normName = (file.name || '').toLowerCase().trim();
+    const mime = (file.type || '').toLowerCase().trim();
+    const ext = normName.includes('.') ? (normName.split('.').pop() || '').toLowerCase().trim() : '';
+
+    // 1. Détection binaire par Magic Numbers & nom / MIME
+    const detected = await detectFileCategoryWithMagic(file);
+    const isApp = detected === 'apps' || isAppFile(file.name, file.type);
+
+    if (isApp) {
+      rejectedFiles.push({
+        file,
+        detectedCategory: 'apps',
+        detectedLabel: 'Application (APK / Logiciel)',
+        dedicatedMenu: 'Applications',
+        reason: "Le bouton + Importer n'accepte que des fichiers vidéo, image, audio et documents. Les fichiers d'installation, applications (.apk) et logiciels (.exe) ne sont pas autorisés.",
+      });
+      continue;
+    }
+
+    // 2. Détection Audio prioritaire (WhatsApp Audio, Vocaux, Musique)
+    const isWaAudio = isWhatsAppAudio(normName, mime);
+    if (detected === 'audio' || isWaAudio || EXTENSION_MAP.audio.includes(ext) || mime.startsWith('audio/')) {
+      validFiles.push(file);
+      fileCategories.set(file, 'audio');
+      continue;
+    }
+
+    // 3. Détection Vidéo
+    const isWaVideo = isWhatsAppVideo(normName, mime);
+    if (detected === 'videos' || isWaVideo || EXTENSION_MAP.videos.includes(ext) || mime.startsWith('video/')) {
+      validFiles.push(file);
+      fileCategories.set(file, 'videos');
+      continue;
+    }
+
+    // 4. Détection Images
+    const isWaImg = isWhatsAppImage(normName, mime);
+    if (detected === 'images' || isWaImg || EXTENSION_MAP.images.includes(ext) || mime.startsWith('image/')) {
+      validFiles.push(file);
+      fileCategories.set(file, 'images');
+      continue;
+    }
+
+    // 5. Détection Documents
+    if (detected === 'documents' || EXTENSION_MAP.documents.includes(ext) ||
+        mime.startsWith('text/') || mime.includes('pdf') || mime.includes('document') ||
+        mime.includes('sheet') || mime.includes('presentation') || mime.includes('msword') ||
+        mime.includes('excel') || mime.includes('powerpoint')) {
+      validFiles.push(file);
+      fileCategories.set(file, 'documents');
+      continue;
+    }
+
+    // Format non supporté / non autorisé
+    rejectedFiles.push({
+      file,
+      detectedCategory: 'unsupported',
+      detectedLabel: ext ? ('Format .' + ext.toUpperCase()) : 'Format non supporté',
+      dedicatedMenu: menuTitle,
+      reason: "Ce format de fichier n'est pas autorisé. Seuls les fichiers audio, vidéo, images et documents sont acceptés.",
+    });
+  }
+
+  return { validFiles, rejectedFiles, fileCategories };
+}

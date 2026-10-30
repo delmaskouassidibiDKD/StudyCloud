@@ -9057,15 +9057,16 @@ a:hover{transform:translateY(-2px)}
 
         if (method === 'GET') {
           await env.DB.prepare(`
-            DELETE FROM audio_files WHERE user_id = ? AND (r2_key LIKE '%/classeur/%' OR id LIKE 'cf-%' OR id LIKE 'cf_%')
+            DELETE FROM audio_files WHERE user_id = ? AND (r2_key LIKE '%/classeur/%' OR id LIKE 'folder_%' OR id LIKE 'cf_folder_%' OR id LIKE 'cf-folder-%')
           `).bind(reqUserId).run().catch(() => {});
 
           const { results: auds } = await env.DB.prepare(`
             SELECT * FROM audio_files 
             WHERE user_id = ? 
               AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
-              AND id NOT LIKE 'cf-%'
-              AND id NOT LIKE 'cf_%'
+              AND id NOT LIKE 'folder_%'
+              AND id NOT LIKE 'cf_folder_%'
+              AND id NOT LIKE 'cf-folder-%'
             ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId).all<any>();
 
@@ -9349,15 +9350,16 @@ a:hover{transform:translateY(-2px)}
 
         if (method === 'GET') {
           await env.DB.prepare(`
-            DELETE FROM image_files WHERE user_id = ? AND (r2_key LIKE '%/classeur/%' OR id LIKE 'cf-%' OR id LIKE 'cf_%')
+            DELETE FROM image_files WHERE user_id = ? AND (r2_key LIKE '%/classeur/%' OR id LIKE 'folder_%' OR id LIKE 'cf_folder_%' OR id LIKE 'cf-folder-%')
           `).bind(reqUserId).run().catch(() => {});
 
           const { results: imgs } = await env.DB.prepare(`
             SELECT * FROM image_files 
             WHERE user_id = ? 
               AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
-              AND id NOT LIKE 'cf-%'
-              AND id NOT LIKE 'cf_%'
+              AND id NOT LIKE 'folder_%'
+              AND id NOT LIKE 'cf_folder_%'
+              AND id NOT LIKE 'cf-folder-%'
             ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId).all<any>();
 
@@ -9613,15 +9615,16 @@ a:hover{transform:translateY(-2px)}
 
         if (method === 'GET') {
           await env.DB.prepare(`
-            DELETE FROM video_files WHERE user_id = ? AND (r2_key LIKE '%/classeur/%' OR id LIKE 'cf-%' OR id LIKE 'cf_%')
+            DELETE FROM video_files WHERE user_id = ? AND (r2_key LIKE '%/classeur/%' OR id LIKE 'folder_%' OR id LIKE 'cf_folder_%' OR id LIKE 'cf-folder-%')
           `).bind(reqUserId).run().catch(() => {});
 
           const { results: vids } = await env.DB.prepare(`
             SELECT * FROM video_files 
             WHERE user_id = ? 
               AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
-              AND id NOT LIKE 'cf-%'
-              AND id NOT LIKE 'cf_%'
+              AND id NOT LIKE 'folder_%'
+              AND id NOT LIKE 'cf_folder_%'
+              AND id NOT LIKE 'cf-folder-%'
             ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId).all<any>();
 
@@ -9873,7 +9876,7 @@ a:hover{transform:translateY(-2px)}
           // Nettoyage proactif de tout fichier mes-fichiers ou classeur qui aurait pu être inséré par erreur
           await env.DB.prepare(`
             DELETE FROM document_files 
-            WHERE user_id = ? AND (r2_key LIKE '%/mes-fichiers/%' OR r2_key LIKE '%/classeur/%' OR id LIKE 'cf-%' OR id LIKE 'cf_%')
+            WHERE user_id = ? AND (r2_key LIKE '%/mes-fichiers/%' OR r2_key LIKE '%/classeur/%' OR id LIKE 'folder_%' OR id LIKE 'cf_folder_%' OR id LIKE 'cf-folder-%')
           `).bind(reqUserId).run().catch(() => {});
 
           const { results: docs } = await env.DB.prepare(`
@@ -9881,8 +9884,9 @@ a:hover{transform:translateY(-2px)}
             WHERE user_id = ? 
               AND (r2_key NOT LIKE '%/mes-fichiers/%' OR r2_key IS NULL)
               AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
-              AND id NOT LIKE 'cf-%'
-              AND id NOT LIKE 'cf_%'
+              AND id NOT LIKE 'folder_%'
+              AND id NOT LIKE 'cf_folder_%'
+              AND id NOT LIKE 'cf-folder-%'
             ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId).all<any>();
 
