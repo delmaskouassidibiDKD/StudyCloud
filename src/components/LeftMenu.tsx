@@ -21,6 +21,13 @@ import { compressFile } from '../utils/fileCompressor';
 import { extractAudioMetadataWithTags, setCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { safeLocalStorageSet, safeLocalStorageRemove } from '../utils/safeStorage';
 import { getCurrentUserId } from '../services/userSync';
+import { 
+  validateFilesForCreationMenuAsync, 
+  validateFilesForMenuAsync, 
+  isWhatsAppAudio, 
+  CATEGORY_LABELS 
+} from '../services/fileTypeValidator';
+import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
 
 
 interface LeftMenuProps {
@@ -55,6 +62,7 @@ export function LeftMenu({
   const [menuFiles, setMenuFiles] = useState<any[]>([]);
   const [viewHistory, setViewHistory] = useState<string[]>([]);
   const [sessionImportedIds, setSessionImportedIds] = useState<string[]>([]);
+  const [incompatibleAlertInfo, setIncompatibleAlertInfo] = useState<IncompatibleAlertInfo | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const importedScrollRef = React.useRef<HTMLDivElement>(null);
@@ -477,6 +485,97 @@ export function LeftMenu({
       alert(`⚠️ Limite de ${MAX_IMPORT_FILES} fichiers maximum à la fois : seuls les ${MAX_IMPORT_FILES} premiers fichiers seront importés.`);
       fileArray = fileArray.slice(0, MAX_IMPORT_FILES);
     }
+
+    // Validation stricte de sécurité (bloque les applications, logiciels, APK, EXE et formats non adaptés)
+    let validFiles: File[] = [];
+    let rejectedItem: IncompatibleAlertInfo | null = null;
+
+    if (selectedSource?.type === 'documents') {
+      const res = await validateFilesForMenuAsync(fileArray, 'documents');
+      validFiles = res.validFiles;
+      if (res.rejectedFiles.length > 0) {
+        const first = res.rejectedFiles[0];
+        const isWa = isWhatsAppAudio(first.file.name, first.file.type);
+        const detectedLabel = isWa ? 'Audio (WhatsApp / Vocal)' : (CATEGORY_LABELS[first.detectedCategory] || first.detectedCategory);
+        rejectedItem = {
+          fileName: first.file.name,
+          detectedCategory: detectedLabel,
+          menuLabel: 'Documents',
+          dedicatedMenu: CATEGORY_LABELS[first.detectedCategory] || first.detectedCategory,
+          reason: first.reason,
+        };
+      }
+    } else if (selectedSource?.type === 'images') {
+      const res = await validateFilesForMenuAsync(fileArray, 'images');
+      validFiles = res.validFiles;
+      if (res.rejectedFiles.length > 0) {
+        const first = res.rejectedFiles[0];
+        const isWa = isWhatsAppAudio(first.file.name, first.file.type);
+        const detectedLabel = isWa ? 'Audio (WhatsApp / Vocal)' : (CATEGORY_LABELS[first.detectedCategory] || first.detectedCategory);
+        rejectedItem = {
+          fileName: first.file.name,
+          detectedCategory: detectedLabel,
+          menuLabel: 'Images',
+          dedicatedMenu: CATEGORY_LABELS[first.detectedCategory] || first.detectedCategory,
+          reason: first.reason,
+        };
+      }
+    } else if (selectedSource?.type === 'videos') {
+      const res = await validateFilesForMenuAsync(fileArray, 'videos');
+      validFiles = res.validFiles;
+      if (res.rejectedFiles.length > 0) {
+        const first = res.rejectedFiles[0];
+        const isWa = isWhatsAppAudio(first.file.name, first.file.type);
+        const detectedLabel = isWa ? 'Audio (WhatsApp / Vocal)' : (CATEGORY_LABELS[first.detectedCategory] || first.detectedCategory);
+        rejectedItem = {
+          fileName: first.file.name,
+          detectedCategory: detectedLabel,
+          menuLabel: 'Vidéos',
+          dedicatedMenu: CATEGORY_LABELS[first.detectedCategory] || first.detectedCategory,
+          reason: first.reason,
+        };
+      }
+    } else if (selectedSource?.type === 'audio') {
+      const res = await validateFilesForMenuAsync(fileArray, 'audio');
+      validFiles = res.validFiles;
+      if (res.rejectedFiles.length > 0) {
+        const first = res.rejectedFiles[0];
+        const isWa = isWhatsAppAudio(first.file.name, first.file.type);
+        const detectedLabel = isWa ? 'Audio (WhatsApp / Vocal)' : (CATEGORY_LABELS[first.detectedCategory] || first.detectedCategory);
+        rejectedItem = {
+          fileName: first.file.name,
+          detectedCategory: detectedLabel,
+          menuLabel: 'Son',
+          dedicatedMenu: CATEGORY_LABELS[first.detectedCategory] || first.detectedCategory,
+          reason: first.reason,
+        };
+      }
+    } else {
+      // Menu de création général, classeur ou matières
+      const menuTitle = selectedSource?.title || 'Menu de création';
+      const res = await validateFilesForCreationMenuAsync(fileArray, menuTitle);
+      validFiles = res.validFiles;
+      if (res.rejectedFiles.length > 0) {
+        const first = res.rejectedFiles[0];
+        rejectedItem = {
+          fileName: first.file.name,
+          detectedCategory: first.detectedLabel,
+          menuLabel: menuTitle,
+          dedicatedMenu: first.dedicatedMenu,
+          reason: first.reason,
+        };
+      }
+    }
+
+    if (rejectedItem) {
+      setIncompatibleAlertInfo(rejectedItem);
+      if (validFiles.length === 0) {
+        return; // Blocage total : aucun upload ni apparition
+      }
+    }
+
+    if (validFiles.length === 0) return;
+    fileArray = validFiles;
 
     const itemsWithFiles: { file: File | Blob; item: any; originalSizeBytes?: number; originalSizeFormatted?: string }[] = [];
     
@@ -2183,6 +2282,12 @@ export function LeftMenu({
           document.body
         );
       })()}
+
+      {/* Modal d'alerte sécurité format incompatible */}
+      <IncompatibleFormatModal 
+        info={incompatibleAlertInfo} 
+        onClose={() => setIncompatibleAlertInfo(null)} 
+      />
     </div>
   );
 }

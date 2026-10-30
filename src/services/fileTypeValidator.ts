@@ -33,7 +33,9 @@ export const EXTENSION_MAP = {
   ],
   apps: [
     'apk', 'xapk', 'aab', 'apks', 'exe', 'msi', 'dmg', 'pkg', 'deb', 'rpm',
-    'appimage', 'bat', 'cmd', 'sh', 'com', 'vbs', 'ps1', 'jar', 'ipa', 'bin', 'run'
+    'appimage', 'bat', 'cmd', 'sh', 'com', 'vbs', 'ps1', 'jar', 'ipa', 'bin', 'run',
+    'iso', 'img', 'dll', 'sys', 'scr', 'gadget', 'msp', 'vbe', 'jse', 'wsf', 'wsh',
+    'inf', 'cpl', 'msc', 'reg', 'action'
   ],
 };
 
@@ -67,7 +69,10 @@ export function isAppFile(name?: string, mime?: string): boolean {
     normMime.includes('application/x-apple-diskimage') ||
     normMime.includes('application/x-debian-package') ||
     normMime.includes('application/x-redhat-package-manager') ||
-    normMime.includes('application/java-archive')
+    normMime.includes('application/java-archive') ||
+    normMime.includes('application/x-sh') ||
+    normMime.includes('application/x-bat') ||
+    normMime.includes('application/x-dosexec')
   ) {
     return true;
   }
@@ -568,3 +573,88 @@ export async function validateFilesForMesFichiersAsync(
 
   return { validFiles, rejectedFiles };
 }
+
+export interface CreationMenuRejectedItem {
+  file: File;
+  detectedCategory: 'apps' | 'unsupported';
+  detectedLabel: string;
+  dedicatedMenu: string;
+  reason: string;
+}
+
+export interface CreationMenuValidationResult {
+  validFiles: File[];
+  rejectedFiles: CreationMenuRejectedItem[];
+}
+
+/**
+ * Validation ASYNCHRONE par Magic Numbers & signatures binaires réelles pour le Menu de création.
+ * Autorise STRICTEMENT les fichiers d'étude et d'apprentissage :
+ *  - Vidéos (MP4, MKV, AVI, WEBM, MOV, WhatsApp vidéos, etc.)
+ *  - Images (JPEG, PNG, WEBP, SVG, GIF, WhatsApp images, etc.)
+ *  - Sons / Audios (MP3, WAV, M4A, OGG, OPUS, FLAC, vocaux WhatsApp, etc.)
+ *  - Documents (PDF, Word DOCX/DOC, Excel XLSX/XLS/CSV, PowerPoint PPTX/PPT, Textes TXT/MD/JSON/etc.)
+ *
+ * Bloque STRICTEMENT :
+ *  - Applications, logiciels, APK, EXE, MSI, DMG, PKG, DEB, scripts exécutables, binaires système, etc.
+ *  - Fichiers non adaptés à l'apprentissage ou non autorisés.
+ */
+export async function validateFilesForCreationMenuAsync(
+  files: File[],
+  menuTitle: string = 'Menu de création'
+): Promise<CreationMenuValidationResult> {
+  const validFiles: File[] = [];
+  const rejectedFiles: CreationMenuRejectedItem[] = [];
+
+  for (const file of files) {
+    const normName = (file.name || '').toLowerCase().trim();
+    const mime = (file.type || '').toLowerCase().trim();
+    const ext = normName.includes('.') ? (normName.split('.').pop() || '').toLowerCase().trim() : '';
+
+    // 1. Détection binaire par Magic Numbers & nom / MIME
+    const detected = await detectFileCategoryWithMagic(file);
+    const isApp = detected === 'apps' || isAppFile(file.name, file.type);
+
+    if (isApp) {
+      rejectedFiles.push({
+        file,
+        detectedCategory: 'apps',
+        detectedLabel: 'Application (APK / Logiciel)',
+        dedicatedMenu: 'Applications',
+        reason: `Le menu ${menuTitle} n'accepte que des documents, images, sons ou vidéos d'étude. Pour vos applications et logiciels, utilisez le menu dédié Applications ou le bouton + Importer sur la page d'accueil.`,
+      });
+      continue;
+    }
+
+    // 2. Détection WhatsApp Audio, WhatsApp Vidéo, WhatsApp Image
+    const isWaAudio = isWhatsAppAudio(normName, mime);
+    const isWaVideo = isWhatsAppVideo(normName, mime);
+    const isWaImg = isWhatsAppImage(normName, mime);
+
+    // 3. Catégories autorisées pour l'étude (Vidéo, Audio, Image, Documents)
+    const isVideo = detected === 'videos' || isWaVideo || EXTENSION_MAP.videos.includes(ext) || mime.startsWith('video/');
+    const isAudio = detected === 'audio' || isWaAudio || EXTENSION_MAP.audio.includes(ext) || mime.startsWith('audio/');
+    const isImage = detected === 'images' || isWaImg || EXTENSION_MAP.images.includes(ext) || mime.startsWith('image/');
+    const isDoc = detected === 'documents' || EXTENSION_MAP.documents.includes(ext) ||
+      mime.startsWith('text/') || mime.includes('pdf') || mime.includes('document') ||
+      mime.includes('sheet') || mime.includes('presentation') || mime.includes('msword') ||
+      mime.includes('excel') || mime.includes('powerpoint') ||
+      ['py', 'js', 'ts', 'jsx', 'tsx', 'html', 'css', 'c', 'cpp', 'h', 'java', 'sql'].includes(ext);
+
+    if (isVideo || isAudio || isImage || isDoc) {
+      validFiles.push(file);
+    } else {
+      // Format non adapté / non autorisé pour l'étude
+      rejectedFiles.push({
+        file,
+        detectedCategory: 'unsupported',
+        detectedLabel: ext ? `Format .${ext.toUpperCase()}` : 'Format non supporté',
+        dedicatedMenu: "Page d'accueil",
+        reason: `Le menu ${menuTitle} n'autorise que les fichiers vidéo, image, son, et documents (Word, PDF, Excel, etc.). Ce fichier n'est pas adapté pour les cours et exercices.`,
+      });
+    }
+  }
+
+  return { validFiles, rejectedFiles };
+}
+
