@@ -358,6 +358,24 @@ export function LeftMenu({
 
   // Synchronisation avec la base de données : charger tous les fichiers importés lors de l'étude
   useEffect(() => {
+    // 0. Nettoyage immédiat anti-pollution : s'assurer que Mes fichiers n'apparaissent JAMAIS dans les imports d'étude
+    try {
+      const mfRaw = localStorage.getItem('unifolder_files_menu_items');
+      const studyRaw = localStorage.getItem('unifolder_study_imported_files');
+      if (mfRaw && studyRaw) {
+        const mfList = JSON.parse(mfRaw);
+        const studyList = JSON.parse(studyRaw);
+        if (Array.isArray(mfList) && Array.isArray(studyList)) {
+          const mfIds = new Set(mfList.map((f: any) => f?.id).filter(Boolean));
+          const cleanStudy = studyList.filter((f: any) => f && f.id && !mfIds.has(f.id));
+          if (cleanStudy.length !== studyList.length) {
+            localStorage.setItem('unifolder_study_imported_files', JSON.stringify(cleanStudy));
+            localStorage.setItem('unifolder_left_menu_general_imports', JSON.stringify(cleanStudy));
+          }
+        }
+      }
+    } catch (e) {}
+
     const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? (localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id')) : '') || '';
     if (!userId || userId === 'default-user') return;
     let isMounted = true;
@@ -365,28 +383,40 @@ export function LeftMenu({
     StudyCloudAPI.getStudyFiles(userId)
       .then(async (res) => {
         if (!isMounted) return;
-        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+        if (res && res.success && Array.isArray(res.data)) {
+          // Récupérer les IDs de Mes fichiers
+          const mesFichiersIds = new Set<string>();
+          try {
+            const raw = localStorage.getItem('unifolder_files_menu_items');
+            if (raw) {
+              const list = JSON.parse(raw);
+              if (Array.isArray(list)) list.forEach((f: any) => { if (f?.id) mesFichiersIds.add(f.id); });
+            }
+          } catch (e) {}
+
           const filesWithUrls = await Promise.all(
-            res.data.map(async (row: any) => {
-              const localBlobUrl = await getFileBlobUrl(row.id);
-              return {
-                id: row.id,
-                name: row.name,
-                size: row.size || 0,
-                type: row.type || 'file',
-                extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
-                url: localBlobUrl || row.file_url || '',
-                r2Key: row.r2_key,
-                isFavorite: !!row.is_favorite,
-                isLeftMenuImport: true,
-                isStudyImport: true,
-                isImported: true,
-                importedAt: row.imported_at || row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
-                createdAt: row.created_at || Date.now(),
-                timestamp: row.imported_at || row.last_imported || Date.now(),
-                isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
-              };
-            })
+            res.data
+              .filter((row: any) => row && row.id && !mesFichiersIds.has(row.id))
+              .map(async (row: any) => {
+                const localBlobUrl = await getFileBlobUrl(row.id);
+                return {
+                  id: row.id,
+                  name: row.name,
+                  size: row.size || 0,
+                  type: row.type || 'file',
+                  extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
+                  url: localBlobUrl || row.file_url || '',
+                  r2Key: row.r2_key,
+                  isFavorite: !!row.is_favorite,
+                  isLeftMenuImport: true,
+                  isStudyImport: true,
+                  isImported: true,
+                  importedAt: row.imported_at || row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+                  createdAt: row.created_at || Date.now(),
+                  timestamp: row.imported_at || row.last_imported || Date.now(),
+                  isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
+                };
+              })
           );
 
           if (!isMounted) return;
@@ -394,12 +424,17 @@ export function LeftMenu({
           const existingRaw = localStorage.getItem('unifolder_study_imported_files');
           let localList: any[] = [];
           if (existingRaw) {
-            try { localList = JSON.parse(existingRaw); } catch (e) {}
+            try {
+              const parsed = JSON.parse(existingRaw);
+              if (Array.isArray(parsed)) {
+                localList = parsed.filter((f: any) => f && f.id && !mesFichiersIds.has(f.id));
+              }
+            } catch (e) {}
           }
           const mergedMap = new Map<string, any>();
           filesWithUrls.forEach(f => mergedMap.set(f.id, f));
           localList.forEach(f => {
-            if (f && f.id && !mergedMap.has(f.id)) {
+            if (f && f.id && !mergedMap.has(f.id) && !mesFichiersIds.has(f.id)) {
               mergedMap.set(f.id, f);
             }
           });
@@ -652,27 +687,8 @@ export function LeftMenu({
       };
 
 
-      // 1. Enregistrement D1 immédiat (sans attendre R2)
+      // 1. Enregistrement D1 immédiat dans la table dédiée study_imported_files (sans polluer Mes fichiers)
       if (userId && userId !== 'default-user') {
-        StudyCloudAPI.registerFileMetadata({
-          id,
-          userId,
-          matiereId: currentFolderName && currentFolderName !== 'Mes fichiers' ? currentFolderName : null,
-          name: file.name,
-          size: originalSizeBytes,
-          type: file.type || 'application/octet-stream',
-          extension: extVal,
-          r2Key: null,
-          fileUrl: localUrl,
-          isFavorite: false,
-          isImported: true,
-          isStudySession: true,
-          lastImported: now,
-          originalSizeBytes,
-          compressedSizeBytes,
-          compressionRatio
-        }).catch(() => {});
-
         StudyCloudAPI.registerStudyFile({
           id,
           userId,
@@ -1050,13 +1066,24 @@ export function LeftMenu({
     // -------------------------------------------------------------
     const allLeftImportsMap = new Map<string, any>();
 
+    // Récupérer les IDs des fichiers de "Mes fichiers" pour une isolation stricte
+    const mesFichiersIds = new Set<string>();
+    try {
+      const raw = localStorage.getItem('unifolder_files_menu_items');
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) list.forEach((f: any) => { if (f?.id) mesFichiersIds.add(f.id); });
+      }
+    } catch (e) {}
+
     const addStudyImportFromRaw = (raw: string | null) => {
       if (!raw) return;
       try {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
           parsed.forEach((f: any) => {
-            if (f && f.id && (f.isLeftMenuImport || f.isStudyImport)) {
+            // Uniquement les vrais fichiers importés pendant l'étude, JAMAIS ceux de Mes fichiers
+            if (f && f.id && (f.isLeftMenuImport || f.isStudyImport) && !mesFichiersIds.has(f.id)) {
               allLeftImportsMap.set(f.id, {
                 ...f,
                 isLeftMenuImport: true,
@@ -1074,11 +1101,11 @@ export function LeftMenu({
     addStudyImportFromRaw(localStorage.getItem('unifolder_study_imported_files'));
     addStudyImportFromRaw(localStorage.getItem('unifolder_left_menu_general_imports'));
 
-    // Récupérer et nettoyer également tout import d'étude qui aurait été sauvegardé dans une matière ou ailleurs
+    // Nettoyer d'éventuels résidus dans les matières (SANS toucher à unifolder_files_menu_items)
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith('unifolder_matiere_files_') || key === 'unifolder_imported_files' || key === 'unifolder_files_menu_items')) {
+        if (key && (key.startsWith('unifolder_matiere_files_') || key === 'unifolder_imported_files')) {
           const raw = localStorage.getItem(key);
           if (raw && raw.includes('isLeftMenuImport')) {
             addStudyImportFromRaw(raw);
@@ -1096,7 +1123,7 @@ export function LeftMenu({
       }
     } catch (e) {}
 
-    const importedFilesList = Array.from(allLeftImportsMap.values());
+    const importedFilesList = Array.from(allLeftImportsMap.values()).filter(f => !mesFichiersIds.has(f.id));
     // Mettre à jour le stockage global pour que tous les imports restent toujours persistants
     try {
       localStorage.setItem('unifolder_study_imported_files', JSON.stringify(importedFilesList));
@@ -1282,7 +1309,7 @@ export function LeftMenu({
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed)) {
               parsed.forEach((f: any) => {
-                if (f && f.id && !f.isLeftMenuImport && !f.isStudyImport && !importedIds.includes(f.id) && !isGalleryOrDemoFile(f)) {
+                if (f && f.id && !importedIds.includes(f.id) && !isGalleryOrDemoFile(f)) {
                   directMap.set(f.id, {
                     ...f,
                     matiere: f.matiere || 'Mes fichiers',
@@ -1388,7 +1415,7 @@ export function LeftMenu({
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
             parsed.forEach((f: any) => {
-              if (f && f.id && !f.isLeftMenuImport && !f.isStudyImport && !importedIds.includes(f.id) && !isGalleryOrDemoFile(f)) {
+              if (f && f.id && !importedIds.includes(f.id) && !isGalleryOrDemoFile(f)) {
                 directMap.set(f.id, {
                   ...f,
                   matiere: f.matiere || 'Mes fichiers',

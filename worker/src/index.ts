@@ -6816,15 +6816,34 @@ a:hover{transform:translateY(-2px)}
       // 3.1 FICHIERS DU MENU DE CRÉATION / ÉTUDE (Study Files)
       // ----------------------------------------------------------------------
       if (path === '/api/study-files') {
-        if (env.DB) await ensureCloudMediaTables(env.DB);
+        if (env.DB) {
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS study_imported_files (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              size INTEGER NOT NULL DEFAULT 0,
+              type TEXT NOT NULL,
+              extension TEXT,
+              r2_key TEXT,
+              file_url TEXT,
+              is_favorite INTEGER DEFAULT 0,
+              imported_at INTEGER DEFAULT 0,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run().catch(() => {});
+          await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_study_imported_files_user ON study_imported_files(user_id)`).run().catch(() => {});
+        }
+
         if (method === 'GET') {
           const reqUserId = url.searchParams.get('userId') || (await extractRequestUserId());
           if (!reqUserId || reqUserId === 'default-user') return jsonResponse({ success: true, data: [] }, 200, origin);
 
           const { results } = await env.DB.prepare(`
-            SELECT * FROM files 
-            WHERE user_id = ? AND (is_study_session = 1 OR is_imported = 1)
-            ORDER BY last_imported DESC, created_at DESC
+            SELECT * FROM study_imported_files 
+            WHERE user_id = ?
+            ORDER BY imported_at DESC, created_at DESC
           `).bind(reqUserId).all();
 
           const formatted = (results || []).map((row: any) => {
@@ -6850,11 +6869,10 @@ a:hover{transform:translateY(-2px)}
               isStudySession: true,
               isLeftMenuImport: true,
               isStudyImport: true,
-              imported_at: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
-              importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+              imported_at: row.imported_at || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+              importedAt: row.imported_at || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
               created_at: row.created_at,
-              matiere_id: row.matiere_id,
-              folderName: row.matiere_id || 'Mes fichiers'
+              folderName: 'Fichiers Importés'
             };
           });
 
@@ -6870,24 +6888,22 @@ a:hover{transform:translateY(-2px)}
           }
 
           await env.DB.prepare(`
-            INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
-            VALUES (?, ?, 'Mes fichiers', ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            INSERT INTO study_imported_files (id, user_id, name, size, type, extension, r2_key, file_url, is_favorite, imported_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               size = excluded.size,
               type = excluded.type,
               extension = excluded.extension,
-              r2_key = COALESCE(excluded.r2_key, files.r2_key),
+              r2_key = COALESCE(excluded.r2_key, study_imported_files.r2_key),
               file_url = CASE
                 WHEN (excluded.file_url IS NULL OR excluded.file_url = '' OR excluded.file_url LIKE 'blob:%') 
-                     AND files.file_url IS NOT NULL AND files.file_url != '' AND files.file_url NOT LIKE 'blob:%' 
-                THEN files.file_url
-                ELSE COALESCE(excluded.file_url, files.file_url)
+                     AND study_imported_files.file_url IS NOT NULL AND study_imported_files.file_url != '' AND study_imported_files.file_url NOT LIKE 'blob:%' 
+                THEN study_imported_files.file_url
+                ELSE COALESCE(excluded.file_url, study_imported_files.file_url)
               END,
               is_favorite = excluded.is_favorite,
-              is_imported = 1,
-              is_study_session = 1,
-              last_imported = excluded.last_imported,
+              imported_at = excluded.imported_at,
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             id,
@@ -6907,9 +6923,12 @@ a:hover{transform:translateY(-2px)}
       }
 
       if (path.startsWith('/api/study-files/') && method === 'DELETE') {
-        if (env.DB) await ensureCloudMediaTables(env.DB);
         const id = path.split('/')[3];
-        await env.DB.prepare('DELETE FROM files WHERE id = ?').bind(id).run().catch(() => {});
+        const row = await env.DB.prepare('SELECT r2_key FROM study_imported_files WHERE id = ?').bind(id).first().catch(() => null);
+        if (row && row.r2_key && env.BUCKET) {
+          try { await env.BUCKET.delete(row.r2_key); } catch (e) {}
+        }
+        await env.DB.prepare('DELETE FROM study_imported_files WHERE id = ?').bind(id).run().catch(() => {});
         return jsonResponse({ success: true, message: 'Fichier d\'étude supprimé' }, 200, origin);
       }
 
