@@ -10,6 +10,7 @@ import MagicRings from './MagicRings';
 import { getCurrentUserId } from '../services/userSync';
 import { StudyCloudAPI, formatConsumedCreditsDisplay, convertTokensToCredits, getActiveTokensPerCredit, getAiBillingConfig, getUserAiCreditsLive } from '../services/api';
 import { aiBackgroundManager } from '../services/aiBackgroundManager';
+import { useStudyLanguage, getLocalizedCreationCardTitle } from '../utils/studyTranslations';
 
 export type CreationPhase = 'idle' | 'thinking' | 'creating';
 
@@ -136,6 +137,7 @@ export function RightMenu({
   isMobileScreen,
   setIsResizingRight
 }: RightMenuProps) {
+  const { t: tStudy, getLocalizedModuleTitle, getLocalizedCreationCardTitle: localizeCardTitle, lang: studyLang } = useStudyLanguage();
   const [activeCreation, setActiveCreation] = useState<any>(() => {
     try {
       const saved = localStorage.getItem('studycloud_active_creation');
@@ -476,8 +478,8 @@ export function RightMenu({
     typewriterTimeoutRef.current = [];
 
     const fullSubtitle = resolvedDocName
-      ? `Créations interactives pour « ${resolvedDocName} » :`
-      : "Créations interactives sur mesure :";
+      ? `${tStudy('interactive_for_doc_prefix', 'Créations interactives pour')} « ${resolvedDocName} » :`
+      : tStudy('custom_interactive_creations', "Créations interactives sur mesure :");
 
     setDisplayedSubtitle('');
     setIsTypingSubtitle(true);
@@ -496,13 +498,13 @@ export function RightMenu({
       typewriterTimeoutRef.current.forEach(clearTimeout);
       typewriterTimeoutRef.current = [];
     };
-  }, [resolvedDocName]);
+  }, [resolvedDocName, studyLang]);
 
   // Définition des cartes de créations réelles StudyCloud (exactement comme sur le schéma d'architecture)
   const proposalCards: CreationProposalCard[] = useMemo(() => [
     {
       id: 'questionnaire',
-      title: 'Questionnaire QCM',
+      title: getLocalizedModuleTitle('questionnaire'),
       iconColor: '#06b6d4',
       icon: (
         <div className="flex items-center justify-center w-5 h-5 text-[#06b6d4]">
@@ -520,8 +522,8 @@ export function RightMenu({
     },
     {
       id: 'questionnaire-test',
-      title: 'Questionnaire Test',
-      badge: 'Test Noté',
+      title: getLocalizedModuleTitle('questionnaire-test'),
+      badge: tStudy('badge_graded_test', 'Test Noté'),
       iconColor: '#fb923c',
       icon: (
         <div className="flex items-center justify-center w-5 h-5 text-[#fb923c]">
@@ -538,7 +540,7 @@ export function RightMenu({
     },
     {
       id: 'vrai-ou-faux',
-      title: 'Vrai ou Faux',
+      title: getLocalizedModuleTitle('vrai-ou-faux'),
       iconColor: '#10b981',
       icon: (
         <div className="flex items-center justify-center w-5 h-5 text-[#10b981]">
@@ -555,8 +557,8 @@ export function RightMenu({
     },
     {
       id: 'vrai-ou-faux-test',
-      title: 'Vrai ou Faux Test',
-      badge: 'Épreuve',
+      title: getLocalizedModuleTitle('vrai-ou-faux-test'),
+      badge: tStudy('badge_exam', 'Épreuve'),
       iconColor: '#14b8a6',
       icon: (
         <div className="flex items-center justify-center w-5 h-5 text-[#14b8a6]">
@@ -575,7 +577,7 @@ export function RightMenu({
     },
     {
       id: 'carte-mentale',
-      title: 'Carte Mentale',
+      title: getLocalizedModuleTitle('carte-mentale'),
       iconColor: '#0ea5e9',
       icon: (
         <div className="flex items-center justify-center w-5 h-5 text-[#0ea5e9]">
@@ -594,8 +596,8 @@ export function RightMenu({
     },
     {
       id: 'carte-mentale-2',
-      title: 'Carte Conceptuelle',
-      badge: 'Conceptuelle',
+      title: getLocalizedModuleTitle('carte-mentale-2'),
+      badge: tStudy('badge_conceptual', 'Conceptuelle'),
       iconColor: '#0284c7',
       icon: (
         <div className="flex items-center justify-center w-5 h-5 text-[#0284c7]">
@@ -615,7 +617,7 @@ export function RightMenu({
     },
     {
       id: 'carte-memoire',
-      title: 'Cartes Mémoires',
+      title: getLocalizedModuleTitle('carte-memoire'),
       iconColor: '#f59e0b',
       icon: (
         <div className="flex items-center justify-center w-5 h-5 text-[#f59e0b]">
@@ -632,7 +634,7 @@ export function RightMenu({
     },
     {
       id: 'resume',
-      title: 'Fiche de Résumé',
+      title: getLocalizedModuleTitle('resume'),
       iconColor: '#ec4899',
       icon: (
         <div className="flex items-center justify-center w-5 h-5 text-[#ec4899]">
@@ -651,7 +653,7 @@ export function RightMenu({
     },
     {
       id: 'exercices-ecrits',
-      title: 'Exercices Écrits',
+      title: getLocalizedModuleTitle('exercices-ecrits'),
       iconColor: '#f59e0b',
       icon: (
         <div className="flex items-center justify-center w-5 h-5 text-[#f59e0b]">
@@ -668,8 +670,8 @@ export function RightMenu({
     },
     {
       id: 'devoir-complet',
-      title: 'Devoir Complet',
-      badge: 'Examen',
+      title: getLocalizedModuleTitle('devoir-complet'),
+      badge: tStudy('badge_official_exam', 'Examen'),
       iconColor: '#f43f5e',
       icon: (
         <div className="flex items-center justify-center w-5 h-5 text-[#f43f5e]">
@@ -1366,7 +1368,7 @@ export function RightMenu({
             </span>
           ) : (
             <span className="text-zinc-200 tracking-wide font-medium">
-              Studio de Créations
+              {tStudy("studio_title", "Studio de Créations")}
             </span>
           )}
         </div>
@@ -1596,7 +1598,7 @@ export function RightMenu({
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
             <span className="text-xs sm:text-[13px] font-bold text-white tracking-wide">
-              Mes Créations
+              {tStudy("my_creations", "Mes Créations")}
             </span>
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-300 border border-orange-500/30 font-semibold">
               {savedCreations.length}
@@ -1637,7 +1639,7 @@ export function RightMenu({
               type="text"
               value={creationSearch}
               onChange={(e) => setCreationSearch(e.target.value)}
-              placeholder="Rechercher une création..."
+              placeholder={tStudy("search_creation", "Rechercher une création...")}
               className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-zinc-900/80 border border-zinc-800 focus:border-orange-500 focus:outline-none text-zinc-200 placeholder-zinc-500 text-xs transition-colors"
             />
             {creationSearch && (
@@ -1659,12 +1661,12 @@ export function RightMenu({
           {isLoadingCreations && savedCreations.length === 0 ? (
             <div className="py-12 flex flex-col items-center justify-center text-center space-y-3 text-zinc-400">
               <Loader2 className="w-6 h-6 animate-spin text-orange-400" />
-              <p className="text-xs">Chargement de vos créations...</p>
+              <p className="text-xs">{tStudy("loading_creations", "Chargement de vos créations...")}</p>
             </div>
           ) : savedCreations.length === 0 ? (
             /* État vide si aucune création n'est enregistrée - Éléments entourés en rouge retirés ! */
             <div className="py-12 px-4 text-center">
-              <p className="font-semibold text-zinc-300 text-xs">Aucune création enregistrée</p>
+              <p className="font-semibold text-zinc-300 text-xs">{tStudy("no_creations_saved", "Aucune création enregistrée")}</p>
             </div>
           ) : filteredCreations.length === 0 ? (
             /* Aucun résultat de recherche */
@@ -1677,11 +1679,11 @@ export function RightMenu({
             /* Liste des créations de l'utilisateur - Style identique à l'historique des discussions */
             <div className="space-y-2">
               <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider px-1">
-                Toutes vos créations ({filteredCreations.length})
+                {tStudy("all_your_creations", "Toutes vos créations")} ({filteredCreations.length})
               </p>
               {filteredCreations.map((item) => {
                 const isItemActive = activeCreation && activeCreation.id === item.id;
-                const displayType = CREATION_NAME_MAP[item.toolType || item.type] || item.toolType || 'Création';
+                const displayType = getLocalizedModuleTitle(item.toolType || item.type);
                 const dateDisplay = formatCreationDate(item.createdAt || item.created_at);
                 const isCreditsOpen = openCreditsCreationIds.has(item.id);
 
@@ -1704,26 +1706,25 @@ export function RightMenu({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         <p className={`font-semibold text-xs truncate ${isItemActive ? 'text-orange-300' : 'text-zinc-200 group-hover:text-white'}`}>
-                          {item.title || 'Création sans titre'}
+                          {localizeCardTitle(item.title || "Création sans titre", item.toolType || item.type)}
                         </p>
                         {item.status === 'generating' ? (
                           <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/40 font-semibold flex items-center gap-1 animate-pulse">
                             <Loader2 className="w-2.5 h-2.5 animate-spin text-orange-400" />
-                            En cours
+                            {tStudy("status_generating", "En cours")}
                           </span>
                         ) : (item.status === 'queued' || item.status === 'insufficient_credits' || item.creditError || item.content?.status === 'insufficient_credits') ? (
                           <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-semibold flex items-center gap-1">
                             <Clock className="w-2.5 h-2.5 text-amber-400" />
-                            En attente
+                            {tStudy("status_queued", "En attente")}
                           </span>
                         ) : item.status === 'error' ? (
                           <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30 font-semibold flex items-center gap-1">
-                            Échec
-                          </span>
+                            {tStudy("status_error", "Échec")}</span>
                         ) : isItemActive ? (
                           <span className="shrink-0 text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            Affiché
+                            {tStudy("status_active", "Affiché")}
                           </span>
                         ) : null}
                       </div>
@@ -1755,7 +1756,7 @@ export function RightMenu({
                       {isCreditsOpen && item.status !== 'generating' && item.status !== 'queued' && (
                         <div className="mt-1.5 px-2 py-0.5 rounded-md bg-zinc-900/90 border border-amber-500/35 text-amber-300 inline-flex items-center gap-1.5 text-[10px] animate-fadeIn w-fit shadow-xs">
                           <Zap className="w-2.5 h-2.5 text-amber-400 shrink-0" />
-                          <span className="text-zinc-400">Consommation :</span>
+                          <span className="text-zinc-400">{tStudy("consumption_label", "Consommation :")}</span>
                           <span className="font-bold text-amber-300">{getCreationCreditsDisplay(item)}</span>
                         </div>
                       )}
@@ -1792,7 +1793,7 @@ export function RightMenu({
                             title="Vérifier le solde et relancer cette création"
                           >
                             <RotateCw className={`w-2.5 h-2.5 text-orange-400 ${retryingCreationId === item.id ? 'animate-spin' : ''}`} />
-                            <span>Réessayer</span>
+                            <span>{tStudy("retry", "Réessayer")}</span>
                           </button>
                           <span className={`text-[10px] font-bold text-rose-400 flex items-center gap-1 bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.5 rounded-md select-none ${creditAlertCreationId === item.id ? 'animate-bounce ring-1 ring-rose-400' : ''}`}>
                             <AlertTriangle className="w-2.5 h-2.5 text-rose-400 shrink-0" />
@@ -1814,7 +1815,7 @@ export function RightMenu({
                           title="Afficher/masquer la consommation en crédits"
                         >
                           <Zap className="w-2.5 h-2.5 text-amber-400 shrink-0" />
-                          <span>Crédits</span>
+                          <span>{tStudy("credits_title_caps", "Crédits")}</span>
                         </button>
                       ))}
                     </div>

@@ -17,6 +17,7 @@ import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
+import { useStudyLanguage } from '../utils/studyTranslations';
 
 // Worker configuration for pdfjsLib
 if (typeof window !== 'undefined') {
@@ -176,6 +177,7 @@ export function CenterMenu({
   setPreviewScrollMode,
   isMobileScreen
 }: CenterMenuProps) {
+  const { t: tStudy } = useStudyLanguage();
   const [docZoom, setDocZoom] = useState<number>(100);
   const [speechState, setSpeechState] = useState<'idle' | 'loading' | 'playing' | 'paused' | 'stopped'>('idle');
   const [isAudioMenuOpen, setIsAudioMenuOpen] = useState(false);
@@ -1098,7 +1100,7 @@ export function CenterMenu({
           <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-white dark:bg-stone-950">
             <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
             <p className="text-stone-800 dark:text-white font-extrabold text-xs sm:text-sm tracking-wide">
-              Chargement et adaptation du document...
+              {tStudy("center_loading_doc", "Chargement et adaptation du document...")}
             </p>
           </div>
         ) : !activePreviewItem ? (
@@ -1106,9 +1108,9 @@ export function CenterMenu({
             <div className="w-16 h-16 rounded-2xl bg-stone-50 dark:bg-[#111a2e] border-2 border-dashed border-stone-300 dark:border-stone-700 flex items-center justify-center text-stone-400 dark:text-stone-500 shadow-sm">
               <BookOpen className="w-8 h-8 text-orange-500/80 dark:text-orange-400" />
             </div>
-            <h3 className="text-sm sm:text-base font-extrabold text-stone-900 dark:text-white">Aucun fichier sélectionné</h3>
+            <h3 className="text-sm sm:text-base font-extrabold text-stone-900 dark:text-white">{tStudy("center_no_file_title", "Aucun fichier sélectionné")}</h3>
             <p className="text-xs font-semibold text-stone-500 dark:text-slate-400 max-w-sm leading-relaxed">
-              Sélectionnez un fichier dans la liste à gauche pour afficher son aperçu et commencer votre session d'étude.
+              {tStudy("center_no_file_desc", "Sélectionnez un fichier dans la liste à gauche pour afficher son aperçu et commencer votre session d\'étude.")}
             </p>
           </div>
         ) : (() => {
