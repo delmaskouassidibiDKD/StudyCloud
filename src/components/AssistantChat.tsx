@@ -2065,8 +2065,26 @@ export function detectAllCreationFormats(
     }
   }
 
-  if (detected.length === 0 && requestedType && typeof requestedType === 'string' && requestedType.trim()) {
-    return [normalizeCreationType(requestedType) as AiCreationType];
+  if (detected.length === 0) {
+    if (requestedType && typeof requestedType === 'string' && requestedType.trim()) {
+      return [normalizeCreationType(requestedType) as AiCreationType];
+    }
+    // Si l'étudiant répond à une clarification (ex: clic sur un bouton "Créer sur doc1" ou "Synthèse globale")
+    if (Array.isArray(conversationMessages) && conversationMessages.length >= 2) {
+      const recentSlice = conversationMessages.filter(m => {
+        const txt = String((m as any)?.text || (m as any)?.content || '').trim();
+        return txt.length > 0 && !(m as any)?.isError;
+      }).slice(-8);
+
+      for (let i = recentSlice.length - 1; i >= 0; i--) {
+        const msgI = recentSlice[i];
+        const textI = String((msgI as any)?.text || (msgI as any)?.content || '').trim();
+        const prevFormats = detectAllCreationFormats(textI, undefined, undefined);
+        if (prevFormats.length > 0) {
+          return prevFormats;
+        }
+      }
+    }
   }
 
   return detected;
@@ -2082,8 +2100,9 @@ function detectCreationFormat(userText: string, requestedType?: string): string 
 // Détection si l'utilisateur a choisi un document particulier parmi plusieurs ou une synthèse globale
 function detectTargetDocumentChoice(text: string, docs: any[]): { isAllDocs: boolean; targetedDoc: any | null } {
   if (!text || !Array.isArray(docs) || docs.length <= 1) return { isAllDocs: false, targetedDoc: null };
-  const lower = text.toLowerCase();
+  const lower = text.toLowerCase().trim();
 
+  // Détection synthèse globale / tous les documents (support multilingue)
   if (
     lower.includes('tous les documents') ||
     lower.includes('tous mes documents') ||
@@ -2097,13 +2116,42 @@ function detectTargetDocumentChoice(text: string, docs: any[]): { isAllDocs: boo
     lower.includes('les 2 documents') ||
     lower.includes('les trois documents') ||
     lower.includes('les 3 documents') ||
+    lower.includes('tous les 3') ||
+    lower.includes('tous les 2') ||
+    lower.includes('sur les 3') ||
+    lower.includes('sur les 2') ||
+    lower.includes('sur les trois') ||
+    lower.includes('sur les deux') ||
+    lower.includes('les 3 fichiers') ||
+    lower.includes('les 2 fichiers') ||
     lower.includes('tous les fichiers') ||
     lower.includes('tous mes fichiers') ||
-    lower.includes('ensemble des fichiers')
+    lower.includes('ensemble des fichiers') ||
+    lower.includes('all files') ||
+    lower.includes('all documents') ||
+    lower.includes('global synthesis') ||
+    lower.includes('所有文件') ||
+    lower.includes('全部文件') ||
+    lower.includes('综合总结') ||
+    lower.includes('alle dateien') ||
+    lower.includes('todos los archivos') ||
+    lower.includes('جميع الملفات')
   ) {
     return { isAllDocs: true, targetedDoc: null };
   }
 
+  // Détection par position ordinale ("premier fichier", "le 1er", "le 2e", "le 3e", etc.)
+  if (/(?:le\s+)?premier(?:\s+fichier|\s+doc(?:ument)?)?|\b1er\b|\bfichier\s*1\b|\bdoc(?:ument)?\s*1\b|第[一1]个/i.test(lower) && docs[0]) {
+    return { isAllDocs: false, targetedDoc: docs[0] };
+  }
+  if (/(?:le\s+)?(?:deuxi[èe]me|second)(?:\s+fichier|\s+doc(?:ument)?)?|\b2[èe]me\b|\b2e\b|\bfichier\s*2\b|\bdoc(?:ument)?\s*2\b|第[二2]个/i.test(lower) && docs[1]) {
+    return { isAllDocs: false, targetedDoc: docs[1] };
+  }
+  if (/(?:le\s+)?troisi[èe]me(?:\s+fichier|\s+doc(?:ument)?)?|\b3[èe]me\b|\b3e\b|\bfichier\s*3\b|\bdoc(?:ument)?\s*3\b|第[三3]个/i.test(lower) && docs[2]) {
+    return { isAllDocs: false, targetedDoc: docs[2] };
+  }
+
+  // Détection par correspondance du nom de fichier
   for (const doc of docs) {
     const rawName = (doc.name || doc.title || '').trim();
     if (!rawName) continue;
@@ -2573,10 +2621,200 @@ const ChatMessageText = ({
 };
 
 // Générateur de messages d'accueil spontanés et chaleureux envoyés en direct par l'IA
-function getSpontaneousAiGreeting(modelName: string, activeDocName?: string | null): { title: string; subtitle: string } {
+function getSpontaneousAiGreeting(modelName: string, activeDocName?: string | null, langCode?: string): { title: string; subtitle: string } {
+  const normLang = (langCode || 'fr').toLowerCase();
   const hour = new Date().getHours();
-  const timeGreeting = hour >= 5 && hour < 12 ? 'Bonjour !' : hour >= 18 ? 'Bonsoir !' : 'Salut !';
 
+  if (normLang.startsWith('zh')) {
+    const titles = [
+      "今天感觉怎么样？",
+      "今天我们一起学习什么？",
+      "很高兴见到你！准备好一起进步了吗？",
+      "有什么想探索或复习的内容？",
+      "我是您的专属AI助教，今天从哪里开始？"
+    ];
+    const subtitles = activeDocName ? [
+      `已准备好与您一起深入分析《${activeDocName}》。随时向我提问！`,
+      `一起探索《${activeDocName}》的核心概念与难点。请随时告诉我您的需求。`,
+      `对《${activeDocName}》有任何疑问？我可以为您制作总结、思维导图或详细解答。`
+    ] : [
+      "向我提问、获取概念讲解、总结要点或辅导课后练习。",
+      "提出任何学习疑问，按照您自己的节奏轻松掌握核心知识。",
+      "粘贴课程内容或练习题，我们一步步攻克难点。",
+      "知识总结、思维导图、测验题库：告诉我您需要什么帮助。"
+    ];
+    return {
+      title: titles[Math.floor(Math.random() * titles.length)],
+      subtitle: subtitles[Math.floor(Math.random() * subtitles.length)]
+    };
+  }
+
+  if (normLang.startsWith('en')) {
+    const titles = [
+      "How are you doing today?",
+      "What are we studying together today?",
+      "Great to see you! Ready to make progress?",
+      "I'm here for you. What would you like to work on?",
+      "Any question, exercise, or concept to explore today?"
+    ];
+    const subtitles = activeDocName ? [
+      `Ready to dive into "${activeDocName}" with you. Ask me anything!`,
+      `Let's explore "${activeDocName}" together. What would you like to focus on?`,
+      `Ask your questions on "${activeDocName}" or request a clear summary.`
+    ] : [
+      "Ask me for explanations, detailed summaries, or step-by-step help with your exercises.",
+      "Paste a difficult exercise or concept, and let's unlock it together.",
+      "Ask any question and master your courses at your own pace.",
+      "Summaries, mind maps, quizzes, or flashcards: tell me what you need."
+    ];
+    return {
+      title: titles[Math.floor(Math.random() * titles.length)],
+      subtitle: subtitles[Math.floor(Math.random() * subtitles.length)]
+    };
+  }
+
+  if (normLang.startsWith('ja')) {
+    const titles = [
+      "今日の調子はいかがですか？",
+      "今日は何を一緒に勉強しましょうか？",
+      "学習へようこそ！どのテーマを進めますか？",
+      "疑問や課題を一緒に解決しましょう。"
+    ];
+    const subtitles = activeDocName ? [
+      `「${activeDocName}」の分析準備が整いました。何でもご質問ください。`,
+      `「${activeDocName}」の重要ポイントを一緒に確認しましょう。`
+    ] : [
+      "解説、要約、または問題演習のサポートなど、何でも気軽にお尋ねください。",
+      "講義内容や疑問点を入力してください。ステップバイステップで理解を深めましょう。"
+    ];
+    return {
+      title: titles[Math.floor(Math.random() * titles.length)],
+      subtitle: subtitles[Math.floor(Math.random() * subtitles.length)]
+    };
+  }
+
+  if (normLang.startsWith('de')) {
+    const titles = [
+      "Wie geht es dir heute?",
+      "Was lernen wir heute gemeinsam?",
+      "Bereit für eine erfolgreiche Lerneinheit?",
+      "Ich bin für dich da. Woran möchtest du arbeiten?"
+    ];
+    const subtitles = activeDocName ? [
+      `Bereit, « ${activeDocName} » mit dir zu analysieren. Frage mich einfach!`,
+      `Lass uns « ${activeDocName} » zusammen durchgehen.`
+    ] : [
+      "Frage mich nach Erklärungen, Zusammenfassungen oder Hilfe bei deinen Aufgaben.",
+      "Stelle deine Fragen und lerne in deinem eigenen Tempo."
+    ];
+    return {
+      title: titles[Math.floor(Math.random() * titles.length)],
+      subtitle: subtitles[Math.floor(Math.random() * subtitles.length)]
+    };
+  }
+
+  if (normLang.startsWith('es')) {
+    const titles = [
+      "¿Cómo estás hoy?",
+      "¿Qué vamos a estudiar juntos hoy?",
+      "¡Listo para avanzar hoy en tus estudios?",
+      "Estoy aquí para ayudarte. ¿En qué tema quieres avanzar?"
+    ];
+    const subtitles = activeDocName ? [
+      `Listo para analizar « ${activeDocName} » contigo. Hazme cualquier pregunta.`,
+      `Exploremos « ${activeDocName} » juntos paso a paso.`
+    ] : [
+      "Pídeme explicaciones, resúmenes o ayuda paso a paso con tus ejercicios.",
+      "Pega un ejercicio o concepto difícil y lo resolveremos juntos."
+    ];
+    return {
+      title: titles[Math.floor(Math.random() * titles.length)],
+      subtitle: subtitles[Math.floor(Math.random() * subtitles.length)]
+    };
+  }
+
+  if (normLang.startsWith('ar')) {
+    const titles = [
+      "كيف حالك اليوم؟",
+      "ماذا سندرس معاً اليوم؟",
+      "مرحباً بك! هل أنت مستعد للتعلم والتقدم اليوم؟",
+      "أنا هنا لمساعدتك، ما هو الموضوع الذي تود البدء به؟"
+    ];
+    const subtitles = activeDocName ? [
+      `أنا جاهز لتحليل « ${activeDocName} » معك. اطرح علي أي سؤال.`,
+      `دعنا نستكشف « ${activeDocName} » معاً بكل وضوح.`
+    ] : [
+      "اطلب مني شروحات وافية، أو ملخصات، أو مساعدة خطوة بخطوة في تمارينك.",
+      "اطرح أي سؤال دراسي وتعلم وفق وتيرتك الخاصة بكل ثقة."
+    ];
+    return {
+      title: titles[Math.floor(Math.random() * titles.length)],
+      subtitle: subtitles[Math.floor(Math.random() * subtitles.length)]
+    };
+  }
+
+  if (normLang.startsWith('ru')) {
+    const titles = [
+      "Как дела сегодня?",
+      "Что будем изучать вместе сегодня?",
+      "Рад вас видеть! Готовы к продуктивной учебе?",
+      "С какой темы начнем сегодня?"
+    ];
+    const subtitles = activeDocName ? [
+      `Готов изучить « ${activeDocName} » вместе с вами. Задавайте любые вопросы.`,
+      `Давайте разберем « ${activeDocName} » шаг за шагом.`
+    ] : [
+      "Задавайте вопросы, просите пояснения, конспекты или помощь с упражнениями.",
+      "Вставьте сложную тему или задание, и мы разберем всё вместе."
+    ];
+    return {
+      title: titles[Math.floor(Math.random() * titles.length)],
+      subtitle: subtitles[Math.floor(Math.random() * subtitles.length)]
+    };
+  }
+
+  if (normLang.startsWith('pt')) {
+    const titles = [
+      "Como você está hoje?",
+      "O que vamos estudar juntos hoje?",
+      "Pronto para avançar nos estudos hoje?",
+      "Estou aqui para ajudar. Em que deseja focar?"
+    ];
+    const subtitles = activeDocName ? [
+      `Pronto para analisar « ${activeDocName} » com você. Faça qualquer pergunta.`,
+      `Vamos explorar « ${activeDocName} » juntos.`
+    ] : [
+      "Peça-me explicações, resumos detalhados ou ajuda com os seus exercícios.",
+      "Cole uma dúvida ou conceito e vamos resolver juntos passo a passo."
+    ];
+    return {
+      title: titles[Math.floor(Math.random() * titles.length)],
+      subtitle: subtitles[Math.floor(Math.random() * subtitles.length)]
+    };
+  }
+
+  if (normLang.startsWith('it')) {
+    const titles = [
+      "Come stai oggi?",
+      "Cosa studiamo insieme oggi?",
+      "Pronto per una sessione di studio produttiva?",
+      "Sono qui per te. Da quale argomento iniziamo?"
+    ];
+    const subtitles = activeDocName ? [
+      `Pronto ad analizzare « ${activeDocName} » insieme a te. Fai pure qualsiasi domanda.`,
+      `Esploriamo « ${activeDocName} » insieme.`
+    ] : [
+      "Chiedimi spiegazioni, riassunti o supporto dettagliato per i tuoi esercizi.",
+      "Incolla un esercizio o una formula e la analizzeremo passo dopo passo."
+    ];
+    return {
+      title: titles[Math.floor(Math.random() * titles.length)],
+      subtitle: subtitles[Math.floor(Math.random() * subtitles.length)]
+    };
+  }
+
+  // Par défaut : Français
+  const timeGreeting = hour >= 5 && hour < 12 ? 'Bonjour !' : hour >= 18 ? 'Bonsoir !' : 'Salut !';
   const friendlyTitles = [
     "Comment vas-tu aujourd'hui ?",
     "On fait quoi aujourd'hui ?",
@@ -2585,12 +2823,7 @@ function getSpontaneousAiGreeting(modelName: string, activeDocName?: string | nu
     "Comment se passe ta journée d'étude ?",
     "Je suis là pour toi. Sur quoi souhaites-tu travailler ?",
     "Dis-moi tout, sur quel sujet veux-tu avancer ?",
-    "Une question, un exercice ou une notion à explorer ?",
-    "Prêt pour une bonne session d'apprentissage ?",
-    "Hello ! Quel défi académique relève-t-on ensemble ?",
-    "Je suis à ton écoute, par quoi commence-t-on ?",
-    "Besoin d'un coup de pouce sur tes cours aujourd'hui ?",
-    "Je suis prêt ! Qu'aimerais-tu découvrir ou réviser ?"
+    "Une question, un exercice ou une notion à explorer ?"
   ];
 
   let subtitles: string[] = [];
@@ -2614,7 +2847,6 @@ function getSpontaneousAiGreeting(modelName: string, activeDocName?: string | nu
 
   const title = friendlyTitles[Math.floor(Math.random() * friendlyTitles.length)];
   const subtitle = subtitles[Math.floor(Math.random() * subtitles.length)];
-
   return { title, subtitle };
 }
 
@@ -3122,7 +3354,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
   // Message d'accueil spontané et dynamique envoyé de manière instantanée et fluide par l'IA sélectionnée
   const [welcomeGreeting, setWelcomeGreeting] = useState<{ title: string; subtitle: string }>(() =>
-    getSpontaneousAiGreeting(currentModelDisplay, resolvedActiveName)
+    getSpontaneousAiGreeting(currentModelDisplay, resolvedActiveName, chatLanguage)
   );
   const [displayedWelcomeTitle, setDisplayedWelcomeTitle] = useState<string>('');
   const [displayedWelcomeSubtitle, setDisplayedWelcomeSubtitle] = useState<string>('');
@@ -3137,7 +3369,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     // Ne s'active que si la conversation est vide
     if (messages.length > 0) return;
 
-    const newGreeting = getSpontaneousAiGreeting(currentModelDisplay, resolvedActiveName);
+    const newGreeting = getSpontaneousAiGreeting(currentModelDisplay, resolvedActiveName, chatLanguage);
     setWelcomeGreeting(newGreeting);
     setDisplayedWelcomeTitle('');
     setDisplayedWelcomeSubtitle('');
@@ -4386,7 +4618,7 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
     return { response: "Création terminée", creation: newCreation };
   };
 
-  const sendMessage = async (textToSend: string, requestedTypeOverride?: string, options?: { isContinuation?: boolean; forceReanalysis?: boolean }) => {
+  const sendMessage = async (textToSend: string, requestedTypeOverride?: string, options?: { isContinuation?: boolean; forceReanalysis?: boolean; source?: string }) => {
     const userText = (textToSend || '').trim();
     if (!userText) return;
 
@@ -4638,10 +4870,15 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
       const hasConversationContext = hasRecentAcademicContext(messages);
 
       // Vérification multi-documents : si l'utilisateur a joint plusieurs fichiers (>= 2)
-      const docChoice = detectTargetDocumentChoice(userText, allDocs);
+      // Vérification multi-documents : si l'utilisateur a joint plusieurs fichiers (2 ou 3)
+      const isFromRightMenuCard = options?.source === 'right-menu-cards';
+      // Si la commande provient d'un clic sur une carte RightMenu sans choix préalable de fichier, on ne présume pas d'un document unique
+      const docChoice = isFromRightMenuCard
+        ? { isAllDocs: false, targetedDoc: null }
+        : detectTargetDocumentChoice(userText, allDocs);
       const hasMultipleDocs = allDocs.length > 1;
-      // Si plusieurs documents sont joints et qu'aucun document précis n'est ciblé ni une synthèse globale demandée :
-      // On doit demander à l'utilisateur de préciser sur quoi il souhaite travailler !
+      // Si plusieurs documents sont joints (maximum 3) et qu'aucun document précis n'a été spécifié ni une synthèse globale :
+      // On demande poliment à l'utilisateur, on l'oriente pédagogiquement pour l'aider à choisir, et on applique fidèlement son choix
       const needsMultiDocClarification = hasMultipleDocs && !docChoice.targetedDoc && !docChoice.isAllDocs;
 
       // Détection d'un document actif ou joint dans l'espace de travail
@@ -4809,16 +5046,29 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
 
         if (needsMultiDocClarification) {
           orchestratorMode = 'clarify_multidoc';
-          const docList = allDocs.map((d, i) => `${i + 1}. "${d.name || d.title || `Document ${i + 1}`}"`).join(', ');
+          const primaryFormat = detectedFormats[0] || 'creation';
+          const formatLabel = CREATION_NAME_MAP[primaryFormat] || CREATION_FORMAT_LABELS[primaryFormat] || "Support d'apprentissage";
+          const docList = allDocs.map((d, i) => `${i + 1}. « ${d.name || d.title || `Document ${i + 1}`} »`).join('\n');
+
           orchestratorInstruction = `══════════════════════════════════════════════════════════════════════════════
-[ORCHESTRATION : PLUSIEURS DOCUMENTS DÉTECTÉS - PRÉCISION REQUISE] :
-L'étudiant souhaite créer : ${requestedLabels}.
-Il a actuellement plusieurs documents dans son espace (${docList}) sans avoir précisé sur lequel travailler.
-Aucun agent de création n'a encore été lancé.
-TA MISSION :
-1. Réponds naturellement et chaleureusement avec tes propres mots pour lui demander sur lequel de ces documents il souhaite que tu lances le(s) agent(s) pour concevoir son support (${requestedLabels}), ou s'il préfère une synthèse globale de tous les documents.
-2. Termine ta réponse par un bloc [QUESTIONS_SUGGÉRÉES] proposant chaque document en bouton cliquable.
-3. N'écris AUCUN bloc JSON.
+[ORCHESTRATION MULTI-DOCUMENTS : DEMANDE DE PRÉCISION ET ORIENTATION PÉDAGOGIQUE] :
+L'étudiant a demandé la création de : "${requestedLabels}".
+Il y a actuellement ${allDocs.length} documents joints dans son espace d'étude (maximum 3) :
+${docList}
+
+AUCUN AGENT DE CRÉATION N'A ENCORE ÉTÉ LANCÉ AFIN DE RESPECTER LE CHOIX DE L'ÉTUDIANT.
+TA MISSION ABSOLUE DANS LE CHAT :
+1. Réponds chaleureusement et avec bienveillance dans la langue active (${currentChatLangObj.name}).
+2. Indique que tu as bien identifié ses ${allDocs.length} documents joints, et demande-lui s'il souhaite que la création (${formatLabel}) porte sur un fichier spécifique en particulier ou sur l'ensemble des ${allDocs.length} fichiers (synthèse globale transversale).
+3. ORIENTE ET AIDE L'ÉTUDIANT À PRENDRE LA MEILLEURE DÉCISION PÉDAGOGIQUE :
+   - Explique les atouts de la synthèse globale : si les documents sont des chapitres complémentaires ou liés, combiner les ${allDocs.length} fichiers permet d'obtenir une vue d'ensemble riche et d'interconnecter les concepts clés.
+   - Explique les atouts du document spécifique : si l'un des fichiers correspond à une révision ciblée, un devoir précis ou un chapitre prioritaire, se concentrer dessus permettra d'aller au bout des détails.
+   - Rapproche-toi de lui en affirmant que c'est lui qui décide et que tu appliqueras scrupuleusement son choix dès sa réponse.
+4. Termine OBLIGATOIREMENT ta réponse par le bloc [QUESTIONS_SUGGÉRÉES] avec les options cliquables suivantes :
+[QUESTIONS_SUGGÉRÉES]
+${allDocs.map((d, i) => `- Créer ${formatLabel} sur « ${d.name || d.title || `Document ${i + 1}`} »`).join('\n')}
+- Créer ${formatLabel} en synthèse globale sur les ${allDocs.length} fichiers
+5. INTERDICTION STRICTE : N'écris AUCUN bloc JSON et ne génère pas de faux contenu de cours ici.
 ══════════════════════════════════════════════════════════════════════════════`;
         } else if (needsSubjectClarification) {
           orchestratorMode = 'clarify_subject';
@@ -5910,10 +6160,11 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
     const handleAutoPrompt = (e: any) => {
       const promptText = e.detail?.prompt || e.detail?.text;
       const reqType = e.detail?.requested_type || e.detail?.requestedType || e.detail?.toolType;
+      const promptSource = e.detail?.source;
       if (promptText) {
         window.dispatchEvent(new CustomEvent('open-assistant-chat'));
         window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
-        sendMessage(promptText, reqType);
+        sendMessage(promptText, reqType, { source: promptSource });
       }
     };
     window.addEventListener('auto-prompt', handleAutoPrompt as any);
@@ -5991,7 +6242,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             title="Historique des discussions"
           >
             <Clock className="w-3.5 h-3.5 text-orange-400" />
-            <span>Historique</span>
+            <span>{tStudy("history_button", "Historique")}</span>
             {conversations.length > 0 && (
               <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-orange-500/25 text-orange-400 text-[10px] font-black">
                 {conversations.length}
@@ -6143,7 +6394,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
               title="Fermer l'Assistante DKD"
             >
               <DelmasRobot size={20} />
-              <span>Fermer</span>
+              <span>{tStudy("close_button", "Fermer")}</span>
             </button>
           )}
         </div>

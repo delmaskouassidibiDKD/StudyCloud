@@ -92,6 +92,30 @@ export const SUPPORTED_STUDY_LANGUAGES: SupportedLanguageInfo[] = [
 ];
 
 export const STUDY_TRANSLATIONS: Record<string, Record<string, string>> = {
+  history_button: {
+    fr: "Historique",
+    en: "History",
+    zh: "历史记录",
+    ja: "履歴",
+    de: "Verlauf",
+    es: "Historial",
+    ar: "السجل",
+    ru: "История",
+    pt: "Histórico",
+    it: "Cronologia"
+  },
+  close_button: {
+    fr: "Fermer",
+    en: "Close",
+    zh: "关闭",
+    ja: "閉じる",
+    de: "Schließen",
+    es: "Cerrar",
+    ar: "إغلاق",
+    ru: "Закрыть",
+    pt: "Fechar",
+    it: "Chiudi"
+  },
   // 1. CHAT ET QUESTIONS D'APPROFONDISSEMENT
   suggested_questions_title: {
     fr: "Pistes & Questions d'approfondissement proposées",
