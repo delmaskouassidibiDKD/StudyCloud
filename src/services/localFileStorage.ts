@@ -6,11 +6,19 @@
 
 export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 Mo
 
-export function formatFileSize(bytes: number): string {
-  if (!bytes || bytes <= 0) return '0 o';
+export function formatFileSize(bytes: number | string | undefined | null): string {
+  if (bytes === undefined || bytes === null || bytes === '') return '0 o';
+  if (typeof bytes === 'string') {
+    if (/[a-zA-Z]/.test(bytes)) return bytes;
+    const parsed = parseFloat(bytes);
+    if (isNaN(parsed) || parsed <= 0) return '0 o';
+    bytes = parsed;
+  }
+  if (!bytes || bytes <= 0 || isNaN(bytes)) return '0 o';
   const k = 1024;
   const sizes = ['o', 'Ko', 'Mo', 'Go'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
+  if (i < 0 || i >= sizes.length) return `${bytes} o`;
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 

@@ -834,10 +834,16 @@ export function LeftMenu({
               return;
             }
             if (setActivePreviewItem) {
+               const isAud = f.category === 'audio' || !!f.isAudio || !!f.audioUrl || f.type?.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'].includes((f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop() : '') || '').toLowerCase()) || selectedSource?.type === 'audio';
                const nextFolder = isImportedSection 
                  ? (currentFolderName || 'Mes fichiers') 
-                 : (f.matiere || f.folderName || (selectedSource ? selectedSource.title : currentFolderName) || 'Mes fichiers');
-               setActivePreviewItem({ ...f, folderName: nextFolder });
+                 : (f.matiere || f.folderName || (selectedSource ? selectedSource.title : currentFolderName) || (isAud ? 'Son' : 'Mes fichiers'));
+               setActivePreviewItem({
+                 ...f,
+                 isAudio: isAud || f.isAudio,
+                 category: isAud ? 'audio' : (f.category || 'documents'),
+                 folderName: nextFolder
+               });
                setViewHistory(prev => [f.id, ...prev.filter(id => id !== f.id)]);
             }
           }} 
@@ -1058,6 +1064,7 @@ export function LeftMenu({
             map.set(f.id, {
               ...f,
               isAudio: true,
+              category: 'audio',
               matiere: 'Son',
               folderName: 'Son',
               extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'MP3' : 'MP3')

@@ -53,13 +53,48 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
 }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  // Détection & extraction dynamique de l'artiste ID3 réel (ex: Nehzia S)
+  const [resolvedArtist, setResolvedArtist] = useState<string>(() => {
+    return (
+      (file as any)?.artist ||
+      artist ||
+      ((file as any)?.source && (file as any).source !== 'StudyCloud' ? (file as any).source : '') ||
+      ''
+    );
+  });
+
+  const activeId = fileId || file?.id || (file as any)?._id;
+
+  useEffect(() => {
+    if ((file as any)?.artist && (file as any).artist !== 'StudyCloud Audio') {
+      setResolvedArtist((file as any).artist);
+      return;
+    }
+    if (artist && artist !== 'StudyCloud Audio') {
+      setResolvedArtist(artist);
+      return;
+    }
+    if (activeId) {
+      getFileBlob(activeId).then((blob) => {
+        if (!blob) return;
+        import('../services/mediaPreviewService').then(({ extractAudioMetadataWithTags }) => {
+          extractAudioMetadataWithTags(blob).then((meta) => {
+            if (meta?.artist) {
+              setResolvedArtist(meta.artist);
+            }
+          }).catch(() => {});
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+  }, [activeId, file, artist]);
+
   // Normalisation du track pour AudioCardPreview et métadonnées
   const trackItem: FileItem = (file as FileItem) || {
-    id: fileId || '',
+    id: activeId || '',
     name: fileName || 'Piste Audio',
     size: typeof fileSize === 'number' ? `${fileSize} o` : (fileSize || '0 o'),
     date: (file as any)?.date || '',
-    artist: artist || 'StudyCloud Audio',
+    artist: resolvedArtist || artist || 'StudyCloud Audio',
     url: src || '',
     audioUrl: src || '',
     category: 'audio',
@@ -82,7 +117,6 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-  const activeId = fileId || trackItem.id;
   const fallbackStreamUrl = activeId ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(activeId)}` : '';
   const rawDirect = src || trackItem.audioUrl || (trackItem as any).url || '';
   const isDirectUsable = rawDirect && !rawDirect.startsWith('blob:') && !rawDirect.includes('localhost') && !rawDirect.includes('127.0.0.1');
@@ -327,7 +361,7 @@ export const ModernAudioPlayer: React.FC<ModernAudioPlayerProps> = ({
           {trackItem.name}
         </h2>
         <p className="text-xs sm:text-sm font-semibold text-slate-300 truncate px-2">
-          {trackItem.artist || trackItem.size || 'StudyCloud Audio'}
+          {resolvedArtist || trackItem.artist || trackItem.size || 'StudyCloud Audio'}
         </p>
       </div>
 

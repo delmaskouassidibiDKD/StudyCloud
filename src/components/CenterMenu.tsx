@@ -217,7 +217,7 @@ export function CenterMenu({
 
   // Resolved binary / URL state
   const [resolvedUrl, setResolvedUrl] = useState<string>(() => {
-    return activePreviewItem?.url || '';
+    return activePreviewItem?.url || activePreviewItem?.audioUrl || activePreviewItem?.previewUrl || '';
   });
   const [isLoadingDocument, setIsLoadingDocument] = useState<boolean>(false);
   const [extractedDocText, setExtractedDocText] = useState<string>('');
@@ -246,16 +246,56 @@ export function CenterMenu({
     }
   }, [activePreviewItem?.id, isAudioMenuOpen, isCenterFullscreen]);
 
-  const ext = (activePreviewItem?.name?.split('.').pop()?.toUpperCase() || activePreviewItem?.extension || 'FICHIER').toUpperCase();
-  const isPdf = ext === 'PDF' || 
-                activePreviewItem?.type === 'application/pdf' || 
-                activePreviewItem?.type?.includes('pdf') ||
-                activePreviewItem?.url?.toLowerCase()?.includes('.pdf') ||
-                activePreviewItem?.name?.toLowerCase()?.endsWith('.pdf');
-  const isWord = ['DOCX', 'DOC'].includes(ext);
-  const isExcel = ['XLSX', 'XLS', 'CSV'].includes(ext);
-  const isPpt = ['PPTX', 'PPT'].includes(ext);
-  const isText = ['TXT', 'MD', 'JSON', 'JS', 'TS', 'PY', 'HTML', 'CSS', 'SQL', 'XML', 'LOG', 'JAVA', 'C', 'CPP', 'SH', 'ENV'].includes(ext);
+  const rawExt = (() => {
+    if (activePreviewItem?.extension) return String(activePreviewItem.extension).toUpperCase().trim();
+    if (activePreviewItem?.name && activePreviewItem.name.includes('.')) {
+      return String(activePreviewItem.name.split('.').pop() || '').toUpperCase().trim();
+    }
+    return '';
+  })();
+  const ext = rawExt || 'FICHIER';
+
+  const isAudioItem = Boolean(
+    ['MP3', 'WAV', 'M4A', 'AAC', 'FLAC', 'OGA', 'WMA', 'OGG', 'OPUS'].includes(rawExt) ||
+    activePreviewItem?.isAudio ||
+    activePreviewItem?.category === 'audio' ||
+    activePreviewItem?.type?.startsWith('audio/') ||
+    activePreviewItem?.audioUrl ||
+    activePreviewItem?.folderName === 'Son' ||
+    activePreviewItem?.folderName === 'Musique' ||
+    activePreviewItem?.matiere === 'Son' ||
+    activePreviewItem?.matiere === 'Musique'
+  );
+
+  const isVideoItem = Boolean(
+    !isAudioItem && (
+      ['MP4', 'WEBM', 'MOV', 'MKV', 'OGG', 'AVI'].includes(rawExt) ||
+      activePreviewItem?.isVideo ||
+      activePreviewItem?.category === 'videos' ||
+      activePreviewItem?.type?.startsWith('video/')
+    )
+  );
+
+  const isImageItem = Boolean(
+    !isAudioItem && !isVideoItem && (
+      ['JPG', 'JPEG', 'PNG', 'WEBP', 'SVG', 'GIF', 'BMP', 'ICO'].includes(rawExt) ||
+      activePreviewItem?.isImage ||
+      activePreviewItem?.category === 'images' ||
+      activePreviewItem?.type?.startsWith('image/')
+    )
+  );
+
+  const isPdf = !isAudioItem && !isVideoItem && !isImageItem && (
+    rawExt === 'PDF' || 
+    activePreviewItem?.type === 'application/pdf' || 
+    activePreviewItem?.type?.includes('pdf') ||
+    activePreviewItem?.url?.toLowerCase()?.includes('.pdf') ||
+    activePreviewItem?.name?.toLowerCase()?.endsWith('.pdf')
+  );
+  const isWord = !isAudioItem && ['DOCX', 'DOC'].includes(rawExt);
+  const isExcel = !isAudioItem && ['XLSX', 'XLS', 'CSV'].includes(rawExt);
+  const isPpt = !isAudioItem && ['PPTX', 'PPT'].includes(rawExt);
+  const isText = !isAudioItem && ['TXT', 'MD', 'JSON', 'JS', 'TS', 'PY', 'HTML', 'CSS', 'SQL', 'XML', 'LOG', 'JAVA', 'C', 'CPP', 'SH', 'ENV'].includes(rawExt);
 
   // Le zoom applicatif StudyCloud doit apparaître UNIQUEMENT dans la partie lecture automatique et soulignement (surlignage)
   const isLectureEtSoulignement = Boolean(
@@ -318,18 +358,21 @@ export function CenterMenu({
 
     const fileExt = (file.name?.split('.').pop() || file.extension || '').toLowerCase();
 
-    // 1. Resolve URL for media/PDF
+    const directUrl = file.url || file.audioUrl || file.previewUrl || (file as any).videoUrl || '';
+    setResolvedUrl(directUrl);
+
+    // 1. Resolve URL for media/PDF/audio
     if (file.id) {
       getFileBlobUrl(file.id).then(url => {
         if (!isMounted) return;
         if (url) {
           setResolvedUrl(url);
-        } else if (file.url) {
-          setResolvedUrl(file.url);
+        } else if (directUrl) {
+          setResolvedUrl(directUrl);
         }
       });
-    } else if (file.url) {
-      setResolvedUrl(file.url);
+    } else if (directUrl) {
+      setResolvedUrl(directUrl);
     }
 
     // 2. Fetch binary blob for in-depth parsing (mammoth, xlsx, jszip, text)
@@ -934,7 +977,7 @@ export function CenterMenu({
               </div>
             )}
 
-            {setPreviewScrollMode && (
+            {setPreviewScrollMode && !isAudioItem && !isVideoItem && (
               <button
                 type="button"
                 onClick={() => {
@@ -1073,23 +1116,25 @@ export function CenterMenu({
               return audioControls;
             })()}
 
-            <button
-              type="button"
-              onClick={handleMicClick}
-              className={`px-2 py-1 rounded-lg border border-stone-200 dark:border-stone-700 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm shrink-0 ${
-                speechState === 'playing'
-                  ? 'bg-orange-500 text-white animate-pulse ring-2 ring-orange-300'
-                  : speechState === 'paused'
-                  ? 'bg-amber-400 text-stone-900'
-                  : isAudioMenuOpen
-                  ? 'bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400'
-                  : 'bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200'
-              }`}
-              title="Lire automatiquement le document (Synthèse vocale)"
-            >
-              <Mic className="w-3.5 h-3.5 text-orange-500" />
-              <span className="text-[10px] font-bold">Vocal</span>
-            </button>
+            {!isAudioItem && (
+              <button
+                type="button"
+                onClick={handleMicClick}
+                className={`px-2 py-1 rounded-lg border border-stone-200 dark:border-stone-700 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm shrink-0 ${
+                  speechState === 'playing'
+                    ? 'bg-orange-500 text-white animate-pulse ring-2 ring-orange-300'
+                    : speechState === 'paused'
+                    ? 'bg-amber-400 text-stone-900'
+                    : isAudioMenuOpen
+                    ? 'bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400'
+                    : 'bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200'
+                }`}
+                title="Lire automatiquement le document (Synthèse vocale)"
+              >
+                <Mic className="w-3.5 h-3.5 text-orange-500" />
+                <span className="text-[10px] font-bold">Vocal</span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -1114,15 +1159,15 @@ export function CenterMenu({
             </p>
           </div>
         ) : (() => {
-          const isImg = ['JPG', 'JPEG', 'PNG', 'WEBP', 'SVG', 'GIF', 'BMP', 'ICO'].includes(ext) || activePreviewItem?.type?.startsWith('image/') || activePreviewItem?.isImage;
-          const isVideo = ['MP4', 'WEBM', 'MOV', 'MKV', 'OGG', 'AVI'].includes(ext) || activePreviewItem?.type?.startsWith('video/');
-          const isAudio = ['MP3', 'WAV', 'M4A', 'AAC', 'FLAC', 'OGA', 'WMA'].includes(ext) || activePreviewItem?.type?.startsWith('audio/');
-          const isWord = ['DOCX', 'DOC'].includes(ext);
-          const isExcel = ['XLSX', 'XLS', 'CSV'].includes(ext);
-          const isPpt = ['PPTX', 'PPT'].includes(ext);
-          const isText = ['TXT', 'MD', 'JSON', 'JS', 'TS', 'PY', 'HTML', 'CSS', 'SQL', 'XML', 'LOG', 'JAVA', 'C', 'CPP', 'SH', 'ENV'].includes(ext);
+          const isImg = isImageItem;
+          const isVideo = isVideoItem;
+          const isAudio = isAudioItem;
+          const isWord = !isAudio && ['DOCX', 'DOC'].includes(rawExt);
+          const isExcel = !isAudio && ['XLSX', 'XLS', 'CSV'].includes(rawExt);
+          const isPpt = !isAudio && ['PPTX', 'PPT'].includes(rawExt);
+          const isText = !isAudio && ['TXT', 'MD', 'JSON', 'JS', 'TS', 'PY', 'HTML', 'CSS', 'SQL', 'XML', 'LOG', 'JAVA', 'C', 'CPP', 'SH', 'ENV'].includes(rawExt);
 
-          const currentUrl = resolvedUrl || activePreviewItem?.url || '';
+          const currentUrl = resolvedUrl || activePreviewItem?.url || activePreviewItem?.audioUrl || activePreviewItem?.previewUrl || '';
 
           // 1. PDF:
           // Standard Vertical mode (default) -> Native PDF viewer with "le truc noir" (#toolbar=1, page counter, native - 122% + zoom, rotate, draw, download, print)
@@ -1571,17 +1616,19 @@ export function CenterMenu({
             );
           }
 
-          // 7. AUDIO
+          // 7. AUDIO (Lecteur complet avec pochette, visualiseur et contrôles avancés)
           if (isAudio) {
             return (
-              <div className="w-full h-full flex items-center justify-center p-4 bg-[#090D1A]">
+              <div className="w-full h-full flex flex-col items-center justify-center p-1 sm:p-3 bg-[#04060A] overflow-hidden select-none">
                 <ModernAudioPlayer
-                  src={currentUrl}
+                  file={activePreviewItem}
+                  src={currentUrl || activePreviewItem?.audioUrl || activePreviewItem?.url}
                   fileName={activePreviewItem?.name}
                   fileId={activePreviewItem?.id}
                   fileSize={formatFileSize(activePreviewItem?.size)}
                   artist={activePreviewItem?.artist || 'StudyCloud Audio'}
                   autoPlay={true}
+                  className="w-full h-full max-h-[calc(100vh-140px)] rounded-2xl shadow-2xl"
                 />
               </div>
             );
