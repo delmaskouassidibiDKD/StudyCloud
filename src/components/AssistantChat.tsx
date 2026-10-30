@@ -5978,11 +5978,11 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
   );
 
   return (
-    <div className="flex flex-col h-full bg-[#1e2024] font-nunito relative z-50 overflow-hidden">
+    <div className="flex flex-col h-full bg-[#1e2024] font-nunito relative z-50 overflow-hidden min-w-[495px]">
 
       {/* EN-TÊTE SUPÉRIEUR (BOUTON HISTORIQUE, NOUVELLE CONVERSATION, PUISSANT/MOYEN, FERMER) */}
-      <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 bg-[#23252a] border-b border-zinc-700/60 shrink-0 z-10 shadow-sm">
-        <div className="flex items-center gap-1.5 min-w-0">
+      <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 bg-[#23252a] border-b border-zinc-700/60 shrink-0 z-10 shadow-sm flex-nowrap">
+        <div className="flex items-center gap-1.5 min-w-0 flex-nowrap shrink-0">
           {/* Bouton Historique */}
           <button
             type="button"
@@ -6083,7 +6083,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-nowrap">
           {/* Sélecteur de langue dans la barre supérieure */}
           <div className="relative" ref={mainLangMenuRef}>
             <button

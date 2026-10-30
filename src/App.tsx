@@ -826,6 +826,55 @@ export default function App() {
   const [isRightFullscreen, setIsRightFullscreen] = useState(false);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 
+  // Gestion dynamique et persistance distincte des dimensions du panneau gauche (Mode Fichiers vs Mode Chat Assistant)
+  useEffect(() => {
+    if (isAssistantOpen) {
+      // Sauvegarder la largeur actuelle comme largeur préférée du mode Fichiers
+      try {
+        localStorage.setItem('studycloud_preview_left_width_files', previewLeftWidth.toString());
+      } catch (err) {}
+
+      // Calculer la largeur minimale requise pour le chat (495px pour empêcher tout chevauchement des boutons supérieurs)
+      const containerWidth = previewContainerRef.current?.getBoundingClientRect().width || window.innerWidth;
+      const minChatPx = 495;
+      const minChatPct = (minChatPx / Math.max(1, containerWidth)) * 100;
+
+      // Largeur cible : soit la largeur chat précédemment enregistrée, soit au moins 36% / minChatPct (dimensions Image 1)
+      let targetPct = 36;
+      try {
+        const savedChat = localStorage.getItem('studycloud_preview_left_width_chat');
+        if (savedChat) {
+          const val = parseFloat(savedChat);
+          if (!isNaN(val)) targetPct = Math.max(minChatPct, val);
+        } else {
+          targetPct = Math.max(36, minChatPct);
+        }
+      } catch (err) {
+        targetPct = Math.max(36, minChatPct);
+      }
+
+      if (previewLeftWidth < targetPct || previewLeftWidth < minChatPct) {
+        const clampedPct = Math.min(48, Math.max(minChatPct, targetPct));
+        setPreviewLeftWidth(clampedPct);
+        try {
+          localStorage.setItem('studycloud_preview_left_width', clampedPct.toString());
+        } catch (err) {}
+      }
+    } else {
+      // Retour au mode Fichiers (Image 2) : restaurer la largeur personnalisée des fichiers si elle existe
+      try {
+        const savedFiles = localStorage.getItem('studycloud_preview_left_width_files');
+        if (savedFiles) {
+          const val = parseFloat(savedFiles);
+          if (!isNaN(val) && val > 0) {
+            setPreviewLeftWidth(val);
+            localStorage.setItem('studycloud_preview_left_width', val.toString());
+          }
+        }
+      } catch (err) {}
+    }
+  }, [isAssistantOpen]);
+
   // Ouverture automatique du chat assistant (au lancement d'un prompt, à la fin d'une réponse IA, etc.)
   useEffect(() => {
     const handleOpenChat = () => {
@@ -1025,13 +1074,22 @@ export default function App() {
       const x = clientX - rect.left;
       const percentage = (x / rect.width) * 100;
 
-      const minLeftPx = 320;
+      // Si le chat est ouvert, le panneau est bloqué à un minimum strict de 495px (dimensions de l'Image 1)
+      // pour que les boutons supérieurs (Historique, +, Modèle IA, Langue, Fermer) ne se chevauchent jamais.
+      const minLeftPx = isAssistantOpen ? 495 : 320;
       const minLeft = (minLeftPx / rect.width) * 100;
-      const minCenter = Math.max(28, (320 / rect.width) * 100);
+      const minCenter = Math.max(20, (300 / rect.width) * 100);
       const maxLeft = Math.max(minLeft, 100 - previewRightWidth - minCenter);
       const newWidth = Math.min(Math.max(minLeft, percentage), maxLeft);
       setPreviewLeftWidth(newWidth);
-      try { localStorage.setItem('studycloud_preview_left_width', newWidth.toString()); } catch (err) {}
+      try {
+        localStorage.setItem('studycloud_preview_left_width', newWidth.toString());
+        if (isAssistantOpen) {
+          localStorage.setItem('studycloud_preview_left_width_chat', newWidth.toString());
+        } else {
+          localStorage.setItem('studycloud_preview_left_width_files', newWidth.toString());
+        }
+      } catch (err) {}
     };
 
     const handleMouseUp = () => {
@@ -1056,7 +1114,7 @@ export default function App() {
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('touchend', handleMouseUp);
     };
-  }, [isResizingLeft, previewLeftWidth, previewRightWidth]);
+  }, [isResizingLeft, previewLeftWidth, previewRightWidth, isAssistantOpen]);
 
   useEffect(() => {
     if (!isResizingRight) return;
@@ -2119,7 +2177,7 @@ export default function App() {
               style={{
                 gridTemplateColumns: isCenterFullscreen || isRightFullscreen 
                   ? '100%' 
-                  : (isMobileScreen ? '100%' : `minmax(320px, ${previewLeftWidth}%) 1fr ${previewRightWidth}%`),
+                  : (isMobileScreen ? '100%' : `minmax(${isAssistantOpen ? "495px" : "320px"}, ${previewLeftWidth}%) 1fr ${previewRightWidth}%`),
               }}
             >
               
