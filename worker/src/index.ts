@@ -6813,6 +6813,107 @@ a:hover{transform:translateY(-2px)}
       }
 
       // ----------------------------------------------------------------------
+      // 3.1 FICHIERS DU MENU DE CRÉATION / ÉTUDE (Study Files)
+      // ----------------------------------------------------------------------
+      if (path === '/api/study-files') {
+        if (env.DB) await ensureCloudMediaTables(env.DB);
+        if (method === 'GET') {
+          const reqUserId = url.searchParams.get('userId') || (await extractRequestUserId());
+          if (!reqUserId || reqUserId === 'default-user') return jsonResponse({ success: true, data: [] }, 200, origin);
+
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM files 
+            WHERE user_id = ? AND (is_study_session = 1 OR is_imported = 1)
+            ORDER BY last_imported DESC, created_at DESC
+          `).bind(reqUserId).all();
+
+          const formatted = (results || []).map((row: any) => {
+            let finalUrl = row.file_url || '';
+            if ((!finalUrl || finalUrl.startsWith('blob:')) && row.r2_key) {
+              finalUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(row.id)}`;
+            }
+            return {
+              id: row.id,
+              name: row.name,
+              size: row.size || 0,
+              type: row.type || 'file',
+              extension: row.extension || '',
+              url: finalUrl,
+              file_url: finalUrl,
+              r2Key: row.r2_key,
+              r2_key: row.r2_key,
+              is_favorite: !!row.is_favorite,
+              isFavorite: !!row.is_favorite,
+              is_imported: 1,
+              isImported: true,
+              is_study_session: 1,
+              isStudySession: true,
+              isLeftMenuImport: true,
+              isStudyImport: true,
+              imported_at: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+              importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+              created_at: row.created_at,
+              matiere_id: row.matiere_id,
+              folderName: row.matiere_id || 'Mes fichiers'
+            };
+          });
+
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+
+        if (method === 'POST') {
+          const body: any = await request.json().catch(() => ({}));
+          const { id, userId, name, size, type, extension, r2Key, fileUrl, isFavorite, importedAt } = body;
+          const reqUserId = userId || (await extractRequestUserId());
+          if (!id || !reqUserId || !name || reqUserId === 'default-user') {
+            return errorResponse('id, userId et name requis', 400, origin);
+          }
+
+          await env.DB.prepare(`
+            INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+            VALUES (?, ?, 'Mes fichiers', ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              size = excluded.size,
+              type = excluded.type,
+              extension = excluded.extension,
+              r2_key = COALESCE(excluded.r2_key, files.r2_key),
+              file_url = CASE
+                WHEN (excluded.file_url IS NULL OR excluded.file_url = '' OR excluded.file_url LIKE 'blob:%') 
+                     AND files.file_url IS NOT NULL AND files.file_url != '' AND files.file_url NOT LIKE 'blob:%' 
+                THEN files.file_url
+                ELSE COALESCE(excluded.file_url, files.file_url)
+              END,
+              is_favorite = excluded.is_favorite,
+              is_imported = 1,
+              is_study_session = 1,
+              last_imported = excluded.last_imported,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            id,
+            reqUserId,
+            name,
+            size || 0,
+            type || 'application/octet-stream',
+            extension || '',
+            r2Key || null,
+            fileUrl || '',
+            isFavorite ? 1 : 0,
+            importedAt || Date.now()
+          ).run();
+
+          return jsonResponse({ success: true, data: { id, name } }, 201, origin);
+        }
+      }
+
+      if (path.startsWith('/api/study-files/') && method === 'DELETE') {
+        if (env.DB) await ensureCloudMediaTables(env.DB);
+        const id = path.split('/')[3];
+        await env.DB.prepare('DELETE FROM files WHERE id = ?').bind(id).run().catch(() => {});
+        return jsonResponse({ success: true, message: 'Fichier d\'étude supprimé' }, 200, origin);
+      }
+
+      // ----------------------------------------------------------------------
       // 4. STOCKAGE CLOUDFLARE R2 (Upload & Téléchargement direct)
       // ----------------------------------------------------------------------
       if (path === '/api/storage/upload' && method === 'PUT') {

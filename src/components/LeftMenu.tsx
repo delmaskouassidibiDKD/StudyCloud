@@ -20,6 +20,7 @@ import { isGalleryOrDemoFile } from './FilesMenuView';
 import { compressFile } from '../utils/fileCompressor';
 import { extractAudioMetadataWithTags, setCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { safeLocalStorageSet, safeLocalStorageRemove } from '../utils/safeStorage';
+import { getCurrentUserId } from '../services/userSync';
 
 
 interface LeftMenuProps {
@@ -349,7 +350,8 @@ export function LeftMenu({
 
   // Synchronisation avec la base de données : charger tous les fichiers importés lors de l'étude
   useEffect(() => {
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? (localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id')) : '') || '';
+    if (!userId || userId === 'default-user') return;
     let isMounted = true;
 
     StudyCloudAPI.getStudyFiles(userId)
@@ -496,7 +498,7 @@ export function LeftMenu({
       const id = `file-${now}-${Math.random().toString(36).substring(2, 7)}`;
       await storeFileBlob(id, fileToStore);
       const localUrl = URL.createObjectURL(fileToStore);
-      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+      const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? (localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id')) : '') || '';
       const extVal = file.name.split('.').pop()?.toUpperCase() || 'FICHIER';
 
       const isAudio = file.type.startsWith('audio/') || file.name.match(/\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|weba)$/i);
@@ -552,39 +554,41 @@ export function LeftMenu({
 
 
       // 1. Enregistrement D1 immédiat (sans attendre R2)
-      StudyCloudAPI.registerFileMetadata({
-        id,
-        userId,
-        matiereId: currentFolderName && currentFolderName !== 'Mes fichiers' ? currentFolderName : null,
-        name: file.name,
-        size: originalSizeBytes,
-        type: file.type || 'application/octet-stream',
-        extension: extVal,
-        r2Key: null,
-        fileUrl: localUrl,
-        isFavorite: false,
-        isImported: true,
-        isStudySession: true,
-        lastImported: now,
-        originalSizeBytes,
-        compressedSizeBytes,
-        compressionRatio
-      }).catch(() => {});
+      if (userId && userId !== 'default-user') {
+        StudyCloudAPI.registerFileMetadata({
+          id,
+          userId,
+          matiereId: currentFolderName && currentFolderName !== 'Mes fichiers' ? currentFolderName : null,
+          name: file.name,
+          size: originalSizeBytes,
+          type: file.type || 'application/octet-stream',
+          extension: extVal,
+          r2Key: null,
+          fileUrl: localUrl,
+          isFavorite: false,
+          isImported: true,
+          isStudySession: true,
+          lastImported: now,
+          originalSizeBytes,
+          compressedSizeBytes,
+          compressionRatio
+        }).catch(() => {});
 
-      StudyCloudAPI.registerStudyFile({
-        id,
-        userId,
-        name: file.name,
-        size: originalSizeBytes,
-        type: file.type || 'application/octet-stream',
-        extension: extVal,
-        r2Key: null,
-        fileUrl: localUrl,
-        isFavorite: false,
-        importedAt: now,
-        originalSizeBytes,
-        compressedSizeBytes
-      }).catch(() => {});
+        StudyCloudAPI.registerStudyFile({
+          id,
+          userId,
+          name: file.name,
+          size: originalSizeBytes,
+          type: file.type || 'application/octet-stream',
+          extension: extVal,
+          r2Key: null,
+          fileUrl: localUrl,
+          isFavorite: false,
+          importedAt: now,
+          originalSizeBytes,
+          compressedSizeBytes
+        }).catch(() => {});
+      }
 
       // 2. Sync multi-appareils optimiste
       CloudDataStore.addOptimisticFile(newFile);
@@ -621,11 +625,41 @@ export function LeftMenu({
       }
     }
 
-    // 4. UploadQueue.enqueueExisting — R2 en arrière-plan avec retry automatique
+    // 4. UploadQueue.enqueueExisting — R2 en arrière-plan avec retry automatique et routage dynamique
     if (itemsWithFiles.length > 0) {
+      let resolvedCategory: any = 'mes-fichiers';
+      let resolvedFolderId: string | undefined = undefined;
+      let resolvedUploadSource = 'left-menu-study';
+
+      if (selectedSource?.type === 'classeur' && selectedSource.classeurFolderId) {
+        resolvedCategory = 'classeur';
+        resolvedFolderId = selectedSource.classeurFolderId;
+        resolvedUploadSource = 'classeur';
+      } else if (selectedSource?.type === 'matiere' && selectedSource.matiereName) {
+        resolvedCategory = 'mes-fichiers';
+        resolvedFolderId = selectedSource.matiereName;
+        resolvedUploadSource = 'mes-fichiers';
+      } else if (selectedSource?.type === 'images') {
+        resolvedCategory = 'images';
+        resolvedUploadSource = 'images';
+      } else if (selectedSource?.type === 'videos') {
+        resolvedCategory = 'videos';
+        resolvedUploadSource = 'videos';
+      } else if (selectedSource?.type === 'audio') {
+        resolvedCategory = 'audio';
+        resolvedUploadSource = 'audio';
+      } else if (selectedSource?.type === 'documents') {
+        resolvedCategory = 'documents';
+        resolvedUploadSource = 'documents';
+      } else {
+        resolvedCategory = 'mes-fichiers';
+        resolvedUploadSource = 'left-menu-study';
+      }
+
       UploadQueue.enqueueExisting(itemsWithFiles, {
-        category: 'documents',
-        uploadSource: 'left-menu-study'
+        category: resolvedCategory,
+        uploadSource: resolvedUploadSource,
+        folderId: resolvedFolderId
       });
     }
   };

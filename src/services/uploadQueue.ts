@@ -492,9 +492,15 @@ class UploadQueueManager {
         CloudStorageAPI.saveAudio(audioToSave as any).catch(() => {});
       }
 
-      // Synchronisation directe et EXCLUSIVE dans la table files de D1 (pour Mes Fichiers et Matières)
+      // Synchronisation directe et EXCLUSIVE dans la table files de D1 (pour Mes Fichiers, Matières et Menu de création)
+      const isStudyOrCreationImport = task.uploadSource === 'left-menu-study' ||
+        Boolean((task.fileItem as any)?.isLeftMenuImport) ||
+        Boolean((task.fileItem as any)?.isStudyImport) ||
+        Boolean((task.fileItem as any)?.isStudySession);
+
       const isMesFichiersUpload = category === 'mes-fichiers' || 
         task.uploadSource === 'mes-fichiers' || 
+        isStudyOrCreationImport ||
         Boolean((task.fileItem as any)?.matiere) || 
         (task.folderId && !['documents', 'images', 'videos', 'audio', 'default-folder', 'root'].includes(task.folderId));
 
@@ -518,8 +524,59 @@ class UploadQueueManager {
           thumbnailUrl: previewDataUrl || task.fileItem?.thumbnailUrl || (task.fileItem as any)?.coverUrl || (task.fileItem as any)?.previewUrl || undefined,
           isFavorite: !!task.fileItem?.isFavorite,
           isImported: true,
+          isStudySession: isStudyOrCreationImport,
           lastImported: Date.now()
         }).catch(err => console.warn('[UploadQueue] Erreur update registerFileMetadata:', err));
+
+        if (isStudyOrCreationImport) {
+          StudyCloudAPI.registerStudyFile({
+            id: serverFileId || id,
+            userId: currentUserId,
+            name: fileName,
+            size: task.fileItem?.sizeBytes || file.size,
+            type: file.type || 'application/octet-stream',
+            extension: extVal,
+            r2Key: r2Key,
+            fileUrl: uploadUrl,
+            isFavorite: !!task.fileItem?.isFavorite,
+            importedAt: Date.now()
+          }).catch(err => console.warn('[UploadQueue] Erreur update registerStudyFile:', err));
+        }
+
+        // Mettre à jour immédiatement le stockage local pour que les fichiers restent lisibles avec leur URL R2
+        try {
+          const updateLocalKey = (k: string) => {
+            const raw = localStorage.getItem(k);
+            if (!raw) return;
+            try {
+              const list = JSON.parse(raw);
+              if (Array.isArray(list)) {
+                let changed = false;
+                const updated = list.map((f: any) => {
+                  if (f && (f.id === id || (serverFileId && f.id === serverFileId))) {
+                    changed = true;
+                    return {
+                      ...f,
+                      id: serverFileId || id,
+                      url: uploadUrl,
+                      fileUrl: uploadUrl,
+                      r2Key: r2Key || f.r2Key,
+                      r2_key: r2Key || f.r2_key,
+                      previewUrl: previewDataUrl || uploadUrl,
+                      thumbnailUrl: previewDataUrl || uploadUrl
+                    };
+                  }
+                  return f;
+                });
+                if (changed) {
+                  localStorage.setItem(k, JSON.stringify(updated));
+                }
+              }
+            } catch (e) {}
+          };
+          ['unifolder_study_imported_files', 'unifolder_left_menu_general_imports', 'unifolder_files_menu_items'].forEach(updateLocalKey);
+          window.dispatchEvent(new Event('unifolder_files_updated'));
+        } catch (err) {}
       }
 
       // Invalider immédiatement le cache TanStack Query ciblé pour préserver l'isolation

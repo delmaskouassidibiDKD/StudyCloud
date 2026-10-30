@@ -18,6 +18,7 @@ import { ModernImageViewer } from './ModernImageViewer';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { useStudyLanguage } from '../utils/studyTranslations';
+import { getWorkerApiUrl } from '../services/api';
 
 // Worker configuration for pdfjsLib
 if (typeof window !== 'undefined') {
@@ -367,6 +368,11 @@ export function CenterMenu({
         if (!isMounted) return;
         if (url) {
           setResolvedUrl(url);
+        } else if (directUrl && !directUrl.startsWith('blob:')) {
+          setResolvedUrl(directUrl);
+        } else if (file.r2Key || (file as any).r2_key) {
+          const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+          setResolvedUrl(`${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}`);
         } else if (directUrl) {
           setResolvedUrl(directUrl);
         }
@@ -381,13 +387,22 @@ export function CenterMenu({
       if (file.id) {
         blob = await getFileBlob(file.id);
       }
-      if (!blob && file.url) {
+      if (!blob && file.url && !file.url.startsWith('blob:')) {
         try {
           const resp = await fetch(file.url);
           blob = await resp.blob();
         } catch (e) {
           console.warn('CenterMenu fetch fallback error:', e);
         }
+      }
+      if (!blob && (file.r2Key || (file as any).r2_key || file.id)) {
+        try {
+          const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+          const resp = await fetch(`${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}`);
+          if (resp.ok) {
+            blob = await resp.blob();
+          }
+        } catch (e) {}
       }
 
       if (!isMounted) return;
