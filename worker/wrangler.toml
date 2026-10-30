@@ -15,12 +15,12 @@ routes = [
 [[d1_databases]]
 binding = "DB"
 database_name = "d1-studycloud"
-database_id = "d1-studycloud"
+database_id = "5b047896-ddac-4da5-9aec-2afb9ca87b76"
 
 [[d1_databases]]
 binding = "MON_D1_STUDYCLOUD"
 database_name = "d1-studycloud"
-database_id = "d1-studycloud"
+database_id = "5b047896-ddac-4da5-9aec-2afb9ca87b76"
 
 # ==============================================================================
 # Liaisons Buckets de Stockage Cloudflare R2 (Option B : Dédiés par Catégorie)
