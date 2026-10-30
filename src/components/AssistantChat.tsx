@@ -6320,7 +6320,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
               <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-72 sm:w-80 bg-[#181a20] border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-50 animate-fadeIn backdrop-blur-md">
                 <div className="px-3 py-1.5 border-b border-zinc-800/80 text-[10px] font-black text-zinc-400 uppercase tracking-wider flex items-center justify-between">
                   <span>Modèles IA</span>
-                  <span className="text-[9px] text-zinc-500 font-normal">Espace d'étude</span>
+                  <span className="text-[9px] text-zinc-500 font-normal">Menu de création</span>
                 </div>
                 <div className="max-h-72 overflow-y-auto py-1">
                   {isModelsLoading && availableModels.length === 0 ? (
@@ -6430,7 +6430,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
               type="button"
               onClick={onClose}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-orange-500/20 border border-orange-500/50 text-orange-400 text-[10px] font-black cursor-pointer hover:bg-orange-500/30 transition-colors"
-              title="Fermer l'Assistante DKD"
+              title="Fermer l'Assistante StudyCloud"
             >
               <DelmasRobot size={20} />
               <span>{tStudy("close_button", "Fermer")}</span>

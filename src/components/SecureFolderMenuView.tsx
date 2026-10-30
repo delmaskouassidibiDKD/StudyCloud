@@ -793,7 +793,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
               className="w-full px-3 py-2 flex items-center gap-2.5 text-xs font-bold text-indigo-300 hover:bg-indigo-500/15 transition-colors cursor-pointer text-left"
             >
               <BookOpen className="w-4 h-4 shrink-0 text-indigo-400" />
-              <span>Espace d'étude</span>
+              <span>Menu de création</span>
             </button>
           )}
 
@@ -891,7 +891,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                 type="button"
                 onClick={() => onOpenStudySpace(file, 'Dossier sécurisé')}
                 className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm"
-                title="Ouvrir dans l'Espace d'étude"
+                title="Ouvrir dans le Menu de création"
               >
                 <BookOpen className="w-3.5 h-3.5" />
                 <span className="hidden md:inline">Étudier</span>

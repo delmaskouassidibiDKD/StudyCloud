@@ -1191,7 +1191,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                   ? 'bg-[#1e293b] hover:bg-[#283852] text-amber-400 border-amber-500/50 shadow-sm' 
                   : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
               }`}
-              title="Ouvrir l'Espace d'étude"
+              title="Ouvrir le Menu de création"
             >
               <BookOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             </button>
@@ -1200,7 +1200,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                 ? 'text-white drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
                 : (isDarkMode ? 'text-white' : 'text-stone-700')
             }`}>
-              Espace d'étude
+              Menu de création
             </span>
           </div>
 

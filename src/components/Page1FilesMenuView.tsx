@@ -11002,7 +11002,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               type="button"
               onClick={() => handleOpenStudySpaceForCurrentMenu(true)}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50"
-              title="Ouvrir dans l'Espace d'étude"
+              title="Ouvrir dans le Menu de création"
             >
               <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
@@ -12201,10 +12201,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       type="button"
                       onClick={() => handleOpenStudySpaceForCurrentMenu(false)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 hover:border-emerald-500/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs font-black group animate-in fade-in duration-150"
-                      title="Ouvrir l'Espace d'étude"
+                      title="Ouvrir le Menu de création"
                     >
                       <BookOpen className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
-                      <span className="hidden sm:inline">Espace d'étude</span>
+                      <span className="hidden sm:inline">Menu de création</span>
                     </button>
                   )}
 

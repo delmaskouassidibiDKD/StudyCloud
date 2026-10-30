@@ -2056,7 +2056,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                 type="button"
                 onClick={() => onOpenStudySpace(file, 'Espace Cloud', activeFileList)}
                 className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50"
-                title="Ouvrir dans l'Espace d'étude"
+                title="Ouvrir dans le Menu de création"
               >
                 <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>

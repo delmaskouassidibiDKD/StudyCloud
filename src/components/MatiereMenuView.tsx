@@ -826,7 +826,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                 type="button"
                 onClick={() => setActivePreviewItem({ ...file, folderName: matiereName })}
                 className="p-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 transition-colors cursor-pointer"
-                title="Ouvrir dans l'espace d'étude"
+                title="Ouvrir dans le Menu de création"
               >
                 <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
@@ -2063,7 +2063,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                                         className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-b border-stone-200 cursor-pointer"
                                       >
                                         <BookOpen className="w-4 h-4 text-emerald-600" />
-                                        <span>Ouvrir dans l'espace d'étude</span>
+                                        <span>Ouvrir dans le Menu de création</span>
                                       </button>
                                     )}
 

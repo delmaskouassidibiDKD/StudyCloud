@@ -84,6 +84,39 @@ export function LeftMenu({
   const sourceMenuRef = useRef<HTMLDivElement>(null);
   const submenuRef = useRef<HTMLDivElement>(null);
 
+  // Fermeture automatique du menu "Choisir un menu" dès qu'on tape ou clique en dehors
+  useEffect(() => {
+    if (!isSourceMenuOpen) return;
+
+    const handleOutsideClick = (e: MouseEvent | TouchEvent | PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+
+      if (sourceMenuRef.current && sourceMenuRef.current.contains(target)) {
+        return;
+      }
+      if (submenuRef.current && submenuRef.current.contains(target)) {
+        return;
+      }
+      if (sourceButtonRef.current && sourceButtonRef.current.contains(target)) {
+        return;
+      }
+
+      setIsSourceMenuOpen(false);
+      setActiveSubmenu(null);
+    };
+
+    document.addEventListener('pointerdown', handleOutsideClick, true);
+    document.addEventListener('mousedown', handleOutsideClick, true);
+    document.addEventListener('touchstart', handleOutsideClick, true);
+
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideClick, true);
+      document.removeEventListener('mousedown', handleOutsideClick, true);
+      document.removeEventListener('touchstart', handleOutsideClick, true);
+    };
+  }, [isSourceMenuOpen]);
+
   const [savedMatieres, setSavedMatieres] = useState<{ id: string; name: string; coefficient?: string; color?: string }[]>(() => {
     try {
       const raw = localStorage.getItem('unifolder_saved_matieres');
@@ -1299,7 +1332,7 @@ export function LeftMenu({
             <Upload className="w-6 h-6 stroke-[2.5]" />
           </div>
           <h3 className="text-sm font-black text-white">Déposer le fichier ici</h3>
-          <p className="text-[10px] font-bold text-stone-300 mt-0.5">Import instantané dans l'espace d'étude</p>
+          <p className="text-[10px] font-bold text-stone-300 mt-0.5">Import instantané dans le Menu de création</p>
         </div>
       )}
 
@@ -1353,7 +1386,7 @@ export function LeftMenu({
               <button
                 onClick={() => setIsAssistantOpen(!isAssistantOpen)}
                 className="flex flex-col items-center justify-center cursor-pointer group active:scale-95 transition-all select-none shrink-0"
-                title="Ouvrir l'Assistante DKD"
+                title="Ouvrir l'Assistante StudyCloud"
               >
                 <div className="relative p-0.5 rounded-full transition-all duration-200 hover:scale-105 shadow-[0_2px_8px_rgba(37,99,235,0.3)]">
                   <DelmasRobot size={42} />
@@ -1362,7 +1395,7 @@ export function LeftMenu({
                   )}
                 </div>
                 <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider mt-1 leading-none whitespace-nowrap text-blue-600 group-hover:text-blue-700">
-                  Assistante DKD
+                  Assistante StudyCloud
                 </span>
               </button>
             </div>
@@ -1407,7 +1440,7 @@ export function LeftMenu({
                 <button
                   onClick={() => setIsAssistantOpen(!isAssistantOpen)}
                   className="flex flex-col items-center justify-center cursor-pointer group active:scale-95 transition-all select-none shrink-0"
-                  title={isAssistantOpen ? "Fermer l'Assistante DKD" : "Ouvrir l'Assistante DKD"}
+                  title={isAssistantOpen ? "Fermer l'Assistante StudyCloud" : "Ouvrir l'Assistante StudyCloud"}
                 >
                   <div className={`relative p-0.5 rounded-full transition-all duration-200 ${
                     isAssistantOpen 
@@ -1422,7 +1455,7 @@ export function LeftMenu({
                   <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider mt-1 leading-none whitespace-nowrap transition-colors ${
                     isAssistantOpen ? 'text-orange-600' : 'text-blue-600 group-hover:text-blue-700'
                   }`}>
-                    Assistante DKD
+                    Assistante StudyCloud
                   </span>
                 </button>
               </div>
@@ -1744,10 +1777,16 @@ export function LeftMenu({
 
         return createPortal(
           <>
-            {/* Backdrop avec flou léger fermant les menus au clic extérieur */}
+            {/* Backdrop transparent recouvrant tout l'écran pour fermer immédiatement au clic ou tap extérieur */}
             <div
-              className="fixed inset-0 z-[99998] bg-black/25 backdrop-blur-[1px]"
-              onClick={() => {
+              className="fixed inset-0 z-[99998] bg-transparent cursor-default"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                setIsSourceMenuOpen(false);
+                setActiveSubmenu(null);
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
                 setIsSourceMenuOpen(false);
                 setActiveSubmenu(null);
               }}
