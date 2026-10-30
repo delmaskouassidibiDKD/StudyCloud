@@ -249,12 +249,26 @@ export function RightMenu({
       return "En cours de génération...";
     }
     const rawTokens = getCreationTokens(item);
+    const normLang = (studyLang || 'fr').toLowerCase();
+    const getUnit = (val: number) => {
+      if (normLang.startsWith('zh')) return '积分';
+      if (normLang.startsWith('ja')) return 'クレジット';
+      if (normLang.startsWith('ar')) return 'رصيد';
+      if (normLang.startsWith('en')) return val <= 1 ? 'credit' : 'credits';
+      if (normLang.startsWith('de')) return val <= 1 ? 'Credit' : 'Credits';
+      if (normLang.startsWith('es')) return val <= 1 ? 'crédito' : 'créditos';
+      if (normLang.startsWith('pt')) return val <= 1 ? 'crédito' : 'créditos';
+      if (normLang.startsWith('it')) return val <= 1 ? 'credito' : 'crediti';
+      if (normLang.startsWith('ru')) return val <= 1 ? 'кредит' : 'кредита';
+      return val <= 1 ? 'crédit' : 'crédits';
+    };
+
     const rawCredits = item.credits || item.data?.credits || item.content?.credits || item.content_json?.credits || item.credits_deducted;
     if (typeof rawCredits === 'number' && rawCredits > 0 && rawCredits < rawTokens && rawCredits < 30) {
       const fmt = rawCredits.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
-      return `${fmt} ${rawCredits <= 1 ? 'crédit' : 'crédits'}`;
+      return `${fmt} ${getUnit(rawCredits)}`;
     }
-    return formatConsumedCreditsDisplay(rawTokens, tokensPerCredit);
+    return formatConsumedCreditsDisplay(rawTokens, tokensPerCredit, studyLang);
   };
 
   const fetchUserCreations = async () => {

@@ -2337,7 +2337,7 @@ const ChatMessageText = ({
   isStreaming?: boolean;
   onSelectSuggestion?: (question: string) => void;
 }) => {
-  const { t: tStudy } = useStudyLanguage();
+  const { t: tStudy, lang: chatLanguage } = useStudyLanguage();
   const [expanded, setExpanded] = useState(false);
 
   const maxUserPromptLength = 350;
@@ -2492,8 +2492,33 @@ const ChatMessageText = ({
           // Commentaires & Remarques (ne doivent JAMAIS être confondus avec des explications ou calculs)
           const commentMatch = trimmed.match(/^(?:>\s*)?(?:\*\*)?(Remarque|Note|Astuce|Attention|Observation|Conseil|Point clé|Rappel)(?:\s+[^:]*?)?(?:\*\*)?\s*[:.-]\s*(.*)$/i) || (trimmed.startsWith('> ') ? [null, 'Remarque', trimmed.slice(2).trim()] : null);
           if (commentMatch) {
-            const commentLabel = commentMatch[1] || 'Remarque méthodologique';
-            const commentBody = commentMatch[2] || '';
+            const rawBody = commentMatch[2] || '';
+            const normLang = (chatLanguage || 'fr').toLowerCase();
+            let commentLabel = commentMatch[1] || 'Remarque';
+            
+            // Adaptation multilingue intelligente du libellé de remarque / note
+            if (normLang.startsWith('zh')) {
+              if (rawBody.startsWith('小提示') || commentLabel.toLowerCase().includes('astuce')) commentLabel = '小提示';
+              else if (rawBody.startsWith('注意') || commentLabel.toLowerCase().includes('attention')) commentLabel = '注意';
+              else if (commentLabel.toLowerCase().includes('rappel')) commentLabel = '重点回顾';
+              else commentLabel = '提示';
+            } else if (normLang.startsWith('en')) {
+              if (commentLabel.toLowerCase().includes('astuce') || commentLabel.toLowerCase().includes('conseil')) commentLabel = 'TIP';
+              else if (commentLabel.toLowerCase().includes('attention')) commentLabel = 'ATTENTION';
+              else commentLabel = 'NOTE';
+            } else if (normLang.startsWith('ja')) {
+              commentLabel = commentLabel.toLowerCase().includes('astuce') ? 'ヒント' : 'メモ';
+            } else if (normLang.startsWith('de')) {
+              commentLabel = commentLabel.toLowerCase().includes('astuce') ? 'TIPP' : 'HINWEIS';
+            } else if (normLang.startsWith('es')) {
+              commentLabel = commentLabel.toLowerCase().includes('astuce') ? 'CONSEJO' : 'NOTA';
+            } else if (normLang.startsWith('ar')) {
+              commentLabel = commentLabel.toLowerCase().includes('astuce') ? 'نصيحة' : 'ملاحظة';
+            } else if (normLang.startsWith('ru')) {
+              commentLabel = commentLabel.toLowerCase().includes('astuce') ? 'СОВЕТ' : 'ПРИМЕЧАНИЕ';
+            }
+
+            const cleanCommentBody = rawBody.replace(/^(?:小提示|提示|注意|Remarque|Note|Tip|Astuce)\s*[:：]\s*/i, '');
             return (
               <div key={idx} className="my-3 p-3.5 sm:p-4 rounded-2xl bg-sky-950/25 border-l-4 border-sky-400 text-sky-100 shadow-sm w-full">
                 <div className="flex items-center gap-2 mb-1.5 text-xs font-bold text-sky-300">
@@ -2501,7 +2526,7 @@ const ChatMessageText = ({
                   <span className="uppercase tracking-wider">{commentLabel}</span>
                 </div>
                 <div className="text-[14px] sm:text-[15px] md:text-[16px] text-sky-100/90 leading-relaxed font-normal italic">
-                  <MathText text={commentBody} inline={true} />
+                  <MathText text={cleanCommentBody} inline={true} />
                 </div>
               </div>
             );
@@ -3149,20 +3174,34 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
   const getMessageCreditsDisplay = (msg: Message): string => {
     const rawTokens = getMessageTokens(msg);
+    const normLang = (chatLanguage || 'fr').toLowerCase();
+    const getUnit = (val: number) => {
+      if (normLang.startsWith('zh')) return '积分';
+      if (normLang.startsWith('ja')) return 'クレジット';
+      if (normLang.startsWith('ar')) return 'رصيد';
+      if (normLang.startsWith('en')) return val <= 1 ? 'credit' : 'credits';
+      if (normLang.startsWith('de')) return val <= 1 ? 'Credit' : 'Credits';
+      if (normLang.startsWith('es')) return val <= 1 ? 'crédito' : 'créditos';
+      if (normLang.startsWith('pt')) return val <= 1 ? 'crédito' : 'créditos';
+      if (normLang.startsWith('it')) return val <= 1 ? 'credito' : 'crediti';
+      if (normLang.startsWith('ru')) return val <= 1 ? 'кредит' : 'кредита';
+      return val <= 1 ? 'crédit' : 'crédits';
+    };
+
     // Si des crédits réels explicites ont été déduits par le serveur
     if (typeof (msg as any).credits_deducted === 'number' && (msg as any).credits_deducted > 0) {
       const val = (msg as any).credits_deducted;
       const fmt = val.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
-      return `${fmt} ${val <= 1 ? 'crédit' : 'crédits'}`;
+      return `${fmt} ${getUnit(val)}`;
     }
     // Si msg.credits est déjà un crédit calculé distinct des tokens
     if (typeof msg.credits === 'number' && msg.credits > 0 && msg.credits < (msg.tokens || Infinity) && msg.credits < 30) {
       const val = msg.credits;
       const fmt = val.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
-      return `${fmt} ${val <= 1 ? 'crédit' : 'crédits'}`;
+      return `${fmt} ${getUnit(val)}`;
     }
     // Sinon, convertir directement les tokens en crédits selon le paramètre D1 du tableau de bord
-    return formatConsumedCreditsDisplay(rawTokens, tokensPerCredit);
+    return formatConsumedCreditsDisplay(rawTokens, tokensPerCredit, chatLanguage);
   };
 
   const [isTyping, setIsTyping] = useState(false);
@@ -6963,25 +7002,28 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0 self-end">
-                {isWaitingServer && (
+                {isWaitingServer || isTyping ? (
+                  /* Pendant que l'IA réfléchit, répond ou analyse : SEUL le bouton Arrêter est affiché */
                   <button
                     type="button"
                     onClick={handleCancelTask}
                     className="px-3 py-2 font-bold rounded-full flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs shrink-0"
-                    title="Arrêter la réponse en cours"
+                    title={tStudy("stop_button_title", "Arrêter la réponse en cours")}
                   >
                     <Square className="w-3.5 h-3.5 fill-current text-rose-400" />
                     <span>{tStudy("stop_button", "Arrêter")}</span>
                   </button>
+                ) : (
+                  /* Dès que l'IA a fini ou est disponible : SEUL le bouton Envoyer est affiché */
+                  <button
+                    type="submit"
+                    disabled={!inputValue.trim()}
+                    className="p-2.5 font-bold rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0 bg-[#70a5ff] hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-slate-950"
+                    title={tStudy("send_button_title", "Envoyer")}
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
                 )}
-                <button
-                  type="submit"
-                  disabled={!inputValue.trim()}
-                  className="p-2.5 font-bold rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0 bg-[#70a5ff] hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-slate-950"
-                  title="Envoyer"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
               </div>
             </div>
           </form>

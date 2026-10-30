@@ -3288,14 +3288,25 @@ export const convertTokensToCredits = (tokens: number, customRate?: number): num
  * Formate l'affichage de la consommation en crédits pour l'utilisateur
  * (ex: '0,5 crédit', '1 crédit', '1,43 crédits') - Jamais de tokens bruts affichés
  */
-export const formatConsumedCreditsDisplay = (tokens: number, customRate?: number): string => {
+export const formatConsumedCreditsDisplay = (tokens: number, customRate?: number, langCode?: string): string => {
   const credits = convertTokensToCredits(tokens, customRate);
   const displayVal = credits < 0.01 && tokens > 0 ? 0.01 : credits;
   const formattedNum = displayVal.toLocaleString('fr-FR', {
     minimumFractionDigits: displayVal % 1 === 0 ? 0 : (displayVal * 10) % 1 === 0 ? 1 : 2,
     maximumFractionDigits: 2
   });
-  const label = displayVal <= 1 ? 'crédit' : 'crédits';
+  const norm = (langCode || 'fr').toLowerCase();
+  let label = displayVal <= 1 ? 'crédit' : 'crédits';
+  if (norm.startsWith('zh')) label = '积分';
+  else if (norm.startsWith('ja')) label = 'クレジット';
+  else if (norm.startsWith('ar')) label = 'رصيد';
+  else if (norm.startsWith('en')) label = displayVal <= 1 ? 'credit' : 'credits';
+  else if (norm.startsWith('de')) label = displayVal <= 1 ? 'Credit' : 'Credits';
+  else if (norm.startsWith('es')) label = displayVal <= 1 ? 'crédito' : 'créditos';
+  else if (norm.startsWith('pt')) label = displayVal <= 1 ? 'crédito' : 'créditos';
+  else if (norm.startsWith('it')) label = displayVal <= 1 ? 'credito' : 'crediti';
+  else if (norm.startsWith('ru')) label = displayVal <= 1 ? 'кредит' : 'кредита';
+
   return `${formattedNum} ${label}`;
 };
 
