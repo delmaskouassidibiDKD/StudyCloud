@@ -6791,7 +6791,7 @@ a:hover{transform:translateY(-2px)}
             lastImported || Date.now()
           ).run();
 
-          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {});
+          recalculateAndSaveUserStorage(env.DB, userId).catch(() => {});
           return jsonResponse({ success: true, data: { id, name } }, 201, origin);
         }
       }

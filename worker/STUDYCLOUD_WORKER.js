@@ -2189,7 +2189,7 @@ function extractR2Keys(primaryKey, urlStr) {
   }
   return Array.from(keys);
 }
-async function deleteR2ObjectAndThumbnails(rawEnv, reqUserId2, itemId, itemR2Key, fileUrl, category) {
+async function deleteR2ObjectAndThumbnails(rawEnv, reqUserId, itemId, itemR2Key, fileUrl, category) {
   const allBuckets = getAllBuckets(rawEnv);
   if (allBuckets.length === 0) return;
   const candidateKeys = /* @__PURE__ */ new Set();
@@ -2200,11 +2200,11 @@ async function deleteR2ObjectAndThumbnails(rawEnv, reqUserId2, itemId, itemR2Key
       if (fileNameOnly) candidateKeys.add(fileNameOnly);
     }
   }
-  if (reqUserId2 && itemId) {
-    candidateKeys.add(`${reqUserId2}/thumbnails/${itemId}_thumb.jpg`);
-    candidateKeys.add(`${reqUserId2}/thumbnails/${itemId}_thumb.png`);
-    candidateKeys.add(`${reqUserId2}/thumbnails/${itemId}_thumb.jpeg`);
-    candidateKeys.add(`${reqUserId2}/thumbnails/${itemId}_thumb.webp`);
+  if (reqUserId && itemId) {
+    candidateKeys.add(`${reqUserId}/thumbnails/${itemId}_thumb.jpg`);
+    candidateKeys.add(`${reqUserId}/thumbnails/${itemId}_thumb.png`);
+    candidateKeys.add(`${reqUserId}/thumbnails/${itemId}_thumb.jpeg`);
+    candidateKeys.add(`${reqUserId}/thumbnails/${itemId}_thumb.webp`);
     candidateKeys.add(`thumbnails/${itemId}_thumb.jpg`);
     candidateKeys.add(`thumbnails/${itemId}_thumb.png`);
   }
@@ -2214,7 +2214,7 @@ async function deleteR2ObjectAndThumbnails(rawEnv, reqUserId2, itemId, itemR2Key
       });
     }
   }
-  if (reqUserId2 && itemId) {
+  if (reqUserId && itemId) {
     const normCategory = (category || "").toLowerCase().trim();
     const categoriesToScan = /* @__PURE__ */ new Set([
       normCategory,
@@ -2231,14 +2231,14 @@ async function deleteR2ObjectAndThumbnails(rawEnv, reqUserId2, itemId, itemR2Key
     if (normCategory === "musique") categoriesToScan.add("audio");
     if (normCategory === "photos") categoriesToScan.add("images");
     const prefixes = /* @__PURE__ */ new Set();
-    prefixes.add(`${reqUserId2}/thumbnails/${itemId}`);
+    prefixes.add(`${reqUserId}/thumbnails/${itemId}`);
     prefixes.add(`thumbnails/${itemId}`);
-    prefixes.add(`${reqUserId2}/mes-fichiers/thumbnails/${itemId}`);
+    prefixes.add(`${reqUserId}/mes-fichiers/thumbnails/${itemId}`);
     prefixes.add(`mes-fichiers/thumbnails/${itemId}`);
-    prefixes.add(`${reqUserId2}/${itemId}`);
+    prefixes.add(`${reqUserId}/${itemId}`);
     for (const cat of categoriesToScan) {
       if (!cat) continue;
-      prefixes.add(`${reqUserId2}/${cat}/${itemId}`);
+      prefixes.add(`${reqUserId}/${cat}/${itemId}`);
       prefixes.add(`${cat}/${itemId}`);
     }
     for (const bucket of allBuckets) {
@@ -2259,8 +2259,8 @@ async function deleteR2ObjectAndThumbnails(rawEnv, reqUserId2, itemId, itemR2Key
     }
   }
 }
-async function purgeUserOrphanedR2Files(env, rawEnv, reqUserId2) {
-  if (!env.DB || !reqUserId2 || reqUserId2 === "default-user") return 0;
+async function purgeUserOrphanedR2Files(env, rawEnv, reqUserId) {
+  if (!env.DB || !reqUserId || reqUserId === "default-user") return 0;
   const allBuckets = getAllBuckets(rawEnv);
   if (allBuckets.length === 0) return 0;
   const activeKeys = /* @__PURE__ */ new Set();
@@ -2282,16 +2282,16 @@ async function purgeUserOrphanedR2Files(env, rawEnv, reqUserId2) {
   };
   try {
     const [f, a, img, v, doc, cl, dl, tr, th, sec] = await Promise.all([
-      env.DB.prepare("SELECT id, r2_key, file_url FROM files WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] })),
-      env.DB.prepare("SELECT id, r2_key, audio_url, cover_url FROM audio_files WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] })),
-      env.DB.prepare("SELECT id, r2_key, image_url, thumbnail_url FROM image_files WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] })),
-      env.DB.prepare("SELECT id, r2_key, video_url, thumbnail_url FROM video_files WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] })),
-      env.DB.prepare("SELECT id, r2_key, file_url, preview_url FROM document_files WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] })),
-      env.DB.prepare("SELECT id, r2_key, file_url, preview_url FROM classeur_files WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] })),
-      env.DB.prepare("SELECT id, r2_key, file_url FROM download_files WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] })),
-      env.DB.prepare("SELECT id, r2_key, file_url FROM trash_files WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] })),
-      env.DB.prepare("SELECT file_id as id, r2_key, thumbnail_url FROM media_thumbnails WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] })),
-      env.DB.prepare("SELECT id, r2_key, file_url FROM secure_files WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] }))
+      env.DB.prepare("SELECT id, r2_key, file_url FROM files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare("SELECT id, r2_key, audio_url, cover_url FROM audio_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare("SELECT id, r2_key, image_url, thumbnail_url FROM image_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare("SELECT id, r2_key, video_url, thumbnail_url FROM video_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare("SELECT id, r2_key, file_url, preview_url FROM document_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare("SELECT id, r2_key, file_url, preview_url FROM classeur_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare("SELECT id, r2_key, file_url FROM download_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare("SELECT id, r2_key, file_url FROM trash_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare("SELECT file_id as id, r2_key, thumbnail_url FROM media_thumbnails WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare("SELECT id, r2_key, file_url FROM secure_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] }))
     ]);
     addKeys(f?.results);
     addKeys(a?.results);
@@ -2314,7 +2314,7 @@ async function purgeUserOrphanedR2Files(env, rawEnv, reqUserId2) {
       let truncated = true;
       let cursor = void 0;
       while (truncated) {
-        const options = { prefix: `${reqUserId2}/`, limit: 200 };
+        const options = { prefix: `${reqUserId}/`, limit: 200 };
         if (cursor) options.cursor = cursor;
         const list = await bucket.list(options);
         if (!list || !list.objects) break;
@@ -5771,7 +5771,7 @@ a:hover{transform:translateY(-2px)}
             isStudySession ? 1 : 0,
             lastImported || Date.now()
           ).run();
-          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
+          recalculateAndSaveUserStorage(env.DB, userId).catch(() => {
           });
           return jsonResponse({ success: true, data: { id, name } }, 201, origin);
         }
@@ -5787,9 +5787,9 @@ a:hover{transform:translateY(-2px)}
       if (path.startsWith("/api/files/") && method === "DELETE") {
         if (env.DB) await ensureCloudMediaTables(env.DB);
         const id = path.split("/")[3];
-        const reqUserId2 = await extractRequestUserId();
+        const reqUserId = await extractRequestUserId();
         const fileRow = await env.DB.prepare("SELECT r2_key, file_url, user_id FROM files WHERE id = ?").bind(id).first().catch(() => null);
-        const targetUser = fileRow?.user_id || reqUserId2;
+        const targetUser = fileRow?.user_id || reqUserId;
         const targetR2Key = fileRow?.r2_key;
         const targetUrl = fileRow?.file_url;
         const targetCategory = "mes-fichiers";
@@ -5828,13 +5828,13 @@ a:hover{transform:translateY(-2px)}
           });
         }
         if (method === "GET") {
-          const reqUserId2 = url.searchParams.get("userId") || await extractRequestUserId();
-          if (!reqUserId2 || reqUserId2 === "default-user") return jsonResponse({ success: true, data: [] }, 200, origin);
+          const reqUserId = url.searchParams.get("userId") || await extractRequestUserId();
+          if (!reqUserId || reqUserId === "default-user") return jsonResponse({ success: true, data: [] }, 200, origin);
           const { results } = await env.DB.prepare(`
             SELECT * FROM study_imported_files 
             WHERE user_id = ?
             ORDER BY imported_at DESC, created_at DESC
-          `).bind(reqUserId2).all();
+          `).bind(reqUserId).all();
           const formatted = (results || []).map((row) => {
             let finalUrl = row.file_url || "";
             if ((!finalUrl || finalUrl.startsWith("blob:")) && row.r2_key) {
@@ -5869,8 +5869,8 @@ a:hover{transform:translateY(-2px)}
         if (method === "POST") {
           const body = await request.json().catch(() => ({}));
           const { id, userId, name, size, type, extension, r2Key, fileUrl, isFavorite, importedAt } = body;
-          const reqUserId2 = userId || await extractRequestUserId();
-          if (!id || !reqUserId2 || !name || reqUserId2 === "default-user") {
+          const reqUserId = userId || await extractRequestUserId();
+          if (!id || !reqUserId || !name || reqUserId === "default-user") {
             return errorResponse("id, userId et name requis", 400, origin);
           }
           await env.DB.prepare(`
@@ -5893,7 +5893,7 @@ a:hover{transform:translateY(-2px)}
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             id,
-            reqUserId2,
+            reqUserId,
             name,
             size || 0,
             type || "application/octet-stream",
@@ -5928,11 +5928,11 @@ a:hover{transform:translateY(-2px)}
         if (!key) return errorResponse("Cl\xE9 de stockage manquante", 400, origin);
         const contentType = request.headers.get("Content-Type") || "application/octet-stream";
         const fileData = request.body || await request.arrayBuffer();
-        const reqUserId2 = await extractRequestUserId();
-        if (reqUserId2 && env.DB) {
+        const reqUserId = await extractRequestUserId();
+        if (reqUserId && env.DB) {
           const rawSize = fileData instanceof ArrayBuffer ? fileData.byteLength : 0;
           if (rawSize > 0) {
-            const quotaCheck = await checkUserStorageQuota(env.DB, reqUserId2, rawSize);
+            const quotaCheck = await checkUserStorageQuota(env.DB, reqUserId, rawSize);
             if (!quotaCheck.allowed) {
               return new Response(JSON.stringify({
                 success: false,
@@ -6005,12 +6005,12 @@ a:hover{transform:translateY(-2px)}
         if (!categoryBucket) {
           return errorResponse("Stockage R2 indisponible pour cette cat\xE9gorie", 503, origin);
         }
-        const reqUserId2 = await extractRequestUserId();
+        const reqUserId = await extractRequestUserId();
         if (category === "secure") {
-          if (!reqUserId2 || reqUserId2 === "default-user") {
+          if (!reqUserId || reqUserId === "default-user") {
             return errorResponse("Acc\xE8s refus\xE9 au dossier s\xE9curis\xE9 : authentification requise", 401, origin);
           }
-          if (!key.startsWith(reqUserId2 + "/")) {
+          if (!key.startsWith(reqUserId + "/")) {
             return errorResponse("Acc\xE8s interdit aux donn\xE9es d'un autre utilisateur", 403, origin);
           }
         }
@@ -6160,7 +6160,7 @@ a:hover{transform:translateY(-2px)}
       }
       if (path.startsWith("/api/cloud/thumbnail/") && method === "GET") {
         const fileId = decodeURIComponent(path.replace("/api/cloud/thumbnail/", "").trim());
-        const reqUserId2 = await extractRequestUserId();
+        const reqUserId = await extractRequestUserId();
         if (!fileId) return errorResponse("ID de fichier manquant", 400, origin);
         let targetR2Key = "";
         let targetCategory = "videos";
@@ -6168,10 +6168,10 @@ a:hover{transform:translateY(-2px)}
         if (env.DB) {
           try {
             let thumbRow = null;
-            if (reqUserId2 && reqUserId2 !== "default-user") {
+            if (reqUserId && reqUserId !== "default-user") {
               thumbRow = await env.DB.prepare(
                 "SELECT * FROM media_thumbnails WHERE file_id = ? AND user_id = ? LIMIT 1"
-              ).bind(fileId, reqUserId2).first();
+              ).bind(fileId, reqUserId).first();
             }
             if (!thumbRow) {
               thumbRow = await env.DB.prepare(
@@ -6184,8 +6184,8 @@ a:hover{transform:translateY(-2px)}
               fallbackDataUrl = thumbRow.thumbnail_data || "";
             } else {
               let vRow = null;
-              if (reqUserId2 && reqUserId2 !== "default-user") {
-                vRow = await env.DB.prepare("SELECT thumbnail_url, r2_key, user_id FROM video_files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId2).first();
+              if (reqUserId && reqUserId !== "default-user") {
+                vRow = await env.DB.prepare("SELECT thumbnail_url, r2_key, user_id FROM video_files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId).first();
               }
               if (!vRow) {
                 vRow = await env.DB.prepare("SELECT thumbnail_url, r2_key, user_id FROM video_files WHERE id = ? LIMIT 1").bind(fileId).first();
@@ -6195,13 +6195,13 @@ a:hover{transform:translateY(-2px)}
                   fallbackDataUrl = vRow.thumbnail_url;
                 }
                 if (!targetR2Key && vRow.r2_key) {
-                  const owner = vRow.user_id || (reqUserId2 !== "default-user" ? reqUserId2 : "");
+                  const owner = vRow.user_id || (reqUserId !== "default-user" ? reqUserId : "");
                   if (owner) targetR2Key = `${owner}/thumbnails/${fileId}_thumb.jpg`;
                 }
               }
               let dRow = null;
-              if (reqUserId2 && reqUserId2 !== "default-user") {
-                dRow = await env.DB.prepare("SELECT preview_url, r2_key, user_id FROM document_files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId2).first();
+              if (reqUserId && reqUserId !== "default-user") {
+                dRow = await env.DB.prepare("SELECT preview_url, r2_key, user_id FROM document_files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId).first();
               }
               if (!dRow) {
                 dRow = await env.DB.prepare("SELECT preview_url, r2_key, user_id FROM document_files WHERE id = ? LIMIT 1").bind(fileId).first();
@@ -6210,8 +6210,8 @@ a:hover{transform:translateY(-2px)}
                 fallbackDataUrl = dRow.preview_url;
               }
               let aRow = null;
-              if (reqUserId2 && reqUserId2 !== "default-user") {
-                aRow = await env.DB.prepare("SELECT cover_url, r2_key, user_id FROM audio_files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId2).first();
+              if (reqUserId && reqUserId !== "default-user") {
+                aRow = await env.DB.prepare("SELECT cover_url, r2_key, user_id FROM audio_files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId).first();
               }
               if (!aRow) {
                 aRow = await env.DB.prepare("SELECT cover_url, r2_key, user_id FROM audio_files WHERE id = ? LIMIT 1").bind(fileId).first();
@@ -6221,13 +6221,13 @@ a:hover{transform:translateY(-2px)}
                   fallbackDataUrl = aRow.cover_url;
                 }
                 if (!targetR2Key && aRow.r2_key) {
-                  const owner = aRow.user_id || (reqUserId2 !== "default-user" ? reqUserId2 : "");
+                  const owner = aRow.user_id || (reqUserId !== "default-user" ? reqUserId : "");
                   if (owner) targetR2Key = `${owner}/thumbnails/${fileId}_thumb.jpg`;
                 }
               }
               let fRow = null;
-              if (reqUserId2 && reqUserId2 !== "default-user") {
-                fRow = await env.DB.prepare("SELECT thumbnail_url, r2_key, user_id FROM files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId2).first();
+              if (reqUserId && reqUserId !== "default-user") {
+                fRow = await env.DB.prepare("SELECT thumbnail_url, r2_key, user_id FROM files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId).first();
               }
               if (!fRow) {
                 fRow = await env.DB.prepare("SELECT thumbnail_url, r2_key, user_id FROM files WHERE id = ? LIMIT 1").bind(fileId).first();
@@ -6238,7 +6238,7 @@ a:hover{transform:translateY(-2px)}
                   fallbackDataUrl = fRow.thumbnail_url;
                 }
                 if (!targetR2Key && fRow.r2_key) {
-                  const owner = fRow.user_id || (reqUserId2 !== "default-user" ? reqUserId2 : "");
+                  const owner = fRow.user_id || (reqUserId !== "default-user" ? reqUserId : "");
                   if (owner) targetR2Key = `${owner}/mes-fichiers/thumbnails/${fileId}_thumb.jpg`;
                 }
               }
@@ -6246,8 +6246,8 @@ a:hover{transform:translateY(-2px)}
           } catch (e) {
           }
         }
-        if (!targetR2Key && reqUserId2 && reqUserId2 !== "default-user") {
-          targetR2Key = targetCategory === "mes-fichiers" ? `${reqUserId2}/mes-fichiers/thumbnails/${fileId}_thumb.jpg` : `${reqUserId2}/thumbnails/${fileId}_thumb.jpg`;
+        if (!targetR2Key && reqUserId && reqUserId !== "default-user") {
+          targetR2Key = targetCategory === "mes-fichiers" ? `${reqUserId}/mes-fichiers/thumbnails/${fileId}_thumb.jpg` : `${reqUserId}/thumbnails/${fileId}_thumb.jpg`;
         }
         let object = null;
         if (targetR2Key) {
@@ -6256,8 +6256,8 @@ a:hover{transform:translateY(-2px)}
             if (!found?.object && !targetR2Key.endsWith(".png")) {
               found = await getObjectFromAnyBucket(rawEnv, targetCategory || "audio", targetR2Key.replace(/\.jpg$/, ".png"));
             }
-            if (!found?.object && reqUserId2) {
-              const fallbackKey = targetCategory === "mes-fichiers" ? `${reqUserId2}/mes-fichiers/thumbnails/${fileId}.jpg` : `${reqUserId2}/thumbnails/${fileId}.jpg`;
+            if (!found?.object && reqUserId) {
+              const fallbackKey = targetCategory === "mes-fichiers" ? `${reqUserId}/mes-fichiers/thumbnails/${fileId}.jpg` : `${reqUserId}/thumbnails/${fileId}.jpg`;
               if (targetR2Key !== fallbackKey) {
                 found = await getObjectFromAnyBucket(rawEnv, targetCategory || "audio", fallbackKey);
               }
@@ -6295,8 +6295,8 @@ a:hover{transform:translateY(-2px)}
         return errorResponse("Aper\xE7u non trouv\xE9", 404, origin);
       }
       if (path === "/api/cloud/thumbnail" && (method === "POST" || method === "PUT")) {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         const body = await request.json().catch(() => ({}));
         const fileId = body.fileId || url.searchParams.get("fileId") || "";
         const category = (body.category || url.searchParams.get("category") || "videos").toLowerCase().trim();
@@ -6325,23 +6325,23 @@ a:hover{transform:translateY(-2px)}
             return errorResponse("Format de donn\xE9es image invalide", 400, origin);
           }
         }
-        const r2Key = category === "mes-fichiers" || category === "mes_fichiers" ? `${reqUserId2}/mes-fichiers/thumbnails/${fileId}_thumb.${thumbExt}` : `${reqUserId2}/thumbnails/${fileId}_thumb.${thumbExt}`;
+        const r2Key = category === "mes-fichiers" || category === "mes_fichiers" ? `${reqUserId}/mes-fichiers/thumbnails/${fileId}_thumb.${thumbExt}` : `${reqUserId}/thumbnails/${fileId}_thumb.${thumbExt}`;
         const targetBucket = getBucketForCategory(rawEnv, category) || rawEnv.BUCKET || env.BUCKET;
         if (targetBucket && imageBuffer) {
           await targetBucket.put(r2Key, imageBuffer, {
             httpMetadata: { contentType: mimeType, cacheControl: "public, max-age=31536000, immutable" },
             customMetadata: {
-              userId: reqUserId2,
+              userId: reqUserId,
               fileId,
               category,
               originalName: fileName
             }
           });
         }
-        const thumbnailUrl = `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(fileId)}?userId=${encodeURIComponent(reqUserId2)}`;
+        const thumbnailUrl = `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(fileId)}?userId=${encodeURIComponent(reqUserId)}`;
         if (env.DB) {
           try {
-            const thumbId = `${reqUserId2}_${fileId}`;
+            const thumbId = `${reqUserId}_${fileId}`;
             await env.DB.prepare(`
               INSERT INTO media_thumbnails (id, user_id, file_id, file_name, category, r2_key, thumbnail_url, thumbnail_data, file_size, width, height, updated_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -6357,7 +6357,7 @@ a:hover{transform:translateY(-2px)}
                 updated_at = CURRENT_TIMESTAMP
             `).bind(
               thumbId,
-              reqUserId2,
+              reqUserId,
               fileId,
               fileName,
               category,
@@ -6369,22 +6369,22 @@ a:hover{transform:translateY(-2px)}
               height
             ).run();
             if (category === "videos") {
-              await env.DB.prepare("UPDATE video_files SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(thumbnailUrl, fileId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("UPDATE video_files SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(thumbnailUrl, fileId, reqUserId).run().catch(() => {
               });
             } else if (category === "audio" || category === "musique") {
-              await env.DB.prepare("UPDATE audio_files SET cover_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(thumbnailUrl, fileId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("UPDATE audio_files SET cover_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(thumbnailUrl, fileId, reqUserId).run().catch(() => {
               });
             } else if (category === "documents") {
-              await env.DB.prepare("UPDATE document_files SET preview_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(thumbnailUrl, fileId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("UPDATE document_files SET preview_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(thumbnailUrl, fileId, reqUserId).run().catch(() => {
               });
             } else if (category === "images" || category === "photos") {
-              await env.DB.prepare("UPDATE image_files SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(thumbnailUrl, fileId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("UPDATE image_files SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(thumbnailUrl, fileId, reqUserId).run().catch(() => {
               });
             } else if (category === "classeur") {
-              await env.DB.prepare("UPDATE classeur_files SET preview_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(thumbnailUrl, fileId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("UPDATE classeur_files SET preview_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(thumbnailUrl, fileId, reqUserId).run().catch(() => {
               });
             } else if (category === "mes-fichiers" || category === "mes_fichiers") {
-              await env.DB.prepare("UPDATE files SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(thumbnailUrl, fileId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("UPDATE files SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(thumbnailUrl, fileId, reqUserId).run().catch(() => {
               });
             }
           } catch (dbErr) {
@@ -6401,12 +6401,12 @@ a:hover{transform:translateY(-2px)}
         }, 200, origin);
       }
       if (path === "/api/cloud/thumbnails" && method === "GET") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         const categoryFilter = url.searchParams.get("category");
         if (!env.DB) return jsonResponse({ success: true, thumbnails: [] }, 200, origin);
         let query = "SELECT * FROM media_thumbnails WHERE user_id = ?";
-        const params = [reqUserId2];
+        const params = [reqUserId];
         if (categoryFilter) {
           query += " AND category = ?";
           params.push(categoryFilter.toLowerCase().trim());
@@ -6459,8 +6459,8 @@ a:hover{transform:translateY(-2px)}
         return errorResponse("Fond d'\xE9cran introuvable", 404, origin);
       }
       if (path === "/api/cloud/wallpaper" && method === "GET") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2 || reqUserId2 === "default-user") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId || reqUserId === "default-user") {
           return jsonResponse({ success: true, wallpaper: null }, 200, origin);
         }
         if (!env.DB) {
@@ -6469,11 +6469,11 @@ a:hover{transform:translateY(-2px)}
         try {
           const row = await env.DB.prepare(
             "SELECT * FROM user_wallpapers WHERE user_id = ? AND is_active = 1 ORDER BY updated_at DESC LIMIT 1"
-          ).bind(reqUserId2).first().catch(() => null);
+          ).bind(reqUserId).first().catch(() => null);
           if (row) {
             let wpUrl = row.url || "";
             if (wpUrl.startsWith("blob:") && row.r2_key) {
-              wpUrl = `${url.origin}/api/cloud/wallpaper/file/${encodeURIComponent(row.id)}?userId=${encodeURIComponent(reqUserId2)}`;
+              wpUrl = `${url.origin}/api/cloud/wallpaper/file/${encodeURIComponent(row.id)}?userId=${encodeURIComponent(reqUserId)}`;
             } else if (wpUrl.startsWith("blob:") && !row.r2_key) {
               wpUrl = "";
             }
@@ -6503,8 +6503,8 @@ a:hover{transform:translateY(-2px)}
         }
       }
       if (path === "/api/cloud/wallpaper" && (method === "POST" || method === "PUT")) {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2 || reqUserId2 === "default-user") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId || reqUserId === "default-user") {
           return errorResponse("Authentification requise pour enregistrer votre fond d'\xE9cran", 401, origin);
         }
         const body = await request.json().catch(() => ({}));
@@ -6531,18 +6531,18 @@ a:hover{transform:translateY(-2px)}
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
             const imageBuffer = bytes.buffer;
             inputSize = bytes.length;
-            r2Key = `${reqUserId2}/wallpapers/${wallpaperId}.${ext}`;
+            r2Key = `${reqUserId}/wallpapers/${wallpaperId}.${ext}`;
             const targetBucket = getBucketForCategory(rawEnv, "wallpapers") || rawEnv.BUCKET || env.BUCKET;
             if (targetBucket && imageBuffer) {
               await targetBucket.put(r2Key, imageBuffer, {
                 httpMetadata: { contentType: mimeType, cacheControl: "public, max-age=31536000, immutable" },
                 customMetadata: {
-                  userId: reqUserId2,
+                  userId: reqUserId,
                   wallpaperId,
                   originalName: inputName
                 }
               });
-              finalUrl = `${url.origin}/api/cloud/wallpaper/file/${encodeURIComponent(wallpaperId)}?userId=${encodeURIComponent(reqUserId2)}`;
+              finalUrl = `${url.origin}/api/cloud/wallpaper/file/${encodeURIComponent(wallpaperId)}?userId=${encodeURIComponent(reqUserId)}`;
             }
           } catch (e) {
             console.warn("[saveWallpaper R2 Upload Error]", e);
@@ -6552,13 +6552,13 @@ a:hover{transform:translateY(-2px)}
           try {
             await env.DB.prepare(
               "UPDATE user_wallpapers SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
-            ).bind(reqUserId2).run().catch(() => {
+            ).bind(reqUserId).run().catch(() => {
             });
             await env.DB.prepare(`
               INSERT INTO user_wallpapers (id, user_id, name, url, r2_key, size, is_active, created_at, updated_at)
               VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            `).bind(wallpaperId, reqUserId2, inputName, finalUrl, r2Key, inputSize).run();
-            await recordSyncItem(env.DB, reqUserId2, wallpaperId, "wallpapers", {
+            `).bind(wallpaperId, reqUserId, inputName, finalUrl, r2Key, inputSize).run();
+            await recordSyncItem(env.DB, reqUserId, wallpaperId, "wallpapers", {
               id: wallpaperId,
               name: inputName,
               url: finalUrl,
@@ -6573,7 +6573,7 @@ a:hover{transform:translateY(-2px)}
           success: true,
           wallpaper: {
             id: wallpaperId,
-            userId: reqUserId2,
+            userId: reqUserId,
             name: inputName,
             url: finalUrl,
             r2Key,
@@ -6584,14 +6584,14 @@ a:hover{transform:translateY(-2px)}
         }, 200, origin);
       }
       if (path === "/api/cloud/wallpaper" && method === "DELETE") {
-        const reqUserId2 = await extractRequestUserId();
-        if (reqUserId2 && reqUserId2 !== "default-user" && env.DB) {
+        const reqUserId = await extractRequestUserId();
+        if (reqUserId && reqUserId !== "default-user" && env.DB) {
           try {
             await env.DB.prepare(
               "UPDATE user_wallpapers SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
-            ).bind(reqUserId2).run().catch(() => {
+            ).bind(reqUserId).run().catch(() => {
             });
-            await recordSyncItem(env.DB, reqUserId2, "wallpaper_reset", "wallpapers", {
+            await recordSyncItem(env.DB, reqUserId, "wallpaper_reset", "wallpapers", {
               isActive: false,
               reset: true,
               updatedAt: Date.now()
@@ -6606,8 +6606,8 @@ a:hover{transform:translateY(-2px)}
         }, 200, origin);
       }
       if (path === "/api/cloud/upload" && (method === "PUT" || method === "POST")) {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise pour t\xE9l\xE9verser un fichier", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise pour t\xE9l\xE9verser un fichier", 401, origin);
         const requestedCategory = (url.searchParams.get("category") || "auto").toLowerCase().trim();
         const fileName = url.searchParams.get("name") || "fichier_" + Date.now();
         const folderId = url.searchParams.get("folderId") || "";
@@ -6620,7 +6620,7 @@ a:hover{transform:translateY(-2px)}
         const sizeBytes = headerOrigSizeBytes > 0 ? headerOrigSizeBytes : rawSizeBytes;
         const sizeFormatted = headerOrigSizeFormatted || formatBytes(sizeBytes);
         if (env.DB) {
-          const quotaCheck = await checkUserStorageQuota(env.DB, reqUserId2, sizeBytes);
+          const quotaCheck = await checkUserStorageQuota(env.DB, reqUserId, sizeBytes);
           if (!quotaCheck.allowed) {
             return new Response(JSON.stringify({
               success: false,
@@ -6739,7 +6739,7 @@ a:hover{transform:translateY(-2px)}
         }
         const sanitizedName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
         const fileId = url.searchParams.get("id") || request.headers.get("x-file-id") || "f_" + crypto.randomUUID().substring(0, 12);
-        const storageKey = `${reqUserId2}/${finalCategory}/${fileId}_${sanitizedName}`;
+        const storageKey = `${reqUserId}/${finalCategory}/${fileId}_${sanitizedName}`;
         const headerThumbnail = request.headers.get("x-thumbnail-data") || url.searchParams.get("thumbnailUrl") || "";
         const thumbnailToSave = headerThumbnail && headerThumbnail.trim() ? headerThumbnail.trim() : "";
         const extUpper = ext.toUpperCase() || "FICHIER";
@@ -6749,7 +6749,7 @@ a:hover{transform:translateY(-2px)}
         await categoryBucket.put(storageKey, fileBuffer, {
           httpMetadata: { contentType },
           customMetadata: {
-            userId: reqUserId2,
+            userId: reqUserId,
             originalName: fileName,
             category: finalCategory,
             folderId
@@ -6772,14 +6772,14 @@ a:hover{transform:translateY(-2px)}
             for (let i = 0; i < binaryStr.length; i++) {
               bytes[i] = binaryStr.charCodeAt(i);
             }
-            thumbR2Key = `${reqUserId2}/${finalCategory === "mes-fichiers" ? "mes-fichiers/" : ""}thumbnails/${fileId}_thumb.${thumbExt}`;
+            thumbR2Key = `${reqUserId}/${finalCategory === "mes-fichiers" ? "mes-fichiers/" : ""}thumbnails/${fileId}_thumb.${thumbExt}`;
             const targetBucket = categoryBucket || env.BUCKET;
             if (targetBucket) {
               await targetBucket.put(thumbR2Key, bytes.buffer, {
                 httpMetadata: { contentType: mimeType, cacheControl: "public, max-age=31536000, immutable" },
-                customMetadata: { userId: reqUserId2, fileId, category: finalCategory, originalName: fileName }
+                customMetadata: { userId: reqUserId, fileId, category: finalCategory, originalName: fileName }
               });
-              finalThumbnailUrl = `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(fileId)}?userId=${encodeURIComponent(reqUserId2)}`;
+              finalThumbnailUrl = `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(fileId)}?userId=${encodeURIComponent(reqUserId)}`;
             }
           } catch (err) {
             console.warn("[Upload Thumbnail Storage Error]", err);
@@ -6792,7 +6792,7 @@ a:hover{transform:translateY(-2px)}
         }
         if (env.DB && finalCategory !== "images" && (thumbnailToSave || thumbR2Key)) {
           try {
-            const thumbId = `${reqUserId2}_${fileId}`;
+            const thumbId = `${reqUserId}_${fileId}`;
             await env.DB.prepare(`
               INSERT INTO media_thumbnails (id, user_id, file_id, file_name, category, r2_key, thumbnail_url, thumbnail_data, file_size, width, height, updated_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 640, 360, CURRENT_TIMESTAMP)
@@ -6805,7 +6805,7 @@ a:hover{transform:translateY(-2px)}
                 updated_at = CURRENT_TIMESTAMP
             `).bind(
               thumbId,
-              reqUserId2,
+              reqUserId,
               fileId,
               fileName,
               finalCategory,
@@ -6831,7 +6831,7 @@ a:hover{transform:translateY(-2px)}
                   image_url = excluded.image_url,
                   thumbnail_url = excluded.thumbnail_url,
                   updated_at = CURRENT_TIMESTAMP
-              `).bind(fileId, reqUserId2, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
+              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
             } else if (finalCategory === "videos") {
               await env.DB.prepare(`
                 INSERT INTO video_files (id, user_id, name, size, size_bytes, extension, date_formatted, r2_key, video_url, thumbnail_url, created_at, updated_at)
@@ -6848,7 +6848,7 @@ a:hover{transform:translateY(-2px)}
                     ELSE COALESCE(NULLIF(video_files.thumbnail_url, ''), excluded.thumbnail_url)
                   END,
                   updated_at = CURRENT_TIMESTAMP
-              `).bind(fileId, reqUserId2, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
+              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
             } else if (finalCategory === "audio") {
               await env.DB.prepare(`
                 INSERT INTO audio_files (id, user_id, name, title, artist, size, size_bytes, date_formatted, r2_key, audio_url, cover_url, created_at, updated_at)
@@ -6871,7 +6871,7 @@ a:hover{transform:translateY(-2px)}
                     ELSE audio_files.cover_url
                   END,
                   updated_at = CURRENT_TIMESTAMP
-              `).bind(fileId, reqUserId2, fileName, fileName, sizeFormatted, sizeBytes, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
+              `).bind(fileId, reqUserId, fileName, fileName, sizeFormatted, sizeBytes, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
             } else if (finalCategory === "documents") {
               await env.DB.prepare(`
                 INSERT INTO document_files (id, user_id, name, size, size_bytes, extension, document_category, date_formatted, r2_key, file_url, preview_url, created_at, updated_at)
@@ -6884,13 +6884,13 @@ a:hover{transform:translateY(-2px)}
                   file_url = excluded.file_url,
                   preview_url = excluded.preview_url,
                   updated_at = CURRENT_TIMESTAMP
-              `).bind(fileId, reqUserId2, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
             } else if (finalCategory === "classeur") {
               try {
                 await env.DB.prepare(`
                   DELETE FROM classeur_files 
                   WHERE user_id = ? AND folder_id = ? AND name = ? AND id != ?
-                `).bind(reqUserId2, folderId || "default-folder", fileName, fileId).run();
+                `).bind(reqUserId, folderId || "default-folder", fileName, fileId).run();
               } catch (delDupErr) {
               }
               await env.DB.prepare(`
@@ -6904,7 +6904,7 @@ a:hover{transform:translateY(-2px)}
                   file_url = excluded.file_url,
                   preview_url = excluded.preview_url,
                   updated_at = CURRENT_TIMESTAMP
-              `).bind(fileId, reqUserId2, folderId || "default-folder", fileName, sizeFormatted, sizeBytes, detectedNature, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+              `).bind(fileId, reqUserId, folderId || "default-folder", fileName, sizeFormatted, sizeBytes, detectedNature, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
             } else if (finalCategory === "mes-fichiers") {
               const targetMatiereId = folderId && folderId !== "Mes fichiers" && folderId !== "root" ? folderId : null;
               await env.DB.prepare(`
@@ -6934,7 +6934,7 @@ a:hover{transform:translateY(-2px)}
                   updated_at = CURRENT_TIMESTAMP
               `).bind(
                 fileId,
-                reqUserId2,
+                reqUserId,
                 targetMatiereId,
                 fileName,
                 sizeBytes,
@@ -6964,7 +6964,7 @@ a:hover{transform:translateY(-2px)}
               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             `).bind(
               fileId,
-              reqUserId2,
+              reqUserId,
               fileName,
               finalCategory,
               folderId || "",
@@ -6978,7 +6978,7 @@ a:hover{transform:translateY(-2px)}
             ).run();
           } catch (compRecErr) {
           }
-          recalculateAndSaveUserStorage(env.DB, reqUserId2).catch(() => {
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
         }
         const uploadedFileObj = {
@@ -7000,7 +7000,7 @@ a:hover{transform:translateY(-2px)}
           folderId: folderId || void 0,
           source: finalCategory === "classeur" ? "Classeur" : "StudyCloud"
         };
-        await recordSyncItem(env.DB, reqUserId2, fileId, finalCategory, uploadedFileObj, 0);
+        await recordSyncItem(env.DB, reqUserId, fileId, finalCategory, uploadedFileObj, 0);
         return jsonResponse({
           success: true,
           category: finalCategory,
@@ -7010,8 +7010,8 @@ a:hover{transform:translateY(-2px)}
       }
       if ((path === "/api/replication" || path === "/api/cloud/replication") && method === "POST") {
         await ensureCloudMediaTables(env.DB);
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         const payload = await request.json().catch(() => ({}));
         const checkpoint = payload.checkpoint || {};
         const incomingDocs = Array.isArray(payload.body) ? payload.body : Array.isArray(payload.documents) ? payload.documents : [];
@@ -7032,50 +7032,50 @@ a:hover{transform:translateY(-2px)}
                 content = excluded.content,
                 updated_at = excluded.updated_at,
                 is_deleted = excluded.is_deleted
-            `).bind(docId, reqUserId2, docCategory, docContent, docUpdatedAt, isDel).run();
+            `).bind(docId, reqUserId, docCategory, docContent, docUpdatedAt, isDel).run();
             if (isDel) {
-              await env.DB.prepare("DELETE FROM files WHERE id = ? AND user_id = ?").bind(docId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("DELETE FROM files WHERE id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
               });
-              await env.DB.prepare("DELETE FROM document_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("DELETE FROM document_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
               });
-              await env.DB.prepare("DELETE FROM audio_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("DELETE FROM audio_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
               });
-              await env.DB.prepare("DELETE FROM video_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("DELETE FROM video_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
               });
-              await env.DB.prepare("DELETE FROM image_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("DELETE FROM image_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
               });
-              await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
               });
-              await env.DB.prepare("DELETE FROM download_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("DELETE FROM download_files WHERE id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
               });
-              await env.DB.prepare("DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?").bind(docId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?").bind(docId, reqUserId).run().catch(() => {
               });
-              await cleanUserFavoriteOnDelete(env.DB, reqUserId2, docId);
+              await cleanUserFavoriteOnDelete(env.DB, reqUserId, docId);
             }
           }
         }
         if (lastPulledAt === 0) {
           try {
-            const countCheck = await env.DB.prepare("SELECT COUNT(*) as count FROM sync_items WHERE user_id = ?").bind(reqUserId2).first();
+            const countCheck = await env.DB.prepare("SELECT COUNT(*) as count FROM sync_items WHERE user_id = ?").bind(reqUserId).first();
             if (Number(countCheck?.count || 0) === 0) {
               const [docs, imgs, vids, auds, cfiles, dls, favs, pins] = await Promise.all([
-                env.DB.prepare("SELECT id, name, size, size_bytes, file_url, preview_url, extension, document_category FROM document_files WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] })),
-                env.DB.prepare("SELECT id, name, size, size_bytes, image_url, thumbnail_url, extension FROM image_files WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] })),
-                env.DB.prepare("SELECT id, name, size, size_bytes, video_url, thumbnail_url, duration_sec FROM video_files WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] })),
-                env.DB.prepare("SELECT id, name, title, artist, album, audio_url, cover_url, size, size_bytes FROM audio_files WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] })),
-                env.DB.prepare("SELECT id, folder_id, name, size, size_bytes, category, extension, is_notepad, notepad_title, notepad_content FROM classeur_files WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] })),
-                env.DB.prepare("SELECT id, name, size, size_bytes, file_url, type, extension FROM download_files WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] })),
-                env.DB.prepare("SELECT id, item_id, category FROM user_favorites WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] })),
-                env.DB.prepare("SELECT id, item_id, category FROM pinned_items WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] }))
+                env.DB.prepare("SELECT id, name, size, size_bytes, file_url, preview_url, extension, document_category FROM document_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+                env.DB.prepare("SELECT id, name, size, size_bytes, image_url, thumbnail_url, extension FROM image_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+                env.DB.prepare("SELECT id, name, size, size_bytes, video_url, thumbnail_url, duration_sec FROM video_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+                env.DB.prepare("SELECT id, name, title, artist, album, audio_url, cover_url, size, size_bytes FROM audio_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+                env.DB.prepare("SELECT id, folder_id, name, size, size_bytes, category, extension, is_notepad, notepad_title, notepad_content FROM classeur_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+                env.DB.prepare("SELECT id, name, size, size_bytes, file_url, type, extension FROM download_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+                env.DB.prepare("SELECT id, item_id, category FROM user_favorites WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+                env.DB.prepare("SELECT id, item_id, category FROM pinned_items WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] }))
               ]);
-              for (const d of docs?.results || []) await recordSyncItem(env.DB, reqUserId2, d.id, "documents", d, 0);
-              for (const i of imgs?.results || []) await recordSyncItem(env.DB, reqUserId2, i.id, "images", i, 0);
-              for (const v of vids?.results || []) await recordSyncItem(env.DB, reqUserId2, v.id, "videos", v, 0);
-              for (const a of auds?.results || []) await recordSyncItem(env.DB, reqUserId2, a.id, "audio", a, 0);
-              for (const c of cfiles?.results || []) await recordSyncItem(env.DB, reqUserId2, c.id, "classeur", c, 0);
-              for (const dl of dls?.results || []) await recordSyncItem(env.DB, reqUserId2, dl.id, "downloads", dl, 0);
-              for (const f of favs?.results || []) await recordSyncItem(env.DB, reqUserId2, f.id, "favorites", { itemId: f.item_id, category: f.category }, 0);
-              for (const p of pins?.results || []) await recordSyncItem(env.DB, reqUserId2, p.id, "pinned", { itemId: p.item_id, category: p.category }, 0);
+              for (const d of docs?.results || []) await recordSyncItem(env.DB, reqUserId, d.id, "documents", d, 0);
+              for (const i of imgs?.results || []) await recordSyncItem(env.DB, reqUserId, i.id, "images", i, 0);
+              for (const v of vids?.results || []) await recordSyncItem(env.DB, reqUserId, v.id, "videos", v, 0);
+              for (const a of auds?.results || []) await recordSyncItem(env.DB, reqUserId, a.id, "audio", a, 0);
+              for (const c of cfiles?.results || []) await recordSyncItem(env.DB, reqUserId, c.id, "classeur", c, 0);
+              for (const dl of dls?.results || []) await recordSyncItem(env.DB, reqUserId, dl.id, "downloads", dl, 0);
+              for (const f of favs?.results || []) await recordSyncItem(env.DB, reqUserId, f.id, "favorites", { itemId: f.item_id, category: f.category }, 0);
+              for (const p of pins?.results || []) await recordSyncItem(env.DB, reqUserId, p.id, "pinned", { itemId: p.item_id, category: p.category }, 0);
             }
           } catch (e) {
           }
@@ -7086,7 +7086,7 @@ a:hover{transform:translateY(-2px)}
           WHERE user_id = ? AND updated_at > ?
           ORDER BY updated_at ASC
           LIMIT 400
-        `).bind(reqUserId2, lastPulledAt).all();
+        `).bind(reqUserId, lastPulledAt).all();
         const formattedResults = (results || []).map((r) => ({
           id: r.id,
           category: r.category,
@@ -7102,14 +7102,14 @@ a:hover{transform:translateY(-2px)}
         }, 200, origin);
       }
       if (path === "/api/cloud/storage-usage" && method === "GET") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
-        const stats = await recalculateAndSaveUserStorage(env.DB, reqUserId2);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        const stats = await recalculateAndSaveUserStorage(env.DB, reqUserId);
         return jsonResponse({ success: true, data: stats }, 200, origin);
       }
       if (path === "/api/cloud/overview" && method === "GET") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) {
           return jsonResponse({
             success: true,
             counts: {
@@ -7140,16 +7140,16 @@ a:hover{transform:translateY(-2px)}
           trashStat,
           dismissedRows
         ] = await Promise.all([
-          env.DB.prepare("SELECT COUNT(*) as count FROM classeur_folders WHERE user_id = ?").bind(reqUserId2).first(),
-          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM classeur_files WHERE user_id = ?").bind(reqUserId2).first(),
-          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM audio_files WHERE user_id = ?").bind(reqUserId2).first(),
-          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM image_files WHERE user_id = ?").bind(reqUserId2).first(),
-          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM video_files WHERE user_id = ?").bind(reqUserId2).first(),
-          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM document_files WHERE user_id = ?").bind(reqUserId2).first(),
-          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM download_files WHERE user_id = ?").bind(reqUserId2).first(),
-          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM secure_files WHERE user_id = ?").bind(reqUserId2).first(),
-          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM trash_files WHERE user_id = ?").bind(reqUserId2).first(),
-          env.DB.prepare("SELECT file_id FROM user_dismissed_recents WHERE user_id = ?").bind(reqUserId2).all().catch(() => ({ results: [] }))
+          env.DB.prepare("SELECT COUNT(*) as count FROM classeur_folders WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM classeur_files WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM audio_files WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM image_files WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM video_files WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM document_files WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM download_files WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM secure_files WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM trash_files WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT file_id FROM user_dismissed_recents WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] }))
         ]);
         const counts = {
           classeurFolders: Number(foldersCount?.count || 0),
@@ -7164,10 +7164,10 @@ a:hover{transform:translateY(-2px)}
         };
         const totalBytes = Number(cFilesStat?.totalBytes || 0) + Number(audioStat?.totalBytes || 0) + Number(imageStat?.totalBytes || 0) + Number(videoStat?.totalBytes || 0) + Number(docStat?.totalBytes || 0) + Number(downloadStat?.totalBytes || 0) + Number(secureStat?.totalBytes || 0);
         const [recentDocs, recentImages, recentAudio, recentVideos] = await Promise.all([
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM document_files WHERE user_id = ? AND (name NOT LIKE "%.txt") AND (r2_key NOT LIKE "%/mes-fichiers/%" OR r2_key IS NULL) ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId2).all(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, thumbnail_url as thumbnailUrl, "images" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM image_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId2).all(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, cover_url as coverUrl, cover_url as previewUrl, artist, "audio" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM audio_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId2).all(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, thumbnail_url as thumbnailUrl, thumbnail_url as previewUrl, "videos" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM video_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId2).all()
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM document_files WHERE user_id = ? AND (name NOT LIKE "%.txt") AND (r2_key NOT LIKE "%/mes-fichiers/%" OR r2_key IS NULL) ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, thumbnail_url as thumbnailUrl, "images" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM image_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, cover_url as coverUrl, cover_url as previewUrl, artist, "audio" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM audio_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, thumbnail_url as thumbnailUrl, thumbnail_url as previewUrl, "videos" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM video_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all()
         ]);
         const parseDateMs = (d) => {
           if (!d) return 0;
@@ -7214,50 +7214,50 @@ a:hover{transform:translateY(-2px)}
         }, 200, origin);
       }
       if (path === "/api/cloud/recents/dismiss" && method === "POST") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         const body = await request.json().catch(() => ({}));
         const fileId = body?.fileId || body?.id;
         if (!fileId) return errorResponse("fileId requis", 400, origin);
-        const recordId = `delrec-${reqUserId2}-${fileId}`;
+        const recordId = `delrec-${reqUserId}-${fileId}`;
         await env.DB.prepare(`
           INSERT OR REPLACE INTO user_dismissed_recents (id, user_id, file_id, dismissed_at)
           VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        `).bind(recordId, reqUserId2, String(fileId)).run();
+        `).bind(recordId, reqUserId, String(fileId)).run();
         return jsonResponse({ success: true, fileId }, 200, origin);
       }
       if (path === "/api/cloud/recents/dismissed" && method === "GET") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return jsonResponse({ success: true, dismissedIds: [] }, 200, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return jsonResponse({ success: true, dismissedIds: [] }, 200, origin);
         const { results } = await env.DB.prepare(`
           SELECT file_id FROM user_dismissed_recents WHERE user_id = ?
-        `).bind(reqUserId2).all().catch(() => ({ results: [] }));
+        `).bind(reqUserId).all().catch(() => ({ results: [] }));
         const dismissedIds = (results || []).map((r) => String(r.file_id));
         return jsonResponse({ success: true, dismissedIds }, 200, origin);
       }
       if (path === "/api/cloud/recents/undismiss" && method === "POST") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         const body = await request.json().catch(() => ({}));
         const fileId = body?.fileId || body?.id;
         if (!fileId) return errorResponse("fileId requis", 400, origin);
         await env.DB.prepare(`
           DELETE FROM user_dismissed_recents WHERE user_id = ? AND file_id = ?
-        `).bind(reqUserId2, String(fileId)).run();
+        `).bind(reqUserId, String(fileId)).run();
         return jsonResponse({ success: true, fileId }, 200, origin);
       }
       if (path === "/api/cloud/classeur/folders") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
           const { results } = await env.DB.prepare(`
             SELECT * FROM classeur_folders
             WHERE user_id = ?
             ORDER BY display_order ASC, created_at ASC
-          `).bind(reqUserId2).all();
+          `).bind(reqUserId).all();
           let favSet = /* @__PURE__ */ new Set();
           try {
-            const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId2).all();
+            const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId).all();
             favSet = new Set((fList || []).map((f) => String(f.item_id)));
           } catch (e) {
           }
@@ -7317,7 +7317,7 @@ a:hover{transform:translateY(-2px)}
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             id,
-            reqUserId2,
+            reqUserId,
             parentId,
             name,
             modelId,
@@ -7334,7 +7334,7 @@ a:hover{transform:translateY(-2px)}
             success: true,
             folder: {
               id,
-              userId: reqUserId2,
+              userId: reqUserId,
               parentId,
               name,
               modelId,
@@ -7368,7 +7368,7 @@ a:hover{transform:translateY(-2px)}
                   item.positionY !== void 0 ? Number(item.positionY) : null,
                   item.zoomLevel !== void 0 ? Number(item.zoomLevel) : null,
                   item.id,
-                  reqUserId2
+                  reqUserId
                 ).run();
               }
             }
@@ -7415,7 +7415,7 @@ a:hover{transform:translateY(-2px)}
           }
           if (fields.length > 0) {
             fields.push("updated_at = CURRENT_TIMESTAMP");
-            values.push(body.id, reqUserId2);
+            values.push(body.id, reqUserId);
             await env.DB.prepare(`
               UPDATE classeur_folders SET ${fields.join(", ")}
               WHERE id = ? AND user_id = ?
@@ -7428,10 +7428,10 @@ a:hover{transform:translateY(-2px)}
           if (!folderId) return errorResponse("id de dossier manquant", 400, origin);
           const targetFolder = await env.DB.prepare(`
             SELECT * FROM classeur_folders WHERE id = ? AND user_id = ?
-          `).bind(folderId, reqUserId2).first();
+          `).bind(folderId, reqUserId).first();
           const { results: folderFiles } = await env.DB.prepare(`
             SELECT * FROM classeur_files WHERE folder_id = ? AND user_id = ?
-          `).bind(folderId, reqUserId2).all();
+          `).bind(folderId, reqUserId).all();
           for (const f of folderFiles || []) {
             await env.DB.prepare(`
               INSERT INTO trash_files (
@@ -7441,7 +7441,7 @@ a:hover{transform:translateY(-2px)}
               ) VALUES (?, ?, ?, ?, ?, ?, ?, 'classeur', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             `).bind(
               f.id,
-              reqUserId2,
+              reqUserId,
               f.name,
               f.size,
               f.size_bytes,
@@ -7453,12 +7453,12 @@ a:hover{transform:translateY(-2px)}
               f.r2_key,
               f.file_url
             ).run();
-            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(f.id, reqUserId2).run().catch(() => {
+            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(f.id, reqUserId).run().catch(() => {
             });
-            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(f.id, reqUserId2).run().catch(() => {
+            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(f.id, reqUserId).run().catch(() => {
             });
-            await recordSyncItem(env.DB, reqUserId2, f.id, "classeur", { id: f.id }, 1);
-            await cleanUserFavoriteOnDelete(env.DB, reqUserId2, f.id);
+            await recordSyncItem(env.DB, reqUserId, f.id, "classeur", { id: f.id }, 1);
+            await cleanUserFavoriteOnDelete(env.DB, reqUserId, f.id);
           }
           if (targetFolder) {
             await env.DB.prepare(`
@@ -7470,28 +7470,28 @@ a:hover{transform:translateY(-2px)}
               ON CONFLICT(id) DO UPDATE SET deleted_at = CURRENT_TIMESTAMP
             `).bind(
               folderId,
-              reqUserId2,
+              reqUserId,
               targetFolder.name,
               targetFolder.parent_id || "",
               JSON.stringify(targetFolder),
               (/* @__PURE__ */ new Date()).toLocaleDateString("fr-FR")
             ).run();
           }
-          await recordSyncItem(env.DB, reqUserId2, folderId, "classeur_folder", { id: folderId }, 1);
-          await cleanUserFavoriteOnDelete(env.DB, reqUserId2, folderId);
+          await recordSyncItem(env.DB, reqUserId, folderId, "classeur_folder", { id: folderId }, 1);
+          await cleanUserFavoriteOnDelete(env.DB, reqUserId, folderId);
           await env.DB.prepare(`
             DELETE FROM classeur_folders WHERE id = ? AND user_id = ?
-          `).bind(folderId, reqUserId2).run();
+          `).bind(folderId, reqUserId).run();
           return jsonResponse({ success: true, message: "Dossier et son contenu d\xE9plac\xE9s dans la corbeille" }, 200, origin);
         }
       }
       if (path === "/api/cloud/classeur/files") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
           const folderId = url.searchParams.get("folderId");
           let query = "SELECT * FROM classeur_files WHERE user_id = ?";
-          const params = [reqUserId2];
+          const params = [reqUserId];
           if (folderId) {
             query += " AND folder_id = ?";
             params.push(folderId);
@@ -7519,7 +7519,7 @@ a:hover{transform:translateY(-2px)}
           if (duplicateIdsToDelete.length > 0) {
             try {
               for (const dupId of duplicateIdsToDelete) {
-                await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(dupId, reqUserId2).run();
+                await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(dupId, reqUserId).run();
               }
             } catch (cleanupErr) {
             }
@@ -7575,7 +7575,7 @@ a:hover{transform:translateY(-2px)}
             await env.DB.prepare(`
               DELETE FROM classeur_files 
               WHERE user_id = ? AND folder_id = ? AND name = ? AND id != ?
-            `).bind(reqUserId2, folderId, name, id).run();
+            `).bind(reqUserId, folderId, name, id).run();
           } catch (delDupErr) {
           }
           await env.DB.prepare(`
@@ -7605,7 +7605,7 @@ a:hover{transform:translateY(-2px)}
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             id,
-            reqUserId2,
+            reqUserId,
             folderId,
             name,
             size,
@@ -7640,12 +7640,12 @@ a:hover{transform:translateY(-2px)}
                 END,
                 last_imported = excluded.last_imported,
                 updated_at = CURRENT_TIMESTAMP
-            `).bind(id, reqUserId2, folderId, name, sizeBytes, extension, r2Key, fileUrl, Date.now()).run();
+            `).bind(id, reqUserId, folderId, name, sizeBytes, extension, r2Key, fileUrl, Date.now()).run();
           } catch (e) {
           }
-          await recordSyncItem(env.DB, reqUserId2, id, "classeur", {
+          await recordSyncItem(env.DB, reqUserId, id, "classeur", {
             id,
-            userId: reqUserId2,
+            userId: reqUserId,
             folderId,
             name,
             size,
@@ -7668,7 +7668,7 @@ a:hover{transform:translateY(-2px)}
             success: true,
             file: {
               id,
-              userId: reqUserId2,
+              userId: reqUserId,
               folderId,
               name,
               size,
@@ -7706,7 +7706,7 @@ a:hover{transform:translateY(-2px)}
                   item.positionX !== void 0 ? Number(item.positionX) : null,
                   item.positionY !== void 0 ? Number(item.positionY) : null,
                   item.id,
-                  reqUserId2
+                  reqUserId
                 ).run();
               }
             }
@@ -7757,7 +7757,7 @@ a:hover{transform:translateY(-2px)}
           }
           if (fields.length > 0) {
             fields.push("updated_at = CURRENT_TIMESTAMP");
-            values.push(body.id, reqUserId2);
+            values.push(body.id, reqUserId);
             const updateRes = await env.DB.prepare(`
               UPDATE classeur_files SET ${fields.join(", ")}
               WHERE id = ? AND user_id = ?
@@ -7787,7 +7787,7 @@ a:hover{transform:translateY(-2px)}
               }
               if (docFields.length > 0) {
                 docFields.push("updated_at = CURRENT_TIMESTAMP");
-                docValues.push(body.id, reqUserId2);
+                docValues.push(body.id, reqUserId);
                 await env.DB.prepare(`
                   UPDATE document_files SET ${docFields.join(", ")}
                   WHERE id = ? AND user_id = ?
@@ -7806,17 +7806,17 @@ a:hover{transform:translateY(-2px)}
           if (fileId) {
             file = await env.DB.prepare(`
               SELECT * FROM classeur_files WHERE id = ? AND user_id = ?
-            `).bind(fileId, reqUserId2).first();
+            `).bind(fileId, reqUserId).first();
           }
           if (!file && fileName) {
             file = await env.DB.prepare(`
               SELECT * FROM classeur_files WHERE name = ? AND user_id = ? ORDER BY updated_at DESC
-            `).bind(fileName, reqUserId2).first();
+            `).bind(fileName, reqUserId).first();
           }
           if (!file && fileId) {
             const rawFile = await env.DB.prepare(`
               SELECT * FROM files WHERE id = ? AND user_id = ?
-            `).bind(fileId, reqUserId2).first();
+            `).bind(fileId, reqUserId).first();
             if (rawFile) {
               file = {
                 id: rawFile.id,
@@ -7845,7 +7845,7 @@ a:hover{transform:translateY(-2px)}
               ) VALUES (?, ?, ?, ?, ?, ?, ?, 'classeur', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             `).bind(
               file.id,
-              reqUserId2,
+              reqUserId,
               file.name,
               file.size,
               file.size_bytes,
@@ -7859,29 +7859,29 @@ a:hover{transform:translateY(-2px)}
             ).run();
             await env.DB.prepare(`
               DELETE FROM classeur_files WHERE id = ? AND user_id = ?
-            `).bind(file.id, reqUserId2).run();
+            `).bind(file.id, reqUserId).run();
           }
           const targetId = file ? file.id : fileId;
           if (targetId) {
-            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(targetId, reqUserId2).run().catch(() => {
+            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {
             });
-            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(targetId, reqUserId2).run().catch(() => {
+            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {
             });
-            await recordSyncItem(env.DB, reqUserId2, targetId, "classeur", { id: targetId }, 1);
-            await cleanUserFavoriteOnDelete(env.DB, reqUserId2, targetId);
+            await recordSyncItem(env.DB, reqUserId, targetId, "classeur", { id: targetId }, 1);
+            await cleanUserFavoriteOnDelete(env.DB, reqUserId, targetId);
           }
-          recalculateAndSaveUserStorage(env.DB, reqUserId2).catch(() => {
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
           return jsonResponse({ success: true, message: "Fichier plac\xE9 dans la corbeille" }, 200, origin);
         }
       }
       if (path === "/api/cloud/audio") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
           await env.DB.prepare(`
             DELETE FROM audio_files WHERE user_id = ? AND (r2_key LIKE '%/classeur/%' OR id LIKE 'folder_%' OR id LIKE 'cf_folder_%' OR id LIKE 'cf-folder-%')
-          `).bind(reqUserId2).run().catch(() => {
+          `).bind(reqUserId).run().catch(() => {
           });
           const { results: auds } = await env.DB.prepare(`
             SELECT * FROM audio_files 
@@ -7891,7 +7891,7 @@ a:hover{transform:translateY(-2px)}
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
             ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId2).all();
+          `).bind(reqUserId).all();
           let extraAuds = [];
           try {
             const { results: extra } = await env.DB.prepare(`
@@ -7904,25 +7904,25 @@ a:hover{transform:translateY(-2px)}
                 AND id NOT LIKE 'cf-%'
                 AND id NOT LIKE 'cf_%'
               ORDER BY last_imported DESC, created_at DESC
-            `).bind(reqUserId2).all();
+            `).bind(reqUserId).all();
             extraAuds = extra || [];
           } catch (e) {
           }
           let trashedIdSet = /* @__PURE__ */ new Set();
           try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId2).all();
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
             trashedIdSet = new Set((trashList || []).map((t) => t.id));
           } catch (e) {
           }
           let favAudSet = /* @__PURE__ */ new Set();
           try {
-            const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId2).all();
+            const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId).all();
             favAudSet = new Set((fList || []).map((f) => String(f.item_id)));
           } catch (e) {
           }
           let pinnedAudSet = /* @__PURE__ */ new Set();
           try {
-            const { results: pList } = await env.DB.prepare(`SELECT item_id FROM pinned_items WHERE user_id = ?`).bind(reqUserId2).all();
+            const { results: pList } = await env.DB.prepare(`SELECT item_id FROM pinned_items WHERE user_id = ?`).bind(reqUserId).all();
             pinnedAudSet = new Set((pList || []).map((p) => String(p.item_id)));
           } catch (e) {
           }
@@ -8036,7 +8036,7 @@ a:hover{transform:translateY(-2px)}
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             id,
-            reqUserId2,
+            reqUserId,
             name,
             title,
             artist,
@@ -8067,12 +8067,12 @@ a:hover{transform:translateY(-2px)}
                 END,
                 last_imported = excluded.last_imported,
                 updated_at = CURRENT_TIMESTAMP
-            `).bind(id, reqUserId2, name, sizeBytes, r2Key, audioUrl, Date.now()).run();
+            `).bind(id, reqUserId, name, sizeBytes, r2Key, audioUrl, Date.now()).run();
           } catch (e) {
           }
-          await recordSyncItem(env.DB, reqUserId2, id, "audio", {
+          await recordSyncItem(env.DB, reqUserId, id, "audio", {
             id,
-            userId: reqUserId2,
+            userId: reqUserId,
             name,
             title,
             artist,
@@ -8103,17 +8103,17 @@ a:hover{transform:translateY(-2px)}
           if (fileId) {
             file = await env.DB.prepare(`
               SELECT * FROM audio_files WHERE id = ? AND user_id = ?
-            `).bind(fileId, reqUserId2).first();
+            `).bind(fileId, reqUserId).first();
           }
           if (!file && fileName) {
             file = await env.DB.prepare(`
               SELECT * FROM audio_files WHERE name = ? AND user_id = ? ORDER BY updated_at DESC
-            `).bind(fileName, reqUserId2).first();
+            `).bind(fileName, reqUserId).first();
           }
           if (!file && fileId) {
             const rawFile = await env.DB.prepare(`
               SELECT * FROM files WHERE id = ? AND user_id = ?
-            `).bind(fileId, reqUserId2).first();
+            `).bind(fileId, reqUserId).first();
             if (rawFile) {
               file = {
                 id: rawFile.id,
@@ -8140,7 +8140,7 @@ a:hover{transform:translateY(-2px)}
               ) VALUES (?, ?, ?, ?, ?, 'audio', 'mp3', 'audio', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
             `).bind(
               file.id,
-              reqUserId2,
+              reqUserId,
               file.name,
               file.size,
               file.size_bytes,
@@ -8149,29 +8149,29 @@ a:hover{transform:translateY(-2px)}
               resolvedR2Key,
               file.audio_url
             ).run();
-            await env.DB.prepare(`DELETE FROM audio_files WHERE id = ? AND user_id = ?`).bind(file.id, reqUserId2).run();
+            await env.DB.prepare(`DELETE FROM audio_files WHERE id = ? AND user_id = ?`).bind(file.id, reqUserId).run();
           }
           const targetId = file ? file.id : fileId;
           if (targetId) {
-            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(targetId, reqUserId2).run().catch(() => {
+            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {
             });
-            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(targetId, reqUserId2).run().catch(() => {
+            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {
             });
-            await recordSyncItem(env.DB, reqUserId2, targetId, "audio", { id: targetId }, 1);
-            await cleanUserFavoriteOnDelete(env.DB, reqUserId2, targetId);
+            await recordSyncItem(env.DB, reqUserId, targetId, "audio", { id: targetId }, 1);
+            await cleanUserFavoriteOnDelete(env.DB, reqUserId, targetId);
           }
-          recalculateAndSaveUserStorage(env.DB, reqUserId2).catch(() => {
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
           return jsonResponse({ success: true, message: "Audio d\xE9plac\xE9 dans la corbeille" }, 200, origin);
         }
       }
       if (path === "/api/cloud/images") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
           await env.DB.prepare(`
             DELETE FROM image_files WHERE user_id = ? AND (r2_key LIKE '%/classeur/%' OR id LIKE 'folder_%' OR id LIKE 'cf_folder_%' OR id LIKE 'cf-folder-%')
-          `).bind(reqUserId2).run().catch(() => {
+          `).bind(reqUserId).run().catch(() => {
           });
           const { results: imgs } = await env.DB.prepare(`
             SELECT * FROM image_files 
@@ -8181,7 +8181,7 @@ a:hover{transform:translateY(-2px)}
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
             ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId2).all();
+          `).bind(reqUserId).all();
           let extraImgs = [];
           try {
             const { results: extra } = await env.DB.prepare(`
@@ -8194,25 +8194,25 @@ a:hover{transform:translateY(-2px)}
                 AND id NOT LIKE 'cf-%'
                 AND id NOT LIKE 'cf_%'
               ORDER BY last_imported DESC, created_at DESC
-            `).bind(reqUserId2).all();
+            `).bind(reqUserId).all();
             extraImgs = extra || [];
           } catch (e) {
           }
           let trashedImgIdSet = /* @__PURE__ */ new Set();
           try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId2).all();
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
             trashedImgIdSet = new Set((trashList || []).map((t) => t.id));
           } catch (e) {
           }
           let favImgSet = /* @__PURE__ */ new Set();
           try {
-            const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId2).all();
+            const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId).all();
             favImgSet = new Set((fList || []).map((f) => String(f.item_id)));
           } catch (e) {
           }
           let pinnedImgSet = /* @__PURE__ */ new Set();
           try {
-            const { results: pList } = await env.DB.prepare(`SELECT item_id FROM pinned_items WHERE user_id = ?`).bind(reqUserId2).all();
+            const { results: pList } = await env.DB.prepare(`SELECT item_id FROM pinned_items WHERE user_id = ?`).bind(reqUserId).all();
             pinnedImgSet = new Set((pList || []).map((p) => String(p.item_id)));
           } catch (e) {
           }
@@ -8301,7 +8301,7 @@ a:hover{transform:translateY(-2px)}
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             id,
-            reqUserId2,
+            reqUserId,
             name,
             size,
             sizeBytes,
@@ -8329,12 +8329,12 @@ a:hover{transform:translateY(-2px)}
                 END,
                 last_imported = excluded.last_imported,
                 updated_at = CURRENT_TIMESTAMP
-            `).bind(id, reqUserId2, name, sizeBytes, extension, r2Key, imageUrl, Date.now()).run();
+            `).bind(id, reqUserId, name, sizeBytes, extension, r2Key, imageUrl, Date.now()).run();
           } catch (e) {
           }
-          await recordSyncItem(env.DB, reqUserId2, id, "images", {
+          await recordSyncItem(env.DB, reqUserId, id, "images", {
             id,
-            userId: reqUserId2,
+            userId: reqUserId,
             name,
             size,
             sizeBytes,
@@ -8361,17 +8361,17 @@ a:hover{transform:translateY(-2px)}
           if (fileId) {
             file = await env.DB.prepare(`
               SELECT * FROM image_files WHERE id = ? AND user_id = ?
-            `).bind(fileId, reqUserId2).first();
+            `).bind(fileId, reqUserId).first();
           }
           if (!file && fileName) {
             file = await env.DB.prepare(`
               SELECT * FROM image_files WHERE name = ? AND user_id = ? ORDER BY updated_at DESC
-            `).bind(fileName, reqUserId2).first();
+            `).bind(fileName, reqUserId).first();
           }
           if (!file && fileId) {
             const rawFile = await env.DB.prepare(`
               SELECT * FROM files WHERE id = ? AND user_id = ?
-            `).bind(fileId, reqUserId2).first();
+            `).bind(fileId, reqUserId).first();
             if (rawFile) {
               file = {
                 id: rawFile.id,
@@ -8398,7 +8398,7 @@ a:hover{transform:translateY(-2px)}
               ) VALUES (?, ?, ?, ?, ?, 'images', ?, 'images', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
             `).bind(
               file.id,
-              reqUserId2,
+              reqUserId,
               file.name,
               file.size,
               file.size_bytes,
@@ -8408,29 +8408,29 @@ a:hover{transform:translateY(-2px)}
               resolvedR2Key,
               file.image_url
             ).run();
-            await env.DB.prepare(`DELETE FROM image_files WHERE id = ? AND user_id = ?`).bind(file.id, reqUserId2).run();
+            await env.DB.prepare(`DELETE FROM image_files WHERE id = ? AND user_id = ?`).bind(file.id, reqUserId).run();
           }
           const targetId = file ? file.id : fileId;
           if (targetId) {
-            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(targetId, reqUserId2).run().catch(() => {
+            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {
             });
-            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(targetId, reqUserId2).run().catch(() => {
+            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {
             });
-            await recordSyncItem(env.DB, reqUserId2, targetId, "images", { id: targetId }, 1);
-            await cleanUserFavoriteOnDelete(env.DB, reqUserId2, targetId);
+            await recordSyncItem(env.DB, reqUserId, targetId, "images", { id: targetId }, 1);
+            await cleanUserFavoriteOnDelete(env.DB, reqUserId, targetId);
           }
-          recalculateAndSaveUserStorage(env.DB, reqUserId2).catch(() => {
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
           return jsonResponse({ success: true, message: "Image d\xE9plac\xE9e dans la corbeille" }, 200, origin);
         }
       }
       if (path === "/api/cloud/videos") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
           await env.DB.prepare(`
             DELETE FROM video_files WHERE user_id = ? AND (r2_key LIKE '%/classeur/%' OR id LIKE 'folder_%' OR id LIKE 'cf_folder_%' OR id LIKE 'cf-folder-%')
-          `).bind(reqUserId2).run().catch(() => {
+          `).bind(reqUserId).run().catch(() => {
           });
           const { results: vids } = await env.DB.prepare(`
             SELECT * FROM video_files 
@@ -8440,7 +8440,7 @@ a:hover{transform:translateY(-2px)}
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
             ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId2).all();
+          `).bind(reqUserId).all();
           let extraVids = [];
           try {
             const { results: extra } = await env.DB.prepare(`
@@ -8453,25 +8453,25 @@ a:hover{transform:translateY(-2px)}
                 AND id NOT LIKE 'cf-%'
                 AND id NOT LIKE 'cf_%'
               ORDER BY last_imported DESC, created_at DESC
-            `).bind(reqUserId2).all();
+            `).bind(reqUserId).all();
             extraVids = extra || [];
           } catch (e) {
           }
           let trashedVidIdSet = /* @__PURE__ */ new Set();
           try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId2).all();
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
             trashedVidIdSet = new Set((trashList || []).map((t) => t.id));
           } catch (e) {
           }
           let favVidSet = /* @__PURE__ */ new Set();
           try {
-            const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId2).all();
+            const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId).all();
             favVidSet = new Set((fList || []).map((f) => String(f.item_id)));
           } catch (e) {
           }
           let pinnedVidSet = /* @__PURE__ */ new Set();
           try {
-            const { results: pList } = await env.DB.prepare(`SELECT item_id FROM pinned_items WHERE user_id = ?`).bind(reqUserId2).all();
+            const { results: pList } = await env.DB.prepare(`SELECT item_id FROM pinned_items WHERE user_id = ?`).bind(reqUserId).all();
             pinnedVidSet = new Set((pList || []).map((p) => String(p.item_id)));
           } catch (e) {
           }
@@ -8554,7 +8554,7 @@ a:hover{transform:translateY(-2px)}
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             id,
-            reqUserId2,
+            reqUserId,
             name,
             size,
             sizeBytes,
@@ -8582,12 +8582,12 @@ a:hover{transform:translateY(-2px)}
                 END,
                 last_imported = excluded.last_imported,
                 updated_at = CURRENT_TIMESTAMP
-            `).bind(id, reqUserId2, name, sizeBytes, extension, r2Key, videoUrl, Date.now()).run();
+            `).bind(id, reqUserId, name, sizeBytes, extension, r2Key, videoUrl, Date.now()).run();
           } catch (e) {
           }
-          await recordSyncItem(env.DB, reqUserId2, id, "videos", {
+          await recordSyncItem(env.DB, reqUserId, id, "videos", {
             id,
-            userId: reqUserId2,
+            userId: reqUserId,
             name,
             size,
             sizeBytes,
@@ -8614,17 +8614,17 @@ a:hover{transform:translateY(-2px)}
           if (fileId) {
             file = await env.DB.prepare(`
               SELECT * FROM video_files WHERE id = ? AND user_id = ?
-            `).bind(fileId, reqUserId2).first();
+            `).bind(fileId, reqUserId).first();
           }
           if (!file && fileName) {
             file = await env.DB.prepare(`
               SELECT * FROM video_files WHERE name = ? AND user_id = ? ORDER BY updated_at DESC
-            `).bind(fileName, reqUserId2).first();
+            `).bind(fileName, reqUserId).first();
           }
           if (!file && fileId) {
             const rawFile = await env.DB.prepare(`
               SELECT * FROM files WHERE id = ? AND user_id = ?
-            `).bind(fileId, reqUserId2).first();
+            `).bind(fileId, reqUserId).first();
             if (rawFile) {
               file = {
                 id: rawFile.id,
@@ -8651,7 +8651,7 @@ a:hover{transform:translateY(-2px)}
               ) VALUES (?, ?, ?, ?, ?, 'videos', ?, 'videos', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
             `).bind(
               file.id,
-              reqUserId2,
+              reqUserId,
               file.name,
               file.size,
               file.size_bytes,
@@ -8661,30 +8661,30 @@ a:hover{transform:translateY(-2px)}
               resolvedR2Key,
               file.video_url || file.file_url || ""
             ).run();
-            await env.DB.prepare(`DELETE FROM video_files WHERE id = ? AND user_id = ?`).bind(file.id, reqUserId2).run();
+            await env.DB.prepare(`DELETE FROM video_files WHERE id = ? AND user_id = ?`).bind(file.id, reqUserId).run();
           }
           const targetId = file ? file.id : fileId;
           if (targetId) {
-            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(targetId, reqUserId2).run().catch(() => {
+            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {
             });
-            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(targetId, reqUserId2).run().catch(() => {
+            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {
             });
-            await recordSyncItem(env.DB, reqUserId2, targetId, "videos", { id: targetId }, 1);
-            await cleanUserFavoriteOnDelete(env.DB, reqUserId2, targetId);
+            await recordSyncItem(env.DB, reqUserId, targetId, "videos", { id: targetId }, 1);
+            await cleanUserFavoriteOnDelete(env.DB, reqUserId, targetId);
           }
-          recalculateAndSaveUserStorage(env.DB, reqUserId2).catch(() => {
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
           return jsonResponse({ success: true, message: "Vid\xE9o d\xE9plac\xE9e dans la corbeille" }, 200, origin);
         }
       }
       if (path === "/api/cloud/documents") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
           await env.DB.prepare(`
             DELETE FROM document_files 
             WHERE user_id = ? AND (r2_key LIKE '%/mes-fichiers/%' OR r2_key LIKE '%/classeur/%' OR id LIKE 'folder_%' OR id LIKE 'cf_folder_%' OR id LIKE 'cf-folder-%')
-          `).bind(reqUserId2).run().catch(() => {
+          `).bind(reqUserId).run().catch(() => {
           });
           const { results: docs } = await env.DB.prepare(`
             SELECT * FROM document_files 
@@ -8695,23 +8695,23 @@ a:hover{transform:translateY(-2px)}
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
             ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId2).all();
+          `).bind(reqUserId).all();
           let extraDocs = [];
           let trashedDocIdSet = /* @__PURE__ */ new Set();
           try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId2).all();
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
             trashedDocIdSet = new Set((trashList || []).map((t) => t.id));
           } catch (e) {
           }
           let favDocSet = /* @__PURE__ */ new Set();
           try {
-            const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId2).all();
+            const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId).all();
             favDocSet = new Set((fList || []).map((f) => String(f.item_id)));
           } catch (e) {
           }
           let pinnedDocSet = /* @__PURE__ */ new Set();
           try {
-            const { results: pList } = await env.DB.prepare(`SELECT item_id FROM pinned_items WHERE user_id = ?`).bind(reqUserId2).all();
+            const { results: pList } = await env.DB.prepare(`SELECT item_id FROM pinned_items WHERE user_id = ?`).bind(reqUserId).all();
             pinnedDocSet = new Set((pList || []).map((p) => String(p.item_id)));
           } catch (e) {
           }
@@ -8803,7 +8803,7 @@ a:hover{transform:translateY(-2px)}
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             id,
-            reqUserId2,
+            reqUserId,
             name,
             size,
             sizeBytes,
@@ -8816,9 +8816,9 @@ a:hover{transform:translateY(-2px)}
             fileUrl,
             previewUrl
           ).run();
-          await recordSyncItem(env.DB, reqUserId2, id, "documents", {
+          await recordSyncItem(env.DB, reqUserId, id, "documents", {
             id,
-            userId: reqUserId2,
+            userId: reqUserId,
             name,
             size,
             sizeBytes,
@@ -8847,12 +8847,12 @@ a:hover{transform:translateY(-2px)}
           if (fileId) {
             file = await env.DB.prepare(`
               SELECT * FROM document_files WHERE id = ? AND user_id = ?
-            `).bind(fileId, reqUserId2).first();
+            `).bind(fileId, reqUserId).first();
           }
           if (!file && fileName) {
             file = await env.DB.prepare(`
               SELECT * FROM document_files WHERE name = ? AND user_id = ? ORDER BY updated_at DESC
-            `).bind(fileName, reqUserId2).first();
+            `).bind(fileName, reqUserId).first();
           }
           if (file) {
             const resolvedR2Key = file.r2_key && String(file.r2_key).trim() !== "" ? String(file.r2_key).trim() : extractR2Keys("", file.file_url || file.preview_url || "")[0] || "";
@@ -8864,7 +8864,7 @@ a:hover{transform:translateY(-2px)}
               ) VALUES (?, ?, ?, ?, ?, 'documents', ?, 'documents', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
             `).bind(
               file.id,
-              reqUserId2,
+              reqUserId,
               file.name,
               file.size,
               file.size_bytes,
@@ -8874,39 +8874,39 @@ a:hover{transform:translateY(-2px)}
               resolvedR2Key,
               file.file_url
             ).run();
-            await env.DB.prepare(`DELETE FROM document_files WHERE id = ? AND user_id = ?`).bind(file.id, reqUserId2).run();
+            await env.DB.prepare(`DELETE FROM document_files WHERE id = ? AND user_id = ?`).bind(file.id, reqUserId).run();
           }
           const targetId = file ? file.id : fileId;
           if (targetId) {
-            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(targetId, reqUserId2).run().catch(() => {
+            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {
             });
-            await recordSyncItem(env.DB, reqUserId2, targetId, "documents", { id: targetId }, 1);
-            await cleanUserFavoriteOnDelete(env.DB, reqUserId2, targetId);
+            await recordSyncItem(env.DB, reqUserId, targetId, "documents", { id: targetId }, 1);
+            await cleanUserFavoriteOnDelete(env.DB, reqUserId, targetId);
           }
-          recalculateAndSaveUserStorage(env.DB, reqUserId2).catch(() => {
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
           return jsonResponse({ success: true, message: "Document d\xE9plac\xE9 dans la corbeille" }, 200, origin);
         }
       }
       if (path === "/api/cloud/downloads") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
           let trashedDlIdSet = /* @__PURE__ */ new Set();
           try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId2).all();
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
             trashedDlIdSet = new Set((trashList || []).map((t) => t.id));
           } catch (e) {
           }
           let favDlSet = /* @__PURE__ */ new Set();
           try {
-            const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId2).all();
+            const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId).all();
             favDlSet = new Set((fList || []).map((f) => String(f.item_id)));
           } catch (e) {
           }
           const { results } = await env.DB.prepare(`
             SELECT * FROM download_files WHERE user_id = ? ORDER BY downloaded_at DESC
-          `).bind(reqUserId2).all();
+          `).bind(reqUserId).all();
           const formatted = (results || []).filter((dl) => !trashedDlIdSet.has(dl.id)).map((dl) => ({
             id: dl.id,
             userId: dl.user_id,
@@ -8959,7 +8959,7 @@ a:hover{transform:translateY(-2px)}
               END
           `).bind(
             id,
-            reqUserId2,
+            reqUserId,
             name,
             size,
             sizeBytes,
@@ -8970,9 +8970,9 @@ a:hover{transform:translateY(-2px)}
             r2Key,
             fileUrl
           ).run();
-          await recordSyncItem(env.DB, reqUserId2, id, "downloads", {
+          await recordSyncItem(env.DB, reqUserId, id, "downloads", {
             id,
-            userId: reqUserId2,
+            userId: reqUserId,
             name,
             size,
             sizeBytes,
@@ -8996,7 +8996,7 @@ a:hover{transform:translateY(-2px)}
           if (!fileId) return errorResponse("id manquant", 400, origin);
           const dlFile = await env.DB.prepare(`
             SELECT * FROM download_files WHERE id = ? AND user_id = ?
-          `).bind(fileId, reqUserId2).first();
+          `).bind(fileId, reqUserId).first();
           if (dlFile) {
             const resolvedR2Key = dlFile.r2_key && String(dlFile.r2_key).trim() !== "" ? String(dlFile.r2_key).trim() : extractR2Keys("", dlFile.file_url || "")[0] || "";
             await env.DB.prepare(`
@@ -9008,7 +9008,7 @@ a:hover{transform:translateY(-2px)}
               ON CONFLICT(id) DO UPDATE SET deleted_at = CURRENT_TIMESTAMP
             `).bind(
               dlFile.id,
-              reqUserId2,
+              reqUserId,
               dlFile.name,
               dlFile.size,
               dlFile.size_bytes,
@@ -9019,32 +9019,32 @@ a:hover{transform:translateY(-2px)}
               dlFile.file_url
             ).run();
           }
-          await env.DB.prepare(`DELETE FROM download_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId2).run();
-          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId2).run().catch(() => {
+          await env.DB.prepare(`DELETE FROM download_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+          await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
           });
-          await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId2).run().catch(() => {
+          await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(fileId, reqUserId).run().catch(() => {
           });
-          await recordSyncItem(env.DB, reqUserId2, fileId, "downloads", { id: fileId }, 1);
-          await cleanUserFavoriteOnDelete(env.DB, reqUserId2, fileId);
-          recalculateAndSaveUserStorage(env.DB, reqUserId2).catch(() => {
+          await recordSyncItem(env.DB, reqUserId, fileId, "downloads", { id: fileId }, 1);
+          await cleanUserFavoriteOnDelete(env.DB, reqUserId, fileId);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
           return jsonResponse({ success: true, message: "T\xE9l\xE9chargement d\xE9plac\xE9 dans la corbeille" }, 200, origin);
         }
       }
       if (path === "/api/cloud/secure/config" && method === "GET") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         const config = await env.DB.prepare(`
           SELECT user_id, updated_at FROM secure_folder_config WHERE user_id = ?
-        `).bind(reqUserId2).first();
+        `).bind(reqUserId).first();
         return jsonResponse({
           success: true,
           isConfigured: !!config
         }, 200, origin);
       }
       if (path === "/api/cloud/secure/set-pin" && method === "POST") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         const body = await request.json().catch(() => ({}));
         const pin = String(body.pin || "").trim();
         const oldPin = body.oldPin ? String(body.oldPin).trim() : null;
@@ -9053,7 +9053,7 @@ a:hover{transform:translateY(-2px)}
         }
         const existing = await env.DB.prepare(`
           SELECT pin_hash FROM secure_folder_config WHERE user_id = ?
-        `).bind(reqUserId2).first();
+        `).bind(reqUserId).first();
         if (existing && existing.pin_hash) {
           if (!oldPin) {
             return errorResponse("Ancien code PIN requis pour modifier le code", 400, origin);
@@ -9070,20 +9070,20 @@ a:hover{transform:translateY(-2px)}
           ON CONFLICT(user_id) DO UPDATE SET
             pin_hash = excluded.pin_hash,
             updated_at = CURRENT_TIMESTAMP
-        `).bind(reqUserId2, pinHash).run();
+        `).bind(reqUserId, pinHash).run();
         return jsonResponse({
           success: true,
           message: "Code PIN s\xE9curis\xE9 configur\xE9 avec succ\xE8s"
         }, 200, origin);
       }
       if (path === "/api/cloud/secure/verify-pin" && method === "POST") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         const body = await request.json().catch(() => ({}));
         const pin = String(body.pin || "").trim();
         const existing = await env.DB.prepare(`
           SELECT pin_hash FROM secure_folder_config WHERE user_id = ?
-        `).bind(reqUserId2).first();
+        `).bind(reqUserId).first();
         if (!existing || !existing.pin_hash) {
           return errorResponse("Aucun code PIN configur\xE9 pour cet utilisateur", 404, origin);
         }
@@ -9094,12 +9094,12 @@ a:hover{transform:translateY(-2px)}
         return jsonResponse({ success: true, verified: true, message: "Dossier s\xE9curis\xE9 d\xE9verrouill\xE9" }, 200, origin);
       }
       if (path === "/api/cloud/secure/files") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
           const { results } = await env.DB.prepare(`
             SELECT * FROM secure_files WHERE user_id = ? ORDER BY created_at DESC
-          `).bind(reqUserId2).all();
+          `).bind(reqUserId).all();
           const formatted = (results || []).map((s) => {
             const meta = s.metadata_json ? JSON.parse(s.metadata_json) : {};
             const isAud = s.original_category === "audio" || s.category === "audio";
@@ -9150,7 +9150,7 @@ a:hover{transform:translateY(-2px)}
           let existingAudioRow = null;
           if (originalCategory === "audio" || category === "audio") {
             try {
-              existingAudioRow = await env.DB.prepare("SELECT * FROM audio_files WHERE id = ? AND user_id = ?").bind(id, reqUserId2).first();
+              existingAudioRow = await env.DB.prepare("SELECT * FROM audio_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).first();
             } catch (e) {
             }
           }
@@ -9184,7 +9184,7 @@ a:hover{transform:translateY(-2px)}
               metadata_json = excluded.metadata_json
           `).bind(
             id,
-            reqUserId2,
+            reqUserId,
             name,
             size,
             sizeBytes,
@@ -9198,23 +9198,23 @@ a:hover{transform:translateY(-2px)}
             fileUrl
           ).run();
           if (fromFolderId) {
-            await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(id, reqUserId2).run();
+            await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
           } else if (originalCategory === "classeur_folder" || category === "folder") {
-            await env.DB.prepare("DELETE FROM classeur_folders WHERE id = ? AND user_id = ?").bind(id, reqUserId2).run();
+            await env.DB.prepare("DELETE FROM classeur_folders WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
           } else if (originalCategory === "downloads") {
-            await env.DB.prepare("DELETE FROM download_files WHERE id = ? AND user_id = ?").bind(id, reqUserId2).run();
+            await env.DB.prepare("DELETE FROM download_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
           } else if (originalCategory === "audio") {
-            await env.DB.prepare("DELETE FROM audio_files WHERE id = ? AND user_id = ?").bind(id, reqUserId2).run();
+            await env.DB.prepare("DELETE FROM audio_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
           } else if (originalCategory === "images") {
-            await env.DB.prepare("DELETE FROM image_files WHERE id = ? AND user_id = ?").bind(id, reqUserId2).run();
+            await env.DB.prepare("DELETE FROM image_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
           } else if (originalCategory === "videos") {
-            await env.DB.prepare("DELETE FROM video_files WHERE id = ? AND user_id = ?").bind(id, reqUserId2).run();
+            await env.DB.prepare("DELETE FROM video_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
           } else if (originalCategory === "documents") {
-            await env.DB.prepare("DELETE FROM document_files WHERE id = ? AND user_id = ?").bind(id, reqUserId2).run();
+            await env.DB.prepare("DELETE FROM document_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
           }
           const syncCat = originalCategory === "classeur_folder" || category === "folder" ? "classeur_folder" : originalCategory;
-          await recordSyncItem(env.DB, reqUserId2, id, syncCat, { id }, 1);
-          await cleanUserFavoriteOnDelete(env.DB, reqUserId2, id);
+          await recordSyncItem(env.DB, reqUserId, id, syncCat, { id }, 1);
+          await cleanUserFavoriteOnDelete(env.DB, reqUserId, id);
           return jsonResponse({ success: true, message: "Fichier d\xE9plac\xE9 dans le dossier s\xE9curis\xE9" }, 200, origin);
         }
         if (method === "DELETE") {
@@ -9225,7 +9225,7 @@ a:hover{transform:translateY(-2px)}
           for (const id of targetIds) {
             const secFile = await env.DB.prepare(`
               SELECT * FROM secure_files WHERE id = ? AND user_id = ?
-            `).bind(id, reqUserId2).first();
+            `).bind(id, reqUserId).first();
             if (!secFile) continue;
             const origCat = secFile.original_category || "documents";
             const origFolder = secFile.original_folder_id || "";
@@ -9241,7 +9241,7 @@ a:hover{transform:translateY(-2px)}
                 ON CONFLICT(id) DO UPDATE SET deleted_at = CURRENT_TIMESTAMP
               `).bind(
                 secFile.id,
-                reqUserId2,
+                reqUserId,
                 secFile.name,
                 secFile.size,
                 secFile.size_bytes,
@@ -9253,9 +9253,9 @@ a:hover{transform:translateY(-2px)}
                 resolvedR2Key,
                 secFile.file_url || ""
               ).run();
-              await env.DB.prepare(`DELETE FROM secure_files WHERE id = ? AND user_id = ?`).bind(id, reqUserId2).run();
-              await recordSyncItem(env.DB, reqUserId2, secFile.id, "trash", { id: secFile.id, name: secFile.name, size: secFile.size, isTrash: true }, 0);
-              await recordSyncItem(env.DB, reqUserId2, secFile.id, "secure", { id: secFile.id }, 1);
+              await env.DB.prepare(`DELETE FROM secure_files WHERE id = ? AND user_id = ?`).bind(id, reqUserId).run();
+              await recordSyncItem(env.DB, reqUserId, secFile.id, "trash", { id: secFile.id, name: secFile.name, size: secFile.size, isTrash: true }, 0);
+              await recordSyncItem(env.DB, reqUserId, secFile.id, "secure", { id: secFile.id }, 1);
             } else {
               const isFolder = origCat === "classeur_folder" || secFile.category === "folder";
               if (isFolder) {
@@ -9281,7 +9281,7 @@ a:hover{transform:translateY(-2px)}
                     updated_at = CURRENT_TIMESTAMP
                 `).bind(
                   secFile.id,
-                  reqUserId2,
+                  reqUserId,
                   meta.parentId || meta.parent_id || null,
                   secFile.name,
                   meta.modelId || meta.model_id || "1",
@@ -9310,7 +9310,7 @@ a:hover{transform:translateY(-2px)}
                     updated_at = CURRENT_TIMESTAMP
                 `).bind(
                   secFile.id,
-                  reqUserId2,
+                  reqUserId,
                   origFolder,
                   secFile.name,
                   secFile.size,
@@ -9332,7 +9332,7 @@ a:hover{transform:translateY(-2px)}
                     file_url = excluded.file_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(secFile.id, reqUserId2, secFile.name, secFile.size, secFile.size_bytes, secFile.category || "documents", secFile.extension || "", secFile.file_url, secFile.date_formatted).run();
+                `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.category || "documents", secFile.extension || "", secFile.file_url, secFile.date_formatted).run();
               } else if (origCat === "audio") {
                 const coverToRestore = meta.coverUrl || meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.startsWith("blob:") && !meta.previewUrl.includes(".mp3") ? meta.previewUrl : "") || "";
                 const artistToRestore = meta.artist || "Artiste inconnu";
@@ -9368,7 +9368,7 @@ a:hover{transform:translateY(-2px)}
                     updated_at = CURRENT_TIMESTAMP
                 `).bind(
                   secFile.id,
-                  reqUserId2,
+                  reqUserId,
                   secFile.name,
                   titleToRestore,
                   artistToRestore,
@@ -9393,7 +9393,7 @@ a:hover{transform:translateY(-2px)}
                       r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
                       file_url = excluded.file_url,
                       updated_at = CURRENT_TIMESTAMP
-                  `).bind(secFile.id, reqUserId2, secFile.name, secFile.size_bytes || 0, r2KeyToRestore, audioUrlToRestore, Date.now()).run();
+                  `).bind(secFile.id, reqUserId, secFile.name, secFile.size_bytes || 0, r2KeyToRestore, audioUrlToRestore, Date.now()).run();
                 } catch (e) {
                 }
               } else if (origCat === "images") {
@@ -9407,7 +9407,7 @@ a:hover{transform:translateY(-2px)}
                     image_url = excluded.image_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(secFile.id, reqUserId2, secFile.name, secFile.size, secFile.size_bytes, secFile.file_url, secFile.date_formatted).run();
+                `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.file_url, secFile.date_formatted).run();
               } else if (origCat === "videos") {
                 await env.DB.prepare(`
                   INSERT INTO video_files (id, user_id, name, size, size_bytes, video_url, date_formatted, updated_at)
@@ -9419,7 +9419,7 @@ a:hover{transform:translateY(-2px)}
                     video_url = excluded.video_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(secFile.id, reqUserId2, secFile.name, secFile.size, secFile.size_bytes, secFile.file_url, secFile.date_formatted).run();
+                `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.file_url, secFile.date_formatted).run();
               } else {
                 await env.DB.prepare(`
                   INSERT INTO document_files (id, user_id, name, size, size_bytes, file_url, date_formatted, updated_at)
@@ -9431,9 +9431,9 @@ a:hover{transform:translateY(-2px)}
                     file_url = excluded.file_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(secFile.id, reqUserId2, secFile.name, secFile.size, secFile.size_bytes, secFile.file_url, secFile.date_formatted).run();
+                `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.file_url, secFile.date_formatted).run();
               }
-              await env.DB.prepare(`DELETE FROM secure_files WHERE id = ? AND user_id = ?`).bind(id, reqUserId2).run();
+              await env.DB.prepare(`DELETE FROM secure_files WHERE id = ? AND user_id = ?`).bind(id, reqUserId).run();
               const finalCategory = isFolder ? "classeur_folder" : origCat;
               const isAudioFile = origCat === "audio";
               const audioCoverUrl = isAudioFile ? meta.coverUrl || meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.startsWith("blob:") && !meta.previewUrl.includes(".mp3") ? meta.previewUrl : "") || "" : "";
@@ -9463,12 +9463,12 @@ a:hover{transform:translateY(-2px)}
                 isFavorite: false,
                 isSecure: false
               };
-              await recordSyncItem(env.DB, reqUserId2, secFile.id, finalCategory, restoredPayload, 0);
-              await recordSyncItem(env.DB, reqUserId2, secFile.id, "secure", { id: secFile.id }, 1);
-              await cleanUserFavoriteOnDelete(env.DB, reqUserId2, secFile.id);
+              await recordSyncItem(env.DB, reqUserId, secFile.id, finalCategory, restoredPayload, 0);
+              await recordSyncItem(env.DB, reqUserId, secFile.id, "secure", { id: secFile.id }, 1);
+              await cleanUserFavoriteOnDelete(env.DB, reqUserId, secFile.id);
             }
           }
-          recalculateAndSaveUserStorage(env.DB, reqUserId2).catch(() => {
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
           return jsonResponse({
             success: true,
@@ -9477,12 +9477,12 @@ a:hover{transform:translateY(-2px)}
         }
       }
       if (path === "/api/cloud/trash") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
           const { results } = await env.DB.prepare(`
             SELECT * FROM trash_files WHERE user_id = ? ORDER BY deleted_at DESC
-          `).bind(reqUserId2).all();
+          `).bind(reqUserId).all();
           const formatted = (results || []).map((t) => {
             const meta = t.metadata_json ? JSON.parse(t.metadata_json) : {};
             let finalUrl = t.file_url || "";
@@ -9520,7 +9520,7 @@ a:hover{transform:translateY(-2px)}
           for (const tid of targetIds) {
             const item = await env.DB.prepare(`
               SELECT * FROM trash_files WHERE id = ? AND user_id = ?
-            `).bind(tid, reqUserId2).first();
+            `).bind(tid, reqUserId).first();
             if (item) {
               const srcCat = item.source_category || item.category || "documents";
               const origFolder = item.original_folder_id || "";
@@ -9549,7 +9549,7 @@ a:hover{transform:translateY(-2px)}
                     updated_at = CURRENT_TIMESTAMP
                 `).bind(
                   item.id,
-                  reqUserId2,
+                  reqUserId,
                   fMeta.parentId || fMeta.parent_id || null,
                   item.name,
                   fMeta.modelId || fMeta.model_id || "1",
@@ -9566,7 +9566,7 @@ a:hover{transform:translateY(-2px)}
                 ).run();
                 const { results: childTrashFiles } = await env.DB.prepare(`
                   SELECT * FROM trash_files WHERE user_id = ? AND original_folder_id = ?
-                `).bind(reqUserId2, tid).all();
+                `).bind(reqUserId, tid).all();
                 if (childTrashFiles && childTrashFiles.length > 0) {
                   for (const cFile of childTrashFiles) {
                     const cMeta = cFile.metadata_json ? JSON.parse(cFile.metadata_json) : {};
@@ -9587,7 +9587,7 @@ a:hover{transform:translateY(-2px)}
                         updated_at = CURRENT_TIMESTAMP
                     `).bind(
                       cFile.id,
-                      reqUserId2,
+                      reqUserId,
                       tid,
                       cFile.name,
                       cFile.size,
@@ -9601,7 +9601,7 @@ a:hover{transform:translateY(-2px)}
                       cFile.r2_key,
                       cFile.file_url
                     ).run();
-                    await env.DB.prepare("DELETE FROM trash_files WHERE id = ? AND user_id = ?").bind(cFile.id, reqUserId2).run();
+                    await env.DB.prepare("DELETE FROM trash_files WHERE id = ? AND user_id = ?").bind(cFile.id, reqUserId).run();
                     const childPayload = {
                       id: cFile.id,
                       name: cFile.name,
@@ -9620,8 +9620,8 @@ a:hover{transform:translateY(-2px)}
                       isTrash: false,
                       isFavorite: false
                     };
-                    await recordSyncItem(env.DB, reqUserId2, cFile.id, "classeur", childPayload, 0);
-                    await cleanUserFavoriteOnDelete(env.DB, reqUserId2, cFile.id);
+                    await recordSyncItem(env.DB, reqUserId, cFile.id, "classeur", childPayload, 0);
+                    await cleanUserFavoriteOnDelete(env.DB, reqUserId, cFile.id);
                   }
                 }
               } else if (origFolder || srcCat === "classeur") {
@@ -9642,7 +9642,7 @@ a:hover{transform:translateY(-2px)}
                     updated_at = CURRENT_TIMESTAMP
                 `).bind(
                   item.id,
-                  reqUserId2,
+                  reqUserId,
                   origFolder || "default",
                   item.name,
                   item.size,
@@ -9667,7 +9667,7 @@ a:hover{transform:translateY(-2px)}
                     file_url = excluded.file_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(item.id, reqUserId2, item.name, item.size, item.size_bytes, item.category || "documents", item.extension || "", item.file_url, item.date_formatted).run();
+                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.category || "documents", item.extension || "", item.file_url, item.date_formatted).run();
               } else if (srcCat === "audio") {
                 await env.DB.prepare(`
                   INSERT INTO audio_files (id, user_id, name, artist, duration_sec, size, size_bytes, audio_url, date_formatted, updated_at)
@@ -9683,7 +9683,7 @@ a:hover{transform:translateY(-2px)}
                     updated_at = CURRENT_TIMESTAMP
                 `).bind(
                   item.id,
-                  reqUserId2,
+                  reqUserId,
                   item.name,
                   meta.artist || "Artiste inconnu",
                   Number(meta.durationSec || 0),
@@ -9703,7 +9703,7 @@ a:hover{transform:translateY(-2px)}
                     image_url = excluded.image_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(item.id, reqUserId2, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
+                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
               } else if (srcCat === "videos") {
                 await env.DB.prepare(`
                   INSERT INTO video_files (id, user_id, name, size, size_bytes, video_url, date_formatted, updated_at)
@@ -9715,7 +9715,7 @@ a:hover{transform:translateY(-2px)}
                     video_url = excluded.video_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(item.id, reqUserId2, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
+                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
               } else {
                 await env.DB.prepare(`
                   INSERT INTO document_files (id, user_id, name, size, size_bytes, file_url, date_formatted, updated_at)
@@ -9727,9 +9727,9 @@ a:hover{transform:translateY(-2px)}
                     file_url = excluded.file_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(item.id, reqUserId2, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
+                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
               }
-              await env.DB.prepare("DELETE FROM trash_files WHERE id = ? AND user_id = ?").bind(tid, reqUserId2).run();
+              await env.DB.prepare("DELETE FROM trash_files WHERE id = ? AND user_id = ?").bind(tid, reqUserId).run();
               const finalCategory = srcCat === "classeur_folder" || item.category === "folder" ? "classeur_folder" : srcCat;
               const isFolderItem = finalCategory === "classeur_folder";
               const syncPayload = {
@@ -9762,8 +9762,8 @@ a:hover{transform:translateY(-2px)}
                   isFavorite: false
                 } : {}
               };
-              await recordSyncItem(env.DB, reqUserId2, tid, finalCategory, syncPayload, 0);
-              await cleanUserFavoriteOnDelete(env.DB, reqUserId2, tid);
+              await recordSyncItem(env.DB, reqUserId, tid, finalCategory, syncPayload, 0);
+              await cleanUserFavoriteOnDelete(env.DB, reqUserId, tid);
             }
           }
           return jsonResponse({ success: true, message: `${targetIds.length} \xE9l\xE9ment(s) restaur\xE9(s) avec succ\xE8s` }, 200, origin);
@@ -9774,42 +9774,42 @@ a:hover{transform:translateY(-2px)}
           const targetIds = Array.isArray(body.ids) ? body.ids : url.searchParams.get("id") ? [url.searchParams.get("id")] : [];
           let itemsToDelete = [];
           if (isEmptyAll) {
-            const { results } = await env.DB.prepare(`SELECT id, name, r2_key, file_url, category, source_category FROM trash_files WHERE user_id = ?`).bind(reqUserId2).all();
+            const { results } = await env.DB.prepare(`SELECT id, name, r2_key, file_url, category, source_category FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
             itemsToDelete = results || [];
-            await env.DB.prepare("DELETE FROM trash_files WHERE user_id = ?").bind(reqUserId2).run();
+            await env.DB.prepare("DELETE FROM trash_files WHERE user_id = ?").bind(reqUserId).run();
           } else if (targetIds.length > 0) {
             for (const tid of targetIds) {
-              const item = await env.DB.prepare(`SELECT id, name, r2_key, file_url, category, source_category FROM trash_files WHERE id = ? AND user_id = ?`).bind(tid, reqUserId2).first();
+              const item = await env.DB.prepare(`SELECT id, name, r2_key, file_url, category, source_category FROM trash_files WHERE id = ? AND user_id = ?`).bind(tid, reqUserId).first();
               if (item) {
                 itemsToDelete.push(item);
-                await env.DB.prepare("DELETE FROM trash_files WHERE id = ? AND user_id = ?").bind(tid, reqUserId2).run();
+                await env.DB.prepare("DELETE FROM trash_files WHERE id = ? AND user_id = ?").bind(tid, reqUserId).run();
               }
             }
           }
           for (const item of itemsToDelete) {
-            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(item.id, reqUserId2).run().catch(() => {
+            await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(item.id, reqUserId).run().catch(() => {
             });
-            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(item.id, reqUserId2).run().catch(() => {
+            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(item.id, reqUserId).run().catch(() => {
             });
-            await cleanUserFavoriteOnDelete(env.DB, reqUserId2, item.id);
-            await recordSyncItem(env.DB, reqUserId2, item.id, item.category || "trash", { id: item.id }, 1);
-            await deleteR2ObjectAndThumbnails(rawEnv, reqUserId2, item.id, item.r2_key, item.file_url, item.category || item.source_category || "trash");
+            await cleanUserFavoriteOnDelete(env.DB, reqUserId, item.id);
+            await recordSyncItem(env.DB, reqUserId, item.id, item.category || "trash", { id: item.id }, 1);
+            await deleteR2ObjectAndThumbnails(rawEnv, reqUserId, item.id, item.r2_key, item.file_url, item.category || item.source_category || "trash");
           }
           try {
-            await purgeUserOrphanedR2Files(env, rawEnv, reqUserId2);
+            await purgeUserOrphanedR2Files(env, rawEnv, reqUserId);
           } catch (e) {
             console.warn("[Trash purge] Orphan sweep warning:", e?.message || e);
           }
-          recalculateAndSaveUserStorage(env.DB, reqUserId2).catch(() => {
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
           return jsonResponse({ success: true, message: "\xC9l\xE9ments d\xE9finitivement supprim\xE9s et purg\xE9s de R2" }, 200, origin);
         }
       }
       if (path === "/api/cloud/trash/purge-orphans" && method === "POST") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
-        const purgeRes = await purgeUserOrphanedR2Files(env, rawEnv, reqUserId2);
-        recalculateAndSaveUserStorage(env.DB, reqUserId2).catch(() => {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        const purgeRes = await purgeUserOrphanedR2Files(env, rawEnv, reqUserId);
+        recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
         });
         return jsonResponse({
           success: true,
@@ -9818,21 +9818,21 @@ a:hover{transform:translateY(-2px)}
         }, 200, origin);
       }
       if (path === "/api/cloud/favorites") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
           await env.DB.prepare(`
             DELETE FROM user_favorites
             WHERE user_id = ? AND item_id IN (
               SELECT id FROM trash_files WHERE user_id = ?
             )
-          `).bind(reqUserId2, reqUserId2).run().catch(() => {
+          `).bind(reqUserId, reqUserId).run().catch(() => {
           });
           const { results } = await env.DB.prepare(`
             SELECT id, item_id, category, created_at FROM user_favorites
             WHERE user_id = ?
             ORDER BY created_at DESC
-          `).bind(reqUserId2).all();
+          `).bind(reqUserId).all();
           const favList = results || [];
           const favItemIds = favList.map((f) => String(f.item_id)).filter(Boolean);
           let items = [];
@@ -9842,13 +9842,13 @@ a:hover{transform:translateY(-2px)}
               const chunk = favItemIds.slice(i, i + chunkSize);
               const placeholders = chunk.map(() => "?").join(",");
               const [docs, imgs, vids, auds, clFolders, clFiles, dlFiles] = await Promise.all([
-                env.DB.prepare(`SELECT id, name, size, size_bytes, file_url, preview_url, extension, document_category, created_at FROM document_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId2, ...chunk).all().catch(() => ({ results: [] })),
-                env.DB.prepare(`SELECT id, name, size, size_bytes, image_url, thumbnail_url, extension, created_at FROM image_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId2, ...chunk).all().catch(() => ({ results: [] })),
-                env.DB.prepare(`SELECT id, name, size, size_bytes, video_url, thumbnail_url, duration_sec, created_at FROM video_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId2, ...chunk).all().catch(() => ({ results: [] })),
-                env.DB.prepare(`SELECT id, name, title, artist, album, audio_url, cover_url, size, size_bytes, created_at FROM audio_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId2, ...chunk).all().catch(() => ({ results: [] })),
-                env.DB.prepare(`SELECT id, name, model_id, primary_color, accent_color, icon_name, created_at FROM classeur_folders WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId2, ...chunk).all().catch(() => ({ results: [] })),
-                env.DB.prepare(`SELECT id, folder_id, name, size, size_bytes, category, extension, is_notepad, notepad_title, notepad_content, created_at FROM classeur_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId2, ...chunk).all().catch(() => ({ results: [] })),
-                env.DB.prepare(`SELECT id, name, size, size_bytes, file_url, type, extension, downloaded_at as created_at FROM download_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId2, ...chunk).all().catch(() => ({ results: [] }))
+                env.DB.prepare(`SELECT id, name, size, size_bytes, file_url, preview_url, extension, document_category, created_at FROM document_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
+                env.DB.prepare(`SELECT id, name, size, size_bytes, image_url, thumbnail_url, extension, created_at FROM image_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
+                env.DB.prepare(`SELECT id, name, size, size_bytes, video_url, thumbnail_url, duration_sec, created_at FROM video_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
+                env.DB.prepare(`SELECT id, name, title, artist, album, audio_url, cover_url, size, size_bytes, created_at FROM audio_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
+                env.DB.prepare(`SELECT id, name, model_id, primary_color, accent_color, icon_name, created_at FROM classeur_folders WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
+                env.DB.prepare(`SELECT id, folder_id, name, size, size_bytes, category, extension, is_notepad, notepad_title, notepad_content, created_at FROM classeur_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
+                env.DB.prepare(`SELECT id, name, size, size_bytes, file_url, type, extension, downloaded_at as created_at FROM download_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] }))
               ]);
               const mapFile = (row, cat) => ({
                 id: row.id,
@@ -9885,7 +9885,7 @@ a:hover{transform:translateY(-2px)}
           const orphanIds = favItemIds.filter((id) => !foundIdSet.has(id));
           if (orphanIds.length > 0) {
             for (const orphId of orphanIds) {
-              await cleanUserFavoriteOnDelete(env.DB, reqUserId2, orphId);
+              await cleanUserFavoriteOnDelete(env.DB, reqUserId, orphId);
             }
           }
           const validFavItemIds = favItemIds.filter((id) => foundIdSet.has(id));
@@ -9902,29 +9902,29 @@ a:hover{transform:translateY(-2px)}
           const itemId = body.itemId || body.item_id || body.id;
           const category = body.category || "documents";
           if (!itemId) return errorResponse("Item ID requis", 400, origin);
-          const favId = `fav_${reqUserId2}_${itemId}`;
+          const favId = `fav_${reqUserId}_${itemId}`;
           await env.DB.prepare(`
             INSERT INTO user_favorites (id, user_id, item_id, category)
             VALUES (?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET category = excluded.category
-          `).bind(favId, reqUserId2, itemId, category).run();
+          `).bind(favId, reqUserId, itemId, category).run();
           await Promise.all([
-            env.DB.prepare("UPDATE document_files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+            env.DB.prepare("UPDATE document_files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             }),
-            env.DB.prepare("UPDATE image_files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+            env.DB.prepare("UPDATE image_files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             }),
-            env.DB.prepare("UPDATE video_files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+            env.DB.prepare("UPDATE video_files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             }),
-            env.DB.prepare("UPDATE audio_files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+            env.DB.prepare("UPDATE audio_files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             }),
-            env.DB.prepare("UPDATE classeur_folders SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+            env.DB.prepare("UPDATE classeur_folders SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             }),
-            env.DB.prepare("UPDATE classeur_files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+            env.DB.prepare("UPDATE classeur_files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             }),
-            env.DB.prepare("UPDATE files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+            env.DB.prepare("UPDATE files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             })
           ]);
-          await recordSyncItem(env.DB, reqUserId2, favId, "favorites", { itemId, category }, 0);
+          await recordSyncItem(env.DB, reqUserId, favId, "favorites", { itemId, category }, 0);
           return jsonResponse({ success: true, message: "Ajout\xE9 aux favoris" }, 200, origin);
         }
         if (method === "DELETE") {
@@ -9934,37 +9934,37 @@ a:hover{transform:translateY(-2px)}
           await env.DB.prepare(`
             DELETE FROM user_favorites
             WHERE user_id = ? AND (item_id = ? OR id = ?)
-          `).bind(reqUserId2, itemId, itemId).run();
+          `).bind(reqUserId, itemId, itemId).run();
           await Promise.all([
-            env.DB.prepare("UPDATE document_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+            env.DB.prepare("UPDATE document_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             }),
-            env.DB.prepare("UPDATE image_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+            env.DB.prepare("UPDATE image_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             }),
-            env.DB.prepare("UPDATE video_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+            env.DB.prepare("UPDATE video_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             }),
-            env.DB.prepare("UPDATE audio_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+            env.DB.prepare("UPDATE audio_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             }),
-            env.DB.prepare("UPDATE classeur_folders SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+            env.DB.prepare("UPDATE classeur_folders SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             }),
-            env.DB.prepare("UPDATE classeur_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+            env.DB.prepare("UPDATE classeur_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             }),
-            env.DB.prepare("UPDATE files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+            env.DB.prepare("UPDATE files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             })
           ]);
-          const favId = `fav_${reqUserId2}_${itemId}`;
-          await recordSyncItem(env.DB, reqUserId2, favId, "favorites", { itemId, category: "favorites" }, 1);
+          const favId = `fav_${reqUserId}_${itemId}`;
+          await recordSyncItem(env.DB, reqUserId, favId, "favorites", { itemId, category: "favorites" }, 1);
           return jsonResponse({ success: true, message: "Retir\xE9 des favoris" }, 200, origin);
         }
       }
       if (path === "/api/cloud/pinned") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
           const { results } = await env.DB.prepare(`
             SELECT id, item_id, category, created_at FROM pinned_items
             WHERE user_id = ?
             ORDER BY created_at DESC
-          `).bind(reqUserId2).all();
+          `).bind(reqUserId).all();
           return jsonResponse({ success: true, data: results || [] }, 200, origin);
         }
         if (method === "POST") {
@@ -9972,29 +9972,29 @@ a:hover{transform:translateY(-2px)}
           const itemId = body.itemId || body.item_id || body.id;
           const category = body.category || "documents";
           if (!itemId) return errorResponse("Item ID requis", 400, origin);
-          const pinId = `pin_${reqUserId2}_${itemId}`;
+          const pinId = `pin_${reqUserId}_${itemId}`;
           await env.DB.prepare(`
             INSERT INTO pinned_items (id, user_id, item_id, category)
             VALUES (?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET category = excluded.category
-          `).bind(pinId, reqUserId2, itemId, category).run();
-          await env.DB.prepare("UPDATE files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+          `).bind(pinId, reqUserId, itemId, category).run();
+          await env.DB.prepare("UPDATE files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
           });
-          await env.DB.prepare("UPDATE image_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+          await env.DB.prepare("UPDATE image_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
           });
-          await env.DB.prepare("UPDATE video_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+          await env.DB.prepare("UPDATE video_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
           });
-          await env.DB.prepare("UPDATE document_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+          await env.DB.prepare("UPDATE document_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
           });
-          await env.DB.prepare("UPDATE audio_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+          await env.DB.prepare("UPDATE audio_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
           });
-          await env.DB.prepare("UPDATE download_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+          await env.DB.prepare("UPDATE download_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
           });
-          await env.DB.prepare("UPDATE classeur_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+          await env.DB.prepare("UPDATE classeur_files SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
           });
-          await env.DB.prepare("UPDATE classeur_folders SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+          await env.DB.prepare("UPDATE classeur_folders SET is_pinned = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
           });
-          await recordSyncItem(env.DB, reqUserId2, pinId, "pinned", { itemId, category }, 0);
+          await recordSyncItem(env.DB, reqUserId, pinId, "pinned", { itemId, category }, 0);
           return jsonResponse({ success: true, message: "\xC9l\xE9ment \xE9pingl\xE9" }, 200, origin);
         }
         if (method === "DELETE") {
@@ -10004,31 +10004,31 @@ a:hover{transform:translateY(-2px)}
           await env.DB.prepare(`
             DELETE FROM pinned_items
             WHERE user_id = ? AND (item_id = ? OR id = ?)
-          `).bind(reqUserId2, itemId, itemId).run();
-          await env.DB.prepare("UPDATE files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+          `).bind(reqUserId, itemId, itemId).run();
+          await env.DB.prepare("UPDATE files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
           });
-          await env.DB.prepare("UPDATE image_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+          await env.DB.prepare("UPDATE image_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
           });
-          await env.DB.prepare("UPDATE video_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+          await env.DB.prepare("UPDATE video_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
           });
-          await env.DB.prepare("UPDATE document_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+          await env.DB.prepare("UPDATE document_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
           });
-          await env.DB.prepare("UPDATE audio_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+          await env.DB.prepare("UPDATE audio_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
           });
-          await env.DB.prepare("UPDATE download_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+          await env.DB.prepare("UPDATE download_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
           });
-          await env.DB.prepare("UPDATE classeur_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+          await env.DB.prepare("UPDATE classeur_files SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
           });
-          await env.DB.prepare("UPDATE classeur_folders SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+          await env.DB.prepare("UPDATE classeur_folders SET is_pinned = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
           });
-          const pinId = `pin_${reqUserId2}_${itemId}`;
-          await recordSyncItem(env.DB, reqUserId2, pinId, "pinned", { itemId, category: "pinned" }, 1);
+          const pinId = `pin_${reqUserId}_${itemId}`;
+          await recordSyncItem(env.DB, reqUserId, pinId, "pinned", { itemId, category: "pinned" }, 1);
           return jsonResponse({ success: true, message: "\xC9l\xE9ment d\xE9s\xE9pingl\xE9" }, 200, origin);
         }
       }
       if (path === "/api/cloud/rename" && (method === "POST" || method === "PUT")) {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         const body = await request.json().catch(() => ({}));
         const targetId = body.id || body.itemId;
         const newName = (body.name || "").trim();
@@ -10037,33 +10037,33 @@ a:hover{transform:translateY(-2px)}
         if (!targetId || !newName) {
           return errorResponse("ID et nouveau nom requis", 400, origin);
         }
-        await env.DB.prepare("UPDATE files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId2).run().catch(() => {
+        await env.DB.prepare("UPDATE files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
         });
-        await env.DB.prepare("UPDATE image_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId2).run().catch(() => {
+        await env.DB.prepare("UPDATE image_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
         });
-        await env.DB.prepare("UPDATE video_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId2).run().catch(() => {
+        await env.DB.prepare("UPDATE video_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
         });
-        await env.DB.prepare("UPDATE document_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId2).run().catch(() => {
+        await env.DB.prepare("UPDATE document_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
         });
-        await env.DB.prepare("UPDATE audio_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId2).run().catch(() => {
+        await env.DB.prepare("UPDATE audio_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
         });
-        await env.DB.prepare("UPDATE download_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId2).run().catch(() => {
+        await env.DB.prepare("UPDATE download_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
         });
-        await env.DB.prepare("UPDATE classeur_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId2).run().catch(() => {
+        await env.DB.prepare("UPDATE classeur_files SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
         });
         if (category === "classeur_folder" || category === "folder") {
-          await env.DB.prepare("UPDATE classeur_folders SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId2).run().catch(() => {
+          await env.DB.prepare("UPDATE classeur_folders SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
           });
         }
-        await env.DB.prepare("UPDATE secure_files SET name = ? WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId2).run().catch(() => {
+        await env.DB.prepare("UPDATE secure_files SET name = ? WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
         });
-        await env.DB.prepare("UPDATE trash_files SET name = ? WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId2).run().catch(() => {
+        await env.DB.prepare("UPDATE trash_files SET name = ? WHERE id = ? AND user_id = ?").bind(newName, targetId, reqUserId).run().catch(() => {
         });
         return jsonResponse({ success: true, message: "Nom modifi\xE9 avec succ\xE8s", name: newName }, 200, origin);
       }
       if (path === "/api/cloud/duplicate" && method === "POST") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         const body = await request.json().catch(() => ({}));
         const sourceId = body.id || body.itemId;
         const category = body.category || "";
@@ -10072,7 +10072,7 @@ a:hover{transform:translateY(-2px)}
         if (!sourceId) return errorResponse("ID source requis", 400, origin);
         const newId = body.newId && typeof body.newId === "string" && body.newId.trim() ? body.newId.trim() : `dup_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         if (category === "classeur_folder" || category === "folder") {
-          const orig2 = await env.DB.prepare("SELECT * FROM classeur_folders WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId2).first();
+          const orig2 = await env.DB.prepare("SELECT * FROM classeur_folders WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId).first();
           if (!orig2) return errorResponse("Dossier introuvable", 404, origin);
           const finalName2 = requestedName || `${orig2.name} (Copie)`;
           await env.DB.prepare(`
@@ -10080,7 +10080,7 @@ a:hover{transform:translateY(-2px)}
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, CURRENT_TIMESTAMP)
           `).bind(
             newId,
-            reqUserId2,
+            reqUserId,
             finalName2,
             orig2.model,
             orig2.primary_color,
@@ -10110,15 +10110,15 @@ a:hover{transform:translateY(-2px)}
             parentId: orig2.parent_id || null,
             createdAt: Date.now()
           };
-          await recordSyncItem(env.DB, reqUserId2, newId, "classeur_folder", duplicatedFolder, 0);
-          recalculateAndSaveUserStorage(env.DB, reqUserId2).catch(() => {
+          await recordSyncItem(env.DB, reqUserId, newId, "classeur_folder", duplicatedFolder, 0);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
           return jsonResponse({ success: true, data: duplicatedFolder }, 200, origin);
         }
         if (category === "classeur_file" || folderId) {
-          let orig2 = await env.DB.prepare("SELECT * FROM classeur_files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId2).first();
+          let orig2 = await env.DB.prepare("SELECT * FROM classeur_files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId).first();
           if (!orig2) {
-            orig2 = await env.DB.prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId2).first();
+            orig2 = await env.DB.prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId).first();
           }
           if (!orig2) return errorResponse("Fichier introuvable", 404, origin);
           const finalName2 = requestedName || `${orig2.name} (Copie)`;
@@ -10130,7 +10130,7 @@ a:hover{transform:translateY(-2px)}
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
           `).bind(
             newId,
-            reqUserId2,
+            reqUserId,
             fId,
             finalName2,
             sizeVal2,
@@ -10145,15 +10145,15 @@ a:hover{transform:translateY(-2px)}
             (orig2.display_order || 0) + 1
           ).run();
           const duplicatedItem = { ...orig2, id: newId, folder_id: fId, name: finalName2, size: sizeVal2, sizeBytes: sizeBytesVal2 };
-          await recordSyncItem(env.DB, reqUserId2, newId, "classeur", duplicatedItem, 0);
-          recalculateAndSaveUserStorage(env.DB, reqUserId2).catch(() => {
+          await recordSyncItem(env.DB, reqUserId, newId, "classeur", duplicatedItem, 0);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
           return jsonResponse({ success: true, data: duplicatedItem }, 200, origin);
         }
         if (category === "images") {
-          let orig2 = await env.DB.prepare("SELECT * FROM image_files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId2).first();
+          let orig2 = await env.DB.prepare("SELECT * FROM image_files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId).first();
           if (!orig2) {
-            orig2 = await env.DB.prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId2).first();
+            orig2 = await env.DB.prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId).first();
           }
           if (!orig2) return errorResponse("Image introuvable", 404, origin);
           const finalName2 = requestedName || `${orig2.name} (Copie)`;
@@ -10164,25 +10164,25 @@ a:hover{transform:translateY(-2px)}
           await env.DB.prepare(`
             INSERT INTO image_files (id, user_id, name, size, size_bytes, r2_key, image_url, date_formatted, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-          `).bind(newId, reqUserId2, finalName2, sizeVal2, sizeBytesVal2, orig2.r2_key, imgUrl, dateStr2).run();
+          `).bind(newId, reqUserId, finalName2, sizeVal2, sizeBytesVal2, orig2.r2_key, imgUrl, dateStr2).run();
           try {
             await env.DB.prepare(`
               INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
               VALUES (?, ?, 'menu-images', ?, ?, 'image/jpeg', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
               ON CONFLICT(id) DO UPDATE SET name = excluded.name, updated_at = CURRENT_TIMESTAMP
-            `).bind(newId, reqUserId2, finalName2, sizeBytesVal2, orig2.extension || "JPG", orig2.r2_key, imgUrl, Date.now()).run();
+            `).bind(newId, reqUserId, finalName2, sizeBytesVal2, orig2.extension || "JPG", orig2.r2_key, imgUrl, Date.now()).run();
           } catch (e) {
           }
           const duplicatedItem = { ...orig2, id: newId, name: finalName2, size: sizeVal2, sizeBytes: sizeBytesVal2, url: imgUrl, imageUrl: imgUrl };
-          await recordSyncItem(env.DB, reqUserId2, newId, "images", duplicatedItem, 0);
-          recalculateAndSaveUserStorage(env.DB, reqUserId2).catch(() => {
+          await recordSyncItem(env.DB, reqUserId, newId, "images", duplicatedItem, 0);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
           return jsonResponse({ success: true, data: duplicatedItem }, 200, origin);
         }
         if (category === "videos") {
-          let orig2 = await env.DB.prepare("SELECT * FROM video_files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId2).first();
+          let orig2 = await env.DB.prepare("SELECT * FROM video_files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId).first();
           if (!orig2) {
-            orig2 = await env.DB.prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId2).first();
+            orig2 = await env.DB.prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId).first();
           }
           if (!orig2) return errorResponse("Vid\xE9o introuvable", 404, origin);
           const finalName2 = requestedName || `${orig2.name} (Copie)`;
@@ -10193,25 +10193,25 @@ a:hover{transform:translateY(-2px)}
           await env.DB.prepare(`
             INSERT INTO video_files (id, user_id, name, size, size_bytes, r2_key, video_url, date_formatted, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-          `).bind(newId, reqUserId2, finalName2, sizeVal2, sizeBytesVal2, orig2.r2_key, vidUrl, dateStr2).run();
+          `).bind(newId, reqUserId, finalName2, sizeVal2, sizeBytesVal2, orig2.r2_key, vidUrl, dateStr2).run();
           try {
             await env.DB.prepare(`
               INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
               VALUES (?, ?, 'menu-videos', ?, ?, 'video/mp4', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
               ON CONFLICT(id) DO UPDATE SET name = excluded.name, updated_at = CURRENT_TIMESTAMP
-            `).bind(newId, reqUserId2, finalName2, sizeBytesVal2, orig2.extension || "MP4", orig2.r2_key, vidUrl, Date.now()).run();
+            `).bind(newId, reqUserId, finalName2, sizeBytesVal2, orig2.extension || "MP4", orig2.r2_key, vidUrl, Date.now()).run();
           } catch (e) {
           }
           const duplicatedItem = { ...orig2, id: newId, name: finalName2, size: sizeVal2, sizeBytes: sizeBytesVal2, url: vidUrl, videoUrl: vidUrl };
-          await recordSyncItem(env.DB, reqUserId2, newId, "videos", duplicatedItem, 0);
-          recalculateAndSaveUserStorage(env.DB, reqUserId2).catch(() => {
+          await recordSyncItem(env.DB, reqUserId, newId, "videos", duplicatedItem, 0);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
           return jsonResponse({ success: true, data: duplicatedItem }, 200, origin);
         }
         if (category === "audio") {
-          let orig2 = await env.DB.prepare("SELECT * FROM audio_files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId2).first();
+          let orig2 = await env.DB.prepare("SELECT * FROM audio_files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId).first();
           if (!orig2) {
-            orig2 = await env.DB.prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId2).first();
+            orig2 = await env.DB.prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId).first();
           }
           if (!orig2) return errorResponse("Audio introuvable", 404, origin);
           const finalName2 = requestedName || `${orig2.name} (Copie)`;
@@ -10222,25 +10222,25 @@ a:hover{transform:translateY(-2px)}
           await env.DB.prepare(`
             INSERT INTO audio_files (id, user_id, name, artist, duration_sec, size, size_bytes, r2_key, audio_url, date_formatted, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-          `).bind(newId, reqUserId2, finalName2, orig2.artist || "Artiste inconnu", orig2.duration_sec || 0, sizeVal2, sizeBytesVal2, orig2.r2_key, audUrl, dateStr2).run();
+          `).bind(newId, reqUserId, finalName2, orig2.artist || "Artiste inconnu", orig2.duration_sec || 0, sizeVal2, sizeBytesVal2, orig2.r2_key, audUrl, dateStr2).run();
           try {
             await env.DB.prepare(`
               INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
               VALUES (?, ?, 'menu-audio', ?, ?, 'audio/mpeg', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
               ON CONFLICT(id) DO UPDATE SET name = excluded.name, updated_at = CURRENT_TIMESTAMP
-            `).bind(newId, reqUserId2, finalName2, sizeBytesVal2, orig2.extension || "MP3", orig2.r2_key, audUrl, Date.now()).run();
+            `).bind(newId, reqUserId, finalName2, sizeBytesVal2, orig2.extension || "MP3", orig2.r2_key, audUrl, Date.now()).run();
           } catch (e) {
           }
           const duplicatedItem = { ...orig2, id: newId, name: finalName2, size: sizeVal2, sizeBytes: sizeBytesVal2, url: audUrl, audioUrl: audUrl };
-          await recordSyncItem(env.DB, reqUserId2, newId, "audio", duplicatedItem, 0);
-          recalculateAndSaveUserStorage(env.DB, reqUserId2).catch(() => {
+          await recordSyncItem(env.DB, reqUserId, newId, "audio", duplicatedItem, 0);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
           return jsonResponse({ success: true, data: duplicatedItem }, 200, origin);
         }
         if (category === "downloads") {
-          let orig2 = await env.DB.prepare("SELECT * FROM download_files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId2).first();
+          let orig2 = await env.DB.prepare("SELECT * FROM download_files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId).first();
           if (!orig2) {
-            orig2 = await env.DB.prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId2).first();
+            orig2 = await env.DB.prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId).first();
           }
           if (!orig2) return errorResponse("T\xE9l\xE9chargement introuvable", 404, origin);
           const finalName2 = requestedName || `${orig2.name} (Copie)`;
@@ -10251,19 +10251,19 @@ a:hover{transform:translateY(-2px)}
           await env.DB.prepare(`
             INSERT INTO download_files (id, user_id, name, size, size_bytes, category, extension, r2_key, file_url, date_formatted, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-          `).bind(newId, reqUserId2, finalName2, sizeVal2, sizeBytesVal2, orig2.category || "downloads", orig2.extension || "FILE", orig2.r2_key, dlUrl, dateStr2).run();
+          `).bind(newId, reqUserId, finalName2, sizeVal2, sizeBytesVal2, orig2.category || "downloads", orig2.extension || "FILE", orig2.r2_key, dlUrl, dateStr2).run();
           const duplicatedItem = { ...orig2, id: newId, name: finalName2, size: sizeVal2, sizeBytes: sizeBytesVal2, url: dlUrl };
-          await recordSyncItem(env.DB, reqUserId2, newId, "downloads", duplicatedItem, 0);
-          recalculateAndSaveUserStorage(env.DB, reqUserId2).catch(() => {
+          await recordSyncItem(env.DB, reqUserId, newId, "downloads", duplicatedItem, 0);
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
           });
           return jsonResponse({ success: true, data: duplicatedItem }, 200, origin);
         }
-        let orig = await env.DB.prepare("SELECT * FROM document_files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId2).first();
+        let orig = await env.DB.prepare("SELECT * FROM document_files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId).first();
         if (!orig) {
-          orig = await env.DB.prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId2).first();
+          orig = await env.DB.prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId).first();
         }
         if (!orig) {
-          orig = await env.DB.prepare("SELECT * FROM classeur_files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId2).first();
+          orig = await env.DB.prepare("SELECT * FROM classeur_files WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId).first();
         }
         if (!orig) return errorResponse("Document introuvable", 404, origin);
         const finalName = requestedName || `${orig.name} (Copie)`;
@@ -10274,24 +10274,24 @@ a:hover{transform:translateY(-2px)}
         await env.DB.prepare(`
           INSERT INTO document_files (id, user_id, name, size, size_bytes, r2_key, file_url, date_formatted, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        `).bind(newId, reqUserId2, finalName, sizeVal, sizeBytesVal, orig.r2_key, docUrl, dateStr).run();
+        `).bind(newId, reqUserId, finalName, sizeVal, sizeBytesVal, orig.r2_key, docUrl, dateStr).run();
         try {
           await env.DB.prepare(`
             INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
             VALUES (?, ?, 'menu-documents', ?, ?, 'application/pdf', ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET name = excluded.name, updated_at = CURRENT_TIMESTAMP
-          `).bind(newId, reqUserId2, finalName, sizeBytesVal, orig.extension || "PDF", orig.r2_key, docUrl, Date.now()).run();
+          `).bind(newId, reqUserId, finalName, sizeBytesVal, orig.extension || "PDF", orig.r2_key, docUrl, Date.now()).run();
         } catch (e) {
         }
         const duplicatedDoc = { ...orig, id: newId, name: finalName, size: sizeVal, sizeBytes: sizeBytesVal, url: docUrl, fileUrl: docUrl };
-        await recordSyncItem(env.DB, reqUserId2, newId, "documents", duplicatedDoc, 0);
-        recalculateAndSaveUserStorage(env.DB, reqUserId2).catch(() => {
+        await recordSyncItem(env.DB, reqUserId, newId, "documents", duplicatedDoc, 0);
+        recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {
         });
         return jsonResponse({ success: true, data: duplicatedDoc }, 200, origin);
       }
       if (path === "/api/cloud/move" && method === "POST") {
-        const reqUserId2 = await extractRequestUserId();
-        if (!reqUserId2) return errorResponse("Authentification requise", 401, origin);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         const body = await request.json().catch(() => ({}));
         const rawItems = Array.isArray(body.items) ? body.items : body.item ? [body.item] : [];
         const targetFolderIds = Array.isArray(body.targetFolderIds) ? body.targetFolderIds : body.targetFolderId ? [body.targetFolderId] : [];
@@ -10323,7 +10323,7 @@ a:hover{transform:translateY(-2px)}
               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
             `).bind(
               newFileId,
-              reqUserId2,
+              reqUserId,
               folderId,
               itemName,
               itemSize,
@@ -10350,25 +10350,25 @@ a:hover{transform:translateY(-2px)}
             const origCat = (item.originalCategory || item.category || "").toLowerCase();
             const sourceFolderId = item.originalFolderId || item.folderId;
             if (sourceFolderId || origCat.includes("classeur")) {
-              await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
               });
             }
             if (origCat === "images" || item.isImage) {
-              await env.DB.prepare("DELETE FROM image_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("DELETE FROM image_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
               });
             } else if (origCat === "videos" || item.videoUrl) {
-              await env.DB.prepare("DELETE FROM video_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("DELETE FROM video_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
               });
             } else if (origCat === "audio" || item.audioUrl) {
-              await env.DB.prepare("DELETE FROM audio_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("DELETE FROM audio_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
               });
             } else if (origCat === "downloads") {
-              await env.DB.prepare("DELETE FROM download_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("DELETE FROM download_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
               });
             } else {
-              await env.DB.prepare("DELETE FROM document_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("DELETE FROM document_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
               });
-              await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId2).run().catch(() => {
+              await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
               });
             }
           }
