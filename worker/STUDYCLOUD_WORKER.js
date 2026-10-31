@@ -3319,8 +3319,8 @@ async function recalculateAndSaveUserStorage(db, userId) {
       db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size), 0) as origBytes, COALESCE(SUM(size), 0) as compBytes, COALESCE(SUM(LENGTH(name) + LENGTH(COALESCE(type, '')) + LENGTH(COALESCE(extension, '')) + LENGTH(COALESCE(r2_key, '')) + LENGTH(COALESCE(file_url, ''))), 0) as textBytes FROM study_imported_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0, textBytes: 0 })),
       // 9. Rapports de perception & analyses IA de documents (ai_document_perceptions) dans D1
       db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(perception_report) + LENGTH(COALESCE(file_name, '')) + LENGTH(file_signature)), 0) as textBytes FROM ai_document_perceptions WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
-      // 10. Journal de synchronisation et réplication temps réel (sync_items) dans D1
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(data_json) + LENGTH(entity_id) + LENGTH(entity_type)), 0) as textBytes FROM sync_items WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 }))
+      // 10. Journal de synchronisation et réplication temps réel (sync_items) dans D1 (uniquement les éléments actifs)
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(content) + LENGTH(id) + LENGTH(category)), 0) as textBytes FROM sync_items WHERE user_id = ? AND is_deleted = 0").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 }))
     ]);
     let productImagesR2Bytes = 0;
     const prodImgRows = productImagesRows?.results || [];
@@ -4373,7 +4373,11 @@ a:hover{transform:translateY(-2px)}
           "user_document_interactions",
           "published_documents",
           "referral_rewards",
-          "push_subscriptions"
+          "push_subscriptions",
+          "sync_items",
+          "study_imported_files",
+          "ai_document_perceptions",
+          "user_storage_usage"
         ];
         for (const table of tablesWithUserId) {
           try {
