@@ -3811,7 +3811,10 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
       compressionStats,
       dismissedRecentStats,
       sharedFolderDlStats,
-      upgradeReqStats
+      upgradeReqStats,
+      studyImportedStats,
+      aiPerceptionStats,
+      syncItemStats
     ] = await Promise.all([
       db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM video_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
       db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM audio_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
@@ -3874,7 +3877,16 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
       db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(COALESCE(ip_address, ''))), 0) as textBytes FROM shared_folder_downloads WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
 
       // 7. storage_upgrade_requests dans D1 (commandes de stockage et facturation)
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(COALESCE(pack_id, '')) + LENGTH(COALESCE(pack_name, '')) + LENGTH(COALESCE(contact_phone, '')) + LENGTH(COALESCE(notes, '')) + LENGTH(COALESCE(status, ''))), 0) as textBytes FROM storage_upgrade_requests WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 }))
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(COALESCE(pack_id, '')) + LENGTH(COALESCE(pack_name, '')) + LENGTH(COALESCE(contact_phone, '')) + LENGTH(COALESCE(notes, '')) + LENGTH(COALESCE(status, ''))), 0) as textBytes FROM storage_upgrade_requests WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+
+      // 8. Fichiers d'étude importés (study_imported_files) dans R2 et D1
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size), 0) as origBytes, COALESCE(SUM(size), 0) as compBytes, COALESCE(SUM(LENGTH(name) + LENGTH(COALESCE(type, '')) + LENGTH(COALESCE(extension, '')) + LENGTH(COALESCE(r2_key, '')) + LENGTH(COALESCE(file_url, ''))), 0) as textBytes FROM study_imported_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0, textBytes: 0 })),
+
+      // 9. Rapports de perception & analyses IA de documents (ai_document_perceptions) dans D1
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(perception_report) + LENGTH(COALESCE(file_name, '')) + LENGTH(file_signature)), 0) as textBytes FROM ai_document_perceptions WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+
+      // 10. Journal de synchronisation et réplication temps réel (sync_items) dans D1
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(data_json) + LENGTH(entity_id) + LENGTH(entity_type)), 0) as textBytes FROM sync_items WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 }))
     ]);
 
     // Calcul précis des octets d'images de la boutique dans R2
@@ -3904,7 +3916,7 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
                        Number(docStats?.cnt || 0) + Number(classeurStats?.cnt || 0) + Number(matiereFileStats?.cnt || 0) + 
                        Number(studyFileStats?.cnt || 0) +
                        Number(downloadStats?.cnt || 0) + Number(secureStats?.cnt || 0) + Number(trashStats?.cnt || 0) +
-                       Number(thumbnailStats?.cnt || 0) + Number(wallpaperStats?.cnt || 0);
+                       Number(thumbnailStats?.cnt || 0) + Number(wallpaperStats?.cnt || 0) + Number(studyImportedStats?.cnt || 0);
 
     const totalFileR2Bytes = Number(videoStats?.compBytes || 0) + Number(audioStats?.compBytes || 0) + 
                              Number(imageStats?.compBytes || 0) + Number(docStats?.compBytes || 0) + 
@@ -3912,7 +3924,7 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
                              Number(studyFileStats?.compBytes || 0) +
                              Number(downloadStats?.compBytes || 0) + Number(secureStats?.compBytes || 0) + 
                              Number(trashStats?.compBytes || 0) +
-                             Number(thumbnailStats?.r2Bytes || 0) + Number(wallpaperStats?.r2Bytes || 0);
+                             Number(thumbnailStats?.r2Bytes || 0) + Number(wallpaperStats?.r2Bytes || 0) + Number(studyImportedStats?.compBytes || 0);
 
     const productCount = Number(productStats?.cnt || 0);
     const totalR2Bytes = totalFileR2Bytes + productImagesR2Bytes;
@@ -3931,7 +3943,7 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
                              Number(notifStats?.textBytes || 0) + Number(referralStats?.textBytes || 0) +
                              Number(thumbnailStats?.textBytes || 0) + Number(wallpaperStats?.textBytes || 0) +
                              Number(compressionStats?.textBytes || 0) + Number(dismissedRecentStats?.textBytes || 0) +
-                             Number(sharedFolderDlStats?.textBytes || 0) + Number(upgradeReqStats?.textBytes || 0);
+                             Number(sharedFolderDlStats?.textBytes || 0) + Number(upgradeReqStats?.textBytes || 0) + Number(studyImportedStats?.textBytes || 0) + Number(aiPerceptionStats?.textBytes || 0) + Number(syncItemStats?.textBytes || 0);
 
     const totalD1Rows = totalFiles + Number(folderCount?.cnt || 0) +
                         productCount + Number(shopStats?.cnt || 0) + Number(cartStats?.cnt || 0) +
@@ -3947,7 +3959,7 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
                         Number(userProfileStats?.cnt || 0) + Number(userPrefsStats?.cnt || 0) +
                         Number(notifStats?.cnt || 0) + Number(referralStats?.cnt || 0) +
                         Number(compressionStats?.cnt || 0) + Number(dismissedRecentStats?.cnt || 0) +
-                        Number(sharedFolderDlStats?.cnt || 0) + Number(upgradeReqStats?.cnt || 0);
+                        Number(sharedFolderDlStats?.cnt || 0) + Number(upgradeReqStats?.cnt || 0) + Number(studyImportedStats?.cnt || 0) + Number(aiPerceptionStats?.cnt || 0) + Number(syncItemStats?.cnt || 0);
 
     const estimatedD1Bytes = Math.max(1024, totalD1TextBytes + (totalD1Rows * 160));
 
@@ -3957,7 +3969,7 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
                                    Number(studyFileStats?.origBytes || 0) +
                                    Number(downloadStats?.origBytes || 0) + Number(secureStats?.origBytes || 0) + 
                                    Number(trashStats?.origBytes || 0) +
-                                   Number(thumbnailStats?.r2Bytes || 0) + Number(wallpaperStats?.r2Bytes || 0);
+                                   Number(thumbnailStats?.r2Bytes || 0) + Number(wallpaperStats?.r2Bytes || 0) + Number(studyImportedStats?.origBytes || 0);
 
     const totalOriginalBytes = totalFileOriginalBytes + productImagesR2Bytes + estimatedD1Bytes;
     const totalActuallyConsumed = totalR2Bytes + estimatedD1Bytes;
@@ -3983,14 +3995,18 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
         trash: { count: Number(trashStats?.cnt || 0), originalBytes: Number(trashStats?.origBytes || 0), compressedBytes: Number(trashStats?.compBytes || 0) },
         thumbnails: { count: Number(thumbnailStats?.cnt || 0), bytes: Number(thumbnailStats?.r2Bytes || 0) },
         wallpapers: { count: Number(wallpaperStats?.cnt || 0), bytes: Number(wallpaperStats?.r2Bytes || 0) },
-        product_images: { count: productCount, bytes: productImagesR2Bytes }
+        product_images: { count: productCount, bytes: productImagesR2Bytes },
+        study_imported_files: { count: Number(studyImportedStats?.cnt || 0), originalBytes: Number(studyImportedStats?.origBytes || 0), compressedBytes: Number(studyImportedStats?.compBytes || 0) }
       },
       donnees_d1: {
         wallpapers_config: { count: Number(wallpaperStats?.cnt || 0), bytes: Number(wallpaperStats?.textBytes || 0) },
         compression_records: { count: Number(compressionStats?.cnt || 0), bytes: Number(compressionStats?.textBytes || 0) },
         dismissed_recents: { count: Number(dismissedRecentStats?.cnt || 0), bytes: Number(dismissedRecentStats?.textBytes || 0) },
         shared_folder_downloads: { count: Number(sharedFolderDlStats?.cnt || 0), bytes: Number(sharedFolderDlStats?.textBytes || 0) },
-        storage_upgrade_requests: { count: Number(upgradeReqStats?.cnt || 0), bytes: Number(upgradeReqStats?.textBytes || 0) }
+        storage_upgrade_requests: { count: Number(upgradeReqStats?.cnt || 0), bytes: Number(upgradeReqStats?.textBytes || 0) },
+        ai_document_perceptions: { count: Number(aiPerceptionStats?.cnt || 0), bytes: Number(aiPerceptionStats?.textBytes || 0) },
+        sync_items: { count: Number(syncItemStats?.cnt || 0), bytes: Number(syncItemStats?.textBytes || 0) },
+        study_imported_meta: { count: Number(studyImportedStats?.cnt || 0), bytes: Number(studyImportedStats?.textBytes || 0) }
       }
     };
     const breakdownJson = JSON.stringify(breakdown);
@@ -6771,6 +6787,7 @@ a:hover{transform:translateY(-2px)}
             lastImported || Date.now()
           ).run();
 
+          recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {});
           return jsonResponse({ success: true, data: { id, name } }, 201, origin);
         }
       }
@@ -6929,6 +6946,7 @@ a:hover{transform:translateY(-2px)}
           try { await env.BUCKET.delete(row.r2_key); } catch (e) {}
         }
         await env.DB.prepare('DELETE FROM study_imported_files WHERE id = ?').bind(id).run().catch(() => {});
+        if (row && (row as any).user_id) { recalculateAndSaveUserStorage(env.DB, (row as any).user_id).catch(() => {}); }
         return jsonResponse({ success: true, message: 'Fichier d\'étude supprimé' }, 200, origin);
       }
 
@@ -14662,6 +14680,7 @@ a:hover{transform:translateY(-2px)}
               VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
             `).bind(perceptionId, userId, fileSignature, fileName, perceptionReport, expiresAt).run();
 
+            recalculateAndSaveUserStorage(targetDb, userId).catch(() => {});
             return jsonResponse({ success: true, id: perceptionId, expiresAt }, 200, origin);
           } catch (e) {
             return errorResponse('Erreur enregistrement perception', 500, origin);
@@ -14673,6 +14692,7 @@ a:hover{transform:translateY(-2px)}
           if (userId) {
             try {
               await targetDb.prepare('DELETE FROM ai_document_perceptions WHERE user_id = ?').bind(userId).run();
+              recalculateAndSaveUserStorage(targetDb, userId).catch(() => {});
             } catch (e) {}
           }
           return jsonResponse({ success: true }, 200, origin);
