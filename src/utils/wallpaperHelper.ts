@@ -12,6 +12,47 @@ const LS_WALLPAPER_KEY = 'studycloud_dashboard_wallpaper';
 const LS_WALLPAPER_META = 'studycloud_dashboard_wallpaper_meta';
 const IDB_WALLPAPER_KEY = 'active_wallpaper';
 
+export const DEFAULT_WALLPAPER_URL = '/wallpapers/wallpaper-beach.jpg';
+
+export interface PresetWallpaperItem {
+  id: string;
+  name: string;
+  subtitle: string;
+  url: string;
+  isDefault?: boolean;
+}
+
+export const PRESET_WALLPAPERS: PresetWallpaperItem[] = [
+  {
+    id: 'beach',
+    name: 'Rivage Turquoise',
+    subtitle: 'Eau cristalline et sable blanc paradisiaque',
+    url: '/wallpapers/wallpaper-beach.jpg',
+    isDefault: true,
+  },
+  {
+    id: 'dna',
+    name: 'Hélice ADN Cosmique',
+    subtitle: 'Thème Signature StudyCloud — Néon bleu & étoiles',
+    url: '/wallpapers/wallpaper-dna.jpg',
+    isDefault: false,
+  },
+  {
+    id: 'nebula',
+    name: 'Nébuleuse Étoilée',
+    subtitle: 'Galaxie rougeoyante et poussières d’étoiles',
+    url: '/wallpapers/wallpaper-nebula.jpg',
+    isDefault: false,
+  },
+  {
+    id: 'abstract-dark',
+    name: 'Abstrait Minimaliste OLED',
+    subtitle: 'Sphères sombres élégantes et lignes rouge vif',
+    url: '/wallpapers/wallpaper-abstract-dark.jpg',
+    isDefault: false,
+  },
+];
+
 /**
  * Convertit n'importe quelle source d'image (Blob, File, URL blob:, ID IndexedDB)
  * en une chaîne base64 data:image/jpeg permanente et optimisée (max 1920px)
@@ -226,5 +267,5 @@ export async function getActiveWallpaperReliable(): Promise<string | null> {
     }
   } catch {}
 
-  return null;
+  return DEFAULT_WALLPAPER_URL;
 }

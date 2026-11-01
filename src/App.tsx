@@ -36,6 +36,7 @@ import { GoogleSecuritySetupPage } from './components/auth/GoogleSecuritySetupPa
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { AppUpdatePrompt } from './components/AppUpdatePrompt';
 import { StorageAlertNotificationModal } from './components/StorageAlertNotificationModal';
+import { WallpaperSelectorDrawer } from './components/WallpaperSelectorDrawer';
 import { UploadQueueWidget } from './components/UploadQueueWidget';
 import { purgeVolatileStorage, safeLocalStorageRemove } from './utils/safeStorage';
 
@@ -2356,6 +2357,9 @@ export default function App() {
 
       {/* Modal d'alerte et de blocage de saturation de stockage (50%, 75%, 85%, 95%, >=96%) */}
       <StorageAlertNotificationModal />
+
+      {/* Panneau latéral gauche de choix des fonds d'écran du tableau de bord */}
+      <WallpaperSelectorDrawer />
     </div>
   );
 }

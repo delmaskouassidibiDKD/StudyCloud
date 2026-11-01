@@ -24,7 +24,7 @@ import { triggerDebouncedCloudBackup, getCurrentUserId } from '../services/userS
 import { StudyCloudAPI } from '../services/api';
 import { useDashboardWallpaper, useMatieresList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
-import { getActiveWallpaperReliable } from '../utils/wallpaperHelper';
+import { getActiveWallpaperReliable, DEFAULT_WALLPAPER_URL } from '../utils/wallpaperHelper';
 import { HeaderMelodyControl } from './HeaderMelodyControl';
 
 interface FoldersViewProps {
@@ -203,11 +203,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
   // Fond d'écran personnalisé du tableau de bord (Page 1 et Page 2)
   // Rendu instantané 0ms dès l'initialisation du composant sans délai ni clignotement
-  const [dashboardWallpaper, setDashboardWallpaper] = useState<string | null>(() => {
+  const [dashboardWallpaper, setDashboardWallpaper] = useState<string>(() => {
     const cached = localStorage.getItem('studycloud_dashboard_wallpaper');
     // Ignorer les anciens blob: expirés pour éviter l'écran grisé
     if (cached && !cached.startsWith('blob:')) return cached;
-    return null;
+    return DEFAULT_WALLPAPER_URL;
   });
 
   // Récupération fiable au montage depuis IndexedDB si localStorage était vide ou révoqué
@@ -228,12 +228,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           localStorage.setItem('studycloud_dashboard_wallpaper', cloudWallpaperData.url);
         } catch {}
       }
-    } else if (cloudWallpaperData === null && dashboardWallpaper !== null) {
+    } else if (cloudWallpaperData === null && dashboardWallpaper !== DEFAULT_WALLPAPER_URL) {
       // Cas où le fond d'écran a été réinitialisé depuis un autre appareil
-      setDashboardWallpaper(null);
+      setDashboardWallpaper(DEFAULT_WALLPAPER_URL);
       try {
-        localStorage.removeItem('studycloud_dashboard_wallpaper');
-        localStorage.removeItem('studycloud_dashboard_wallpaper_meta');
+        localStorage.setItem('studycloud_dashboard_wallpaper', DEFAULT_WALLPAPER_URL);
       } catch {}
     }
   }, [cloudWallpaperData?.url]);
@@ -243,11 +242,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       const wp = e?.detail?.wallpaper !== undefined 
         ? e.detail.wallpaper 
         : localStorage.getItem('studycloud_dashboard_wallpaper');
-      if (wp) {
-        setDashboardWallpaper(wp);
-      } else {
-        setDashboardWallpaper(null);
-      }
+      setDashboardWallpaper(wp || DEFAULT_WALLPAPER_URL);
     };
     window.addEventListener('studycloud_wallpaper_updated', handleWallpaperChange);
     return () => window.removeEventListener('studycloud_wallpaper_updated', handleWallpaperChange);
@@ -1094,7 +1089,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     <div className={`flex flex-col items-center justify-start min-h-[75vh] px-2 sm:px-4 text-center pt-12 md:pt-14 pb-24 transition-colors duration-200 ${
       dashboardWallpaper && viewMode === 'home'
         ? 'bg-transparent text-white'
-        : 'bg-[#E9D7C9] dark:bg-[#0b0f19]'
+        : 'bg-[#0a0e17] text-white'
     }`}>
       {/* Fond d'écran personnalisé du tableau de bord (Visible sur la Page 1 et la Page 2) */}
       {dashboardWallpaper && viewMode === 'home' && (

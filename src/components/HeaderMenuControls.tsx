@@ -11,6 +11,7 @@ import {
   HardDrive,
   RotateCcw,
   Check,
+  Palette,
   X
 } from 'lucide-react';
 
@@ -601,16 +602,19 @@ export const HeaderMenuControls: React.FC<HeaderMenuControlsProps> = ({
                 </button>
               </div>
 
-              {/* 6. Spécialement pour le menu Image : Restaurer le fond d'écran */}
+              {/* 6. Spécialement pour le menu Image : Fond d'écran */}
               {isImageMenu && (
                 <div className="py-1">
                   <button
                     type="button"
-                    onClick={handleRestore}
-                    className="w-full px-3 py-2 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      window.dispatchEvent(new CustomEvent('studycloud_open_wallpaper_drawer'));
+                    }}
+                    className="w-full px-3 py-2 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-emerald-400 hover:bg-emerald-500/15 transition-colors cursor-pointer text-left"
                   >
-                    <RotateCcw className="w-3.5 h-3.5 shrink-0 text-rose-400" />
-                    <span>Restaurer le fond d'écran</span>
+                    <Palette className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                    <span>Fond d'écran</span>
                   </button>
                 </div>
               )}
