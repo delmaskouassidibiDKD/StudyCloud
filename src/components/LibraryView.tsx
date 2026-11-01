@@ -1265,13 +1265,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   };
 
   return (
-    <div className="flex flex-col space-y-4 pb-24 pt-16 md:pt-16 animate-fadeIn w-full px-2 sm:px-4 bg-[#DDDDDD] dark:bg-[#0b0f19] min-h-screen transition-colors">
-      {/* Fixed Header Container - Ligne unique compacte */}
-      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#DDDDDD] dark:bg-[#070a13] border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm px-3 sm:px-6 py-2 transition-colors">
-        <div className="flex items-center justify-between gap-2 sm:gap-3 w-full max-w-7xl mx-auto flex-wrap sm:flex-nowrap">
-          {/* Gauche : Bouton Actualiser + Champ de recherche réduit */}
-          <div className="flex items-center gap-2 sm:gap-2.5 flex-1 min-w-0">
-            {/* Bouton Actualiser en avant dans le creux en haut à gauche */}
+    <div className="flex flex-col space-y-3 pb-24 pt-[88px] sm:pt-[92px] md:pt-16 animate-fadeIn w-full px-2 sm:px-4 bg-[#DDDDDD] dark:bg-[#0b0f19] min-h-screen transition-colors">
+      {/* Fixed Header Container - Responsive 2 lignes sur mobile, 1 ligne sur desktop */}
+      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#DDDDDD] dark:bg-[#070a13] border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm px-2.5 sm:px-6 py-1.5 sm:py-2 transition-colors">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-1.5 sm:gap-2.5 w-full max-w-7xl mx-auto">
+          {/* Ligne 1 sur mobile : Actualiser + Barre de recherche fluide + Boutons contextuels (Matières, Écoles, Menu ou Panier sur mobile) */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 w-full md:w-auto md:flex-1 min-w-0">
+            {/* Bouton Actualiser */}
             <button
               type="button"
               onClick={handleGlobalRefresh}
@@ -1283,15 +1283,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   ? "Actualiser la marketplace"
                   : "Actualiser les liens publics"
               }
-              className="px-2.5 sm:px-3 py-1.5 text-xs font-extrabold rounded-xl border-2 border-stone-800 dark:border-[#334155] bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+              className="p-1.5 sm:px-3 sm:py-1.5 text-xs font-extrabold rounded-xl border-2 border-stone-800 dark:border-[#334155] bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 text-orange-500 dark:text-orange-400 ${isGlobalRefreshing ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline font-bold">Actualiser</span>
             </button>
 
-            {/* Champ de recherche réduit pour libérer de la place à droite */}
-            <div className="relative w-44 sm:w-56 md:w-64 lg:w-72 shrink-0">
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-stone-400">
+            {/* Champ de recherche fluide (flex-1 sur mobile, fixe sur desktop) */}
+            <div className="relative flex-1 min-w-0 md:w-64 lg:w-72 md:flex-initial">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 sm:pl-3 pointer-events-none text-stone-400">
                 <Search className="w-3.5 h-3.5" />
               </span>
               <input
@@ -1300,63 +1300,123 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={
                   activeSubTab === 'librairie'
-                    ? "Rechercher un livre, cours, produit..."
+                    ? "Rechercher un livre, cours..."
                     : activeSubTab === 'ressources'
-                    ? "Rechercher un fichier ou dossier..."
-                    : "Rechercher un lien public ou dossier..."
+                    ? "Rechercher un fichier..."
+                    : "Rechercher un lien..."
                 }
-                className="w-full bg-white dark:bg-[#111a2e] dark:border-[#334155] dark:text-white dark:placeholder-slate-400 border-2 border-stone-800 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium outline-none shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all"
+                className="w-full bg-white dark:bg-[#111a2e] dark:border-[#334155] dark:text-white dark:placeholder-slate-400 border-2 border-stone-800 rounded-xl pl-8 pr-2.5 sm:pr-3 py-1.5 text-xs font-medium outline-none shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all"
               />
+            </div>
+
+            {/* Boutons contextuels affichés sur la Ligne 1 UNIQUEMENT sur mobile */}
+            <div className="flex md:hidden items-center gap-1 shrink-0">
+              {activeSubTab === 'librairie' && (
+                <button
+                  type="button"
+                  onClick={() => setIsCartViewOpen(!isCartViewOpen)}
+                  className={`p-1.5 text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 shrink-0 active:translate-x-0.5 active:translate-y-0.5 ${
+                    isCartViewOpen
+                      ? 'bg-sky-400 dark:bg-sky-500 text-stone-950 dark:text-white border-stone-900 dark:border-stone-300 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none ring-2 ring-sky-300 dark:ring-sky-400/60 font-black'
+                      : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none font-bold'
+                  }`}
+                  title="Voir mon panier"
+                >
+                  <ShoppingCart className="w-3.5 h-3.5 text-stone-900 dark:text-white" />
+                  {cartItemIds.length > 0 && (
+                    <span className="w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-black">
+                      {cartItemIds.length}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {activeSubTab === 'ressources' && (
+                <>
+                  <button
+                    onClick={() => setShowMatiereModal(true)}
+                    className={`p-1.5 font-extrabold text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5 ${
+                      selectedMatiereFilter
+                        ? 'bg-blue-600 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
+                        : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917]'
+                    }`}
+                    title="Filtrer par matière"
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  </button>
+
+                  <button
+                    onClick={() => setShowSchoolsModal(true)}
+                    className={`p-1.5 font-extrabold text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5 ${
+                      selectedSchoolFilter
+                        ? 'bg-orange-500 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
+                        : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917]'
+                    }`}
+                    title="Filtrer par école"
+                  >
+                    <Building2 className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
+                  </button>
+
+                  <button
+                    onClick={() => setShowMenuModal(true)}
+                    className="p-1.5 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center"
+                    title="Options du menu"
+                  >
+                    <Menu className="w-3.5 h-3.5 text-stone-800 dark:text-white" />
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
-          {/* Droite : 3 Onglets (Marketplace, Ressources, Liens publics) + Bouton Panier (ou filtres Ressources) */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 overflow-x-auto no-scrollbar py-0.5">
+          {/* Ligne 2 sur mobile / Côté droit sur Desktop : Les 3 onglets (Marketplace, Ressources, Liens publics) + Boutons contextuels desktop */}
+          <div className="flex items-center gap-1 sm:gap-2 w-full md:w-auto justify-between md:justify-end shrink-0 py-0.5">
             <button
               type="button"
               onClick={() => { setActiveSubTab('librairie'); setIsRecentFilterActive(false); }}
-              className={`px-2.5 sm:px-3 py-1.5 text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
+              className={`flex-1 md:flex-initial justify-center px-2 sm:px-3 py-1.5 text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
                 activeSubTab === 'librairie'
                   ? 'bg-sky-400 dark:bg-sky-500 text-stone-950 dark:text-white border-stone-900 dark:border-stone-300 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none ring-2 ring-sky-300 dark:ring-sky-400/60 font-black'
                   : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none font-bold'
               }`}
             >
               <span>📚</span>
-              <span>Marketplace</span>
+              <span className="truncate">Marketplace</span>
             </button>
 
             <button
               type="button"
               onClick={() => { setActiveSubTab('ressources'); setIsCartViewOpen(false); }}
-              className={`px-2.5 sm:px-3 py-1.5 text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
+              className={`flex-1 md:flex-initial justify-center px-2 sm:px-3 py-1.5 text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
                 activeSubTab === 'ressources'
                   ? 'bg-sky-400 dark:bg-sky-500 text-stone-950 dark:text-white border-stone-900 dark:border-stone-300 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none ring-2 ring-sky-300 dark:ring-sky-400/60 font-black'
                   : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none font-bold'
               }`}
             >
               <span>📁</span>
-              <span>Ressources</span>
+              <span className="truncate">Ressources</span>
             </button>
 
             <button
               type="button"
               onClick={() => { setActiveSubTab('liens'); setIsCartViewOpen(false); setIsRecentFilterActive(false); }}
-              className={`px-2.5 sm:px-3 py-1.5 text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
+              className={`flex-1 md:flex-initial justify-center px-2 sm:px-3 py-1.5 text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
                 activeSubTab === 'liens'
                   ? 'bg-sky-400 dark:bg-sky-500 text-stone-950 dark:text-white border-stone-900 dark:border-stone-300 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none ring-2 ring-sky-300 dark:ring-sky-400/60 font-black'
                   : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none font-bold'
               }`}
             >
               <span>🔗</span>
-              <span className="truncate">Liens publics</span>
+              <span className="truncate sm:hidden">Liens</span>
+              <span className="hidden sm:inline truncate">Liens publics</span>
             </button>
 
-            {/* Bouton Panier après Liens publics */}
+            {/* Bouton Panier (visible sur desktop ici) */}
             {activeSubTab === 'librairie' && (
               <button
                 type="button"
                 onClick={() => setIsCartViewOpen(!isCartViewOpen)}
-                className={`px-2.5 sm:px-3 py-1.5 text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 active:translate-x-0.5 active:translate-y-0.5 ${
+                className={`hidden md:flex px-2.5 sm:px-3 py-1.5 text-xs rounded-xl border-2 transition-all cursor-pointer items-center gap-1.5 shrink-0 active:translate-x-0.5 active:translate-y-0.5 ${
                   isCartViewOpen
                     ? 'bg-sky-400 dark:bg-sky-500 text-stone-950 dark:text-white border-stone-900 dark:border-stone-300 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none ring-2 ring-sky-300 dark:ring-sky-400/60 font-black'
                     : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none font-bold'
@@ -1373,9 +1433,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               </button>
             )}
 
-            {/* Boutons contextuels en mode Ressources (Matières, Écoles, Menu) */}
+            {/* Boutons contextuels en mode Ressources sur Desktop */}
             {activeSubTab === 'ressources' && (
-              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <div className="hidden md:flex items-center gap-1.5 sm:gap-2 shrink-0">
                 <button
                   onClick={() => setShowMatiereModal(true)}
                   className={`px-2.5 py-1.5 font-extrabold text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 ${
@@ -2001,7 +2061,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       <div
                         key={doc.id}
                         style={typeInfo.cardBgStyle}
-                        className={`aspect-[3/4] text-stone-100 ${typeInfo.cardBorderClass} rounded-2xl p-2.5 flex flex-col justify-between ${typeInfo.cardShadowClass} transition-all relative select-none overflow-hidden`}
+                        className={`aspect-[4/4.7] sm:aspect-[3/4] text-stone-100 ${typeInfo.cardBorderClass} rounded-2xl p-2.5 flex flex-col justify-between ${typeInfo.cardShadowClass} transition-all relative select-none overflow-hidden`}
                       >
                         {/* Header avec badge catégorie + badge type + bouton retour aperçu */}
                         <div className="flex items-center justify-between gap-1 border-b border-white/20 pb-1 mb-1">
@@ -2144,7 +2204,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     <div
                       key={doc.id}
                       style={typeInfo.cardBgStyle}
-                      className={`aspect-[3/4] ${typeInfo.cardBorderClass} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${typeInfo.cardShadowClass} transition-all relative group select-none overflow-hidden`}
+                      className={`aspect-[4/4.7] sm:aspect-[3/4] ${typeInfo.cardBorderClass} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${typeInfo.cardShadowClass} transition-all relative group select-none overflow-hidden`}
                     >
                       {/* Header: Catégorie à gauche, Taille à droite */}
                       <div className="flex items-center justify-between gap-1 z-10">
