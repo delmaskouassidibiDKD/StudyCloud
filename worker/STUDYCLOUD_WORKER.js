@@ -5873,6 +5873,20 @@ a:hover{transform:translateY(-2px)}
           if (!id || !reqUserId || !name || reqUserId === "default-user") {
             return errorResponse("id, userId et name requis", 400, origin);
           }
+          if (env.DB && size && Number(size) > 0) {
+            const quotaCheck = await checkUserStorageQuota(env.DB, reqUserId, Number(size));
+            if (!quotaCheck.allowed) {
+              return new Response(JSON.stringify({
+                success: false,
+                error: "STORAGE_LIMIT_EXCEEDED",
+                isStorageLimitExceeded: true,
+                message: quotaCheck.error || "Votre espace de stockage est insuffisant pour enregistrer ce fichier."
+              }), {
+                status: 413,
+                headers: { "Content-Type": "application/json", ...corsHeaders(origin) }
+              });
+            }
+          }
           await env.DB.prepare(`
             INSERT INTO study_imported_files (id, user_id, name, size, type, extension, r2_key, file_url, is_favorite, imported_at, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -5927,12 +5941,14 @@ a:hover{transform:translateY(-2px)}
         const key = url.searchParams.get("key");
         if (!key) return errorResponse("Cl\xE9 de stockage manquante", 400, origin);
         const contentType = request.headers.get("Content-Type") || "application/octet-stream";
-        const fileData = request.body || await request.arrayBuffer();
+        const fileBuffer = await request.arrayBuffer();
+        const rawSize = fileBuffer.byteLength;
+        const headerSize = Number(request.headers.get("x-original-size-bytes") || request.headers.get("content-length") || 0);
+        const effectiveSize = headerSize > 0 ? headerSize : rawSize;
         const reqUserId = await extractRequestUserId();
         if (reqUserId && env.DB) {
-          const rawSize = fileData instanceof ArrayBuffer ? fileData.byteLength : 0;
-          if (rawSize > 0) {
-            const quotaCheck = await checkUserStorageQuota(env.DB, reqUserId, rawSize);
+          if (effectiveSize > 0) {
+            const quotaCheck = await checkUserStorageQuota(env.DB, reqUserId, effectiveSize);
             if (!quotaCheck.allowed) {
               return new Response(JSON.stringify({
                 success: false,
@@ -5946,7 +5962,7 @@ a:hover{transform:translateY(-2px)}
             }
           }
         }
-        await env.BUCKET.put(key, fileData, {
+        await env.BUCKET.put(key, fileBuffer, {
           httpMetadata: { contentType }
         });
         const fileUrl = `${url.origin}/api/storage/file/${encodeURIComponent(key)}`;
@@ -6513,6 +6529,20 @@ a:hover{transform:translateY(-2px)}
         let inputSize = Number(body.size || 0);
         if (!inputUrl) {
           return errorResponse("Donn\xE9es du fond d'\xE9cran manquantes", 400, origin);
+        }
+        if (env.DB && inputSize > 0) {
+          const quotaCheck = await checkUserStorageQuota(env.DB, reqUserId, inputSize);
+          if (!quotaCheck.allowed) {
+            return new Response(JSON.stringify({
+              success: false,
+              error: "STORAGE_LIMIT_EXCEEDED",
+              isStorageLimitExceeded: true,
+              message: quotaCheck.error || "Votre espace de stockage est insuffisant pour enregistrer ce fond d'\xE9cran."
+            }), {
+              status: 413,
+              headers: { "Content-Type": "application/json", ...corsHeaders(origin) }
+            });
+          }
         }
         const wallpaperId = `wp_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
         let finalUrl = inputUrl;
