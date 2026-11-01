@@ -7050,7 +7050,10 @@ a:hover{transform:translateY(-2px)}
         object.writeHttpMetadata(headers);
         headers.set('etag', object.httpEtag);
         headers.set('Cache-Control', 'public, max-age=31536000, immutable');
-        headers.set('Access-Control-Allow-Origin', origin);
+        headers.set('Access-Control-Allow-Origin', origin || '*');
+            headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+            headers.set('Access-Control-Allow-Headers', '*');
+            headers.set('Cross-Origin-Resource-Policy', 'cross-origin');
 
         return new Response(object.body, { headers });
       }
@@ -7619,9 +7622,9 @@ a:hover{transform:translateY(-2px)}
 
           if (row) {
             let wpUrl = row.url || '';
-            if (wpUrl.startsWith('blob:') && row.r2_key) {
+            if (row.r2_key) {
               wpUrl = `${url.origin}/api/cloud/wallpaper/file/${encodeURIComponent(row.id)}?userId=${encodeURIComponent(reqUserId)}`;
-            } else if (wpUrl.startsWith('blob:') && !row.r2_key) {
+            } else if (wpUrl.startsWith('blob:')) {
               wpUrl = '';
             }
 
@@ -7738,6 +7741,11 @@ a:hover{transform:translateY(-2px)}
               VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             `).bind(wallpaperId, reqUserId, inputName, finalUrl, r2Key, inputSize).run();
 
+            // Mettre à jour l'avatar utilisateur dans la table users pour synchroniser la photo de profil
+            await env.DB.prepare(
+              'UPDATE users SET avatar_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+            ).bind(finalUrl, reqUserId).run().catch(() => {});
+
             // Synchronisation inter-appareils
             await recordSyncItem(env.DB, reqUserId, wallpaperId, 'wallpapers', {
               id: wallpaperId,
@@ -7773,6 +7781,10 @@ a:hover{transform:translateY(-2px)}
           try {
             await env.DB.prepare(
               'UPDATE user_wallpapers SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
+            ).bind(reqUserId).run().catch(() => {});
+
+            await env.DB.prepare(
+              'UPDATE users SET avatar_url = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
             ).bind(reqUserId).run().catch(() => {});
 
             await recordSyncItem(env.DB, reqUserId, 'wallpaper_reset', 'wallpapers', {
@@ -15072,7 +15084,8 @@ a:hover{transform:translateY(-2px)}
           { results: grades },
           { results: alarms },
           { results: aiContents },
-          { results: calendarEvents }
+          { results: calendarEvents },
+          activeWallpaper
         ] = await Promise.all([
           env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first().catch(() => null),
           env.DB.prepare('SELECT * FROM matieres WHERE user_id = ? ORDER BY display_order ASC').bind(userId).all().catch(() => ({ results: [] })),
@@ -15083,8 +15096,30 @@ a:hover{transform:translateY(-2px)}
           env.DB.prepare('SELECT * FROM grades WHERE user_id = ?').bind(userId).all().catch(() => ({ results: [] })),
           env.DB.prepare('SELECT * FROM alarms WHERE user_id = ?').bind(userId).all().catch(() => ({ results: [] })),
           env.DB.prepare('SELECT * FROM ai_generated_contents WHERE user_id = ? ORDER BY is_pinned DESC, updated_at DESC').bind(userId).all().catch(() => ({ results: [] })),
-          env.DB.prepare('SELECT * FROM calendar_events WHERE user_id = ? ORDER BY start_date ASC').bind(userId).all().catch(() => ({ results: [] }))
+          env.DB.prepare('SELECT * FROM calendar_events WHERE user_id = ? ORDER BY start_date ASC').bind(userId).all().catch(() => ({ results: [] })),
+          env.DB.prepare('SELECT * FROM user_wallpapers WHERE user_id = ? AND is_active = 1 ORDER BY updated_at DESC LIMIT 1').bind(userId).first().catch(() => null)
         ]);
+
+        let resolvedWallpaper = null;
+        if (activeWallpaper) {
+          const row = activeWallpaper;
+          let wpUrl = row.url || '';
+          if (row.r2_key) {
+            wpUrl = `${url.origin}/api/cloud/wallpaper/file/${encodeURIComponent(row.id)}?userId=${encodeURIComponent(userId)}`;
+          }
+          if (wpUrl) {
+            resolvedWallpaper = {
+              id: row.id,
+              userId: row.user_id,
+              name: row.name || "Fond d'écran",
+              url: wpUrl,
+              r2Key: row.r2_key,
+              size: row.size || 0,
+              isActive: Boolean(row.is_active),
+              updatedAt: row.updated_at
+            };
+          }
+        }
 
         return jsonResponse({
           success: true,
@@ -15098,7 +15133,8 @@ a:hover{transform:translateY(-2px)}
             grades,
             alarms,
             aiContents,
-            calendarEvents
+            calendarEvents,
+            wallpaper: resolvedWallpaper
           }
         }, 200, origin);
       }

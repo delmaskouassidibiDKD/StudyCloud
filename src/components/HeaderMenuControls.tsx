@@ -402,6 +402,7 @@ export function restoreDefaultWallpaperAndAvatar(): void {
   try {
     localStorage.removeItem('studycloud_dashboard_wallpaper');
     localStorage.removeItem('studycloud_dashboard_wallpaper_meta');
+    localStorage.removeItem('studycloud_dashboard_wallpaper_id');
     localStorage.removeItem('unifolder_user_avatar');
   } catch {}
   window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: null } }));

@@ -2183,6 +2183,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const handleRestoreDefaultWallpaperAndAvatar = () => {
     localStorage.removeItem('studycloud_dashboard_wallpaper');
     localStorage.removeItem('studycloud_dashboard_wallpaper_meta');
+    localStorage.removeItem('studycloud_dashboard_wallpaper_id');
     localStorage.removeItem('unifolder_user_avatar');
     window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: null } }));
     window.dispatchEvent(new CustomEvent('studycloud_avatar_updated', { detail: { avatar: null } }));

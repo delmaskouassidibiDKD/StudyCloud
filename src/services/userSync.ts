@@ -81,6 +81,7 @@ export function clearUserDataOnLogout(): void {
     'studycloud_favorites_ids',
     'studycloud_dashboard_wallpaper',
     'studycloud_dashboard_wallpaper_meta',
+    'studycloud_dashboard_wallpaper_id',
     'studycloud_recent_searches',
   ];
 
@@ -297,10 +298,22 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
       window.dispatchEvent(new Event('unifolder_files_updated'));
       window.dispatchEvent(new Event('unifolder_matieres_updated'));
       window.dispatchEvent(new Event('unifolder_data_restored'));
+      // 9. Synchronisation multi-appareils du fond d'écran et de la photo de profil
+      if (d.wallpaper && d.wallpaper.url) {
+        import('../utils/wallpaperHelper').then(m => {
+          m.syncAndCacheCloudWallpaper(d.wallpaper).catch(() => {});
+        }).catch(() => {});
+      } else {
+        import('../utils/wallpaperHelper').then(m => {
+          m.syncActiveWallpaperFromCloud(true).catch(() => {});
+        }).catch(() => {});
+      }
+
       import('./queryClient').then(m => {
         m.invalidateCloudQueries.matieresList();
         m.invalidateCloudQueries.filesMenu();
         m.invalidateCloudQueries.shares();
+        m.invalidateCloudQueries.wallpaper();
       }).catch(() => {});
       import('./cloudDataStore').then(m => m.CloudDataStore.sync(true)).catch(() => {});
       return true;

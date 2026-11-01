@@ -6005,7 +6005,10 @@ a:hover{transform:translateY(-2px)}
         object.writeHttpMetadata(headers);
         headers.set("etag", object.httpEtag);
         headers.set("Cache-Control", "public, max-age=31536000, immutable");
-        headers.set("Access-Control-Allow-Origin", origin);
+        headers.set("Access-Control-Allow-Origin", origin || "*");
+        headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+        headers.set("Access-Control-Allow-Headers", "*");
+        headers.set("Cross-Origin-Resource-Policy", "cross-origin");
         return new Response(object.body, { headers });
       }
       async function extractRequestUserId() {
@@ -6504,9 +6507,9 @@ a:hover{transform:translateY(-2px)}
           ).bind(reqUserId).first().catch(() => null);
           if (row) {
             let wpUrl = row.url || "";
-            if (wpUrl.startsWith("blob:") && row.r2_key) {
+            if (row.r2_key) {
               wpUrl = `${url.origin}/api/cloud/wallpaper/file/${encodeURIComponent(row.id)}?userId=${encodeURIComponent(reqUserId)}`;
-            } else if (wpUrl.startsWith("blob:") && !row.r2_key) {
+            } else if (wpUrl.startsWith("blob:")) {
               wpUrl = "";
             }
             if (!wpUrl) {
@@ -6604,6 +6607,10 @@ a:hover{transform:translateY(-2px)}
               INSERT INTO user_wallpapers (id, user_id, name, url, r2_key, size, is_active, created_at, updated_at)
               VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             `).bind(wallpaperId, reqUserId, inputName, finalUrl, r2Key, inputSize).run();
+            await env.DB.prepare(
+              "UPDATE users SET avatar_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+            ).bind(finalUrl, reqUserId).run().catch(() => {
+            });
             await recordSyncItem(env.DB, reqUserId, wallpaperId, "wallpapers", {
               id: wallpaperId,
               name: inputName,
@@ -6635,6 +6642,10 @@ a:hover{transform:translateY(-2px)}
           try {
             await env.DB.prepare(
               "UPDATE user_wallpapers SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
+            ).bind(reqUserId).run().catch(() => {
+            });
+            await env.DB.prepare(
+              "UPDATE users SET avatar_url = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
             ).bind(reqUserId).run().catch(() => {
             });
             await recordSyncItem(env.DB, reqUserId, "wallpaper_reset", "wallpapers", {
@@ -13361,7 +13372,8 @@ Lien vers le produit : ${productShareUrl}`;
           { results: grades },
           { results: alarms },
           { results: aiContents },
-          { results: calendarEvents }
+          { results: calendarEvents },
+          activeWallpaper
         ] = await Promise.all([
           env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first().catch(() => null),
           env.DB.prepare("SELECT * FROM matieres WHERE user_id = ? ORDER BY display_order ASC").bind(userId).all().catch(() => ({ results: [] })),
@@ -13372,8 +13384,29 @@ Lien vers le produit : ${productShareUrl}`;
           env.DB.prepare("SELECT * FROM grades WHERE user_id = ?").bind(userId).all().catch(() => ({ results: [] })),
           env.DB.prepare("SELECT * FROM alarms WHERE user_id = ?").bind(userId).all().catch(() => ({ results: [] })),
           env.DB.prepare("SELECT * FROM ai_generated_contents WHERE user_id = ? ORDER BY is_pinned DESC, updated_at DESC").bind(userId).all().catch(() => ({ results: [] })),
-          env.DB.prepare("SELECT * FROM calendar_events WHERE user_id = ? ORDER BY start_date ASC").bind(userId).all().catch(() => ({ results: [] }))
+          env.DB.prepare("SELECT * FROM calendar_events WHERE user_id = ? ORDER BY start_date ASC").bind(userId).all().catch(() => ({ results: [] })),
+          env.DB.prepare("SELECT * FROM user_wallpapers WHERE user_id = ? AND is_active = 1 ORDER BY updated_at DESC LIMIT 1").bind(userId).first().catch(() => null)
         ]);
+        let resolvedWallpaper = null;
+        if (activeWallpaper) {
+          const row = activeWallpaper;
+          let wpUrl = row.url || "";
+          if (row.r2_key) {
+            wpUrl = `${url.origin}/api/cloud/wallpaper/file/${encodeURIComponent(row.id)}?userId=${encodeURIComponent(userId)}`;
+          }
+          if (wpUrl) {
+            resolvedWallpaper = {
+              id: row.id,
+              userId: row.user_id,
+              name: row.name || "Fond d'\xE9cran",
+              url: wpUrl,
+              r2Key: row.r2_key,
+              size: row.size || 0,
+              isActive: Boolean(row.is_active),
+              updatedAt: row.updated_at
+            };
+          }
+        }
         return jsonResponse({
           success: true,
           data: {
@@ -13386,7 +13419,8 @@ Lien vers le produit : ${productShareUrl}`;
             grades,
             alarms,
             aiContents,
-            calendarEvents
+            calendarEvents,
+            wallpaper: resolvedWallpaper
           }
         }, 200, origin);
       }

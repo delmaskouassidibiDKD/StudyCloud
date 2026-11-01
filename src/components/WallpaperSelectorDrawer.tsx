@@ -8,7 +8,8 @@ import {
 } from 'lucide-react';
 import { 
   PRESET_WALLPAPERS, 
-  DEFAULT_WALLPAPER_URL
+  DEFAULT_WALLPAPER_URL,
+  applyDashboardWallpaper
 } from '../utils/wallpaperHelper';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { invalidateCloudQueries } from '../services/queryClient';
@@ -55,19 +56,9 @@ export const WallpaperSelectorDrawer: React.FC = () => {
 
   const handleSelectPreset = (url: string, name: string) => {
     setCurrentWallpaper(url);
-    try {
-      localStorage.setItem('studycloud_dashboard_wallpaper', url);
-      localStorage.setItem('studycloud_dashboard_wallpaper_meta', JSON.stringify({ name, url, isPreset: true }));
-    } catch {}
-
-    // Déclenchement réactif 0ms
-    window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: url } }));
     showToast(`Fond d'écran "${name}" appliqué avec succès !`);
-
-    // Synchronisation en arrière-plan vers D1
-    CloudStorageAPI.saveWallpaper(url, name)
-      .then(() => invalidateCloudQueries.wallpaper())
-      .catch((err) => console.warn('[WallpaperDrawer] saveWallpaper sync warning:', err));
+    applyDashboardWallpaper(url, name)
+      .catch((err) => console.warn('[WallpaperDrawer] applyDashboardWallpaper warning:', err));
   };
 
   const handleRestoreDefault = () => {

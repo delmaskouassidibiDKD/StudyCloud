@@ -138,15 +138,14 @@ export function useDashboardWallpaper() {
     queryKey: QUERY_KEYS.wallpaper,
     queryFn: async () => {
       const wp = await CloudStorageAPI.getWallpaper();
-      if (wp && wp.url) {
-        try {
-          localStorage.setItem('studycloud_dashboard_wallpaper', wp.url);
-          localStorage.setItem('studycloud_dashboard_wallpaper_meta', JSON.stringify(wp));
-        } catch {}
+      if (wp) {
+        import('../utils/wallpaperHelper').then(m => {
+          m.syncAndCacheCloudWallpaper(wp).catch(() => {});
+        }).catch(() => {});
       }
       return wp;
     },
-    // Rendu instantané 0ms sans latence ni saut visuel
+    // Rendu instantané 0ms dès l'ouverture du composant sans latence ni écran noir
     initialData: () => {
       if (typeof window === 'undefined') return undefined;
       const cachedUrl = localStorage.getItem('studycloud_dashboard_wallpaper');
@@ -157,14 +156,16 @@ export function useDashboardWallpaper() {
         if (raw) meta = JSON.parse(raw);
       } catch {}
       return {
-        id: meta?.id || 'cached_wallpaper',
+        id: meta?.id || localStorage.getItem('studycloud_dashboard_wallpaper_id') || 'cached_wallpaper',
         name: meta?.name || 'Fond d\'écran',
         url: cachedUrl,
         size: meta?.size || 0,
         isActive: true,
       };
     },
-    staleTime: 1000 * 60 * 5, // 5 minutes de données valides en mémoire vive
+    initialDataUpdatedAt: 0, // Déclenche toujours une vérification légère en tâche de fond
+    staleTime: 1000 * 30, // 30s de rétention en mémoire pour détecter tout changement d'appareil
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -464,6 +465,7 @@ export function useSetDashboardWallpaper() {
         try {
           localStorage.setItem('studycloud_dashboard_wallpaper', data.wallpaper.url);
           localStorage.setItem('studycloud_dashboard_wallpaper_meta', JSON.stringify(data.wallpaper));
+          localStorage.setItem('studycloud_dashboard_wallpaper_id', String(data.wallpaper.id));
         } catch {}
       }
       invalidateCloudQueries.wallpaper();
@@ -483,6 +485,7 @@ export function useResetDashboardWallpaper() {
       try {
         localStorage.removeItem('studycloud_dashboard_wallpaper');
         localStorage.removeItem('studycloud_dashboard_wallpaper_meta');
+        localStorage.removeItem('studycloud_dashboard_wallpaper_id');
         window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: null } }));
       } catch {}
 
