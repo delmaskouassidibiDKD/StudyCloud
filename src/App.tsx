@@ -879,6 +879,19 @@ export default function App() {
   const [isRightFullscreen, setIsRightFullscreen] = useState(false);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 
+  // Gestion du bouton matériel / virtuel retour d'Android (pile LIFO popstate)
+  useBackHandler(showClearConfirmModal, () => setShowClearConfirmModal(false), 'app-clear-confirm-modal');
+  useBackHandler(showUploadModal, () => setShowUploadModal(false), 'app-upload-modal');
+  useBackHandler(Boolean(activeQRCodeFolder), () => setActiveQRCodeFolder(null), 'app-qrcode-modal');
+  useBackHandler(Boolean(activeFolderDetail), () => setActiveFolderDetail(null), 'app-folder-detail-modal');
+  useBackHandler(showCreateShareLinkModal, () => setShowCreateShareLinkModal(false), 'app-create-share-modal');
+  useBackHandler(Boolean(isAssistantOpen && (activePreviewItemState || isStudySpaceOpen)), () => setIsAssistantOpen(false), 'app-preview-assistant');
+  useBackHandler(Boolean(activePreviewItemState || isStudySpaceOpen), () => {
+    setActivePreviewItem(null);
+    setIsStudySpaceOpen(false);
+  }, 'app-preview-study-space');
+  useBackHandler(currentTab !== 'folders', () => setCurrentTab('folders'), 'app-tab-navigation');
+
   // Gestion dynamique et persistance distincte des dimensions du panneau gauche (Mode Fichiers vs Mode Chat Assistant)
   useEffect(() => {
     if (isAssistantOpen) {
