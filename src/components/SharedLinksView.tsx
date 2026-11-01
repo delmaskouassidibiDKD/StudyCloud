@@ -3,6 +3,7 @@ import { Search, Trash2, MoreVertical, Share2, Lock, Globe, ArrowUpDown, Clock, 
 import { SharedFolder } from '../types';
 import { FolderCard } from './FolderCard';
 import { useUserShares, useDeleteShareMutation, useToggleSharePublicMutation } from '../hooks/useCloudQueries';
+import { useBackHandler } from '../services/backNavigation';
 import { invalidateCloudQueries } from '../services/queryClient';
 
 interface SharedLinksViewProps {
@@ -34,6 +35,10 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
   const [filterStatus, setFilterStatus] = useState<'all' | 'published' | 'unpublished'>('all');
   const [menuOpen, setMenuOpen] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+
+  // Gestion du bouton matériel / virtuel retour d'Android
+  useBackHandler(showDeleteAllModal, () => setShowDeleteAllModal(false), 'shared-delete-all-modal');
+  useBackHandler(menuOpen, () => setMenuOpen(false), 'shared-menu-open');
   const menuRef = useRef<HTMLDivElement>(null);
 
   // TanStack Query : synchronisation réactive avec Cloudflare D1

@@ -48,6 +48,11 @@
     </style>
     <script>
       try {
+        if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+          window.screen.orientation.lock('portrait').catch(function() {});
+        }
+      } catch (e) {}
+      try {
         if (localStorage.getItem('unifolder_dark_mode') === 'true') {
           document.documentElement.classList.add('dark');
         }

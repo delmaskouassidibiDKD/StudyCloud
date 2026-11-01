@@ -17,7 +17,7 @@ import { CreateShareLinkModal } from './components/CreateShareLinkModal';
 import { PublishFileView } from './components/PublishFileView';
 import { INITIAL_FOLDERS } from './data/initialData';
 import { SharedFolder, NavigationTab } from './types';
-import { X, FolderPlus, Upload, ArrowLeft, Download, Share2, ArrowLeftRight, Maximize, Minimize, Dna, Menu, Clock, Mic, Loader2 } from 'lucide-react';
+import { X, FolderPlus, Upload, ArrowLeft, Download, Share2, ArrowLeftRight, Maximize, Minimize, Dna, Menu, Clock, Mic, Loader2, Smartphone } from 'lucide-react';
 import { FileIconBadge } from './components/FileIconBadge';
 import { AssistantChat } from './components/AssistantChat';
 import { DnaLogo } from './components/DnaLogo';
@@ -48,6 +48,7 @@ if (typeof window !== 'undefined') {
 import { sanitizeFoldersForStorage } from './utils/sanitizeFolders';
 export { sanitizeFoldersForStorage } from './utils/sanitizeFolders';
 import { invalidateCloudQueries } from './services/queryClient';
+import { useBackHandler } from './services/backNavigation';
 import { useStagingShareFiles } from './hooks/useCloudQueries';
 
 export default function App() {
@@ -192,6 +193,33 @@ export default function App() {
     }
     return 'folders';
   });
+
+  // Verrouillage strict en mode portrait sur mobile
+  useEffect(() => {
+    const enforcePortrait = async () => {
+      try {
+        if (typeof screen !== 'undefined' && screen.orientation && (screen.orientation as any).lock) {
+          await (screen.orientation as any).lock('portrait');
+        }
+      } catch (e) {}
+    };
+    enforcePortrait();
+    window.addEventListener('orientationchange', enforcePortrait);
+    return () => window.removeEventListener('orientationchange', enforcePortrait);
+  }, []);
+
+  // Gestion du bouton matériel / virtuel retour d'Android (pile LIFO popstate)
+  useBackHandler(showClearConfirmModal, () => setShowClearConfirmModal(false), 'app-clear-confirm-modal');
+  useBackHandler(showUploadModal, () => setShowUploadModal(false), 'app-upload-modal');
+  useBackHandler(Boolean(activeQRCodeFolder), () => setActiveQRCodeFolder(null), 'app-qrcode-modal');
+  useBackHandler(Boolean(activeFolderDetail), () => setActiveFolderDetail(null), 'app-folder-detail-modal');
+  useBackHandler(showCreateShareLinkModal, () => setShowCreateShareLinkModal(false), 'app-create-share-modal');
+  useBackHandler(Boolean(isAssistantOpen && (activePreviewItemState || isStudySpaceOpen)), () => setIsAssistantOpen(false), 'app-preview-assistant');
+  useBackHandler(Boolean(activePreviewItemState || isStudySpaceOpen), () => {
+    setActivePreviewItem(null);
+    setIsStudySpaceOpen(false);
+  }, 'app-preview-study-space');
+  useBackHandler(currentTab !== 'folders', () => setCurrentTab('folders'), 'app-tab-navigation');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Tous');
@@ -2401,6 +2429,16 @@ export default function App() {
 
       {/* Panneau latéral gauche de choix des fonds d'écran du tableau de bord */}
       <WallpaperSelectorDrawer />
+      {/* Verrouillage / Blocage strict de l'orientation paysage sur téléphone */}
+      <div className="hidden [@media(orientation:landscape)_and_(max-height:560px)_and_(pointer:coarse)]:flex fixed inset-0 z-[9999999] bg-[#070a13] text-white flex-col items-center justify-center p-6 text-center select-none backdrop-blur-xl">
+        <div className="w-16 h-16 rounded-2xl bg-orange-500/20 border-2 border-orange-500 flex items-center justify-center mb-4 animate-bounce shadow-[0_0_20px_rgba(249,115,22,0.4)]">
+          <Smartphone className="w-8 h-8 text-orange-400" />
+        </div>
+        <h2 className="text-base font-extrabold text-white mb-2">Mode portrait obligatoire</h2>
+        <p className="text-xs text-slate-300 max-w-xs font-medium leading-relaxed">
+          StudyCloud est conçu exclusivement en affichage vertical sur téléphone. Veuillez faire pivoter votre écran en mode portrait.
+        </p>
+      </div>
     </div>
   );
 }

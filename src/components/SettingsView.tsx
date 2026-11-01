@@ -8,6 +8,7 @@ import { UserSettingsView } from './UserSettingsView';
 import { ServiceProposalView } from './ServiceProposalView';
 import studentLogo from '../assets/student-logo.jpg';
 import proLogo from '../assets/pro-logo.jpg';
+import { useBackHandler } from '../services/backNavigation';
 
 export const SettingsView: React.FC = () => {
   const { user, logout } = useAuth();
@@ -35,6 +36,11 @@ export const SettingsView: React.FC = () => {
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportText, setReportText] = useState('');
   const [reportSubmitted, setReportSubmitted] = useState(false);
+
+  // Gestion du bouton matériel / virtuel retour d'Android
+  useBackHandler(activeSubView !== 'none', () => setActiveSubView('none'), 'settings-subview');
+  useBackHandler(showReportModal, () => setShowReportModal(false), 'settings-report-modal');
+  useBackHandler(showContactMenu, () => setShowContactMenu(false), 'settings-contact-menu');
 
   if (activeSubView === 'promotion') {
     return <PromotionView onBack={() => setActiveSubView('none')} />;

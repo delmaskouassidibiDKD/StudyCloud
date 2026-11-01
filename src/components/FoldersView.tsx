@@ -27,6 +27,7 @@ import { useDashboardWallpaper, useMatieresList } from '../hooks/useCloudQueries
 import { invalidateCloudQueries } from '../services/queryClient';
 import { getActiveWallpaperReliable, DEFAULT_WALLPAPER_URL } from '../utils/wallpaperHelper';
 import { HeaderMelodyControl } from './HeaderMelodyControl';
+import { useBackHandler } from '../services/backNavigation';
 
 interface FoldersViewProps {
   onOpenUpload: () => void;
@@ -539,6 +540,13 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   };
 
   const [showThreeDotsMenu, setShowThreeDotsMenu] = useState(false);
+
+  // Gestion du bouton matériel / virtuel retour d'Android
+  useBackHandler(viewMode !== 'home', () => setViewMode('home'), 'folders-viewmode');
+  useBackHandler(isAssistantOpen, () => setIsAssistantOpen(false), 'folders-assistant');
+  useBackHandler(isLanguageMenuOpen, () => setIsLanguageMenuOpen(false), 'folders-lang');
+  useBackHandler(isMatiereMenuOpen, () => setIsMatiereMenuOpen(false), 'folders-matiere');
+  useBackHandler(showThreeDotsMenu, () => setShowThreeDotsMenu(false), 'folders-threedots');
   const [activeModal, setActiveModal] = useState<'none' | 'schedule' | 'grades'>('none');
 
 

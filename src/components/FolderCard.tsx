@@ -3,6 +3,7 @@ import { Folder, FileText, Download, Share2, QrCode, Copy, Check, Lock, Unlock, 
 import { SharedFolder } from '../types';
 import { FileIconBadge } from './FileIconBadge';
 import { StudyCloudAPI, getWorkerApiUrl } from '../services/api';
+import { useBackHandler } from '../services/backNavigation';
 
 interface FolderCardProps {
   folder: SharedFolder;
@@ -20,6 +21,10 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
   const [commentInput, setCommentInput] = useState(folder.description || '');
   const [commentError, setCommentError] = useState(false);
   const [publishingState, setPublishingState] = useState<'idle' | 'loading' | 'success'>('idle');
+
+  // Gestion du bouton matériel / virtuel retour d'Android
+  useBackHandler(showPublishModal, () => setShowPublishModal(false), 'folder-publish-' + folder.id);
+  useBackHandler(showDeleteMenu, () => setShowDeleteMenu(false), 'folder-delete-' + folder.id);
 
   const shareUrl = folder.shareUrl || `${getWorkerApiUrl().replace(/\/+$/, '')}/s/${folder.shareCode || folder.id}`;
 

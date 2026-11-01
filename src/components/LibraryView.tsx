@@ -9,6 +9,7 @@ import { importFilesToMesFichiers } from '../services/userSync';
 import { storeFileBlob } from '../services/localFileStorage';
 import { rankAndShuffleCategories, isCategoryMatch, canonicalizeCategory } from '../utils/spellingCorrector';
 import { recordDownloadedFile } from '../services/downloadsManager';
+import { useBackHandler } from '../services/backNavigation';
 import studentLogo from '../assets/student-logo.jpg';
 
 if (typeof window !== 'undefined' && !(pdfjsLib as any).GlobalWorkerOptions?.workerSrc) {
@@ -816,6 +817,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     return [];
   });
   const [isCartViewOpen, setIsCartViewOpen] = useState(false);
+
+  // Gestion du bouton matériel / virtuel retour d'Android
+  useBackHandler(Boolean(selectedDetailProduct), () => setSelectedDetailProduct(null), 'library-detail-product');
+  useBackHandler(isCartViewOpen, () => setIsCartViewOpen(false), 'library-cart');
+  useBackHandler(showMatiereModal, () => setShowMatiereModal(false), 'library-matiere');
+  useBackHandler(showSchoolsModal, () => setShowSchoolsModal(false), 'library-schools');
+  useBackHandler(showFiliereModal, () => setShowFiliereModal(false), 'library-filiere');
+  useBackHandler(showMenuModal, () => setShowMenuModal(false), 'library-menu');
 
   useEffect(() => {
     try {
