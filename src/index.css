@@ -22,6 +22,26 @@ body {
 
 
 /* Thème Ciel & Nuages StudyCloud (pour Partager & Liens Actifs) */
+
+/* Thème Profil StudyCloud (Constellations & Sciences Célestes) */
+.studycloud-profile-bg {
+  background-color: #6a82bd;
+  background-image: url('/assets/studycloud-profile-bg.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+body.profile-active:not(.dark) {
+  background-color: #6a82bd;
+  background-image: url('/assets/studycloud-profile-bg.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
 .studycloud-clouds-bg {
   background-color: #8ec3f8;
   background-image: url('/assets/studycloud-clouds-bg.jpg');

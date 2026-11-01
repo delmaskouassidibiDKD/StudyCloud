@@ -41,6 +41,13 @@ export interface PresetWallpaperItem {
 
 export const PRESET_WALLPAPERS: PresetWallpaperItem[] = [
   {
+    id: 'study-constellations',
+    name: 'Constellations & Sciences StudyCloud',
+    subtitle: 'Formules, constellations et nuages célestes sur fond azur et violet',
+    url: '/wallpapers/wallpaper-constellations.jpg',
+    isDefault: false,
+  },
+  {
     id: 'clouds-sky',
     name: 'Ciel & Nuages StudyCloud',
     subtitle: 'Horizon azur et doux nuages blancs en apesanteur',

@@ -109,62 +109,64 @@ export const SettingsView: React.FC = () => {
 
   return (
     <div className="max-w-2xl lg:max-w-3xl mx-auto px-4 sm:px-8 py-6 md:py-10 flex flex-col items-center text-center space-y-6 md:space-y-8 relative">
-      {/* Profile Photo Circle */}
-      <div 
-        onClick={() => setActiveSubView('user-settings')}
-        title="Cliquer pour changer le logo ou modifier le profil"
-        className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-white border-3 border-stone-800 flex items-center justify-center text-orange-600 shadow-[4px_4px_0px_0px_#1c1917] overflow-hidden my-2 md:my-4 transition-all hover:scale-105 cursor-pointer relative group"
-      >
-        {displayAvatar ? (
-          <img src={displayAvatar} alt={userName} className="w-full h-full object-cover" />
-        ) : (
-          <User className="w-12 h-12 md:w-16 md:h-16" />
-        )}
-        <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white">
-          <Camera className="w-6 h-6 drop-shadow" />
-          <span className="text-[10px] font-extrabold mt-0.5">Modifier</span>
-        </div>
-      </div>
-
-      {/* User Name & Profile Info */}
-      <div className="space-y-1 md:space-y-2">
-        <h2 className="text-2xl md:text-3xl font-extrabold text-stone-900 tracking-tight">{userName}</h2>
-        
-        {/* Email */}
-        <div className="flex items-center justify-center gap-1.5 md:gap-2 mt-1 md:mt-2 text-stone-600 text-sm md:text-base font-medium">
-          <Mail className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />
-          <span>{userEmail}</span>
+      {/* Profile Card Header with Frosted Glass */}
+      <div className="w-full bg-white/85 dark:bg-stone-900/85 backdrop-blur-md border-3 border-stone-800 dark:border-stone-700 rounded-3xl p-6 md:p-8 shadow-[5px_5px_0px_0px_#1c1917] dark:shadow-none flex flex-col items-center text-center space-y-3 transition-all">
+        {/* Profile Photo Circle */}
+        <div 
+          onClick={() => setActiveSubView('user-settings')}
+          title="Cliquer pour changer le logo ou modifier le profil"
+          className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-white border-3 border-stone-800 flex items-center justify-center text-orange-600 shadow-[4px_4px_0px_0px_#1c1917] overflow-hidden my-1 md:my-2 transition-all hover:scale-105 cursor-pointer relative group"
+        >
+          {displayAvatar ? (
+            <img src={displayAvatar} alt={userName} className="w-full h-full object-cover" />
+          ) : (
+            <User className="w-12 h-12 md:w-16 md:h-16" />
+          )}
+          <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white">
+            <Camera className="w-6 h-6 drop-shadow" />
+            <span className="text-[10px] font-extrabold mt-0.5">Modifier</span>
+          </div>
         </div>
 
-        {/* Profil Étudiant vs Profil Standard / Professionnel */}
-        {isStudent ? (
-          <>
-            {userSchool && (
-              <div className="flex items-center justify-center gap-1.5 md:gap-2 mt-1 md:mt-1.5 text-stone-600 text-sm md:text-base font-semibold">
-                <Building2 className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />
-                <span>{userSchool}</span>
+        {/* User Name & Profile Info */}
+        <div className="space-y-1 md:space-y-1.5 w-full">
+          <h2 className="text-2xl md:text-3xl font-extrabold text-stone-900 dark:text-white tracking-tight">{userName}</h2>
+          
+          {/* Email */}
+          <div className="flex items-center justify-center gap-1.5 md:gap-2 text-stone-600 dark:text-stone-300 text-sm md:text-base font-medium">
+            <Mail className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />
+            <span>{userEmail}</span>
+          </div>
+
+          {/* Profil Étudiant vs Profil Standard / Professionnel */}
+          {isStudent ? (
+            <>
+              {userSchool && (
+                <div className="flex items-center justify-center gap-1.5 md:gap-2 text-stone-700 dark:text-stone-300 text-sm md:text-base font-semibold">
+                  <Building2 className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />
+                  <span>{userSchool}</span>
+                </div>
+              )}
+              {userFiliere && userFiliere !== userSchool && (
+                <div className="flex items-center justify-center gap-1.5 md:gap-2 text-stone-700 dark:text-stone-300 text-sm md:text-base font-semibold">
+                  <GraduationCap className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />
+                  <span>{userFiliere}</span>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-center gap-1.5 md:gap-2 text-stone-800 dark:text-stone-200 text-sm md:text-base font-bold">
+                <Briefcase className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />
+                <span>{domainName || "Professionnel indépendant"}</span>
               </div>
-            )}
-            {userFiliere && userFiliere !== userSchool && (
-              <div className="flex items-center justify-center gap-1.5 md:gap-2 mt-1 md:mt-1.5 text-stone-600 text-sm md:text-base font-semibold">
-                <GraduationCap className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />
-                <span>{userFiliere}</span>
+              <div className="flex items-center justify-center gap-1.5 md:gap-2 text-stone-500 dark:text-stone-400 text-xs md:text-sm font-medium">
+                <Building2 className="w-3.5 h-3.5 md:w-4 md:h-4 text-stone-400" />
+                <span>Profil Professionnel / Non-étudiant</span>
               </div>
-            )}
-          </>
-        ) : (
-          <>
-            {/* Profil Standard / Professionnel : logo adapté (Briefcase) et AUCUNE répétition de domaine */}
-            <div className="flex items-center justify-center gap-1.5 md:gap-2 mt-1 md:mt-1.5 text-stone-800 text-sm md:text-base font-bold">
-              <Briefcase className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />
-              <span>{domainName || "Professionnel indépendant"}</span>
-            </div>
-            <div className="flex items-center justify-center gap-1.5 md:gap-2 mt-0.5 md:mt-1 text-stone-500 text-xs md:text-sm font-medium">
-              <Building2 className="w-3.5 h-3.5 md:w-4 md:h-4 text-stone-400" />
-              <span>Profil Professionnel / Non-étudiant</span>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Action Buttons */}
