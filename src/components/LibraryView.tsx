@@ -1265,99 +1265,57 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   };
 
   return (
-    <div className="flex flex-col space-y-4 pb-24 pt-24 md:pt-26 animate-fadeIn w-full px-2 sm:px-4 bg-[#DDDDDD] dark:bg-[#0b0f19] min-h-screen transition-colors">
-      {/* Fixed Header Container enclosing search bar and 3 fixed compact buttons - Solid Dark #070a13 */}
-      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#DDDDDD] dark:bg-[#070a13] border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm px-3 sm:px-6 pt-2.5 pb-2 space-y-2 transition-colors">
-        <div className="flex items-center justify-between gap-2 sm:gap-3 w-full">
-          {/* Expanded Search input */}
-          <div className="relative flex-1 min-w-[120px]">
-            <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-stone-400">
-              <Search className="w-3.5 h-3.5" />
-            </span>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={
-                activeSubTab === 'librairie'
-                  ? "Rechercher un livre, cours, produit..."
-                  : activeSubTab === 'ressources'
-                  ? "Rechercher un fichier ou dossier..."
-                  : "Rechercher un lien public ou dossier..."
-              }
-              className="w-full bg-white dark:bg-[#111a2e] dark:border-[#334155] dark:text-white dark:placeholder-slate-400 border-2 border-stone-800 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium outline-none shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all"
-            />
-          </div>
-
-          {/* Top Right Cart Button for 'librairie' tab */}
-          {activeSubTab === 'librairie' && (
+    <div className="flex flex-col space-y-4 pb-24 pt-16 md:pt-16 animate-fadeIn w-full px-2 sm:px-4 bg-[#DDDDDD] dark:bg-[#0b0f19] min-h-screen transition-colors">
+      {/* Fixed Header Container - Ligne unique compacte */}
+      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#DDDDDD] dark:bg-[#070a13] border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm px-3 sm:px-6 py-2 transition-colors">
+        <div className="flex items-center justify-between gap-2 sm:gap-3 w-full max-w-7xl mx-auto flex-wrap sm:flex-nowrap">
+          {/* Gauche : Bouton Actualiser + Champ de recherche réduit */}
+          <div className="flex items-center gap-2 sm:gap-2.5 flex-1 min-w-0">
+            {/* Bouton Actualiser en avant dans le creux en haut à gauche */}
             <button
               type="button"
-              onClick={() => setIsCartViewOpen(!isCartViewOpen)}
-              className={`px-3 py-1.5 font-extrabold text-xs rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
-                isCartViewOpen ? 'bg-amber-400 text-stone-900' : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white'
-              }`}
-              title="Voir mon panier"
+              onClick={handleGlobalRefresh}
+              disabled={isGlobalRefreshing}
+              title={
+                activeSubTab === 'ressources'
+                  ? "Actualiser et découvrir d'autres recommandations adaptées"
+                  : activeSubTab === 'librairie'
+                  ? "Actualiser la marketplace"
+                  : "Actualiser les liens publics"
+              }
+              className="px-2.5 sm:px-3 py-1.5 text-xs font-extrabold rounded-xl border-2 border-stone-800 dark:border-[#334155] bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 disabled:opacity-50"
             >
-              <ShoppingCart className="w-4 h-4 text-stone-900 dark:text-white" />
-              <span className="hidden sm:inline font-extrabold">Panier</span>
+              <RefreshCw className={`w-3.5 h-3.5 text-orange-500 dark:text-orange-400 ${isGlobalRefreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline font-bold">Actualiser</span>
             </button>
-          )}
 
-          {/* Right side buttons (Matières, Schools & Menu): Render ONLY in 'ressources' tab */}
-          {activeSubTab === 'ressources' && (
-            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-              {/* Matière Button */}
-              <button
-                onClick={() => setShowMatiereModal(true)}
-                className={`px-2.5 py-1.5 font-extrabold text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 ${
-                  selectedMatiereFilter
-                    ? 'bg-blue-600 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
-                    : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917]'
-                }`}
-                title="Filtrer par matière"
-              >
-                <BookOpen className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                <span className="hidden sm:inline">Matières</span>
-              </button>
-
-              {/* Schools Button */}
-              <button
-                onClick={() => setShowSchoolsModal(true)}
-                className={`px-2.5 py-1.5 font-extrabold text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 ${
-                  selectedSchoolFilter
-                    ? 'bg-orange-500 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
-                    : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917]'
-                }`}
-                title="Filtrer par école"
-              >
-                <Building2 className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
-                <span className="hidden sm:inline">Écoles</span>
-              </button>
-
-              {/* Three-line Menu Button at the very right */}
-              <button
-                onClick={() => setShowMenuModal(true)}
-                className="p-2 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center"
-                title="Options du menu"
-              >
-                <Menu className="w-4 h-4 text-stone-800 dark:text-white" />
-              </button>
+            {/* Champ de recherche réduit pour libérer de la place à droite */}
+            <div className="relative w-44 sm:w-56 md:w-64 lg:w-72 shrink-0">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-stone-400">
+                <Search className="w-3.5 h-3.5" />
+              </span>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={
+                  activeSubTab === 'librairie'
+                    ? "Rechercher un livre, cours, produit..."
+                    : activeSubTab === 'ressources'
+                    ? "Rechercher un fichier ou dossier..."
+                    : "Rechercher un lien public ou dossier..."
+                }
+                className="w-full bg-white dark:bg-[#111a2e] dark:border-[#334155] dark:text-white dark:placeholder-slate-400 border-2 border-stone-800 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium outline-none shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all"
+              />
             </div>
-          )}
-        </div>
+          </div>
 
-        {/* Navigation Tabs (Librairie, Ressources, Liens publics) + Bouton Actualiser Déplacé en Haut à Droite (Tracé rouge) */}
-        <div className="flex items-center justify-between gap-1.5 sm:gap-2.5 w-full pt-0.5">
-          {/* Espaceur invisible à gauche pour équilibrer le centrage sur grand écran */}
-          <div className="w-8 sm:w-24 hidden md:block shrink-0" />
-
-          {/* 3 Onglets Centrés */}
-          <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 flex-1">
+          {/* Droite : 3 Onglets (Marketplace, Ressources, Liens publics) + Bouton Panier (ou filtres Ressources) */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 overflow-x-auto no-scrollbar py-0.5">
             <button
               type="button"
               onClick={() => { setActiveSubTab('librairie'); setIsRecentFilterActive(false); }}
-              className={`flex-1 max-w-[135px] justify-center px-2 sm:px-3 py-1 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
+              className={`px-2.5 sm:px-3 py-1.5 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
                 activeSubTab === 'librairie'
                   ? 'bg-amber-400 text-stone-900 border-stone-800 dark:border-amber-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(251,191,36,0.3)]'
                   : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
@@ -1370,7 +1328,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <button
               type="button"
               onClick={() => { setActiveSubTab('ressources'); setIsCartViewOpen(false); }}
-              className={`flex-1 max-w-[135px] justify-center px-2 sm:px-3 py-1 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
+              className={`px-2.5 sm:px-3 py-1.5 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
                 activeSubTab === 'ressources'
                   ? 'bg-orange-500 text-white border-stone-800 dark:border-orange-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(249,115,22,0.3)]'
                   : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
@@ -1383,7 +1341,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <button
               type="button"
               onClick={() => { setActiveSubTab('liens'); setIsCartViewOpen(false); setIsRecentFilterActive(false); }}
-              className={`flex-1 max-w-[135px] justify-center px-2 sm:px-3 py-1 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
+              className={`px-2.5 sm:px-3 py-1.5 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
                 activeSubTab === 'liens'
                   ? 'bg-blue-600 text-white border-stone-800 dark:border-blue-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(37,99,235,0.3)]'
                   : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
@@ -1392,25 +1350,68 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               <span>🔗</span>
               <span className="truncate">Liens publics</span>
             </button>
-          </div>
 
-          {/* Bouton Actualiser Global Déplacé en Haut à Droite (Tracé rouge utilisateur) */}
-          <button
-            type="button"
-            onClick={handleGlobalRefresh}
-            disabled={isGlobalRefreshing}
-            title={
-              activeSubTab === 'ressources'
-                ? "Actualiser et découvrir d'autres recommandations adaptées"
-                : activeSubTab === 'librairie'
-                ? "Actualiser la marketplace"
-                : "Actualiser les liens publics"
-            }
-            className="px-2 sm:px-2.5 py-1 text-xs font-extrabold rounded-xl border-2 border-stone-800 dark:border-[#334155] bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 text-orange-500 dark:text-orange-400 ${isGlobalRefreshing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline font-bold">Actualiser</span>
-          </button>
+            {/* Bouton Panier après Liens publics */}
+            {activeSubTab === 'librairie' && (
+              <button
+                type="button"
+                onClick={() => setIsCartViewOpen(!isCartViewOpen)}
+                className={`px-2.5 sm:px-3 py-1.5 font-extrabold text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 active:translate-x-0.5 active:translate-y-0.5 ${
+                  isCartViewOpen
+                    ? 'bg-amber-400 text-stone-900 border-stone-800 dark:border-amber-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(251,191,36,0.3)]'
+                    : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
+                }`}
+                title="Voir mon panier"
+              >
+                <ShoppingCart className="w-3.5 h-3.5 text-stone-900 dark:text-white" />
+                <span>Panier</span>
+                {cartItemIds.length > 0 && (
+                  <span className="w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-black">
+                    {cartItemIds.length}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {/* Boutons contextuels en mode Ressources (Matières, Écoles, Menu) */}
+            {activeSubTab === 'ressources' && (
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                <button
+                  onClick={() => setShowMatiereModal(true)}
+                  className={`px-2.5 py-1.5 font-extrabold text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 ${
+                    selectedMatiereFilter
+                      ? 'bg-blue-600 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
+                      : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917]'
+                  }`}
+                  title="Filtrer par matière"
+                >
+                  <BookOpen className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <span className="hidden sm:inline">Matières</span>
+                </button>
+
+                <button
+                  onClick={() => setShowSchoolsModal(true)}
+                  className={`px-2.5 py-1.5 font-extrabold text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 ${
+                    selectedSchoolFilter
+                      ? 'bg-orange-500 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
+                      : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917]'
+                  }`}
+                  title="Filtrer par école"
+                >
+                  <Building2 className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
+                  <span className="hidden sm:inline">Écoles</span>
+                </button>
+
+                <button
+                  onClick={() => setShowMenuModal(true)}
+                  className="p-1.5 sm:p-2 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center"
+                  title="Options du menu"
+                >
+                  <Menu className="w-4 h-4 text-stone-800 dark:text-white" />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
