@@ -88,7 +88,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`flex flex-col space-y-4 pb-24 pt-16 md:pt-16 animate-fadeIn min-h-screen relative transition-colors bg-[#E9D7C9] dark:bg-[#0b0f19] ${
+      className={`flex flex-col space-y-4 pb-24 pt-16 md:pt-16 animate-fadeIn min-h-screen relative transition-colors bg-transparent ${
         isDragging ? 'ring-4 ring-orange-500 ring-inset bg-orange-50/20' : ''
       }`}
     >
@@ -104,12 +104,12 @@ export const UploadView: React.FC<UploadViewProps> = ({
       )}
 
       {/* Fixed Header for Upload Tab - Solid Dark #070a13 */}
-      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#E9D7C9] dark:bg-[#070a13] py-2 px-3 sm:px-4 md:px-8 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm transition-colors">
+      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-white/90 dark:bg-[#070a13]/95 backdrop-blur-md py-2 px-3 sm:px-4 md:px-8 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm transition-colors">
         <div className="flex items-center justify-between gap-2 sm:gap-3 max-w-7xl mx-auto w-full">
           {/* Boutons d'importation + Compteur d'éléments importés */}
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             <div className="flex items-center gap-1.5 sm:gap-2.5">
-              <label className="flex flex-col items-center justify-center bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
+              <label className="flex flex-col items-center justify-center bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
                 <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
                 <span className="leading-none">dossier</span>
                 <input
@@ -121,7 +121,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
                 />
               </label>
 
-              <label className="flex flex-col items-center justify-center bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
+              <label className="flex flex-col items-center justify-center bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
                 <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
                 <span className="leading-none">fichier</span>
                 <input
@@ -132,7 +132,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
                 />
               </label>
 
-              <label className="flex flex-col items-center justify-center bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
+              <label className="flex flex-col items-center justify-center bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
                 <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
                 <span className="leading-none">images</span>
                 <input
@@ -144,7 +144,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
                 />
               </label>
 
-              <label className="flex flex-col items-center justify-center bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
+              <label className="flex flex-col items-center justify-center bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
                 <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
                 <span className="leading-none">son</span>
                 <input
@@ -211,7 +211,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
                   onFilesDropped(Array.from(e.dataTransfer.files));
                 }
               }}
-              className="w-36 h-36 sm:w-48 sm:h-48 border-3 border-dashed border-stone-400 hover:border-orange-500 bg-[#F5F1E9] hover:bg-orange-50/20 rounded-3xl flex flex-col items-center justify-center text-stone-600 hover:text-orange-600 transition-all group cursor-pointer shadow-[6px_6px_0px_0px_#1c1917]"
+              className="w-36 h-36 sm:w-48 sm:h-48 border-3 border-dashed border-stone-400 hover:border-orange-500 bg-white hover:bg-orange-50/20 rounded-3xl flex flex-col items-center justify-center text-stone-600 hover:text-orange-600 transition-all group cursor-pointer shadow-[6px_6px_0px_0px_#1c1917]"
             >
               <Plus className="w-10 h-10 sm:w-12 sm:h-12 transition-transform group-hover:scale-110 mb-2" />
               <span className="text-sm sm:text-base font-extrabold">Ajouter</span>

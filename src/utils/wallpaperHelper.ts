@@ -41,6 +41,14 @@ export interface PresetWallpaperItem {
 
 export const PRESET_WALLPAPERS: PresetWallpaperItem[] = [
   {
+    id: 'clouds-sky',
+    name: 'Ciel & Nuages StudyCloud',
+    subtitle: 'Horizon azur et doux nuages blancs en apesanteur',
+    url: '/wallpapers/wallpaper-clouds.jpg',
+    isDefault: false,
+  },
+
+  {
     id: 'beach',
     name: 'Rivage Turquoise',
     subtitle: 'Eau cristalline et sable blanc paradisiaque',

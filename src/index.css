@@ -20,6 +20,26 @@ body {
   transition: background-color 0.25s ease, color 0.25s ease;
 }
 
+
+/* Thème Ciel & Nuages StudyCloud (pour Partager & Liens Actifs) */
+.studycloud-clouds-bg {
+  background-color: #8ec3f8;
+  background-image: url('/assets/studycloud-clouds-bg.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+body.clouds-active:not(.dark) {
+  background-color: #8ec3f8;
+  background-image: url('/assets/studycloud-clouds-bg.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
 html.dark,
 body.dark {
   background-color: #0b0f19 !important;

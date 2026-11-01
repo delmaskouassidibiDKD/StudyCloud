@@ -90,9 +90,9 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
   });
 
   return (
-    <div className="flex flex-col space-y-6 pb-20 pt-16 md:pt-16 animate-fadeIn">
+    <div className="flex flex-col space-y-6 pb-20 pt-16 md:pt-16 animate-fadeIn min-h-screen px-4 md:px-8">
       {/* Fixed Header Container - Ligne unique compacte */}
-      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#FDFBF7] dark:bg-[#070a13] border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm px-4 md:px-8 py-2 transition-all">
+      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-white/90 dark:bg-[#070a13]/95 backdrop-blur-md border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm px-4 md:px-8 py-2 transition-all">
         <div className="flex items-center justify-between gap-2 sm:gap-3 max-w-7xl mx-auto w-full flex-wrap sm:flex-nowrap">
           {/* Gauche : Boutons d'action (Actualiser, Poubelle, Trois traits de tri) + Champ de recherche réduit */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 flex-1 min-w-0">
