@@ -261,9 +261,59 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
             );
 
             if (item.specialGlow) {
+              const activeClass = item.id === 'storage-menu' ? 'sidebar-special-active-storage' : 'sidebar-special-active-ai';
               return (
-                <div key={item.id} className="rotating-orange-blue-border my-1.5 rounded-2xl p-[1.5px]">
-                  {buttonInner}
+                <div key={item.id} className="rotating-orange-blue-border my-1.5 rounded-[14px]">
+                  <button
+                    type="button"
+                    onClick={() => setTab(item.id)}
+                    className={`sidebar-special-btn flex items-center justify-between px-3.5 py-2.5 transition-all cursor-pointer select-none border ${
+                      isActive
+                        ? `${activeClass} border-white/20 shadow-sm`
+                        : 'bg-[#18394e] hover:bg-[#204963] dark:bg-[#0c1424] dark:hover:bg-[#15233c] border-transparent'
+                    }`}
+                    style={
+                      isActive
+                        ? {
+                            borderColor: item.activeBorder,
+                            boxShadow: item.activeShadow,
+                          }
+                        : undefined
+                    }
+                  >
+                    <div className="flex items-center gap-3 min-w-0 relative z-10">
+                      {/* Conteneur d'icône avec le halo doux et paisible quand actif */}
+                      <div className="relative flex items-center justify-center w-8 h-8 shrink-0">
+                        {isActive && (
+                          <div 
+                            className="absolute inset-0 w-11 h-11 -left-1.5 -top-1.5 rounded-full pointer-events-none filter blur-sm transition-all duration-500 animate-aura-pulse"
+                            style={{ background: item.aura }}
+                          />
+                        )}
+                        <Icon 
+                          className={`relative z-10 w-5 h-5 shrink-0 stroke-[2.3] transition-all duration-300 ${
+                            isActive 
+                              ? 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.9)] scale-105' 
+                              : 'text-orange-400 dark:text-sky-400'
+                          }`} 
+                        />
+                      </div>
+
+                      <span className={`font-black text-[15.5px] tracking-tight whitespace-nowrap transition-colors duration-200 ${
+                        isActive 
+                          ? 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]' 
+                          : 'text-white'
+                      }`}>
+                        {item.label}
+                      </span>
+                    </div>
+
+                    {item.badge !== undefined && (
+                      <span className="relative z-10 text-xs px-2 py-0.5 bg-white/20 backdrop-blur-md border border-white/30 rounded-md font-mono font-black text-white shadow-sm">
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
                 </div>
               );
             }
