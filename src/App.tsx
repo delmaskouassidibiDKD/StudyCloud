@@ -2047,7 +2047,7 @@ export default function App() {
         <div className="fixed inset-0 left-0 right-0 z-[99999] bg-[#FDFBF7] dark:bg-[#0b0f19] flex flex-col animate-fadeIn overflow-hidden">
           {/* Top Header Bar - Solid Dark #070a13 */}
           <div className="fixed top-0 left-0 right-0 z-50 bg-[#FDFBF7] dark:bg-[#070a13] h-[44px] py-1 px-3 md:px-6 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm flex items-center justify-between gap-2">
-            {/* Left: Bouton Retour & badge du dossier/matière */}
+            {/* Left: Bouton Retour */}
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 onClick={() => {
@@ -2062,10 +2062,6 @@ export default function App() {
                 <ArrowLeft className="w-3.5 h-3.5 text-stone-900 dark:text-white" />
                 <span>Retour</span>
               </button>
-
-              <span className="text-[10px] sm:text-[11px] font-black text-stone-800 dark:text-orange-400 uppercase tracking-widest max-w-[120px] sm:max-w-[180px] truncate bg-[#E8DFD0] dark:bg-[#111a2e] px-2.5 py-1 rounded-lg border-2 border-stone-800 dark:border-[#1e293b] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none shrink-0 text-center">
-                {activePreviewItem?.folderName || activeFolderDetail?.title || "MES FICHIERS"}
-              </span>
             </div>
 
             {/* Center: Nom du fichier & Contrôles Audio (au-dessus de la page en mode écran réduit) */}
