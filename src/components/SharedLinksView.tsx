@@ -236,7 +236,7 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-3.5 w-full">
             {sortedFolders.map((folder) => (
               <FolderCard
                 key={folder.id}
