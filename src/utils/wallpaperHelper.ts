@@ -48,7 +48,7 @@ export const PRESET_WALLPAPERS: PresetWallpaperItem[] = [
     id: 'abstract-dark',
     name: 'Abstrait Minimaliste OLED',
     subtitle: 'Sphères sombres élégantes et lignes rouge vif',
-    url: '/wallpapers/wallpaper-abstract-dark.jpg',
+    url: '/wallpapers/wallpaper-abstract-dark.svg',
     isDefault: false,
   },
 ];

@@ -252,66 +252,6 @@ export const WallpaperSelectorDrawer: React.FC = () => {
             })}
           </div>
 
-          {/* Adaptation spéciale Écran d'ordinateur (Anti-zoom) */}
-          <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-300 flex items-center gap-2">
-                <Monitor className="w-4 h-4 text-sky-400" />
-                <span>Affichage sur Ordinateur</span>
-              </span>
-              <span className="text-[10px] font-bold text-sky-400 uppercase tracking-wider px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/20">
-                {fitMode === 'contain' ? 'Vue Complète (Sans Zoom)' : 'Plein écran (Zoomé)'}
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              Choisissez comment le fond d'écran s'ajuste à l'écran large de votre ordinateur :
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
-              <button
-                type="button"
-                onClick={() => handleSelectFitMode('contain')}
-                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
-                  fitMode === 'contain'
-                    ? 'bg-sky-500/20 border-sky-400 text-sky-200 ring-2 ring-sky-500/30'
-                    : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:border-white/20'
-                }`}
-              >
-                <div className="flex items-center justify-between w-full">
-                  <span className="text-xs font-black flex items-center gap-1.5 text-white">
-                    <Maximize2 className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Vue Complète</span>
-                  </span>
-                  {fitMode === 'contain' && <Check className="w-3.5 h-3.5 text-sky-400 stroke-[3]" />}
-                </div>
-                <span className="text-[10px] text-slate-400 font-normal leading-tight">
-                  Image entière visible sans coupure ni zoom excessif (Recommandé PC)
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSelectFitMode('cover')}
-                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
-                  fitMode === 'cover'
-                    ? 'bg-amber-500/20 border-amber-400 text-amber-200 ring-2 ring-amber-500/30'
-                    : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:border-white/20'
-                }`}
-              >
-                <div className="flex items-center justify-between w-full">
-                  <span className="text-xs font-black flex items-center gap-1.5 text-white">
-                    <StretchHorizontal className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Plein Écran</span>
-                  </span>
-                  {fitMode === 'cover' && <Check className="w-3.5 h-3.5 text-amber-400 stroke-[3]" />}
-                </div>
-                <span className="text-[10px] text-slate-400 font-normal leading-tight">
-                  Étiré d'un bord à l'autre pour couvrir toute la largeur
-                </span>
-              </button>
-            </div>
-          </div>
-
           {/* Section d'import personnalisé */}
           <div className="pt-2">
             <div className="p-4 rounded-2xl bg-gradient-to-br from-white/5 to-white/[0.02] border border-white/10 space-y-3">

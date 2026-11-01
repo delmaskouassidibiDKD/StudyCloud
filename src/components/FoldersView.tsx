@@ -1125,52 +1125,34 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             willChange: 'transform'
           }}
         >
-          {/* COUCHE 1 : Ambiance lumineuse d'arrière-plan (Comble les écrans larges 16:9 sans coupure ni bande noire) */}
-          <div 
-            className="absolute inset-0 w-full h-full bg-cover bg-center filter blur-3xl opacity-50 scale-110 pointer-events-none transform-gpu"
+          {/* Image de fond plein écran s'adaptant à 100% à l'écran de l'ordinateur et à l'espace des applications */}
+          <img 
+            src={dashboardWallpaper} 
+            alt="Fond d'écran Tableau de Bord" 
+            loading="eager"
+            decoding="sync"
+            // @ts-ignore
+            fetchPriority="high"
+            className="w-full h-full object-cover object-center select-none filter brightness-[0.82] contrast-[1.05]" 
             style={{
-              backgroundImage: `url("${dashboardWallpaper}")`,
-              backgroundPosition: 'center',
-              backgroundRepeat: 'no-repeat',
+              width: '100%',
+              height: '100%',
+              minWidth: '100vw',
+              minHeight: '100vh',
+              objectFit: 'cover',
+              objectPosition: 'center'
+            }}
+            onError={async (e) => {
+              // Récupération automatique et instantanée sans laisser l'écran grisé
+              try {
+                const reliable = await getActiveWallpaperReliable();
+                if (reliable && reliable !== dashboardWallpaper) {
+                  setDashboardWallpaper(reliable);
+                  (e.target as HTMLImageElement).src = reliable;
+                }
+              } catch {}
             }}
           />
-
-          {/* COUCHE 2 : Image d'art principale nette et non sur-zoomée, centrée sur le tableau de bord */}
-          <div className="absolute inset-0 md:left-64 flex items-center justify-center pointer-events-none overflow-hidden">
-            <img 
-              src={dashboardWallpaper} 
-              alt="Fond d'écran Tableau de Bord" 
-              loading="eager"
-              decoding="sync"
-              // @ts-ignore
-              fetchPriority="high"
-              className={`select-none filter brightness-[0.88] contrast-[1.04] transition-all duration-300 ${
-                wallpaperFitMode === 'cover'
-                  ? 'w-full h-full object-cover min-w-[100vw] min-h-[100vh]'
-                  : 'w-auto h-full max-h-screen object-cover md:object-contain mx-auto shadow-2xl'
-              }`}
-              style={{
-                maxHeight: '100vh',
-                maxWidth: wallpaperFitMode === 'cover' ? '100%' : '100%',
-                objectPosition: 'center',
-                // En mode contain sur ordinateur, adoucir délicatement les bords gauche et droite pour fusionner avec l'ambiance
-                ...(wallpaperFitMode === 'contain' ? {
-                  WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%)',
-                  maskImage: 'linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%)',
-                } : {})
-              }}
-              onError={async (e) => {
-                // Récupération automatique et instantanée sans laisser l'écran grisé
-                try {
-                  const reliable = await getActiveWallpaperReliable();
-                  if (reliable && reliable !== dashboardWallpaper) {
-                    setDashboardWallpaper(reliable);
-                    (e.target as HTMLImageElement).src = reliable;
-                  }
-                } catch {}
-              }}
-            />
-          </div>
 
           {/* Voile sombre pour lisibilité optimale des icônes d'applications */}
           <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/20 to-black/60 backdrop-blur-[0.5px]" />
