@@ -501,49 +501,69 @@ p.brand-tagline,
 
 .sidebar-nav-btn {
   color: #ffffff;
+  position: relative;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .dark .sidebar-nav-btn {
   color: #ffffff !important;
 }
 
 .sidebar-nav-btn.active {
-  background-color: #ffffff;
-  border-color: #ffffff;
-  color: #1F4761;
+  background-color: transparent !important;
+  color: #ffffff !important;
 }
 .dark .sidebar-nav-btn.active {
-  background-color: #1e293b !important;
-  border-color: #ea580c !important;
+  background-color: transparent !important;
   color: #ffffff !important;
-  box-shadow: 3px 3px 0px 0px #ea580c !important;
 }
 
 .sidebar-nav-text {
-  color: #ffffff;
+  color: #e2e8f0;
   white-space: nowrap;
+  transition: color 0.2s ease;
 }
 .sidebar-nav-btn.active .sidebar-nav-text {
-  color: #1F4761 !important;
+  color: #ffffff !important;
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
 }
 .dark .sidebar-nav-text {
-  color: #ffffff !important;
+  color: #e2e8f0 !important;
 }
 .dark .sidebar-nav-btn.active .sidebar-nav-text {
   color: #ffffff !important;
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
 }
 
 .sidebar-nav-icon {
-  color: #ffffff;
+  color: #94a3b8;
+  transition: all 0.25s ease;
 }
 .dark .sidebar-nav-icon {
-  color: #ffffff !important;
+  color: #94a3b8 !important;
 }
 
 .sidebar-nav-icon-active {
-  color: #1F4761 !important;
+  color: #ffffff !important;
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.9));
 }
 .dark .sidebar-nav-icon-active {
-  color: #fb923c !important;
+  color: #ffffff !important;
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.9));
+}
+
+@keyframes auraPulseGentle {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.18);
+    opacity: 1;
+  }
+}
+
+.animate-aura-pulse {
+  animation: auraPulseGentle 3s ease-in-out infinite;
 }
 
 /* ========================================================================= */
