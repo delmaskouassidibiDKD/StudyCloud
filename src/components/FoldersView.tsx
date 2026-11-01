@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, X, Search, Globe, Sun, Moon, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MenuDrawer } from './MenuDrawer';
 import { DelmasRobot } from './DelmasRobot';
+import { CreationMenuBookIcon } from './CreationMenuBookIcon';
 import { DelmasChat } from './DelmasChat';
 import { DnaLogo } from './DnaLogo';
 import { PricingView } from './PricingView';
@@ -2180,6 +2181,33 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                         : 'text-stone-900 dark:text-stone-100'
                     }`}>
                       Robot Rouge
+                    </span>
+                  </div>
+
+                  {/* Nouvelle Application 3D : Menu de création (Livre 3D avec Petit Robot Bleu au milieu) */}
+                  <div 
+                    onClick={(e) => {
+                      if (hasMovedRef.current) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                      }
+                      onOpenStudySpace?.();
+                    }}
+                    className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-150 hover:scale-105 active:scale-[0.98]"
+                    title="Ouvrir le Menu de création"
+                  >
+                    {/* Conteneur avec taille équivalente au dossier 3D Espace Cloud et Robot Rouge */}
+                    <div className="w-24 h-21 sm:w-28 sm:h-24 md:w-32 md:h-28 flex items-center justify-center overflow-visible filter drop-shadow-[0_8px_18px_rgba(2,132,199,0.3)] dark:drop-shadow-[0_12px_26px_rgba(56,189,248,0.45)] group-hover:drop-shadow-[0_16px_30px_rgba(56,189,248,0.6)] group-hover:scale-108 active:scale-95 transition-all duration-300">
+                      <CreationMenuBookIcon className="w-full h-full" />
+                    </div>
+
+                    <span className={`text-xs sm:text-sm font-black mt-2 text-center tracking-tight transition-colors ${
+                      dashboardWallpaper 
+                        ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-2.5 py-0.5 rounded-full border border-white/10' 
+                        : 'text-stone-900 dark:text-stone-100'
+                    }`}>
+                      Menu de création
                     </span>
                   </div>
                 </div>
