@@ -1707,8 +1707,8 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <div className={`flex-1 flex flex-col min-h-dvh pb-20 md:pb-0 md:ml-64 ${isCloudSkyTab || isProfileTab ? 'bg-transparent' : currentTab === 'library' ? 'bg-[#DDDDDD]' : 'bg-[#E9D7C9]'} dark:bg-[#0b0f19] transition-colors duration-200`}>
-        <main className={`flex-1 ${currentTab === 'library' || isCloudSkyTab || isProfileTab ? 'p-0 w-full' : 'p-6 md:p-8 max-w-7xl w-full mx-auto'}`}>
+      <div className={`flex-1 flex flex-col min-h-dvh pb-20 md:pb-0 md:ml-64 ${isCloudSkyTab || isProfileTab ? 'bg-transparent' : currentTab === 'library' ? 'bg-[#DDDDDD]' : 'bg-[#E9D7C9]'} dark:bg-[#0b0f19] transition-colors duration-200 ${currentTab === 'folders' ? 'overflow-hidden md:overflow-visible' : ''}`}>
+        <main className={`flex-1 ${currentTab === 'library' || isCloudSkyTab || isProfileTab ? 'p-0 w-full' : currentTab === 'folders' ? 'p-1 sm:p-4 md:p-8 max-w-7xl w-full mx-auto overflow-hidden' : 'p-6 md:p-8 max-w-7xl w-full mx-auto'}`}>
           {currentTab === 'folders' ? (
             <FoldersView
               onOpenUpload={() => setShowUploadModal(true)}

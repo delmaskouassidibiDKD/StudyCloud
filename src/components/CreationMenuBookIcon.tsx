@@ -175,8 +175,8 @@ export const CreationMenuBookIcon: React.FC<CreationMenuBookIconProps> = ({ clas
 
       {/* Petit Robot Bleu qui bouge au milieu du livre */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none pb-2">
-        <div className="scale-75 sm:scale-80 md:scale-90 transition-transform">
-          <DelmasRobot size={48} variant="blue" floating />
+        <div className="scale-65 sm:scale-75 md:scale-90 transition-transform">
+          <DelmasRobot size={42} variant="blue" floating />
         </div>
       </div>
     </div>
