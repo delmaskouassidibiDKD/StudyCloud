@@ -2567,7 +2567,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 w-full">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-3.5 w-full">
                   {filteredPublicFolders.map((folder) => {
                     const isCopied = copiedLinkId === folder.id;
                     const totalBytes = folder.totalSize || folder.files.reduce((acc, f) => acc + (f.size || 0), 0);
@@ -2577,79 +2577,97 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     return (
                       <div
                         key={folder.id}
-                        className="bg-[#FDFBF7] dark:bg-slate-900/70 dark:backdrop-blur-xl border-2 border-stone-800 dark:border-white/10 rounded-2xl p-4 shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-[0_10px_30px_rgba(0,0,0,0.4)] flex flex-col justify-between transition-all hover:shadow-[4px_4px_0px_0px_#1c1917] dark:hover:border-blue-500/30"
+                        className="bg-[#FDFBF7] dark:bg-slate-900/70 dark:backdrop-blur-xl border-2 border-stone-800 dark:border-white/10 rounded-xl sm:rounded-2xl p-2 sm:p-3 md:p-3.5 shadow-[1.5px_1.5px_0px_0px_#1c1917] sm:shadow-[2.5px_2.5px_0px_0px_#1c1917] dark:shadow-[0_8px_20px_rgba(0,0,0,0.3)] hover:shadow-[3.5px_3.5px_0px_0px_#1c1917] dark:hover:border-blue-500/30 transition-all flex flex-col justify-between group relative overflow-hidden w-full min-h-[195px] sm:min-h-0"
                       >
                         <div>
-                          {/* Top Line: Title inside pill badge on left, Size on right (No lock icon) */}
-                          <div className="flex items-center justify-between gap-2 mb-2">
-                            <span className="px-3 py-1 bg-amber-100/90 dark:bg-amber-500/15 text-amber-950 dark:text-amber-300 border border-stone-800 dark:border-amber-500/30 font-extrabold text-xs rounded-xl truncate max-w-[210px] sm:max-w-[240px] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none">
-                              {folder.title}
-                            </span>
-                            <span className="text-xs font-bold text-stone-600 dark:text-slate-400 shrink-0">
-                              {totalSizeStr}
-                            </span>
+                          {/* Top badges */}
+                          <div className="flex items-start justify-between gap-1 mb-1.5 sm:mb-2">
+                            <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                              <span
+                                className="text-[11px] sm:text-xs font-black px-1.5 sm:px-2.5 py-0.5 bg-orange-100 dark:bg-orange-500/15 border-2 border-stone-800 dark:border-orange-500/30 rounded-md sm:rounded-lg text-orange-700 dark:text-orange-300 shadow-[1px_1px_0px_0px_#1c1917] sm:shadow-[1.5px_1.5px_0px_0px_#1c1917] dark:shadow-none truncate max-w-[85px] sm:max-w-[150px]"
+                                title={folder.title}
+                              >
+                                {folder.title}
+                              </span>
+                              {folder.country && (
+                                <span className="text-[8.5px] sm:text-[10px] text-stone-500 dark:text-slate-400 font-semibold flex items-center gap-0.5 mt-0.5">
+                                  <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#EA4335] shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z"/>
+                                  </svg>
+                                  <span className="truncate">{folder.country}</span>
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-start gap-1 sm:gap-2 shrink-0">
+                              <span className="text-[9.5px] sm:text-[11px] font-mono text-stone-600 dark:text-slate-400 font-bold mt-0.5">
+                                {totalSizeStr}
+                              </span>
+                            </div>
                           </div>
 
                           {/* Description / Subtitle */}
-                          <p className="text-xs text-stone-600 dark:text-slate-300 font-medium line-clamp-2 my-2.5 leading-relaxed">
-                            {folder.description || (folder.school ? `Cours, TDs corrigés, codes sources et ressources d'études (${folder.school}).` : 'Cours, TDs corrigés, codes sources TP et rapport de projet.')}
-                          </p>
+                          {folder.description && folder.description.trim() !== '' && (
+                            <p className="text-[9px] sm:text-[11px] text-stone-600 dark:text-slate-300 line-clamp-1 sm:line-clamp-2 mb-1.5 sm:mb-2 leading-tight">
+                              {folder.description}
+                            </p>
+                          )}
 
-                          {/* Folder Files Box */}
+                          {/* Clean files summary box */}
                           <div
                             onClick={() => onSelectFolder(folder)}
-                            className="bg-stone-100/90 dark:bg-slate-950/70 dark:hover:bg-slate-950/90 border-2 border-stone-800 dark:border-white/10 rounded-xl p-3 flex items-center gap-3 my-2 cursor-pointer hover:bg-stone-200/70 transition-colors shadow-[1.5px_1.5px_0px_0px_#1c1917] dark:shadow-none group/box"
+                            className="bg-[#F5F1E9] dark:bg-slate-950/70 dark:hover:bg-slate-950/90 hover:bg-[#efe9df] border-2 border-stone-800 dark:border-white/10 rounded-lg sm:rounded-xl p-1.5 sm:p-2 mb-1.5 sm:mb-2.5 shadow-[1px_1px_0px_0px_#1c1917] sm:shadow-[1.5px_1.5px_0px_0px_#1c1917] dark:shadow-none flex items-center gap-1.5 sm:gap-2 cursor-pointer transition-colors group/box"
                           >
-                            <div className="w-10 h-10 bg-amber-400 dark:bg-amber-500/20 border-2 border-stone-800 dark:border-amber-500/40 rounded-lg flex items-center justify-center shrink-0 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none">
-                              <Folder className="w-5 h-5 text-amber-950 dark:text-amber-400 fill-amber-300 dark:fill-amber-400/30 stroke-[2]" />
+                            <div className="shrink-0 flex items-center justify-center">
+                              <div className="w-7 h-7 sm:w-9 sm:h-9 bg-amber-400 dark:bg-amber-500/20 border-2 border-stone-800 dark:border-amber-500/40 rounded-lg flex items-center justify-center shrink-0 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none">
+                                <Folder className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-950 dark:text-amber-400 fill-amber-300 dark:fill-amber-400/30 stroke-[2]" />
+                              </div>
                             </div>
-                            <div className="overflow-hidden space-y-0.5">
-                              <h4 className="font-extrabold text-xs text-stone-900 dark:text-white group-hover/box:text-orange-500 dark:group-hover/box:text-orange-400 transition-colors truncate">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[9.5px] sm:text-[11px] font-extrabold text-stone-900 dark:text-white group-hover/box:text-orange-600 dark:group-hover/box:text-orange-400 transition-colors truncate">
                                 {folder.files.length} fichier{folder.files.length > 1 ? 's' : ''} inclus
-                              </h4>
-                              <p className="text-[11px] text-stone-500 dark:text-slate-400 font-medium truncate">
+                              </p>
+                              <p className="text-[8.5px] sm:text-[10px] text-stone-600 dark:text-slate-400 truncate font-medium">
                                 {folder.files.length > 0 ? folder.files.map(f => f.name).join(', ') : 'Aucun fichier'}
                               </p>
                             </div>
                           </div>
-
-                          {/* Dotted Divider */}
-                          <div className="border-b-2 border-dashed border-stone-300 dark:border-white/10 my-3" />
-
-                          {/* Downloads Counter (Vrai nombre de téléchargements) */}
-                          <div className="text-xs font-bold text-stone-600 dark:text-slate-400 flex items-center justify-center gap-1.5 mb-3">
-                            <Download className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
-                            <span>{downloadsCount} téléchargement{downloadsCount > 1 ? 's' : ''}</span>
-                          </div>
                         </div>
 
-                        {/* Bottom Action Row: Lien + Download Arrow Button (In place of Trash) */}
-                        <div className="flex items-center gap-2.5 pt-1">
-                          <button
-                            type="button"
-                            onClick={() => handleCopyLink(folder)}
-                            className={`flex-1 py-2 px-3 font-extrabold text-xs rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center justify-center gap-1.5 cursor-pointer transition-all active:translate-x-[1px] active:translate-y-[1px] ${
-                              isCopied ? 'bg-emerald-600 text-white' : 'bg-white dark:bg-white/10 hover:bg-stone-50 dark:hover:bg-white/15 text-stone-900 dark:text-white'
-                            }`}
-                          >
-                            {isCopied ? (
-                              'Copié ! ✓'
-                            ) : (
-                              <>
-                                <Copy className="w-3.5 h-3.5 text-stone-700 dark:text-slate-300" />
-                                <span>Lien</span>
-                              </>
-                            )}
-                          </button>
+                        <div>
+                          {/* Analytics stats */}
+                          <div className="flex items-center justify-center text-[8.5px] sm:text-[10px] text-stone-600 dark:text-slate-400 pt-1 sm:pt-2 border-t border-dashed border-stone-300 dark:border-white/10 mb-1.5 sm:mb-2">
+                            <div className="flex items-center gap-0.5 sm:gap-1 font-medium">
+                              <Download className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-orange-600 dark:text-orange-400" />
+                              <span>{downloadsCount} téléch.</span>
+                            </div>
+                          </div>
 
-                          <button
-                            type="button"
-                            onClick={(e) => handleDownloadFolder(folder, e)}
-                            className="px-4 py-2 bg-white dark:bg-white/10 hover:bg-stone-50 dark:hover:bg-white/15 active:bg-stone-100 text-stone-900 dark:text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center justify-center gap-1.5 cursor-pointer transition-all active:translate-x-[1px] active:translate-y-[1px]"
-                            title="Télécharger les fichiers du dossier"
-                          >
-                            <Download className="w-4 h-4 text-stone-900 dark:text-white stroke-[2.5]" />
-                          </button>
+                          {/* Bottom Action Row: Lien + Download Arrow Button */}
+                          <div className="flex items-center gap-1 sm:gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleCopyLink(folder)}
+                              className="flex-1 bg-white dark:bg-white/10 hover:bg-stone-100 dark:hover:bg-white/15 text-stone-800 dark:text-white text-[9px] sm:text-[11px] font-bold py-1 sm:py-1.5 px-1 sm:px-2 rounded-lg sm:rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[1px_1px_0px_0px_#1c1917] sm:shadow-[1.5px_1.5px_0px_0px_#1c1917] dark:shadow-none flex items-center justify-center gap-1 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+                              title="Copier le lien sécurisé"
+                            >
+                              {isCopied ? (
+                                <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-emerald-600 dark:text-emerald-400" />
+                              ) : (
+                                <Copy className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-stone-700 dark:text-slate-300" />
+                              )}
+                              <span className="truncate">{isCopied ? 'Copié' : 'Lien'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => handleDownloadFolder(folder, e)}
+                              className="bg-white dark:bg-white/10 hover:bg-stone-100 dark:hover:bg-white/15 text-stone-800 dark:text-white text-[9px] sm:text-[11px] font-bold py-1 sm:py-1.5 px-2 sm:px-3 rounded-lg sm:rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[1px_1px_0px_0px_#1c1917] sm:shadow-[1.5px_1.5px_0px_0px_#1c1917] dark:shadow-none flex items-center justify-center gap-1 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer shrink-0"
+                              title="Télécharger les fichiers du dossier"
+                            >
+                              <Download className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-stone-900 dark:text-white stroke-[2.5]" />
+                              <span className="hidden sm:inline">Télécharger</span>
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
