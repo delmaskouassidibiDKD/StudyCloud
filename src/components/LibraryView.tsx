@@ -1317,7 +1317,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               onClick={() => { setActiveSubTab('librairie'); setIsRecentFilterActive(false); }}
               className={`px-2.5 sm:px-3 py-1.5 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
                 activeSubTab === 'librairie'
-                  ? 'bg-amber-400 text-stone-900 border-stone-800 dark:border-amber-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(251,191,36,0.3)]'
+                  ? 'bg-sky-500/15 dark:bg-sky-500/20 text-sky-950 dark:text-sky-200 border-sky-400 dark:border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.35)] ring-2 ring-sky-400/30'
                   : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
               }`}
             >
@@ -1330,7 +1330,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               onClick={() => { setActiveSubTab('ressources'); setIsCartViewOpen(false); }}
               className={`px-2.5 sm:px-3 py-1.5 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
                 activeSubTab === 'ressources'
-                  ? 'bg-orange-500 text-white border-stone-800 dark:border-orange-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(249,115,22,0.3)]'
+                  ? 'bg-sky-500/15 dark:bg-sky-500/20 text-sky-950 dark:text-sky-200 border-sky-400 dark:border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.35)] ring-2 ring-sky-400/30'
                   : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
               }`}
             >
@@ -1343,7 +1343,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               onClick={() => { setActiveSubTab('liens'); setIsCartViewOpen(false); setIsRecentFilterActive(false); }}
               className={`px-2.5 sm:px-3 py-1.5 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
                 activeSubTab === 'liens'
-                  ? 'bg-blue-600 text-white border-stone-800 dark:border-blue-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(37,99,235,0.3)]'
+                  ? 'bg-sky-500/15 dark:bg-sky-500/20 text-sky-950 dark:text-sky-200 border-sky-400 dark:border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.35)] ring-2 ring-sky-400/30'
                   : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
               }`}
             >
@@ -1358,7 +1358,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 onClick={() => setIsCartViewOpen(!isCartViewOpen)}
                 className={`px-2.5 sm:px-3 py-1.5 font-extrabold text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 active:translate-x-0.5 active:translate-y-0.5 ${
                   isCartViewOpen
-                    ? 'bg-amber-400 text-stone-900 border-stone-800 dark:border-amber-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(251,191,36,0.3)]'
+                    ? 'bg-sky-500/15 dark:bg-sky-500/20 text-sky-950 dark:text-sky-200 border-sky-400 dark:border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.35)] ring-2 ring-sky-400/30'
                     : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
                 }`}
                 title="Voir mon panier"

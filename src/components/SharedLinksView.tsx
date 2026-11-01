@@ -187,8 +187,10 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 overflow-x-auto no-scrollbar py-0.5">
             <button
               onClick={() => setFilterStatus('all')}
-              className={`px-2.5 sm:px-3 py-1.5 rounded-xl border-2 border-stone-800 dark:border-[#334155] text-xs font-bold shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap active:translate-x-0.5 active:translate-y-0.5 ${
-                filterStatus === 'all' ? 'bg-orange-500 text-white shadow-sm' : 'bg-white dark:bg-[#1e293b] text-stone-800 dark:text-slate-200 hover:bg-stone-100 dark:hover:bg-[#283852]'
+              className={`px-2.5 sm:px-3 py-1.5 rounded-xl border-2 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap active:translate-x-0.5 active:translate-y-0.5 ${
+                filterStatus === 'all'
+                  ? 'bg-sky-500/15 dark:bg-sky-500/20 text-sky-950 dark:text-sky-200 border-sky-400 dark:border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.35)] ring-2 ring-sky-400/30'
+                  : 'bg-white dark:bg-[#1e293b] text-stone-800 dark:text-slate-200 border-stone-800 dark:border-[#334155] hover:bg-stone-100 dark:hover:bg-[#283852] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
               }`}
             >
               <Folder className="w-3.5 h-3.5" />
@@ -196,8 +198,10 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
             </button>
             <button
               onClick={() => setFilterStatus('unpublished')}
-              className={`px-2.5 sm:px-3 py-1.5 rounded-xl border-2 border-stone-800 dark:border-[#334155] text-xs font-bold shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap active:translate-x-0.5 active:translate-y-0.5 ${
-                filterStatus === 'unpublished' ? 'bg-amber-500 text-white shadow-sm' : 'bg-white dark:bg-[#1e293b] text-stone-800 dark:text-slate-200 hover:bg-stone-100 dark:hover:bg-[#283852]'
+              className={`px-2.5 sm:px-3 py-1.5 rounded-xl border-2 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap active:translate-x-0.5 active:translate-y-0.5 ${
+                filterStatus === 'unpublished'
+                  ? 'bg-sky-500/15 dark:bg-sky-500/20 text-sky-950 dark:text-sky-200 border-sky-400 dark:border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.35)] ring-2 ring-sky-400/30'
+                  : 'bg-white dark:bg-[#1e293b] text-stone-800 dark:text-slate-200 border-stone-800 dark:border-[#334155] hover:bg-stone-100 dark:hover:bg-[#283852] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
               }`}
             >
               <Lock className="w-3.5 h-3.5" />
@@ -205,8 +209,10 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
             </button>
             <button
               onClick={() => setFilterStatus('published')}
-              className={`px-2.5 sm:px-3 py-1.5 rounded-xl border-2 border-stone-800 dark:border-[#334155] text-xs font-bold shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap active:translate-x-0.5 active:translate-y-0.5 ${
-                filterStatus === 'published' ? 'bg-emerald-500 text-white shadow-sm' : 'bg-white dark:bg-[#1e293b] text-stone-800 dark:text-slate-200 hover:bg-stone-100 dark:hover:bg-[#283852]'
+              className={`px-2.5 sm:px-3 py-1.5 rounded-xl border-2 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap active:translate-x-0.5 active:translate-y-0.5 ${
+                filterStatus === 'published'
+                  ? 'bg-sky-500/15 dark:bg-sky-500/20 text-sky-950 dark:text-sky-200 border-sky-400 dark:border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.35)] ring-2 ring-sky-400/30'
+                  : 'bg-white dark:bg-[#1e293b] text-stone-800 dark:text-slate-200 border-stone-800 dark:border-[#334155] hover:bg-stone-100 dark:hover:bg-[#283852] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
               }`}
             >
               <Globe className="w-3.5 h-3.5" />
