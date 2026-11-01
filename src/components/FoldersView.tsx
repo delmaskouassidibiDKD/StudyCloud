@@ -292,6 +292,20 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [viewMode]);
 
+  // Sur mobile, bloquer strictement tout défilement vertical parasite sur l'écran d'accueil
+  useEffect(() => {
+    if (viewMode !== 'home') return;
+    const prevOverflow = document.body.style.overflow;
+    const prevOverscroll = document.body.style.overscrollBehavior;
+    document.body.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'none';
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.overscrollBehavior = prevOverscroll;
+    };
+  }, [viewMode]);
+
   // Gestion tactile fluide pour téléphone et tablette
   const handleTouchStart = (e: React.TouchEvent) => {
     const touch = e.touches[0];
@@ -311,12 +325,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     const deltaY = touch.clientY - dragStartRef.current.y;
 
     if (!isHorizontalDragRef.current) {
-      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 8) {
-        // Défilement vertical explicitement bloqué sur le tableau de bord
-        dragStartRef.current = null;
-        return;
-      }
-      if (Math.abs(deltaX) > 8) {
+      if (Math.abs(deltaX) > 6 || (Math.abs(deltaX) >= Math.abs(deltaY) && Math.abs(deltaX) > 4)) {
         isHorizontalDragRef.current = true;
         setIsDragging(true);
         hasMovedRef.current = true;
@@ -1110,9 +1119,9 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   return (
     <div className={`flex flex-col items-center justify-start ${
       viewMode === 'home' 
-        ? 'h-[calc(100dvh-64px)] md:h-auto md:min-h-[75vh] overflow-hidden touch-pan-x' 
+        ? 'h-full max-h-full overflow-hidden touch-pan-x select-none overscroll-none' 
         : 'min-h-[75vh] overflow-y-auto'
-    } px-1 sm:px-4 text-center pt-14 md:pt-14 pb-20 md:pb-24 transition-colors duration-200 ${
+    } px-1 sm:px-4 text-center pt-[64px] md:pt-[68px] pb-16 md:pb-24 transition-colors duration-200 ${
       dashboardWallpaper && viewMode === 'home'
         ? 'bg-transparent text-white'
         : 'bg-[#0a0e17] text-white'
@@ -1975,9 +1984,19 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       )}
 
       {viewMode === 'home' && (
-        <div className="w-full max-w-[1400px] mx-auto px-1 sm:px-4 py-2 relative z-10">
+        <div 
+          className="w-full max-w-[1400px] mx-auto px-1 sm:px-4 py-1 sm:py-2 relative z-10 flex-1 flex flex-col h-full min-h-[calc(100dvh-140px)] md:min-h-0 select-none touch-pan-x"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+        >
           {/* Titre de l'écran actif */}
-          <div className="flex items-center justify-between mb-3 px-2">
+          <div className="flex items-center justify-between mb-2 sm:mb-3 px-2 shrink-0">
             <span className={`text-xs font-black select-none ${
               dashboardWallpaper 
                 ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] bg-black/45 px-3 py-1 rounded-full border border-white/10' 
@@ -1989,25 +2008,17 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
           {/* Conteneur Carrousel / Glissement fluide (Swipe phone & Desktop) */}
           <div 
-            className="w-full overflow-hidden select-none touch-pan-x relative"
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            onTouchCancel={handleTouchEnd}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
+            className="w-full flex-1 overflow-hidden select-none touch-pan-x relative flex flex-col"
           >
             <div 
-              className="flex w-[200%] will-change-transform"
+              className="flex w-[200%] h-full will-change-transform"
               style={{
                 transform: `translate3d(calc(-${activePageIndex * 50}% + ${dragOffset}px), 0, 0)`,
                 transition: isDragging ? 'none' : 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1)'
               }}
             >
               {/* PAGE 0 : Page 1 à gauche avec applications 3D (4 par ligne sur mobile, identique à Page 2) */}
-              <div className="w-1/2 shrink-0 px-1 sm:px-4 py-1 sm:py-2">
+              <div className="w-1/2 shrink-0 px-1 sm:px-4 py-1 sm:py-2 h-full flex flex-col justify-start">
                 <div className="grid grid-cols-4 md:flex md:flex-wrap md:items-start md:justify-start items-start justify-items-center w-full max-w-sm sm:max-w-md md:max-w-none mx-auto pt-1 gap-y-3.5 sm:gap-y-5 md:gap-12 gap-x-1.5 sm:gap-x-3">
                   {/* Application Fichiers 3D Espace Cloud */}
                   <div 
@@ -2224,7 +2235,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
               </div>
 
               {/* PAGE 1 : Écran d'accueil principal à droite */}
-              <div className="w-1/2 shrink-0 px-1 sm:px-4 py-1 sm:py-2">
+              <div className="w-1/2 shrink-0 px-1 sm:px-4 py-1 sm:py-2 h-full flex flex-col justify-start">
                 {/* Sur mobile : 4 blocs par ligne (inclut Mon stockage et Abonnements IA) | Sur desktop : 9 colonnes centrées avec accès stockage et IA sur la barre latérale gauche */}
                 <div className="grid grid-cols-4 md:grid-cols-9 gap-y-3.5 sm:gap-y-5 md:gap-4 lg:gap-6 gap-x-1.5 sm:gap-x-3 md:gap-4 lg:gap-6 justify-items-center w-full max-w-sm sm:max-w-md md:max-w-none mx-auto md:overflow-x-auto md:pb-4 md:pt-1 md:no-scrollbar">
                   {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage', 'ai-subscriptions'].map((id, index) => renderBlock(id, index))}
