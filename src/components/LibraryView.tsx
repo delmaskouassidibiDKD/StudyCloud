@@ -1315,10 +1315,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <button
               type="button"
               onClick={() => { setActiveSubTab('librairie'); setIsRecentFilterActive(false); }}
-              className={`px-2.5 sm:px-3 py-1.5 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
+              className={`px-2.5 sm:px-3 py-1.5 text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
                 activeSubTab === 'librairie'
-                  ? 'bg-sky-500/15 dark:bg-sky-500/20 text-sky-950 dark:text-sky-200 border-sky-400 dark:border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.35)] ring-2 ring-sky-400/30'
-                  : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
+                  ? 'bg-sky-400 dark:bg-sky-500 text-stone-950 dark:text-white border-stone-900 dark:border-stone-300 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none ring-2 ring-sky-300 dark:ring-sky-400/60 font-black'
+                  : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none font-bold'
               }`}
             >
               <span>📚</span>
@@ -1328,10 +1328,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <button
               type="button"
               onClick={() => { setActiveSubTab('ressources'); setIsCartViewOpen(false); }}
-              className={`px-2.5 sm:px-3 py-1.5 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
+              className={`px-2.5 sm:px-3 py-1.5 text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
                 activeSubTab === 'ressources'
-                  ? 'bg-sky-500/15 dark:bg-sky-500/20 text-sky-950 dark:text-sky-200 border-sky-400 dark:border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.35)] ring-2 ring-sky-400/30'
-                  : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
+                  ? 'bg-sky-400 dark:bg-sky-500 text-stone-950 dark:text-white border-stone-900 dark:border-stone-300 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none ring-2 ring-sky-300 dark:ring-sky-400/60 font-black'
+                  : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none font-bold'
               }`}
             >
               <span>📁</span>
@@ -1341,10 +1341,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <button
               type="button"
               onClick={() => { setActiveSubTab('liens'); setIsCartViewOpen(false); setIsRecentFilterActive(false); }}
-              className={`px-2.5 sm:px-3 py-1.5 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
+              className={`px-2.5 sm:px-3 py-1.5 text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
                 activeSubTab === 'liens'
-                  ? 'bg-sky-500/15 dark:bg-sky-500/20 text-sky-950 dark:text-sky-200 border-sky-400 dark:border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.35)] ring-2 ring-sky-400/30'
-                  : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
+                  ? 'bg-sky-400 dark:bg-sky-500 text-stone-950 dark:text-white border-stone-900 dark:border-stone-300 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none ring-2 ring-sky-300 dark:ring-sky-400/60 font-black'
+                  : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none font-bold'
               }`}
             >
               <span>🔗</span>
@@ -1356,10 +1356,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               <button
                 type="button"
                 onClick={() => setIsCartViewOpen(!isCartViewOpen)}
-                className={`px-2.5 sm:px-3 py-1.5 font-extrabold text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 active:translate-x-0.5 active:translate-y-0.5 ${
+                className={`px-2.5 sm:px-3 py-1.5 text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 active:translate-x-0.5 active:translate-y-0.5 ${
                   isCartViewOpen
-                    ? 'bg-sky-500/15 dark:bg-sky-500/20 text-sky-950 dark:text-sky-200 border-sky-400 dark:border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.35)] ring-2 ring-sky-400/30'
-                    : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
+                    ? 'bg-sky-400 dark:bg-sky-500 text-stone-950 dark:text-white border-stone-900 dark:border-stone-300 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none ring-2 ring-sky-300 dark:ring-sky-400/60 font-black'
+                    : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none font-bold'
                 }`}
                 title="Voir mon panier"
               >
