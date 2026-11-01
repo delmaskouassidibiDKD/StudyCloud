@@ -3697,7 +3697,7 @@ async function checkUserStorageQuota(db: any, userId: string, incomingBytes: num
     // 4. Obtenir la consommation réelle actuelle (R2 + D1)
     let currentUsedBytes = 0;
     const cached: any = await db.prepare(
-      "SELECT (COALESCE(total_r2_compressed_bytes, 0) + COALESCE(total_d1_database_bytes, 0)) as totalBytes FROM user_storage_cache WHERE user_id = ?"
+      "SELECT (COALESCE(total_r2_compressed_bytes, 0) + COALESCE(total_d1_database_bytes, 0)) as totalBytes FROM user_storage_usage WHERE user_id = ?"
     ).bind(userId).first().catch(() => null);
 
     if (cached && cached.totalBytes !== null && cached.totalBytes !== undefined && Number(cached.totalBytes) > 0) {
@@ -3720,6 +3720,10 @@ async function checkUserStorageQuota(db: any, userId: string, incomingBytes: num
     const remainingBytes = Math.max(0, totalAllowedBytes - currentUsedBytes);
 
     if (projectedUsedBytes > totalAllowedBytes) {
+      const isAlreadyFull = currentUsedBytes >= totalAllowedBytes;
+      const errorText = isAlreadyFull
+        ? `Votre espace de stockage est plein (${totalAllowedMb} Mo atteints). Impossible d'enregistrer de nouvelles données. Veuillez libérer de l'espace ou souscrire à une extension de stockage.`
+        : `Espace de stockage insuffisant. Ce contenu (${formatBytes(incomingBytes)}) dépasse votre quota disponible (${formatBytes(remainingBytes)} restants sur ${formatBytes(totalAllowedBytes)}). Veuillez libérer de l'espace ou souscrire à une extension de stockage.`;
       return {
         allowed: false,
         totalAllowedBytes,
@@ -3730,7 +3734,7 @@ async function checkUserStorageQuota(db: any, userId: string, incomingBytes: num
         welcomeMb,
         paidMb,
         bonusMb,
-        error: `Espace de stockage insuffisant. Ce fichier (${formatBytes(incomingBytes)}) dépasse votre quota disponible (${formatBytes(remainingBytes)} restants sur ${formatBytes(totalAllowedBytes)}). Veuillez libérer de l'espace ou souscrire à une extension de stockage.`
+        error: errorText
       };
     }
 
@@ -6605,6 +6609,21 @@ a:hover{transform:translateY(-2px)}
           const { id, userId, name, coefficient, color, category, displayOrder, oldName } = body;
           if (!id || !userId || !name || userId === 'default-user') return errorResponse('id, userId et name requis', 400, origin);
 
+          if (env.DB) {
+            const quotaCheck = await checkUserStorageQuota(env.DB, userId, 0);
+            if (!quotaCheck.allowed) {
+              return new Response(JSON.stringify({
+                success: false,
+                error: 'STORAGE_LIMIT_EXCEEDED',
+                isStorageLimitExceeded: true,
+                message: quotaCheck.error || "Votre espace de stockage est plein. Impossible d'ajouter une matière. Veuillez libérer de l'espace ou souscrire à une extension."
+              }), {
+                status: 413,
+                headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+              });
+            }
+          }
+
           await env.DB.prepare(`
             INSERT INTO matieres (id, user_id, name, coefficient, color, category, display_order)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -8564,6 +8583,21 @@ a:hover{transform:translateY(-2px)}
           const body: any = await request.json().catch(() => ({}));
           const id = body.id || 'f3d_' + crypto.randomUUID().substring(0, 10);
           const name = String(body.name || 'Nouveau Dossier').trim();
+
+          if (env.DB) {
+            const quotaCheck = await checkUserStorageQuota(env.DB, reqUserId, 0);
+            if (!quotaCheck.allowed) {
+              return new Response(JSON.stringify({
+                success: false,
+                error: 'STORAGE_LIMIT_EXCEEDED',
+                isStorageLimitExceeded: true,
+                message: quotaCheck.error || "Votre espace de stockage est plein. Impossible de créer un dossier. Veuillez libérer de l'espace ou souscrire à une extension."
+              }), {
+                status: 413,
+                headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+              });
+            }
+          }
           const parentId = body.parentId || null;
           const modelId = String(body.modelId || '1');
           const primaryColor = body.primaryColor || '#EA580C';
@@ -11372,6 +11406,21 @@ a:hover{transform:translateY(-2px)}
           ? body.newId.trim()
           : `dup_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
+        if (env.DB) {
+          const quotaCheck = await checkUserStorageQuota(env.DB, reqUserId, 0);
+          if (!quotaCheck.allowed) {
+            return new Response(JSON.stringify({
+              success: false,
+              error: 'STORAGE_LIMIT_EXCEEDED',
+              isStorageLimitExceeded: true,
+              message: quotaCheck.error || "Votre espace de stockage est plein. Impossible de dupliquer cet élément. Veuillez libérer de l'espace ou souscrire à une extension."
+            }), {
+              status: 413,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+            });
+          }
+        }
+
         if (category === 'classeur_folder' || category === 'folder') {
           const orig: any = await env.DB.prepare('SELECT * FROM classeur_folders WHERE id = ? AND user_id = ?').bind(sourceId, reqUserId).first();
           if (!orig) return errorResponse('Dossier introuvable', 404, origin);
@@ -12481,6 +12530,21 @@ a:hover{transform:translateY(-2px)}
           const body: any = await request.json();
           const { id, userId, trimester, subjectName, coefficient, subGradesJson, average } = body;
           if (!userId || userId === 'default-user') return errorResponse('userId requis', 400, origin);
+
+          if (env.DB) {
+            const quotaCheck = await checkUserStorageQuota(env.DB, userId, 0);
+            if (!quotaCheck.allowed) {
+              return new Response(JSON.stringify({
+                success: false,
+                error: 'STORAGE_LIMIT_EXCEEDED',
+                isStorageLimitExceeded: true,
+                message: quotaCheck.error || "Votre espace de stockage est plein. Impossible d'enregistrer ces notes. Veuillez libérer de l'espace ou souscrire à une extension."
+              }), {
+                status: 413,
+                headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+              });
+            }
+          }
           const gradeId = id || ('grade-' + crypto.randomUUID());
           await env.DB.prepare(`
             INSERT INTO grades (id, user_id, trimester, subject_name, coefficient, sub_grades_json, average, updated_at)
@@ -12529,6 +12593,21 @@ a:hover{transform:translateY(-2px)}
           const body: any = await request.json();
           const { id, userId, title, content, color, isPinned, imageUrl } = body;
           if (!userId || userId === 'default-user') return errorResponse('userId requis', 400, origin);
+
+          if (env.DB) {
+            const quotaCheck = await checkUserStorageQuota(env.DB, userId, 0);
+            if (!quotaCheck.allowed) {
+              return new Response(JSON.stringify({
+                success: false,
+                error: 'STORAGE_LIMIT_EXCEEDED',
+                isStorageLimitExceeded: true,
+                message: quotaCheck.error || "Votre espace de stockage est plein. Impossible d'enregistrer cette note. Veuillez libérer de l'espace ou souscrire à une extension."
+              }), {
+                status: 413,
+                headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+              });
+            }
+          }
           const noteId = id || ('note-' + crypto.randomUUID());
           await env.DB.prepare(`
             INSERT INTO notes (id, user_id, title, content, color, is_pinned, image_url, updated_at)
@@ -12587,6 +12666,21 @@ a:hover{transform:translateY(-2px)}
           const body: any = await request.json();
           const { id, userId, title, startDate, endDate, allDay, color, description, location } = body;
           if (!userId || userId === 'default-user') return errorResponse('userId requis', 400, origin);
+
+          if (env.DB) {
+            const quotaCheck = await checkUserStorageQuota(env.DB, userId, 0);
+            if (!quotaCheck.allowed) {
+              return new Response(JSON.stringify({
+                success: false,
+                error: 'STORAGE_LIMIT_EXCEEDED',
+                isStorageLimitExceeded: true,
+                message: quotaCheck.error || "Votre espace de stockage est plein. Impossible d'ajouter un événement. Veuillez libérer de l'espace ou souscrire à une extension."
+              }), {
+                status: 413,
+                headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+              });
+            }
+          }
           const eventId = id || crypto.randomUUID();
           await env.DB.prepare(`
             INSERT INTO calendar_events (id, user_id, title, start_date, end_date, all_day, color, description, location)

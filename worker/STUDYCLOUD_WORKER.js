@@ -3155,7 +3155,7 @@ async function checkUserStorageQuota(db, userId, incomingBytes = 0) {
     const totalAllowedBytes = totalAllowedMb * 1024 * 1024;
     let currentUsedBytes = 0;
     const cached = await db.prepare(
-      "SELECT (COALESCE(total_r2_compressed_bytes, 0) + COALESCE(total_d1_database_bytes, 0)) as totalBytes FROM user_storage_cache WHERE user_id = ?"
+      "SELECT (COALESCE(total_r2_compressed_bytes, 0) + COALESCE(total_d1_database_bytes, 0)) as totalBytes FROM user_storage_usage WHERE user_id = ?"
     ).bind(userId).first().catch(() => null);
     if (cached && cached.totalBytes !== null && cached.totalBytes !== void 0 && Number(cached.totalBytes) > 0) {
       currentUsedBytes = Number(cached.totalBytes);
@@ -3175,6 +3175,8 @@ async function checkUserStorageQuota(db, userId, incomingBytes = 0) {
     const projectedUsedBytes = currentUsedBytes + (Number(incomingBytes) || 0);
     const remainingBytes = Math.max(0, totalAllowedBytes - currentUsedBytes);
     if (projectedUsedBytes > totalAllowedBytes) {
+      const isAlreadyFull = currentUsedBytes >= totalAllowedBytes;
+      const errorText = isAlreadyFull ? `Votre espace de stockage est plein (${totalAllowedMb} Mo atteints). Impossible d'enregistrer de nouvelles donn\xE9es. Veuillez lib\xE9rer de l'espace ou souscrire \xE0 une extension de stockage.` : `Espace de stockage insuffisant. Ce contenu (${formatBytes(incomingBytes)}) d\xE9passe votre quota disponible (${formatBytes(remainingBytes)} restants sur ${formatBytes(totalAllowedBytes)}). Veuillez lib\xE9rer de l'espace ou souscrire \xE0 une extension de stockage.`;
       return {
         allowed: false,
         totalAllowedBytes,
@@ -3185,7 +3187,7 @@ async function checkUserStorageQuota(db, userId, incomingBytes = 0) {
         welcomeMb,
         paidMb,
         bonusMb,
-        error: `Espace de stockage insuffisant. Ce fichier (${formatBytes(incomingBytes)}) d\xE9passe votre quota disponible (${formatBytes(remainingBytes)} restants sur ${formatBytes(totalAllowedBytes)}). Veuillez lib\xE9rer de l'espace ou souscrire \xE0 une extension de stockage.`
+        error: errorText
       };
     }
     return {
@@ -5593,6 +5595,20 @@ a:hover{transform:translateY(-2px)}
           const body = await request.json();
           const { id, userId, name, coefficient, color, category, displayOrder, oldName } = body;
           if (!id || !userId || !name || userId === "default-user") return errorResponse("id, userId et name requis", 400, origin);
+          if (env.DB) {
+            const quotaCheck = await checkUserStorageQuota(env.DB, userId, 0);
+            if (!quotaCheck.allowed) {
+              return new Response(JSON.stringify({
+                success: false,
+                error: "STORAGE_LIMIT_EXCEEDED",
+                isStorageLimitExceeded: true,
+                message: quotaCheck.error || "Votre espace de stockage est plein. Impossible d'ajouter une mati\xE8re. Veuillez lib\xE9rer de l'espace ou souscrire \xE0 une extension."
+              }), {
+                status: 413,
+                headers: { "Content-Type": "application/json", ...corsHeaders(origin) }
+              });
+            }
+          }
           await env.DB.prepare(`
             INSERT INTO matieres (id, user_id, name, coefficient, color, category, display_order)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -7316,6 +7332,20 @@ a:hover{transform:translateY(-2px)}
           const body = await request.json().catch(() => ({}));
           const id = body.id || "f3d_" + crypto.randomUUID().substring(0, 10);
           const name = String(body.name || "Nouveau Dossier").trim();
+          if (env.DB) {
+            const quotaCheck = await checkUserStorageQuota(env.DB, reqUserId, 0);
+            if (!quotaCheck.allowed) {
+              return new Response(JSON.stringify({
+                success: false,
+                error: "STORAGE_LIMIT_EXCEEDED",
+                isStorageLimitExceeded: true,
+                message: quotaCheck.error || "Votre espace de stockage est plein. Impossible de cr\xE9er un dossier. Veuillez lib\xE9rer de l'espace ou souscrire \xE0 une extension."
+              }), {
+                status: 413,
+                headers: { "Content-Type": "application/json", ...corsHeaders(origin) }
+              });
+            }
+          }
           const parentId = body.parentId || null;
           const modelId = String(body.modelId || "1");
           const primaryColor = body.primaryColor || "#EA580C";
@@ -10101,6 +10131,20 @@ a:hover{transform:translateY(-2px)}
         const requestedName = (body.name || "").trim();
         if (!sourceId) return errorResponse("ID source requis", 400, origin);
         const newId = body.newId && typeof body.newId === "string" && body.newId.trim() ? body.newId.trim() : `dup_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        if (env.DB) {
+          const quotaCheck = await checkUserStorageQuota(env.DB, reqUserId, 0);
+          if (!quotaCheck.allowed) {
+            return new Response(JSON.stringify({
+              success: false,
+              error: "STORAGE_LIMIT_EXCEEDED",
+              isStorageLimitExceeded: true,
+              message: quotaCheck.error || "Votre espace de stockage est plein. Impossible de dupliquer cet \xE9l\xE9ment. Veuillez lib\xE9rer de l'espace ou souscrire \xE0 une extension."
+            }), {
+              status: 413,
+              headers: { "Content-Type": "application/json", ...corsHeaders(origin) }
+            });
+          }
+        }
         if (category === "classeur_folder" || category === "folder") {
           const orig2 = await env.DB.prepare("SELECT * FROM classeur_folders WHERE id = ? AND user_id = ?").bind(sourceId, reqUserId).first();
           if (!orig2) return errorResponse("Dossier introuvable", 404, origin);
@@ -11097,6 +11141,20 @@ a:hover{transform:translateY(-2px)}
           const body = await request.json();
           const { id, userId, trimester, subjectName, coefficient, subGradesJson, average } = body;
           if (!userId || userId === "default-user") return errorResponse("userId requis", 400, origin);
+          if (env.DB) {
+            const quotaCheck = await checkUserStorageQuota(env.DB, userId, 0);
+            if (!quotaCheck.allowed) {
+              return new Response(JSON.stringify({
+                success: false,
+                error: "STORAGE_LIMIT_EXCEEDED",
+                isStorageLimitExceeded: true,
+                message: quotaCheck.error || "Votre espace de stockage est plein. Impossible d'enregistrer ces notes. Veuillez lib\xE9rer de l'espace ou souscrire \xE0 une extension."
+              }), {
+                status: 413,
+                headers: { "Content-Type": "application/json", ...corsHeaders(origin) }
+              });
+            }
+          }
           const gradeId = id || "grade-" + crypto.randomUUID();
           await env.DB.prepare(`
             INSERT INTO grades (id, user_id, trimester, subject_name, coefficient, sub_grades_json, average, updated_at)
@@ -11140,6 +11198,20 @@ a:hover{transform:translateY(-2px)}
           const body = await request.json();
           const { id, userId, title, content, color, isPinned, imageUrl } = body;
           if (!userId || userId === "default-user") return errorResponse("userId requis", 400, origin);
+          if (env.DB) {
+            const quotaCheck = await checkUserStorageQuota(env.DB, userId, 0);
+            if (!quotaCheck.allowed) {
+              return new Response(JSON.stringify({
+                success: false,
+                error: "STORAGE_LIMIT_EXCEEDED",
+                isStorageLimitExceeded: true,
+                message: quotaCheck.error || "Votre espace de stockage est plein. Impossible d'enregistrer cette note. Veuillez lib\xE9rer de l'espace ou souscrire \xE0 une extension."
+              }), {
+                status: 413,
+                headers: { "Content-Type": "application/json", ...corsHeaders(origin) }
+              });
+            }
+          }
           const noteId = id || "note-" + crypto.randomUUID();
           await env.DB.prepare(`
             INSERT INTO notes (id, user_id, title, content, color, is_pinned, image_url, updated_at)
@@ -11194,6 +11266,20 @@ a:hover{transform:translateY(-2px)}
           const body = await request.json();
           const { id, userId, title, startDate, endDate, allDay, color, description, location } = body;
           if (!userId || userId === "default-user") return errorResponse("userId requis", 400, origin);
+          if (env.DB) {
+            const quotaCheck = await checkUserStorageQuota(env.DB, userId, 0);
+            if (!quotaCheck.allowed) {
+              return new Response(JSON.stringify({
+                success: false,
+                error: "STORAGE_LIMIT_EXCEEDED",
+                isStorageLimitExceeded: true,
+                message: quotaCheck.error || "Votre espace de stockage est plein. Impossible d'ajouter un \xE9v\xE9nement. Veuillez lib\xE9rer de l'espace ou souscrire \xE0 une extension."
+              }), {
+                status: 413,
+                headers: { "Content-Type": "application/json", ...corsHeaders(origin) }
+              });
+            }
+          }
           const eventId = id || crypto.randomUUID();
           await env.DB.prepare(`
             INSERT INTO calendar_events (id, user_id, title, start_date, end_date, all_day, color, description, location)
