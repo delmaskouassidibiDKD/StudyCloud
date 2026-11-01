@@ -88,7 +88,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`flex flex-col space-y-4 pb-24 pt-24 md:pt-24 animate-fadeIn min-h-screen relative transition-colors bg-[#E9D7C9] dark:bg-[#0b0f19] ${
+      className={`flex flex-col space-y-4 pb-24 pt-16 md:pt-16 animate-fadeIn min-h-screen relative transition-colors bg-[#E9D7C9] dark:bg-[#0b0f19] ${
         isDragging ? 'ring-4 ring-orange-500 ring-inset bg-orange-50/20' : ''
       }`}
     >
@@ -104,86 +104,93 @@ export const UploadView: React.FC<UploadViewProps> = ({
       )}
 
       {/* Fixed Header for Upload Tab - Solid Dark #070a13 */}
-      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#E9D7C9] dark:bg-[#070a13] py-2 px-4 md:px-8 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm space-y-1.5 transition-colors">
-        <div className="flex items-center justify-between gap-3 max-w-7xl mx-auto w-full">
-          <div className="flex items-center gap-2.5 sm:gap-3.5">
-            <label className="flex flex-col items-center justify-center bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
-              <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
-              <span className="leading-none">dossier</span>
-              <input
-                type="file"
-                className="hidden"
-                {...({ webkitdirectory: '', directory: '' } as any)}
-                multiple
-                onChange={(e) => handleFilesSelected(e, 'Dossier')}
-              />
-            </label>
+      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#E9D7C9] dark:bg-[#070a13] py-2 px-3 sm:px-4 md:px-8 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm transition-colors">
+        <div className="flex items-center justify-between gap-2 sm:gap-3 max-w-7xl mx-auto w-full">
+          {/* Boutons d'importation + Compteur d'éléments importés */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5 sm:gap-2.5">
+              <label className="flex flex-col items-center justify-center bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
+                <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
+                <span className="leading-none">dossier</span>
+                <input
+                  type="file"
+                  className="hidden"
+                  {...({ webkitdirectory: '', directory: '' } as any)}
+                  multiple
+                  onChange={(e) => handleFilesSelected(e, 'Dossier')}
+                />
+              </label>
 
-            <label className="flex flex-col items-center justify-center bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
-              <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
-              <span className="leading-none">fichier</span>
-              <input
-                type="file"
-                className="hidden"
-                multiple
-                onChange={(e) => handleFilesSelected(e, 'Fichiers')}
-              />
-            </label>
+              <label className="flex flex-col items-center justify-center bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
+                <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
+                <span className="leading-none">fichier</span>
+                <input
+                  type="file"
+                  className="hidden"
+                  multiple
+                  onChange={(e) => handleFilesSelected(e, 'Fichiers')}
+                />
+              </label>
 
-            <label className="flex flex-col items-center justify-center bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
-              <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
-              <span className="leading-none">images</span>
-              <input
-                type="file"
-                className="hidden"
-                accept="image/*"
-                multiple
-                onChange={(e) => handleFilesSelected(e, 'Images')}
-              />
-            </label>
+              <label className="flex flex-col items-center justify-center bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
+                <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
+                <span className="leading-none">images</span>
+                <input
+                  type="file"
+                  className="hidden"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => handleFilesSelected(e, 'Images')}
+                />
+              </label>
 
-            <label className="flex flex-col items-center justify-center bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
-              <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
-              <span className="leading-none">son</span>
-              <input
-                type="file"
-                className="hidden"
-                accept="audio/*"
-                multiple
-                onChange={(e) => handleFilesSelected(e, 'Son')}
-              />
-            </label>
+              <label className="flex flex-col items-center justify-center bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
+                <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
+                <span className="leading-none">son</span>
+                <input
+                  type="file"
+                  className="hidden"
+                  accept="audio/*"
+                  multiple
+                  onChange={(e) => handleFilesSelected(e, 'Son')}
+                />
+              </label>
+            </div>
+
+            {uploadedItems.length > 0 && (
+              <span className="text-[11px] sm:text-xs font-bold text-stone-600 dark:text-stone-300 uppercase tracking-wider px-2 sm:px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-stone-300 dark:border-stone-700/60 shrink-0">
+                Éléments importés ({uploadedItems.length})
+              </span>
+            )}
           </div>
 
-          <button
-            onClick={uploadedItems.length > 0 ? () => onOpenClearConfirm() : undefined}
-            disabled={uploadedItems.length === 0}
-            className={`flex items-center gap-1.5 font-bold text-xs px-3 py-2 rounded-xl border-2 transition-all shrink-0 select-none ${
-              uploadedItems.length === 0
-                ? 'bg-stone-200 dark:bg-stone-800 text-stone-400 dark:text-stone-500 border-stone-400 dark:border-stone-700 cursor-not-allowed shadow-none opacity-60'
-                : 'bg-orange-500 hover:bg-orange-600 text-white border-stone-800 dark:border-orange-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 cursor-pointer'
-            }`}
-            title={uploadedItems.length === 0 ? "Aucun élément importé pour créer un nouveau partage" : "Commencer un nouveau partage"}
-          >
-            <FolderPlus className="w-3.5 h-3.5" />
-            <span>Nouveau partage</span>
-          </button>
-        </div>
-
-        {uploadedItems.length > 0 && (
-          <div className="pt-1.5 pb-0.5 flex items-center justify-between border-t border-stone-200 max-w-7xl mx-auto w-full">
-            <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">
-              Éléments importés ({uploadedItems.length})
-            </span>
+          {/* Actions : Nouveau partage + Créer le lien de partage */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
-              onClick={onOpenCreateShareLink}
-              className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-3 py-1 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
+              onClick={uploadedItems.length > 0 ? () => onOpenClearConfirm() : undefined}
+              disabled={uploadedItems.length === 0}
+              className={`flex items-center gap-1.5 font-bold text-xs px-2.5 sm:px-3 py-2 rounded-xl border-2 transition-all shrink-0 select-none ${
+                uploadedItems.length === 0
+                  ? 'bg-stone-200 dark:bg-stone-800 text-stone-400 dark:text-stone-500 border-stone-400 dark:border-stone-700 cursor-not-allowed shadow-none opacity-60'
+                  : 'bg-orange-500 hover:bg-orange-600 text-white border-stone-800 dark:border-orange-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 cursor-pointer'
+              }`}
+              title={uploadedItems.length === 0 ? "Aucun élément importé pour créer un nouveau partage" : "Commencer un nouveau partage"}
             >
-              <Share2 className="w-3.5 h-3.5" />
-              <span>Créer le lien de partage</span>
+              <FolderPlus className="w-3.5 h-3.5" />
+              <span>Nouveau partage</span>
             </button>
+
+            {uploadedItems.length > 0 && (
+              <button
+                onClick={onOpenCreateShareLink}
+                className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-2.5 sm:px-3 py-2 rounded-xl border-2 border-stone-800 dark:border-orange-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer shrink-0"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Créer le lien de partage</span>
+              </button>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       <div className={`flex-1 w-full overflow-y-auto px-4 md:px-8 pt-2 pb-4 ${uploadedItems.length === 0 ? 'flex flex-col items-center justify-center min-h-[70vh]' : ''}`}>
