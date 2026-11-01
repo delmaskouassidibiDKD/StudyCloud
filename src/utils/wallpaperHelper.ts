@@ -22,7 +22,14 @@ export const LS_WALLPAPER_META = 'studycloud_dashboard_wallpaper_meta';
 export const LS_WALLPAPER_ID_KEY = 'studycloud_dashboard_wallpaper_id';
 export const IDB_WALLPAPER_KEY = 'active_wallpaper';
 
-export const DEFAULT_WALLPAPER_URL = '/wallpapers/wallpaper-beach.jpg';
+// Gestion de la rotation automatique toutes les 48 heures (2 jours)
+export const LS_WALLPAPER_ROTATION_ENABLED = 'studycloud_wallpaper_auto_rotation';
+export const LS_WALLPAPER_LAST_ROTATION_TIME = 'studycloud_wallpaper_last_rotation_time';
+export const WALLPAPER_ROTATION_INTERVAL_MS = 48 * 60 * 60 * 1000; // 48 heures (172 800 000 ms)
+
+// Fond d'écran par défaut lors de la première arrivée : Hélice ADN Cosmique
+export const DEFAULT_WALLPAPER_URL = '/wallpapers/wallpaper-dna.jpg';
+export const DEFAULT_WALLPAPER_NAME = 'Hélice ADN Cosmique';
 
 export interface PresetWallpaperItem {
   id: string;
@@ -38,7 +45,7 @@ export const PRESET_WALLPAPERS: PresetWallpaperItem[] = [
     name: 'Rivage Turquoise',
     subtitle: 'Eau cristalline et sable blanc paradisiaque',
     url: '/wallpapers/wallpaper-beach.jpg',
-    isDefault: true,
+    isDefault: false,
   },
   {
     id: 'piano',
@@ -80,7 +87,7 @@ export const PRESET_WALLPAPERS: PresetWallpaperItem[] = [
     name: 'Hélice ADN Cosmique',
     subtitle: 'Thème Signature StudyCloud — Néon bleu & étoiles',
     url: '/wallpapers/wallpaper-dna.jpg',
-    isDefault: false,
+    isDefault: true,
   },
   {
     id: 'nebula',
@@ -104,6 +111,112 @@ export const PRESET_WALLPAPERS: PresetWallpaperItem[] = [
     isDefault: false,
   },
 ];
+
+/**
+ * Vérifie si une URL de fond d'écran correspond à l'un de nos thèmes officiels proposés
+ */
+export function isPresetWallpaper(url?: string | null): boolean {
+  if (!url || typeof url !== 'string') return false;
+  return url.startsWith('/wallpapers/') || PRESET_WALLPAPERS.some(p => p.url === url);
+}
+
+/**
+ * Détermine si le changement automatique de fond d'écran toutes les 48h est activé.
+ * Activé par défaut pour tous les utilisateurs.
+ */
+export function isWallpaperAutoRotationEnabled(): boolean {
+  try {
+    const val = localStorage.getItem(LS_WALLPAPER_ROTATION_ENABLED);
+    return val !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Active ou désactive le changement automatique de fond d'écran
+ */
+export function setWallpaperAutoRotationEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(LS_WALLPAPER_ROTATION_ENABLED, enabled ? 'true' : 'false');
+    if (enabled) {
+      // Repartir sur un nouveau cycle de 48h à partir de maintenant
+      localStorage.setItem(LS_WALLPAPER_LAST_ROTATION_TIME, String(Date.now()));
+    }
+  } catch {}
+  window.dispatchEvent(new CustomEvent('studycloud_wallpaper_auto_rotation_changed', { detail: { enabled } }));
+}
+
+/**
+ * Récupère le prochain thème officiel proposé selon l'ordre successif en boucle.
+ * S'il arrive à la fin de la liste, il recommence au début.
+ */
+export function getNextPresetWallpaper(currentUrl?: string | null): PresetWallpaperItem {
+  if (!currentUrl) {
+    const dnaPreset = PRESET_WALLPAPERS.find(p => p.id === 'dna');
+    return dnaPreset || PRESET_WALLPAPERS[0];
+  }
+  const currentIndex = PRESET_WALLPAPERS.findIndex(p => p.url === currentUrl);
+  if (currentIndex === -1) {
+    // Si le fond d'écran actuel n'est pas trouvé dans la liste, enchaîner après Hélice ADN
+    const dnaIdx = PRESET_WALLPAPERS.findIndex(p => p.id === 'dna');
+    const startIdx = dnaIdx !== -1 ? (dnaIdx + 1) % PRESET_WALLPAPERS.length : 0;
+    return PRESET_WALLPAPERS[startIdx];
+  }
+  const nextIndex = (currentIndex + 1) % PRESET_WALLPAPERS.length;
+  return PRESET_WALLPAPERS[nextIndex];
+}
+
+/**
+ * Vérifie et applique la rotation automatique si 48 heures (2 jours) sont écoulées.
+ * RÈGLE STRICTE :
+ * 1. La rotation ne s'applique QUE si l'utilisateur n'a pas désactivé la bascule automatique.
+ * 2. La rotation ne s'applique QUE si l'utilisateur utilise notre proposition de fond d'écran.
+ *    S'il a importé une image personnelle, le changement automatique NE S'APPLIQUE PAS.
+ */
+export async function checkAndPerformWallpaperAutoRotation(): Promise<boolean> {
+  try {
+    // 1. Vérifier si l'option est activée
+    if (!isWallpaperAutoRotationEnabled()) {
+      return false;
+    }
+
+    // 2. Vérifier le fond d'écran actuel
+    const currentWp = (typeof localStorage !== 'undefined' ? localStorage.getItem(LS_WALLPAPER_KEY) : null) || DEFAULT_WALLPAPER_URL;
+
+    // 3. Si l'utilisateur utilise une image importée personnelle, la rotation automatique est ignorée
+    if (!isPresetWallpaper(currentWp)) {
+      return false;
+    }
+
+    const lastTimeStr = typeof localStorage !== 'undefined' ? localStorage.getItem(LS_WALLPAPER_LAST_ROTATION_TIME) : null;
+    const now = Date.now();
+
+    if (!lastTimeStr) {
+      // Première initialisation du compteur (48h à partir de la première arrivée)
+      localStorage.setItem(LS_WALLPAPER_LAST_ROTATION_TIME, String(now));
+      return false;
+    }
+
+    const lastTime = Number(lastTimeStr);
+    if (isNaN(lastTime) || now < lastTime) {
+      localStorage.setItem(LS_WALLPAPER_LAST_ROTATION_TIME, String(now));
+      return false;
+    }
+
+    // 4. Si 48 heures (2 jours) se sont écoulées, passer au suivant dans la boucle
+    if (now - lastTime >= WALLPAPER_ROTATION_INTERVAL_MS) {
+      const nextPreset = getNextPresetWallpaper(currentWp);
+      localStorage.setItem(LS_WALLPAPER_LAST_ROTATION_TIME, String(now));
+      console.log(`[WallpaperHelper] Rotation auto 48h : passage à "${nextPreset.name}" (${nextPreset.url})`);
+      await applyDashboardWallpaper(nextPreset.url, nextPreset.name);
+      return true;
+    }
+  } catch (err) {
+    console.warn('[WallpaperHelper] Erreur vérification rotation auto 48h:', err);
+  }
+  return false;
+}
 
 /**
  * Convertit n'importe quelle source d'image (Blob, File, URL blob:, ID IndexedDB)
@@ -342,7 +455,7 @@ export async function syncAndCacheCloudWallpaper(
   // Cas où aucun fond d'écran personnalisé n'est configuré sur le compte
   if (!cloudWp || !cloudWp.url) {
     const currentId = typeof localStorage !== 'undefined' ? localStorage.getItem(LS_WALLPAPER_ID_KEY) : null;
-    if (currentId && !currentId.startsWith('preset:beach')) {
+    if (currentId && !currentId.startsWith('preset:')) {
       try {
         localStorage.removeItem(LS_WALLPAPER_KEY);
         localStorage.removeItem(LS_WALLPAPER_META);

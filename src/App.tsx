@@ -38,6 +38,7 @@ import { AppUpdatePrompt } from './components/AppUpdatePrompt';
 import { StorageAlertNotificationModal } from './components/StorageAlertNotificationModal';
 import { WallpaperSelectorDrawer } from './components/WallpaperSelectorDrawer';
 import { UploadQueueWidget } from './components/UploadQueueWidget';
+import { checkAndPerformWallpaperAutoRotation } from './utils/wallpaperHelper';
 import { purgeVolatileStorage, safeLocalStorageRemove } from './utils/safeStorage';
 
 // Nettoyage immédiat au chargement de l'application pour libérer l'espace des appareils saturés
@@ -230,6 +231,29 @@ export default function App() {
     localStorage.setItem('unifolder_current_tab', currentTab);
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, [currentTab]);
+
+  // Rotation automatique du fond d'écran toutes les 48 heures (2 jours)
+  useEffect(() => {
+    checkAndPerformWallpaperAutoRotation();
+
+    // Vérification périodique toutes les 15 minutes
+    const rotationInterval = setInterval(() => {
+      checkAndPerformWallpaperAutoRotation();
+    }, 15 * 60 * 1000);
+
+    // Vérification au retour sur l'onglet
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkAndPerformWallpaperAutoRotation();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(rotationInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
   // Nettoyage immédiat des anciennes données de démonstration / locales écrites en dur dans le cache
   useEffect(() => {

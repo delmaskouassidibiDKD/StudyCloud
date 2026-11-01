@@ -4,12 +4,18 @@ import {
   Check, 
   RotateCcw, 
   Palette, 
-  CheckCircle2
+  CheckCircle2,
+  Sparkles
 } from 'lucide-react';
 import { 
   PRESET_WALLPAPERS, 
   DEFAULT_WALLPAPER_URL,
-  applyDashboardWallpaper
+  DEFAULT_WALLPAPER_NAME,
+  applyDashboardWallpaper,
+  isWallpaperAutoRotationEnabled,
+  setWallpaperAutoRotationEnabled,
+  isPresetWallpaper,
+  LS_WALLPAPER_LAST_ROTATION_TIME
 } from '../utils/wallpaperHelper';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { invalidateCloudQueries } from '../services/queryClient';
@@ -23,9 +29,10 @@ export const WallpaperSelectorDrawer: React.FC = () => {
     } catch {}
     return DEFAULT_WALLPAPER_URL;
   });
+  const [autoRotation, setAutoRotation] = useState<boolean>(() => isWallpaperAutoRotationEnabled());
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Écoute de l'événement d'ouverture depuis n'importe quel composant
+  // Écoute des événements d'ouverture, mise à jour et rotation auto
   useEffect(() => {
     const handleOpen = () => setIsOpen(true);
     const handleClose = () => setIsOpen(false);
@@ -37,15 +44,22 @@ export const WallpaperSelectorDrawer: React.FC = () => {
         setCurrentWallpaper(DEFAULT_WALLPAPER_URL);
       }
     };
+    const handleAutoRotationChanged = (e: any) => {
+      if (typeof e?.detail?.enabled === 'boolean') {
+        setAutoRotation(e.detail.enabled);
+      }
+    };
 
     window.addEventListener('studycloud_open_wallpaper_drawer', handleOpen);
     window.addEventListener('studycloud_close_wallpaper_drawer', handleClose);
     window.addEventListener('studycloud_wallpaper_updated', handleWallpaperUpdate);
+    window.addEventListener('studycloud_wallpaper_auto_rotation_changed', handleAutoRotationChanged as any);
 
     return () => {
       window.removeEventListener('studycloud_open_wallpaper_drawer', handleOpen);
       window.removeEventListener('studycloud_close_wallpaper_drawer', handleClose);
       window.removeEventListener('studycloud_wallpaper_updated', handleWallpaperUpdate);
+      window.removeEventListener('studycloud_wallpaper_auto_rotation_changed', handleAutoRotationChanged as any);
     };
   }, []);
 
@@ -54,18 +68,34 @@ export const WallpaperSelectorDrawer: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
+  const toggleAutoRotation = () => {
+    const nextState = !autoRotation;
+    setAutoRotation(nextState);
+    setWallpaperAutoRotationEnabled(nextState);
+    if (nextState) {
+      showToast('Rotation auto activée (change toutes les 48h)');
+    } else {
+      showToast('Rotation auto arrêtée : votre fond d\'écran restera fixe');
+    }
+  };
+
   const handleSelectPreset = (url: string, name: string) => {
     setCurrentWallpaper(url);
     showToast(`Fond d'écran "${name}" appliqué avec succès !`);
+    try {
+      localStorage.setItem(LS_WALLPAPER_LAST_ROTATION_TIME, String(Date.now()));
+    } catch {}
     applyDashboardWallpaper(url, name)
       .catch((err) => console.warn('[WallpaperDrawer] applyDashboardWallpaper warning:', err));
   };
 
   const handleRestoreDefault = () => {
-    handleSelectPreset(DEFAULT_WALLPAPER_URL, 'Rivage Turquoise');
+    handleSelectPreset(DEFAULT_WALLPAPER_URL, DEFAULT_WALLPAPER_NAME);
   };
 
   if (!isOpen) return null;
+
+  const isCustomActive = !isPresetWallpaper(currentWallpaper);
 
   return (
     <div className="fixed inset-0 z-[999999] flex select-none">
@@ -78,35 +108,77 @@ export const WallpaperSelectorDrawer: React.FC = () => {
       {/* 2. Tiroir latéral gauche (Drawer) */}
       <div className="relative w-full sm:w-[480px] md:w-[540px] max-w-[92vw] h-full bg-[#0a0e17] text-slate-100 shadow-2xl border-r border-white/10 flex flex-col z-10 animate-slideInLeft">
         
-        {/* En-tête épuré du panneau */}
-        <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-[#0e1422]">
-          <div>
-            <h2 className="text-base sm:text-lg font-black tracking-tight text-white">
+        {/* En-tête épuré du panneau avec bouton bascule d'arrêt / activation de la rotation automatique */}
+        <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-white/10 flex items-center justify-between bg-[#0e1422] gap-2.5">
+          <div className="min-w-0">
+            <h2 className="text-base sm:text-lg font-black tracking-tight text-white truncate">
               Fonds d'écran
             </h2>
-            <p className="text-xs text-slate-400 font-medium">
+            <p className="text-xs text-slate-400 font-medium truncate">
               Personnalisez l'arrière-plan de votre accueil StudyCloud
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsOpen(false)}
-            className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0 active:scale-95 border border-white/10"
-            title="Fermer le panneau"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+            {/* Bouton de bascule pour arrêter / activer la rotation automatique (48h) */}
+            <button
+              type="button"
+              onClick={toggleAutoRotation}
+              className={`group relative flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer select-none active:scale-95 ${
+                autoRotation
+                  ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.25)] hover:bg-emerald-500/25'
+                  : 'bg-white/5 border-white/15 text-slate-400 hover:text-slate-200 hover:bg-white/10'
+              }`}
+              title={
+                autoRotation
+                  ? 'Changement automatique actif : passe au fond suivant toutes les 48h. Cliquez pour arrêter et figer votre fond.'
+                  : 'Changement automatique arrêté : votre fond choisi reste pour toujours. Cliquez pour réactiver la rotation 48h.'
+              }
+            >
+              <span className={`w-2 h-2 rounded-full shrink-0 ${autoRotation ? 'bg-emerald-400 shadow-[0_0_6px_#34d399] animate-pulse' : 'bg-slate-500'}`} />
+              <span className="hidden sm:inline font-black tracking-wide">
+                {autoRotation ? 'Rotation 48h' : 'Fond fixe'}
+              </span>
+              <span className="sm:hidden font-black text-[11px]">
+                {autoRotation ? '48h' : 'Fixe'}
+              </span>
+              
+              {/* Switch visuel interactif */}
+              <div className={`w-7 h-4 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${
+                autoRotation ? 'bg-emerald-500 justify-end' : 'bg-slate-700 justify-start'
+              }`}>
+                <div className="w-3 h-3 rounded-full bg-white shadow-sm transition-transform duration-200" />
+              </div>
+            </button>
+
+            {/* Bouton Fermer */}
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0 active:scale-95 border border-white/10"
+              title="Fermer le panneau"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
-        {/* Corps défilable avec les 5 propositions d'images */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 scrollbar-thin scrollbar-thumb-white/20">
+        {/* Corps défilable avec les propositions d'images */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5 scrollbar-thin scrollbar-thumb-white/20">
 
           {/* Toast de confirmation en haut du panneau */}
           {toastMessage && (
             <div className="p-3 bg-emerald-950/80 border border-emerald-500/50 rounded-xl text-emerald-300 text-xs sm:text-sm font-semibold flex items-center gap-2.5 animate-fadeIn">
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>{toastMessage}</span>
+            </div>
+          )}
+
+          {/* Indicateur explicatif si l'utilisateur utilise une image importée personnelle */}
+          {isCustomActive && (
+            <div className="p-3 bg-sky-950/40 border border-sky-500/30 rounded-xl text-sky-200 text-xs font-medium flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-sky-400 shrink-0" />
+              <span>Vous utilisez une image importée personnelle. La rotation automatique ne s'applique que lorsque vous utilisez l'un de nos thèmes officiels ci-dessous.</span>
             </div>
           )}
 
@@ -125,7 +197,7 @@ export const WallpaperSelectorDrawer: React.FC = () => {
             </button>
           </div>
 
-          {/* Grille des 5 images proposées */}
+          {/* Grille des propositions d'images */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             {PRESET_WALLPAPERS.map((wp) => {
               const isSelected = currentWallpaper === wp.url;
@@ -158,7 +230,7 @@ export const WallpaperSelectorDrawer: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Informations sur l'image (Nom et description uniquement) */}
+                  {/* Informations sur l'image */}
                   <div className="p-3 flex-1 flex flex-col justify-center">
                     <h3 className="text-xs sm:text-sm font-bold text-white group-hover:text-amber-400 transition-colors">
                       {wp.name}
