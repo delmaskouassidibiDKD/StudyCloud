@@ -77,27 +77,27 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
 
   return (
     <div
-      className="bg-[#FDFBF7] dark:bg-slate-900/70 dark:backdrop-blur-xl border-2 border-stone-800 dark:border-white/10 rounded-xl sm:rounded-2xl p-2 sm:p-3 md:p-3.5 shadow-[1.5px_1.5px_0px_0px_#1c1917] sm:shadow-[2.5px_2.5px_0px_0px_#1c1917] dark:shadow-[0_8px_20px_rgba(0,0,0,0.3)] hover:shadow-[3.5px_3.5px_0px_0px_#1c1917] dark:hover:border-blue-500/30 transition-all flex flex-col justify-between group relative overflow-hidden w-full"
+      className="bg-[#FDFBF7] dark:bg-slate-900/70 dark:backdrop-blur-xl border-2 border-stone-800 dark:border-white/10 rounded-xl sm:rounded-2xl p-2 sm:p-3 md:p-3.5 shadow-[1.5px_1.5px_0px_0px_#1c1917] sm:shadow-[2.5px_2.5px_0px_0px_#1c1917] dark:shadow-[0_8px_20px_rgba(0,0,0,0.3)] hover:shadow-[3.5px_3.5px_0px_0px_#1c1917] dark:hover:border-blue-500/30 transition-all flex flex-col justify-between group relative overflow-hidden w-full min-h-[195px] sm:min-h-0"
     >
       {/* Delete Confirmation Menu Overlay */}
       {showDeleteMenu && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute inset-0 z-20 bg-[#FDFBF7]/95 backdrop-blur-sm p-5 flex flex-col items-center justify-center text-center animate-fadeIn"
+          className="absolute inset-0 z-20 bg-[#FDFBF7]/95 backdrop-blur-sm p-2 sm:p-5 flex flex-col items-center justify-center text-center animate-fadeIn"
         >
-          <div className="w-12 h-12 bg-red-100 border-2 border-stone-800 rounded-2xl flex items-center justify-center text-red-600 mb-3 shadow-[2px_2px_0px_0px_#1c1917]">
-            <AlertTriangle className="w-6 h-6" />
+          <div className="w-8 h-8 sm:w-12 sm:h-12 bg-red-100 border-2 border-stone-800 rounded-xl sm:rounded-2xl flex items-center justify-center text-red-600 mb-1 sm:mb-3 shadow-[1.5px_1.5px_0px_0px_#1c1917] sm:shadow-[2px_2px_0px_0px_#1c1917]">
+            <AlertTriangle className="w-4 h-4 sm:w-6 sm:h-6" />
           </div>
-          <h4 className="text-sm font-extrabold text-stone-900 mb-1">
-            Voulez-vous supprimer ce lien ?
+          <h4 className="text-[10px] sm:text-sm font-extrabold text-stone-900 mb-0.5 sm:mb-1">
+            Supprimer ce lien ?
           </h4>
-          <p className="text-xs text-stone-600 mb-4 px-2">
+          <p className="text-[8.5px] sm:text-xs text-stone-600 mb-2 sm:mb-4 px-1 sm:px-2 leading-tight">
             Cette action est irréversible et supprimera le partage de ce dossier.
           </p>
-          <div className="flex items-center gap-3 w-full max-w-xs">
+          <div className="flex items-center gap-1.5 sm:gap-3 w-full max-w-xs">
             <button
               onClick={() => setShowDeleteMenu(false)}
-              className="flex-1 bg-white hover:bg-stone-100 text-stone-800 text-xs font-bold py-2.5 px-3 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+              className="flex-1 bg-white hover:bg-stone-100 text-stone-800 text-[9px] sm:text-xs font-bold py-1.5 sm:py-2.5 px-2 sm:px-3 rounded-lg sm:rounded-xl border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] sm:shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
             >
               Annuler
             </button>
@@ -106,7 +106,7 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
                 onDelete(folder.id);
                 setShowDeleteMenu(false);
               }}
-              className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2.5 px-3 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white text-[9px] sm:text-xs font-bold py-1.5 sm:py-2.5 px-2 sm:px-3 rounded-lg sm:rounded-xl border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] sm:shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
             >
               Oui
             </button>
@@ -118,42 +118,43 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
       {showPublishModal && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute inset-0 z-20 bg-[#FDFBF7]/98 backdrop-blur-sm p-4 flex flex-col justify-between animate-fadeIn overflow-y-auto"
+          className="absolute inset-0 z-20 bg-[#FDFBF7]/98 backdrop-blur-sm p-2 sm:p-4 flex flex-col justify-between animate-fadeIn overflow-y-auto no-scrollbar"
         >
           {publishingState === 'loading' ? (
-            <div className="flex-1 flex flex-col items-center justify-center space-y-4">
-              <div className="w-16 h-16 bg-orange-100 border-3 border-stone-800 rounded-2xl flex items-center justify-center text-orange-600 shadow-[4px_4px_0px_0px_#1c1917]">
-                <Loader2 className="w-8 h-8 animate-spin" />
+            <div className="flex-1 flex flex-col items-center justify-center space-y-2 sm:space-y-4">
+              <div className="w-10 h-10 sm:w-16 sm:h-16 bg-orange-100 border-2 sm:border-3 border-stone-800 rounded-xl sm:rounded-2xl flex items-center justify-center text-orange-600 shadow-[2px_2px_0px_0px_#1c1917] sm:shadow-[4px_4px_0px_0px_#1c1917]">
+                <Loader2 className="w-5 h-5 sm:w-8 sm:h-8 animate-spin" />
               </div>
-              <p className="text-xs font-extrabold text-stone-950">Publication en cours...</p>
+              <p className="text-[10px] sm:text-xs font-extrabold text-stone-950">Publication en cours...</p>
             </div>
           ) : publishingState === 'success' ? (
-            <div className="flex-1 flex flex-col items-center justify-center space-y-4 animate-scaleUp">
-              <div className="w-16 h-16 bg-emerald-100 border-3 border-stone-800 rounded-2xl flex items-center justify-center text-emerald-600 shadow-[4px_4px_0px_0px_#1c1917]">
-                <Check className="w-8 h-8 stroke-[3]" />
+            <div className="flex-1 flex flex-col items-center justify-center space-y-2 sm:space-y-4 animate-scaleUp">
+              <div className="w-10 h-10 sm:w-16 sm:h-16 bg-emerald-100 border-2 sm:border-3 border-stone-800 rounded-xl sm:rounded-2xl flex items-center justify-center text-emerald-600 shadow-[2px_2px_0px_0px_#1c1917] sm:shadow-[4px_4px_0px_0px_#1c1917]">
+                <Check className="w-5 h-5 sm:w-8 sm:h-8 stroke-[3]" />
               </div>
-              <p className="text-xs font-extrabold text-emerald-700">Publié avec succès !</p>
+              <p className="text-[10px] sm:text-xs font-extrabold text-emerald-700">Publié avec succès !</p>
             </div>
           ) : (
             <>
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-xs font-extrabold text-stone-900 uppercase tracking-wide flex items-center gap-1.5">
-                    <Globe className="w-4 h-4 text-emerald-600" />
-                    <span>Rendre ce lien public</span>
+                <div className="flex items-center justify-between mb-1 sm:mb-2">
+                  <h4 className="text-[10px] sm:text-xs font-black text-stone-900 uppercase tracking-tight flex items-center gap-1 min-w-0">
+                    <Globe className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span className="truncate sm:hidden">Rendre public</span>
+                    <span className="hidden sm:inline">Rendre ce lien public</span>
                   </h4>
                   <button
                     onClick={() => setShowPublishModal(false)}
-                    className="text-stone-500 hover:text-stone-800 text-xs font-bold p-1 cursor-pointer"
+                    className="text-stone-500 hover:text-stone-800 text-xs font-bold p-0.5 ml-1 shrink-0 cursor-pointer"
                   >
                     ✕
                   </button>
                 </div>
-                <p className="text-xs text-stone-700 font-medium mb-3">
+                <p className="text-[9px] sm:text-xs text-stone-700 font-medium mb-1.5 sm:mb-3 leading-snug">
                   Voulez-vous rendre ce lien public ? Tout le monde le verra !
                 </p>
-                <div className="mb-2">
-                  <label className="block text-[11px] font-extrabold text-stone-800 mb-1">
+                <div className="mb-1 sm:mb-2">
+                  <label className="block text-[9px] sm:text-[11px] font-extrabold text-stone-800 mb-0.5 sm:mb-1">
                     Commentaire (obligatoire) <span className="text-red-500">*</span>
                   </label>
                   <textarea
@@ -165,13 +166,13 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
                       if (val && !isGeneric) setCommentError(false);
                     }}
                     placeholder="Écrivez un commentaire ou une description..."
-                    rows={3}
+                    rows={2}
                     className={`w-full bg-white border-2 ${
                       commentError ? 'border-red-500 bg-red-50/30' : 'border-stone-800'
-                    } rounded-xl p-2 text-xs font-medium outline-none shadow-[2px_2px_0px_0px_#1c1917] resize-none`}
+                    } rounded-lg sm:rounded-xl p-1.5 sm:p-2 text-[9.5px] sm:text-xs font-medium outline-none shadow-[1px_1px_0px_0px_#1c1917] sm:shadow-[2px_2px_0px_0px_#1c1917] resize-none leading-tight`}
                   />
                   {commentError && (
-                    <p className="text-[10px] font-bold text-red-600 mt-1">
+                    <p className="text-[8.5px] sm:text-[10px] font-bold text-red-600 mt-0.5 sm:mt-1 leading-tight">
                       {commentInput.trim() && genericPrefixes.some(p => commentInput.trim().startsWith(p))
                         ? "Veuillez compléter ou modifier la description générique avant de publier."
                         : "Le commentaire est obligatoire pour publier."}
@@ -180,7 +181,7 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2 pt-2">
+              <div className="flex flex-col gap-1 sm:gap-2 pt-1 sm:pt-2">
                 {isPublic && (
                   <button
                     onClick={() => {
@@ -195,23 +196,24 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
                       StudyCloudAPI.toggleSharePublic(folder.id, false).catch(() => {});
                       setShowPublishModal(false);
                     }}
-                    className="w-full bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-bold py-2 px-3 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+                    className="w-full bg-amber-100 hover:bg-amber-200 text-amber-900 text-[9px] sm:text-xs font-bold py-1 sm:py-2 px-1.5 sm:px-3 rounded-lg sm:rounded-xl border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] sm:shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-center"
                   >
                     Repasser en privé
                   </button>
                 )}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 sm:gap-2">
                   <button
                     onClick={() => setShowPublishModal(false)}
-                    className="flex-1 bg-white hover:bg-stone-100 text-stone-800 text-xs font-bold py-2 px-3 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+                    className="flex-1 bg-white hover:bg-stone-100 text-stone-800 text-[9.5px] sm:text-xs font-bold py-1 sm:py-2 px-1.5 sm:px-3 rounded-lg sm:rounded-xl border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] sm:shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-center"
                   >
                     Annuler
                   </button>
                   <button
                     onClick={handlePublish}
-                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold py-2 px-3 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-[9.5px] sm:text-xs font-black py-1 sm:py-2 px-1.5 sm:px-3 rounded-lg sm:rounded-xl border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] sm:shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-center truncate"
                   >
-                    {isPublic ? 'Mettre à jour' : 'Rendre public'}
+                    <span className="sm:hidden">{isPublic ? 'Modifier' : 'Publier'}</span>
+                    <span className="hidden sm:inline">{isPublic ? 'Mettre à jour' : 'Rendre public'}</span>
                   </button>
                 </div>
               </div>
