@@ -88,7 +88,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`flex flex-col space-y-4 pb-24 pt-16 md:pt-16 animate-fadeIn min-h-screen relative transition-colors bg-transparent ${
+      className={`flex flex-col space-y-4 pb-24 ${uploadedItems.length > 0 ? 'pt-[90px] sm:pt-[96px]' : 'pt-16'} md:pt-16 animate-fadeIn min-h-screen relative transition-colors bg-transparent ${
         isDragging ? 'ring-4 ring-orange-500 ring-inset bg-orange-50/20' : ''
       }`}
     >
@@ -104,13 +104,13 @@ export const UploadView: React.FC<UploadViewProps> = ({
       )}
 
       {/* Fixed Header for Upload Tab - Solid Dark #070a13 */}
-      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-white/90 dark:bg-[#070a13]/95 backdrop-blur-md py-2 px-3 sm:px-4 md:px-8 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm transition-colors">
-        <div className="flex items-center justify-between gap-2 sm:gap-3 max-w-7xl mx-auto w-full">
-          {/* Boutons d'importation + Compteur d'éléments importés */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-            <div className="flex items-center gap-1.5 sm:gap-2.5">
-              <label className="flex flex-col items-center justify-center bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
-                <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
+      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-white/95 dark:bg-[#070a13]/95 backdrop-blur-md py-1.5 sm:py-2 px-2.5 sm:px-4 md:px-8 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm transition-colors">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-1.5 sm:gap-2.5 max-w-7xl mx-auto w-full">
+          {/* Ligne 1 sur mobile : Boutons d'importation + Compteur d'éléments importés */}
+          <div className="flex items-center justify-between md:justify-start gap-1.5 sm:gap-3 w-full md:w-auto">
+            <div className="flex items-center gap-1 sm:gap-2">
+              <label className="flex flex-col items-center justify-center bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-lg sm:rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[1.5px_1.5px_0px_0px_#1c1917] dark:shadow-none text-[9px] sm:text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
+                <Upload className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
                 <span className="leading-none">dossier</span>
                 <input
                   type="file"
@@ -121,8 +121,8 @@ export const UploadView: React.FC<UploadViewProps> = ({
                 />
               </label>
 
-              <label className="flex flex-col items-center justify-center bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
-                <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
+              <label className="flex flex-col items-center justify-center bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-lg sm:rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[1.5px_1.5px_0px_0px_#1c1917] dark:shadow-none text-[9px] sm:text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
+                <Upload className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
                 <span className="leading-none">fichier</span>
                 <input
                   type="file"
@@ -132,8 +132,8 @@ export const UploadView: React.FC<UploadViewProps> = ({
                 />
               </label>
 
-              <label className="flex flex-col items-center justify-center bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
-                <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
+              <label className="flex flex-col items-center justify-center bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-lg sm:rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[1.5px_1.5px_0px_0px_#1c1917] dark:shadow-none text-[9px] sm:text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
+                <Upload className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
                 <span className="leading-none">images</span>
                 <input
                   type="file"
@@ -144,8 +144,8 @@ export const UploadView: React.FC<UploadViewProps> = ({
                 />
               </label>
 
-              <label className="flex flex-col items-center justify-center bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
-                <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
+              <label className="flex flex-col items-center justify-center bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-lg sm:rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[1.5px_1.5px_0px_0px_#1c1917] dark:shadow-none text-[9px] sm:text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
+                <Upload className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
                 <span className="leading-none">son</span>
                 <input
                   type="file"
@@ -158,35 +158,37 @@ export const UploadView: React.FC<UploadViewProps> = ({
             </div>
 
             {uploadedItems.length > 0 && (
-              <span className="text-[11px] sm:text-xs font-bold text-stone-600 dark:text-stone-300 uppercase tracking-wider px-2 sm:px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-stone-300 dark:border-stone-700/60 shrink-0">
+              <span className="text-[9.5px] sm:text-xs font-bold text-stone-600 dark:text-stone-300 uppercase tracking-wider px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-stone-300 dark:border-stone-700/60 shrink-0">
                 Éléments importés ({uploadedItems.length})
               </span>
             )}
           </div>
 
-          {/* Actions : Nouveau partage + Créer le lien de partage */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Ligne 2 sur mobile (ou à droite sur desktop) : Actions Nouveau partage + Créer le lien de partage */}
+          <div className={`flex items-center gap-1.5 sm:gap-2 ${uploadedItems.length > 0 ? 'w-full md:w-auto' : 'w-auto'} justify-end shrink-0`}>
             <button
               onClick={uploadedItems.length > 0 ? () => onOpenClearConfirm() : undefined}
               disabled={uploadedItems.length === 0}
-              className={`flex items-center gap-1.5 font-bold text-xs px-2.5 sm:px-3 py-2 rounded-xl border-2 transition-all shrink-0 select-none ${
+              className={`flex items-center justify-center gap-1 sm:gap-1.5 font-bold text-[10.5px] sm:text-xs px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl border-2 transition-all shrink-0 select-none ${
+                uploadedItems.length > 0 ? 'flex-1 md:flex-initial' : ''
+              } ${
                 uploadedItems.length === 0
                   ? 'bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500 border-stone-300 dark:border-stone-700 cursor-not-allowed shadow-none opacity-60'
-                  : 'bg-white hover:bg-stone-100 dark:bg-stone-900 dark:hover:bg-stone-800 text-stone-800 dark:text-white border-stone-800 dark:border-stone-600 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 cursor-pointer'
+                  : 'bg-white hover:bg-stone-100 dark:bg-stone-900 dark:hover:bg-stone-800 text-stone-800 dark:text-white border-stone-800 dark:border-stone-600 shadow-[1.5px_1.5px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 cursor-pointer'
               }`}
               title={uploadedItems.length === 0 ? "Aucun élément importé pour créer un nouveau partage" : "Commencer un nouveau partage"}
             >
-              <FolderPlus className="w-3.5 h-3.5 text-stone-800 dark:text-white" />
-              <span>Nouveau partage</span>
+              <FolderPlus className="w-3.5 h-3.5 text-stone-800 dark:text-white shrink-0" />
+              <span className="whitespace-nowrap">Nouveau partage</span>
             </button>
 
             {uploadedItems.length > 0 && (
               <button
                 onClick={onOpenCreateShareLink}
-                className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-2.5 sm:px-3 py-2 rounded-xl border-2 border-stone-800 dark:border-orange-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer shrink-0"
+                className="flex-1 md:flex-initial flex items-center justify-center gap-1 sm:gap-1.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-[10.5px] sm:text-xs px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl border-2 border-stone-800 dark:border-orange-400/40 shadow-[1.5px_1.5px_0px_0px_#1c1917] dark:shadow-none transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer shrink-0"
               >
-                <Share2 className="w-3.5 h-3.5" />
-                <span>Créer le lien de partage</span>
+                <Share2 className="w-3.5 h-3.5 shrink-0" />
+                <span className="whitespace-nowrap">Créer le lien de partage</span>
               </button>
             )}
           </div>
