@@ -45,6 +45,13 @@ export const PRESET_WALLPAPERS: PresetWallpaperItem[] = [
     isDefault: false,
   },
   {
+    id: 'aurora',
+    name: 'Aurore Boréale Boréalis',
+    subtitle: 'Lueurs nordiques vert émeraude et cimes enneigées',
+    url: '/wallpapers/wallpaper-aurora.jpg',
+    isDefault: false,
+  },
+  {
     id: 'abstract-dark',
     name: 'Abstrait Minimaliste OLED',
     subtitle: 'Sphères sombres élégantes et lignes rouge vif',
