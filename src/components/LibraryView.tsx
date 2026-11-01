@@ -1652,7 +1652,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     <p className="text-xs text-stone-500 dark:text-slate-400 mt-1 max-w-sm">Parcourez les produits de la marketplace pour ajouter des articles à votre panier !</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 w-full">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5 gap-2.5 sm:gap-3 w-full">
                     {cartProducts.map((item) => {
                       const displayImages = item.imageUrls && item.imageUrls.length > 0
                         ? item.imageUrls
@@ -1669,8 +1669,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           className="bg-white rounded-2xl border border-stone-200/80 overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between text-left cursor-pointer group"
                         >
                           <div>
-                            {/* Top Image Box (Espace vertical agrandi, image entière en object-contain sans coupure) */}
-                            <div className="w-full h-48 sm:h-56 bg-[#f8f7f4] relative overflow-hidden flex items-center justify-center p-2 rounded-t-2xl">
+                            {/* Top Image Box (Ajusté verticalement, image bien cadrée sans espace perdu) */}
+                            <div className="w-full h-44 sm:h-52 bg-[#f8f7f4] relative overflow-hidden flex items-center justify-center p-1.5 rounded-t-2xl">
                               {displayImages.length > 0 ? (
                                 <img
                                   src={displayImages[0]}
@@ -1681,55 +1681,62 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                                 />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-stone-300">
-                                  <Package className="w-12 h-12 stroke-[1.5]" />
+                                  <Package className="w-10 h-10 stroke-[1.5]" />
                                 </div>
                               )}
                             </div>
 
-                            {/* Details */}
-                            <div className="p-3 sm:p-3.5 space-y-1">
-                              <h4 className="font-extrabold text-xs sm:text-sm text-stone-900 line-clamp-2 leading-snug group-hover:text-orange-600 transition-colors">
+                            {/* Details avec ellipses pour éviter les débordements */}
+                            <div className="p-2.5 sm:p-3 space-y-0.5">
+                              <h4 
+                                className="font-extrabold text-xs sm:text-sm text-stone-900 truncate leading-snug group-hover:text-orange-600 transition-colors"
+                                title={item.title}
+                              >
                                 {item.title}
                               </h4>
                               {item.description && (
-                                <p className="text-[11px] sm:text-xs text-stone-500 line-clamp-1">
+                                <p 
+                                  className="text-[11px] text-stone-500 truncate"
+                                  title={item.description}
+                                >
                                   {item.description}
                                 </p>
                               )}
                             </div>
                           </div>
 
-                          <div className="p-3 sm:p-3.5 pt-0 space-y-2">
-                            <div className="flex items-center justify-between gap-1">
-                              <div className="font-extrabold text-sm sm:text-base text-orange-600">
-                                {item.price}
-                              </div>
+                          <div className="p-2.5 sm:p-3 pt-0 space-y-1.5">
+                            <div className="font-extrabold text-xs sm:text-sm text-orange-600 truncate">
+                              {item.price}
+                            </div>
 
-                              {/* Non-3D Cart button above Commander button (on the right) */}
+                            {/* Boutons Commander et Ajouter au panier sur la même ligne */}
+                            <div className="flex items-center gap-1.5 w-full">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOrderProduct(item);
+                                }}
+                                className="flex-1 py-1.5 sm:py-2 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all cursor-pointer text-center active:scale-[0.98] truncate"
+                                title="Commander"
+                              >
+                                Commander
+                              </button>
+
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   toggleCartItem(item.id, item.title);
                                 }}
-                                className="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1.5 hover:bg-amber-200"
+                                className="py-1.5 sm:py-2 px-2 sm:px-2.5 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0 hover:bg-amber-200"
                                 title="Retirer du panier"
                               >
                                 <ShoppingCart className="w-3.5 h-3.5 text-amber-800 fill-amber-700" />
                                 <span className="text-[11px]">Ajouté</span>
                               </button>
                             </div>
-
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOrderProduct(item);
-                              }}
-                              className="w-full py-2 sm:py-2.5 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-xs transition-all cursor-pointer text-center active:scale-[0.98]"
-                            >
-                              Commander
-                            </button>
                           </div>
                         </div>
                       );
@@ -1754,7 +1761,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 w-full">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5 gap-2.5 sm:gap-3 w-full">
                     {productsList.map((item) => {
                       const displayImages = item.imageUrls && item.imageUrls.length > 0
                         ? item.imageUrls
@@ -1773,8 +1780,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           className="bg-white rounded-2xl border border-stone-200/80 overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between text-left cursor-pointer group"
                         >
                           <div>
-                            {/* Top Image Box (Espace vertical agrandi, image entière en object-contain sans coupure) */}
-                            <div className="w-full h-48 sm:h-56 bg-[#f8f7f4] relative overflow-hidden flex items-center justify-center p-2 rounded-t-2xl">
+                            {/* Top Image Box (Ajusté verticalement, image bien cadrée sans espace perdu) */}
+                            <div className="w-full h-44 sm:h-52 bg-[#f8f7f4] relative overflow-hidden flex items-center justify-center p-1.5 rounded-t-2xl">
                               {displayImages.length > 0 ? (
                                 <img
                                   src={displayImages[0]}
@@ -1785,38 +1792,56 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                                 />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-stone-300">
-                                  <Package className="w-12 h-12 stroke-[1.5]" />
+                                  <Package className="w-10 h-10 stroke-[1.5]" />
                                 </div>
                               )}
                             </div>
 
-                            {/* Details */}
-                            <div className="p-3 sm:p-3.5 space-y-1">
-                              <h4 className="font-extrabold text-xs sm:text-sm text-stone-900 line-clamp-2 leading-snug group-hover:text-orange-600 transition-colors">
+                            {/* Details avec ellipses pour éviter les débordements */}
+                            <div className="p-2.5 sm:p-3 space-y-0.5">
+                              <h4 
+                                className="font-extrabold text-xs sm:text-sm text-stone-900 truncate leading-snug group-hover:text-orange-600 transition-colors"
+                                title={item.title}
+                              >
                                 {item.title}
                               </h4>
                               {item.description && (
-                                <p className="text-[11px] sm:text-xs text-stone-500 line-clamp-1">
+                                <p 
+                                  className="text-[11px] text-stone-500 truncate"
+                                  title={item.description}
+                                >
                                   {item.description}
                                 </p>
                               )}
                             </div>
                           </div>
 
-                          <div className="p-3 sm:p-3.5 pt-0 space-y-2">
-                            <div className="flex items-center justify-between gap-1">
-                              <div className="font-extrabold text-sm sm:text-base text-orange-600">
-                                {item.price}
-                              </div>
+                          <div className="p-2.5 sm:p-3 pt-0 space-y-1.5">
+                            <div className="font-extrabold text-xs sm:text-sm text-orange-600 truncate">
+                              {item.price}
+                            </div>
 
-                              {/* Non-3D Cart button above Commander button (on the right) */}
+                            {/* Boutons Commander et Ajouter au panier sur la même ligne */}
+                            <div className="flex items-center gap-1.5 w-full">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOrderProduct(item);
+                                }}
+                                className="flex-1 py-1.5 sm:py-2 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all cursor-pointer text-center active:scale-[0.98] truncate"
+                                title="Commander"
+                              >
+                                Commander
+                              </button>
+
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   toggleCartItem(item.id, item.title);
                                 }}
-                                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                                className={`py-1.5 sm:py-2 px-2 sm:px-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0 border ${
                                   cartItemIds.includes(item.id)
                                     ? 'bg-amber-100 text-amber-900 border-amber-300 font-extrabold hover:bg-amber-200'
                                     : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
@@ -1829,17 +1854,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                                 </span>
                               </button>
                             </div>
-
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOrderProduct(item);
-                              }}
-                              className="w-full py-2 sm:py-2.5 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-xs transition-all cursor-pointer text-center active:scale-[0.98]"
-                            >
-                              Commander
-                            </button>
                           </div>
                         </div>
                       );
@@ -2858,31 +2872,51 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             )}
                           </div>
 
-                          {/* Details */}
+                          {/* Details avec ellipses */}
                           <div className="p-2.5 md:p-3 space-y-0.5 md:space-y-1">
-                            <h4 className="font-extrabold text-xs md:text-sm text-stone-900 line-clamp-2 leading-snug group-hover:text-orange-600 transition-colors">
+                            <h4 
+                              className="font-extrabold text-xs md:text-sm text-stone-900 truncate leading-snug group-hover:text-orange-600 transition-colors"
+                              title={item.title}
+                            >
                               {item.title}
                             </h4>
                             {item.description && (
-                              <p className="text-[10px] md:text-xs text-stone-500 line-clamp-1">
+                              <p 
+                                className="text-[10px] md:text-xs text-stone-500 truncate"
+                                title={item.description}
+                              >
                                 {item.description}
                               </p>
                             )}
                           </div>
                         </div>
 
-                        <div className="p-2.5 md:p-3 pt-0 space-y-1.5 md:space-y-2.5">
-                          <div className="flex items-center justify-between gap-1">
-                            <div className="font-extrabold text-xs md:text-sm text-orange-600">
-                              {item.price}
-                            </div>
+                        <div className="p-2.5 md:p-3 pt-0 space-y-1.5">
+                          <div className="font-extrabold text-xs md:text-sm text-orange-600 truncate">
+                            {item.price}
+                          </div>
+
+                          {/* Boutons Commander & Ajouter sur la même ligne */}
+                          <div className="flex items-center gap-1.5 w-full">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOrderProduct(item);
+                              }}
+                              className="flex-1 py-1.5 md:py-2 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-extrabold text-[11px] md:text-xs rounded-xl shadow-xs transition-all cursor-pointer text-center active:scale-[0.98] truncate"
+                              title="Commander"
+                            >
+                              Commander
+                            </button>
+
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 toggleCartItem(item.id, item.title);
                               }}
-                              className={`px-2 md:px-2.5 py-0.5 md:py-1 rounded-lg md:rounded-xl text-[10px] md:text-xs font-bold transition-all cursor-pointer flex items-center gap-1 border ${
+                              className={`py-1.5 md:py-2 px-2 md:px-2.5 rounded-xl text-[10px] md:text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0 border ${
                                 cartItemIds.includes(item.id)
                                   ? 'bg-amber-100 text-amber-900 border-amber-300 font-extrabold hover:bg-amber-200'
                                   : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
@@ -2893,16 +2927,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               <span>{cartItemIds.includes(item.id) ? 'Ajouté' : 'Ajouter'}</span>
                             </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOrderProduct(item);
-                            }}
-                            className="w-full py-1.5 md:py-2.5 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-extrabold text-[11px] md:text-sm rounded-xl md:rounded-2xl shadow-xs transition-all cursor-pointer text-center active:scale-[0.98]"
-                          >
-                            Commander
-                          </button>
                         </div>
                       </div>
                     );
