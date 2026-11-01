@@ -1125,6 +1125,13 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             willChange: 'transform'
           }}
         >
+          {/* Fond d'ambiance immersif en arrière-plan : garantit que l'écran entier est habillé sans aucune bande vide */}
+          <img 
+            src={dashboardWallpaper} 
+            alt="" 
+            aria-hidden="true"
+            className="absolute inset-0 w-full h-full object-cover object-center select-none filter blur-3xl scale-125 opacity-60 brightness-[0.70]" 
+          />
           {/* Image de fond plein écran s'adaptant à 100% à l'écran de l'ordinateur et à l'espace des applications */}
           <img 
             src={dashboardWallpaper} 
@@ -1133,7 +1140,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             decoding="sync"
             // @ts-ignore
             fetchPriority="high"
-            className="w-full h-full object-cover object-center select-none filter brightness-[0.82] contrast-[1.05]" 
+            className="relative w-full h-full object-cover object-center select-none filter brightness-[0.85] contrast-[1.05]" 
             style={{
               width: '100%',
               height: '100%',
