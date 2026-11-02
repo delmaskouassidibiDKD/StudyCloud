@@ -2221,7 +2221,7 @@ export default function App() {
                 </button>
               </div>
 
-              <div id="studycloud-top-audio-portal" className="flex items-center shrink-0" />
+              <div id="studycloud-top-audio-portal" className="hidden md:flex items-center shrink-0" />
             </div>
             
             {/* Right: Sur Ordinateur -> Boutons originaux directs (Horloge, Partager, Télécharger) | Sur Téléphone -> Bouton 3 traits avec sous-menu */}
