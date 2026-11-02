@@ -1385,8 +1385,8 @@ export function CenterMenu({
 
                 <div
                   className={`flex-1 w-full h-full select-text leading-relaxed font-serif text-stone-900 dark:text-stone-100 ${!isMobile && previewScrollMode === 'horizontal'
-                      ? 'overflow-x-auto overflow-y-hidden px-8 sm:px-12 py-8'
-                      : 'overflow-y-auto px-4 sm:px-10 md:px-20 py-6 sm:py-8'
+                    ? 'overflow-x-auto overflow-y-hidden px-8 sm:px-12 py-8'
+                    : 'overflow-y-auto px-4 sm:px-10 md:px-20 py-6 sm:py-8'
                     }`}
                   style={{
                     zoom: isMobile ? '100%' : `${effectiveZoom}%`,
@@ -1851,7 +1851,7 @@ export function CenterMenu({
 
         {/* Dock vertical mince sur mobile pour le contrôle de la lecture automatique (collé sur le côté droit) */}
         {isMobile && (isAudioMenuOpen || speechState === 'playing' || speechState === 'paused') && (
-          <div 
+          <div
             className="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 z-40 flex flex-col items-center gap-1.5 py-2 px-1 bg-white/95 dark:bg-stone-900/95 backdrop-blur-md rounded-2xl border border-stone-300 dark:border-stone-700 shadow-2xl shadow-stone-900/20 select-none animate-fadeIn"
             style={{ width: '38px' }}
           >
@@ -1898,11 +1898,10 @@ export function CenterMenu({
             <button
               type="button"
               onClick={() => setAutoScrollEnabled(prev => !prev)}
-              className={`w-7 h-7 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
-                autoScrollEnabled
+              className={`w-7 h-7 rounded-xl flex items-center justify-center transition-all cursor-pointer ${autoScrollEnabled
                   ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 border border-emerald-300 dark:border-emerald-700'
                   : 'text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800'
-              }`}
+                }`}
               title={autoScrollEnabled ? "Défilement auto actif" : "Défilement auto désactivé"}
             >
               <span className={`w-2 h-2 rounded-full ${autoScrollEnabled ? 'bg-emerald-500 animate-ping' : 'bg-stone-400'}`} />
