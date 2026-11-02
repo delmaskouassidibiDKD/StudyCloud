@@ -2146,7 +2146,7 @@ export default function App() {
         <div className="fixed inset-0 left-0 right-0 z-[99999] bg-[#FDFBF7] dark:bg-[#0b0f19] flex flex-col animate-fadeIn overflow-hidden">
           {/* Top Header Bar - Solid Dark #070a13 */}
           <div className="fixed top-0 left-0 right-0 z-50 bg-[#FDFBF7] dark:bg-[#070a13] h-[44px] py-1 px-3 md:px-6 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm flex items-center justify-between gap-2">
-            {/* Left: Bouton Retour (Taille réduite demandée) */}
+            {/* Left: Bouton Retour (Normal sur Ordinateur md+, réduit sur Téléphone) */}
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 onClick={() => {
@@ -2156,29 +2156,37 @@ export default function App() {
                   setIsStudySpaceFullscreen(false);
                   safeLocalStorageRemove('studycloud_current_conversation_id');
                 }}
-                className="flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-bold text-[10px] sm:text-[11px] rounded-md sm:rounded-lg border-[1.5px] border-stone-800 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer touch-manipulation shrink-0"
+                className="flex items-center gap-1 px-2 py-0.5 md:px-2.5 md:py-1 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-extrabold text-[10px] md:text-xs rounded-md md:rounded-lg border-[1.5px] md:border-2 border-stone-800 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer touch-manipulation shrink-0"
                 title="Retour"
               >
-                <ArrowLeft className="w-3 h-3 text-stone-900 dark:text-white shrink-0" />
+                <ArrowLeft className="w-3 h-3 md:w-3.5 md:h-3.5 text-stone-900 dark:text-white shrink-0" />
                 <span>Retour</span>
               </button>
             </div>
 
-            {/* Center: 3 boutons de navigation des menus (Menu actuel, PDF, Studio) avec sélection douce et lumineuse */}
+            {/* Center: Sur Ordinateur -> Titre du fichier ou "Menu de création" | Sur Téléphone -> Les 3 boutons de navigation */}
             <div className="flex-1 flex items-center justify-center gap-1 sm:gap-2 px-1 min-w-0" id="studycloud-top-center-zone">
-              <div className="flex items-center p-0.5 rounded-lg sm:rounded-xl bg-stone-200/80 dark:bg-zinc-800/90 border border-stone-300 dark:border-zinc-700 shadow-inner">
+              {/* Sur Ordinateur (Desktop md+) : Titre du fichier ou "Menu de création" */}
+              <div className="hidden md:flex items-center justify-center gap-2 overflow-hidden px-2 min-w-0">
+                <p className="text-xs lg:text-sm font-bold text-stone-900 dark:text-white leading-tight truncate overflow-hidden text-ellipsis text-center max-w-xs lg:max-w-md shrink">
+                  {activePreviewItem ? activePreviewItem.name : "Menu de création"}
+                </p>
+              </div>
+
+              {/* Sur Téléphone (Mobile uniquement : md:hidden) : 3 boutons de navigation des menus (Menu, PDF, Studio) avec sélection douce et lumineuse */}
+              <div className="flex md:hidden items-center p-0.5 rounded-lg sm:rounded-xl bg-stone-200/80 dark:bg-zinc-800/90 border border-stone-300 dark:border-zinc-700 shadow-inner">
                 {/* 1. Menu Actuel (Fichiers & Espace d'étude) */}
                 <button
                   type="button"
                   onClick={() => navigateToMobilePreviewTab(0)}
-                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-xs transition-all duration-200 cursor-pointer touch-manipulation ${
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] transition-all duration-200 cursor-pointer touch-manipulation ${
                     mobilePreviewTab === 0
                       ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-900 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
                       : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-transparent font-bold'
                   }`}
                   title="Menu actuel (Fichiers & Assistant)"
                 >
-                  <Folder className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                  <Folder className="w-3 h-3 shrink-0" />
                   <span>Menu</span>
                 </button>
 
@@ -2186,14 +2194,14 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => navigateToMobilePreviewTab(1)}
-                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-xs transition-all duration-200 cursor-pointer touch-manipulation ${
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] transition-all duration-200 cursor-pointer touch-manipulation ${
                     mobilePreviewTab === 1
                       ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-900 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
                       : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-transparent font-bold'
                   }`}
                   title="Menu du document PDF / Lecteur"
                 >
-                  <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                  <FileText className="w-3 h-3 shrink-0" />
                   <span>PDF</span>
                 </button>
 
@@ -2201,14 +2209,14 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => navigateToMobilePreviewTab(2)}
-                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-xs transition-all duration-200 cursor-pointer touch-manipulation ${
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] transition-all duration-200 cursor-pointer touch-manipulation ${
                     mobilePreviewTab === 2
                       ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-900 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
                       : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-transparent font-bold'
                   }`}
                   title="Menu Studio de création"
                 >
-                  <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                  <Sparkles className="w-3 h-3 shrink-0" />
                   <span>Studio</span>
                 </button>
               </div>
@@ -2216,101 +2224,66 @@ export default function App() {
               <div id="studycloud-top-audio-portal" className="flex items-center shrink-0" />
             </div>
             
-            {/* Right: Contrôle musique & Bouton 3 traits avec sous-menu latéral (Horloge, Partager, Télécharger) */}
-            <div className="flex items-center gap-2 shrink-0 relative" ref={headerActionsMenuRef}>
+            {/* Right: Sur Ordinateur -> Boutons originaux directs (Horloge, Partager, Télécharger) | Sur Téléphone -> Bouton 3 traits avec sous-menu */}
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              {/* Bouton Musique */}
               <HeaderMelodyControl compact={true} />
 
-              <button
-                type="button"
-                onClick={() => setIsHeaderActionsMenuOpen(prev => !prev)}
-                className={`p-1.5 rounded-md sm:rounded-lg border-[1.5px] border-stone-800 dark:border-[#334155] ${
-                  isHeaderActionsMenuOpen
-                    ? 'bg-orange-500 text-white'
-                    : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white'
-                } shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer touch-manipulation flex items-center justify-center shrink-0`}
-                title="Menu des options (Horloge, Partager, Télécharger)"
-                aria-label="Options"
-              >
-                <Menu className="w-4 h-4 stroke-[2.5]" />
-              </button>
+              {/* Version Ordinateur (Desktop md+) : Taille en Mo + Boutons Horloge, Partager, Télécharger */}
+              <div className="hidden md:flex items-center gap-2 shrink-0">
+                {activePreviewItem?.size ? (
+                  <span className="text-[10px] text-stone-600 dark:text-slate-300 font-semibold px-1">
+                    {(() => {
+                      const bytes = activePreviewItem.size;
+                      if (!bytes) return '0 o';
+                      const k = 1024;
+                      const sizes = ['o', 'Ko', 'Mo', 'Go'];
+                      const i = Math.floor(Math.log(bytes) / Math.log(k));
+                      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+                    })()}
+                  </span>
+                ) : null}
 
-              {/* Petit menu latéral / popup déroulant */}
-              {isHeaderActionsMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 w-52 sm:w-60 bg-white dark:bg-[#181a20] border-2 border-stone-800 dark:border-zinc-700 rounded-xl shadow-2xl py-1.5 z-[999999] animate-fadeIn">
-                  <div className="px-3 py-1.5 border-b border-stone-200 dark:border-zinc-800 text-[10px] font-black text-stone-500 dark:text-zinc-400 uppercase tracking-wider flex items-center justify-between">
-                    <span>Options & Actions</span>
-                    {activePreviewItem?.size ? (
-                      <span className="text-[9px] font-semibold text-stone-400 dark:text-zinc-500">
-                        {(() => {
-                          const bytes = activePreviewItem.size;
-                          if (!bytes) return '';
-                          const k = 1024;
-                          const sizes = ['o', 'Ko', 'Mo', 'Go'];
-                          const i = Math.floor(Math.log(bytes) / Math.log(k));
-                          return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-                        })()}
+                {/* Clock / Study Timer Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowStudyTimer(true)}
+                  className={`px-2 py-1 rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    timerRunning
+                      ? 'bg-amber-400 text-stone-950 border-stone-900 animate-pulse'
+                      : timerLeft < timerDuration
+                      ? 'bg-amber-100 text-amber-900 border-stone-800'
+                      : 'bg-white hover:bg-stone-100 text-stone-900'
+                  }`}
+                  title="Minuteur d'étude"
+                >
+                  <Clock className={`w-3.5 h-3.5 shrink-0 ${timerRunning ? 'text-stone-950' : 'text-blue-600'}`} />
+                  <span className="text-xs font-extrabold leading-none text-center">
+                    {timerRunning || timerLeft < timerDuration
+                      ? formatTimerDisplay(timerLeft)
+                      : 'Horloge'}
+                  </span>
+                </button>
+
+                {activePreviewItem && (
+                  <>
+                    {/* Share Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenExternalCreateShareLink([activePreviewItem])}
+                      className="px-2 py-1 bg-white hover:bg-stone-100 text-stone-900 rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0"
+                      title="Créer un lien de partage pour ce document"
+                    >
+                      <Share2 className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                      <span className="text-xs font-extrabold leading-none text-center">
+                        Partager
                       </span>
-                    ) : null}
-                  </div>
-
-                  <div className="flex flex-col py-1">
-                    {/* 1. Bouton Horloge */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowStudyTimer(true);
-                        setIsHeaderActionsMenuOpen(false);
-                      }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-stone-800 dark:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer text-left"
-                    >
-                      <div className={`p-1.5 rounded-md ${timerRunning ? 'bg-amber-400 text-stone-950 animate-pulse' : 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'}`}>
-                        <Clock className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="leading-tight truncate">
-                          {timerRunning || timerLeft < timerDuration
-                            ? `Horloge : ${formatTimerDisplay(timerLeft)}`
-                            : 'Horloge (Minuteur)'}
-                        </span>
-                        <span className="text-[10px] font-normal text-stone-400 dark:text-zinc-500">
-                          Minuteur d’étude & révisions
-                        </span>
-                      </div>
                     </button>
 
-                    {/* 2. Bouton Partager */}
+                    {/* Download Button */}
                     <button
                       type="button"
-                      disabled={!activePreviewItem}
                       onClick={() => {
-                        if (!activePreviewItem) return;
-                        setIsHeaderActionsMenuOpen(false);
-                        handleOpenExternalCreateShareLink([activePreviewItem]);
-                      }}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold transition-colors text-left ${
-                        activePreviewItem
-                          ? 'text-stone-800 dark:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800 cursor-pointer'
-                          : 'text-stone-300 dark:text-zinc-600 cursor-not-allowed opacity-40'
-                      }`}
-                    >
-                      <div className="p-1.5 rounded-md bg-orange-100 dark:bg-orange-900/40 text-orange-500">
-                        <Share2 className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="leading-tight">Partager</span>
-                        <span className="text-[10px] font-normal text-stone-400 dark:text-zinc-500">
-                          Créer un lien de partage
-                        </span>
-                      </div>
-                    </button>
-
-                    {/* 3. Bouton Télécharger */}
-                    <button
-                      type="button"
-                      disabled={!activePreviewItem}
-                      onClick={() => {
-                        if (!activePreviewItem) return;
-                        setIsHeaderActionsMenuOpen(false);
                         const content = activePreviewItem.url || `Ceci est le fichier ${activePreviewItem.name} téléchargé depuis UniFolder Share.`;
                         const blob = activePreviewItem.url && (activePreviewItem.url.startsWith('data:') || activePreviewItem.url.startsWith('blob:') || activePreviewItem.url.startsWith('http')) 
                           ? fetch(activePreviewItem.url).then(r => r.blob()).catch(() => new Blob([content], { type: 'text/plain;charset=utf-8' }))
@@ -2318,6 +2291,124 @@ export default function App() {
                         blob.then((b) => {
                           const url = URL.createObjectURL(b);
                           const a = document.createElement('a');
+                          a.href = url;
+                          a.download = activePreviewItem.name;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                        });
+                      }}
+                      className="px-2.5 py-1 bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-xs rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                      title="Télécharger le fichier"
+                    >
+                      <Download className="w-3.5 h-3.5 shrink-0" />
+                      <span>Télécharger</span>
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Version Téléphone (Mobile uniquement : md:hidden) : Bouton 3 traits avec sous-menu latéral */}
+              <div className="flex md:hidden relative" ref={headerActionsMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsHeaderActionsMenuOpen(prev => !prev)}
+                  className={`p-1.5 rounded-md border-[1.5px] border-stone-800 dark:border-[#334155] ${
+                    isHeaderActionsMenuOpen
+                      ? 'bg-orange-500 text-white'
+                      : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white'
+                  } shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer touch-manipulation flex items-center justify-center shrink-0`}
+                  title="Menu des options (Horloge, Partager, Télécharger)"
+                  aria-label="Options"
+                >
+                  <Menu className="w-4 h-4 stroke-[2.5]" />
+                </button>
+
+                {/* Petit menu latéral / popup déroulant sur mobile */}
+                {isHeaderActionsMenuOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-52 bg-white dark:bg-[#181a20] border-2 border-stone-800 dark:border-zinc-700 rounded-xl shadow-2xl py-1.5 z-[999999] animate-fadeIn">
+                    <div className="px-3 py-1.5 border-b border-stone-200 dark:border-zinc-800 text-[10px] font-black text-stone-500 dark:text-zinc-400 uppercase tracking-wider flex items-center justify-between">
+                      <span>Options & Actions</span>
+                      {activePreviewItem?.size ? (
+                        <span className="text-[9px] font-semibold text-stone-400 dark:text-zinc-500">
+                          {(() => {
+                            const bytes = activePreviewItem.size;
+                            if (!bytes) return '';
+                            const k = 1024;
+                            const sizes = ['o', 'Ko', 'Mo', 'Go'];
+                            const i = Math.floor(Math.log(bytes) / Math.log(k));
+                            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+                          })()}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="flex flex-col py-1">
+                      {/* 1. Bouton Horloge */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowStudyTimer(true);
+                          setIsHeaderActionsMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-stone-800 dark:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer text-left"
+                      >
+                        <div className={`p-1.5 rounded-md ${timerRunning ? 'bg-amber-400 text-stone-950 animate-pulse' : 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'}`}>
+                          <Clock className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="leading-tight truncate">
+                            {timerRunning || timerLeft < timerDuration
+                              ? `Horloge : ${formatTimerDisplay(timerLeft)}`
+                              : 'Horloge (Minuteur)'}
+                          </span>
+                          <span className="text-[10px] font-normal text-stone-400 dark:text-zinc-500">
+                            Minuteur d’étude & révisions
+                          </span>
+                        </div>
+                      </button>
+
+                      {/* 2. Bouton Partager */}
+                      <button
+                        type="button"
+                        disabled={!activePreviewItem}
+                        onClick={() => {
+                          if (!activePreviewItem) return;
+                          setIsHeaderActionsMenuOpen(false);
+                          handleOpenExternalCreateShareLink([activePreviewItem]);
+                        }}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold transition-colors text-left ${
+                          activePreviewItem
+                            ? 'text-stone-800 dark:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800 cursor-pointer'
+                            : 'text-stone-300 dark:text-zinc-600 cursor-not-allowed opacity-40'
+                        }`}
+                      >
+                        <div className="p-1.5 rounded-md bg-orange-100 dark:bg-orange-900/40 text-orange-500">
+                          <Share2 className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="leading-tight">Partager</span>
+                          <span className="text-[10px] font-normal text-stone-400 dark:text-zinc-500">
+                            Créer un lien de partage
+                          </span>
+                        </div>
+                      </button>
+
+                      {/* 3. Bouton Télécharger */}
+                      <button
+                        type="button"
+                        disabled={!activePreviewItem}
+                        onClick={() => {
+                          if (!activePreviewItem) return;
+                          setIsHeaderActionsMenuOpen(false);
+                          const content = activePreviewItem.url || `Ceci est le fichier ${activePreviewItem.name} téléchargé depuis UniFolder Share.`;
+                          const blob = activePreviewItem.url && (activePreviewItem.url.startsWith('data:') || activePreviewItem.url.startsWith('blob:') || activePreviewItem.url.startsWith('http')) 
+                            ? fetch(activePreviewItem.url).then(r => r.blob()).catch(() => new Blob([content], { type: 'text/plain;charset=utf-8' }))
+                            : Promise.resolve(new Blob([content], { type: 'text/plain;charset=utf-8' }));
+                          blob.then((b) => {
+                            const url = URL.createObjectURL(b);
+                            const a = document.createElement('a');
                           a.href = url;
                           a.download = activePreviewItem.name;
                           document.body.appendChild(a);
@@ -2347,6 +2438,7 @@ export default function App() {
               )}
             </div>
           </div>
+        </div>
 
           {/* Main Content Area: 3 Columns on Desktop, Navigable Tabs on Mobile */}
           <div className="flex-1 w-full h-dvh relative">
