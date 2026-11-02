@@ -209,16 +209,16 @@ export function CenterMenu({
   // Positionnement vertical et déplacement tactile du dock audio sur mobile
   const [mobileAudioDockTop, setMobileAudioDockTop] = useState<number | null>(null);
   const dragDockStartYRef = useRef<number>(0);
-  const dragDockStartTopRef = useRef<number>(10);
+  const dragDockStartTopRef = useRef<number>(58);
 
   const handleDockTouchStart = (e: React.TouchEvent) => {
     dragDockStartYRef.current = e.touches[0].clientY;
-    dragDockStartTopRef.current = mobileAudioDockTop !== null ? mobileAudioDockTop : 10;
+    dragDockStartTopRef.current = mobileAudioDockTop !== null ? mobileAudioDockTop : 58;
   };
 
   const handleDockTouchMove = (e: React.TouchEvent) => {
     const deltaY = e.touches[0].clientY - dragDockStartYRef.current;
-    const newTop = Math.max(8, Math.min(window.innerHeight - 280, dragDockStartTopRef.current + deltaY));
+    const newTop = Math.max(48, Math.min(window.innerHeight - 180, dragDockStartTopRef.current + deltaY));
     setMobileAudioDockTop(newTop);
   };
 
@@ -1977,16 +1977,16 @@ export function CenterMenu({
           );
         })()}
 
-        {/* Dock vertical mince sur mobile pour le contrôle de la lecture automatique (collé en haut à droite dans la marge) */}
+        {/* Dock vertical ultra-compact sur mobile pour le contrôle de la lecture automatique (collé à droite du PDF) */}
         {isMobile && (isAudioMenuOpen || speechState === 'playing' || speechState === 'paused') && (
           <div
-            className="absolute right-1.5 sm:right-2 z-40 flex flex-col items-center gap-1.5 py-2 px-1 bg-white/95 dark:bg-stone-900/95 backdrop-blur-md rounded-2xl border border-stone-300 dark:border-stone-700 shadow-2xl shadow-stone-900/20 select-none animate-fadeIn touch-none"
+            className="absolute right-0.5 sm:right-1 z-40 flex flex-col items-center gap-1 py-1.5 px-0.5 bg-white/95 dark:bg-stone-900/95 backdrop-blur-md rounded-xl border border-stone-300 dark:border-stone-700 shadow-xl shadow-stone-900/20 select-none animate-fadeIn touch-none"
             style={{ 
-              width: '38px',
-              top: mobileAudioDockTop !== null ? `${mobileAudioDockTop}px` : '10px',
+              width: '25px',
+              top: mobileAudioDockTop !== null ? `${mobileAudioDockTop}px` : '58px',
             }}
           >
-            {/* Poignée de déplacement & indicateur d'animation */}
+            {/* Poignée de déplacement & indicateur d'animation ultra-compacts */}
             <div 
               onTouchStart={handleDockTouchStart}
               onTouchMove={handleDockTouchMove}
@@ -1995,14 +1995,14 @@ export function CenterMenu({
             >
               {speechState === 'playing' ? (
                 <div className="flex flex-col items-center gap-0.5 py-0.5 text-orange-500">
-                  <span className="w-3.5 h-0.5 bg-orange-500 rounded-full animate-pulse" />
-                  <span className="w-4 h-0.5 bg-orange-500 rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
-                  <span className="w-2.5 h-0.5 bg-orange-500 rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+                  <span className="w-2.5 h-0.5 bg-orange-500 rounded-full animate-pulse" />
+                  <span className="w-3 h-0.5 bg-orange-500 rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
+                  <span className="w-2 h-0.5 bg-orange-500 rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-0.5 py-1 text-stone-400">
-                  <span className="w-3 h-0.5 bg-stone-300 dark:bg-stone-600 rounded-full" />
-                  <span className="w-3 h-0.5 bg-stone-300 dark:bg-stone-600 rounded-full" />
+                <div className="flex flex-col items-center gap-0.5 py-0.5 text-stone-400">
+                  <span className="w-2.5 h-0.5 bg-stone-300 dark:bg-stone-600 rounded-full" />
+                  <span className="w-2.5 h-0.5 bg-stone-300 dark:bg-stone-600 rounded-full" />
                 </div>
               )}
             </div>
@@ -2010,55 +2010,55 @@ export function CenterMenu({
             <button
               type="button"
               onClick={handleTogglePause}
-              className="w-7 h-7 rounded-xl flex items-center justify-center hover:bg-stone-100 dark:hover:bg-stone-800 active:scale-90 transition-all cursor-pointer"
+              className="w-[21px] h-[21px] rounded-lg flex items-center justify-center hover:bg-stone-100 dark:hover:bg-stone-800 active:scale-90 transition-all cursor-pointer"
               title={speechState === 'playing' ? "Pause" : "Reprendre"}
             >
               {speechState === 'playing' ? (
-                <Pause className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                <Pause className="w-2.5 h-2.5 text-amber-500 fill-amber-500" />
               ) : (
-                <Play className="w-3.5 h-3.5 text-emerald-500 fill-emerald-500 ml-0.5" />
+                <Play className="w-2.5 h-2.5 text-emerald-500 fill-emerald-500 ml-0.5" />
               )}
             </button>
 
             <button
               type="button"
               onClick={handleStop}
-              className="w-7 h-7 rounded-xl flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-950/40 text-red-500 active:scale-90 transition-all cursor-pointer"
+              className="w-[21px] h-[21px] rounded-lg flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-950/40 text-red-500 active:scale-90 transition-all cursor-pointer"
               title="Arrêter la lecture"
             >
-              <Square className="w-3 h-3 fill-red-500" />
+              <Square className="w-2.5 h-2.5 fill-red-500" />
             </button>
 
             <button
               type="button"
               onClick={handleRestart}
-              className="w-7 h-7 rounded-xl flex items-center justify-center hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-500 active:scale-90 transition-all cursor-pointer"
+              className="w-[21px] h-[21px] rounded-lg flex items-center justify-center hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-500 active:scale-90 transition-all cursor-pointer"
               title="Recommencer depuis le début"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <RotateCcw className="w-2.5 h-2.5" />
             </button>
 
             {/* Auto-scroll toggle */}
             <button
               type="button"
               onClick={() => setAutoScrollEnabled(prev => !prev)}
-              className={`w-7 h-7 rounded-xl flex items-center justify-center transition-all cursor-pointer ${autoScrollEnabled
+              className={`w-[21px] h-[20px] rounded-lg flex items-center justify-center transition-all cursor-pointer ${autoScrollEnabled
                   ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 border border-emerald-300 dark:border-emerald-700'
                   : 'text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800'
                 }`}
               title={autoScrollEnabled ? "Défilement auto actif" : "Défilement auto désactivé"}
             >
-              <span className={`w-2 h-2 rounded-full ${autoScrollEnabled ? 'bg-emerald-500 animate-ping' : 'bg-stone-400'}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${autoScrollEnabled ? 'bg-emerald-500 animate-ping' : 'bg-stone-400'}`} />
             </button>
 
             {/* Fermer */}
             <button
               type="button"
               onClick={() => setIsAudioMenuOpen(false)}
-              className="w-6 h-6 mt-1 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer"
+              className="w-[18px] h-[18px] mt-0.5 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer"
               title="Fermer"
             >
-              <X className="w-3 h-3" />
+              <X className="w-2.5 h-2.5" />
             </button>
           </div>
         )}
