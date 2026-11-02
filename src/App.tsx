@@ -40,6 +40,7 @@ import { WallpaperSelectorDrawer } from './components/WallpaperSelectorDrawer';
 import { UploadQueueWidget } from './components/UploadQueueWidget';
 import { checkAndPerformWallpaperAutoRotation } from './utils/wallpaperHelper';
 import { purgeVolatileStorage, safeLocalStorageRemove } from './utils/safeStorage';
+import { documentSpeechService, useDocumentSpeech } from './services/documentSpeechService';
 
 // Nettoyage immédiat au chargement de l'application pour libérer l'espace des appareils saturés
 if (typeof window !== 'undefined') {
@@ -740,6 +741,7 @@ export default function App() {
   const loadStagingShareFilesFromD1 = useCallback(async () => {
     refetchStagingFiles();
   }, [refetchStagingFiles]);
+  const docSpeech = useDocumentSpeech();
   const [activePreviewItemState, setActivePreviewItemState] = useState<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean; folderName?: string; lockFullscreen?: boolean } | null>(null);
   const [previewOwnerTab, setPreviewOwnerTab] = useState<NavigationTab | null>(() => {
     try {
@@ -827,12 +829,44 @@ export default function App() {
     }, 1000);
   };
 
-  // Nettoyage au démarrage de tout vestige de document en local
+  // Restauration automatique de la session de lecture vocale après rechargement d'écran
   useEffect(() => {
-    try {
-      localStorage.removeItem('studycloud_active_preview_item');
-    } catch (e) {}
+    const saved = documentSpeechService.getSavedSession();
+    if (saved && saved.file && saved.wasPlaying) {
+      console.log('[App] Session de lecture active détectée après rechargement pour:', saved.file.name);
+      documentSpeechService.restoreSession(saved);
+      setActivePreviewItem(saved.file);
+      setIsStudySpaceOpen(true);
+      setMobilePreviewTab(1);
+
+      // Auto-reprise : tenter de relancer immédiatement
+      try {
+        documentSpeechService.resume();
+      } catch {}
+
+      // Relancer au premier toucher si le navigateur bloque l'autoplay sans interaction préalable
+      const handleFirstGesture = () => {
+        if (documentSpeechService.getState() === 'paused') {
+          documentSpeechService.resume();
+        }
+      };
+      window.addEventListener('pointerdown', handleFirstGesture, { once: true });
+      window.addEventListener('touchstart', handleFirstGesture, { once: true });
+      window.addEventListener('click', handleFirstGesture, { once: true });
+      window.addEventListener('keydown', handleFirstGesture, { once: true });
+    }
   }, []);
+
+  // Reconnexion automatique : si l'utilisateur revient dans le menu création alors qu'un fichier était en cours de lecture
+  useEffect(() => {
+    if (isStudySpaceOpen && !activePreviewItemState && documentSpeechService.hasActiveSession()) {
+      const readingFile = documentSpeechService.getActiveFile();
+      if (readingFile) {
+        setActivePreviewItemState(readingFile);
+        setMobilePreviewTab(1);
+      }
+    }
+  }, [isStudySpaceOpen, activePreviewItemState]);
 
   // Fermer et détacher tout document lorsque l'utilisateur démarre une nouvelle conversation
   useEffect(() => {
@@ -933,7 +967,11 @@ export default function App() {
   useBackHandler(showCreateShareLinkModal, () => setShowCreateShareLinkModal(false), 'app-create-share-modal');
   useBackHandler(Boolean(isAssistantOpen && (activePreviewItemState || isStudySpaceOpen)), () => setIsAssistantOpen(false), 'app-preview-assistant');
   useBackHandler(Boolean(activePreviewItemState || isStudySpaceOpen), () => {
-    setActivePreviewItem(null);
+    if (!documentSpeechService.isPlaying() && !documentSpeechService.isPaused()) {
+      setActivePreviewItem(null);
+    } else {
+      setActivePreviewItemState(null);
+    }
     setIsStudySpaceOpen(false);
   }, 'app-preview-study-space');
   useBackHandler(currentTab !== 'folders', () => setCurrentTab('folders'), 'app-tab-navigation');
@@ -1599,7 +1637,11 @@ export default function App() {
       if (file) {
         setActivePreviewItem(file);
       } else {
-        setActivePreviewItem(null);
+        if (documentSpeechService.hasActiveSession()) {
+          setActivePreviewItem(documentSpeechService.getActiveFile());
+        } else {
+          setActivePreviewItem(null);
+        }
       }
 
       if (folder) {
@@ -2178,7 +2220,12 @@ export default function App() {
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 onClick={() => {
-                  setActivePreviewItem(null);
+                  if (!documentSpeechService.isPlaying() && !documentSpeechService.isPaused()) {
+                    setActivePreviewItem(null);
+                  } else {
+                    // Laisser la lecture vocale continuer en tâche de fond !
+                    setActivePreviewItemState(null);
+                  }
                   setIsStudySpaceOpen(false);
                   setActiveFolderDetail(null);
                   setIsStudySpaceFullscreen(false);
@@ -2626,6 +2673,56 @@ export default function App() {
       )}
 
 
+
+      {/* Mini lecteur flottant quand un document est en cours de lecture en arrière-plan */}
+      {!activePreviewItemState && !isStudySpaceOpen && (docSpeech.state === 'playing' || docSpeech.state === 'paused') && (
+        <div className="fixed bottom-16 sm:bottom-6 left-1/2 -translate-x-1/2 z-[99990] w-[92%] max-w-md bg-stone-900/95 dark:bg-stone-800/95 backdrop-blur-md text-white rounded-2xl border border-amber-500/50 shadow-2xl p-2.5 flex items-center justify-between gap-3 animate-slideUp">
+          <div 
+            className="flex items-center gap-2.5 min-w-0 cursor-pointer flex-1"
+            onClick={() => {
+              const file = documentSpeechService.getActiveFile();
+              if (file) {
+                setActivePreviewItem(file);
+                setIsStudySpaceOpen(true);
+                setMobilePreviewTab(1);
+              }
+            }}
+            title="Cliquer pour revenir au document"
+          >
+            <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+              <Mic className={`w-4 h-4 text-amber-400 ${docSpeech.state === 'playing' ? 'animate-pulse' : ''}`} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold truncate text-stone-100">
+                {docSpeech.activeFile?.name || 'Document en lecture'}
+              </p>
+              <p className="text-[10px] text-amber-300 font-medium">
+                {docSpeech.state === 'playing' ? 'Lecture en cours' : 'En pause'} {docSpeech.activePage ? `• P. ${docSpeech.activePage}` : ''} • Toucher pour ouvrir
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => documentSpeechService.togglePlayPause()}
+              className="w-8 h-8 rounded-xl bg-stone-800 hover:bg-stone-700 flex items-center justify-center text-amber-400 active:scale-95 transition-all cursor-pointer"
+              title={docSpeech.state === 'playing' ? "Mettre en pause" : "Reprendre la lecture"}
+            >
+              {docSpeech.state === 'playing' ? <Pause className="w-4 h-4 fill-amber-400" /> : <Play className="w-4 h-4 fill-amber-400 ml-0.5" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => documentSpeechService.stop()}
+              className="w-7 h-7 rounded-lg hover:bg-stone-800 flex items-center justify-center text-stone-400 hover:text-red-400 active:scale-95 transition-colors cursor-pointer"
+              title="Arrêter la lecture"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Notification supérieure d'importation et progression des fichiers */}
       <UploadQueueWidget />

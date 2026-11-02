@@ -23,6 +23,7 @@ import { getWorkerApiUrl } from '../services/api';
 import { getCurrentUserId } from '../services/userSync';
 import { getAuthHeaders } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
+import { documentSpeechService, useDocumentSpeech, SpeechSegment as GlobalSpeechSegment } from '../services/documentSpeechService';
 
 // Worker configuration for pdfjsLib
 if (typeof window !== 'undefined') {
@@ -185,26 +186,23 @@ export function CenterMenu({
   const isMobile = Boolean(isMobileScreen || (typeof window !== 'undefined' && window.innerWidth < 768));
   const { t: tStudy } = useStudyLanguage();
   const [docZoom, setDocZoom] = useState<number>(100);
-  const [speechState, setSpeechState] = useState<'idle' | 'loading' | 'playing' | 'paused' | 'stopped'>('idle');
-  const [isAudioMenuOpen, setIsAudioMenuOpen] = useState(false);
+
+  // Synchronisation avec le service global de synthèse vocale pour documents
+  const docSpeech = useDocumentSpeech();
+  const speechState = docSpeech.state;
+  const speechSegments = docSpeech.segments;
+  const currentSegmentIdx = docSpeech.currentSegmentIdx;
+  const activeSpeechPage = docSpeech.activePage;
+  const activeSpeechLineIndex = docSpeech.activeLineIndex;
+  const autoScrollEnabled = docSpeech.autoScrollEnabled;
+  const spokenWordCharIndex = docSpeech.spokenWordCharIndex;
+  const spokenWordLength = docSpeech.spokenWordLength;
+
+  const [currentPdfViewerPage, setCurrentPdfViewerPage] = useState<number>(() => docSpeech.activePage || 1);
+  const [isAudioMenuOpen, setIsAudioMenuOpen] = useState<boolean>(() => docSpeech.state === 'playing' || docSpeech.state === 'paused');
   const [currentText, setCurrentText] = useState<string>('');
-  const [speechSegments, setSpeechSegments] = useState<SpeechSegment[]>([]);
-  const [currentSegmentIdx, setCurrentSegmentIdx] = useState<number>(0);
-  const [activeSpeechPage, setActiveSpeechPage] = useState<number>(1);
-  const [activeSpeechLineIndex, setActiveSpeechLineIndex] = useState<number>(-1);
-  const [currentPdfViewerPage, setCurrentPdfViewerPage] = useState<number>(1);
-  const [autoScrollEnabled, setAutoScrollEnabled] = useState<boolean>(true);
-  const [spokenWordCharIndex, setSpokenWordCharIndex] = useState<number>(-1);
-  const [spokenWordLength, setSpokenWordLength] = useState<number>(0);
-  const speechSegmentsRef = useRef<SpeechSegment[]>([]);
-  const currentSentenceIdxRef = useRef<number>(0);
-  const autoScrollEnabledRef = useRef<boolean>(true);
   const activeSentenceElRef = useRef<HTMLElement>(null);
   const textContainerRef = useRef<HTMLDivElement>(null);
-  const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const speechStateRef = useRef<'idle' | 'loading' | 'playing' | 'paused' | 'stopped'>('idle');
-  const isExplicitlyStoppedRef = useRef<boolean>(false);
-  const speechWatchdogTimeoutRef = useRef<any>(null);
 
   // Positionnement vertical et déplacement tactile du dock audio sur mobile
   const [mobileAudioDockTop, setMobileAudioDockTop] = useState<number | null>(null);
@@ -222,39 +220,32 @@ export function CenterMenu({
     setMobileAudioDockTop(newTop);
   };
 
+  // Synchronisation automatique de la page du PDF avec la page lue par la synthèse
   useEffect(() => {
-    speechStateRef.current = speechState;
-  }, [speechState]);
-
-  useEffect(() => {
-    autoScrollEnabledRef.current = autoScrollEnabled;
-  }, [autoScrollEnabled]);
-
-  // Watchdog de santé pour la synthèse vocale (sans faire de pause() destructive sur mobile)
-  useEffect(() => {
-    if (speechState !== 'playing') {
-      if (speechWatchdogTimeoutRef.current) {
-        clearTimeout(speechWatchdogTimeoutRef.current);
-        speechWatchdogTimeoutRef.current = null;
-      }
-      return;
+    if (docSpeech.activePage && docSpeech.activePage > 0 && docSpeech.activePage !== currentPdfViewerPage) {
+      setCurrentPdfViewerPage(docSpeech.activePage);
     }
+  }, [docSpeech.activePage]);
 
-    const interval = setInterval(() => {
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        // Si l'état est "playing" mais que speechSynthesis est totalement inactif depuis plus de 2.5s
-        if (speechStateRef.current === 'playing' && !isExplicitlyStoppedRef.current && !window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
-          console.warn('[Speech] Inactivité du moteur vocal détectée, passage à la phrase suivante ou relance...');
-          const nextIdx = currentSentenceIdxRef.current + 1;
-          if (nextIdx < speechSegmentsRef.current.length) {
-            speakSentence(nextIdx);
-          }
-        }
-      }
-    }, 2500);
-
-    return () => clearInterval(interval);
+  // Ouverture automatique du dock dès que la lecture commence
+  useEffect(() => {
+    if (speechState === 'playing' || speechState === 'paused') {
+      setIsAudioMenuOpen(true);
+    }
   }, [speechState]);
+
+  // Défilement automatique vers la phrase active
+  useEffect(() => {
+    if (autoScrollEnabled && speechSegments[currentSegmentIdx]) {
+      const seg = speechSegments[currentSegmentIdx];
+      if (seg.slide) {
+        setActiveSlideIdx(seg.slide - 1);
+      }
+      if (activeSentenceElRef.current) {
+        activeSentenceElRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [currentSegmentIdx, autoScrollEnabled, speechSegments]);
 
   // Resolved binary / URL state
   const [resolvedUrl, setResolvedUrl] = useState<string>(() => {
@@ -353,14 +344,15 @@ export function CenterMenu({
 
   const effectiveZoom = isLectureEtSoulignement ? docZoom : 100;
 
-  // Le basculement vers le mode horizontal ou vertical ne doit JAMAIS activer la lecture automatique ni le soulignage
+  // Le basculement vers le mode horizontal ou vertical ne doit JAMAIS couper la lecture si celle-ci est déjà en cours
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+    if (!documentSpeechService.isPlaying() && !documentSpeechService.isPaused()) {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        try {
+          window.speechSynthesis.cancel();
+        } catch {}
+      }
     }
-    setSpeechState('idle');
-    setActiveSpeechLineIndex(-1);
-    setSpokenWordCharIndex(-1);
   }, [previewScrollMode]);
 
   // Listen to external speech toggle from header
@@ -626,30 +618,28 @@ export function CenterMenu({
   // Reset zoom & speech when switching file
   useEffect(() => {
     setDocZoom(100);
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+    if (activePreviewItem?.id) {
+      const activeFile = documentSpeechService.getActiveFile();
+      // Uniquement si on ouvre un NOUVEAU fichier différent de celui en cours de lecture
+      if (activeFile && activeFile.id !== activePreviewItem.id) {
+        documentSpeechService.stop();
+        setIsAudioMenuOpen(false);
+        setCurrentPdfViewerPage(1);
+      } else if (activeFile && activeFile.id === activePreviewItem.id) {
+        // Même fichier : restaurer la page courante
+        if (docSpeech.activePage) {
+          setCurrentPdfViewerPage(docSpeech.activePage);
+        }
+        setIsAudioMenuOpen(true);
+      }
     }
-    setSpeechState('idle');
-    setIsAudioMenuOpen(false);
-    setCurrentText('');
-    speechSegmentsRef.current = [];
-    setSpeechSegments([]);
     setWordSpeechSegments([]);
-    setCurrentSegmentIdx(0);
-    setActiveSpeechPage(1);
-    setActiveSpeechLineIndex(-1);
-    setCurrentPdfViewerPage(1);
-    setSpokenWordCharIndex(-1);
     setPdfViewerMode('native');
   }, [activePreviewItem?.id]);
 
-  // Cleanup on unmount
+  // Pas d'annulation destructive sur démontage pour permettre la lecture en continu quand on quitte le menu création
   useEffect(() => {
-    return () => {
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
-    };
+    return () => {};
   }, []);
 
   // Pre-load voices
@@ -735,188 +725,16 @@ export function CenterMenu({
     return `Lecture du document ${cleanTitle}.`;
   };
 
-  const speakSentence = (index: number) => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      alert("La synthèse vocale n'est pas prise en charge sur ce navigateur.");
-      speechStateRef.current = 'stopped';
-      setSpeechState('stopped');
-      return;
-    }
-
-    if (speechWatchdogTimeoutRef.current) {
-      clearTimeout(speechWatchdogTimeoutRef.current);
-      speechWatchdogTimeoutRef.current = null;
-    }
-
-    const segments = speechSegmentsRef.current;
-    if (!segments || segments.length === 0 || index >= segments.length) {
-      handleStop();
-      return;
-    }
-
-    const segment = segments[index];
-    const sentence = segment?.text?.trim();
-
-    // Passer les segments vides ou sans caractères prononçables
-    if (!sentence || sentence.replace(/[^\w\d\u00C0-\u017F]/g, '').length === 0) {
-      if (index < segments.length - 1) {
-        setTimeout(() => {
-          if (!isExplicitlyStoppedRef.current && speechStateRef.current === 'playing') {
-            speakSentence(index + 1);
-          }
-        }, 25);
-        return;
-      } else {
-        handleStop();
-        return;
-      }
-    }
-
-    currentSentenceIdxRef.current = index;
-    setCurrentSegmentIdx(index);
-    setSpokenWordCharIndex(-1);
-    setSpokenWordLength(0);
-
-    if (segment?.page) {
-      setActiveSpeechPage(segment.page);
-      if (typeof segment.page === 'number') {
-        setCurrentPdfViewerPage(segment.page);
-      }
-    }
-    if (typeof segment?.lineIndex === 'number') {
-      setActiveSpeechLineIndex(segment.lineIndex);
-    }
-
-    const utterance = new SpeechSynthesisUtterance(sentence);
-    utterance.lang = 'fr-FR';
-    utterance.rate = 1.10; // Lecture fluide, naturelle et dynamique
-    utterance.pitch = 1.0;
-
-    const voices = window.speechSynthesis.getVoices();
-    const frVoice = voices.find(v => v.lang.startsWith('fr') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Online')))
-      || voices.find(v => v.lang.startsWith('fr') || v.lang.includes('fr'));
-    if (frVoice) {
-      utterance.voice = frVoice;
-    }
-
-    // Référence active pour empêcher le ramasse-miettes (Garbage Collector) de Chrome/Edge/V8
-    activeUtteranceRef.current = utterance;
-    (window as any).__studyCloudUtterance = utterance;
-    if (typeof window !== 'undefined') {
-      if (!(window as any).__studyCloudActiveUtterances) {
-        (window as any).__studyCloudActiveUtterances = new Set();
-      }
-      (window as any).__studyCloudActiveUtterances.add(utterance);
-    }
-
-    // Suivi précis du mot prononcé pour le soulignage dynamique (sur Word/Texte uniquement)
-    utterance.onboundary = (event) => {
-      if (isWord || isText) {
-        if (event.name === 'word' || typeof event.charIndex === 'number') {
-          setSpokenWordCharIndex(event.charIndex);
-          setSpokenWordLength(event.charLength || 0);
-        }
-      }
-    };
-
-    let hasEnded = false;
-    const safeEndSentence = (nextIndex: number) => {
-      if (hasEnded) return;
-      hasEnded = true;
-
-      if (speechWatchdogTimeoutRef.current) {
-        clearTimeout(speechWatchdogTimeoutRef.current);
-        speechWatchdogTimeoutRef.current = null;
-      }
-
-      if (typeof window !== 'undefined' && (window as any).__studyCloudActiveUtterances) {
-        (window as any).__studyCloudActiveUtterances.delete(utterance);
-      }
-      activeUtteranceRef.current = null;
-
-      if (isExplicitlyStoppedRef.current || speechStateRef.current === 'stopped' || speechStateRef.current === 'paused') {
-        return;
-      }
-
-      if (nextIndex < segments.length) {
-        setTimeout(() => {
-          if (!isExplicitlyStoppedRef.current && speechStateRef.current === 'playing') {
-            speakSentence(nextIndex);
-          }
-        }, 50);
-      } else {
-        handleStop();
-      }
-    };
-
-    utterance.onend = () => {
-      safeEndSentence(index + 1);
-    };
-
-    utterance.onerror = (e) => {
-      if (isExplicitlyStoppedRef.current || speechStateRef.current === 'stopped' || speechStateRef.current === 'paused') {
-        return;
-      }
-      console.warn(`[Speech] Event onerror sur phrase #${index}:`, e.error);
-      safeEndSentence(index + 1);
-    };
-
-    // Watchdog de sécurité par phrase : si Chromium plante ou omet onend, passer automatiquement après le délai calculé
-    const wordCount = sentence.split(/\s+/).filter(Boolean).length;
-    const maxExpectedDurationMs = Math.max(3500, Math.round((wordCount / 2.0) * 1000 + 4000));
-
-    speechWatchdogTimeoutRef.current = setTimeout(() => {
-      if (!hasEnded && speechStateRef.current === 'playing' && currentSentenceIdxRef.current === index) {
-        console.warn(`[SpeechWatchdog] Phrase #${index} a dépassé le délai (${maxExpectedDurationMs}ms), transition automatique...`);
-        safeEndSentence(index + 1);
-      }
-    }, maxExpectedDurationMs);
-
-    // Défilement automatique du fichier vers la phrase lue si activé
-    if (autoScrollEnabledRef.current) {
-      if (segment.slide) {
-        setActiveSlideIdx(segment.slide - 1);
-      }
-      if (activeSentenceElRef.current) {
-        activeSentenceElRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }
-
-    speechStateRef.current = 'playing';
-    setSpeechState('playing');
-
-    try {
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
-    } catch {}
-
-    window.speechSynthesis.speak(utterance);
-  };
-
   const handleStartSpeech = async () => {
     setIsAudioMenuOpen(true);
-    isExplicitlyStoppedRef.current = false;
-    if (speechWatchdogTimeoutRef.current) {
-      clearTimeout(speechWatchdogTimeoutRef.current);
-      speechWatchdogTimeoutRef.current = null;
-    }
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      try {
-        window.speechSynthesis.cancel();
-      } catch {}
-    }
-
-    let segments = speechSegmentsRef.current;
-
     if (isPdf && pdfViewerMode !== 'interactive') {
       setPdfViewerMode('interactive');
     }
 
-    if (!segments || segments.length === 0) {
-      speechStateRef.current = 'loading';
-      setSpeechState('loading');
+    let segments = docSpeech.segments;
 
+    // Si pas de segments ou nouveau document, extraire les segments textuels
+    if (!segments || segments.length === 0 || docSpeech.activeFile?.id !== activePreviewItem?.id) {
       // 1. PDF
       if (isPdf) {
         segments = await extractPdfSegments(activePreviewItem?.id, resolvedUrl || activePreviewItem?.url);
@@ -969,7 +787,7 @@ export function CenterMenu({
       }
       // 5. TEXT / CODE
       else if (isText) {
-        let raw = fileTextContent || [activePreviewItem.noteTitle || activePreviewItem.notepadTitle, activePreviewItem.content || activePreviewItem.textContent || activePreviewItem.notepadContent].filter(Boolean).join('\n\n') || activePreviewItem.textContent || '';
+        let raw = fileTextContent || [activePreviewItem?.noteTitle || activePreviewItem?.notepadTitle, activePreviewItem?.content || activePreviewItem?.textContent || activePreviewItem?.notepadContent].filter(Boolean).join('\n\n') || activePreviewItem?.textContent || '';
         if (!raw && activePreviewItem) {
           raw = await getDocumentText(activePreviewItem);
         }
@@ -991,90 +809,25 @@ export function CenterMenu({
       segments = [{ text: `Lecture du document ${activePreviewItem?.name || ''}.`, page: 1 }];
     }
 
-    speechSegmentsRef.current = segments;
-    setSpeechSegments(segments);
-
     let startIdx = 0;
     if (currentPdfViewerPage > 1) {
       const idxOnPage = segments.findIndex(s => s.page === currentPdfViewerPage);
       if (idxOnPage !== -1) startIdx = idxOnPage;
     }
 
-    setTimeout(() => {
-      speakSentence(startIdx);
-    }, 60);
+    documentSpeechService.startSpeech(activePreviewItem, segments, startIdx);
   };
 
   const handleTogglePause = () => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-
-    if (speechState === 'playing') {
-      isExplicitlyStoppedRef.current = true;
-      if (speechWatchdogTimeoutRef.current) {
-        clearTimeout(speechWatchdogTimeoutRef.current);
-        speechWatchdogTimeoutRef.current = null;
-      }
-      try {
-        window.speechSynthesis.pause();
-      } catch {}
-      speechStateRef.current = 'paused';
-      setSpeechState('paused');
-    } else if (speechState === 'paused') {
-      isExplicitlyStoppedRef.current = false;
-      speechStateRef.current = 'playing';
-      setSpeechState('playing');
-      try {
-        window.speechSynthesis.resume();
-      } catch {}
-      setTimeout(() => {
-        if (speechStateRef.current === 'playing' && !window.speechSynthesis.speaking) {
-          speakSentence(currentSentenceIdxRef.current || 0);
-        }
-      }, 250);
-    } else if (speechState === 'stopped' || speechState === 'idle') {
-      isExplicitlyStoppedRef.current = false;
-      speakSentence(currentSentenceIdxRef.current || 0);
-    }
+    documentSpeechService.togglePlayPause();
   };
 
   const handleStop = () => {
-    isExplicitlyStoppedRef.current = true;
-    if (speechWatchdogTimeoutRef.current) {
-      clearTimeout(speechWatchdogTimeoutRef.current);
-      speechWatchdogTimeoutRef.current = null;
-    }
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      try {
-        window.speechSynthesis.cancel();
-      } catch {}
-    }
-    speechStateRef.current = 'stopped';
-    setSpeechState('stopped');
-    currentSentenceIdxRef.current = 0;
-    setCurrentSegmentIdx(0);
-    setActiveSpeechLineIndex(-1);
-    setSpokenWordCharIndex(-1);
+    documentSpeechService.stop();
   };
 
   const handleRestart = () => {
-    isExplicitlyStoppedRef.current = false;
-    if (speechWatchdogTimeoutRef.current) {
-      clearTimeout(speechWatchdogTimeoutRef.current);
-      speechWatchdogTimeoutRef.current = null;
-    }
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      try {
-        window.speechSynthesis.cancel();
-      } catch {}
-    }
-    currentSentenceIdxRef.current = 0;
-    setCurrentSegmentIdx(0);
-    setSpokenWordCharIndex(-1);
-    speechStateRef.current = 'playing';
-    if (isPdf) setPdfViewerMode('interactive');
-    setTimeout(() => {
-      speakSentence(0);
-    }, 60);
+    documentSpeechService.restart();
   };
 
   const handleMicClick = () => {
@@ -1285,7 +1038,7 @@ export function CenterMenu({
                   {/* Auto-Scroll Toggle Button */}
                   <button
                     type="button"
-                    onClick={() => setAutoScrollEnabled(prev => !prev)}
+                    onClick={() => documentSpeechService.setAutoScrollEnabled(!autoScrollEnabled)}
                     className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 border ${autoScrollEnabled
                       ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
                       : 'bg-stone-100 dark:bg-stone-800 text-stone-500 border-stone-300 dark:border-stone-600'
@@ -1396,15 +1149,19 @@ export function CenterMenu({
                     onZoomChange={setDocZoom}
                     activeSpeechPage={activeSpeechPage}
                     activeSpeechLineIndex={activeSpeechLineIndex}
-                    currentSpokenText={speechSegmentsRef.current[currentSegmentIdx]?.text || speechSegments[currentSegmentIdx]?.text}
+                    currentSpokenText={speechSegments[currentSegmentIdx]?.text}
                     autoScrollEnabled={autoScrollEnabled}
                     isSpeaking={isSpeaking}
                     onSegmentsExtracted={(segs) => {
-                      speechSegmentsRef.current = segs;
-                      setSpeechSegments(segs);
+                      if (!documentSpeechService.isPlaying() && !documentSpeechService.isPaused()) {
+                        documentSpeechService.setSegmentsIfEmpty(activePreviewItem?.id, segs);
+                      }
                     }}
                     currentPage={currentPdfViewerPage}
-                    onPageChange={setCurrentPdfViewerPage}
+                    onPageChange={(p) => {
+                      setCurrentPdfViewerPage(p);
+                      documentSpeechService.setActivePage(p);
+                    }}
                     isFullscreen={isCenterFullscreen}
                   />
                 </div>
@@ -1424,15 +1181,19 @@ export function CenterMenu({
                     layoutMode={previewScrollMode}
                     activeSpeechPage={activeSpeechPage}
                     activeSpeechLineIndex={activeSpeechLineIndex}
-                    currentSpokenText={speechSegmentsRef.current[currentSegmentIdx]?.text || speechSegments[currentSegmentIdx]?.text}
+                    currentSpokenText={speechSegments[currentSegmentIdx]?.text}
                     autoScrollEnabled={autoScrollEnabled}
                     isSpeaking={isSpeaking}
                     onSegmentsExtracted={(segs) => {
-                      speechSegmentsRef.current = segs;
-                      setSpeechSegments(segs);
+                      if (!documentSpeechService.isPlaying() && !documentSpeechService.isPaused()) {
+                        documentSpeechService.setSegmentsIfEmpty(activePreviewItem?.id, segs);
+                      }
                     }}
                     currentPage={currentPdfViewerPage}
-                    onPageChange={setCurrentPdfViewerPage}
+                    onPageChange={(p) => {
+                      setCurrentPdfViewerPage(p);
+                      documentSpeechService.setActivePage(p);
+                    }}
                     isFullscreen={isCenterFullscreen}
                   />
                 </div>
@@ -1559,11 +1320,8 @@ export function CenterMenu({
                           const match = id?.match(/word-speech-seg-(\d+)/);
                           if (match) {
                             const segIdx = parseInt(match[1], 10);
-                            if (!isNaN(segIdx) && segIdx >= 0 && segIdx < speechSegmentsRef.current.length) {
-                              if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-                                window.speechSynthesis.cancel();
-                              }
-                              speakSentence(segIdx);
+                            if (!isNaN(segIdx) && segIdx >= 0 && segIdx < speechSegments.length) {
+                              documentSpeechService.seekToSentence(segIdx);
                             }
                           }
                         }
@@ -1914,14 +1672,9 @@ export function CenterMenu({
                               id={isActive ? 'active-text-speech-target' : undefined}
                               ref={isActive ? (activeSentenceElRef as any) : null}
                               onClick={() => {
-                                if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-                                  window.speechSynthesis.cancel();
-                                }
                                 const segs = textLines.map((t, idx) => ({ text: t.trim(), lineIndex: idx }));
-                                speechSegmentsRef.current = segs;
-                                setSpeechSegments(segs);
                                 setIsAudioMenuOpen(true);
-                                speakSentence(lineIdx);
+                                documentSpeechService.startSpeech(activePreviewItem, segs, lineIdx);
                               }}
                               className={`transition-colors duration-150 rounded px-1.5 py-0.5 cursor-pointer block min-h-[1.5em] w-fit ${isActive
                                 ? 'font-bold shadow-sm'
@@ -2041,7 +1794,7 @@ export function CenterMenu({
             {/* Auto-scroll toggle */}
             <button
               type="button"
-              onClick={() => setAutoScrollEnabled(prev => !prev)}
+              onClick={() => documentSpeechService.setAutoScrollEnabled(!autoScrollEnabled)}
               className={`w-[21px] h-[20px] rounded-lg flex items-center justify-center transition-all cursor-pointer ${autoScrollEnabled
                   ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 border border-emerald-300 dark:border-emerald-700'
                   : 'text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800'
