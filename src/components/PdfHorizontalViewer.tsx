@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, AlertCircle, Volume2 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { getFileBlob } from '../services/localFileStorage';
+import { getWorkerApiUrl } from '../services/api';
 
 // Configure local worker
 if (typeof window !== 'undefined') {
@@ -395,6 +396,30 @@ export function PdfHorizontalViewer({
             if (resp.ok) arrayBuffer = await resp.arrayBuffer();
           } catch (e) {
             console.warn('[PdfDocumentViewer] Fetch url:', e);
+          }
+        }
+
+        // 4. Fallback Cloudflare Worker Stream (/api/cloud/stream/:id)
+        const targetId = fileId || file?.id;
+        if (!arrayBuffer && targetId) {
+          try {
+            const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+            const resp = await fetch(`${baseUrl}/api/cloud/stream/${encodeURIComponent(targetId)}`);
+            if (resp.ok) arrayBuffer = await resp.arrayBuffer();
+          } catch (e) {
+            console.warn('[PdfDocumentViewer] Stream fallback error:', e);
+          }
+        }
+
+        // 5. Fallback R2 Key storage
+        const r2Key = file?.r2Key || (file as any)?.r2_key;
+        if (!arrayBuffer && r2Key) {
+          try {
+            const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+            const resp = await fetch(`${baseUrl}/api/storage/file/${encodeURIComponent(r2Key)}`);
+            if (resp.ok) arrayBuffer = await resp.arrayBuffer();
+          } catch (e) {
+            console.warn('[PdfDocumentViewer] R2 fallback error:', e);
           }
         }
 

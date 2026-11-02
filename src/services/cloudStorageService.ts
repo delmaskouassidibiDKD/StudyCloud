@@ -12,7 +12,7 @@ import { ClasseurCreatedFolder } from '../components/Folder3DModels';
 import { invalidateCloudQueries } from './queryClient';
 
 // En-têtes d'authentification pour garantir l'isolation des données
-function getAuthHeaders(): Record<string, string> {
+export function getAuthHeaders(): Record<string, string> {
   const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
   const token = typeof localStorage !== 'undefined' ? (localStorage.getItem('sc_auth_token') || localStorage.getItem('unifolder_auth_token') || localStorage.getItem('auth_token') || '') : '';
   const headers: Record<string, string> = {

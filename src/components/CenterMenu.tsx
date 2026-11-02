@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-  Maximize, Minimize, Mic, Pause, Play, Square, RotateCcw, X, FileText, 
-  ArrowLeftRight, ArrowUpDown, Music, Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, 
+import {
+  Maximize, Minimize, Mic, Pause, Play, Square, RotateCcw, X, FileText,
+  ArrowLeftRight, ArrowUpDown, Music, Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight,
   Copy, Check, Search, Table, Presentation, FileCode, Volume2, SkipBack, SkipForward, MousePointerClick,
   BookOpen
 } from 'lucide-react';
@@ -17,10 +17,12 @@ import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
+import { MobilePdfViewer } from './MobilePdfViewer';
 import { useStudyLanguage } from '../utils/studyTranslations';
 import { getWorkerApiUrl } from '../services/api';
+import { getCurrentUserId } from '../services/userSync';
+import { getAuthHeaders } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
-import { CloudStorageAPI } from '../services/cloudStorageService';
 
 // Worker configuration for pdfjsLib
 if (typeof window !== 'undefined') {
@@ -55,7 +57,7 @@ export function smartSentenceSplit(text: string): string[] {
   const protectedText = clean
     .replace(/(\d)\.(\d)/g, '$1__DEC_DOT__$2')
     .replace(/\b(M|Mme|Mlle|Dr|Prof|Mr|Mrs|Ms|vs|etc|ex|fig)\./gi, '$1__ABBR_DOT__');
-  
+
   const rawSentences = protectedText.split(/(?<=[.!?])\s+/);
   return rawSentences
     .map(s => s.replace(/__DEC_DOT__/g, '.').replace(/__ABBR_DOT__/g, '.').trim())
@@ -82,7 +84,7 @@ export function prepareWordDocumentForSpeech(rawHtml: string): {
 
     // Find all readable block elements in natural reading order
     const allBlocks = Array.from(doc.body.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, blockquote, th, td'));
-    
+
     // Filter only leaf blocks (blocks that do not contain another candidate block inside them)
     const leafBlocks = allBlocks.filter(block => {
       return !block.querySelector('h1, h2, h3, h4, h5, h6, p, li, blockquote, th, td');
@@ -180,6 +182,7 @@ export function CenterMenu({
   setPreviewScrollMode,
   isMobileScreen
 }: CenterMenuProps) {
+  const isMobile = Boolean(isMobileScreen || (typeof window !== 'undefined' && window.innerWidth < 768));
   const { t: tStudy } = useStudyLanguage();
   const [docZoom, setDocZoom] = useState<number>(100);
   const [speechState, setSpeechState] = useState<'idle' | 'loading' | 'playing' | 'paused' | 'stopped'>('idle');
@@ -289,8 +292,8 @@ export function CenterMenu({
   );
 
   const isPdf = !isAudioItem && !isVideoItem && !isImageItem && (
-    rawExt === 'PDF' || 
-    activePreviewItem?.type === 'application/pdf' || 
+    rawExt === 'PDF' ||
+    activePreviewItem?.type === 'application/pdf' ||
     activePreviewItem?.type?.includes('pdf') ||
     activePreviewItem?.url?.toLowerCase()?.includes('.pdf') ||
     activePreviewItem?.name?.toLowerCase()?.endsWith('.pdf')
@@ -404,6 +407,16 @@ export function CenterMenu({
           if (resp.ok) {
             blob = await resp.blob();
           }
+        } catch (e) { }
+      }
+      const r2Key = file.r2Key || (file as any).r2_key;
+      if (!blob && r2Key) {
+        try {
+          const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+          const resp = await fetch(`${baseUrl}/api/storage/file/${encodeURIComponent(r2Key)}`);
+          if (resp.ok) {
+            blob = await resp.blob();
+          }
         } catch (e) {}
       }
 
@@ -459,7 +472,7 @@ export function CenterMenu({
           const arrayBuffer = await blob.arrayBuffer();
           const zip = await JSZip.loadAsync(arrayBuffer);
           const slideFiles = Object.keys(zip.files).filter(k => /^ppt\/slides\/slide\d+\.xml$/.test(k));
-          
+
           slideFiles.sort((a, b) => {
             const nA = parseInt(a.match(/slide(\d+)\.xml/)?.[1] || '0', 10);
             const nB = parseInt(b.match(/slide(\d+)\.xml/)?.[1] || '0', 10);
@@ -522,26 +535,34 @@ export function CenterMenu({
             const fMap = CloudDataStore.getState().folderFilesMap;
             for (const list of Object.values(fMap)) {
               if (Array.isArray(list)) {
-                const found = list.find((item: any) => item.id === file.id || item.name === file.name) as any;
-                if (found && (found.content || found.noteTitle || found.textContent || found.notepadContent)) {
-                  const t = found.noteTitle || found.notepadTitle || '';
-                  const c = found.content || found.textContent || found.notepadContent || '';
+                const found = list.find((item: any) => item.id === file.id || item.name === file.name);
+                if (found && (found.content || found.noteTitle || found.textContent || (found as any).notepadContent)) {
+                  const t = found.noteTitle || (found as any).notepadTitle || '';
+                  const c = found.content || found.textContent || (found as any).notepadContent || '';
                   loadedText = [t, c].filter(Boolean).join('\n\n');
                   break;
                 }
               }
             }
-          } catch (e) {}
+          } catch (e) { }
         }
 
         // Si toujours introuvable (ex: première ouverture après rafraîchissement), charger directement depuis Cloudflare D1
         if (!loadedText && file.id && (file.isNotepad || (file.name && file.name.endsWith('.txt')) || file.extension === 'txt')) {
           try {
-            const remoteFiles = await CloudStorageAPI.getClasseurFiles(file.folderId);
-            if (remoteFiles && Array.isArray(remoteFiles)) {
-              const found = remoteFiles.find((f: any) => f.id === file.id || f.name === file.name);
-              if (found && (found.content || found.noteTitle)) {
-                loadedText = [found.noteTitle, found.content].filter(Boolean).join('\n\n');
+            const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+            const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? (localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id')) : '') || '';
+            const folderParam = file.folderId ? `&folderId=${encodeURIComponent(file.folderId)}` : '';
+            const resp = await fetch(`${baseUrl}/api/cloud/classeur/files?userId=${encodeURIComponent(userId)}${folderParam}`, {
+              headers: getAuthHeaders(),
+            });
+            if (resp.ok) {
+              const resJson = await resp.json();
+              if (resJson.success && Array.isArray(resJson.data)) {
+                const found = resJson.data.find((f: any) => f.id === file.id || f.name === file.name);
+                if (found && (found.content || found.noteTitle)) {
+                  loadedText = [found.noteTitle, found.content].filter(Boolean).join('\n\n');
+                }
               }
             }
           } catch (err) {
@@ -617,18 +638,18 @@ export function CenterMenu({
         try {
           const blob = await getFileBlob(fileId);
           if (blob) arrayBuffer = await blob.arrayBuffer();
-        } catch (e) {}
+        } catch (e) { }
       }
       if (!arrayBuffer && activePreviewItem && typeof activePreviewItem.arrayBuffer === 'function') {
         try {
           arrayBuffer = await activePreviewItem.arrayBuffer();
-        } catch (e) {}
+        } catch (e) { }
       }
       if (!arrayBuffer && url) {
         try {
           const resp = await fetch(url);
           if (resp.ok) arrayBuffer = await resp.arrayBuffer();
-        } catch (e) {}
+        } catch (e) { }
       }
       if (!arrayBuffer) return [];
 
@@ -813,18 +834,18 @@ export function CenterMenu({
         segments = [];
         pptxSlides.forEach(slide => {
           if (slide.title?.trim()) {
-            segments.push({ 
-              text: slide.title.trim(), 
+            segments.push({
+              text: slide.title.trim(),
               slide: slide.slideNumber,
-              isTitle: true 
+              isTitle: true
             });
           }
           slide.bullets.forEach((b, bIdx) => {
             if (b.trim()) {
-              segments.push({ 
-                text: b.trim(), 
+              segments.push({
+                text: b.trim(),
                 slide: slide.slideNumber,
-                bulletIdx: bIdx 
+                bulletIdx: bIdx
               });
             }
           });
@@ -967,10 +988,10 @@ export function CenterMenu({
 
   useEffect(() => {
     if (!autoScrollEnabled || (speechState !== 'playing' && speechState !== 'paused')) return;
-    const target = document.getElementById(`word-speech-seg-${currentSegmentIdx}`) || 
-                   document.getElementById('active-excel-speech-target') ||
-                   document.getElementById('active-pptx-speech-target') ||
-                   document.getElementById('active-text-speech-target');
+    const target = document.getElementById(`word-speech-seg-${currentSegmentIdx}`) ||
+      document.getElementById('active-excel-speech-target') ||
+      document.getElementById('active-pptx-speech-target') ||
+      document.getElementById('active-text-speech-target');
     if (target) {
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
@@ -985,7 +1006,7 @@ export function CenterMenu({
 
   return (
     <div className={`w-full h-full ${isCenterFullscreen ? '' : 'border-r border-stone-300 dark:border-[#1e293b]'} flex flex-col animate-fadeIn relative pointer-events-auto overflow-hidden bg-white dark:bg-[#0b0f19] pt-[44px] ${isRightFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
-      
+
       {/* Sleek Document Action Bar: Present for ALL documents (PDF, Word, Excel, PPTX, Images, Code) */}
       {activePreviewItem && (
         <div className="w-full bg-[#FDFBF7] dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 px-3 py-1 flex items-center justify-between shrink-0 z-30 h-9">
@@ -1048,11 +1069,10 @@ export function CenterMenu({
                   setSpokenWordCharIndex(-1);
                   setPreviewScrollMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical');
                 }}
-                className={`px-2 py-1 text-[10px] sm:text-xs rounded-lg border items-center gap-1 transition-all cursor-pointer flex shadow-sm font-bold ${
-                  previewScrollMode === 'horizontal'
-                    ? 'bg-orange-100 dark:bg-orange-950/50 text-orange-700 dark:text-orange-300 border-orange-400 dark:border-orange-600 ring-1 ring-orange-400'
-                    : 'bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 border-stone-200 dark:border-stone-700'
-                }`}
+                className={`px-2 py-1 text-[10px] sm:text-xs rounded-lg border items-center gap-1 transition-all cursor-pointer flex shadow-sm font-bold ${previewScrollMode === 'horizontal'
+                  ? 'bg-orange-100 dark:bg-orange-950/50 text-orange-700 dark:text-orange-300 border-orange-400 dark:border-orange-600 ring-1 ring-orange-400'
+                  : 'bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 border-stone-200 dark:border-stone-700'
+                  }`}
                 title={previewScrollMode === 'vertical' ? "Activer le défilement horizontal (de gauche à droite)" : "Activer le défilement vertical"}
               >
                 {previewScrollMode === 'horizontal' ? (
@@ -1068,11 +1088,10 @@ export function CenterMenu({
               <button
                 type="button"
                 onClick={() => setPdfViewerMode(prev => prev === 'native' ? 'interactive' : 'native')}
-                className={`px-2 py-1 text-[10px] sm:text-xs rounded-lg border flex items-center gap-1 font-bold transition-all cursor-pointer shadow-sm ${
-                  pdfViewerMode === 'native'
-                    ? 'bg-stone-900 text-white border-stone-800 hover:bg-stone-800'
-                    : 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700'
-                }`}
+                className={`px-2 py-1 text-[10px] sm:text-xs rounded-lg border flex items-center gap-1 font-bold transition-all cursor-pointer shadow-sm ${pdfViewerMode === 'native'
+                  ? 'bg-stone-900 text-white border-stone-800 hover:bg-stone-800'
+                  : 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700'
+                  }`}
                 title={pdfViewerMode === 'native' ? "Passer en mode lecture vocale avec surlignage" : "Revenir à la visionneuse PDF native (avec barre d'outils noire)"}
               >
                 {pdfViewerMode === 'native' ? (
@@ -1139,11 +1158,10 @@ export function CenterMenu({
                   <button
                     type="button"
                     onClick={() => setAutoScrollEnabled(prev => !prev)}
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 border ${
-                      autoScrollEnabled
-                        ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
-                        : 'bg-stone-100 dark:bg-stone-800 text-stone-500 border-stone-300 dark:border-stone-600'
-                    }`}
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 border ${autoScrollEnabled
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                      : 'bg-stone-100 dark:bg-stone-800 text-stone-500 border-stone-300 dark:border-stone-600'
+                      }`}
                     title={autoScrollEnabled ? "Défilement auto actif (cliquer pour arrêter et faufiler librement)" : "Défilement auto arrêté (cliquer pour réactiver)"}
                   >
                     <span className={`w-1.5 h-1.5 rounded-full ${autoScrollEnabled ? 'bg-emerald-500 animate-ping' : 'bg-stone-400'}`} />
@@ -1179,15 +1197,14 @@ export function CenterMenu({
               <button
                 type="button"
                 onClick={handleMicClick}
-                className={`px-2 py-1 rounded-lg border border-stone-200 dark:border-stone-700 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm shrink-0 ${
-                  speechState === 'playing'
-                    ? 'bg-orange-500 text-white animate-pulse ring-2 ring-orange-300'
-                    : speechState === 'paused'
+                className={`px-2 py-1 rounded-lg border border-stone-200 dark:border-stone-700 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm shrink-0 ${speechState === 'playing'
+                  ? 'bg-orange-500 text-white animate-pulse ring-2 ring-orange-300'
+                  : speechState === 'paused'
                     ? 'bg-amber-400 text-stone-900'
                     : isAudioMenuOpen
-                    ? 'bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400'
-                    : 'bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200'
-                }`}
+                      ? 'bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400'
+                      : 'bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200'
+                  }`}
                 title="Lire automatiquement le document (Synthèse vocale)"
               >
                 <Mic className="w-3.5 h-3.5 text-orange-500" />
@@ -1233,15 +1250,43 @@ export function CenterMenu({
           // Horizontal mode OR Surlignage -> Interactive viewer with live Stabilo yellow line highlighting & auto-scroll
           if (isPdf) {
             const isSpeaking = speechState === 'playing';
+
+            // SUR MOBILE : Lecteur mobile dédié ultra-léger (page par page, swipe tactile, zéro ralentissement)
+            if (isMobile) {
+              return (
+                <div className="w-full h-full flex flex-col bg-stone-100 dark:bg-stone-950 overflow-hidden">
+                  <MobilePdfViewer
+                    fileId={activePreviewItem?.id}
+                    file={activePreviewItem}
+                    url={currentUrl}
+                    docZoom={docZoom}
+                    onZoomChange={setDocZoom}
+                    activeSpeechPage={activeSpeechPage}
+                    activeSpeechLineIndex={activeSpeechLineIndex}
+                    currentSpokenText={speechSegmentsRef.current[currentSegmentIdx]?.text || speechSegments[currentSegmentIdx]?.text}
+                    autoScrollEnabled={autoScrollEnabled}
+                    isSpeaking={isSpeaking}
+                    onSegmentsExtracted={(segs) => {
+                      speechSegmentsRef.current = segs;
+                      setSpeechSegments(segs);
+                    }}
+                    currentPage={currentPdfViewerPage}
+                    onPageChange={setCurrentPdfViewerPage}
+                    isFullscreen={isCenterFullscreen}
+                  />
+                </div>
+              );
+            }
+
             const showInteractive = previewScrollMode === 'horizontal' || pdfViewerMode === 'interactive';
 
             if (showInteractive) {
               return (
                 <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
-                  <PdfHorizontalViewer 
+                  <PdfHorizontalViewer
                     fileId={activePreviewItem?.id}
                     file={activePreviewItem}
-                    url={currentUrl} 
+                    url={currentUrl}
                     docZoom={effectiveZoom}
                     layoutMode={previewScrollMode}
                     activeSpeechPage={activeSpeechPage}
@@ -1269,7 +1314,7 @@ export function CenterMenu({
             return (
               <div className="w-full h-full flex flex-col items-center overflow-auto bg-stone-100 dark:bg-stone-900">
                 {currentUrl ? (
-                  <div 
+                  <div
                     className="flex-1 w-full h-full flex flex-col"
                     style={{
                       width: '100%',
@@ -1335,13 +1380,13 @@ export function CenterMenu({
 
                 <div 
                   className={`flex-1 w-full h-full select-text leading-relaxed font-serif text-stone-900 dark:text-stone-100 ${
-                    previewScrollMode === 'horizontal'
+                    !isMobile && previewScrollMode === 'horizontal'
                       ? 'overflow-x-auto overflow-y-hidden px-8 sm:px-12 py-8'
-                      : 'overflow-y-auto px-6 sm:px-12 md:px-20 py-8'
+                      : 'overflow-y-auto px-4 sm:px-10 md:px-20 py-6 sm:py-8'
                   }`}
                   style={{ 
-                    zoom: `${effectiveZoom}%`,
-                    ...(previewScrollMode === 'horizontal' ? { columnWidth: '500px', columnGap: '40px', height: '100%' } : {})
+                    zoom: isMobile ? '100%' : `${effectiveZoom}%`,
+                    ...(!isMobile && previewScrollMode === 'horizontal' ? { columnWidth: '500px', columnGap: '40px', height: '100%' } : {})
                   }}
                 >
                   {/* Dynamic CSS highlighting for active Word speech segment */}
@@ -1372,9 +1417,9 @@ export function CenterMenu({
                   `}</style>
 
                   {docxHtml ? (
-                    <div 
+                    <div
                       className="prose dark:prose-invert max-w-none text-sm sm:text-base space-y-4"
-                      dangerouslySetInnerHTML={{ __html: docxHtml }} 
+                      dangerouslySetInnerHTML={{ __html: docxHtml }}
                       onClick={(e) => {
                         const target = (e.target as HTMLElement)?.closest('.word-speech-seg');
                         if (target) {
@@ -1426,11 +1471,10 @@ export function CenterMenu({
                         <button
                           key={sheet}
                           onClick={() => handleSwitchExcelSheet(sheet)}
-                          className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition-all cursor-pointer whitespace-nowrap ${
-                            excelWorkbook.activeSheet === sheet
-                              ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
-                              : 'bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-700 hover:bg-stone-100'
-                          }`}
+                          className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition-all cursor-pointer whitespace-nowrap ${excelWorkbook.activeSheet === sheet
+                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
+                            : 'bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-700 hover:bg-stone-100'
+                            }`}
                         >
                           {sheet}
                         </button>
@@ -1465,7 +1509,7 @@ export function CenterMenu({
                   </div>
                 </div>
 
-                <div 
+                <div
                   className="flex-1 w-full h-full overflow-auto p-0"
                   style={{ zoom: `${docZoom}%` }}
                 >
@@ -1490,14 +1534,13 @@ export function CenterMenu({
                           const activeSeg = speechSegments[currentSegmentIdx];
                           const isRowSpeaking = (speechState === 'playing' || speechState === 'paused') && activeSeg?.rowIdx === originalRowIdx;
                           return (
-                            <tr 
-                              key={displayIdx} 
+                            <tr
+                              key={displayIdx}
                               id={isRowSpeaking ? 'active-excel-speech-target' : undefined}
-                              className={`transition-colors border-b border-stone-100 dark:border-stone-800 ${
-                                isRowSpeaking 
-                                  ? 'bg-yellow-200/90 dark:bg-yellow-950/80 font-bold' 
-                                  : 'hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20'
-                              }`}
+                              className={`transition-colors border-b border-stone-100 dark:border-stone-800 ${isRowSpeaking
+                                ? 'bg-yellow-200/90 dark:bg-yellow-950/80 font-bold'
+                                : 'hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20'
+                                }`}
                               style={isRowSpeaking ? {
                                 outline: '3.5px solid #FF3B30',
                                 outlineOffset: '-2px',
@@ -1569,13 +1612,13 @@ export function CenterMenu({
                   </div>
                 </div>
 
-                <div 
+                <div
                   className="flex-1 w-full h-full flex items-center justify-center p-4 sm:p-8 overflow-auto"
                   style={{ zoom: `${effectiveZoom}%` }}
                 >
                   <div className="w-full h-full max-w-5xl max-h-[85vh] aspect-[16/9] bg-[#FDFBF7] text-stone-900 rounded-xl border border-stone-700 p-8 md:p-12 flex flex-col justify-between select-text relative overflow-hidden">
                     <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-orange-500 via-amber-400 to-red-500" />
-                    
+
                     <div>
                       <div className="flex items-center justify-between mb-4">
                         <span className="text-[10px] font-extrabold uppercase tracking-widest text-orange-600 bg-orange-100 px-2.5 py-1 rounded-md">
@@ -1588,7 +1631,7 @@ export function CenterMenu({
                           const isSpeaking = speechState === 'playing' || speechState === 'paused';
                           const isTitleActive = isSpeaking && activeSeg?.slide === currentSlide.slideNumber && activeSeg?.isTitle;
                           return isTitleActive ? (
-                            <span 
+                            <span
                               id="active-pptx-speech-target"
                               style={{
                                 backgroundColor: 'rgba(255, 235, 59, 0.75)',
@@ -1612,7 +1655,7 @@ export function CenterMenu({
                             <li key={idx} className="flex items-start gap-3 text-sm sm:text-base font-medium text-stone-700 leading-relaxed">
                               <span className="w-2 h-2 rounded-full bg-orange-500 mt-2 shrink-0" />
                               {isBulletActive ? (
-                                <span 
+                                <span
                                   id="active-pptx-speech-target"
                                   className="text-stone-950 font-bold"
                                   style={{
@@ -1714,7 +1757,7 @@ export function CenterMenu({
                   </button>
                 </div>
 
-                <div 
+                <div
                   ref={textContainerRef}
                   className="flex-1 w-full h-full p-4 sm:p-6 overflow-auto font-mono text-xs leading-relaxed text-[#d4d4d4] select-text"
                   style={{ zoom: `${effectiveZoom}%` }}
@@ -1748,11 +1791,10 @@ export function CenterMenu({
                                 setIsAudioMenuOpen(true);
                                 speakSentence(lineIdx);
                               }}
-                              className={`transition-colors duration-150 rounded px-1.5 py-0.5 cursor-pointer block min-h-[1.5em] w-fit ${
-                                isActive
-                                  ? 'font-bold shadow-sm'
-                                  : 'hover:bg-stone-800/60'
-                              }`}
+                              className={`transition-colors duration-150 rounded px-1.5 py-0.5 cursor-pointer block min-h-[1.5em] w-fit ${isActive
+                                ? 'font-bold shadow-sm'
+                                : 'hover:bg-stone-800/60'
+                                }`}
                               style={isActive ? {
                                 backgroundColor: 'rgba(255, 235, 59, 0.85)',
                                 borderBottom: '3.5px solid #FF3B30',
@@ -1775,7 +1817,7 @@ export function CenterMenu({
 
           // 9. AUTRE / FICHIER GÉNÉRIQUE
           return (
-            <div 
+            <div
               className="w-full h-full flex flex-col items-center justify-center text-center p-6 overflow-auto bg-white dark:bg-stone-950"
               style={{ zoom: `${docZoom}%` }}
             >
