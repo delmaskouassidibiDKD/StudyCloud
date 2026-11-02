@@ -6536,22 +6536,25 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             onClick={e => e.stopPropagation()}
           >
             {/* Drawer Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-700/60 mb-3">
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-orange-400" />
-                <h3 className="text-sm font-black text-white uppercase tracking-wider">{tStudy("recent_discussions", "Discussions Récentes")}</h3>
+            <div className="flex items-center justify-between gap-2 pb-3 border-b border-zinc-700/60 mb-3">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Clock className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                <h3 className="text-xs sm:text-[13px] font-bold text-white whitespace-nowrap truncate">{tStudy("recent_discussions", "Discussions récentes")}</h3>
               </div>
-              <div className="flex items-center gap-1.5 relative" ref={drawerLangMenuRef}>
-                {/* Bouton sélecteur de langue (emplacement demandé) */}
+              <div className="flex items-center gap-1.5 shrink-0 relative" ref={drawerLangMenuRef}>
+                {/* Bouton sélecteur de langue (strictement horizontal : Globe + Drapeau + Code + Flèche) */}
                 <button
                   type="button"
                   onClick={() => setIsDrawerLangMenuOpen(!isDrawerLangMenuOpen)}
-                  className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/80 text-zinc-200 text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/80 text-zinc-200 text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 whitespace-nowrap shrink-0 select-none"
                   title={`Langue de l'IA : ${currentChatLangObj.name} (${currentChatLangObj.nativeName})`}
                 >
-                  <Globe className="w-3.5 h-3.5 text-orange-400" />
-                  <span className="text-xs">{currentChatLangObj.flag} {currentChatLangObj.code.toUpperCase()}</span>
-                  <ChevronDown className="w-3 h-3 text-zinc-400" />
+                  <Globe className="w-3 h-3 text-orange-400 shrink-0" />
+                  <span className="inline-flex items-center gap-1 text-xs whitespace-nowrap leading-none shrink-0">
+                    <span>{currentChatLangObj.flag}</span>
+                    <span className="font-bold tracking-tight">{currentChatLangObj.code.toUpperCase()}</span>
+                  </span>
+                  <ChevronDown className="w-2.5 h-2.5 text-zinc-400 shrink-0" />
                 </button>
 
                 {/* Dropdown Menu des Langues */}
