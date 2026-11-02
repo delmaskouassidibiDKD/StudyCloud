@@ -3055,7 +3055,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   };
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: MouseEvent | PointerEvent) => {
       if (drawerLangMenuRef.current && !drawerLangMenuRef.current.contains(e.target as Node)) {
         setIsDrawerLangMenuOpen(false);
       }
@@ -3064,8 +3064,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       }
     };
     if (isDrawerLangMenuOpen || isMainLangMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener('pointerdown', handleClickOutside);
+      return () => document.removeEventListener('pointerdown', handleClickOutside);
     }
   }, [isDrawerLangMenuOpen, isMainLangMenuOpen]);
 
@@ -3299,16 +3299,16 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
   // Fermer le dropdown des modèles au clic en dehors
   useEffect(() => {
-    const handleOutsideClick = (event: MouseEvent) => {
+    const handleOutsideClick = (event: MouseEvent | PointerEvent) => {
       if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
         setIsModelDropdownOpen(false);
       }
     };
     if (isModelDropdownOpen) {
-      document.addEventListener('mousedown', handleOutsideClick);
+      document.addEventListener('pointerdown', handleOutsideClick);
     }
     return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('pointerdown', handleOutsideClick);
     };
   }, [isModelDropdownOpen]);
 
@@ -6271,18 +6271,21 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
     <div className="flex flex-col h-full bg-[#1e2024] font-nunito relative z-50 overflow-hidden w-full max-w-full min-w-0 md:min-w-[495px]">
 
       {/* EN-TÊTE SUPÉRIEUR (BOUTON HISTORIQUE, NOUVELLE CONVERSATION, PUISSANT/MOYEN, FERMER) */}
-      <div className="flex items-center justify-between px-2 sm:px-4 py-1.5 sm:py-2.5 bg-[#23252a] border-b border-zinc-700/60 shrink-0 z-10 shadow-sm w-full max-w-full overflow-hidden flex-nowrap gap-1 sm:gap-2">
+      <div className="flex items-center justify-between px-2 sm:px-4 py-1.5 sm:py-2.5 bg-[#23252a] border-b border-zinc-700/60 shrink-0 relative z-30 shadow-sm w-full max-w-full flex-nowrap gap-1 sm:gap-2">
         <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 flex-nowrap shrink">
           {/* Bouton Historique */}
           <button
             type="button"
-            onClick={() => setIsHistoryDrawerOpen(true)}
-            className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[11px] sm:text-xs font-bold transition-all cursor-pointer border border-zinc-700 active:scale-95 shrink-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsHistoryDrawerOpen(true);
+            }}
+            className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[11px] sm:text-xs font-bold transition-all cursor-pointer border border-zinc-700 active:scale-95 shrink-0 touch-manipulation"
             title="Historique des discussions"
           >
             <Clock className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-            <span className="hidden xs:inline sm:inline">{tStudy("history_button", "Historique")}</span>
-            <span className="xs:hidden text-[11px]">Hist.</span>
+            <span className="hidden sm:inline">{tStudy("history_button", "Historique")}</span>
+            <span className="sm:hidden text-[11px]">Hist.</span>
             {conversations.length > 0 && (
               <span className="ml-0.5 px-1 sm:px-1.5 py-0.2 rounded-full bg-orange-500/25 text-orange-400 text-[9px] sm:text-[10px] font-black">
                 {conversations.length}
@@ -6293,8 +6296,12 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           {/* Bouton + (Nouvelle discussion) */}
           <button
             type="button"
-            onClick={handleStartNewConversation}
-            className="p-1 sm:p-1.5 rounded-lg sm:rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-all cursor-pointer border border-zinc-700 active:scale-95 shrink-0 flex items-center justify-center"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleStartNewConversation();
+              textareaRef.current?.focus();
+            }}
+            className="p-1 sm:p-1.5 rounded-lg sm:rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-all cursor-pointer border border-zinc-700 active:scale-95 shrink-0 flex items-center justify-center touch-manipulation"
             title="Nouvelle discussion"
           >
             <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-400" />
@@ -6304,8 +6311,11 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           <div className="relative shrink min-w-0" ref={modelDropdownRef}>
             <button
               type="button"
-              onClick={() => setIsModelDropdownOpen(prev => !prev)}
-              className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white active:scale-95 shrink-0 shadow-xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsModelDropdownOpen(prev => !prev);
+              }}
+              className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white active:scale-95 shrink-0 shadow-xs touch-manipulation"
               title={isChefModelId(selectedModel) ? "Agent Delmas (Chef Multi-IA : Orchestre l'équipe Gemini Perception, R1 Maths, DeepSeek)" : "Modèle individuel autonome"}
             >
               {isChefModelId(selectedModel) && (
@@ -6313,12 +6323,12 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                   👑
                 </span>
               )}
-              <span className="max-w-[70px] xs:max-w-[95px] sm:max-w-[150px] truncate">{currentModelDisplay}</span>
+              <span className="max-w-[70px] sm:max-w-[150px] truncate">{currentModelDisplay}</span>
               <ChevronDown className={`w-3 h-3 text-zinc-400 transition-transform shrink-0 ${isModelDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {isModelDropdownOpen && (
-              <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-72 sm:w-80 bg-[#181a20] border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-50 animate-fadeIn backdrop-blur-md">
+              <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-[270px] sm:w-80 max-w-[calc(100vw-32px)] bg-[#181a20] border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-50 animate-fadeIn backdrop-blur-md">
                 <div className="px-3 py-1.5 border-b border-zinc-800/80 text-[10px] font-black text-zinc-400 uppercase tracking-wider flex items-center justify-between">
                   <span>Modèles IA</span>
                   <span className="text-[9px] text-zinc-500 font-normal">Menu de création</span>
@@ -6374,22 +6384,25 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           </div>
         </div>
 
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0 flex-nowrap">
-          {/* Sélecteur de langue dans la barre supérieure */}
-          <div className="relative" ref={mainLangMenuRef}>
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-nowrap">
+          {/* Sélecteur de langue dans la barre supérieure (décalé légèrement à gauche pour aérer le bouton Fermer) */}
+          <div className="relative mr-1 sm:mr-1.5" ref={mainLangMenuRef}>
             <button
               type="button"
-              onClick={() => setIsMainLangMenuOpen(!isMainLangMenuOpen)}
-              className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 rounded-lg bg-[#282a2f] hover:bg-[#32353b] border border-zinc-700/80 text-zinc-200 text-[11px] sm:text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsMainLangMenuOpen(prev => !prev);
+              }}
+              className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 rounded-lg bg-[#282a2f] hover:bg-[#32353b] border border-zinc-700/80 text-zinc-200 text-[11px] sm:text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 touch-manipulation"
               title={`Langue de l'IA : ${currentChatLangObj.name}`}
             >
-              <Globe className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-orange-400 shrink-0 hidden xs:inline" />
+              <Globe className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-orange-400 shrink-0 hidden sm:inline" />
               <span className="text-xs sm:text-sm">{currentChatLangObj.flag}</span>
               <span className="hidden sm:inline text-[11px] font-semibold">{currentChatLangObj.code.toUpperCase()}</span>
               <ChevronDown className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-zinc-400 shrink-0" />
             </button>
             {isMainLangMenuOpen && (
-              <div className="absolute right-0 top-full mt-1.5 w-52 bg-[#181a20] border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-50 animate-fadeIn backdrop-blur-md">
+              <div className="absolute right-0 top-full mt-1.5 w-52 max-w-[calc(100vw-32px)] bg-[#181a20] border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-50 animate-fadeIn backdrop-blur-md">
                 <div className="px-3 py-1.5 border-b border-zinc-800/80 text-[10px] font-black text-zinc-400 uppercase tracking-wider flex items-center justify-between">
                   <span>Langue de l'IA</span>
                   <span className="text-[9px] text-orange-400 font-semibold">{currentChatLangObj.name}</span>
@@ -6425,16 +6438,19 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             )}
           </div>
 
-          {/* Bouton Fermer */}
+          {/* Bouton Fermer avec écriture "Fermer" toujours visible à côté du robot bleu */}
           {onClose && (
             <button
               type="button"
-              onClick={onClose}
-              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-full bg-orange-500/20 border border-orange-500/50 text-orange-400 text-[9px] sm:text-[10px] font-black cursor-pointer hover:bg-orange-500/30 transition-colors shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
+              className="flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-full bg-orange-500/20 border border-orange-500/50 text-orange-400 text-[10px] sm:text-[11px] font-extrabold cursor-pointer hover:bg-orange-500/30 transition-colors shrink-0 touch-manipulation active:scale-95"
               title="Fermer l'Assistante StudyCloud"
             >
-              <DelmasRobot size={16} />
-              <span className="hidden xs:inline sm:inline">{tStudy("close_button", "Fermer")}</span>
+              <DelmasRobot size={15} />
+              <span className="inline text-[10px] sm:text-[11px] font-extrabold text-orange-400 leading-none">{tStudy("close_button", "Fermer")}</span>
             </button>
           )}
         </div>
@@ -6443,8 +6459,12 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
       {/* TIROIR HISTORIQUE COULISSANT STYLE GEMINI */}
       {isHistoryDrawerOpen && (
         <div
-          className="absolute inset-0 z-50 bg-black/60 backdrop-blur-xs flex animate-fadeIn"
-          onClick={() => setIsHistoryDrawerOpen(false)}
+          className="absolute inset-0 z-50 bg-black/60 backdrop-blur-xs flex animate-fadeIn touch-manipulation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsHistoryDrawerOpen(false);
+            }
+          }}
         >
           <div
             className="w-full max-w-[310px] sm:max-w-[340px] h-full bg-[#1e2024] border-r border-zinc-800 flex flex-col p-4 shadow-2xl animate-slideInLeft"
