@@ -194,6 +194,27 @@ export default function App() {
     return 'folders';
   });
 
+  const isCloudSkyTab = currentTab === 'upload' || currentTab === 'shared';
+  const isProfileTab = currentTab === 'settings';
+
+  // Synchroniser le fond d'écran Ciel & Nuages avec le body
+  useEffect(() => {
+    if (isCloudSkyTab) {
+      document.body.classList.add('clouds-active');
+    } else {
+      document.body.classList.remove('clouds-active');
+    }
+    if (isProfileTab) {
+      document.body.classList.add('profile-active');
+    } else {
+      document.body.classList.remove('profile-active');
+    }
+    return () => {
+      document.body.classList.remove('profile-active');
+      document.body.classList.remove('clouds-active');
+    };
+  }, [isCloudSkyTab, isProfileTab]);
+
   // Verrouillage strict en mode portrait sur mobile
   useEffect(() => {
     const enforcePortrait = async () => {
@@ -1692,26 +1713,6 @@ export default function App() {
   }
 
   // Filter folders
-  const isCloudSkyTab = currentTab === 'upload' || currentTab === 'shared';
-  const isProfileTab = currentTab === 'settings';
-
-  // Synchroniser le fond d'écran Ciel & Nuages avec le body
-  useEffect(() => {
-    if (isCloudSkyTab) {
-      document.body.classList.add('clouds-active');
-    } else {
-      document.body.classList.remove('clouds-active');
-    }
-    if (isProfileTab) {
-      document.body.classList.add('profile-active');
-    } else {
-      document.body.classList.remove('profile-active');
-    }
-    return () => {
-      document.body.classList.remove('profile-active');
-      document.body.classList.remove('clouds-active');
-    };
-  }, [isCloudSkyTab]);
 
   const filteredFolders = folders.filter((f) => {
     const q = searchQuery.toLowerCase().trim();
