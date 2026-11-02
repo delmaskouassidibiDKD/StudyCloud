@@ -768,6 +768,32 @@ export default function App() {
     } catch {}
   }, [isStudySpaceOpen]);
 
+  // Verrouillage strict du défilement global de la page quand l'Espace d'étude / Aperçu est ouvert sur mobile
+  useEffect(() => {
+    const isModalActive = isStudySpaceOpen || Boolean(activePreviewItemState);
+    if (!isModalActive) return;
+
+    const originalOverflow = document.body.style.overflow;
+    const originalPosition = document.body.style.position;
+    const originalWidth = document.body.style.width;
+    const originalHeight = document.body.style.height;
+    const originalHtmlOverflow = document.documentElement.style.overflow;
+
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    document.body.style.height = '100%';
+    document.documentElement.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.body.style.position = originalPosition;
+      document.body.style.width = originalWidth;
+      document.body.style.height = originalHeight;
+      document.documentElement.style.overflow = originalHtmlOverflow;
+    };
+  }, [isStudySpaceOpen, Boolean(activePreviewItemState)]);
+
   const [isStudySpaceFullscreen, setIsStudySpaceFullscreen] = useState(false);
 
   const setActivePreviewItem = (item: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean; folderName?: string; lockFullscreen?: boolean } | null) => {
@@ -2143,7 +2169,9 @@ export default function App() {
       )}
 
       {(isStudySpaceOpen || activePreviewItem) && (previewOwnerTab ? previewOwnerTab === currentTab : currentTab === 'folders') && (
-        <div className="fixed inset-0 left-0 right-0 z-[99999] bg-[#FDFBF7] dark:bg-[#0b0f19] flex flex-col animate-fadeIn overflow-hidden">
+        <div className={`fixed inset-0 left-0 right-0 z-[99999] ${
+          isAssistantOpen && mobilePreviewTab === 0 ? 'bg-[#1e2024]' : 'bg-[#FDFBF7] dark:bg-[#0b0f19]'
+        } flex flex-col animate-fadeIn overflow-hidden`}>
           {/* Top Header Bar - Solid Dark #070a13 */}
           <div className="fixed top-0 left-0 right-0 z-50 bg-[#FDFBF7] dark:bg-[#070a13] h-[44px] py-1 px-3 md:px-6 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm flex items-center justify-between gap-2">
             {/* Left: Bouton Retour (Normal sur Ordinateur md+, réduit sur Téléphone) */}

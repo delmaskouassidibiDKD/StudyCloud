@@ -3091,6 +3091,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   });
   const [inputValue, setInputValue] = useState('');
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -3099,26 +3100,59 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       if (window.scrollY !== 0) {
         window.scrollTo(0, 0);
       }
+      if (document.body.scrollTop !== 0) {
+        document.body.scrollTop = 0;
+      }
+      if (document.documentElement.scrollTop !== 0) {
+        document.documentElement.scrollTop = 0;
+      }
     };
 
-    const handleVisualViewportResize = () => {
+    const updateKeyboardMetrics = () => {
       if (window.visualViewport) {
-        const isShrunk = window.visualViewport.height < window.innerHeight * 0.85;
-        setIsKeyboardOpen(isShrunk);
+        // En mode interactive-widget=overlays-content :
+        // window.innerHeight est la hauteur fixe du viewport
+        // visualViewport.height rétrécit exactement de la hauteur du clavier virtuel
+        const layoutH = window.innerHeight;
+        const visualH = window.visualViewport.height;
+        const offsetTop = window.visualViewport.offsetTop || 0;
+        const diff = Math.max(0, Math.round(layoutH - visualH - offsetTop));
+
+        if (diff > 75) {
+          setKeyboardOffset(diff);
+          setIsKeyboardOpen(true);
+        } else {
+          setKeyboardOffset(0);
+          setIsKeyboardOpen(false);
+        }
       }
-      if (window.scrollY !== 0) {
-        window.scrollTo(0, 0);
-      }
+      handleScrollLock();
     };
+
+    if ('virtualKeyboard' in navigator) {
+      try {
+        (navigator as any).virtualKeyboard.overlaysContent = true;
+        (navigator as any).virtualKeyboard.addEventListener('geometrychange', (e: any) => {
+          const h = e.target.boundingRect?.height || 0;
+          if (h > 75) {
+            setKeyboardOffset(Math.round(h));
+            setIsKeyboardOpen(true);
+          } else {
+            setKeyboardOffset(0);
+            setIsKeyboardOpen(false);
+          }
+        });
+      } catch {}
+    }
 
     window.addEventListener('scroll', handleScrollLock, { passive: true });
-    window.visualViewport?.addEventListener('resize', handleVisualViewportResize);
-    window.visualViewport?.addEventListener('scroll', handleScrollLock);
+    window.visualViewport?.addEventListener('resize', updateKeyboardMetrics);
+    window.visualViewport?.addEventListener('scroll', updateKeyboardMetrics);
 
     return () => {
       window.removeEventListener('scroll', handleScrollLock);
-      window.visualViewport?.removeEventListener('resize', handleVisualViewportResize);
-      window.visualViewport?.removeEventListener('scroll', handleScrollLock);
+      window.visualViewport?.removeEventListener('resize', updateKeyboardMetrics);
+      window.visualViewport?.removeEventListener('scroll', updateKeyboardMetrics);
     };
   }, []);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
@@ -6638,6 +6672,10 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         ref={scrollContainerRef}
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-6 flex flex-col select-text chat-selectable"
+        style={{
+          paddingBottom: keyboardOffset > 0 ? `${keyboardOffset + 24}px` : undefined,
+          transition: 'padding-bottom 0.18s ease-out',
+        }}
       >
         {messages.length === 0 && !isTyping && !isWaitingServer ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center max-h-full my-auto pb-10 px-4 animate-fadeIn">
@@ -6942,10 +6980,16 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         )}
       </div>
 
-      {/* ZONE BASSE : FORMULAIRE */}
-      <div className={`px-2.5 sm:px-5 pt-1.5 shrink-0 transition-all duration-150 ${
-        isKeyboardOpen ? 'pb-1.5' : 'pb-4 sm:pb-6'
-      }`}>
+      {/* ZONE BASSE : FORMULAIRE DÉCOUPLÉ FLOTTANT AU-DESSUS DU CLAVIER SANS POUSSER LE FOND */}
+      <div 
+        className={`px-2.5 sm:px-5 pt-1.5 shrink-0 relative z-30 transition-all duration-150 ${
+          isKeyboardOpen ? 'pb-1.5' : 'pb-4 sm:pb-6'
+        }`}
+        style={{
+          transform: keyboardOffset > 0 ? `translateY(-${keyboardOffset}px)` : undefined,
+          transition: 'transform 0.18s cubic-bezier(0.2, 0, 0, 1), padding-bottom 0.15s ease-out',
+        }}
+      >
         {/* BANDEAU CRÉDIT INSUFFISANT EN HAUT DU CLAVIER DE SAISIE */}
         {isCreditInsufficient && (
           <div className="mx-2 md:mx-4 mb-2.5 px-3.5 py-2.5 rounded-2xl bg-[#1e1315]/95 border-2 border-rose-500/50 shadow-[0_4px_20px_rgba(244,63,94,0.25)] flex items-center justify-between gap-2.5 animate-fadeIn z-20">
@@ -6998,15 +7042,18 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
               onFocus={() => {
                 setIsKeyboardOpen(true);
                 window.scrollTo(0, 0);
+                document.body.scrollTop = 0;
+                document.documentElement.scrollTop = 0;
                 setTimeout(() => {
                   window.scrollTo(0, 0);
+                  document.body.scrollTop = 0;
+                  document.documentElement.scrollTop = 0;
                   if (scrollContainerRef.current) {
                     scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
                   }
-                }, 60);
+                }, 80);
               }}
               onBlur={() => {
-                setIsKeyboardOpen(false);
                 window.scrollTo(0, 0);
               }}
               onKeyDown={handleKeyDown}
