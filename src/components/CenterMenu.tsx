@@ -202,22 +202,41 @@ export function CenterMenu({
   const activeSentenceElRef = useRef<HTMLElement>(null);
   const textContainerRef = useRef<HTMLDivElement>(null);
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const speechStateRef = useRef<'idle' | 'loading' | 'playing' | 'paused' | 'stopped'>('idle');
+  const isExplicitlyStoppedRef = useRef<boolean>(false);
+  const speechWatchdogTimeoutRef = useRef<any>(null);
+
+  useEffect(() => {
+    speechStateRef.current = speechState;
+  }, [speechState]);
 
   useEffect(() => {
     autoScrollEnabledRef.current = autoScrollEnabled;
   }, [autoScrollEnabled]);
 
-  // Watchdog pour éviter que Chrome / Edge ne bloque la synthèse vocale
+  // Watchdog de santé pour la synthèse vocale (sans faire de pause() destructive sur mobile)
   useEffect(() => {
-    if (speechState !== 'playing') return;
+    if (speechState !== 'playing') {
+      if (speechWatchdogTimeoutRef.current) {
+        clearTimeout(speechWatchdogTimeoutRef.current);
+        speechWatchdogTimeoutRef.current = null;
+      }
+      return;
+    }
+
     const interval = setInterval(() => {
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
-          window.speechSynthesis.pause();
-          window.speechSynthesis.resume();
+        // Si l'état est "playing" mais que speechSynthesis est totalement inactif depuis plus de 2.5s
+        if (speechStateRef.current === 'playing' && !isExplicitlyStoppedRef.current && !window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
+          console.warn('[Speech] Inactivité du moteur vocal détectée, passage à la phrase suivante ou relance...');
+          const nextIdx = currentSentenceIdxRef.current + 1;
+          if (nextIdx < speechSegmentsRef.current.length) {
+            speakSentence(nextIdx);
+          }
         }
       }
-    }, 8000);
+    }, 2500);
+
     return () => clearInterval(interval);
   }, [speechState]);
 
@@ -703,18 +722,19 @@ export function CenterMenu({
   const speakSentence = (index: number) => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
       alert("La synthèse vocale n'est pas prise en charge sur ce navigateur.");
+      speechStateRef.current = 'stopped';
       setSpeechState('stopped');
       return;
     }
 
+    if (speechWatchdogTimeoutRef.current) {
+      clearTimeout(speechWatchdogTimeoutRef.current);
+      speechWatchdogTimeoutRef.current = null;
+    }
+
     const segments = speechSegmentsRef.current;
     if (!segments || segments.length === 0 || index >= segments.length) {
-      setSpeechState('stopped');
-      currentSentenceIdxRef.current = 0;
-      setCurrentSegmentIdx(0);
-      setActiveSpeechLineIndex(-1);
-      setSpokenWordCharIndex(-1);
-      activeUtteranceRef.current = null;
+      handleStop();
       return;
     }
 
@@ -724,10 +744,14 @@ export function CenterMenu({
     // Passer les segments vides ou sans caractères prononçables
     if (!sentence || sentence.replace(/[^\w\d\u00C0-\u017F]/g, '').length === 0) {
       if (index < segments.length - 1) {
-        speakSentence(index + 1);
+        setTimeout(() => {
+          if (!isExplicitlyStoppedRef.current && speechStateRef.current === 'playing') {
+            speakSentence(index + 1);
+          }
+        }, 25);
         return;
       } else {
-        setSpeechState('stopped');
+        handleStop();
         return;
       }
     }
@@ -739,6 +763,9 @@ export function CenterMenu({
 
     if (segment?.page) {
       setActiveSpeechPage(segment.page);
+      if (typeof segment.page === 'number') {
+        setCurrentPdfViewerPage(segment.page);
+      }
     }
     if (typeof segment?.lineIndex === 'number') {
       setActiveSpeechLineIndex(segment.lineIndex);
@@ -746,7 +773,7 @@ export function CenterMenu({
 
     const utterance = new SpeechSynthesisUtterance(sentence);
     utterance.lang = 'fr-FR';
-    utterance.rate = 1.12; // Lecture fluide, naturelle et dynamique (pas lente)
+    utterance.rate = 1.10; // Lecture fluide, naturelle et dynamique
     utterance.pitch = 1.0;
 
     const voices = window.speechSynthesis.getVoices();
@@ -756,11 +783,17 @@ export function CenterMenu({
       utterance.voice = frVoice;
     }
 
-    // Référence active pour empêcher le ramasse-miettes (Garbage Collector) de Chrome/Edge
+    // Référence active pour empêcher le ramasse-miettes (Garbage Collector) de Chrome/Edge/V8
     activeUtteranceRef.current = utterance;
     (window as any).__studyCloudUtterance = utterance;
+    if (typeof window !== 'undefined') {
+      if (!(window as any).__studyCloudActiveUtterances) {
+        (window as any).__studyCloudActiveUtterances = new Set();
+      }
+      (window as any).__studyCloudActiveUtterances.add(utterance);
+    }
 
-    // Suivi précis du mot prononcé pour le soulignage dynamique (sur Word/Texte uniquement pour éviter re-renders constants sur PDF)
+    // Suivi précis du mot prononcé pour le soulignage dynamique (sur Word/Texte uniquement)
     utterance.onboundary = (event) => {
       if (isWord || isText) {
         if (event.name === 'word' || typeof event.charIndex === 'number') {
@@ -770,31 +803,58 @@ export function CenterMenu({
       }
     };
 
-    utterance.onend = () => {
+    let hasEnded = false;
+    const safeEndSentence = (nextIndex: number) => {
+      if (hasEnded) return;
+      hasEnded = true;
+
+      if (speechWatchdogTimeoutRef.current) {
+        clearTimeout(speechWatchdogTimeoutRef.current);
+        speechWatchdogTimeoutRef.current = null;
+      }
+
+      if (typeof window !== 'undefined' && (window as any).__studyCloudActiveUtterances) {
+        (window as any).__studyCloudActiveUtterances.delete(utterance);
+      }
       activeUtteranceRef.current = null;
-      if (currentSentenceIdxRef.current < speechSegmentsRef.current.length - 1) {
-        speakSentence(currentSentenceIdxRef.current + 1);
+
+      if (isExplicitlyStoppedRef.current || speechStateRef.current === 'stopped' || speechStateRef.current === 'paused') {
+        return;
+      }
+
+      if (nextIndex < segments.length) {
+        setTimeout(() => {
+          if (!isExplicitlyStoppedRef.current && speechStateRef.current === 'playing') {
+            speakSentence(nextIndex);
+          }
+        }, 50);
       } else {
-        setSpeechState('stopped');
-        currentSentenceIdxRef.current = 0;
-        setCurrentSegmentIdx(0);
-        setActiveSpeechLineIndex(-1);
-        setSpokenWordCharIndex(-1);
+        handleStop();
       }
     };
 
-    utterance.onerror = (e) => {
-      activeUtteranceRef.current = null;
-      if (e.error !== 'canceled' && e.error !== 'interrupted') {
-        if (currentSentenceIdxRef.current < speechSegmentsRef.current.length - 1) {
-          speakSentence(currentSentenceIdxRef.current + 1);
-        } else {
-          setSpeechState('stopped');
-          setActiveSpeechLineIndex(-1);
-          setSpokenWordCharIndex(-1);
-        }
-      }
+    utterance.onend = () => {
+      safeEndSentence(index + 1);
     };
+
+    utterance.onerror = (e) => {
+      if (isExplicitlyStoppedRef.current || speechStateRef.current === 'stopped' || speechStateRef.current === 'paused') {
+        return;
+      }
+      console.warn(`[Speech] Event onerror sur phrase #${index}:`, e.error);
+      safeEndSentence(index + 1);
+    };
+
+    // Watchdog de sécurité par phrase : si Chromium plante ou omet onend, passer automatiquement après le délai calculé
+    const wordCount = sentence.split(/\s+/).filter(Boolean).length;
+    const maxExpectedDurationMs = Math.max(3500, Math.round((wordCount / 2.0) * 1000 + 4000));
+
+    speechWatchdogTimeoutRef.current = setTimeout(() => {
+      if (!hasEnded && speechStateRef.current === 'playing' && currentSentenceIdxRef.current === index) {
+        console.warn(`[SpeechWatchdog] Phrase #${index} a dépassé le délai (${maxExpectedDurationMs}ms), transition automatique...`);
+        safeEndSentence(index + 1);
+      }
+    }, maxExpectedDurationMs);
 
     // Défilement automatique du fichier vers la phrase lue si activé
     if (autoScrollEnabledRef.current) {
@@ -806,14 +866,29 @@ export function CenterMenu({
       }
     }
 
+    speechStateRef.current = 'playing';
     setSpeechState('playing');
+
+    try {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+    } catch {}
+
     window.speechSynthesis.speak(utterance);
   };
 
   const handleStartSpeech = async () => {
     setIsAudioMenuOpen(true);
+    isExplicitlyStoppedRef.current = false;
+    if (speechWatchdogTimeoutRef.current) {
+      clearTimeout(speechWatchdogTimeoutRef.current);
+      speechWatchdogTimeoutRef.current = null;
+    }
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+      try {
+        window.speechSynthesis.cancel();
+      } catch {}
     }
 
     let segments = speechSegmentsRef.current;
@@ -823,6 +898,7 @@ export function CenterMenu({
     }
 
     if (!segments || segments.length === 0) {
+      speechStateRef.current = 'loading';
       setSpeechState('loading');
 
       // 1. PDF
@@ -910,27 +986,53 @@ export function CenterMenu({
 
     setTimeout(() => {
       speakSentence(startIdx);
-    }, 50);
+    }, 60);
   };
 
   const handleTogglePause = () => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
     if (speechState === 'playing') {
-      window.speechSynthesis.pause();
+      isExplicitlyStoppedRef.current = true;
+      if (speechWatchdogTimeoutRef.current) {
+        clearTimeout(speechWatchdogTimeoutRef.current);
+        speechWatchdogTimeoutRef.current = null;
+      }
+      try {
+        window.speechSynthesis.pause();
+      } catch {}
+      speechStateRef.current = 'paused';
       setSpeechState('paused');
     } else if (speechState === 'paused') {
-      window.speechSynthesis.resume();
+      isExplicitlyStoppedRef.current = false;
+      speechStateRef.current = 'playing';
       setSpeechState('playing');
+      try {
+        window.speechSynthesis.resume();
+      } catch {}
+      setTimeout(() => {
+        if (speechStateRef.current === 'playing' && !window.speechSynthesis.speaking) {
+          speakSentence(currentSentenceIdxRef.current || 0);
+        }
+      }, 250);
     } else if (speechState === 'stopped' || speechState === 'idle') {
+      isExplicitlyStoppedRef.current = false;
       speakSentence(currentSentenceIdxRef.current || 0);
     }
   };
 
   const handleStop = () => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+    isExplicitlyStoppedRef.current = true;
+    if (speechWatchdogTimeoutRef.current) {
+      clearTimeout(speechWatchdogTimeoutRef.current);
+      speechWatchdogTimeoutRef.current = null;
     }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {}
+    }
+    speechStateRef.current = 'stopped';
     setSpeechState('stopped');
     currentSentenceIdxRef.current = 0;
     setCurrentSegmentIdx(0);
@@ -939,14 +1041,24 @@ export function CenterMenu({
   };
 
   const handleRestart = () => {
+    isExplicitlyStoppedRef.current = false;
+    if (speechWatchdogTimeoutRef.current) {
+      clearTimeout(speechWatchdogTimeoutRef.current);
+      speechWatchdogTimeoutRef.current = null;
+    }
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+      try {
+        window.speechSynthesis.cancel();
+      } catch {}
     }
     currentSentenceIdxRef.current = 0;
     setCurrentSegmentIdx(0);
     setSpokenWordCharIndex(-1);
+    speechStateRef.current = 'playing';
     if (isPdf) setPdfViewerMode('interactive');
-    speakSentence(0);
+    setTimeout(() => {
+      speakSentence(0);
+    }, 60);
   };
 
   const handleMicClick = () => {
