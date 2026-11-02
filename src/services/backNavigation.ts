@@ -23,6 +23,8 @@ class BackNavigationManager {
    * pour que le bouton matériel / virtuel retour d'Android déclenche l'événement popstate.
    */
   public register(id: string, handler: BackHandler): () => void {
+    if (typeof window === 'undefined') return () => {};
+
     // Si une entrée avec cet ID existe déjà, mettre à jour le handler sans repousser d'état
     const existingIndex = this.stack.findIndex((e) => e.id === id);
     if (existingIndex !== -1) {
@@ -47,6 +49,8 @@ class BackNavigationManager {
    * Désenregistre lorsqu'un modal ou sous-menu est fermé via l'interface (bouton X, fermeture par clic)
    */
   public unregister(id: string) {
+    if (typeof window === 'undefined') return;
+
     const index = this.stack.findIndex((e) => e.id === id);
     if (index === -1) return;
 
@@ -96,7 +100,7 @@ export function useBackHandler(isActive: boolean, onBack: () => void, id: string
   onBackRef.current = onBack;
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive || typeof window === 'undefined') return;
     const cleanup = backNavigation.register(id, () => {
       if (onBackRef.current) {
         onBackRef.current();
