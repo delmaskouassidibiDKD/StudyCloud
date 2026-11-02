@@ -2441,7 +2441,7 @@ export default function App() {
         </div>
 
           {/* Main Content Area: 3 Columns on Desktop, Navigable Tabs on Mobile */}
-          <div className="flex-1 w-full h-dvh relative">
+          <div className="flex-1 w-full h-full min-h-0 relative overflow-hidden">
             
             {/* Transparent blocker during resize so iframes (PDF/Viewer) never swallow mouse events */}
             {(isResizingLeft || isResizingRight) && (

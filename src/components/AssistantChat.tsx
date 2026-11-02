@@ -3090,6 +3090,37 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     return [];
   });
   const [inputValue, setInputValue] = useState('');
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleScrollLock = () => {
+      if (window.scrollY !== 0) {
+        window.scrollTo(0, 0);
+      }
+    };
+
+    const handleVisualViewportResize = () => {
+      if (window.visualViewport) {
+        const isShrunk = window.visualViewport.height < window.innerHeight * 0.85;
+        setIsKeyboardOpen(isShrunk);
+      }
+      if (window.scrollY !== 0) {
+        window.scrollTo(0, 0);
+      }
+    };
+
+    window.addEventListener('scroll', handleScrollLock, { passive: true });
+    window.visualViewport?.addEventListener('resize', handleVisualViewportResize);
+    window.visualViewport?.addEventListener('scroll', handleScrollLock);
+
+    return () => {
+      window.removeEventListener('scroll', handleScrollLock);
+      window.visualViewport?.removeEventListener('resize', handleVisualViewportResize);
+      window.visualViewport?.removeEventListener('scroll', handleScrollLock);
+    };
+  }, []);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [openCreditsMsgIds, setOpenCreditsMsgIds] = useState<Set<string>>(new Set());
 
@@ -6268,7 +6299,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
   );
 
   return (
-    <div className="flex flex-col h-full bg-[#1e2024] font-nunito relative z-50 overflow-hidden w-full max-w-full min-w-0 md:min-w-[495px]">
+    <div className="flex flex-col h-full bg-[#1e2024] font-nunito relative z-50 overflow-hidden w-full max-w-full min-w-0 md:min-w-[495px] overscroll-contain">
 
       {/* EN-TÊTE SUPÉRIEUR (BOUTON HISTORIQUE, NOUVELLE CONVERSATION, PUISSANT/MOYEN, FERMER) */}
       <div className="flex items-center justify-between px-2 sm:px-4 py-1.5 sm:py-2.5 bg-[#23252a] border-b border-zinc-700/60 shrink-0 relative z-30 shadow-sm w-full max-w-full flex-nowrap gap-1 sm:gap-2">
@@ -6912,7 +6943,9 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
       </div>
 
       {/* ZONE BASSE : FORMULAIRE */}
-      <div className="px-3 sm:px-5 pt-2 pb-6 sm:pb-8 shrink-0">
+      <div className={`px-2.5 sm:px-5 pt-1.5 shrink-0 transition-all duration-150 ${
+        isKeyboardOpen ? 'pb-1.5' : 'pb-4 sm:pb-6'
+      }`}>
         {/* BANDEAU CRÉDIT INSUFFISANT EN HAUT DU CLAVIER DE SAISIE */}
         {isCreditInsufficient && (
           <div className="mx-2 md:mx-4 mb-2.5 px-3.5 py-2.5 rounded-2xl bg-[#1e1315]/95 border-2 border-rose-500/50 shadow-[0_4px_20px_rgba(244,63,94,0.25)] flex items-center justify-between gap-2.5 animate-fadeIn z-20">
@@ -6962,6 +6995,20 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
               ref={textareaRef}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
+              onFocus={() => {
+                setIsKeyboardOpen(true);
+                window.scrollTo(0, 0);
+                setTimeout(() => {
+                  window.scrollTo(0, 0);
+                  if (scrollContainerRef.current) {
+                    scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+                  }
+                }, 60);
+              }}
+              onBlur={() => {
+                setIsKeyboardOpen(false);
+                window.scrollTo(0, 0);
+              }}
               onKeyDown={handleKeyDown}
               placeholder={tStudy("chat_placeholder", "Posez votre question ou collez votre cours...")}
               rows={2}
@@ -7039,6 +7086,12 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                   <button
                     type="submit"
                     disabled={!inputValue.trim()}
+                    onPointerDown={(e) => {
+                      if (inputValue.trim()) {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }}
                     className="p-2.5 font-bold rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0 bg-[#70a5ff] hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-slate-950"
                     title={tStudy("send_button_title", "Envoyer")}
                   >
