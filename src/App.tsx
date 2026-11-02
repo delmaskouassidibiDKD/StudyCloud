@@ -888,7 +888,12 @@ export default function App() {
   const [isRightFullscreen, setIsRightFullscreen] = useState(false);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 
+  // Menu des actions de l'en-tête d'aperçu (3 traits : Horloge, Partager, Télécharger)
+  const [isHeaderActionsMenuOpen, setIsHeaderActionsMenuOpen] = useState(false);
+  const headerActionsMenuRef = useRef<HTMLDivElement>(null);
+
   // Gestion du bouton matériel / virtuel retour d'Android (pile LIFO popstate)
+  useBackHandler(isHeaderActionsMenuOpen, () => setIsHeaderActionsMenuOpen(false), 'app-header-actions-menu');
   useBackHandler(showClearConfirmModal, () => setShowClearConfirmModal(false), 'app-clear-confirm-modal');
   useBackHandler(showUploadModal, () => setShowUploadModal(false), 'app-upload-modal');
   useBackHandler(Boolean(activeQRCodeFolder), () => setActiveQRCodeFolder(null), 'app-qrcode-modal');
@@ -900,6 +905,19 @@ export default function App() {
     setIsStudySpaceOpen(false);
   }, 'app-preview-study-space');
   useBackHandler(currentTab !== 'folders', () => setCurrentTab('folders'), 'app-tab-navigation');
+
+  // Fermer le menu des 3 traits de l'en-tête au clic à l'extérieur
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent | PointerEvent) => {
+      if (headerActionsMenuRef.current && !headerActionsMenuRef.current.contains(e.target as Node)) {
+        setIsHeaderActionsMenuOpen(false);
+      }
+    };
+    if (isHeaderActionsMenuOpen) {
+      document.addEventListener('pointerdown', handleOutside);
+      return () => document.removeEventListener('pointerdown', handleOutside);
+    }
+  }, [isHeaderActionsMenuOpen]);
 
   // Gestion dynamique et persistance distincte des dimensions du panneau gauche (Mode Fichiers vs Mode Chat Assistant)
   useEffect(() => {
@@ -2122,7 +2140,7 @@ export default function App() {
         <div className="fixed inset-0 left-0 right-0 z-[99999] bg-[#FDFBF7] dark:bg-[#0b0f19] flex flex-col animate-fadeIn overflow-hidden">
           {/* Top Header Bar - Solid Dark #070a13 */}
           <div className="fixed top-0 left-0 right-0 z-50 bg-[#FDFBF7] dark:bg-[#070a13] h-[44px] py-1 px-3 md:px-6 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm flex items-center justify-between gap-2">
-            {/* Left: Bouton Retour */}
+            {/* Left: Bouton Retour (Taille réduite demandée) */}
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 onClick={() => {
@@ -2132,78 +2150,114 @@ export default function App() {
                   setIsStudySpaceFullscreen(false);
                   safeLocalStorageRemove('studycloud_current_conversation_id');
                 }}
-                className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-extrabold text-[11px] sm:text-xs rounded-lg border-2 border-stone-800 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+                className="flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-bold text-[10px] sm:text-[11px] rounded-md sm:rounded-lg border-[1.5px] border-stone-800 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer touch-manipulation shrink-0"
+                title="Retour"
               >
-                <ArrowLeft className="w-3.5 h-3.5 text-stone-900 dark:text-white" />
+                <ArrowLeft className="w-3 h-3 text-stone-900 dark:text-white shrink-0" />
                 <span>Retour</span>
               </button>
             </div>
 
-            {/* Center: Nom du fichier & Contrôles Audio (au-dessus de la page en mode écran réduit) */}
-            <div className="flex-1 items-center justify-center gap-2 overflow-hidden px-1 sm:px-2 min-w-0 flex">
-              <p className="text-[11px] sm:text-xs font-bold text-stone-900 dark:text-white leading-tight truncate overflow-hidden text-ellipsis text-center max-w-[140px] sm:max-w-xs lg:max-w-sm shrink">
-                {activePreviewItem ? activePreviewItem.name : "Menu de création"}
-              </p>
+            {/* Center: Zone centrale libérée pour les futurs boutons (Nom de fichier retiré) */}
+            <div className="flex-1 flex items-center justify-center gap-2 px-1 min-w-0" id="studycloud-top-center-zone">
               <div id="studycloud-top-audio-portal" className="flex items-center shrink-0" />
             </div>
             
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Bouton Musique & Mini-lecteur audio connecté (Desktop) - placé devant le nombre de Mo */}
+            {/* Right: Contrôle musique & Bouton 3 traits avec sous-menu latéral (Horloge, Partager, Télécharger) */}
+            <div className="flex items-center gap-2 shrink-0 relative" ref={headerActionsMenuRef}>
               <HeaderMelodyControl compact={true} />
 
-              {activePreviewItem?.size ? (
-                <span className="hidden sm:inline text-[9px] sm:text-[10px] text-stone-600 dark:text-slate-300 font-semibold px-1">
-                  {(() => {
-                    const bytes = activePreviewItem.size;
-                    if (!bytes) return '0 o';
-                    const k = 1024;
-                    const sizes = ['o', 'Ko', 'Mo', 'Go'];
-                    const i = Math.floor(Math.log(bytes) / Math.log(k));
-                    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-                  })()}
-                </span>
-              ) : null}
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                {/* Clock / Study Timer Button */}
-                <button
-                  onClick={() => setShowStudyTimer(true)}
-                  className={`px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 ${
-                    timerRunning
-                      ? 'bg-amber-400 text-stone-950 border-stone-900 animate-pulse'
-                      : timerLeft < timerDuration
-                      ? 'bg-amber-100 text-amber-900 border-stone-800'
-                      : 'bg-white hover:bg-stone-100 text-stone-900'
-                  }`}
-                  title="Minuteur d'étude"
-                >
-                  <Clock className={`w-3.5 h-3.5 shrink-0 ${timerRunning ? 'text-stone-950' : 'text-blue-600'}`} />
-                  <span className="text-[7.5px] sm:text-xs font-bold sm:font-extrabold leading-none text-center">
-                    {timerRunning || timerLeft < timerDuration
-                      ? formatTimerDisplay(timerLeft)
-                      : 'Horloge'}
-                  </span>
-                </button>
+              <button
+                type="button"
+                onClick={() => setIsHeaderActionsMenuOpen(prev => !prev)}
+                className={`p-1.5 rounded-md sm:rounded-lg border-[1.5px] border-stone-800 dark:border-[#334155] ${
+                  isHeaderActionsMenuOpen
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white'
+                } shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer touch-manipulation flex items-center justify-center shrink-0`}
+                title="Menu des options (Horloge, Partager, Télécharger)"
+                aria-label="Options"
+              >
+                <Menu className="w-4 h-4 stroke-[2.5]" />
+              </button>
 
-                {activePreviewItem && (
-                  <>
-                    {/* Share Button */}
-                    <button
-                      onClick={() => {
-                        if (!activePreviewItem) return;
-                        handleOpenExternalCreateShareLink([activePreviewItem]);
-                      }}
-                      className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-white hover:bg-stone-100 text-stone-900 rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 shrink-0"
-                      title="Créer un lien de partage pour ce document"
-                    >
-                      <Share2 className="w-3.5 h-3.5 text-orange-500 shrink-0" />
-                      <span className="text-[7.5px] sm:text-xs font-bold sm:font-extrabold leading-none text-center">
-                        Partager
+              {/* Petit menu latéral / popup déroulant */}
+              {isHeaderActionsMenuOpen && (
+                <div className="absolute right-0 top-full mt-2 w-52 sm:w-60 bg-white dark:bg-[#181a20] border-2 border-stone-800 dark:border-zinc-700 rounded-xl shadow-2xl py-1.5 z-[999999] animate-fadeIn">
+                  <div className="px-3 py-1.5 border-b border-stone-200 dark:border-zinc-800 text-[10px] font-black text-stone-500 dark:text-zinc-400 uppercase tracking-wider flex items-center justify-between">
+                    <span>Options & Actions</span>
+                    {activePreviewItem?.size ? (
+                      <span className="text-[9px] font-semibold text-stone-400 dark:text-zinc-500">
+                        {(() => {
+                          const bytes = activePreviewItem.size;
+                          if (!bytes) return '';
+                          const k = 1024;
+                          const sizes = ['o', 'Ko', 'Mo', 'Go'];
+                          const i = Math.floor(Math.log(bytes) / Math.log(k));
+                          return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+                        })()}
                       </span>
+                    ) : null}
+                  </div>
+
+                  <div className="flex flex-col py-1">
+                    {/* 1. Bouton Horloge */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowStudyTimer(true);
+                        setIsHeaderActionsMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-stone-800 dark:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer text-left"
+                    >
+                      <div className={`p-1.5 rounded-md ${timerRunning ? 'bg-amber-400 text-stone-950 animate-pulse' : 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'}`}>
+                        <Clock className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="leading-tight truncate">
+                          {timerRunning || timerLeft < timerDuration
+                            ? `Horloge : ${formatTimerDisplay(timerLeft)}`
+                            : 'Horloge (Minuteur)'}
+                        </span>
+                        <span className="text-[10px] font-normal text-stone-400 dark:text-zinc-500">
+                          Minuteur d’étude & révisions
+                        </span>
+                      </div>
                     </button>
 
-                    {/* Download Button */}
+                    {/* 2. Bouton Partager */}
                     <button
+                      type="button"
+                      disabled={!activePreviewItem}
                       onClick={() => {
+                        if (!activePreviewItem) return;
+                        setIsHeaderActionsMenuOpen(false);
+                        handleOpenExternalCreateShareLink([activePreviewItem]);
+                      }}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold transition-colors text-left ${
+                        activePreviewItem
+                          ? 'text-stone-800 dark:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800 cursor-pointer'
+                          : 'text-stone-300 dark:text-zinc-600 cursor-not-allowed opacity-40'
+                      }`}
+                    >
+                      <div className="p-1.5 rounded-md bg-orange-100 dark:bg-orange-900/40 text-orange-500">
+                        <Share2 className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="leading-tight">Partager</span>
+                        <span className="text-[10px] font-normal text-stone-400 dark:text-zinc-500">
+                          Créer un lien de partage
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* 3. Bouton Télécharger */}
+                    <button
+                      type="button"
+                      disabled={!activePreviewItem}
+                      onClick={() => {
+                        if (!activePreviewItem) return;
+                        setIsHeaderActionsMenuOpen(false);
                         const content = activePreviewItem.url || `Ceci est le fichier ${activePreviewItem.name} téléchargé depuis UniFolder Share.`;
                         const blob = activePreviewItem.url && (activePreviewItem.url.startsWith('data:') || activePreviewItem.url.startsWith('blob:') || activePreviewItem.url.startsWith('http')) 
                           ? fetch(activePreviewItem.url).then(r => r.blob()).catch(() => new Blob([content], { type: 'text/plain;charset=utf-8' }))
@@ -2219,15 +2273,25 @@ export default function App() {
                           URL.revokeObjectURL(url);
                         });
                       }}
-                      className="px-2 sm:px-2.5 py-1 bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-[11px] sm:text-xs rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1 shrink-0"
-                      title="Télécharger le fichier"
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold transition-colors text-left ${
+                        activePreviewItem
+                          ? 'text-stone-800 dark:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800 cursor-pointer'
+                          : 'text-stone-300 dark:text-zinc-600 cursor-not-allowed opacity-40'
+                      }`}
                     >
-                      <Download className="w-3.5 h-3.5 shrink-0" />
-                      <span className="hidden sm:inline">Télécharger</span>
+                      <div className="p-1.5 rounded-md bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400">
+                        <Download className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="leading-tight">Télécharger</span>
+                        <span className="text-[10px] font-normal text-stone-400 dark:text-zinc-500">
+                          Enregistrer sur l’appareil
+                        </span>
+                      </div>
                     </button>
-                  </>
-                )}
-              </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
