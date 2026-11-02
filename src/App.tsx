@@ -17,7 +17,7 @@ import { CreateShareLinkModal } from './components/CreateShareLinkModal';
 import { PublishFileView } from './components/PublishFileView';
 import { INITIAL_FOLDERS } from './data/initialData';
 import { SharedFolder, NavigationTab } from './types';
-import { X, FolderPlus, Upload, ArrowLeft, Download, Share2, ArrowLeftRight, Maximize, Minimize, Dna, Menu, Clock, Mic, Loader2, Smartphone } from 'lucide-react';
+import { X, FolderPlus, Upload, ArrowLeft, Download, Share2, ArrowLeftRight, Maximize, Minimize, Dna, Menu, Clock, Mic, Loader2, Smartphone, Folder, FileText, Sparkles } from 'lucide-react';
 import { FileIconBadge } from './components/FileIconBadge';
 import { AssistantChat } from './components/AssistantChat';
 import { DnaLogo } from './components/DnaLogo';
@@ -864,6 +864,12 @@ export default function App() {
     window.addEventListener('switch-mobile-tab', handleSwitchMobileTab as any);
     return () => window.removeEventListener('switch-mobile-tab', handleSwitchMobileTab as any);
   }, []);
+
+  const navigateToMobilePreviewTab = (tab: 0 | 1 | 2) => {
+    setIsCenterFullscreen(false);
+    setIsRightFullscreen(false);
+    setMobilePreviewTab(tab);
+  };
   const [previewLeftWidth, setPreviewLeftWidth] = useState(() => {
     try {
       const saved = localStorage.getItem('studycloud_preview_left_width');
@@ -2158,8 +2164,55 @@ export default function App() {
               </button>
             </div>
 
-            {/* Center: Zone centrale libérée pour les futurs boutons (Nom de fichier retiré) */}
-            <div className="flex-1 flex items-center justify-center gap-2 px-1 min-w-0" id="studycloud-top-center-zone">
+            {/* Center: 3 boutons de navigation des menus (Menu actuel, PDF, Studio) avec sélection douce et lumineuse */}
+            <div className="flex-1 flex items-center justify-center gap-1 sm:gap-2 px-1 min-w-0" id="studycloud-top-center-zone">
+              <div className="flex items-center p-0.5 rounded-lg sm:rounded-xl bg-stone-200/80 dark:bg-zinc-800/90 border border-stone-300 dark:border-zinc-700 shadow-inner">
+                {/* 1. Menu Actuel (Fichiers & Espace d'étude) */}
+                <button
+                  type="button"
+                  onClick={() => navigateToMobilePreviewTab(0)}
+                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-xs transition-all duration-200 cursor-pointer touch-manipulation ${
+                    mobilePreviewTab === 0
+                      ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-900 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
+                      : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-transparent font-bold'
+                  }`}
+                  title="Menu actuel (Fichiers & Assistant)"
+                >
+                  <Folder className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                  <span>Menu</span>
+                </button>
+
+                {/* 2. Menu où s'affiche le PDF */}
+                <button
+                  type="button"
+                  onClick={() => navigateToMobilePreviewTab(1)}
+                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-xs transition-all duration-200 cursor-pointer touch-manipulation ${
+                    mobilePreviewTab === 1
+                      ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-900 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
+                      : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-transparent font-bold'
+                  }`}
+                  title="Menu du document PDF / Lecteur"
+                >
+                  <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                  <span>PDF</span>
+                </button>
+
+                {/* 3. Menu Studio de création */}
+                <button
+                  type="button"
+                  onClick={() => navigateToMobilePreviewTab(2)}
+                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-xs transition-all duration-200 cursor-pointer touch-manipulation ${
+                    mobilePreviewTab === 2
+                      ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-900 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
+                      : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-transparent font-bold'
+                  }`}
+                  title="Menu Studio de création"
+                >
+                  <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                  <span>Studio</span>
+                </button>
+              </div>
+
               <div id="studycloud-top-audio-portal" className="flex items-center shrink-0" />
             </div>
             
@@ -2316,33 +2369,6 @@ export default function App() {
                   : (isMobileScreen ? '100%' : `minmax(${isAssistantOpen ? "495px" : "320px"}, ${previewLeftWidth}%) 1fr ${previewRightWidth}%`),
               }}
             >
-              
-              {/* Left Navigation Buttons (Mobile only) */}
-              {!activePreviewItem?.lockFullscreen && isMobileScreen && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 -ml-2 z-20">
-                  <button 
-                    onClick={() => setMobilePreviewTab(prev => Math.max(0, prev - 1) as 0|1|2)}
-                    disabled={mobilePreviewTab === 0}
-                    className={`p-2 rounded-full bg-white border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all ${mobilePreviewTab === 0 ? 'opacity-50' : 'active:translate-x-0.5 active:translate-y-0.5'}`}
-                  >
-                    <ArrowLeft className="w-5 h-5" />
-                  </button>
-                </div>
-              )}
-
-              {/* Right Navigation Buttons (Mobile only) */}
-              {!activePreviewItem?.lockFullscreen && isMobileScreen && (
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 -mr-2 z-20">
-                  <button 
-                    onClick={() => setMobilePreviewTab(prev => Math.min(2, prev + 1) as 0|1|2)}
-                    disabled={mobilePreviewTab === 2}
-                    className={`p-2 rounded-full bg-white border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all ${mobilePreviewTab === 2 ? 'opacity-50' : 'active:translate-x-0.5 active:translate-y-0.5'}`}
-                  >
-                    <ArrowLeftRight className="w-5 h-5 rotate-180" />
-                  </button>
-                </div>
-              )}
-
                 {/* Column 1: Left Area */}
                 <LeftMenu 
                   isCenterFullscreen={isCenterFullscreen}
