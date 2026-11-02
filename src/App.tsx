@@ -2173,16 +2173,16 @@ export default function App() {
                 </p>
               </div>
 
-              {/* Sur Téléphone (Mobile uniquement : md:hidden) : 3 boutons de navigation des menus (Menu, PDF, Studio) avec sélection douce et lumineuse */}
-              <div className="flex md:hidden items-center p-0.5 rounded-lg sm:rounded-xl bg-stone-200/80 dark:bg-zinc-800/90 border border-stone-300 dark:border-zinc-700 shadow-inner">
+              {/* Sur Téléphone (Mobile uniquement : md:hidden) : 3 boutons séparés (Menu, Aperçu fichier, Studio) avec sélection douce et lumineuse */}
+              <div className="flex md:hidden items-center p-1 rounded-xl bg-stone-200/60 dark:bg-zinc-800/80 border border-stone-300/80 dark:border-zinc-700 shadow-inner gap-1.5 sm:gap-2">
                 {/* 1. Menu Actuel (Fichiers & Espace d'étude) */}
                 <button
                   type="button"
                   onClick={() => navigateToMobilePreviewTab(0)}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] transition-all duration-200 cursor-pointer touch-manipulation ${
+                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] sm:text-[11px] transition-all duration-200 cursor-pointer touch-manipulation ${
                     mobilePreviewTab === 0
-                      ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-900 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
-                      : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-transparent font-bold'
+                      ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-950 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
+                      : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-stone-300/40 dark:border-zinc-700/40 bg-white/40 dark:bg-zinc-900/30 font-bold'
                   }`}
                   title="Menu actuel (Fichiers & Assistant)"
                 >
@@ -2190,31 +2190,31 @@ export default function App() {
                   <span>Menu</span>
                 </button>
 
-                {/* 2. Menu où s'affiche le PDF */}
+                {/* 2. Menu Aperçu fichier */}
                 <button
                   type="button"
                   onClick={() => navigateToMobilePreviewTab(1)}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] transition-all duration-200 cursor-pointer touch-manipulation ${
+                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] sm:text-[11px] transition-all duration-200 cursor-pointer touch-manipulation whitespace-nowrap ${
                     mobilePreviewTab === 1
-                      ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-900 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
-                      : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-transparent font-bold'
+                      ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-950 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
+                      : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-stone-300/40 dark:border-zinc-700/40 bg-white/40 dark:bg-zinc-900/30 font-bold'
                   }`}
-                  title="Menu du document PDF / Lecteur"
+                  title="Aperçu du fichier / Document"
                 >
                   <FileText className="w-3 h-3 shrink-0" />
-                  <span>PDF</span>
+                  <span>Aperçu fichier</span>
                 </button>
 
                 {/* 3. Menu Studio de création */}
                 <button
                   type="button"
                   onClick={() => navigateToMobilePreviewTab(2)}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] transition-all duration-200 cursor-pointer touch-manipulation ${
+                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] sm:text-[11px] transition-all duration-200 cursor-pointer touch-manipulation ${
                     mobilePreviewTab === 2
-                      ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-900 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
-                      : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-transparent font-bold'
+                      ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-950 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
+                      : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-stone-300/40 dark:border-zinc-700/40 bg-white/40 dark:bg-zinc-900/30 font-bold'
                   }`}
-                  title="Menu Studio de création"
+                  title="Studio de création"
                 >
                   <Sparkles className="w-3 h-3 shrink-0" />
                   <span>Studio</span>
