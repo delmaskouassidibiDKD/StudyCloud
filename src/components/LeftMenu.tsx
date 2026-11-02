@@ -1494,7 +1494,7 @@ export function LeftMenu({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`w-full ${isAssistantOpen ? "min-w-[495px]" : "min-w-[320px]"} h-full border-r-2 border-stone-800 relative pointer-events-auto bg-[#FDFBF7] ${
+      className={`w-full ${isAssistantOpen ? "w-full min-w-0 md:min-w-[495px]" : "w-full min-w-0 md:min-w-[320px]"} max-w-full h-full border-r-0 md:border-r-2 border-stone-800 relative pointer-events-auto bg-[#FDFBF7] ${
         isCenterFullscreen || isRightFullscreen ? 'hidden' : (mobilePreviewTab === 0 ? 'flex' : 'hidden md:flex')
       } flex flex-col pt-[44px] overflow-hidden transition-colors ${
         isDraggingOver ? 'ring-4 ring-orange-500 ring-inset bg-orange-50/30' : ''
@@ -1784,7 +1784,7 @@ export function LeftMenu({
         </div>
 
       {/* Main Content: Assistant Chat - Persistant et actif tant qu'on est dans l'Espace d'étude */}
-      <div className={`flex-1 w-full overflow-hidden bg-[#1e2024] flex-col min-h-0 relative ${isAssistantOpen ? 'flex' : 'hidden'}`}>
+      <div className={`flex-1 w-full max-w-full min-w-0 overflow-hidden bg-[#1e2024] flex-col min-h-0 relative ${isAssistantOpen ? 'flex' : 'hidden'}`}>
         <AssistantChat onClose={() => setIsAssistantOpen(false)} onHasMessagesChange={setHasChatMessages} activePreviewItem={activePreviewItem} attachedResources={attachedResources} setAttachedResources={setAttachedResources} />
       </div>
       

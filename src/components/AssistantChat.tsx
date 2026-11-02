@@ -6268,22 +6268,23 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
   );
 
   return (
-    <div className="flex flex-col h-full bg-[#1e2024] font-nunito relative z-50 overflow-hidden min-w-[495px]">
+    <div className="flex flex-col h-full bg-[#1e2024] font-nunito relative z-50 overflow-hidden w-full max-w-full min-w-0 md:min-w-[495px]">
 
       {/* EN-TÊTE SUPÉRIEUR (BOUTON HISTORIQUE, NOUVELLE CONVERSATION, PUISSANT/MOYEN, FERMER) */}
-      <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 bg-[#23252a] border-b border-zinc-700/60 shrink-0 z-10 shadow-sm flex-nowrap">
-        <div className="flex items-center gap-1.5 min-w-0 flex-nowrap shrink-0">
+      <div className="flex items-center justify-between px-2 sm:px-4 py-1.5 sm:py-2.5 bg-[#23252a] border-b border-zinc-700/60 shrink-0 z-10 shadow-sm w-full max-w-full overflow-hidden flex-nowrap gap-1 sm:gap-2">
+        <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 flex-nowrap shrink">
           {/* Bouton Historique */}
           <button
             type="button"
             onClick={() => setIsHistoryDrawerOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-bold transition-all cursor-pointer border border-zinc-700 active:scale-95 shrink-0"
+            className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[11px] sm:text-xs font-bold transition-all cursor-pointer border border-zinc-700 active:scale-95 shrink-0"
             title="Historique des discussions"
           >
-            <Clock className="w-3.5 h-3.5 text-orange-400" />
-            <span>{tStudy("history_button", "Historique")}</span>
+            <Clock className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+            <span className="hidden xs:inline sm:inline">{tStudy("history_button", "Historique")}</span>
+            <span className="xs:hidden text-[11px]">Hist.</span>
             {conversations.length > 0 && (
-              <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-orange-500/25 text-orange-400 text-[10px] font-black">
+              <span className="ml-0.5 px-1 sm:px-1.5 py-0.2 rounded-full bg-orange-500/25 text-orange-400 text-[9px] sm:text-[10px] font-black">
                 {conversations.length}
               </span>
             )}
@@ -6293,27 +6294,27 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           <button
             type="button"
             onClick={handleStartNewConversation}
-            className="p-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-all cursor-pointer border border-zinc-700 active:scale-95 shrink-0 flex items-center justify-center"
+            className="p-1 sm:p-1.5 rounded-lg sm:rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-all cursor-pointer border border-zinc-700 active:scale-95 shrink-0 flex items-center justify-center"
             title="Nouvelle discussion"
           >
-            <Plus className="w-4 h-4 text-orange-400" />
+            <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-400" />
           </button>
 
           {/* Sélecteur de Modèle IA */}
-          <div className="relative shrink-0" ref={modelDropdownRef}>
+          <div className="relative shrink min-w-0" ref={modelDropdownRef}>
             <button
               type="button"
               onClick={() => setIsModelDropdownOpen(prev => !prev)}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white active:scale-95 shrink-0 shadow-xs"
+              className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white active:scale-95 shrink-0 shadow-xs"
               title={isChefModelId(selectedModel) ? "Agent Delmas (Chef Multi-IA : Orchestre l'équipe Gemini Perception, R1 Maths, DeepSeek)" : "Modèle individuel autonome"}
             >
               {isChefModelId(selectedModel) && (
-                <span className="text-[10px] px-1 py-0.2 rounded-full bg-orange-500/20 text-orange-400 font-extrabold border border-orange-500/30 flex items-center shrink-0">
+                <span className="text-[9px] px-0.5 py-0.2 rounded-full bg-orange-500/20 text-orange-400 font-extrabold border border-orange-500/30 flex items-center shrink-0">
                   👑
                 </span>
               )}
-              <span className="max-w-[110px] sm:max-w-[150px] truncate">{currentModelDisplay}</span>
-              <ChevronDown className={`w-3 h-3 text-zinc-400 transition-transform ${isModelDropdownOpen ? 'rotate-180' : ''}`} />
+              <span className="max-w-[70px] xs:max-w-[95px] sm:max-w-[150px] truncate">{currentModelDisplay}</span>
+              <ChevronDown className={`w-3 h-3 text-zinc-400 transition-transform shrink-0 ${isModelDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {isModelDropdownOpen && (
@@ -6373,19 +6374,19 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 flex-nowrap">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0 flex-nowrap">
           {/* Sélecteur de langue dans la barre supérieure */}
           <div className="relative" ref={mainLangMenuRef}>
             <button
               type="button"
               onClick={() => setIsMainLangMenuOpen(!isMainLangMenuOpen)}
-              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg bg-[#282a2f] hover:bg-[#32353b] border border-zinc-700/80 text-zinc-200 text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+              className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 rounded-lg bg-[#282a2f] hover:bg-[#32353b] border border-zinc-700/80 text-zinc-200 text-[11px] sm:text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
               title={`Langue de l'IA : ${currentChatLangObj.name}`}
             >
-              <Globe className="w-3.5 h-3.5 text-orange-400" />
-              <span>{currentChatLangObj.flag}</span>
+              <Globe className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-orange-400 shrink-0 hidden xs:inline" />
+              <span className="text-xs sm:text-sm">{currentChatLangObj.flag}</span>
               <span className="hidden sm:inline text-[11px] font-semibold">{currentChatLangObj.code.toUpperCase()}</span>
-              <ChevronDown className="w-3 h-3 text-zinc-400" />
+              <ChevronDown className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-zinc-400 shrink-0" />
             </button>
             {isMainLangMenuOpen && (
               <div className="absolute right-0 top-full mt-1.5 w-52 bg-[#181a20] border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-50 animate-fadeIn backdrop-blur-md">
@@ -6429,11 +6430,11 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             <button
               type="button"
               onClick={onClose}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-orange-500/20 border border-orange-500/50 text-orange-400 text-[10px] font-black cursor-pointer hover:bg-orange-500/30 transition-colors"
+              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-full bg-orange-500/20 border border-orange-500/50 text-orange-400 text-[9px] sm:text-[10px] font-black cursor-pointer hover:bg-orange-500/30 transition-colors shrink-0"
               title="Fermer l'Assistante StudyCloud"
             >
-              <DelmasRobot size={20} />
-              <span>{tStudy("close_button", "Fermer")}</span>
+              <DelmasRobot size={16} />
+              <span className="hidden xs:inline sm:inline">{tStudy("close_button", "Fermer")}</span>
             </button>
           )}
         </div>
@@ -6608,15 +6609,15 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             </div>
 
             {/* Titre spontané et fluide envoyé en temps réel par l'IA */}
-            <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 tracking-tight min-h-[32px] flex items-center justify-center">
-              <span>{displayedWelcomeTitle || welcomeGreeting.title}</span>
+            <h2 className="text-base sm:text-2xl font-bold text-white mb-2 tracking-tight min-h-[28px] sm:min-h-[32px] flex items-center justify-center text-center px-2">
+              <span className="leading-snug">{displayedWelcomeTitle || welcomeGreeting.title}</span>
               {isTypingWelcome && (
-                <span className="inline-block w-0.5 h-5 bg-orange-400 ml-1.5 animate-pulse align-middle" />
+                <span className="inline-block w-0.5 h-4 sm:h-5 bg-orange-400 ml-1.5 animate-pulse align-middle" />
               )}
             </h2>
 
             {/* Sous-titre dynamique bienveillant */}
-            <p className="text-xs sm:text-sm font-medium text-white/85 max-w-sm leading-relaxed min-h-[22px]">
+            <p className="text-xs sm:text-sm font-medium text-white/85 max-w-sm leading-relaxed min-h-[20px] sm:min-h-[22px] px-2 text-center">
               {displayedWelcomeSubtitle || (!isTypingWelcome ? welcomeGreeting.subtitle : '')}
             </p>
           </div>
@@ -6921,7 +6922,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           </div>
         )}
 
-        <div className="relative mx-2 md:mx-4 rounded-3xl p-[1.5px] overflow-hidden bg-zinc-700/60 shadow-lg group">
+        <div className="relative mx-1.5 sm:mx-2 md:mx-4 rounded-2xl sm:rounded-3xl p-[1.5px] overflow-hidden bg-zinc-700/60 shadow-lg group max-w-full">
           {/* Liseré fin arc-en-ciel rotatif à 360° qui fait le tour complet */}
           <div
             className="absolute -inset-[250%] pointer-events-none animate-rainbow-spin"
@@ -6935,7 +6936,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
               e.preventDefault();
               handleSend();
             }}
-            className="relative flex flex-col gap-2 bg-[#282a2f] rounded-[22.5px] p-3 sm:p-3.5 transition-all w-full h-full"
+            className="relative flex flex-col gap-2 bg-[#282a2f] rounded-[20px] sm:rounded-[22.5px] p-2.5 sm:p-3.5 transition-all w-full h-full max-w-full box-border"
           >
             <textarea
               ref={textareaRef}
@@ -6943,8 +6944,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={tStudy("chat_placeholder", "Posez votre question ou collez votre cours...")}
-              rows={3}
-              className="w-full bg-transparent text-white placeholder-zinc-400 text-sm outline-none resize-none overflow-y-auto select-text"
+              rows={2}
+              className="w-full bg-transparent text-white placeholder-zinc-400 text-xs sm:text-sm outline-none resize-none overflow-y-auto select-text"
             />
 
             <div className="flex items-center justify-between pt-0.5">
