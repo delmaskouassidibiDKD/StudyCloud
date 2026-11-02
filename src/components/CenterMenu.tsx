@@ -891,9 +891,9 @@ export function CenterMenu({
       {/* Sleek Document Action Bar: Present for ALL documents (PDF, Word, Excel, PPTX, Images, Code) */}
       {activePreviewItem && (
         <div className="w-full bg-[#FDFBF7] dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 px-3 py-1 flex items-center justify-between shrink-0 z-30 h-9">
-          {/* Left: Plein écran, Zoom (- 100% +), Défilement */}
+          {/* Left: Plein écran (Desktop uniquement), Zoom (- 100% +), Défilement */}
           <div className="flex items-center gap-1.5 sm:gap-2">
-            {!activePreviewItem?.lockFullscreen && (
+            {!isMobile && !activePreviewItem?.lockFullscreen && (
               <button
                 onClick={() => {
                   const next = !isCenterFullscreen;
@@ -902,7 +902,7 @@ export function CenterMenu({
                     setDocZoom(100);
                   }
                 }}
-                className="p-1.5 bg-amber-400 hover:bg-amber-300 rounded-lg text-stone-900 items-center justify-center shrink-0 transition-colors cursor-pointer border border-stone-300 dark:border-stone-700"
+                className="hidden md:flex p-1.5 bg-amber-400 hover:bg-amber-300 rounded-lg text-stone-900 items-center justify-center shrink-0 transition-colors cursor-pointer border border-stone-300 dark:border-stone-700"
                 title={isCenterFullscreen ? "Réduire à 3 colonnes" : "Agrandir en plein écran"}
               >
                 {isCenterFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}

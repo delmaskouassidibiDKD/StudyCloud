@@ -1353,8 +1353,8 @@ export function RightMenu({
           ? 'bg-[#18181b]/95 border-zinc-800'
           : 'bg-[#131417]/95 border-zinc-800'
       } border-b shrink-0 z-30 shadow-xs backdrop-blur-sm transition-colors`}>
-        {/* Côté gauche : Bouton Zoom jaune */}
-        <div className="flex items-center gap-2">
+        {/* Côté gauche : Bouton Zoom jaune (uniquement sur ordinateur, masqué sur téléphone) */}
+        <div className="hidden md:flex items-center gap-2">
           <button
             type="button"
             onClick={() => setIsRightFullscreen(!isRightFullscreen)}
