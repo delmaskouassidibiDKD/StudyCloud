@@ -933,6 +933,26 @@ export function LeftMenu({
     return 0;
   };
 
+  const handleOpenPreviewFile = (file: any, isImportedSection: boolean = false) => {
+    if (!setActivePreviewItem) return;
+    const isAud = file.category === 'audio' || !!file.isAudio || !!file.audioUrl || file.type?.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'].includes((file.extension || (file.name && file.name.includes('.') ? file.name.split('.').pop() : '') || '').toLowerCase()) || selectedSource?.type === 'audio';
+    const nextFolder = isImportedSection 
+      ? (currentFolderName || 'Mes fichiers') 
+      : (file.matiere || file.folderName || (selectedSource ? selectedSource.title : currentFolderName) || (isAud ? 'Son' : 'Mes fichiers'));
+    const noteFullText = [file.noteTitle || file.notepadTitle, file.content || file.textContent || file.notepadContent].filter(Boolean).join('\n\n');
+    setActivePreviewItem({
+      ...file,
+      content: file.content || file.notepadContent || '',
+      noteTitle: file.noteTitle || file.notepadTitle || '',
+      textContent: noteFullText || file.textContent || '',
+      isAudio: isAud || file.isAudio,
+      category: isAud ? 'audio' : (file.category || 'documents'),
+      folderName: nextFolder
+    });
+    setAttachedResources(prev => prev.filter(res => res.id !== file.id));
+    setViewHistory(prev => [file.id, ...prev.filter(id => id !== file.id)]);
+  };
+
   const renderFileGroup = (files: any[], isHorizontal: boolean = false, isImportedSection: boolean = false) => {
     const sortedFiles = [...files].sort((a, b) => {
       const aIsActive = activePreviewItem?.id === a.id;
@@ -957,7 +977,7 @@ export function LeftMenu({
       
       const totalContextCount = (activePreviewItem ? 1 : 0) + attachedResources.filter(res => res.id !== activePreviewItem?.id).length;
       const isLimitReached = totalContextCount >= 3;
-      const showMenuButton = !isSelectionMode && !isActive && (isAttached || !isLimitReached);
+      const showMenuButton = !isSelectionMode && (isActive || isAttached || !isLimitReached);
       
       let containerClass = "border-2 border-transparent bg-transparent";
       let textClass = "text-stone-700";
@@ -982,23 +1002,23 @@ export function LeftMenu({
               );
               return;
             }
-            if (setActivePreviewItem) {
-               const isAud = f.category === 'audio' || !!f.isAudio || !!f.audioUrl || f.type?.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'].includes((f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop() : '') || '').toLowerCase()) || selectedSource?.type === 'audio';
-               const nextFolder = isImportedSection 
-                 ? (currentFolderName || 'Mes fichiers') 
-                 : (f.matiere || f.folderName || (selectedSource ? selectedSource.title : currentFolderName) || (isAud ? 'Son' : 'Mes fichiers'));
-               const noteFullText = [f.noteTitle || f.notepadTitle, f.content || f.textContent || f.notepadContent].filter(Boolean).join('\n\n');
-               setActivePreviewItem({
-                 ...f,
-                 content: f.content || f.notepadContent || '',
-                 noteTitle: f.noteTitle || f.notepadTitle || '',
-                 textContent: noteFullText || f.textContent || '',
-                 isAudio: isAud || f.isAudio,
-                 category: isAud ? 'audio' : (f.category || 'documents'),
-                 folderName: nextFolder
-               });
-               setViewHistory(prev => [f.id, ...prev.filter(id => id !== f.id)]);
+
+            // 1. Si le fichier est déjà sélectionné en orange (principal), un nouveau clic le désélectionne
+            if (isActive) {
+              if (setActivePreviewItem) {
+                setActivePreviewItem(null);
+              }
+              return;
             }
+
+            // 2. Si le fichier est déjà joint en bleu, un nouveau clic le désélectionne (retire du contexte)
+            if (isAttached) {
+              setAttachedResources(prev => prev.filter(res => res.id !== f.id));
+              return;
+            }
+
+            // 3. Sinon, ouvrir comme fichier actif principal en orange
+            handleOpenPreviewFile(f, isImportedSection);
           }} 
           className={`group flex flex-col items-center cursor-pointer transition-all ${
             isHorizontal ? 'w-[92px] min-w-[92px] max-w-[92px] shrink-0' : 'w-full min-w-0'
@@ -1823,20 +1843,34 @@ export function LeftMenu({
               <X className="w-3.5 h-3.5 shrink-0" />
               Retirer du contexte
             </button>
+          ) : activePreviewItem?.id === menuCoords.file.id ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (setActivePreviewItem) setActivePreviewItem(null);
+                setOpenMenuId(null);
+                setMenuCoords(null);
+              }}
+              className="w-full px-2.5 py-1.5 text-left text-xs font-semibold text-stone-700 hover:bg-stone-50 hover:text-orange-600 flex items-center gap-2 transition-colors cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5 shrink-0" />
+              Désélectionner
+            </button>
           ) : (
-            activePreviewItem?.id === menuCoords.file.id ? (
-              <button
-                disabled
-                className="w-full px-2.5 py-1.5 text-left text-xs font-semibold text-stone-400 flex items-center gap-2 cursor-not-allowed"
-              >
-                <Plus className="w-3.5 h-3.5 shrink-0 opacity-50" />
-                Déjà ouvert
-              </button>
-            ) : (!attachedResources.filter(res => res.id !== activePreviewItem?.id).length || ((activePreviewItem ? 1 : 0) + attachedResources.filter(res => res.id !== activePreviewItem?.id).length < 3)) && (
+            (!attachedResources.filter(res => res.id !== activePreviewItem?.id).length || ((activePreviewItem ? 1 : 0) + attachedResources.filter(res => res.id !== activePreviewItem?.id).length < 3)) && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setAttachedResources(prev => [...prev, menuCoords.file]);
+                  if (!activePreviewItem) {
+                    // Aucun fichier sélectionné en orange -> le sélectionner en orange comme principal
+                    handleOpenPreviewFile(menuCoords.file, menuCoords.isImportedSection);
+                  } else {
+                    // Déjà un fichier principal en orange -> l'ajouter comme pièce jointe secondaire en bleu
+                    setAttachedResources(prev => {
+                      if (prev.some(res => res.id === menuCoords.file.id)) return prev;
+                      return [...prev, menuCoords.file];
+                    });
+                  }
                   setOpenMenuId(null);
                   setMenuCoords(null);
                 }}
