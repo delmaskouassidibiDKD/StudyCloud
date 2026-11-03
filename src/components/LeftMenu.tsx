@@ -293,26 +293,26 @@ export function LeftMenu({
   };
 
   // Déterminer précisément si on est dans "Mes fichiers" ou dans une matière spécifique
-  // Un fichier importé pendant l'étude n'appartient à AUCUNE matière : il ne doit jamais définir la section du bas.
-  const STUDY_FOLDER_NAMES = ['Fichiers importés', 'Fichiers Importés', 'Espace détude', "Espace d'étude"];
-  const isActiveStudyItem = Boolean(activePreviewItem && (
-    (activePreviewItem as any).isStudyImport ||
-    (activePreviewItem as any).isLeftMenuImport ||
-    (activePreviewItem as any).category === 'study' ||
-    STUDY_FOLDER_NAMES.includes((activePreviewItem as any).folderName) ||
-    STUDY_FOLDER_NAMES.includes((activePreviewItem as any).matiere)
-  ));
-  const rawMatiere = (activeFolderDetail?.title && activeFolderDetail.title !== 'Mes fichiers' && !STUDY_FOLDER_NAMES.includes(activeFolderDetail.title))
-    ? activeFolderDetail.title
-    : isActiveStudyItem
-      ? null
-      : (activePreviewItem?.matiere && activePreviewItem.matiere !== 'Mes fichiers' && !STUDY_FOLDER_NAMES.includes(activePreviewItem.matiere))
-        ? activePreviewItem.matiere
-        : (activePreviewItem?.folderName && activePreviewItem.folderName !== 'Mes fichiers' && !['Images', 'Vidéos', 'Musique', 'Documents', ...STUDY_FOLDER_NAMES].includes(activePreviewItem.folderName))
-          ? activePreviewItem.folderName
-          : null;
+  // RÈGLE STRICTE : La sélection d'un fichier importé d'étude ne doit JAMAIS modifier le menu du bas
+  const isStudyItemPreview = activePreviewItem && (
+    activePreviewItem.isStudyImport || 
+    activePreviewItem.isLeftMenuImport || 
+    activePreviewItem.category === 'study' || 
+    activePreviewItem.folderName === 'Fichiers importés' ||
+    activePreviewItem.folderName === 'Fichiers Importés' ||
+    activePreviewItem.source === 'Espace détude' ||
+    activePreviewItem.source === "Espace d'étude"
+  );
 
-  const isMesFichiersMode = !rawMatiere || rawMatiere === 'Mes fichiers';
+  const rawMatiere = (activeFolderDetail?.title && activeFolderDetail.title !== 'Mes fichiers' && activeFolderDetail.title !== 'Fichiers importés' && activeFolderDetail.title !== 'Fichiers Importés')
+    ? activeFolderDetail.title
+    : (!isStudyItemPreview && activePreviewItem?.matiere && activePreviewItem.matiere !== 'Mes fichiers' && activePreviewItem.matiere !== 'Fichiers importés')
+      ? activePreviewItem.matiere
+      : (!isStudyItemPreview && activePreviewItem?.folderName && activePreviewItem.folderName !== 'Mes fichiers' && !['Images', 'Vidéos', 'Musique', 'Documents', 'Fichiers importés', 'Fichiers Importés'].includes(activePreviewItem.folderName))
+        ? activePreviewItem.folderName
+        : null;
+
+  const isMesFichiersMode = !rawMatiere || rawMatiere === 'Mes fichiers' || rawMatiere === 'Fichiers importés' || rawMatiere === 'Fichiers Importés';
   const currentFolderName = isMesFichiersMode ? 'Mes fichiers' : rawMatiere;
   const [panelWidth, setPanelWidth] = useState(380);
 
@@ -1090,7 +1090,10 @@ export function LeftMenu({
 
   useEffect(() => {
     let folder = currentFolderName || '';
-    if (activeFolderDetail && activeFolderDetail.title) {
+    if (folder === 'Fichiers importés' || folder === 'Fichiers Importés') {
+      folder = 'Mes fichiers';
+    }
+    if (activeFolderDetail && activeFolderDetail.title && activeFolderDetail.title !== 'Fichiers importés' && activeFolderDetail.title !== 'Fichiers Importés') {
       folder = activeFolderDetail.title;
     }
 
@@ -1503,7 +1506,7 @@ export function LeftMenu({
         : selectedSource.type === 'audio' ? 'Son'
         : selectedSource.type === 'classeur' ? `Classeur : ${selectedSource.title}`
         : selectedSource.title)
-    : (isMesFichiersMode || !currentFolderName || currentFolderName === 'Mes fichiers'
+    : (isMesFichiersMode || !currentFolderName || currentFolderName === 'Mes fichiers' || currentFolderName === 'Fichiers importés' || currentFolderName === 'Fichiers Importés'
         ? 'Mes fichiers'
         : `Fichiers de ${currentFolderName}`);
 
@@ -1806,7 +1809,7 @@ export function LeftMenu({
                   <p className="text-[11px] text-stone-400 italic py-4 text-center w-full">
                     {selectedSource 
                       ? `Aucun fichier disponible dans ${displayTitle}`
-                      : (isMesFichiersMode || !currentFolderName || currentFolderName === 'Mes fichiers'
+                      : (isMesFichiersMode || !currentFolderName || currentFolderName === 'Mes fichiers' || currentFolderName === 'Fichiers importés' || currentFolderName === 'Fichiers Importés'
                           ? 'Aucun fichier dans Mes fichiers'
                           : 'Aucun fichier dans cette matière')}
                   </p>

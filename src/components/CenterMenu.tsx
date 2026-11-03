@@ -391,8 +391,12 @@ export function CenterMenu({
 
     const fileExt = (file.name?.split('.').pop() || file.extension || '').toLowerCase();
 
-    const directUrl = file.url || file.audioUrl || file.previewUrl || (file as any).videoUrl || '';
-    setResolvedUrl(directUrl);
+    const rawDirectUrl = file.url || file.audioUrl || file.previewUrl || (file as any).videoUrl || '';
+    const isDeadBlob = rawDirectUrl.startsWith('blob:');
+    const directUrl = isDeadBlob ? '' : rawDirectUrl;
+    if (directUrl) {
+      setResolvedUrl(directUrl);
+    }
 
     // 1. Resolve URL for media/PDF/audio
     if (file.id) {
@@ -400,13 +404,11 @@ export function CenterMenu({
         if (!isMounted) return;
         if (url) {
           setResolvedUrl(url);
-        } else if (directUrl && !directUrl.startsWith('blob:')) {
-          setResolvedUrl(directUrl);
-        } else if (file.r2Key || (file as any).r2_key) {
-          const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-          setResolvedUrl(`${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}`);
         } else if (directUrl) {
           setResolvedUrl(directUrl);
+        } else {
+          const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+          setResolvedUrl(`${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}`);
         }
       });
     } else if (directUrl) {
@@ -422,12 +424,12 @@ export function CenterMenu({
       if (!blob && file.url && !file.url.startsWith('blob:')) {
         try {
           const resp = await fetch(file.url);
-          blob = await resp.blob();
+          if (resp.ok) blob = await resp.blob();
         } catch (e) {
           console.warn('CenterMenu fetch fallback error:', e);
         }
       }
-      if (!blob && (file.r2Key || (file as any).r2_key || file.id)) {
+      if (!blob && file.id) {
         try {
           const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
           const resp = await fetch(`${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}`);
@@ -448,6 +450,17 @@ export function CenterMenu({
       }
 
       if (!isMounted) return;
+
+      // Injection d'une URL Blob locale fraîche pour affichage instantané sans erreur R2
+      if (blob) {
+        try {
+          const freshBlobUrl = URL.createObjectURL(blob);
+          setResolvedUrl(freshBlobUrl);
+          if (file.id) {
+            storeFileBlob(file.id, blob).catch(() => {});
+          }
+        } catch (e) {}
+      }
 
       const isText = ['txt', 'md', 'json', 'csv', 'js', 'ts', 'py', 'html', 'css', 'sql', 'xml', 'log', 'java', 'c', 'cpp', 'sh', 'env'].includes(fileExt);
       const isWord = ['docx', 'doc'].includes(fileExt);

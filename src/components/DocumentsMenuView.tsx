@@ -394,13 +394,13 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
 
   // Nettoyage proactif de tout fichier d'étude qui aurait pu s'infiltrer dans les documents
   useEffect(() => {
-    try {
-      const current = CloudDataStore.getState().documents || [];
-      const filtered = current.filter(d => !isExcludedFromDocuments(d));
-      if (filtered.length !== current.length) {
-        CloudDataStore.setDocuments(filtered);
+    CloudDataStore.update(state => {
+      const filtered = (state.documents || []).filter(d => !isExcludedFromDocuments(d));
+      if (filtered.length !== (state.documents || []).length) {
+        return { ...state, documents: filtered };
       }
-    } catch (e) {}
+      return state;
+    });
   }, []);
 
   // Synchronisation continue ultra-légère avec TanStack Query

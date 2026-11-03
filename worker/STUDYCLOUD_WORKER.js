@@ -2030,6 +2030,9 @@ function getBucketForCategory(rawEnv, category) {
     return rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
   }
   const cat = String(category).toLowerCase().trim();
+  if (cat === "study") {
+    return rawEnv.BUCKET_STUDY || rawEnv.BUCKET_DOCUMENTS || rawEnv.MON_R2_DOCUMENTS || rawEnv["MON_R2-DOCUMENTS"] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
+  }
   if (cat === "mes-fichiers" || cat === "mes_fichiers") {
     return rawEnv.BUCKET_MES_FICHIERS || rawEnv.MON_R2_MES_FICHIERS || rawEnv["MON_R2-MES_FICHIERS"] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
   }
@@ -2067,27 +2070,27 @@ async function getObjectFromAnyBucket(rawEnv, category, key, rangeOptions) {
   const mainBucket = rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
   if (mainBucket && !bucketsToTry.includes(mainBucket)) bucketsToTry.push(mainBucket);
   const candidates = [
-    rawEnv.BUCKET_MES_FICHIERS,
-    rawEnv.MON_R2_MES_FICHIERS,
-    rawEnv["MON_R2-MES_FICHIERS"],
-    rawEnv.BUCKET_WALLPAPERS,
-    rawEnv.MON_R2_WALLPAPERS,
-    rawEnv["MON_R2-WALLPAPERS"],
-    rawEnv.BUCKET_IMAGES,
-    rawEnv.MON_R2_IMAGES,
-    rawEnv["MON_R2-IMAGES"],
-    rawEnv.BUCKET_CLASSEUR,
-    rawEnv.MON_R2_CLASSEUR,
-    rawEnv["MON_R2-CLASSEUR"],
     rawEnv.BUCKET_DOCUMENTS,
     rawEnv.MON_R2_DOCUMENTS,
     rawEnv["MON_R2-DOCUMENTS"],
+    rawEnv.BUCKET_MES_FICHIERS,
+    rawEnv.MON_R2_MES_FICHIERS,
+    rawEnv["MON_R2-MES_FICHIERS"],
+    rawEnv.BUCKET_CLASSEUR,
+    rawEnv.MON_R2_CLASSEUR,
+    rawEnv["MON_R2-CLASSEUR"],
+    rawEnv.BUCKET_IMAGES,
+    rawEnv.MON_R2_IMAGES,
+    rawEnv["MON_R2-IMAGES"],
     rawEnv.BUCKET_VIDEOS,
     rawEnv.MON_R2_VIDEOS,
     rawEnv["MON_R2-VIDEOS"],
     rawEnv.BUCKET_AUDIO,
     rawEnv.MON_R2_AUDIO,
     rawEnv["MON_R2-AUDIO"],
+    rawEnv.BUCKET_WALLPAPERS,
+    rawEnv.MON_R2_WALLPAPERS,
+    rawEnv["MON_R2-WALLPAPERS"],
     rawEnv.BUCKET_DOWNLOADS,
     rawEnv.BUCKET_SECURE
   ];
@@ -2095,24 +2098,126 @@ async function getObjectFromAnyBucket(rawEnv, category, key, rangeOptions) {
     if (b && !bucketsToTry.includes(b)) bucketsToTry.push(b);
   }
   const keysToTry = [];
-  if (key) keysToTry.push(key);
+  const addKeyVariant = (k) => {
+    if (k && !keysToTry.includes(k)) keysToTry.push(k);
+  };
+  addKeyVariant(key);
   try {
     const decoded = decodeURIComponent(key);
-    if (decoded && !keysToTry.includes(decoded)) keysToTry.push(decoded);
+    addKeyVariant(decoded);
   } catch {
   }
+  addKeyVariant(key.replace(/ /g, "_"));
+  addKeyVariant(key.replace(/_/g, " "));
+  addKeyVariant(key.replace(/%20/g, "_"));
+  addKeyVariant(key.replace(/%20/g, " "));
   if (key.includes("/")) {
-    const fileNameOnly = key.split("/").pop();
-    if (fileNameOnly && !keysToTry.includes(fileNameOnly)) keysToTry.push(fileNameOnly);
+    const fileNameOnly = key.split("/").pop() || "";
+    addKeyVariant(fileNameOnly);
+    addKeyVariant(fileNameOnly.replace(/ /g, "_"));
+    addKeyVariant(fileNameOnly.replace(/_/g, " "));
     const withoutUser = key.split("/").slice(1).join("/");
-    if (withoutUser && !keysToTry.includes(withoutUser)) keysToTry.push(withoutUser);
+    addKeyVariant(withoutUser);
+    addKeyVariant(withoutUser.replace(/ /g, "_"));
+    addKeyVariant(withoutUser.replace(/_/g, " "));
+    const knownCats = ["study", "documents", "mes-fichiers", "classeur", "images", "videos", "audio"];
+    for (const c of knownCats) {
+      if (key.includes(`/${c}/`)) {
+        for (const otherC of knownCats) {
+          if (otherC !== c) {
+            const rep = key.replace(`/${c}/`, `/${otherC}/`);
+            addKeyVariant(rep);
+            addKeyVariant(rep.replace(/ /g, "_"));
+            addKeyVariant(withoutUser.replace(`${c}/`, `${otherC}/`));
+            addKeyVariant(withoutUser.replace(`${c}/`, `${otherC}/`).replace(/ /g, "_"));
+          }
+        }
+      }
+    }
   }
   for (const k of keysToTry) {
     for (const bucket of bucketsToTry) {
+      if (!bucket || typeof bucket.get !== "function") continue;
       try {
-        const obj = rangeOptions ? await bucket.get(k, rangeOptions) : await bucket.get(k);
+        let obj = null;
+        if (rangeOptions) {
+          try {
+            obj = await bucket.get(k, rangeOptions);
+          } catch (re) {
+          }
+        }
+        if (!obj) {
+          try {
+            obj = await bucket.get(k);
+          } catch (ne) {
+          }
+        }
         if (obj) return { object: obj, bucket };
       } catch (e) {
+      }
+    }
+  }
+  const fileIdCandidate = key.match(/(f_[a-zA-Z0-9_-]+)/)?.[1] || (key.includes("/") ? key.split("/").pop()?.split("_")[0] : "");
+  const cleanFileName = key.split("/").pop() || "";
+  if (rawEnv.DB && (fileIdCandidate || cleanFileName)) {
+    try {
+      const qTerm = fileIdCandidate || cleanFileName;
+      const row = await rawEnv.DB.prepare(`
+        SELECT r2_key FROM study_imported_files WHERE id = ? OR name = ? OR r2_key LIKE ?
+        UNION ALL SELECT r2_key FROM document_files WHERE id = ? OR name = ? OR r2_key LIKE ?
+        UNION ALL SELECT r2_key FROM files WHERE id = ? OR name = ? OR r2_key LIKE ?
+        UNION ALL SELECT r2_key FROM classeur_files WHERE id = ? OR name = ? OR r2_key LIKE ?
+        LIMIT 1
+      `).bind(qTerm, qTerm, `%${qTerm}%`, qTerm, qTerm, `%${qTerm}%`, qTerm, qTerm, `%${qTerm}%`, qTerm, qTerm, `%${qTerm}%`).first();
+      if (row && row.r2_key) {
+        for (const bucket of bucketsToTry) {
+          if (!bucket || typeof bucket.get !== "function") continue;
+          try {
+            let obj = null;
+            if (rangeOptions) {
+              try {
+                obj = await bucket.get(row.r2_key, rangeOptions);
+              } catch (re) {
+              }
+            }
+            if (!obj) {
+              try {
+                obj = await bucket.get(row.r2_key);
+              } catch (ne) {
+              }
+            }
+            if (obj) return { object: obj, bucket };
+          } catch (e) {
+          }
+        }
+      }
+    } catch (d1Err) {
+    }
+  }
+  if (fileIdCandidate && fileIdCandidate.length >= 6) {
+    for (const bucket of bucketsToTry) {
+      if (!bucket || typeof bucket.list !== "function") continue;
+      try {
+        const listed = await bucket.list({ limit: 100 });
+        for (const o of listed?.objects || []) {
+          if (o.key && o.key.includes(fileIdCandidate)) {
+            let obj = null;
+            if (rangeOptions) {
+              try {
+                obj = await bucket.get(o.key, rangeOptions);
+              } catch (re) {
+              }
+            }
+            if (!obj) {
+              try {
+                obj = await bucket.get(o.key);
+              } catch (ne) {
+              }
+            }
+            if (obj) return { object: obj, bucket };
+          }
+        }
+      } catch (le) {
       }
     }
   }
@@ -5726,7 +5831,7 @@ a:hover{transform:translateY(-2px)}
           const { results } = await env.DB.prepare(query).bind(...params).all();
           const formatted = (results || []).map((row) => {
             let finalUrl = row.file_url || "";
-            if ((!finalUrl || finalUrl.startsWith("blob:")) && row.r2_key) {
+            if (!finalUrl || finalUrl.startsWith("blob:")) {
               finalUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(row.id)}`;
             }
             let thumbUrl = row.thumbnail_url || "";
@@ -5853,7 +5958,7 @@ a:hover{transform:translateY(-2px)}
           `).bind(reqUserId).all();
           const formatted = (results || []).map((row) => {
             let finalUrl = row.file_url || "";
-            if ((!finalUrl || finalUrl.startsWith("blob:")) && row.r2_key) {
+            if (!finalUrl || finalUrl.startsWith("blob:")) {
               finalUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(row.id)}`;
             }
             return {
@@ -6110,7 +6215,13 @@ a:hover{transform:translateY(-2px)}
       if (path.startsWith("/api/cloud/stream/") && method === "GET") {
         const fileId = path.replace("/api/cloud/stream/", "").trim();
         if (!fileId || !env.DB) return errorResponse("ID de fichier manquant ou DB inaccessible", 400, origin);
-        let foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "videos" as category FROM video_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        let foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "study" as category FROM study_imported_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        if (!foundRecord) {
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "documents" as category FROM document_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        }
+        if (!foundRecord) {
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "videos" as category FROM video_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        }
         if (!foundRecord) {
           foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "audio" as category FROM audio_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
@@ -6118,16 +6229,10 @@ a:hover{transform:translateY(-2px)}
           foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "images" as category FROM image_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "documents" as category FROM document_files WHERE id = ? LIMIT 1').bind(fileId).first();
-        }
-        if (!foundRecord) {
           foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "classeur" as category FROM classeur_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
           foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "mes-fichiers" as category FROM files WHERE id = ? LIMIT 1').bind(fileId).first();
-        }
-        if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "study" as category FROM study_imported_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
           foundRecord = await env.DB.prepare('SELECT id, r2_key, file_type as extension, title as name, "documents" as category FROM published_documents WHERE id = ? LIMIT 1').bind(fileId).first();
