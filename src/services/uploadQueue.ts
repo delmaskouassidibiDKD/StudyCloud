@@ -225,8 +225,10 @@ class UploadQueueManager {
 
       // 1. Sauvegarde binaire IndexedDB (accès 0ms)
       storeFileBlob(item.id, file as any).catch(() => {});
-      // 2. Ajout optimiste immédiat dans CloudDataStore pour que tous les stores et vues le conservent
-      CloudDataStore.addOptimisticFile(item, effectiveFolderId);
+      // 2. Ajout optimiste immédiat dans CloudDataStore (uniquement pour les fichiers généraux, JAMAIS pour les imports d'étude)
+      if (effectiveCategory !== 'study' && options.uploadSource !== 'left-menu-study' && !item.isStudyImport && !item.isLeftMenuImport) {
+        CloudDataStore.addOptimisticFile(item, effectiveFolderId);
+      }
 
       const task: UploadTask = {
         id: item.id,
@@ -492,17 +494,20 @@ class UploadQueueManager {
         CloudStorageAPI.saveAudio(audioToSave as any).catch(() => {});
       }
 
-      // Synchronisation directe et EXCLUSIVE dans la table files de D1 (pour Mes Fichiers, Matières et Menu de création)
+      // Synchronisation directe et EXCLUSIVE dans la table files de D1 (pour Mes Fichiers et Matières)
       const isStudyOrCreationImport = task.uploadSource === 'left-menu-study' ||
+        category === 'study' ||
+        task.uploadSource === 'study' ||
         Boolean((task.fileItem as any)?.isLeftMenuImport) ||
         Boolean((task.fileItem as any)?.isStudyImport) ||
         Boolean((task.fileItem as any)?.isStudySession);
 
-      const isMesFichiersUpload = category === 'mes-fichiers' || 
+      const isMesFichiersUpload = !isStudyOrCreationImport && (
+        category === 'mes-fichiers' || 
         task.uploadSource === 'mes-fichiers' || 
-        isStudyOrCreationImport ||
         Boolean((task.fileItem as any)?.matiere) || 
-        (task.folderId && !['documents', 'images', 'videos', 'audio', 'default-folder', 'root'].includes(task.folderId));
+        (task.folderId && !['documents', 'images', 'videos', 'audio', 'default-folder', 'root'].includes(task.folderId))
+      );
 
       if (uploadUrl && r2Key && isMesFichiersUpload) {
         const currentUserId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
@@ -524,60 +529,77 @@ class UploadQueueManager {
           thumbnailUrl: previewDataUrl || task.fileItem?.thumbnailUrl || (task.fileItem as any)?.coverUrl || (task.fileItem as any)?.previewUrl || undefined,
           isFavorite: !!task.fileItem?.isFavorite,
           isImported: true,
-          isStudySession: isStudyOrCreationImport,
+          isStudySession: false,
           lastImported: Date.now()
         }).catch(err => console.warn('[UploadQueue] Erreur update registerFileMetadata:', err));
-
-        if (isStudyOrCreationImport) {
-          StudyCloudAPI.registerStudyFile({
-            id: serverFileId || id,
-            userId: currentUserId,
-            name: fileName,
-            size: task.fileItem?.sizeBytes || file.size,
-            type: file.type || 'application/octet-stream',
-            extension: extVal,
-            r2Key: r2Key,
-            fileUrl: uploadUrl,
-            isFavorite: !!task.fileItem?.isFavorite,
-            importedAt: Date.now()
-          }).catch(err => console.warn('[UploadQueue] Erreur update registerStudyFile:', err));
-        }
-
-        // Mettre à jour immédiatement le stockage local pour que les fichiers restent lisibles avec leur URL R2
-        try {
-          const updateLocalKey = (k: string) => {
-            const raw = localStorage.getItem(k);
-            if (!raw) return;
-            try {
-              const list = JSON.parse(raw);
-              if (Array.isArray(list)) {
-                let changed = false;
-                const updated = list.map((f: any) => {
-                  if (f && (f.id === id || (serverFileId && f.id === serverFileId))) {
-                    changed = true;
-                    return {
-                      ...f,
-                      id: serverFileId || id,
-                      url: uploadUrl,
-                      fileUrl: uploadUrl,
-                      r2Key: r2Key || f.r2Key,
-                      r2_key: r2Key || f.r2_key,
-                      previewUrl: previewDataUrl || uploadUrl,
-                      thumbnailUrl: previewDataUrl || uploadUrl
-                    };
-                  }
-                  return f;
-                });
-                if (changed) {
-                  localStorage.setItem(k, JSON.stringify(updated));
-                }
-              }
-            } catch (e) {}
-          };
-          ['unifolder_study_imported_files', 'unifolder_left_menu_general_imports', 'unifolder_files_menu_items'].forEach(updateLocalKey);
-          window.dispatchEvent(new Event('unifolder_files_updated'));
-        } catch (err) {}
       }
+
+      if (uploadUrl && isStudyOrCreationImport) {
+        const currentUserId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
+        const extVal = (task.fileItem as any)?.extension || (fileName.includes('.') ? fileName.split('.').pop()?.toUpperCase() : 'FICHIER');
+        StudyCloudAPI.registerStudyFile({
+          id: serverFileId || id,
+          userId: currentUserId,
+          name: fileName,
+          size: task.fileItem?.sizeBytes || file.size,
+          type: file.type || 'application/octet-stream',
+          extension: extVal,
+          r2Key: r2Key,
+          fileUrl: uploadUrl,
+          isFavorite: !!task.fileItem?.isFavorite,
+          importedAt: Date.now()
+        }).catch(err => console.warn('[UploadQueue] Erreur update registerStudyFile:', err));
+      }
+
+      // Synchroniser le blob sous serverFileId si différent de id
+      if (serverFileId && serverFileId !== id) {
+        getFileBlob(id).then(b => {
+          if (b) storeFileBlob(serverFileId, b);
+        }).catch(() => {});
+      }
+
+      // Mettre à jour immédiatement le stockage local pour que les fichiers restent lisibles avec leur URL R2
+      try {
+        const updateLocalKey = (k: string) => {
+          const raw = localStorage.getItem(k);
+          if (!raw) return;
+          try {
+            const list = JSON.parse(raw);
+            if (Array.isArray(list)) {
+              if (k === 'unifolder_files_menu_items' && isStudyOrCreationImport) {
+                // Nettoyage strict : retirer tout fichier d'étude de Mes fichiers
+                const cleaned = list.filter((f: any) => f && f.id !== id && f.id !== serverFileId && !f.isStudyImport && !f.isLeftMenuImport && f.folderName !== 'Fichiers importés');
+                if (cleaned.length !== list.length) {
+                  localStorage.setItem(k, JSON.stringify(cleaned));
+                }
+                return;
+              }
+              let changed = false;
+              const updated = list.map((f: any) => {
+                if (f && (f.id === id || (serverFileId && f.id === serverFileId))) {
+                  changed = true;
+                  return {
+                    ...f,
+                    id: serverFileId || id,
+                    url: uploadUrl,
+                    fileUrl: uploadUrl,
+                    r2Key: r2Key || f.r2Key,
+                    r2_key: r2Key || f.r2_key,
+                    previewUrl: previewDataUrl || uploadUrl,
+                    thumbnailUrl: previewDataUrl || uploadUrl
+                  };
+                }
+                return f;
+              });
+              if (changed) {
+                localStorage.setItem(k, JSON.stringify(updated));
+              }
+            }
+          } catch (e) {}
+        };
+        ['unifolder_study_imported_files', 'unifolder_left_menu_general_imports', 'unifolder_files_menu_items'].forEach(updateLocalKey);
+        window.dispatchEvent(new Event('unifolder_files_updated'));
+      } catch (err) {}
 
       // Invalider immédiatement le cache TanStack Query ciblé pour préserver l'isolation
       try {

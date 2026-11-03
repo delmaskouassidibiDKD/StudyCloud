@@ -7188,6 +7188,9 @@ a:hover{transform:translateY(-2px)}
           foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "mes-fichiers" as category FROM files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "study" as category FROM study_imported_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        }
+        if (!foundRecord) {
           foundRecord = await env.DB.prepare('SELECT id, r2_key, file_type as extension, title as name, "documents" as category FROM published_documents WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
@@ -7937,10 +7940,15 @@ a:hover{transform:translateY(-2px)}
         }
 
         // 2. Routage et validation stricte
-        let finalCategory: 'images' | 'videos' | 'audio' | 'documents' | 'classeur' | 'mes-fichiers';
+        let finalCategory: 'images' | 'videos' | 'audio' | 'documents' | 'classeur' | 'mes-fichiers' | 'study';
+
+        const isStudyUpload = requestedCategory === 'study' || uploadSource === 'left-menu-study' || uploadSource.includes('study');
 
         const hasSpecificFolder = Boolean(folderId && !['default-folder', 'root', 'documents', 'images', 'videos', 'audio'].includes(folderId));
-        if (requestedCategory === 'mes-fichiers' || requestedCategory === 'mes_fichiers' || uploadSource === 'mes-fichiers') {
+        if (isStudyUpload) {
+          // Importation effectuée pendant l'étude : strictement isolée dans study_imported_files (JAMAIS dans Mes fichiers)
+          finalCategory = 'study';
+        } else if (requestedCategory === 'mes-fichiers' || requestedCategory === 'mes_fichiers' || uploadSource === 'mes-fichiers') {
           // Menu "Mes fichiers" : espace dédié, indépendant et isolé de tous les autres menus
           finalCategory = 'mes-fichiers';
         } else if (requestedCategory === 'classeur' || hasSpecificFolder) {
@@ -8196,6 +8204,36 @@ a:hover{transform:translateY(-2px)}
                 storageKey,
                 fileUrl,
                 finalThumbnailUrl,
+                Date.now()
+              ).run();
+            } else if (finalCategory === 'study') {
+              // Stockage exclusif dans la table dédiée study_imported_files (JAMAIS dans files ni Mes fichiers)
+              await env.DB.prepare(`
+                INSERT INTO study_imported_files (id, user_id, name, size, type, extension, r2_key, file_url, is_favorite, imported_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                  name = excluded.name,
+                  size = excluded.size,
+                  type = excluded.type,
+                  extension = excluded.extension,
+                  r2_key = COALESCE(excluded.r2_key, study_imported_files.r2_key),
+                  file_url = CASE
+                    WHEN (excluded.file_url IS NULL OR excluded.file_url = '' OR excluded.file_url LIKE 'blob:%')
+                         AND study_imported_files.file_url IS NOT NULL AND study_imported_files.file_url != '' AND study_imported_files.file_url NOT LIKE 'blob:%'
+                    THEN study_imported_files.file_url
+                    ELSE COALESCE(excluded.file_url, study_imported_files.file_url)
+                  END,
+                  imported_at = excluded.imported_at,
+                  updated_at = CURRENT_TIMESTAMP
+              `).bind(
+                fileId,
+                reqUserId,
+                fileName,
+                sizeBytes,
+                contentType || 'application/octet-stream',
+                extUpper,
+                storageKey,
+                fileUrl,
                 Date.now()
               ).run();
             }

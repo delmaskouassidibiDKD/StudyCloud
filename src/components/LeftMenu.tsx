@@ -358,19 +358,18 @@ export function LeftMenu({
 
   // Synchronisation avec la base de données : charger tous les fichiers importés lors de l'étude
   useEffect(() => {
-    // 0. Nettoyage immédiat anti-pollution : s'assurer que Mes fichiers n'apparaissent JAMAIS dans les imports d'étude
+    // 0. Nettoyage strict anti-pollution : s'assurer que les fichiers importés pendant l'étude ne polluent JAMAIS "Mes fichiers"
     try {
       const mfRaw = localStorage.getItem('unifolder_files_menu_items');
       const studyRaw = localStorage.getItem('unifolder_study_imported_files');
-      if (mfRaw && studyRaw) {
-        const mfList = JSON.parse(mfRaw);
+      if (studyRaw && mfRaw) {
         const studyList = JSON.parse(studyRaw);
-        if (Array.isArray(mfList) && Array.isArray(studyList)) {
-          const mfIds = new Set(mfList.map((f: any) => f?.id).filter(Boolean));
-          const cleanStudy = studyList.filter((f: any) => f && f.id && !mfIds.has(f.id));
-          if (cleanStudy.length !== studyList.length) {
-            localStorage.setItem('unifolder_study_imported_files', JSON.stringify(cleanStudy));
-            localStorage.setItem('unifolder_left_menu_general_imports', JSON.stringify(cleanStudy));
+        const mfList = JSON.parse(mfRaw);
+        if (Array.isArray(studyList) && Array.isArray(mfList) && studyList.length > 0) {
+          const studyIds = new Set(studyList.map((f: any) => f?.id).filter(Boolean));
+          const cleanMf = mfList.filter((f: any) => f && f.id && !studyIds.has(f.id) && !f.isStudyImport && !f.isLeftMenuImport && f.folderName !== 'Fichiers importés');
+          if (cleanMf.length !== mfList.length) {
+            safeLocalStorageSet('unifolder_files_menu_items', cleanMf);
           }
         }
       }
@@ -451,7 +450,7 @@ export function LeftMenu({
       .then(async (res) => {
         if (!isMounted) return;
         if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-          const nonStudyRows = res.data.filter((row: any) => !row.is_study_session && !row.isStudyImport);
+          const nonStudyRows = res.data.filter((row: any) => !row.is_study_session && !row.isStudyImport && !row.is_study_import && !row.isLeftMenuImport);
           const filesWithUrls = await Promise.all(
             nonStudyRows.map(async (row: any) => {
               const localBlobUrl = await getFileBlobUrl(row.id);
@@ -478,10 +477,25 @@ export function LeftMenu({
           if (existingRaw) {
             try { localList = JSON.parse(existingRaw); } catch (e) {}
           }
+
+          // Récupérer les IDs des fichiers importés d'étude pour ne JAMAIS les ajouter à Mes fichiers
+          const studyRaw = localStorage.getItem('unifolder_study_imported_files');
+          const studyIds = new Set<string>();
+          if (studyRaw) {
+            try {
+              const parsed = JSON.parse(studyRaw);
+              if (Array.isArray(parsed)) parsed.forEach((f: any) => { if (f?.id) studyIds.add(f.id); });
+            } catch (e) {}
+          }
+
           const mergedMap = new Map<string, any>();
-          filesWithUrls.forEach(f => mergedMap.set(f.id, f));
+          filesWithUrls.forEach(f => {
+            if (!studyIds.has(f.id) && !f.isStudyImport && !f.isLeftMenuImport) {
+              mergedMap.set(f.id, f);
+            }
+          });
           localList.forEach(f => {
-            if (f && f.id && !mergedMap.has(f.id)) {
+            if (f && f.id && !mergedMap.has(f.id) && !studyIds.has(f.id) && !f.isStudyImport && !f.isLeftMenuImport) {
               if (!isGalleryOrDemoFile(f)) {
                 mergedMap.set(f.id, f);
               }
@@ -665,19 +679,16 @@ export function LeftMenu({
         extension: extVal,
         isImage: file.type.startsWith('image/'),
         url: localUrl,
-        matiere: currentFolderName && currentFolderName !== 'Mes fichiers' ? currentFolderName : '',
+        matiere: '',
+        folderName: 'Fichiers importés',
         isLeftMenuImport: true,
         isStudyImport: true,
         isImported: true,
         importedAt: now,
         createdAt: now,
         timestamp: now,
-        // Champs CloudDataStore / UploadQueue
-        category: file.type.startsWith('image/') ? 'images' : (
-          file.type.startsWith('video/') ? 'videos' :
-          isAudio ? 'audio' : 'documents'
-        ),
-        source: currentFolderName || 'Espace détude',
+        category: 'study',
+        source: 'Espace détude',
         previewUrl: file.type.startsWith('image/') ? localUrl : (audioCover || undefined),
         coverUrl: audioCover,
         thumbnailUrl: audioCover,
@@ -685,7 +696,6 @@ export function LeftMenu({
         videoUrl: file.type.startsWith('video/') ? localUrl : undefined,
         audioUrl: isAudio ? localUrl : undefined,
       };
-
 
       // 1. Enregistrement D1 immédiat dans la table dédiée study_imported_files (sans polluer Mes fichiers)
       if (userId && userId !== 'default-user') {
@@ -705,9 +715,7 @@ export function LeftMenu({
         }).catch(() => {});
       }
 
-      // 2. Sync multi-appareils optimiste
-      CloudDataStore.addOptimisticFile(newFile);
-
+      // 2. Préparation pour l'envoi en arrière-plan vers Cloudflare R2
       itemsWithFiles.push({
         file: fileToStore,
         item: newFile,
@@ -734,15 +742,13 @@ export function LeftMenu({
       setMenuFiles(prev => [newFile, ...prev.filter(f => f.id !== newFile.id)]);
       setSessionImportedIds(prev => [newFile.id, ...prev.filter(id => id !== newFile.id)]);
       
-      if (idx === 0 && setActivePreviewItem) {
-        setActivePreviewItem({ ...newFile, folderName: currentFolderName || 'Mes fichiers' });
-        setViewHistory(prev => [newFile.id, ...prev.filter(id => id !== newFile.id)]);
-      }
+      // IMPORTANT: Le fichier importé n'est PAS sélectionné automatiquement pour la lecture.
+      // L'utilisateur le sélectionne lui-même manuellement quand il le souhaite après enregistrement.
     }
 
     // 4. UploadQueue.enqueueExisting — R2 en arrière-plan avec retry automatique et routage dynamique
     if (itemsWithFiles.length > 0) {
-      let resolvedCategory: any = 'mes-fichiers';
+      let resolvedCategory: any = 'study';
       let resolvedFolderId: string | undefined = undefined;
       let resolvedUploadSource = 'left-menu-study';
 
@@ -767,7 +773,7 @@ export function LeftMenu({
         resolvedCategory = 'documents';
         resolvedUploadSource = 'documents';
       } else {
-        resolvedCategory = 'mes-fichiers';
+        resolvedCategory = 'study';
         resolvedUploadSource = 'left-menu-study';
       }
 
@@ -938,7 +944,7 @@ export function LeftMenu({
     if (!setActivePreviewItem) return;
     const isAud = file.category === 'audio' || !!file.isAudio || !!file.audioUrl || file.type?.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'].includes((file.extension || (file.name && file.name.includes('.') ? file.name.split('.').pop() : '') || '').toLowerCase()) || selectedSource?.type === 'audio';
     const nextFolder = isImportedSection 
-      ? (currentFolderName || 'Mes fichiers') 
+      ? 'Fichiers importés' 
       : (file.matiere || file.folderName || (selectedSource ? selectedSource.title : currentFolderName) || (isAud ? 'Son' : 'Mes fichiers'));
     const noteFullText = [file.noteTitle || file.notepadTitle, file.content || file.textContent || file.notepadContent].filter(Boolean).join('\n\n');
     setActivePreviewItem({
@@ -948,7 +954,9 @@ export function LeftMenu({
       textContent: noteFullText || file.textContent || '',
       isAudio: isAud || file.isAudio,
       category: isAud ? 'audio' : (file.category || 'documents'),
-      folderName: nextFolder
+      folderName: nextFolder,
+      isLeftMenuImport: isImportedSection ? true : Boolean(file.isLeftMenuImport),
+      isStudyImport: isImportedSection ? true : Boolean(file.isStudyImport),
     });
     setAttachedResources(prev => prev.filter(res => res.id !== file.id));
     setViewHistory(prev => [file.id, ...prev.filter(id => id !== file.id)]);
@@ -1108,29 +1116,20 @@ export function LeftMenu({
     // -------------------------------------------------------------
     const allLeftImportsMap = new Map<string, any>();
 
-    // Récupérer les IDs des fichiers de "Mes fichiers" pour une isolation stricte
-    const mesFichiersIds = new Set<string>();
-    try {
-      const raw = localStorage.getItem('unifolder_files_menu_items');
-      if (raw) {
-        const list = JSON.parse(raw);
-        if (Array.isArray(list)) list.forEach((f: any) => { if (f?.id) mesFichiersIds.add(f.id); });
-      }
-    } catch (e) {}
-
     const addStudyImportFromRaw = (raw: string | null) => {
       if (!raw) return;
       try {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
           parsed.forEach((f: any) => {
-            // Uniquement les vrais fichiers importés pendant l'étude, JAMAIS ceux de Mes fichiers
-            if (f && f.id && (f.isLeftMenuImport || f.isStudyImport) && !mesFichiersIds.has(f.id)) {
+            // Uniquement les vrais fichiers importés pendant l'étude
+            if (f && f.id && (f.isLeftMenuImport || f.isStudyImport || f.category === 'study' || f.folderName === 'Fichiers importés')) {
               allLeftImportsMap.set(f.id, {
                 ...f,
                 isLeftMenuImport: true,
                 isStudyImport: true,
                 isImported: true,
+                folderName: 'Fichiers importés',
                 extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
               });
             }
@@ -1165,7 +1164,7 @@ export function LeftMenu({
       }
     } catch (e) {}
 
-    const importedFilesList = Array.from(allLeftImportsMap.values()).filter(f => !mesFichiersIds.has(f.id));
+    const importedFilesList = Array.from(allLeftImportsMap.values());
     // Mettre à jour le stockage global pour que tous les imports restent toujours persistants
     try {
       localStorage.setItem('unifolder_study_imported_files', JSON.stringify(importedFilesList));
@@ -1173,6 +1172,21 @@ export function LeftMenu({
     } catch (e) {}
 
     const importedIds = importedFilesList.map(f => f.id);
+    const importedIdSet = new Set(importedIds);
+
+    // Retirer tout fichier importé d'étude qui aurait pu s'infiltrer dans unifolder_files_menu_items
+    try {
+      const mfRaw = localStorage.getItem('unifolder_files_menu_items');
+      if (mfRaw) {
+        const mfParsed = JSON.parse(mfRaw);
+        if (Array.isArray(mfParsed)) {
+          const cleanedMf = mfParsed.filter((f: any) => f && f.id && !importedIdSet.has(f.id) && !f.isStudyImport && !f.isLeftMenuImport && f.folderName !== 'Fichiers importés');
+          if (cleanedMf.length !== mfParsed.length) {
+            safeLocalStorageSet('unifolder_files_menu_items', cleanedMf);
+          }
+        }
+      }
+    } catch (e) {}
 
     // -------------------------------------------------------------
     // 2. SECTION DU BAS : FICHIERS SELON LE MENU PAR LEQUEL ON EST PASSÉ
@@ -1355,7 +1369,7 @@ export function LeftMenu({
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed)) {
               parsed.forEach((f: any) => {
-                if (f && f.id && !importedIds.includes(f.id) && !isGalleryOrDemoFile(f)) {
+                if (f && f.id && !importedIdSet.has(f.id) && !f.isStudyImport && !f.isLeftMenuImport && f.category !== 'study' && f.folderName !== 'Fichiers importés' && !isGalleryOrDemoFile(f)) {
                   directMap.set(f.id, {
                     ...f,
                     matiere: f.matiere || 'Mes fichiers',
@@ -1370,8 +1384,8 @@ export function LeftMenu({
         addDirectFiles(localStorage.getItem('unifolder_imported_files'));
         addDirectFiles(localStorage.getItem('unifolder_matiere_files'));
 
-        // S'assurer que le fichier actif sélectionné est inclus
-        if (activePreviewItem && activePreviewItem.id && !importedIds.includes(activePreviewItem.id)) {
+        // S'assurer que le fichier actif sélectionné est inclus (uniquement s'il ne s'agit PAS d'un fichier importé d'étude)
+        if (activePreviewItem && activePreviewItem.id && !importedIdSet.has(activePreviewItem.id) && !activePreviewItem.isStudyImport && !activePreviewItem.isLeftMenuImport && activePreviewItem.category !== 'study' && activePreviewItem.folderName !== 'Fichiers importés') {
           const itemFolder = activePreviewItem.folderName || activePreviewItem.matiere;
           if (!itemFolder || itemFolder === 'Mes fichiers') {
             if (!directMap.has(activePreviewItem.id)) {
@@ -1440,8 +1454,8 @@ export function LeftMenu({
         });
       }
 
-      // C. S'assurer que le fichier actif sélectionné est présent
-      if (activePreviewItem && activePreviewItem.id && !importedIds.includes(activePreviewItem.id)) {
+      // C. S'assurer que le fichier actif sélectionné est présent (s'il s'agit d'un fichier de cette matière, JAMAIS un import d'étude)
+      if (activePreviewItem && activePreviewItem.id && !importedIdSet.has(activePreviewItem.id) && !activePreviewItem.isStudyImport && !activePreviewItem.isLeftMenuImport && activePreviewItem.category !== 'study' && activePreviewItem.folderName !== 'Fichiers importés') {
         matiereMap.set(activePreviewItem.id, {
           ...activePreviewItem,
           matiere: folder,
@@ -1461,7 +1475,7 @@ export function LeftMenu({
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
             parsed.forEach((f: any) => {
-              if (f && f.id && !importedIds.includes(f.id) && !isGalleryOrDemoFile(f)) {
+              if (f && f.id && !importedIdSet.has(f.id) && !f.isStudyImport && !f.isLeftMenuImport && f.category !== 'study' && f.folderName !== 'Fichiers importés' && !isGalleryOrDemoFile(f)) {
                 directMap.set(f.id, {
                   ...f,
                   matiere: f.matiere || 'Mes fichiers',
@@ -1477,8 +1491,8 @@ export function LeftMenu({
       addDirectFiles(localStorage.getItem('unifolder_imported_files'));
       addDirectFiles(localStorage.getItem('unifolder_matiere_files'));
 
-      // S'assurer que le fichier actif sélectionné (hors matière et non importé) est inclus
-      if (activePreviewItem && activePreviewItem.id && !importedIds.includes(activePreviewItem.id)) {
+      // S'assurer que le fichier actif sélectionné (hors matière et NON importé) est inclus
+      if (activePreviewItem && activePreviewItem.id && !importedIdSet.has(activePreviewItem.id) && !activePreviewItem.isStudyImport && !activePreviewItem.isLeftMenuImport && activePreviewItem.category !== 'study' && activePreviewItem.folderName !== 'Fichiers importés') {
         const itemFolder = activePreviewItem.folderName || activePreviewItem.matiere;
         if (!itemFolder || itemFolder === 'Mes fichiers') {
           if (!directMap.has(activePreviewItem.id)) {
