@@ -1604,10 +1604,10 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
       />
 
       {/* EN-TÊTE FIXE DU DOSSIER SÉCURISÉ */}
-      <header className="sticky top-0 z-30 w-full bg-stone-100/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-stone-200 shadow-sm">
-        <div className="w-full flex flex-wrap items-center justify-between gap-2 sm:gap-4">
+      <header className="sticky top-0 z-30 w-full bg-stone-100/95 backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-sm">
+        <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* Bloc Gauche : Retour et Titre */}
-          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -1619,18 +1619,18 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                   onBack();
                 }
               }}
-              className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-stone-700/50 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
+              className="flex items-center gap-1.5 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-stone-700/50 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
               title={isViewerMaximized ? "Réduire la vue" : selectedFile ? "Fermer le lecteur" : "Retour au gestionnaire de fichiers"}
             >
-              <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
+              <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
               <span className="hidden xs:inline">{isViewerMaximized ? "Réduire" : selectedFile ? "Fermer" : "Retour"}</span>
             </button>
 
-            <div className="flex items-center gap-2">
-              <div className={`p-2 rounded-xl border ${isUnlocked ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-400' : 'bg-[#182032] border-stone-700/50 text-blue-400'}`}>
-                {isUnlocked ? <Unlock className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" /> : <Lock className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />}
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className={`p-1.5 sm:p-2 rounded-lg sm:rounded-xl border ${isUnlocked ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-400' : 'bg-[#182032] border-stone-700/50 text-blue-400'}`}>
+                {isUnlocked ? <Unlock className="w-3.5 h-3.5 sm:w-5 sm:h-5 stroke-[2.2]" /> : <Lock className="w-3.5 h-3.5 sm:w-5 sm:h-5 stroke-[2.2]" />}
               </div>
-              <div>
+              <div className="hidden sm:block">
                 <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 leading-tight">
                   Dossier sécurisé
                 </h1>
@@ -1643,40 +1643,40 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
 
           {/* Bloc Milieu : Barre de Recherche (visible quand déverrouillé) */}
           {isUnlocked && (
-            <div className="flex-1 max-w-xs md:max-w-sm relative order-3 sm:order-2 w-full sm:w-auto">
-              <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <div className="flex-1 min-w-0 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-0.5 sm:px-2">
+              <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-stone-400 absolute left-2.5 sm:left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Rechercher un fichier protégé..."
-                className="w-full bg-white border border-stone-300 focus:border-blue-500 rounded-full pl-9 pr-8 py-1.5 text-xs text-stone-800 placeholder:text-stone-400 focus:outline-none shadow-sm transition-all"
+                className="w-full min-w-0 bg-white border border-stone-300 focus:border-blue-500 rounded-full pl-7 sm:pl-9 pr-6 sm:pr-8 py-1 sm:py-1.5 text-[11px] sm:text-xs text-stone-800 placeholder:text-stone-400 focus:outline-none shadow-sm transition-all"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700"
+                  className="absolute right-2 sm:right-3.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 </button>
               )}
             </div>
           )}
 
           {/* Bloc Droite : Actions */}
-          <div className="shrink-0 flex items-center gap-1.5 sm:gap-2 order-2 sm:order-3">
+          <div className="shrink-0 flex items-center gap-1 sm:gap-2">
             {onToggleFullscreen && (
               <button
                 type="button"
                 onClick={onToggleFullscreen}
-                className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-stone-700/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                className="flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-stone-700/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
                 title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet"}
               >
                 {isFullscreen ? (
-                  <Minimize2 className="w-4 h-4 stroke-[2.2]" />
+                  <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
                 ) : (
-                  <Maximize2 className="w-4 h-4 stroke-[2.2]" />
+                  <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
                 )}
               </button>
             )}
@@ -1688,14 +1688,14 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsHeaderMenuOpen(!isHeaderMenuOpen)}
-                  className={`p-2 rounded-full border transition-all cursor-pointer active:scale-95 shadow-sm ${
+                  className={`flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 rounded-full border transition-all cursor-pointer active:scale-95 shadow-sm ${
                     isHeaderMenuOpen
                       ? 'bg-blue-600 text-white border-blue-400'
                       : 'bg-[#182032] hover:bg-[#222c44] text-white border-stone-700/50'
                   }`}
                   title="Options du dossier sécurisé (3 traits)"
                 >
-                  <Menu className="w-4 h-4 stroke-[2.2]" />
+                  <Menu className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
                 </button>
 
                 {isHeaderMenuOpen && (
@@ -1818,7 +1818,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowChangePinModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-200/80 hover:bg-stone-300 text-stone-700 text-xs font-bold transition-all cursor-pointer active:scale-95"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-200/80 hover:bg-stone-300 text-stone-700 text-xs font-bold transition-all cursor-pointer active:scale-95"
                 title="Modifier le code secret"
               >
                 <Settings className="w-3.5 h-3.5" />
@@ -1828,9 +1828,10 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-blue-400 border border-blue-500/40 text-xs font-bold transition-all cursor-pointer active:scale-95"
+                className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-blue-400 border border-blue-500/40 text-[11px] sm:text-xs font-bold transition-all cursor-pointer active:scale-95"
+                title="Ajouter des fichiers confidentiels"
               >
-                <Plus className="w-4 h-4 stroke-[2.5]" />
+                <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5]" />
                 <span className="hidden sm:inline">Ajouter</span>
               </button>
 
@@ -1842,11 +1843,11 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                   setSelectedFile(null);
                   showToast('Dossier sécurisé verrouillé 🔒');
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/15 text-red-600 hover:bg-red-500/25 border border-red-500/30 text-xs font-bold transition-all cursor-pointer active:scale-95"
+                className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-red-500/15 text-red-600 hover:bg-red-500/25 border border-red-500/30 text-[11px] sm:text-xs font-bold transition-all cursor-pointer active:scale-95"
                 title="Verrouiller le coffre"
               >
                 <Lock className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span className="hidden xs:inline">Verrouiller</span>
+                <span className="hidden sm:inline">Verrouiller</span>
               </button>
             </>
           )}
@@ -2060,10 +2061,10 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
             ) : (
               <>
                 <div
-                  className={`grid gap-3 sm:gap-4 ${
+                  className={`grid gap-2 sm:gap-4 ${
                     selectedFile
-                      ? 'grid-cols-2 lg:grid-cols-3'
-                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      ? 'grid-cols-3 lg:grid-cols-3'
+                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}
                 >
                   {displayedFiles.slice(0, visibleCount).map((file, idx) => {

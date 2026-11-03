@@ -1560,7 +1560,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
             setSelectedVideo(vid);
           }
         }}
-        className={`group relative aspect-[4/5] rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none ${
+        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none ${
           hasFailed
             ? 'border-rose-500 ring-4 ring-rose-500/50 shadow-2xl bg-rose-950/40 cursor-default'
             : isSaving
@@ -1574,7 +1574,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       >
         {/* 1. LIGNE DU HAUT QUI SE REMPLIT EN TEMPS RÉEL (OU DEVIENT ROUGE EN CAS D'ÉCHEC) */}
         {isSaving && !hasFailed && (
-          <div className="absolute top-0 inset-x-0 h-1.5 bg-black/60 z-35 overflow-hidden pointer-events-none rounded-t-2xl">
+          <div className="absolute top-0 inset-x-0 h-1.5 bg-black/60 z-35 overflow-hidden pointer-events-none rounded-t-xl sm:rounded-t-2xl">
             <div 
               className="h-full bg-emerald-400 transition-all duration-300 ease-out shadow-[0_0_10px_#34d399]"
               style={{ width: `${progressVal}%` }}
@@ -1582,20 +1582,20 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
           </div>
         )}
         {hasFailed && (
-          <div className="absolute top-0 inset-x-0 h-1.5 bg-rose-500 z-35 overflow-hidden pointer-events-none rounded-t-2xl shadow-[0_0_10px_#f43f5e]" />
+          <div className="absolute top-0 inset-x-0 h-1.5 bg-rose-500 z-35 overflow-hidden pointer-events-none rounded-t-xl sm:rounded-t-2xl shadow-[0_0_10px_#f43f5e]" />
         )}
 
         {/* 2. OVERLAY D'ENREGISTREMENT EN TEMPS RÉEL */}
         {isSaving && !hasFailed && (
-          <div className="absolute inset-0 z-30 bg-black/80 backdrop-blur-[2px] flex flex-col items-center justify-center p-3 text-white pointer-events-none rounded-2xl animate-in fade-in duration-200">
-            <div className="w-6 h-6 rounded-full border-2 border-white/20 border-t-emerald-400 animate-spin mb-2" />
-            <span className="text-xs font-black text-emerald-300 tracking-wider">
+          <div className="absolute inset-0 z-30 bg-black/80 backdrop-blur-[2px] flex flex-col items-center justify-center p-2 sm:p-3 text-white pointer-events-none rounded-xl sm:rounded-2xl animate-in fade-in duration-200">
+            <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full border-2 border-white/20 border-t-emerald-400 animate-spin mb-1 sm:mb-2" />
+            <span className="text-[10px] sm:text-xs font-black text-emerald-300 tracking-wider">
               {progressVal}%
             </span>
-            <span className="text-[10px] font-bold text-white/90 text-center leading-tight mt-1">
+            <span className="text-[8px] sm:text-[10px] font-bold text-white/90 text-center leading-tight mt-0.5 sm:mt-1">
               Enregistrement Cloud...
             </span>
-            <span className="text-[8px] text-emerald-400/80 mt-0.5 font-mono">
+            <span className="text-[7px] sm:text-[8px] text-emerald-400/80 mt-0.5 font-mono">
               Worker R2 en direct
             </span>
           </div>
@@ -1603,10 +1603,10 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
 
         {/* 3. OVERLAY D'ÉCHEC : DEVIENT ROUGE, SIGNALE QUE C'EST PAS ENREGISTRÉ, AVEC BOUTON CROIX (X) POUR EFFACER */}
         {hasFailed && (
-          <div className="absolute inset-0 z-30 bg-rose-950/92 backdrop-blur-[3px] border border-rose-500/50 flex flex-col items-center justify-between p-2.5 sm:p-3 text-white rounded-2xl animate-in fade-in duration-200">
+          <div className="absolute inset-0 z-30 bg-rose-950/92 backdrop-blur-[3px] border border-rose-500/50 flex flex-col items-center justify-between p-1.5 sm:p-3 text-white rounded-xl sm:rounded-2xl animate-in fade-in duration-200">
             {/* Haut de la carte d'échec : Badge et Bouton Croix (X) pour effacer */}
             <div className="w-full flex justify-between items-center">
-              <span className="text-[9px] font-black uppercase tracking-wider text-rose-300 bg-rose-900/70 px-2 py-0.5 rounded-full border border-rose-500/40">
+              <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-wider text-rose-300 bg-rose-900/70 px-1.5 sm:px-2 py-0.5 rounded-full border border-rose-500/40">
                 Non enregistré
               </span>
               <button
@@ -1615,38 +1615,38 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
                   e.stopPropagation();
                   handleDismissFailedUpload(vid.id);
                 }}
-                className="w-6 h-6 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-lg transition-transform active:scale-90 cursor-pointer"
+                className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-lg transition-transform active:scale-90 cursor-pointer"
                 title="Effacer la vidéo non enregistrée (Croix)"
               >
-                <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                <X className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.5]" />
               </button>
             </div>
 
             {/* Centre : Message d'avertissement */}
             <div className="flex flex-col items-center text-center my-auto px-1">
-              <div className="w-8 h-8 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 mb-1.5 shadow-md">
-                <AlertCircle className="w-5 h-5" />
+              <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 mb-1 sm:mb-1.5 shadow-md">
+                <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
-              <p className="text-[11px] font-black text-rose-200 leading-tight">
+              <p className="text-[9px] sm:text-[11px] font-black text-rose-200 leading-tight">
                 Échec d'enregistrement
               </p>
-              <p className="text-[9px] text-rose-300/85 line-clamp-2 mt-1 leading-snug">
+              <p className="text-[8px] sm:text-[9px] text-rose-300/85 line-clamp-2 mt-0.5 sm:mt-1 leading-snug">
                 {saveError || "Fichier non enregistré sur le Cloud"}
               </p>
             </div>
 
             {/* Bas : Boutons Réessayer et Effacer */}
-            <div className="w-full flex items-center gap-1.5 pt-1">
+            <div className="w-full flex items-center gap-1 sm:gap-1.5 pt-1">
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleRetryUpload(vid.id);
                 }}
-                className="flex-1 py-1 px-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-white text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer active:scale-95 transition-all"
+                className="flex-1 py-1 px-1.5 sm:px-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-white text-[8.5px] sm:text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer active:scale-95 transition-all"
                 title="Réessayer l'enregistrement"
               >
-                <RotateCcw className="w-3 h-3 text-emerald-400" />
+                <RotateCcw className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-emerald-400" />
                 <span>Réessayer</span>
               </button>
               <button
@@ -1655,10 +1655,10 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
                   e.stopPropagation();
                   handleDismissFailedUpload(vid.id);
                 }}
-                className="py-1 px-2 rounded-lg bg-rose-600/80 hover:bg-rose-600 text-white text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer active:scale-95 transition-all"
+                className="py-1 px-1.5 sm:px-2 rounded-lg bg-rose-600/80 hover:bg-rose-600 text-white text-[8.5px] sm:text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer active:scale-95 transition-all"
                 title="Effacer"
               >
-                <Trash2 className="w-3 h-3" />
+                <Trash2 className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                 <span>Effacer</span>
               </button>
             </div>
@@ -1666,27 +1666,27 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
         )}
 
         {/* Conteneur média interne avec overflow-hidden : arrondit la vignette sans couper le menu déroulant */}
-        <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
+        <div className="absolute inset-0 rounded-xl sm:rounded-2xl overflow-hidden pointer-events-none">
           <VideoCardPreview vid={vid} className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-black/30 group-hover:bg-black/15 transition-colors" />
 
           {/* Centre : Bouton Play blanc circulaire avec triangle noir (Image 1) */}
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-full bg-white/95 text-stone-950 flex items-center justify-center shadow-2xl group-hover:scale-115 transition-transform duration-200">
-              <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-stone-950 translate-x-0.5" />
+            <div className="w-7 h-7 sm:w-11 sm:h-11 rounded-full bg-white/95 text-stone-950 flex items-center justify-center shadow-2xl group-hover:scale-115 transition-transform duration-200">
+              <Play className="w-3.5 h-3.5 sm:w-5 sm:h-5 fill-stone-950 translate-x-0.5" />
             </div>
           </div>
 
           {/* Titre en bas avec fond gradient sombre (Image 1) */}
-          <div className="absolute inset-x-0 bottom-0 p-1.5 sm:p-2 bg-gradient-to-t from-black/95 via-black/50 to-transparent">
-            <p className="text-[9px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">
+          <div className="absolute inset-x-0 bottom-0 p-1 sm:p-2 bg-gradient-to-t from-black/95 via-black/50 to-transparent">
+            <p className="text-[8.5px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">
               {vid.name}
             </p>
           </div>
         </div>
 
         {/* Haut gauche : Bouton 3 traits & Checkbox & Badges (Image 1 & 2) */}
-        <div className="absolute top-1.5 sm:top-2 left-1.5 sm:left-2 z-20 flex items-center gap-1.5">
+        <div className="absolute top-1 sm:top-2 left-1 sm:left-2 z-20 flex items-center gap-1 sm:gap-1.5">
           <div className="relative studycloud-menu-trigger">
             <button
               type="button"
@@ -1697,14 +1697,14 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
                 if (isSelectionMode || selectedItemIds.length > 0) return;
                 setActiveMenuVideoId(isMenuOpen ? null : vid.id);
               }}
-              className={`p-1 sm:p-1.2 rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm ${
+              className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm ${
                 isSelectionMode || selectedItemIds.length > 0
                   ? 'opacity-20 cursor-not-allowed pointer-events-none'
                   : 'hover:bg-black cursor-pointer active:scale-90'
               }`}
               title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options de la vidéo (3 traits)"}
             >
-              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+              <Menu className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.2]" />
             </button>
 
             {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderVideoOptionsMenu(vid, document.getElementById(`vid-menu-trigger-${vid.id}`))}
@@ -1722,33 +1722,33 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
                 setSelectedItemIds(next);
                 if (next.length === 0) setIsSelectionMode(false);
               }}
-              className="p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
+              className="p-0.5 sm:p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
               title={isChecked ? 'Décocher' : 'Cocher'}
             >
               {isChecked ? (
-                <CheckSquare className="w-4 h-4 fill-amber-400 text-stone-950" />
+                <CheckSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-amber-400 text-stone-950" />
               ) : (
-                <Square className="w-4 h-4 text-white" />
+                <Square className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
               )}
             </button>
           )}
 
           {/* Badges Épinglé et Favori */}
           {(vid.isPinned || isItemPinned(vid)) && (
-            <span className="p-1 rounded-md bg-black/75 text-purple-400 border border-purple-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
-              <Pin className="w-3 h-3 rotate-45" />
+            <span className="p-0.5 sm:p-1 rounded-md bg-black/75 text-purple-400 border border-purple-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
+              <Pin className="w-2.5 h-2.5 sm:w-3 sm:h-3 rotate-45" />
             </span>
           )}
           {vid.isFavorite && (
-            <span className="p-1 rounded-md bg-black/75 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
-              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+            <span className="p-0.5 sm:p-1 rounded-md bg-black/75 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
+              <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 fill-amber-400 text-amber-400" />
             </span>
           )}
         </div>
 
         {/* Haut droit : Badge de taille (Image 1) */}
-        <div className="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 z-10">
-          <span className="text-[10px] sm:text-xs font-black text-white bg-black/60 px-1.5 py-0.5 rounded border border-white/20 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
+        <div className="absolute top-1 sm:top-2 right-1 sm:right-2 z-10">
+          <span className="text-[8px] sm:text-xs font-black text-white bg-black/60 px-1 sm:px-1.5 py-0.5 rounded border border-white/20 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
             {vid.size || 'HD'}
           </span>
         </div>
@@ -1897,10 +1897,10 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       {renderTransferFolderModal()}
 
       {/* EN-TÊTE FIXE DU MENU VIDÉOS */}
-      <header className="sticky top-0 z-30 w-full bg-white backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-stone-200 shadow-sm">
-        <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
+      <header className="sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-sm">
+        <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* GAUCHE : Retour et Titre */}
-          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -1913,18 +1913,18 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
                   onBack();
                 }
               }}
-              className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
+              className="flex items-center gap-1.5 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
               title={isViewerMaximized ? "Réduire la vue" : selectedVideo ? "Fermer la vidéo" : "Retour"}
             >
-              <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
+              <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
               <span className="hidden xs:inline">{isViewerMaximized ? "Réduire" : "Retour"}</span>
             </button>
 
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-black border border-white/10 text-purple-400">
-                <Film className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-black border border-white/10 text-purple-400">
+                <Film className="w-3.5 h-3.5 sm:w-5 sm:h-5 stroke-[2.2]" />
               </div>
-              <div>
+              <div className="hidden sm:block">
                 <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 leading-tight">
                   Vidéos
                 </h1>
@@ -1936,30 +1936,30 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
           </div>
 
           {/* MILIEU : Barre de Recherche */}
-          <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-1 sm:px-2">
-            <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-purple-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 transition-all shadow-inner gap-2">
+          <div className="flex-1 min-w-0 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-0.5 sm:px-2">
+            <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-purple-500/50 border border-white/10 rounded-full px-2.5 sm:px-4 py-1 sm:py-1.5 transition-all shadow-inner gap-1.5 sm:gap-2">
               <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-400/80 shrink-0 stroke-[2.2]" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Rechercher dans Vidéos..."
-                className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
+                className="w-full min-w-0 bg-transparent text-[11px] sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors"
+                  className="p-0.5 sm:p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors shrink-0"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 </button>
               )}
             </div>
           </div>
 
           {/* DROITE : Espace d'étude & + Importer */}
-          <div className="shrink-0 flex items-center gap-2">
+          <div className="shrink-0 flex items-center gap-1 sm:gap-2">
             {onOpenStudySpace && (
               <button
                 type="button"
@@ -1974,11 +1974,12 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-purple-400 border border-purple-500/40 hover:border-purple-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black"
+              className="flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-1 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-purple-400 border border-purple-500/40 hover:border-purple-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-[11px] sm:text-sm font-black"
               title="Importer une vidéo"
             >
-              <Plus className="w-4 h-4 text-purple-400 stroke-[2.5]" />
-              <span>+ Importer</span>
+              <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-400 stroke-[2.5]" />
+              <span className="sm:hidden">Importer</span>
+              <span className="hidden sm:inline">+ Importer</span>
             </button>
 
             {/* Bouton Plein écran (entouré en rouge) + Bouton 3 traits derrière lui */}
@@ -2074,10 +2075,10 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
             ) : (
               <>
                 {/* GRILLE DES CARTES VIDÉOS AVEC DÉFILEMENT INFINI (12 PAR LOT) */}
-                <div className={`grid gap-3 sm:gap-4 ${
+                <div className={`grid gap-2 sm:gap-4 ${
                   selectedVideo
-                    ? 'grid-cols-2 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-3'
-                    : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    ? 'grid-cols-3 md:grid-cols-3 xl:grid-cols-3'
+                    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                 }`}>
                   {displayedVideos.map((vid, idx) => renderVideoCard(vid, idx))}
                 </div>

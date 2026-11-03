@@ -1632,7 +1632,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             setSelectedDoc(doc);
           }
         }}
-        className={`aspect-[3/4] ${theme.border} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none ${
+        className={`aspect-[3/4] ${theme.border} rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none ${
           hasFailed
             ? 'border-rose-500 ring-4 ring-rose-500/50 shadow-2xl bg-rose-950/40 cursor-default'
             : isSaving
@@ -1646,7 +1646,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       >
         {/* 1. Trait en haut collé au document qui se remplit pendant l'enregistrement */}
         {isSaving && !hasFailed && (
-          <div className="absolute top-0 inset-x-0 h-1.5 bg-black/40 z-35 overflow-hidden pointer-events-none rounded-t-2xl">
+          <div className="absolute top-0 inset-x-0 h-1.5 bg-black/40 z-35 overflow-hidden pointer-events-none rounded-t-xl sm:rounded-t-2xl">
             <div 
               className="h-full bg-emerald-400 transition-all duration-300 ease-out shadow-[0_0_8px_#34d399]"
               style={{ width: `${progressVal}%` }}
@@ -1654,12 +1654,12 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
           </div>
         )}
         {hasFailed && (
-          <div className="absolute top-0 inset-x-0 h-1.5 bg-rose-500 z-35 overflow-hidden pointer-events-none rounded-t-2xl shadow-[0_0_10px_#f43f5e]" />
+          <div className="absolute top-0 inset-x-0 h-1.5 bg-rose-500 z-35 overflow-hidden pointer-events-none rounded-t-xl sm:rounded-t-2xl shadow-[0_0_10px_#f43f5e]" />
         )}
 
         {/* 2. Overlay d'enregistrement au centre */}
         {isSaving && !hasFailed && (
-          <div className="absolute inset-0 z-30 bg-black/75 backdrop-blur-[2px] flex flex-col items-center justify-center p-2 text-white pointer-events-none animate-in fade-in rounded-2xl">
+          <div className="absolute inset-0 z-30 bg-black/75 backdrop-blur-[2px] flex flex-col items-center justify-center p-2 text-white pointer-events-none animate-in fade-in rounded-xl sm:rounded-2xl">
             <div className="w-5 h-5 rounded-full border-2 border-white/20 border-t-emerald-400 animate-spin mb-1.5" />
             <span className="text-[10px] font-black text-emerald-300 tracking-wider">
               {progressVal}%
@@ -1675,9 +1675,9 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
 
         {/* 3. Overlay d'échec rouge avec bouton croix (X) pour effacer et Réessayer */}
         {hasFailed && (
-          <div className="absolute inset-0 z-30 bg-rose-950/92 backdrop-blur-[3px] border border-rose-500/50 flex flex-col items-center justify-between p-2.5 text-white rounded-2xl animate-in fade-in duration-200">
+          <div className="absolute inset-0 z-30 bg-rose-950/92 backdrop-blur-[3px] border border-rose-500/50 flex flex-col items-center justify-between p-1.5 sm:p-2.5 text-white rounded-xl sm:rounded-2xl animate-in fade-in duration-200">
             <div className="w-full flex justify-between items-center">
-              <span className="text-[9px] font-black uppercase tracking-wider text-rose-300 bg-rose-900/70 px-2 py-0.5 rounded-full border border-rose-500/40">
+              <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-wider text-rose-300 bg-rose-900/70 px-1.5 sm:px-2 py-0.5 rounded-full border border-rose-500/40">
                 Non enregistré
               </span>
               <button
@@ -1686,36 +1686,36 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                   e.stopPropagation();
                   handleDismissFailedUpload(doc.id);
                 }}
-                className="w-6 h-6 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-lg transition-transform active:scale-90 cursor-pointer"
+                className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-lg transition-transform active:scale-90 cursor-pointer"
                 title="Effacer le document non enregistré (Croix)"
               >
-                <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                <X className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.5]" />
               </button>
             </div>
 
             <div className="flex flex-col items-center text-center my-auto px-1">
-              <div className="w-7 h-7 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 mb-1 shadow-md">
-                <AlertCircle className="w-4 h-4" />
+              <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 mb-1 shadow-md">
+                <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
-              <p className="text-[10px] font-black text-rose-200 leading-tight">
+              <p className="text-[9px] sm:text-[10px] font-black text-rose-200 leading-tight">
                 Échec d'enregistrement
               </p>
-              <p className="text-[8.5px] text-rose-300/85 line-clamp-2 mt-0.5 leading-snug">
+              <p className="text-[7.5px] sm:text-[8.5px] text-rose-300/85 line-clamp-2 mt-0.5 leading-snug">
                 {saveError || "Fichier non enregistré sur le Cloud"}
               </p>
             </div>
 
-            <div className="w-full flex items-center gap-1.5 pt-1">
+            <div className="w-full flex items-center gap-1 sm:gap-1.5 pt-1">
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleRetryUpload(doc.id);
                 }}
-                className="flex-1 py-1 px-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-white text-[9.5px] font-bold flex items-center justify-center gap-1 cursor-pointer active:scale-95 transition-all"
+                className="flex-1 py-1 px-1 sm:px-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-white text-[8.5px] sm:text-[9.5px] font-bold flex items-center justify-center gap-1 cursor-pointer active:scale-95 transition-all"
                 title="Réessayer l'enregistrement"
               >
-                <RotateCcw className="w-3 h-3 text-emerald-400" />
+                <RotateCcw className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-emerald-400" />
                 <span>Réessayer</span>
               </button>
               <button
@@ -1724,10 +1724,10 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                   e.stopPropagation();
                   handleDismissFailedUpload(doc.id);
                 }}
-                className="py-1 px-1.5 rounded-lg bg-rose-600/80 hover:bg-rose-600 text-white text-[9.5px] font-bold flex items-center justify-center gap-1 cursor-pointer active:scale-95 transition-all"
+                className="py-1 px-1 sm:px-1.5 rounded-lg bg-rose-600/80 hover:bg-rose-600 text-white text-[8.5px] sm:text-[9.5px] font-bold flex items-center justify-center gap-1 cursor-pointer active:scale-95 transition-all"
                 title="Effacer"
               >
-                <Trash2 className="w-3 h-3" />
+                <Trash2 className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                 <span>Effacer</span>
               </button>
             </div>
@@ -1736,7 +1736,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
 
         {/* Barre supérieure : Bouton 3 traits, Checkbox (en mode sélection) & Taille */}
         <div className="flex items-center justify-between gap-1 z-20 relative">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 sm:gap-1.5">
             <div className="relative studycloud-menu-trigger">
               <button
                 type="button"
@@ -1748,14 +1748,14 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                   if (isSelectionMode || selectedItemIds.length > 0) return;
                   setActiveMenuDocId(isMenuOpen ? null : doc.id);
                 }}
-                className={`p-1 sm:p-1.2 rounded-lg bg-black/40 text-white border border-white/20 transition-all flex items-center justify-center shadow-sm ${
+                className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/40 text-white border border-white/20 transition-all flex items-center justify-center shadow-sm ${
                   isSelectionMode || selectedItemIds.length > 0
                     ? 'opacity-20 cursor-not-allowed pointer-events-none'
                     : 'hover:bg-black/70 cursor-pointer active:scale-90'
                 }`}
                 title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options du fichier (3 traits)"}
               >
-                <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+                <Menu className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.2]" />
               </button>
 
               {isMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && renderDocumentOptionsMenu(doc, document.getElementById(`doc-menu-trigger-${doc.id}`))}
@@ -1774,9 +1774,9 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                 title={isChecked ? "Décocher" : "Cocher"}
               >
                 {isChecked ? (
-                  <CheckSquare className="w-4 h-4 fill-amber-400 text-stone-950" />
+                  <CheckSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-amber-400 text-stone-950" />
                 ) : (
-                  <Square className="w-4 h-4 text-white/90" />
+                  <Square className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white/90" />
                 )}
               </button>
             )}
@@ -1784,36 +1784,36 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             {/* Badges Épinglé et Favori */}
             {(doc.isPinned || isItemPinned(doc)) && (
               <span className="p-0.5 rounded bg-black/60 text-purple-300 border border-purple-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
-                <Pin className="w-3 h-3 rotate-45" />
+                <Pin className="w-2.5 h-2.5 sm:w-3 sm:h-3 rotate-45" />
               </span>
             )}
             {doc.isFavorite && (
               <span className="p-0.5 rounded bg-black/60 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
-                <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 fill-amber-400 text-amber-400" />
               </span>
             )}
           </div>
 
-          <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/40 text-white border border-black/20 px-1.5 py-0.5 rounded shadow-sm">
+          <span className="text-[7px] sm:text-[8px] font-bold bg-black/40 text-white border border-black/20 px-1 sm:px-1.5 py-0.5 rounded shadow-sm">
             {doc.size}
           </span>
         </div>
 
         {/* Corps de carte / aperçu réel du document (PDF page 1 ou layout dynamique) */}
-        <div className="flex-1 w-full my-1.5 overflow-hidden rounded-lg bg-white relative shadow-inner border border-white/20 flex flex-col justify-between pointer-events-none">
+        <div className="flex-1 w-full my-1 sm:my-1.5 overflow-hidden rounded-lg bg-white relative shadow-inner border border-white/20 flex flex-col justify-between pointer-events-none">
           <DocumentCardPreview doc={doc} />
         </div>
 
         {/* Titre unique : un seul nom en bas */}
-        <div className="px-0.5 mb-1">
-          <p className="text-[9px] sm:text-[10px] font-black text-white truncate drop-shadow-md" title={doc.name}>
+        <div className="px-0.5 mb-0.5 sm:mb-1">
+          <p className="text-[8px] sm:text-[10px] font-black text-white truncate drop-shadow-md" title={doc.name}>
             {doc.name}
           </p>
         </div>
 
         {/* Pied de carte : typeBadge et bouton télécharger */}
-        <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1">
-          <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
+        <div className="flex items-center justify-between pt-0.5 sm:pt-1 border-t border-white/20 gap-1">
+          <span className={`text-[6.5px] sm:text-[8px] font-black px-1 sm:px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
             {theme.typeBadge}
           </span>
           <button
@@ -1822,7 +1822,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
               e.stopPropagation();
               handleDownload(doc);
             }}
-            className="p-1 sm:p-1.2 bg-orange-500 hover:bg-orange-600 text-white rounded border border-stone-900 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:scale-95"
+            className="p-0.5 sm:p-1.2 bg-orange-500 hover:bg-orange-600 text-white rounded border border-stone-900 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:scale-95"
             title="Télécharger"
           >
             <Download className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
@@ -2069,10 +2069,10 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       />
 
       {/* EN-TÊTE FIXE DU MENU DOCUMENTS */}
-      <header className="sticky top-0 z-30 w-full bg-white backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-stone-200 shadow-sm">
-        <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
+      <header className="sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-sm">
+        <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* GAUCHE : Retour et Titre */}
-          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -2085,18 +2085,18 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                   onBack();
                 }
               }}
-              className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
+              className="flex items-center gap-1.5 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
               title={isViewerMaximized ? "Réduire la vue" : selectedDoc ? "Fermer le document" : "Retour"}
             >
-              <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
+              <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
               <span className="hidden xs:inline">{isViewerMaximized ? "Réduire" : "Retour"}</span>
             </button>
 
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-black border border-white/10 text-blue-400">
-                <FileText className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-black border border-white/10 text-blue-400">
+                <FileText className="w-3.5 h-3.5 sm:w-5 sm:h-5 stroke-[2.2]" />
               </div>
-              <div>
+              <div className="hidden sm:block">
                 <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 leading-tight">
                   Documents
                 </h1>
@@ -2108,30 +2108,30 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
           </div>
 
           {/* MILIEU : Barre de Recherche */}
-          <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-1 sm:px-2">
-            <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-blue-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 transition-all shadow-inner gap-2">
+          <div className="flex-1 min-w-0 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-0.5 sm:px-2">
+            <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-blue-500/50 border border-white/10 rounded-full px-2.5 sm:px-4 py-1 sm:py-1.5 transition-all shadow-inner gap-1.5 sm:gap-2">
               <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-400/80 shrink-0 stroke-[2.2]" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Rechercher dans Documents..."
-                className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
+                className="w-full min-w-0 bg-transparent text-[11px] sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors"
+                  className="p-0.5 sm:p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors shrink-0"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 </button>
               )}
             </div>
           </div>
 
           {/* DROITE : Espace d'étude & + Importer */}
-          <div className="shrink-0 flex items-center gap-2">
+          <div className="shrink-0 flex items-center gap-1 sm:gap-2">
             {onOpenStudySpace && (
               <button
                 type="button"
@@ -2146,11 +2146,12 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-blue-400 border border-blue-500/40 hover:border-blue-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black"
+              className="flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-1 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-blue-400 border border-blue-500/40 hover:border-blue-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-[11px] sm:text-sm font-black"
               title="Importer un document"
             >
-              <Plus className="w-4 h-4 text-blue-400 stroke-[2.5]" />
-              <span>+ Importer</span>
+              <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-400 stroke-[2.5]" />
+              <span className="sm:hidden">Importer</span>
+              <span className="hidden sm:inline">+ Importer</span>
             </button>
 
             {/* Bouton Plein écran (entouré en rouge) + Bouton 3 traits derrière lui */}
@@ -2225,10 +2226,10 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             ) : (
               <>
                 {/* GRILLE DES CARTES DE DOCUMENTS (IMAGE 1) */}
-                <div className={`grid gap-2.5 sm:gap-3.5 ${
+                <div className={`grid gap-2 sm:gap-3.5 ${
                   selectedDoc
-                    ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3'
-                    : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    ? 'grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3'
+                    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                 }`}>
                   {filteredDocuments.slice(0, visibleCount).map((doc, idx) => renderDocumentCard(doc, idx))}
                 </div>

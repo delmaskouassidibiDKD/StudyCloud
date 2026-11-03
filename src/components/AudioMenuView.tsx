@@ -107,7 +107,7 @@ const isExcludedFromAudio = (d: any): boolean => {
       if (studyRaw && studyRaw.includes(d.id)) return true;
       const lmRaw = localStorage.getItem('unifolder_left_menu_general_imports');
       if (lmRaw && lmRaw.includes(d.id)) return true;
-    } catch (e) {}
+    } catch (e) { }
   }
   if (d.category === 'classeur' || d.category === 'classeur_folder' || d.category === 'mes-fichiers' || d.category === 'trash' || d.category === 'secure') return true;
   const fId = d.folderId || d.folder_id || d.originalFolderId;
@@ -227,7 +227,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     if (!serverList || !Array.isArray(serverList)) return currentList || [];
     const cleanServer = serverList.filter(t => !isItemDeleted(t.id) && !isExcludedFromAudio(t));
     const serverIds = new Set(cleanServer.map(t => t.id));
-    const pending = (currentList || []).filter(item => 
+    const pending = (currentList || []).filter(item =>
       !serverIds.has(item.id) &&
       !isItemDeleted(item.id) &&
       !isExcludedFromAudio(item) && (
@@ -331,7 +331,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                   return updated || curr;
                 });
               }
-            }).catch(() => {});
+            }).catch(() => { });
           } else if (task.status === 'error') {
             activeErrs[task.id] = task.error || "Non enregistré sur le Cloud";
             if (savingIntervalsRef.current[task.id]) {
@@ -388,7 +388,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               return updated || curr;
             });
           }
-        }).catch(() => {});
+        }).catch(() => { });
       }
     };
     window.addEventListener('studycloud_file_uploaded', handleUploadedEvent);
@@ -420,7 +420,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     });
     setAudioList(prev => prev.filter(t => t.id !== audId));
     CloudDataStore.removeFile(audId);
-    deleteFileBlob(audId).catch(() => {});
+    deleteFileBlob(audId).catch(() => { });
     if (selectedTrack?.id === audId) {
       setSelectedTrack(null);
       pauseAudio();
@@ -467,8 +467,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
             if (meta.coverUrl && isRealEmbeddedArtwork(meta.coverUrl, track)) {
               if (!isMounted) break;
               setCachedMediaThumbnail(track.id, meta.coverUrl);
-              storeThumbnailData(track.id, meta.coverUrl).catch(() => {});
-              CloudStorageAPI.saveMediaThumbnail(track.id, 'audio', meta.coverUrl, meta.title || track.name).catch(() => {});
+              storeThumbnailData(track.id, meta.coverUrl).catch(() => { });
+              CloudStorageAPI.saveMediaThumbnail(track.id, 'audio', meta.coverUrl, meta.title || track.name).catch(() => { });
 
               setAudioList(prev => prev.map(item => {
                 if (item.id === track.id) {
@@ -495,7 +495,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               });
             }
           }
-        } catch {}
+        } catch { }
       }
     })();
 
@@ -553,17 +553,17 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       const localBlobUrl = URL.createObjectURL(f);
 
       // 1. Sauvegarde locale IndexedDB (accès instantané 0ms)
-      storeFileBlob(fileId, f as any).catch(() => {});
+      storeFileBlob(fileId, f as any).catch(() => { });
 
-      const sizeFormatted = f.size > 1048576 
-        ? `${(f.size / (1024 * 1024)).toFixed(1)} Mo` 
+      const sizeFormatted = f.size > 1048576
+        ? `${(f.size / (1024 * 1024)).toFixed(1)} Mo`
         : `${Math.round(f.size / 1024)} Ko`;
 
       // 2. Extraction ultra-rapide des tags réels (titre, artiste, pochette chanteur)
       let meta: any = {};
       try {
         meta = await extractAudioMetadataWithTags(f);
-      } catch {}
+      } catch { }
 
       const hasRealCover = meta.coverUrl && isRealEmbeddedArtwork(meta.coverUrl);
       const songTitle = meta.title || f.name;
@@ -575,8 +575,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       if (hasRealCover) {
         setCachedMediaThumbnail(fileId, meta.coverUrl);
         setCachedMediaThumbnail(localBlobUrl, meta.coverUrl);
-        storeThumbnailData(fileId, meta.coverUrl).catch(() => {});
-        CloudStorageAPI.saveMediaThumbnail(fileId, 'audio', meta.coverUrl, songTitle).catch(() => {});
+        storeThumbnailData(fileId, meta.coverUrl).catch(() => { });
+        CloudStorageAPI.saveMediaThumbnail(fileId, 'audio', meta.coverUrl, songTitle).catch(() => { });
       } else {
         setCachedMediaThumbnail(fileId, initialCover);
         setCachedMediaThumbnail(localBlobUrl, initialCover);
@@ -648,9 +648,9 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     }
     CloudDataStore.toggleFavorite(track.id, nextState);
     if (nextState) {
-      await CloudStorageAPI.addFavorite(track.id, 'audio').catch(() => {});
+      await CloudStorageAPI.addFavorite(track.id, 'audio').catch(() => { });
     } else {
-      await CloudStorageAPI.removeFavorite(track.id).catch(() => {});
+      await CloudStorageAPI.removeFavorite(track.id).catch(() => { });
     }
     showToast(nextState ? 'Ajouté aux favoris ⭐' : 'Retiré des favoris');
     setActiveMenuTrackId(null);
@@ -673,8 +673,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     }
     CloudDataStore.updateFile(track.id, { name: finalName });
     await CloudStorageAPI.renameItem(track.id, finalName, 'audio').catch(console.error);
-    invalidateCloudQueries.audio().catch(() => {});
-    invalidateCloudQueries.overview().catch(() => {});
+    invalidateCloudQueries.audio().catch(() => { });
+    invalidateCloudQueries.overview().catch(() => { });
     showToast(`Son renommé en "${finalName}" !`);
     setActiveMenuTrackId(null);
   };
@@ -703,10 +703,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
     LocalSyncReplication.recordLocalDeletion(track.id, 'audio');
     CloudDataStore.moveToTrash(fileWithSource as any);
-    await CloudStorageAPI.deleteAudio(track.id, track.name).catch(() => {});
-    invalidateCloudQueries.audio().catch(() => {});
-    invalidateCloudQueries.trash().catch(() => {});
-    invalidateCloudQueries.overview().catch(() => {});
+    await CloudStorageAPI.deleteAudio(track.id, track.name).catch(() => { });
+    invalidateCloudQueries.audio().catch(() => { });
+    invalidateCloudQueries.trash().catch(() => { });
+    invalidateCloudQueries.overview().catch(() => { });
     showToast(`"${track.name}" déplacé dans la corbeille 🗑️`);
     setActiveMenuTrackId(null);
   };
@@ -916,8 +916,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
         // Cloner le blob IndexedDB de manière indépendante pour éviter toute suppression partagée
         getFileBlob(track.id).then(blob => {
-          if (blob) storeFileBlob(newTrackId, blob).catch(() => {});
-        }).catch(() => {});
+          if (blob) storeFileBlob(newTrackId, blob).catch(() => { });
+        }).catch(() => { });
 
         CloudStorageAPI.duplicateItem(track.id, 'audio', undefined, newName, newTrackId).then((serverData) => {
           if (serverData && serverData.id && serverData.id !== newTrackId) {
@@ -927,14 +927,14 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
             setAudioList(prev => prev.map(t => t.id === newTrackId ? { ...t, id: realId } : t));
             getFileBlob(newTrackId).then(b => {
               if (b) {
-                storeFileBlob(realId, b).catch(() => {});
-                deleteFileBlob(newTrackId).catch(() => {});
+                storeFileBlob(realId, b).catch(() => { });
+                deleteFileBlob(newTrackId).catch(() => { });
               }
-            }).catch(() => {});
+            }).catch(() => { });
             LocalSyncReplication.recordLocalUpsert(realId, 'audio', { ...newTrack, id: realId });
           }
-          invalidateCloudQueries.audio().catch(() => {});
-          invalidateCloudQueries.overview().catch(() => {});
+          invalidateCloudQueries.audio().catch(() => { });
+          invalidateCloudQueries.overview().catch(() => { });
         }).catch(console.error);
         showToast(`Son dupliqué : "${newName}" !`);
         break;
@@ -961,7 +961,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
             pinnedIds = pinnedIds.filter(id => id !== track.id);
           }
           localStorage.setItem('studycloud_pinned_ids', JSON.stringify(pinnedIds));
-        } catch {}
+        } catch { }
 
         // 2. Mise à jour de l'état local
         setAudioList(prev => {
@@ -1041,11 +1041,11 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     const titleText = count > 1 ? `${count} sons sélectionnés` : itemsToTransfer[0]?.name || 'Ce son';
 
     const content = (
-      <div 
+      <div
         className="fixed inset-0 z-[2600] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200 pointer-events-auto select-none"
         onClick={() => setIsTransferPromptOpen(false)}
       >
-        <div 
+        <div
           className="relative w-full max-w-sm bg-[#0B101D] border-2 border-amber-500/40 rounded-3xl p-5 shadow-[0_25px_60px_rgba(0,0,0,0.95)] text-slate-200 space-y-4 animate-in zoom-in-95 duration-200"
           onClick={(e) => e.stopPropagation()}
         >
@@ -1082,7 +1082,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                 setIsTransferModalOpen(true);
                 CloudStorageAPI.getClasseurFolders().then(folders => {
                   if (folders && Array.isArray(folders)) setClasseur3DFolders(folders);
-                }).catch(() => {});
+                }).catch(() => { });
               }}
               className="group p-4 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-400/60 transition-all text-left flex items-start gap-3.5 cursor-pointer shadow-md active:scale-98"
             >
@@ -1111,7 +1111,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                 setIsTransferModalOpen(true);
                 CloudStorageAPI.getClasseurFolders().then(folders => {
                   if (folders && Array.isArray(folders)) setClasseur3DFolders(folders);
-                }).catch(() => {});
+                }).catch(() => { });
               }}
               className="group p-4 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 hover:border-emerald-400/60 transition-all text-left flex items-start gap-3.5 cursor-pointer shadow-md active:scale-98"
             >
@@ -1167,7 +1167,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     const parentNavFolder = currentNavFolder?.parentId ? classeur3DFolders.find(f => f.id === currentNavFolder.parentId) : null;
 
     const toggleFolderCheck = (folderId: string) => {
-      setTransferSelectedFolderIds(prev => 
+      setTransferSelectedFolderIds(prev =>
         prev.includes(folderId) ? prev.filter(id => id !== folderId) : [...prev, folderId]
       );
     };
@@ -1175,7 +1175,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     const isSelectionActive = transferSelectedFolderIds.length > 0;
 
     const content = (
-      <div 
+      <div
         className="fixed inset-0 z-[2700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200 pointer-events-auto select-none"
         onClick={() => {
           setIsTransferModalOpen(false);
@@ -1183,7 +1183,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           setTransferSearchQuery('');
         }}
       >
-        <div 
+        <div
           className="relative w-full max-w-[440px] max-h-[82vh] bg-[#0A0F1D] border-2 border-amber-500/40 rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.1)] flex flex-col overflow-hidden text-white animate-in zoom-in-95 duration-200"
           onClick={(e) => e.stopPropagation()}
         >
@@ -1258,7 +1258,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                     <span className="text-[11px] font-bold">Retour</span>
                   </button>
                 )}
-                
+
                 <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
                   {parentNavFolder ? (
                     <>
@@ -1327,11 +1327,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                         setTransferNavFolderId(folder.id);
                       }
                     }}
-                    className={`group flex items-center justify-between gap-2.5 p-2.5 rounded-2xl transition-all border cursor-pointer ${
-                      isChecked
+                    className={`group flex items-center justify-between gap-2.5 p-2.5 rounded-2xl transition-all border cursor-pointer ${isChecked
                         ? 'bg-amber-500/15 border-amber-500/40 shadow-sm'
                         : 'bg-slate-900/60 hover:bg-slate-800/80 border-white/5 hover:border-white/15'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <button
@@ -1406,13 +1405,12 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               type="button"
               disabled={!isSelectionActive || isTransferring}
               onClick={handleExecuteTransfer}
-              className={`px-4 sm:px-5 py-2.5 rounded-xl font-black text-xs sm:text-sm flex items-center gap-2 transition-all shadow-lg ${
-                isSelectionActive && !isTransferring
+              className={`px-4 sm:px-5 py-2.5 rounded-xl font-black text-xs sm:text-sm flex items-center gap-2 transition-all shadow-lg ${isSelectionActive && !isTransferring
                   ? transferMode === 'move'
                     ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer shadow-amber-500/20 active:scale-95'
                     : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 cursor-pointer shadow-emerald-500/20 active:scale-95'
                   : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5'
-              }`}
+                }`}
             >
               {isTransferring ? (
                 <>
@@ -1446,7 +1444,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     const smartStyle = computeSmartMenuStyle(rect, 420);
 
     return createPortal(
-      <div 
+      <div
         className="studycloud-file-menu-panel bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(245,158,11,0.25)] text-slate-200 rounded-xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
         style={smartStyle.style}
         onClick={(e) => e.stopPropagation()}
@@ -1631,11 +1629,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
             <button
               type="button"
               onClick={() => handleToggleFavorite(track)}
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer ${
-                track.isFavorite
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer ${track.isFavorite
                   ? 'bg-amber-500/20 text-amber-400 border-amber-400/40'
                   : 'bg-black/60 hover:bg-slate-800 text-white border-white/10'
-              }`}
+                }`}
               title={track.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
             >
               <Star className={`w-3.5 h-3.5 ${track.isFavorite ? 'fill-amber-400' : ''}`} />
@@ -1676,11 +1673,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                   if (isSelectionMode || selectedItemIds.length > 0) return;
                   setIsPlayerMenuOpen(!isPlayerMenuOpen);
                 }}
-                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center bg-black/60 text-white border border-white/15 transition-all shadow-sm ${
-                  isSelectionMode || selectedItemIds.length > 0
+                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center bg-black/60 text-white border border-white/15 transition-all shadow-sm ${isSelectionMode || selectedItemIds.length > 0
                     ? 'opacity-20 cursor-not-allowed pointer-events-none'
                     : 'hover:bg-white/20 cursor-pointer active:scale-95'
-                }`}
+                  }`}
                 title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options"}
               >
                 <Menu className="w-4 h-4 stroke-[2.2]" />
@@ -1803,9 +1799,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               toggleAudioShuffle();
               showToast(!isAudioShuffle ? 'Lecture aléatoire activée' : 'Lecture aléatoire désactivée');
             }}
-            className={`p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer ${
-              isAudioShuffle ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
-            }`}
+            className={`p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer ${isAudioShuffle ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
+              }`}
             title={isAudioShuffle ? 'Désactiver mode aléatoire' : 'Mode aléatoire'}
           >
             <Shuffle className="w-5 h-5" />
@@ -1845,9 +1840,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           <button
             type="button"
             onClick={toggleAudioRepeat}
-            className={`p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer relative ${
-              isAudioRepeat !== 'off' ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
-            }`}
+            className={`p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer relative ${isAudioRepeat !== 'off' ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
+              }`}
             title={isAudioRepeat === 'one' ? 'Boucle 1 titre' : isAudioRepeat === 'all' ? 'Boucle tous les titres' : 'Boucle désactivée'}
           >
             <Repeat className="w-5 h-5" />
@@ -1905,25 +1899,25 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       />
 
       {/* EN-TÊTE FIXE DU MENU AUDIO */}
-      <header className="sticky top-0 z-30 w-full bg-white backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-stone-200 shadow-sm">
-        <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
+      <header className="sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-sm">
+        <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* GAUCHE : Bouton Retour et Titre Audio */}
-          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <button
               type="button"
               onClick={onBack}
-              className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
+              className="flex items-center gap-1.5 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
               title="Retour au gestionnaire de fichiers"
             >
-              <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
+              <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
               <span className="hidden xs:inline">Retour</span>
             </button>
 
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-black border border-white/10 text-amber-400">
-                <Music className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-black border border-white/10 text-amber-400">
+                <Music className="w-3.5 h-3.5 sm:w-5 sm:h-5 stroke-[2.2]" />
               </div>
-              <div>
+              <div className="hidden sm:block">
                 <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 leading-tight">
                   Audio
                 </h1>
@@ -1935,30 +1929,30 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           </div>
 
           {/* MILIEU : Barre de Recherche Audio */}
-          <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-1 sm:px-2">
-            <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-amber-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 transition-all shadow-inner gap-2">
+          <div className="flex-1 min-w-0 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-0.5 sm:px-2">
+            <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-amber-500/50 border border-white/10 rounded-full px-2.5 sm:px-4 py-1 sm:py-1.5 transition-all shadow-inner gap-1.5 sm:gap-2">
               <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400/80 shrink-0 stroke-[2.2]" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Rechercher dans Audio..."
-                className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
+                className="w-full min-w-0 bg-transparent text-[11px] sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors"
+                  className="p-0.5 sm:p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors shrink-0"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 </button>
               )}
             </div>
           </div>
 
           {/* DROITE : Espace d'étude & + Importer */}
-          <div className="shrink-0 flex items-center gap-2">
+          <div className="shrink-0 flex items-center gap-1 sm:gap-2">
             {onOpenStudySpace && (
               <button
                 type="button"
@@ -1973,11 +1967,12 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-amber-400 border border-amber-500/40 hover:border-amber-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black"
+              className="flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-1 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-amber-400 border border-amber-500/40 hover:border-amber-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-[11px] sm:text-sm font-black"
               title="Importer un fichier audio"
             >
-              <Plus className="w-4 h-4 text-amber-400 stroke-[2.5]" />
-              <span>+ Importer</span>
+              <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400 stroke-[2.5]" />
+              <span className="sm:hidden">Importer</span>
+              <span className="hidden sm:inline">+ Importer</span>
             </button>
 
             {/* Bouton Plein écran (entouré en rouge) + Bouton 3 traits derrière lui */}
@@ -1994,11 +1989,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       {/* DISPOSITION SPLIT EN DEUX COLONNES (IMAGES 1 & 2) */}
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE DES SONS */}
-        <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-          selectedTrack
+        <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${selectedTrack
             ? `${isMobilePlayerOpen ? 'hidden md:block' : 'w-full'} md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80`
             : 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
-        }`}>
+          }`}>
           <div className="w-full space-y-3">
             {/* En-tête de la liste */}
             <div className="flex items-center justify-between px-1 py-0.5">
@@ -2032,23 +2026,22 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                   {sortOption === 'pinned'
                     ? 'Aucun fichier audio épinglé'
                     : sortOption === 'duplicates'
-                    ? 'Aucun résultat pour les doublons'
-                    : 'Aucun son disponible'}
+                      ? 'Aucun résultat pour les doublons'
+                      : 'Aucun son disponible'}
                 </p>
                 <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
                   {sortOption === 'pinned'
                     ? 'Vous n\'avez pas encore de pistes audio épinglées. Utilisez l\'option "Épinglez" dans le menu à 3 traits pour en épingler.'
                     : sortOption === 'duplicates'
-                    ? 'Tous vos fichiers audio sont uniques dans la base de données. Aucun doublon détecté.'
-                    : 'Ce dossier ne contient aucun fichier audio pour le moment.'}
+                      ? 'Tous vos fichiers audio sont uniques dans la base de données. Aucun doublon détecté.'
+                      : 'Ce dossier ne contient aucun fichier audio pour le moment.'}
                 </p>
                 {(sortOption === 'duplicates' || sortOption === 'pinned') && (
                   <button
                     type="button"
                     onClick={() => setSortOption('recent')}
-                    className={`mt-3 px-4 py-1.5 rounded-full text-white text-xs font-bold transition-all shadow-sm cursor-pointer ${
-                      sortOption === 'pinned' ? 'bg-amber-600 hover:bg-amber-500' : 'bg-amber-600 hover:bg-amber-500'
-                    }`}
+                    className={`mt-3 px-4 py-1.5 rounded-full text-white text-xs font-bold transition-all shadow-sm cursor-pointer ${sortOption === 'pinned' ? 'bg-amber-600 hover:bg-amber-500' : 'bg-amber-600 hover:bg-amber-500'
+                      }`}
                   >
                     Afficher tous les sons
                   </button>
@@ -2085,10 +2078,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                           setIsMobilePlayerOpen(true);
                         }
                       }}
-                      className={`group flex items-center justify-between gap-3 p-3 rounded-2xl transition-all select-none border relative overflow-hidden ${
-                        isMenuOpen ? 'z-50 overflow-visible' : 'z-10'
-                      } ${
-                        hasFailed
+                      className={`group flex items-center justify-between gap-3 p-3 rounded-2xl transition-all select-none border relative overflow-hidden ${isMenuOpen ? 'z-50 overflow-visible' : 'z-10'
+                        } ${hasFailed
                           ? 'border-rose-500 bg-rose-950/20 shadow-md ring-1 ring-rose-500/40 cursor-default'
                           : isSaving
                             ? 'border-amber-400/40 bg-amber-500/5 cursor-wait'
@@ -2097,12 +2088,12 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                               : isSelected
                                 ? 'bg-amber-500/10 dark:bg-amber-950/30 border-amber-400 dark:border-amber-500 shadow-sm ring-1 ring-amber-400/30 cursor-pointer'
                                 : 'bg-white dark:bg-slate-900/80 border-stone-200/90 dark:border-slate-800 hover:border-amber-400/60 hover:shadow-md cursor-pointer'
-                      }`}
+                        }`}
                     >
                       {/* Ligne de progression en temps réel collée en haut qui se remplit (comme dans Mes fichiers) */}
                       {isSaving && !hasFailed && (
                         <div className="absolute top-0 inset-x-0 h-1.5 bg-stone-900/40 dark:bg-black/60 z-30 overflow-hidden pointer-events-none rounded-t-2xl">
-                          <div 
+                          <div
                             className="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-300 transition-all duration-300 ease-out shadow-[0_0_12px_#f59e0b]"
                             style={{ width: `${Math.min(100, Math.max(10, progressVal))}%` }}
                           />
@@ -2150,9 +2141,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 min-w-0">
-                            <h4 className={`text-xs sm:text-sm font-bold truncate leading-tight ${
-                              isSelected ? 'text-amber-600 dark:text-amber-300 font-black' : 'text-stone-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors'
-                            }`}>
+                            <h4 className={`text-xs sm:text-sm font-bold truncate leading-tight ${isSelected ? 'text-amber-600 dark:text-amber-300 font-black' : 'text-stone-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors'
+                              }`}>
                               {track.name}
                             </h4>
                             {track.isFavorite && (
@@ -2182,34 +2172,34 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                           >
                             <span
                               className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-1' : ''}`}
-                              style={{ 
-                                height: isAudioPlaying ? undefined : '5px', 
-                                animation: isAudioPlaying ? undefined : 'none', 
-                                animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                              style={{
+                                height: isAudioPlaying ? undefined : '5px',
+                                animation: isAudioPlaying ? undefined : 'none',
+                                animationPlayState: isAudioPlaying ? 'running' : 'paused'
                               }}
                             />
                             <span
                               className={`w-1 rounded-full bg-amber-300 ${isAudioPlaying ? 'music-bar-2' : ''}`}
-                              style={{ 
-                                height: isAudioPlaying ? undefined : '14px', 
-                                animation: isAudioPlaying ? undefined : 'none', 
-                                animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                              style={{
+                                height: isAudioPlaying ? undefined : '14px',
+                                animation: isAudioPlaying ? undefined : 'none',
+                                animationPlayState: isAudioPlaying ? 'running' : 'paused'
                               }}
                             />
                             <span
                               className={`w-1 rounded-full bg-yellow-400 ${isAudioPlaying ? 'music-bar-3' : ''}`}
-                              style={{ 
-                                height: isAudioPlaying ? undefined : '9px', 
-                                animation: isAudioPlaying ? undefined : 'none', 
-                                animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                              style={{
+                                height: isAudioPlaying ? undefined : '9px',
+                                animation: isAudioPlaying ? undefined : 'none',
+                                animationPlayState: isAudioPlaying ? 'running' : 'paused'
                               }}
                             />
                             <span
                               className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-4' : ''}`}
-                              style={{ 
-                                height: isAudioPlaying ? undefined : '4px', 
-                                animation: isAudioPlaying ? undefined : 'none', 
-                                animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                              style={{
+                                height: isAudioPlaying ? undefined : '4px',
+                                animation: isAudioPlaying ? undefined : 'none',
+                                animationPlayState: isAudioPlaying ? 'running' : 'paused'
                               }}
                             />
                           </div>
@@ -2222,11 +2212,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                             e.stopPropagation();
                             handleToggleFavorite(track);
                           }}
-                          className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                            track.isFavorite
+                          className={`p-1.5 rounded-lg transition-colors cursor-pointer ${track.isFavorite
                               ? 'text-amber-400 hover:bg-amber-400/10'
                               : 'text-stone-300 dark:text-slate-600 hover:text-amber-400 hover:bg-white/10'
-                          }`}
+                            }`}
                           title={track.isFavorite ? 'Retirer des favoris' : 'Mettre en favori'}
                         >
                           <Star className={`w-4 h-4 ${track.isFavorite ? 'fill-amber-400 text-amber-400' : ''}`} />
@@ -2244,11 +2233,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                               setIsMobilePlayerOpen(true);
                             }
                           }}
-                          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-                            isSelected && isAudioPlaying
+                          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer ${isSelected && isAudioPlaying
                               ? 'bg-amber-500 text-stone-950 shadow-md'
                               : 'bg-stone-100 dark:bg-slate-800 text-stone-700 dark:text-slate-300 hover:bg-amber-500 hover:text-stone-950'
-                          }`}
+                            }`}
                           title={isSelected && isAudioPlaying ? 'Pause' : 'Reprendre la lecture'}
                         >
                           {isSelected && isAudioPlaying ? (
@@ -2297,11 +2285,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                               if (isSelectionMode || selectedItemIds.length > 0) return;
                               setActiveMenuTrackId(isMenuOpen ? null : track.id);
                             }}
-                            className={`studycloud-menu-trigger p-1.5 rounded-lg transition-colors ${
-                              isSelectionMode || selectedItemIds.length > 0
+                            className={`studycloud-menu-trigger p-1.5 rounded-lg transition-colors ${isSelectionMode || selectedItemIds.length > 0
                                 ? 'opacity-20 cursor-not-allowed pointer-events-none text-stone-400'
                                 : 'text-stone-400 hover:text-stone-700 dark:hover:text-white hover:bg-stone-200 dark:hover:bg-slate-800 cursor-pointer'
-                            }`}
+                              }`}
                             title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options"}
                           >
                             <Menu className="w-4 h-4 stroke-[2]" />
@@ -2331,9 +2318,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
         {/* PANNEAU DE DROITE : LECTEUR AUDIO DÉDIÉ OU ÉTAT VIDE (IMAGES 1 & 2) */}
         {selectedTrack ? (
-          <div className={`animate-in fade-in duration-150 ${
-            isMobilePlayerOpen ? 'flex w-full min-h-[calc(100vh-120px)]' : 'hidden md:flex'
-          } md:w-7/12 lg:w-7/12 xl:w-7/12 flex-col bg-[#090D1A] border-t md:border-t-0 md:border-l border-white/10`}>
+          <div className={`animate-in fade-in duration-150 ${isMobilePlayerOpen ? 'flex w-full min-h-[calc(100vh-120px)]' : 'hidden md:flex'
+            } md:w-7/12 lg:w-7/12 xl:w-7/12 flex-col bg-[#090D1A] border-t md:border-t-0 md:border-l border-white/10`}>
             {renderAudioPlayer(selectedTrack)}
           </div>
         ) : (
@@ -2429,11 +2415,11 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
               // 4. Synchroniser avec le serveur
               for (const t of toDelete) {
-                CloudStorageAPI.deleteAudio(t.id, t.name).catch(() => {});
+                CloudStorageAPI.deleteAudio(t.id, t.name).catch(() => { });
               }
-              invalidateCloudQueries.audio().catch(() => {});
-              invalidateCloudQueries.trash().catch(() => {});
-              invalidateCloudQueries.overview().catch(() => {});
+              invalidateCloudQueries.audio().catch(() => { });
+              invalidateCloudQueries.trash().catch(() => { });
+              invalidateCloudQueries.overview().catch(() => { });
               showToast(`${toDelete.length} son(s) déplacé(s) dans la corbeille 🗑️`);
             }}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 font-semibold cursor-pointer"
@@ -2459,9 +2445,9 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       {renderTransferFolderModal()}
 
       {/* MODAL FORMAT NON COMPATIBLE AU MILIEU DE L'ÉCRAN */}
-      <IncompatibleFormatModal 
-        info={incompatibleAlertInfo} 
-        onClose={() => setIncompatibleAlertInfo(null)} 
+      <IncompatibleFormatModal
+        info={incompatibleAlertInfo}
+        onClose={() => setIncompatibleAlertInfo(null)}
       />
     </div>
   );

@@ -448,18 +448,18 @@ export const HeaderMenuControls: React.FC<HeaderMenuControlsProps> = ({
   };
 
   return (
-    <div ref={containerRef} className={`flex items-center gap-1.5 sm:gap-2 shrink-0 relative ${className}`}>
+    <div ref={containerRef} className={`flex items-center gap-1 sm:gap-2 shrink-0 relative ${className}`}>
       {/* 1. BOUTON PLEIN ÉCRAN (IDENTIQUE À CELUI ENTOURÉ EN ROUGE À L'ACCUEIL) */}
       <button
         type="button"
         onClick={onToggleFullscreen}
-        className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+        className="flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
         title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet (Prendre tout l'écran)"}
       >
         {isFullscreen ? (
-          <Minimize2 className="w-4 h-4 stroke-[2.2]" />
+          <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
         ) : (
-          <Maximize2 className="w-4 h-4 stroke-[2.2]" />
+          <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
         )}
       </button>
 
@@ -472,14 +472,14 @@ export const HeaderMenuControls: React.FC<HeaderMenuControlsProps> = ({
             e.stopPropagation();
             setIsMenuOpen(!isMenuOpen);
           }}
-          className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm border ${
+          className={`flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm border ${
             isMenuOpen
               ? 'bg-amber-500/20 text-amber-400 border-amber-400/40'
               : 'bg-[#04060A] hover:bg-[#0A0E18] text-white border-white/10'
           }`}
           title="Options de tri et d'affichage (3 traits)"
         >
-          <Menu className="w-4 h-4 stroke-[2.2]" />
+          <Menu className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
         </button>
 
         {/* 3. MENU DROPDOWN D'OPTIONS ET DE TRI */}

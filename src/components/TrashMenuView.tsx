@@ -1439,10 +1439,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
   return (
     <div ref={containerRef} className="w-full h-full flex flex-col bg-white text-stone-900 select-none overflow-hidden animate-in fade-in duration-200">
       {/* EN-TÊTE FIXE DU MENU CORBEILLE (TOUJOURS ANCRÉ EN HAUT, NE BOUGE PAS AU DÉFILEMENT) */}
-      <header className="shrink-0 z-30 w-full bg-stone-100/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 sm:py-3 border-b border-stone-200 shadow-sm">
-        <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
+      <header className="shrink-0 z-30 w-full bg-stone-100/95 backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-3 border-b border-stone-200 shadow-sm">
+        <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* GAUCHE : Bouton Retour rond, Icône Corbeille rouge et Titre StudyCloud */}
-          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -1454,17 +1454,17 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                   onBack();
                 }
               }}
-              className="p-2 sm:p-2.5 rounded-full bg-[#182032] hover:bg-[#222c44] text-white border border-stone-700/50 transition-all cursor-pointer active:scale-95 shadow-sm"
+              className="p-1.5 sm:p-2.5 rounded-full bg-[#182032] hover:bg-[#222c44] text-white border border-stone-700/50 transition-all cursor-pointer active:scale-95 shadow-sm"
               title={isViewerMaximized ? "Réduire la vue" : selectedFile ? "Fermer le lecteur" : "Retour"}
             >
-              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
+              <ArrowLeft className="w-3.5 h-3.5 sm:w-5 sm:h-5 stroke-[2.2]" />
             </button>
 
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 sm:p-2.5 rounded-2xl bg-[#182032] border border-stone-700/50 text-rose-400 shadow-md">
-                <Trash2 className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.2]" />
+            <div className="flex items-center gap-1.5 sm:gap-2.5">
+              <div className="p-1.5 sm:p-2.5 rounded-lg sm:rounded-2xl bg-[#182032] border border-stone-700/50 text-rose-400 shadow-md">
+                <Trash2 className="w-3.5 h-3.5 sm:w-6 sm:h-6 stroke-[2.2]" />
               </div>
-              <div>
+              <div className="hidden sm:block">
                 <h1 className="text-sm sm:text-base md:text-lg font-black text-stone-900 leading-tight">
                   Corbeille
                 </h1>
@@ -1476,38 +1476,38 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
           </div>
 
           {/* MILIEU : Barre de Recherche Corbeille */}
-          <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-1 sm:px-2">
-            <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-rose-500/50 border border-stone-700/50 rounded-full px-3.5 sm:px-4 py-1.5 transition-all shadow-inner gap-2">
+          <div className="flex-1 min-w-0 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-0.5 sm:px-2">
+            <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-rose-500/50 border border-stone-700/50 rounded-full px-2.5 sm:px-4 py-1 sm:py-1.5 transition-all shadow-inner gap-1.5 sm:gap-2">
               <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400/80 shrink-0 stroke-[2.2]" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Rechercher dans la corbeille..."
-                className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
+                className="w-full min-w-0 bg-transparent text-[11px] sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors"
+                  className="p-0.5 sm:p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors shrink-0"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 </button>
               )}
             </div>
           </div>
 
           {/* DROITE : Bouton Vider la corbeille & Mode sélection */}
-          <div className="shrink-0 flex items-center gap-2">
+          <div className="shrink-0 flex items-center gap-1 sm:gap-2">
             {trashList.length > 0 && (
               <button
                 type="button"
                 onClick={() => setIsConfirmEmptyOpen(true)}
-                className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 border border-rose-500/40 transition-all cursor-pointer active:scale-95 shadow-sm text-xs sm:text-sm font-bold"
+                className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-4 py-1 sm:py-2 rounded-full bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 border border-rose-500/40 transition-all cursor-pointer active:scale-95 shadow-sm text-[10px] sm:text-sm font-bold"
                 title="Vider définitivement tous les éléments"
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 <span className="hidden sm:inline">Vider la corbeille</span>
                 <span className="sm:hidden">Vider</span>
               </button>
@@ -1516,14 +1516,14 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             <button
               type="button"
               onClick={() => setIsSelectionMode(!isSelectionMode)}
-              className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full border transition-all cursor-pointer shrink-0 active:scale-95 ${
+              className={`flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 rounded-full border transition-all cursor-pointer shrink-0 active:scale-95 ${
                 isSelectionMode
                   ? 'bg-rose-500 text-white border-rose-400 font-bold'
                   : 'bg-[#182032] hover:bg-[#222c44] text-white border-stone-700/50'
               }`}
               title={isSelectionMode ? 'Quitter la sélection' : 'Sélection multiple'}
             >
-              <CheckSquare className="w-4 h-4" />
+              <CheckSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
 
             {/* Bouton Plein écran (entouré en rouge) + Bouton 3 traits derrière lui */}
@@ -1678,10 +1678,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                     <Music className="w-4 h-4" />
                     <span>Fichiers Audio ({categorized.audios.length})</span>
                   </div>
-                  <div className={`grid gap-3 sm:gap-4 ${
+                  <div className={`grid gap-2 sm:gap-4 ${
                     selectedFile
-                      ? 'grid-cols-2 lg:grid-cols-3'
-                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      ? 'grid-cols-3 lg:grid-cols-3'
+                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
                     {categorized.audios.map((file, idx) => renderAudioCard(file, idx))}
                   </div>
@@ -1695,10 +1695,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                     <FolderArchive className="w-4 h-4" />
                     <span>Classeur & Dossiers ({categorized.classeur.length})</span>
                   </div>
-                  <div className={`grid gap-3 sm:gap-4 ${
+                  <div className={`grid gap-2 sm:gap-4 ${
                     selectedFile
-                      ? 'grid-cols-2 lg:grid-cols-3'
-                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      ? 'grid-cols-3 lg:grid-cols-3'
+                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
                     {categorized.classeur.map((file, idx) => renderClasseurCard(file, idx))}
                   </div>
@@ -1712,10 +1712,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                     <FileText className="w-4 h-4" />
                     <span>Documents ({categorized.documents.length})</span>
                   </div>
-                  <div className={`grid gap-3 sm:gap-4 ${
+                  <div className={`grid gap-2 sm:gap-4 ${
                     selectedFile
-                      ? 'grid-cols-2 lg:grid-cols-3'
-                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      ? 'grid-cols-3 lg:grid-cols-3'
+                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
                     {categorized.documents.map((file, idx) => renderDocumentCard(file, idx))}
                   </div>
@@ -1729,10 +1729,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                     <ImageIcon className="w-4 h-4" />
                     <span>Images ({categorized.images.length})</span>
                   </div>
-                  <div className={`grid gap-3 sm:gap-4 ${
+                  <div className={`grid gap-2 sm:gap-4 ${
                     selectedFile
-                      ? 'grid-cols-2 lg:grid-cols-3'
-                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      ? 'grid-cols-3 lg:grid-cols-3'
+                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
                     {categorized.images.map((file, idx) => renderImageCard(file, idx))}
                   </div>
@@ -1746,10 +1746,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                     <Film className="w-4 h-4" />
                     <span>Vidéos ({categorized.videos.length})</span>
                   </div>
-                  <div className={`grid gap-3 sm:gap-4 ${
+                  <div className={`grid gap-2 sm:gap-4 ${
                     selectedFile
-                      ? 'grid-cols-2 lg:grid-cols-3'
-                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
+                      ? 'grid-cols-3 lg:grid-cols-3'
+                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
                   }`}>
                     {categorized.videos.map((file, idx) => renderVideoCard(file, idx))}
                   </div>
@@ -1763,10 +1763,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                     <FileText className="w-4 h-4" />
                     <span>Autres Fichiers ({categorized.others.length})</span>
                   </div>
-                  <div className={`grid gap-3 sm:gap-4 ${
+                  <div className={`grid gap-2 sm:gap-4 ${
                     selectedFile
-                      ? 'grid-cols-2 lg:grid-cols-3'
-                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      ? 'grid-cols-3 lg:grid-cols-3'
+                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
                     {categorized.others.map((file, idx) => renderDocumentCard(file, idx))}
                   </div>

@@ -270,10 +270,10 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
       )}
 
       {/* EN-TÊTE FIXE DU MENU TÉLÉCHARGEMENTS */}
-      <header className="sticky top-0 z-30 w-full bg-stone-100/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-stone-200 shadow-sm">
-        <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
+      <header className="sticky top-0 z-30 w-full bg-stone-100/95 backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-sm">
+        <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* GAUCHE : Bouton Retour et Titre */}
-          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -286,18 +286,18 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
                   onBack();
                 }
               }}
-              className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-stone-700/50 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
+              className="flex items-center gap-1.5 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-stone-700/50 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
               title={isViewerMaximized ? "Réduire la vue" : selectedItem ? "Fermer la vue" : "Retour au gestionnaire de fichiers"}
             >
-              <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
+              <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
               <span className="hidden xs:inline">{isViewerMaximized ? "Réduire" : "Retour"}</span>
             </button>
 
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-[#182032] border border-stone-700/50 text-sky-400">
-                <Download className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-[#182032] border border-stone-700/50 text-sky-400">
+                <Download className="w-3.5 h-3.5 sm:w-5 sm:h-5 stroke-[2.2]" />
               </div>
-              <div>
+              <div className="hidden sm:block">
                 <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 leading-tight">
                   Téléchargements
                 </h1>
@@ -309,35 +309,35 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
           </div>
 
           {/* MILIEU : Barre de Recherche */}
-          <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-1 sm:px-2">
-            <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-sky-500/50 border border-stone-700/50 rounded-full px-3.5 sm:px-4 py-1.5 transition-all shadow-inner gap-2">
+          <div className="flex-1 min-w-0 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-0.5 sm:px-2">
+            <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-sky-500/50 border border-stone-700/50 rounded-full px-2.5 sm:px-4 py-1 sm:py-1.5 transition-all shadow-inner gap-1.5 sm:gap-2">
               <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-400/80 shrink-0 stroke-[2.2]" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Rechercher dans Téléchargements..."
-                className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
+                className="w-full min-w-0 bg-transparent text-[11px] sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors"
+                  className="p-0.5 sm:p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors shrink-0"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 </button>
               )}
             </div>
           </div>
 
           {/* DROITE : Espace d'étude & Fullscreen & 3 traits */}
-          <div className="shrink-0 flex items-center gap-1.5 sm:gap-2">
+          <div className="shrink-0 flex items-center gap-1 sm:gap-2">
             {onOpenStudySpace && (
               <button
                 type="button"
                 onClick={() => onOpenStudySpace(selectedItem || undefined, 'Téléchargements', downloadedList as any[])}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#101827] text-emerald-400 border border-emerald-500/30 transition-all font-bold text-xs"
+                className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#101827] text-emerald-400 border border-emerald-500/30 transition-all font-bold text-xs"
               >
                 <BookOpen className="w-3.5 h-3.5" />
                 <span>Menu de création</span>
@@ -398,7 +398,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
               )}
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="grid grid-cols-3 sm:grid-cols-1 gap-2">
               {filteredItems.map((item) => {
                 const isSelected = selectedItem?.id === item.id;
                 const name = item.name || 'Fichier';
@@ -407,24 +407,24 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
                   <div
                     key={item.id}
                     onClick={() => setSelectedItem(item)}
-                    className={`flex items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer ${
+                    className={`flex flex-col sm:flex-row items-center justify-between aspect-[3/4] sm:aspect-auto p-2 sm:p-3 rounded-xl sm:rounded-2xl border transition-all cursor-pointer relative ${
                       isSelected
                         ? 'bg-sky-500/15 border-sky-400 shadow-md ring-1 ring-sky-400/30'
                         : 'bg-[#0B101D] border-white/5 hover:border-sky-500/40'
                     }`}
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-black border border-white/10 flex items-center justify-center shrink-0">
+                    <div className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-3 min-w-0 w-full flex-1 justify-center sm:justify-start">
+                      <div className="w-10 h-10 sm:w-10 sm:h-10 rounded-xl bg-black border border-white/10 flex items-center justify-center shrink-0 my-auto sm:my-0">
                         {getItemIcon(item)}
                       </div>
-                      <div className="min-w-0">
-                        <p className={`text-xs sm:text-sm font-bold truncate ${
+                      <div className="min-w-0 w-full text-center sm:text-left mt-auto sm:mt-0">
+                        <p className={`text-[9px] sm:text-sm font-bold truncate ${
                           isSelected ? 'text-sky-300' : 'text-white'
                         }`}>
                           {name}
                         </p>
-                        <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5">
-                          {item.size || 'Fichier'} • {item.date || 'Téléchargé'}
+                        <p className="text-[8px] sm:text-xs text-slate-400 mt-0.5 truncate">
+                          {item.size || 'Fichier'} <span className="hidden sm:inline">• {item.date || 'Téléchargé'}</span>
                         </p>
                       </div>
                     </div>
@@ -435,10 +435,10 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
                         e.stopPropagation();
                         handleDeleteItem(item.id);
                       }}
-                      className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-white/5 transition-colors shrink-0"
+                      className="absolute top-1.5 right-1.5 sm:static p-1 sm:p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-white/5 transition-colors shrink-0"
                       title="Supprimer"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </button>
                   </div>
                 );

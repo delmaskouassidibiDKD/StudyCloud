@@ -2129,18 +2129,18 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   };
 
   const gridColsClass = viewerFile
-    ? 'grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3'
-    : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6';
+    ? 'grid-cols-3 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3'
+    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6';
 
   return (
     <div className="flex-1 flex flex-col w-full min-h-screen bg-stone-100 text-stone-900 select-none animate-in fade-in duration-200">
       {/* =========================================================================
           1. EN-TÊTE FIXE DU MENU ESPACE CLOUD (NE BOUGE PAS LORS DU DÉFILEMENT)
           ========================================================================= */}
-      <header className="shrink-0 sticky top-0 z-30 w-full bg-stone-100/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 sm:py-3 border-b border-stone-200 shadow-sm">
-        <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
+      <header className="shrink-0 sticky top-0 z-30 w-full bg-stone-100/95 backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-3 border-b border-stone-200 shadow-sm">
+        <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* GAUCHE : Bouton Retour rond, Icône Nuage cyan et Titre Espace Cloud */}
-          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -2152,17 +2152,17 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   onBack();
                 }
               }}
-              className="p-2 sm:p-2.5 rounded-full bg-[#182032] hover:bg-[#222c44] text-white border border-stone-700/50 transition-all cursor-pointer active:scale-95 shadow-sm"
+              className="p-1.5 sm:p-2.5 rounded-full bg-[#182032] hover:bg-[#222c44] text-white border border-stone-700/50 transition-all cursor-pointer active:scale-95 shadow-sm"
               title="Retour au gestionnaire de fichiers"
             >
-              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
+              <ArrowLeft className="w-3.5 h-3.5 sm:w-5 sm:h-5 stroke-[2.2]" />
             </button>
 
-            <div className="flex items-center gap-2 sm:gap-2.5">
-              <div className="p-2 rounded-xl bg-[#182032] border border-stone-700/50 text-cyan-400 shadow-inner">
-                <Cloud className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
+            <div className="flex items-center gap-1.5 sm:gap-2.5">
+              <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-[#182032] border border-stone-700/50 text-cyan-400 shadow-inner">
+                <Cloud className="w-3.5 h-3.5 sm:w-5 sm:h-5 stroke-[2.2]" />
               </div>
-              <div>
+              <div className="hidden sm:block">
                 <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 leading-tight">
                   Espace Cloud
                 </h1>
@@ -2174,23 +2174,23 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           </div>
 
           {/* DROITE : Barre de recherche intégrée "Rechercher dans Espace..." */}
-          <div className="flex items-center gap-2 max-w-xs sm:max-w-md w-full justify-end">
-            <div className="relative w-full max-w-[260px] sm:max-w-[320px]">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <div className="flex items-center gap-1.5 sm:gap-2 max-w-xs sm:max-w-md w-full justify-end min-w-0">
+            <div className="relative w-full min-w-0 max-w-[260px] sm:max-w-[320px]">
+              <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Rechercher dans Espace..."
-                className="w-full pl-9 pr-8 py-1.5 sm:py-2 text-xs sm:text-sm rounded-full bg-[#04060A] text-white placeholder-slate-400 border border-stone-700/50 focus:border-cyan-400/80 focus:ring-1 focus:ring-cyan-400/50 outline-none transition-all shadow-inner"
+                className="w-full min-w-0 pl-8 sm:pl-9 pr-7 sm:pr-8 py-1 sm:py-2 text-[11px] sm:text-sm rounded-full bg-[#04060A] text-white placeholder-slate-400 border border-stone-700/50 focus:border-cyan-400/80 focus:ring-1 focus:ring-cyan-400/50 outline-none transition-all shadow-inner"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 rounded-full"
+                  className="absolute right-2 sm:right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 rounded-full"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 </button>
               )}
             </div>
@@ -2199,13 +2199,13 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
               <button
                 type="button"
                 onClick={onToggleFullscreen}
-                className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-stone-700/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                className="flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-stone-700/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
                 title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet"}
               >
                 {isFullscreen ? (
-                  <Minimize2 className="w-4 h-4 stroke-[2.2]" />
+                  <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
                 ) : (
-                  <Maximize2 className="w-4 h-4 stroke-[2.2]" />
+                  <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
                 )}
               </button>
             )}
@@ -2417,13 +2417,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                     </p>
                   </div>
                 ) : (
-                  <div 
-                    className="grid transition-all duration-200 w-full"
-                    style={{
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(165px, 205px))',
-                      gap: '16px'
-                    }}
-                  >
+                  <div className={`grid ${gridColsClass} gap-2 sm:gap-4 transition-all duration-200 w-full`}>
                     {filteredClasseurFolders.map(folder => renderClasseurFolderCard(folder))}
                   </div>
                 )
@@ -2436,13 +2430,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   {classeurSubFolders.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-[11px] font-bold text-stone-700 uppercase tracking-wider">Sous-dossiers</p>
-                      <div 
-                        className="grid transition-all duration-200 w-full"
-                        style={{
-                          gridTemplateColumns: 'repeat(auto-fill, minmax(165px, 205px))',
-                          gap: '16px'
-                        }}
-                      >
+                      <div className={`grid ${gridColsClass} gap-2 sm:gap-4 transition-all duration-200 w-full`}>
                         {classeurSubFolders.map(f => renderClasseurFolderCard(f))}
                       </div>
                     </div>
@@ -2454,13 +2442,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                       {classeurSubFolders.length > 0 && (
                         <p className="text-[11px] font-bold text-stone-700 uppercase tracking-wider">Documents</p>
                       )}
-                      <div 
-                        className="grid transition-all duration-200 w-full"
-                        style={{
-                          gridTemplateColumns: 'repeat(auto-fill, minmax(165px, 205px))',
-                          gap: '16px'
-                        }}
-                      >
+                      <div className={`grid ${gridColsClass} gap-2 sm:gap-4 transition-all duration-200 w-full`}>
                         {classeurFolderFiles.map((doc, idx) => renderClasseurCard(doc, idx))}
                       </div>
                     </div>
@@ -2491,7 +2473,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   <p className="text-sm font-bold text-stone-800">Aucun fichier téléchargé pour le moment</p>
                 </div>
               ) : (
-                <div className={`grid ${gridColsClass} gap-3 sm:gap-4`}>
+                <div className={`grid ${gridColsClass} gap-2 sm:gap-4`}>
                   {filteredDownloads.map((doc: any, idx) => renderDocumentCard(doc, idx))}
                 </div>
               )}
@@ -2513,7 +2495,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   <p className="text-sm font-bold text-stone-800">Aucune image stockée pour le moment</p>
                 </div>
               ) : (
-                <div className={`grid ${gridColsClass} gap-3 sm:gap-4`}>
+                <div className={`grid ${gridColsClass} gap-2 sm:gap-4`}>
                   {filteredImages.map((img, idx) => renderImageCard(img, idx))}
                 </div>
               )}
@@ -2535,7 +2517,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   <p className="text-sm font-bold text-stone-800">Aucune vidéo enregistrée pour le moment</p>
                 </div>
               ) : (
-                <div className={`grid ${gridColsClass} gap-3 sm:gap-4`}>
+                <div className={`grid ${gridColsClass} gap-2 sm:gap-4`}>
                   {filteredVideos.map((vid, idx) => renderVideoCard(vid, idx))}
                 </div>
               )}
@@ -2557,7 +2539,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   <p className="text-sm font-bold text-stone-800">Aucune piste audio enregistrée pour le moment</p>
                 </div>
               ) : (
-                <div className={`grid ${gridColsClass} gap-3 sm:gap-4`}>
+                <div className={`grid ${gridColsClass} gap-2 sm:gap-4`}>
                   {filteredAudio.map((aud, idx) => renderAudioCard(aud, idx))}
                 </div>
               )}
@@ -2579,7 +2561,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   <p className="text-sm font-bold text-stone-800">Aucun document publié pour le moment</p>
                 </div>
               ) : (
-                <div className={`grid ${gridColsClass} gap-3 sm:gap-4`}>
+                <div className={`grid ${gridColsClass} gap-2 sm:gap-4`}>
                   {filteredDocuments.map((doc, idx) => renderDocumentCard(doc, idx))}
                 </div>
               )}
@@ -2619,7 +2601,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   <p className="text-xs text-stone-500">Ajoutez des fichiers en favoris avec le menu 3 traits</p>
                 </div>
               ) : (
-                <div className={`grid ${gridColsClass} gap-3 sm:gap-4`}>
+                <div className={`grid ${gridColsClass} gap-2 sm:gap-4`}>
                   {filteredFavorites.map((file, idx) => {
                     if (file.category === 'images' || (file as any).isImage) return renderImageCard(file, idx);
                     if (file.category === 'videos' || (file as any).isVideo) return renderVideoCard(file, idx);
@@ -2771,7 +2753,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                       <p className="text-xs text-stone-500">Déplacez des fichiers confidentiels ici avec le menu 3 traits</p>
                     </div>
                   ) : (
-                    <div className={`grid ${gridColsClass} gap-3 sm:gap-4`}>
+                    <div className={`grid ${gridColsClass} gap-2 sm:gap-4`}>
                       {displayedSecureFiles.map((file, idx) => {
                         const ext = (file.extension || file.name.split('.').pop() || '').toLowerCase();
                         const isAudio = file.category === 'audio' || (file as any).isAudio || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'].includes(ext);
@@ -2807,7 +2789,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   <p className="text-sm font-bold">La corbeille est vide</p>
                 </div>
               ) : (
-                <div className={`grid ${gridColsClass} gap-3 sm:gap-4`}>
+                <div className={`grid ${gridColsClass} gap-2 sm:gap-4`}>
                   {filteredTrash.map((file, idx) => {
                     if (file.category === 'images' || (file as any).isImage) return renderImageCard(file, idx);
                     if (file.category === 'videos' || (file as any).isVideo) return renderVideoCard(file, idx);

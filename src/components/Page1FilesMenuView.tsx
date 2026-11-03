@@ -7080,10 +7080,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         ) : (
           /* Grille d'éléments à taille identique au menu Documents */
           <div 
-            className={`grid gap-2.5 sm:gap-3.5 items-start transition-all duration-200 w-full ${
+            className={`grid gap-2 sm:gap-3.5 items-start transition-all duration-200 w-full ${
               selectedClasseurFile
-                ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3'
-                : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                ? 'grid-cols-3 md:grid-cols-3 xl:grid-cols-3'
+                : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
             }`}
           >
             {/* 1. Sous-dossiers créés dans ce dossier (dossier dans dossier - taille fixe 4) */}
@@ -12015,14 +12015,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         <div className="flex-1 flex flex-col w-full animate-in fade-in duration-200 min-h-screen">
           
           {/* EN-TÊTE DU SOUS-MENU */}
-          <div className={`sticky top-0 z-30 w-full bg-white backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-stone-200 shadow-xs ${
+          <div className={`sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-xs ${
             isViewerMaximized ? 'hidden' : ''
           }`}>
             {(opened3DFolder && !isCloudView) ? (
               /* EN-TÊTE DU DOSSIER 3D OUVERT (Conforme à la demande : bande blanche, boutons noirs et champ en noir) */
-              <div className="w-full flex items-center justify-between gap-2 sm:gap-4 animate-in fade-in duration-150">
+              <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4 animate-in fade-in duration-150">
                 {/* GAUCHE : Bouton Retour rond noir et Bouton Importer pilule noir */}
-                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={() => {
@@ -12037,14 +12037,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       setSplitSelectedFile(null);
                       setSubSearchQuery('');
                     }}
-                    className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                    className="flex items-center justify-center w-7 h-7 sm:w-10 sm:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
                     title={opened3DFolder.parentId ? "Retour au dossier parent" : "Retour aux dossiers du classeur"}
                     aria-label="Retour"
                   >
-                    <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
+                    <ArrowLeft className="w-3.5 h-3.5 sm:w-5 sm:h-5 stroke-[2.2]" />
                   </button>
 
-                  <div className="flex flex-col items-center">
+                  <div className="hidden sm:flex flex-col items-center">
                     <button
                       type="button"
                       onClick={() => folderFileInputRef.current?.click()}
@@ -12064,7 +12064,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   {opened3DFolder.parentId ? (() => {
                     const parentFolder = classeur3DFolders.find(f => f.id === opened3DFolder.parentId);
                     return (
-                      <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                      <div className="flex items-center gap-1 sm:gap-2 min-w-0">
                         {parentFolder && (
                           <button
                             type="button"
@@ -12075,7 +12075,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                               setSplitSelectedFile(null);
                               setSubSearchQuery('');
                             }}
-                            className="font-sans text-xs sm:text-sm font-bold text-stone-800 bg-stone-100 hover:bg-stone-200 px-2.5 sm:px-3 py-1 rounded-xl border border-stone-300 shadow-xs truncate max-w-[120px] sm:max-w-[160px] text-center cursor-pointer transition-all active:scale-95 flex items-center gap-1"
+                            className="font-sans text-[11px] sm:text-sm font-bold text-stone-800 bg-stone-100 hover:bg-stone-200 px-2 sm:px-3 py-1 rounded-xl border border-stone-300 shadow-xs truncate max-w-[90px] sm:max-w-[160px] text-center cursor-pointer transition-all active:scale-95 flex items-center gap-1"
                             title={`Retourner au dossier parent « ${parentFolder.name} »`}
                           >
                             <span className="truncate">{parentFolder.name}</span>
@@ -12083,7 +12083,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         )}
                         <span className="text-stone-400 font-bold select-none text-xs sm:text-sm">/</span>
                         <h1 
-                          className="font-sans text-xs sm:text-sm font-bold px-3.5 py-1 rounded-xl border shadow-xs truncate max-w-[140px] sm:max-w-[200px] md:max-w-xs text-center"
+                          className="font-sans text-[11px] sm:text-sm font-bold px-2.5 sm:px-3.5 py-1 rounded-xl border shadow-xs truncate max-w-[110px] sm:max-w-[200px] md:max-w-xs text-center"
                           style={{
                             backgroundColor: opened3DFolder.primaryColor || '#FFC400',
                             color: opened3DFolder.textDark ? '#1c1917' : '#FFFFFF',
@@ -12097,7 +12097,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     );
                   })() : (
                     <h1 
-                      className="font-sans text-xs sm:text-sm font-bold px-3.5 py-1 rounded-xl border shadow-xs truncate max-w-[180px] sm:max-w-xs md:max-w-md text-center"
+                      className="font-sans text-[11px] sm:text-sm font-bold px-2.5 sm:px-3.5 py-1 rounded-xl border shadow-xs truncate max-w-[130px] sm:max-w-xs md:max-w-md text-center"
                       style={{
                         backgroundColor: opened3DFolder.primaryColor || '#FFC400',
                         color: opened3DFolder.textDark ? '#1c1917' : '#FFFFFF',
@@ -12111,7 +12111,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 </div>
 
                 {/* DROITE : Créer un dossier, Bloc-notes, Recherche, Plein écran, 3 traits (Tous en noir) */}
-                <div className="shrink-0 flex items-center gap-1.5 sm:gap-2">
+                <div className="shrink-0 flex items-center gap-1 sm:gap-2">
                   {/* Bouton 1 : Créer un sous-dossier (si pas déjà dans un sous-dossier) */}
                   {!opened3DFolder.parentId && (
                     <button
@@ -12123,7 +12123,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         setNewFolderNameInput('');
                         setIsCreateFolderModalOpen(true);
                       }}
-                      className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-orange-400/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs font-black"
+                      className="flex items-center gap-1.5 px-2 sm:px-3.5 py-1 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-orange-400/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs font-black"
                       title="Créer un sous-dossier dans ce dossier"
                     >
                       <FolderPlus className="w-3.5 h-3.5 text-orange-400" />
@@ -12138,7 +12138,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       setNewNoteNameInput('');
                       setIsNewNoteModalOpen(true);
                     }}
-                    className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-cyan-400/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs font-black"
+                    className="flex items-center gap-1.5 px-2 sm:px-3.5 py-1 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-cyan-400/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs font-black"
                     title="Nouveau document Bloc-notes (.txt)"
                   >
                     <FileEdit className="w-3.5 h-3.5 text-cyan-400" />
@@ -12151,12 +12151,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       type="button"
                       id="btn-import-opened-classeur-folder"
                       onClick={() => folderFileInputRef.current?.click()}
-                      className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-orange-500/40 hover:border-orange-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                      className="flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-orange-500/40 hover:border-orange-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
                       title="Importer des fichiers dans ce dossier"
                     >
-                      <Plus className="w-4 h-4 text-orange-400 stroke-[2.5]" />
+                      <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-400 stroke-[2.5]" />
                     </button>
-                    <span className="text-[10px] font-extrabold text-orange-400 leading-tight mt-0.5">
+                    <span className="hidden sm:block text-[10px] font-extrabold text-orange-400 leading-tight mt-0.5">
                       Importer
                     </span>
                   </div>
@@ -12180,13 +12180,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   <button
                     type="button"
                     onClick={() => setIsFullscreen(!isFullscreen)}
-                    className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                    className="flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
                     title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet"}
                   >
                     {isFullscreen ? (
-                      <Minimize2 className="w-4 h-4 stroke-[2.2]" />
+                      <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
                     ) : (
-                      <Maximize2 className="w-4 h-4 stroke-[2.2]" />
+                      <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
                     )}
                   </button>
 
@@ -12199,12 +12199,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         e.stopPropagation();
                         setIsHeaderMenuOpen(!isHeaderMenuOpen);
                       }}
-                      className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full ${
+                      className={`flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full ${
                         isHeaderMenuOpen ? 'bg-amber-500/20 text-amber-400 border-amber-400/40' : 'bg-[#04060A] hover:bg-[#0A0E18] text-white border-white/10'
                       } border transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm`}
                       title="Options d'affichage et de tri (3 traits)"
                     >
-                      <Menu className="w-4 h-4 stroke-[2.2]" />
+                      <Menu className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
                     </button>
 
                     {renderHeaderOptionsMenu(typeof document !== 'undefined' ? document.getElementById('p1-header-menu-trigger') : null)}
@@ -12213,10 +12213,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               </div>
             ) : (
               /* EN-TÊTE RACINE DU CLASSEUR (Bande blanche, champ en noir, boutons noirs) */
-              <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
+              <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
                 
                 {/* GAUCHE : Bouton Retour rond noir et Titre Classeur */}
-                <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+                <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
                   <button
                     type="button"
                     onClick={() => {
@@ -12230,18 +12230,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       setSecurePinInput('');
                       setSecurePinError(null);
                     }}
-                    className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                    className="flex items-center justify-center w-7 h-7 sm:w-10 sm:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
                     title="Retour au Tableau de bord"
                     aria-label="Retour"
                   >
-                    <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
+                    <ArrowLeft className="w-3.5 h-3.5 sm:w-5 sm:h-5 stroke-[2.2]" />
                   </button>
 
-                  <div className="flex items-center gap-2">
-                    <div className={`p-1.5 sm:p-2 rounded-xl bg-black border border-white/10 ${currentSubView.color}`}>
-                      <currentSubView.icon className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <div className={`p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-black border border-white/10 ${currentSubView.color}`}>
+                      <currentSubView.icon className="w-3.5 h-3.5 sm:w-5 sm:h-5 stroke-[2.2]" />
                     </div>
-                    <div>
+                    <div className="hidden sm:block">
                       <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 leading-tight">
                         {currentSubView.name}
                       </h1>
@@ -12253,8 +12253,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 </div>
 
                 {/* MILIEU : Champ de recherche pilule en noir */}
-                <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg mx-auto relative flex items-center px-1 sm:px-2">
-                  <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-orange-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 sm:py-2 transition-all shadow-inner gap-2">
+                <div className="flex-1 min-w-0 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg mx-auto relative flex items-center px-0.5 sm:px-2">
+                  <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-orange-500/50 border border-white/10 rounded-full px-2.5 sm:px-4 py-1 sm:py-2 transition-all shadow-inner gap-1.5 sm:gap-2">
                     <div className="text-white shrink-0">
                       <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2] text-orange-400" />
                     </div>
@@ -12263,29 +12263,29 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       value={subSearchQuery}
                       onChange={(e) => setSubSearchQuery(e.target.value)}
                       placeholder={`Rechercher dans ${currentSubView.name}...`}
-                      className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
+                      className="w-full min-w-0 bg-transparent text-[11px] sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
                     />
                     {subSearchQuery && (
                       <button
                         type="button"
                         onClick={() => setSubSearchQuery('')}
-                        className="p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors cursor-pointer"
+                        className="p-0.5 sm:p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
                         title="Effacer"
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                       </button>
                     )}
                   </div>
                 </div>
 
                 {/* DROITE : Boutons d'action en noir */}
-                <div className="shrink-0 flex items-center gap-2">
+                <div className="shrink-0 flex items-center gap-1 sm:gap-2">
                   {/* BOUTON ESPACE D'ÉTUDE DEVANT LE BOUTON ZOOM (uniquement si un élément est sélectionné) */}
                   {Boolean(splitSelectedFile || selectedItemIds.length > 0) && (
                     <button
                       type="button"
                       onClick={() => handleOpenStudySpaceForCurrentMenu(false)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 hover:border-emerald-500/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs font-black group animate-in fade-in duration-150"
+                      className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 hover:border-emerald-500/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs font-black group animate-in fade-in duration-150"
                       title="Ouvrir le Menu de création"
                     >
                       <BookOpen className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
@@ -12301,11 +12301,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         setSubFolderParentId(opened3DFolder ? opened3DFolder.id : null);
                         setIsCreateFolderModalOpen(true);
                       }}
-                      className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-orange-400/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black group select-none animate-in fade-in duration-150"
+                      className="flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-1 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-orange-400/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-[11px] sm:text-sm font-black group select-none animate-in fade-in duration-150"
                       title="Créer un nouveau dossier"
                     >
-                      <FolderPlus className="w-4 h-4 stroke-[2.4] group-hover:scale-110 transition-transform text-orange-400 shrink-0" />
-                      <span className="whitespace-nowrap">Créer un dossier</span>
+                      <FolderPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.4] group-hover:scale-110 transition-transform text-orange-400 shrink-0" />
+                      <span className="whitespace-nowrap sm:hidden">Dossier</span>
+                      <span className="whitespace-nowrap hidden sm:inline">Créer un dossier</span>
                     </button>
                   )}
 
@@ -12316,12 +12317,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         type="button"
                         id="btn-import-menu-videos"
                         onClick={() => videoFileInputRef.current?.click()}
-                        className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-purple-400 border border-purple-500/40 hover:border-purple-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                        className="flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-purple-400 border border-purple-500/40 hover:border-purple-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
                         title="Importer une vidéo dans le menu Vidéos"
                       >
-                        <Plus className="w-4 h-4 stroke-[2.5]" />
+                        <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5]" />
                       </button>
-                      <span className="text-[10px] font-extrabold text-purple-400 leading-tight mt-0.5">
+                      <span className="hidden sm:block text-[10px] font-extrabold text-purple-400 leading-tight mt-0.5">
                         Importer
                       </span>
                     </div>
@@ -12334,12 +12335,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         type="button"
                         id="btn-import-menu-audio"
                         onClick={() => audioFileInputRef.current?.click()}
-                        className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-amber-400 border border-amber-500/40 hover:border-amber-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                        className="flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-amber-400 border border-amber-500/40 hover:border-amber-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
                         title="Importer un fichier audio ou musique"
                       >
-                        <Plus className="w-4 h-4 stroke-[2.5]" />
+                        <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5]" />
                       </button>
-                      <span className="text-[10px] font-extrabold text-amber-400 leading-tight mt-0.5">
+                      <span className="hidden sm:block text-[10px] font-extrabold text-amber-400 leading-tight mt-0.5">
                         Importer
                       </span>
                     </div>
@@ -12352,12 +12353,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         type="button"
                         id="btn-import-menu-images"
                         onClick={() => imageFileInputRef.current?.click()}
-                        className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-emerald-400 border border-emerald-500/40 hover:border-emerald-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                        className="flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-emerald-400 border border-emerald-500/40 hover:border-emerald-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
                         title="Importer une image dans Images"
                       >
-                        <Plus className="w-4 h-4 stroke-[2.5]" />
+                        <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5]" />
                       </button>
-                      <span className="text-[10px] font-extrabold text-emerald-400 leading-tight mt-0.5">
+                      <span className="hidden sm:block text-[10px] font-extrabold text-emerald-400 leading-tight mt-0.5">
                         Importer
                       </span>
                     </div>
@@ -12370,12 +12371,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         type="button"
                         id="btn-import-menu-documents"
                         onClick={() => documentFileInputRef.current?.click()}
-                        className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-blue-400 border border-blue-500/40 hover:border-blue-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                        className="flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-blue-400 border border-blue-500/40 hover:border-blue-400 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
                         title="Importer un document dans Documents"
                       >
-                        <Plus className="w-4 h-4 stroke-[2.5]" />
+                        <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5]" />
                       </button>
-                      <span className="text-[10px] font-extrabold text-blue-400 leading-tight mt-0.5">
+                      <span className="hidden sm:block text-[10px] font-extrabold text-blue-400 leading-tight mt-0.5">
                         Importer
                       </span>
                     </div>
@@ -12385,13 +12386,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   <button
                     type="button"
                     onClick={() => setIsFullscreen(!isFullscreen)}
-                    className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                    className="flex items-center justify-center w-7 h-7 sm:w-10 sm:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
                     title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet"}
                   >
                     {isFullscreen ? (
-                      <Minimize2 className="w-4 h-4 stroke-[2.2]" />
+                      <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
                     ) : (
-                      <Maximize2 className="w-4 h-4 stroke-[2.2]" />
+                      <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
                     )}
                   </button>
 
@@ -12404,12 +12405,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         e.stopPropagation();
                         setIsHeaderMenuOpen(!isHeaderMenuOpen);
                       }}
-                      className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full ${
+                      className={`flex items-center justify-center w-7 h-7 sm:w-10 sm:h-10 rounded-full ${
                         isHeaderMenuOpen ? 'bg-amber-500/20 text-amber-400 border-amber-400/40' : 'bg-[#04060A] hover:bg-[#0A0E18] text-white border-white/10'
                       } border transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm`}
                       title="Options d'affichage et de tri (3 traits)"
                     >
-                      <Menu className="w-4 h-4 stroke-[2.2]" />
+                      <Menu className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
                     </button>
 
                     {renderHeaderOptionsMenu(typeof document !== 'undefined' ? document.getElementById('p1-header-menu-trigger') : null)}
@@ -12619,8 +12620,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       )}
                     </div>
                   ) : (
-                    <div className={`grid gap-2.5 sm:gap-3.5 ${
-                      selectedDocFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    <div className={`grid gap-2 sm:gap-3.5 ${
+                      selectedDocFile ? 'grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                     }`}>
                       {filteredDocuments.map((doc, idx) => renderDocumentCard(doc, idx))}
                     </div>
@@ -12951,7 +12952,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </div>
                   ) : (
                     <div className={`grid gap-2 sm:gap-3 ${
-                      selectedVideoFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      selectedVideoFile ? 'grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                     }`}>
                       {filteredVideos.map((vid, idx) => renderVideoCard(vid, idx))}
                     </div>
@@ -13024,7 +13025,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </div>
                   ) : (
                     <div className={`grid gap-2 sm:gap-3 ${
-                      selectedImageFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      selectedImageFile ? 'grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                     }`}>
                       {filteredImages.map((img, idx) => renderImageCard(img, idx))}
                     </div>
@@ -13102,8 +13103,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                               Documents ({downloadDocs.length})
                             </h3>
                           </div>
-                          <div className={`grid gap-2.5 sm:gap-3.5 ${
-                            splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                          <div className={`grid gap-2 sm:gap-3.5 ${
+                            splitSelectedFile ? 'grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                           }`}>
                             {downloadDocs.map((doc, idx) => renderDocumentCard(doc, idx, downloadDocs))}
                           </div>
@@ -13120,7 +13121,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             </h3>
                           </div>
                           <div className={`grid gap-2 sm:gap-3 ${
-                            splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                            splitSelectedFile ? 'grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                           }`}>
                             {downloadImages.map((img, idx) => renderImageCard(img, idx))}
                           </div>
@@ -13137,7 +13138,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             </h3>
                           </div>
                           <div className={`grid gap-2 sm:gap-3 ${
-                            splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                            splitSelectedFile ? 'grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                           }`}>
                             {downloadVideos.map((vid, idx) => renderVideoCard(vid, idx))}
                           </div>
@@ -13154,7 +13155,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             </h3>
                           </div>
                           <div className={`grid gap-2 sm:gap-3 ${
-                            splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                            splitSelectedFile ? 'grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                           }`}>
                             {downloadAudio.map((aud, idx) => renderAudioSquareCard(aud, idx, downloadAudio))}
                           </div>
@@ -13381,7 +13382,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
                         return (
                           <div 
-                            className="grid transition-all duration-300 w-full"
+                            className="grid max-sm:!grid-cols-3 max-sm:!gap-2 transition-all duration-300 w-full"
                             style={{
                               gridTemplateColumns: `repeat(auto-fill, minmax(${folderCardMinWidth}px, 1fr))`,
                               gap: `${folderGridGap}px`
@@ -13575,8 +13576,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           </p>
                         </div>
                       ) : (
-                        <div className={`grid gap-2.5 sm:gap-3.5 ${
-                          splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                        <div className={`grid gap-2 sm:gap-3.5 ${
+                          splitSelectedFile ? 'grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                         }`}>
                           {filteredSecureFiles.map((file, idx) => {
                             if (file.category === 'images') return renderImageCard(file, idx);
@@ -13631,8 +13632,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
                       {renderSelectionBanner(favoriteFiles)}
 
-                      <div className={`grid gap-2.5 sm:gap-3.5 ${
-                        splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      <div className={`grid gap-2 sm:gap-3.5 ${
+                        splitSelectedFile ? 'grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                       }`}>
                         {favoriteFiles.map((file, idx) => {
                           if ((file as any).isFolder) {
@@ -13730,8 +13731,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                 Documents ({trashDocs.length})
                               </h3>
                             </div>
-                            <div className={`grid gap-2.5 sm:gap-3.5 ${
-                              splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                            <div className={`grid gap-2 sm:gap-3.5 ${
+                              splitSelectedFile ? 'grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                             }`}>
                               {trashDocs.map((doc, idx) => renderDocumentCard(doc, idx, trashDocs))}
                             </div>
@@ -13748,7 +13749,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                               </h3>
                             </div>
                             <div className={`grid gap-2 sm:gap-3 ${
-                              splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                              splitSelectedFile ? 'grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                             }`}>
                               {trashImages.map((img, idx) => renderImageCard(img, idx))}
                             </div>
@@ -13765,7 +13766,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                               </h3>
                             </div>
                             <div className={`grid gap-2 sm:gap-3 ${
-                              splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                              splitSelectedFile ? 'grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                             }`}>
                               {trashVideos.map((vid, idx) => renderVideoCard(vid, idx))}
                             </div>
@@ -13782,7 +13783,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                               </h3>
                             </div>
                             <div className={`grid gap-2 sm:gap-3 ${
-                              splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                              splitSelectedFile ? 'grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                             }`}>
                               {trashAudio.map((aud, idx) => renderAudioSquareCard(aud, idx, trashAudio))}
                             </div>
@@ -14068,7 +14069,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </button>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-3.5">
+                  <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3.5">
                     {globalSearchResults.map((file, idx) => {
                       const normCat = (file.category || detectFileCategory(file)).toLowerCase();
                       const normName = (file.name || '').toLowerCase();

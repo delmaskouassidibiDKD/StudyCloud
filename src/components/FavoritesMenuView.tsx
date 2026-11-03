@@ -1018,25 +1018,25 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
   return (
     <div className="flex-1 flex flex-col w-full min-h-screen bg-stone-100 dark:bg-[#070A13] text-stone-900 dark:text-slate-100 select-none animate-in fade-in duration-150">
       {/* EN-TÊTE FIXE DU MENU FAVORIS */}
-      <header className="sticky top-0 z-30 w-full bg-stone-100/95 dark:bg-[#070A13]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-stone-200 dark:border-white/10 shadow-sm">
-        <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
+      <header className="sticky top-0 z-30 w-full bg-stone-100/95 dark:bg-[#070A13]/95 backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 dark:border-white/10 shadow-sm">
+        <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* GAUCHE : Bouton Retour et Titre Favoris */}
-          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <button
               type="button"
               onClick={onBack}
-              className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-stone-700/50 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
+              className="flex items-center gap-1.5 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-stone-700/50 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
               title="Retour au gestionnaire de fichiers"
             >
-              <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
+              <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
               <span className="hidden xs:inline">Retour</span>
             </button>
 
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-[#182032] border border-stone-700/50 text-amber-400 shadow-sm">
-                <Star className="w-4 h-4 sm:w-5 sm:h-5 fill-amber-400 stroke-[2.2]" />
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-[#182032] border border-stone-700/50 text-amber-400 shadow-sm">
+                <Star className="w-3.5 h-3.5 sm:w-5 sm:h-5 fill-amber-400 stroke-[2.2]" />
               </div>
-              <div>
+              <div className="hidden sm:block">
                 <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 dark:text-white leading-tight">
                   Favoris
                 </h1>
@@ -1048,30 +1048,30 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           </div>
 
           {/* MILIEU : Barre de Recherche Favoris */}
-          <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-1 sm:px-2">
-            <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-amber-500/50 border border-stone-700/50 rounded-full px-3.5 sm:px-4 py-1.5 transition-all shadow-inner gap-2">
+          <div className="flex-1 min-w-0 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-0.5 sm:px-2">
+            <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-amber-500/50 border border-stone-700/50 rounded-full px-2.5 sm:px-4 py-1 sm:py-1.5 transition-all shadow-inner gap-1.5 sm:gap-2">
               <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400/80 shrink-0 stroke-[2.2]" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Rechercher dans les favoris..."
-                className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
+                className="w-full min-w-0 bg-transparent text-[11px] sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors"
+                  className="p-0.5 sm:p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors shrink-0"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 </button>
               )}
             </div>
           </div>
 
           {/* DROITE : Plein écran (entouré en rouge) + Bouton 3 traits derrière lui */}
-          <div className="shrink-0 flex items-center gap-1.5 sm:gap-2">
+          <div className="shrink-0 flex items-center gap-1 sm:gap-2">
             <HeaderMenuControls
               isFullscreen={isFullscreen}
               onToggleFullscreen={onToggleFullscreen}
@@ -1166,10 +1166,10 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                     <Music className="w-4 h-4" />
                     <span>Fichiers Audio ({categorized.audios.length})</span>
                   </div>
-                  <div className={`grid gap-3 sm:gap-4 ${
+                  <div className={`grid gap-2 sm:gap-4 ${
                     selectedFile
-                      ? 'grid-cols-2 lg:grid-cols-3'
-                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      ? 'grid-cols-3 lg:grid-cols-3'
+                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
                     {categorized.audios.map((file, idx) => renderAudioCard(file, idx))}
                   </div>
@@ -1183,10 +1183,10 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                     <FolderArchive className="w-4 h-4" />
                     <span>Classeur & Dossiers 3D ({categorized.classeur.length})</span>
                   </div>
-                  <div className={`grid gap-3 sm:gap-4 ${
+                  <div className={`grid gap-2 sm:gap-4 ${
                     selectedFile
-                      ? 'grid-cols-2 lg:grid-cols-3'
-                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      ? 'grid-cols-3 lg:grid-cols-3'
+                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
                     {categorized.classeur.map((file, idx) => renderClasseurCard(file, idx))}
                   </div>
@@ -1200,10 +1200,10 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                     <FileText className="w-4 h-4" />
                     <span>Documents ({categorized.documents.length})</span>
                   </div>
-                  <div className={`grid gap-3 sm:gap-4 ${
+                  <div className={`grid gap-2 sm:gap-4 ${
                     selectedFile
-                      ? 'grid-cols-2 lg:grid-cols-3'
-                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      ? 'grid-cols-3 lg:grid-cols-3'
+                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
                     {categorized.documents.map((file, idx) => renderDocumentCard(file, idx))}
                   </div>
@@ -1217,10 +1217,10 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                     <ImageIcon className="w-4 h-4" />
                     <span>Images ({categorized.images.length})</span>
                   </div>
-                  <div className={`grid gap-3 sm:gap-4 ${
+                  <div className={`grid gap-2 sm:gap-4 ${
                     selectedFile
-                      ? 'grid-cols-2 lg:grid-cols-3'
-                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      ? 'grid-cols-3 lg:grid-cols-3'
+                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
                     {categorized.images.map((file, idx) => renderImageCard(file, idx))}
                   </div>
@@ -1234,10 +1234,10 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                     <Film className="w-4 h-4" />
                     <span>Vidéos ({categorized.videos.length})</span>
                   </div>
-                  <div className={`grid gap-3 sm:gap-4 ${
+                  <div className={`grid gap-2 sm:gap-4 ${
                     selectedFile
-                      ? 'grid-cols-2 lg:grid-cols-3'
-                      : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
+                      ? 'grid-cols-3 lg:grid-cols-3'
+                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
                   }`}>
                     {categorized.videos.map((file, idx) => renderVideoCard(file, idx))}
                   </div>
