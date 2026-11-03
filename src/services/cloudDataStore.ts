@@ -83,10 +83,10 @@ export interface CloudDataState {
 const SYNC_COOLDOWN_MS = 15000;
 
 // IndexedDB constants - capacite plusieurs GB
-const IDB_DB_NAME    = 'StudyCloudCacheDB';
+const IDB_DB_NAME = 'StudyCloudCacheDB';
 const IDB_DB_VERSION = 3;
 const IDB_STORE_NAME = 'cloud_data';
-const IDB_CACHE_KEY  = 'main_cache';
+const IDB_CACHE_KEY = 'main_cache';
 // Flag leger dans localStorage uniquement pour hasData() synchrone (<100 bytes)
 const LS_FLAG_KEY = 'sc_idb_has_data';
 
@@ -111,7 +111,7 @@ function openIDB(): Promise<IDBDatabase | null> {
       }
     };
     req.onsuccess = (e) => { _idbInstance = (e.target as IDBOpenDBRequest).result; resolve(_idbInstance); };
-    req.onerror   = () => { console.warn('[CloudDataStore] IndexedDB unavailable'); resolve(null); };
+    req.onerror = () => { console.warn('[CloudDataStore] IndexedDB unavailable'); resolve(null); };
   });
   return _idbOpenPromise;
 }
@@ -120,10 +120,10 @@ async function idbGet(key: string): Promise<any> {
   const db = await openIDB();
   if (!db) return null;
   return new Promise((resolve) => {
-    const tx  = db.transaction(IDB_STORE_NAME, 'readonly');
+    const tx = db.transaction(IDB_STORE_NAME, 'readonly');
     const req = tx.objectStore(IDB_STORE_NAME).get(key);
     req.onsuccess = () => resolve(req.result ?? null);
-    req.onerror   = () => resolve(null);
+    req.onerror = () => resolve(null);
   });
 }
 
@@ -131,14 +131,14 @@ async function idbSet(key: string, value: any): Promise<void> {
   const db = await openIDB();
   if (!db) {
     // Fallback localStorage si IndexedDB non disponible
-    try { localStorage.setItem('sc_fallback_' + key, JSON.stringify(value)); } catch {}
+    try { localStorage.setItem('sc_fallback_' + key, JSON.stringify(value)); } catch { }
     return;
   }
   return new Promise((resolve) => {
     const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
     tx.objectStore(IDB_STORE_NAME).put(value, key);
     tx.oncomplete = () => resolve();
-    tx.onerror    = () => resolve();
+    tx.onerror = () => resolve();
   });
 }
 
@@ -154,7 +154,7 @@ export const isStudyItem = (item: any): boolean => {
       if (studyRaw && studyRaw.includes(item.id)) return true;
       const lmRaw = localStorage.getItem('unifolder_left_menu_general_imports');
       if (lmRaw && lmRaw.includes(item.id)) return true;
-    } catch (e) {}
+    } catch (e) { }
   }
   return false;
 };
@@ -251,7 +251,7 @@ export function getDeletedRecentIds(): Set<string> {
         });
       }
     }
-  } catch {}
+  } catch { }
   return dismissedRecentSet;
 }
 
@@ -274,22 +274,22 @@ async function hydrateFromIndexedDB(): Promise<boolean> {
 
       currentState = {
         ...currentState,
-        overview:        parsed.overview || null,
+        overview: parsed.overview || null,
         classeurFolders: Array.isArray(parsed.classeurFolders) ? parsed.classeurFolders : [],
-        folderFilesMap:  parsed.folderFilesMap  || {},
-        documents:       (Array.isArray(parsed.documents) ? parsed.documents : []).filter((d: any) => !isStudyItem(d) && !isFolderBoundItem(d)),
-        images:          (Array.isArray(parsed.images)    ? parsed.images    : []).filter((i: any) => !isStudyItem(i) && !isFolderBoundItem(i)),
-        videos:          (Array.isArray(parsed.videos)    ? parsed.videos    : []).filter((v: any) => !isStudyItem(v) && !isFolderBoundItem(v)),
-        audio:           (Array.isArray(parsed.audio)     ? parsed.audio     : []).filter((a: any) => !isStudyItem(a) && !isFolderBoundItem(a)),
-        downloads:       Array.isArray(parsed.downloads)       ? parsed.downloads       : [],
-        secure:          Array.isArray(parsed.secure)          ? parsed.secure          : [],
-        trash:           Array.isArray(parsed.trash)           ? parsed.trash           : [],
-        favorites:       Array.isArray(parsed.favorites)       ? parsed.favorites       : [],
-        favIdSet:        new Set(Array.isArray(parsed.favIds)  ? parsed.favIds          : []),
-        pinIdSet:        new Set(Array.isArray(parsed.pinIds)  ? parsed.pinIds          : []),
-        recentFiles:     (Array.isArray(parsed.recentFiles)     ? parsed.recentFiles     : []).filter((f: any) => f && f.id && !dismissedRecentSet.has(f.id) && isRecentEligible(f)),
-        isLoaded:        true,
-        lastSyncTime:    Number(parsed.lastSyncTime) || 0,
+        folderFilesMap: parsed.folderFilesMap || {},
+        documents: (Array.isArray(parsed.documents) ? parsed.documents : []).filter((d: any) => !isStudyItem(d) && !isFolderBoundItem(d)),
+        images: (Array.isArray(parsed.images) ? parsed.images : []).filter((i: any) => !isStudyItem(i) && !isFolderBoundItem(i)),
+        videos: (Array.isArray(parsed.videos) ? parsed.videos : []).filter((v: any) => !isStudyItem(v) && !isFolderBoundItem(v)),
+        audio: (Array.isArray(parsed.audio) ? parsed.audio : []).filter((a: any) => !isStudyItem(a) && !isFolderBoundItem(a)),
+        downloads: Array.isArray(parsed.downloads) ? parsed.downloads : [],
+        secure: Array.isArray(parsed.secure) ? parsed.secure : [],
+        trash: Array.isArray(parsed.trash) ? parsed.trash : [],
+        favorites: Array.isArray(parsed.favorites) ? parsed.favorites : [],
+        favIdSet: new Set(Array.isArray(parsed.favIds) ? parsed.favIds : []),
+        pinIdSet: new Set(Array.isArray(parsed.pinIds) ? parsed.pinIds : []),
+        recentFiles: (Array.isArray(parsed.recentFiles) ? parsed.recentFiles : []).filter((f: any) => f && f.id && !dismissedRecentSet.has(f.id) && isRecentEligible(f)),
+        isLoaded: true,
+        lastSyncTime: Number(parsed.lastSyncTime) || 0,
       };
 
       try {
@@ -301,9 +301,9 @@ async function hydrateFromIndexedDB(): Promise<boolean> {
           }
         }
         localStorage.setItem('studycloud_pinned_ids', JSON.stringify(Array.from(currentState.pinIdSet)));
-      } catch {}
+      } catch { }
 
-      try { localStorage.setItem(LS_FLAG_KEY, '1'); } catch {}
+      try { localStorage.setItem(LS_FLAG_KEY, '1'); } catch { }
       hydrationResolve?.();
       return true;
     }
@@ -319,24 +319,24 @@ async function persistToIndexedDB(): Promise<void> {
   try {
     const key = getCacheKey();
     await idbSet(key, {
-      overview:        currentState.overview,
+      overview: currentState.overview,
       classeurFolders: currentState.classeurFolders,
-      folderFilesMap:  currentState.folderFilesMap,
-      documents:       currentState.documents,
-      images:          currentState.images,
-      videos:          currentState.videos,
-      audio:           currentState.audio,
-      downloads:       currentState.downloads,
-      secure:          currentState.secure,
-      trash:           currentState.trash,
-      favorites:       currentState.favorites,
-      favIds:          Array.from(currentState.favIdSet),
-      pinIds:          Array.from(currentState.pinIdSet),
+      folderFilesMap: currentState.folderFilesMap,
+      documents: currentState.documents,
+      images: currentState.images,
+      videos: currentState.videos,
+      audio: currentState.audio,
+      downloads: currentState.downloads,
+      secure: currentState.secure,
+      trash: currentState.trash,
+      favorites: currentState.favorites,
+      favIds: Array.from(currentState.favIdSet),
+      pinIds: Array.from(currentState.pinIdSet),
       dismissedRecentIds: Array.from(dismissedRecentSet),
-      recentFiles:     currentState.recentFiles,
-      lastSyncTime:    currentState.lastSyncTime,
+      recentFiles: currentState.recentFiles,
+      lastSyncTime: currentState.lastSyncTime,
     });
-    try { localStorage.setItem(LS_FLAG_KEY, '1'); } catch {}
+    try { localStorage.setItem(LS_FLAG_KEY, '1'); } catch { }
   } catch (e) {
     console.warn('[CloudDataStore] Persist error:', e);
   }
@@ -363,7 +363,7 @@ function getLocallyDeletedFileIds(): Set<string> {
         });
       }
     }
-  } catch {}
+  } catch { }
   return result;
 }
 
@@ -395,14 +395,14 @@ export function notifyFavoriteChange(itemId: string, isFav: boolean, category?: 
   }
 
   if (favoriteSyncNotifier) {
-    try { favoriteSyncNotifier(favId, itemId, isFav, category); } catch {}
+    try { favoriteSyncNotifier(favId, itemId, isFav, category); } catch { }
   }
 
   // Persistance Cloudflare D1 en arrière-plan
   if (isFav) {
-    CloudStorageAPI.addFavorite(itemId, category || 'documents').catch(() => {});
+    CloudStorageAPI.addFavorite(itemId, category || 'documents').catch(() => { });
   } else {
-    CloudStorageAPI.removeFavorite(itemId).catch(() => {});
+    CloudStorageAPI.removeFavorite(itemId).catch(() => { });
   }
 }
 
@@ -415,7 +415,7 @@ export function markItemDeleted(id: string) {
       arr.push(id);
       localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(arr.slice(-500)));
     }
-  } catch {}
+  } catch { }
 }
 
 export function unmarkItemDeleted(id: string) {
@@ -429,7 +429,7 @@ export function unmarkItemDeleted(id: string) {
         localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(next));
       }
     }
-  } catch {}
+  } catch { }
   try {
     const rawRecent = localStorage.getItem('studycloud_deleted_recent_ids');
     if (rawRecent) {
@@ -439,9 +439,9 @@ export function unmarkItemDeleted(id: string) {
         localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(nextRecent));
       }
     }
-  } catch {}
+  } catch { }
   if (tombstoneRemover) {
-    try { tombstoneRemover(id); } catch {}
+    try { tombstoneRemover(id); } catch { }
   }
 }
 
@@ -454,7 +454,7 @@ export function markTrashItemPermanentlyDeleted(id: string) {
       arr.push(id);
       localStorage.setItem('studycloud_permanently_deleted_trash_ids', JSON.stringify(arr.slice(-500)));
     }
-  } catch {}
+  } catch { }
 }
 
 export function unmarkTrashItemPermanentlyDeleted(id: string) {
@@ -468,7 +468,7 @@ export function unmarkTrashItemPermanentlyDeleted(id: string) {
         localStorage.setItem('studycloud_permanently_deleted_trash_ids', JSON.stringify(next));
       }
     }
-  } catch {}
+  } catch { }
 }
 
 export function isTrashItemPermanentlyDeleted(id: string): boolean {
@@ -479,7 +479,7 @@ export function isTrashItemPermanentlyDeleted(id: string): boolean {
       const arr = JSON.parse(raw);
       if (Array.isArray(arr) && arr.includes(id)) return true;
     }
-  } catch {}
+  } catch { }
   return false;
 }
 
@@ -519,7 +519,7 @@ export const CloudDataStore = {
     if (currentState.isLoaded) return true;
     if (currentState.documents.length > 0 || currentState.images.length > 0) return true;
     // Flag leger synchrone - sert a detecter si IndexedDB a des donnees avant hydratation
-    try { return localStorage.getItem(LS_FLAG_KEY) === '1'; } catch {}
+    try { return localStorage.getItem(LS_FLAG_KEY) === '1'; } catch { }
     return false;
   },
 
@@ -552,8 +552,8 @@ export const CloudDataStore = {
           if (serverList === null) return (currentList || []).filter(c => !isItemDeleted(c.id));
           const serverIds = new Set(serverList.map(s => s.id));
           const serverNames = new Set(serverList.map(s => (s.name || '').trim().toLowerCase()));
-          const pending = (currentList || []).filter(c => 
-            !serverIds.has(c.id) && 
+          const pending = (currentList || []).filter(c =>
+            !serverIds.has(c.id) &&
             !serverNames.has((c.name || '').trim().toLowerCase()) &&
             Boolean(c.isUploading) &&
             !isItemDeleted(c.id)
@@ -717,7 +717,7 @@ export const CloudDataStore = {
 
               refreshDerived();
               notify();
-              persistToIndexedDB().catch(() => {});
+              persistToIndexedDB().catch(() => { });
             }
           }).catch(() => null)
         );
@@ -738,7 +738,7 @@ export const CloudDataStore = {
               currentState.audio = markPin(currentState.audio);
 
               notify();
-              persistToIndexedDB().catch(() => {});
+              persistToIndexedDB().catch(() => { });
             }
           }).catch(() => null)
         );
@@ -751,7 +751,7 @@ export const CloudDataStore = {
               refreshDerived();
               currentState.isLoaded = true;
               notify();
-              persistToIndexedDB().catch(() => {});
+              persistToIndexedDB().catch(() => { });
             }
           }).catch(() => null)
         );
@@ -764,7 +764,7 @@ export const CloudDataStore = {
               refreshDerived();
               currentState.isLoaded = true;
               notify();
-              persistToIndexedDB().catch(() => {});
+              persistToIndexedDB().catch(() => { });
             }
           }).catch(() => null)
         );
@@ -777,7 +777,7 @@ export const CloudDataStore = {
               refreshDerived();
               currentState.isLoaded = true;
               notify();
-              persistToIndexedDB().catch(() => {});
+              persistToIndexedDB().catch(() => { });
             }
           }).catch(() => null)
         );
@@ -790,7 +790,7 @@ export const CloudDataStore = {
               refreshDerived();
               currentState.isLoaded = true;
               notify();
-              persistToIndexedDB().catch(() => {});
+              persistToIndexedDB().catch(() => { });
             }
           }).catch(() => null)
         );
@@ -813,7 +813,7 @@ export const CloudDataStore = {
               }));
               currentState.isLoaded = true;
               notify();
-              persistToIndexedDB().catch(() => {});
+              persistToIndexedDB().catch(() => { });
             }
           }).catch(() => null)
         );
@@ -844,7 +844,7 @@ export const CloudDataStore = {
                   notify();
                 }
               }));
-              persistToIndexedDB().catch(() => {});
+              persistToIndexedDB().catch(() => { });
             }
           }).catch(() => null)
         );
@@ -856,7 +856,7 @@ export const CloudDataStore = {
               currentState.overview = cloudOverview;
               refreshDerived();
               notify();
-              persistToIndexedDB().catch(() => {});
+              persistToIndexedDB().catch(() => { });
             }
           }).catch(() => null)
         );
@@ -890,7 +890,7 @@ export const CloudDataStore = {
           lastSyncTime: Date.now(),
         };
 
-        persistToIndexedDB().catch(() => {});
+        persistToIndexedDB().catch(() => { });
         notify();
       } catch (err) {
         console.warn('[CloudDataStore] Sync warning:', err);
@@ -909,7 +909,7 @@ export const CloudDataStore = {
     const serverIds = new Set(cleanDocs.map(s => s.id));
     const pending = (currentState.documents || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading) && !isFolderBoundItem(c) && !isStudyItem(c));
     currentState = { ...currentState, documents: [...pending, ...cleanDocs] };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
   setVideos(videos: FileItem[]) {
@@ -917,7 +917,7 @@ export const CloudDataStore = {
     const serverIds = new Set(cleanVideos.map(s => s.id));
     const pending = (currentState.videos || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading) && !isFolderBoundItem(c) && !isStudyItem(c));
     currentState = { ...currentState, videos: [...pending, ...cleanVideos] };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
   setImages(images: FileItem[]) {
@@ -925,7 +925,7 @@ export const CloudDataStore = {
     const serverIds = new Set(cleanImages.map(s => s.id));
     const pending = (currentState.images || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading) && !isFolderBoundItem(c) && !isStudyItem(c));
     currentState = { ...currentState, images: [...pending, ...cleanImages] };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
   setAudio(audio: FileItem[]) {
@@ -933,11 +933,11 @@ export const CloudDataStore = {
     const serverIds = new Set(cleanAudio.map(s => s.id));
     const pending = (currentState.audio || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading) && !isFolderBoundItem(c) && !isStudyItem(c));
     currentState = { ...currentState, audio: [...pending, ...cleanAudio] };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
-  setDownloads(downloads: DownloadedItem[]) { currentState = { ...currentState, downloads };                 persistToIndexedDB().catch(() => {}); notify(); },
-  setClasseurFolders(folders: ClasseurCreatedFolder[]) { currentState = { ...currentState, classeurFolders: folders }; persistToIndexedDB().catch(() => {}); notify(); },
+  setDownloads(downloads: DownloadedItem[]) { currentState = { ...currentState, downloads }; persistToIndexedDB().catch(() => { }); notify(); },
+  setClasseurFolders(folders: ClasseurCreatedFolder[]) { currentState = { ...currentState, classeurFolders: folders }; persistToIndexedDB().catch(() => { }); notify(); },
   addClasseurFolder(folder: ClasseurCreatedFolder) {
     if (isItemDeleted(folder.id)) return;
     const exists = currentState.classeurFolders.some(f => f.id === folder.id);
@@ -948,7 +948,7 @@ export const CloudDataStore = {
       ...currentState,
       classeurFolders: updated,
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
   setFolderFilesMap(map: Record<string, FileItem[]>) {
@@ -967,12 +967,12 @@ export const CloudDataStore = {
       });
     }
     currentState = { ...currentState, folderFilesMap: cleanedMap };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
-  setTrashFiles(trash: FileItem[])          { currentState = { ...currentState, trash: trash || [] };                      persistToIndexedDB().catch(() => {}); notify(); },
-  setSecureFiles(secure: FileItem[])        { currentState = { ...currentState, secure };                   persistToIndexedDB().catch(() => {}); notify(); },
-  setRecentFiles(recent: FileItem[])        { currentState = { ...currentState, recentFiles: recent };      persistToIndexedDB().catch(() => {}); notify(); },
+  setTrashFiles(trash: FileItem[]) { currentState = { ...currentState, trash: trash || [] }; persistToIndexedDB().catch(() => { }); notify(); },
+  setSecureFiles(secure: FileItem[]) { currentState = { ...currentState, secure }; persistToIndexedDB().catch(() => { }); notify(); },
+  setRecentFiles(recent: FileItem[]) { currentState = { ...currentState, recentFiles: recent }; persistToIndexedDB().catch(() => { }); notify(); },
 
   getAllFiles(): FileItem[] {
     const seen = new Set<string>();
@@ -1065,7 +1065,7 @@ export const CloudDataStore = {
         recentFiles: recent
       };
     }
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
     try {
       if (cat === 'audio') invalidateCloudQueries.audio();
@@ -1074,7 +1074,7 @@ export const CloudDataStore = {
       else if (cat === 'documents') invalidateCloudQueries.documents();
       if (folderId) invalidateCloudQueries.classeurFiles(folderId);
       invalidateCloudQueries.overview();
-    } catch {}
+    } catch { }
   },
 
   updateFile(fileIdOrItem: string | (Partial<FileItem> & { id: string }), maybeUpdates?: Partial<FileItem>, maybeFolderId?: string) {
@@ -1106,7 +1106,7 @@ export const CloudDataStore = {
       }
       try {
         localStorage.setItem('studycloud_pinned_ids', JSON.stringify(Array.from(currentState.pinIdSet)));
-      } catch {}
+      } catch { }
     }
 
     const updateFn = (list: FileItem[]) => list.map(f => (f.id === targetId || (patch.id && f.id === patch.id)) ? { ...f, ...patch } : f);
@@ -1164,7 +1164,7 @@ export const CloudDataStore = {
       favorites: allCurrentCandidates.filter(f => currentState.favIdSet.has(f.id) || Boolean(f.isFavorite)),
       recentFiles: updateFn(currentState.recentFiles).filter(f => !isFolderBoundItem(f)),
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
 
@@ -1174,12 +1174,12 @@ export const CloudDataStore = {
     notifyFavoriteChange(fileId, false, category);
     const cat = category ||
       (currentState.documents.some(d => d.id === fileId) ? 'documents' :
-       currentState.images.some(i => i.id === fileId) ? 'images' :
-       currentState.videos.some(v => v.id === fileId) ? 'videos' :
-       currentState.audio.some(a => a.id === fileId) ? 'audio' :
-       (currentState.downloads || []).some((d: any) => d.id === fileId) ? 'downloads' :
-       folderId ? 'classeur' : 'documents');
-    deletionListeners.forEach(fn => { try { fn(fileId, cat); } catch {} });
+        currentState.images.some(i => i.id === fileId) ? 'images' :
+          currentState.videos.some(v => v.id === fileId) ? 'videos' :
+            currentState.audio.some(a => a.id === fileId) ? 'audio' :
+              (currentState.downloads || []).some((d: any) => d.id === fileId) ? 'downloads' :
+                folderId ? 'classeur' : 'documents');
+    deletionListeners.forEach(fn => { try { fn(fileId, cat); } catch { } });
     const filterFn = (list: FileItem[]) => list.filter(f => f.id !== fileId);
     const updatedMap = { ...currentState.folderFilesMap };
     if (folderId && updatedMap[folderId]) {
@@ -1202,7 +1202,7 @@ export const CloudDataStore = {
       trash: filterFn(currentState.trash),
       favorites: filterFn(currentState.favorites),
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
 
@@ -1211,20 +1211,20 @@ export const CloudDataStore = {
     fileIds.forEach(id => {
       markItemDeleted(id);
       dismissedRecentSet.add(id);
-      CloudStorageAPI.dismissRecent(id).catch(() => {});
+      CloudStorageAPI.dismissRecent(id).catch(() => { });
       notifyFavoriteChange(id, false, category);
       const cat = category ||
         (currentState.documents.some(d => d.id === id) ? 'documents' :
-         currentState.images.some(i => i.id === id) ? 'images' :
-         currentState.videos.some(v => v.id === id) ? 'videos' :
-         currentState.audio.some(a => a.id === id) ? 'audio' :
-         (currentState.downloads || []).some((d: any) => d.id === id) ? 'downloads' :
-         'documents');
-      deletionListeners.forEach(fn => { try { fn(id, cat); } catch {} });
+          currentState.images.some(i => i.id === id) ? 'images' :
+            currentState.videos.some(v => v.id === id) ? 'videos' :
+              currentState.audio.some(a => a.id === id) ? 'audio' :
+                (currentState.downloads || []).some((d: any) => d.id === id) ? 'downloads' :
+                  'documents');
+      deletionListeners.forEach(fn => { try { fn(id, cat); } catch { } });
     });
     try {
       localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(dismissedRecentSet).slice(-500)));
-    } catch {}
+    } catch { }
     const idSet = new Set(fileIds);
     const filterFn = (list: FileItem[]) => list.filter(f => !idSet.has(f.id));
     const updatedMap = { ...currentState.folderFilesMap };
@@ -1244,7 +1244,7 @@ export const CloudDataStore = {
       trash: filterFn(currentState.trash),
       favorites: filterFn(currentState.favorites),
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
 
@@ -1270,17 +1270,17 @@ export const CloudDataStore = {
       downloads: (currentState.downloads || []).map((d: any) => d.id === tempId ? { ...d, id: realId } : d) as any,
       recentFiles: replaceId(currentState.recentFiles),
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
 
   removeFileFromCategory(fileId: string, category?: string, folderId?: string) {
     notifyFavoriteChange(fileId, false, category);
     dismissedRecentSet.add(fileId);
-    CloudStorageAPI.dismissRecent(fileId).catch(() => {});
+    CloudStorageAPI.dismissRecent(fileId).catch(() => { });
     try {
       localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(dismissedRecentSet).slice(-500)));
-    } catch {}
+    } catch { }
     const filterFn = (list: FileItem[]) => list.filter(f => f.id !== fileId);
     const updatedMap = { ...currentState.folderFilesMap };
     if (folderId && updatedMap[folderId]) {
@@ -1303,14 +1303,14 @@ export const CloudDataStore = {
       trash: (!category || category === 'trash') ? filterFn(currentState.trash) : currentState.trash,
       favorites: filterFn(currentState.favorites),
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
 
   permanentlyRemoveTrashFile(fileId: string) {
     markTrashItemPermanentlyDeleted(fileId);
     dismissedRecentSet.add(fileId);
-    CloudStorageAPI.dismissRecent(fileId).catch(() => {});
+    CloudStorageAPI.dismissRecent(fileId).catch(() => { });
     // Écrire un tombstone dans localStorage pour éviter la résurrection lors du prochain sync
     try {
       const raw = localStorage.getItem('studycloud_deleted_file_ids');
@@ -1320,18 +1320,18 @@ export const CloudDataStore = {
         localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(arr.slice(-500)));
       }
       localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(dismissedRecentSet).slice(-500)));
-    } catch {}
+    } catch { }
     // Notifier le tombstoneChecker (localSyncReplication) si disponible
     if (tombstoneChecker) {
       // Le tombstoneChecker lit inMemoryTombstones, on passe par deletionListeners
-      deletionListeners.forEach(fn => { try { fn(fileId, 'trash'); } catch {} });
+      deletionListeners.forEach(fn => { try { fn(fileId, 'trash'); } catch { } });
     }
     currentState = {
       ...currentState,
       trash: currentState.trash.filter(f => f.id !== fileId),
       recentFiles: (currentState.recentFiles || []).filter(f => f.id !== fileId),
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
 
@@ -1340,7 +1340,7 @@ export const CloudDataStore = {
       ...currentState,
       trash: currentState.trash.filter(f => f.id !== fileId),
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
 
@@ -1355,20 +1355,20 @@ export const CloudDataStore = {
       unmarkTrashItemPermanentlyDeleted(f.id);
       notifyFavoriteChange(f.id, false, f.category);
       dismissedRecentSet.add(f.id);
-      CloudStorageAPI.dismissRecent(f.id).catch(() => {});
+      CloudStorageAPI.dismissRecent(f.id).catch(() => { });
       if (f.category === 'classeur_folder' || f.category === 'folder' || (f as any).model) {
         const childFiles = currentState.folderFilesMap[f.id] || [];
         childFiles.forEach(cf => {
           notifyFavoriteChange(cf.id, false, cf.category);
           dismissedRecentSet.add(cf.id);
-          CloudStorageAPI.dismissRecent(cf.id).catch(() => {});
+          CloudStorageAPI.dismissRecent(cf.id).catch(() => { });
         });
       }
     });
 
     try {
       localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(dismissedRecentSet).slice(-500)));
-    } catch {}
+    } catch { }
 
     const filterFn = (list: FileItem[]) => list.filter(f => !idSet.has(f.id));
     const clearFavFn = (list: FileItem[]) => list.map(f => idSet.has(f.id) ? { ...f, isFavorite: false } : f);
@@ -1393,7 +1393,7 @@ export const CloudDataStore = {
       favorites: currentState.favorites.filter(f => !idSet.has(f.id)),
       trash: [...trashedItems, ...existingTrash],
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
 
@@ -1425,7 +1425,7 @@ export const CloudDataStore = {
     let newImgs = [...currentState.images];
     let newVids = [...currentState.videos];
     let newAuds = [...currentState.audio];
-    let newDls  = [...currentState.downloads];
+    let newDls = [...currentState.downloads];
     let newFolders = [...currentState.classeurFolders];
     const updatedMap = { ...currentState.folderFilesMap };
 
@@ -1466,7 +1466,7 @@ export const CloudDataStore = {
         };
         newFolders = [restoredFolder, ...newFolders.filter(f => f.id !== file.id)];
         if (restoreUpsertNotifier) {
-          try { restoreUpsertNotifier(file.id, 'classeur_folder', restoredFolder); } catch {}
+          try { restoreUpsertNotifier(file.id, 'classeur_folder', restoredFolder); } catch { }
         }
       } else {
         const targetFolderId = file.originalFolderId || (file as any).folderId;
@@ -1479,7 +1479,7 @@ export const CloudDataStore = {
           if (!updatedMap[targetFolderId]) updatedMap[targetFolderId] = [];
           updatedMap[targetFolderId] = [restored, ...updatedMap[targetFolderId].filter(f => f.id !== file.id)];
           if (restoreUpsertNotifier) {
-            try { restoreUpsertNotifier(file.id, 'classeur', restored); } catch {}
+            try { restoreUpsertNotifier(file.id, 'classeur', restored); } catch { }
           }
         } else {
           // Détection intelligente de la catégorie pour un placement immédiat et exact
@@ -1492,31 +1492,31 @@ export const CloudDataStore = {
             restored.category = 'images';
             newImgs = [restored, ...newImgs.filter(f => f.id !== file.id)];
             if (restoreUpsertNotifier) {
-              try { restoreUpsertNotifier(file.id, 'images', restored); } catch {}
+              try { restoreUpsertNotifier(file.id, 'images', restored); } catch { }
             }
           } else if (detectedCat === 'videos' || !!file.videoUrl || (file as any).isVideo) {
             restored.category = 'videos';
             newVids = [restored, ...newVids.filter(f => f.id !== file.id)];
             if (restoreUpsertNotifier) {
-              try { restoreUpsertNotifier(file.id, 'videos', restored); } catch {}
+              try { restoreUpsertNotifier(file.id, 'videos', restored); } catch { }
             }
           } else if (detectedCat === 'audio' || !!file.audioUrl || (file as any).isAudio) {
             restored.category = 'audio';
             newAuds = [restored, ...newAuds.filter(f => f.id !== file.id)];
             if (restoreUpsertNotifier) {
-              try { restoreUpsertNotifier(file.id, 'audio', restored); } catch {}
+              try { restoreUpsertNotifier(file.id, 'audio', restored); } catch { }
             }
           } else if (detectedCat === 'downloads') {
             restored.category = 'downloads';
             newDls = [restored as any, ...newDls.filter(f => f.id !== file.id)];
             if (restoreUpsertNotifier) {
-              try { restoreUpsertNotifier(file.id, 'downloads', restored); } catch {}
+              try { restoreUpsertNotifier(file.id, 'downloads', restored); } catch { }
             }
           } else {
             restored.category = 'documents';
             newDocs = [restored, ...newDocs.filter(f => f.id !== file.id)];
             if (restoreUpsertNotifier) {
-              try { restoreUpsertNotifier(file.id, 'documents', restored); } catch {}
+              try { restoreUpsertNotifier(file.id, 'documents', restored); } catch { }
             }
           }
         }
@@ -1534,7 +1534,7 @@ export const CloudDataStore = {
       downloads: newDls,
       folderFilesMap: updatedMap,
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
 
@@ -1550,14 +1550,14 @@ export const CloudDataStore = {
         markTrashItemPermanentlyDeleted(t.id);
       });
       localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(Array.from(existingSet).slice(-500)));
-    } catch {}
+    } catch { }
     // Notifier deletionListeners (dont localSyncReplication) pour chaque élément
-    currentState.trash.forEach(t => deletionListeners.forEach(fn => { try { fn(t.id, 'trash'); } catch {} }));
+    currentState.trash.forEach(t => deletionListeners.forEach(fn => { try { fn(t.id, 'trash'); } catch { } }));
     currentState = {
       ...currentState,
       trash: [],
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
 
@@ -1605,10 +1605,10 @@ export const CloudDataStore = {
       favorites: filterFn(currentState.favorites),
       secure: [...lockedItems, ...existingSecure],
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
-    invalidateCloudQueries.secure().catch(() => {});
-    invalidateCloudQueries.all().catch(() => {});
+    invalidateCloudQueries.secure().catch(() => { });
+    invalidateCloudQueries.all().catch(() => { });
   },
 
   restoreFromSecure(items: FileItem | FileItem[]) {
@@ -1620,7 +1620,7 @@ export const CloudDataStore = {
     let newImgs = [...currentState.images];
     let newVids = [...currentState.videos];
     let newAuds = [...currentState.audio];
-    let newDls  = [...currentState.downloads];
+    let newDls = [...currentState.downloads];
     const updatedMap = { ...currentState.folderFilesMap };
 
     arr.forEach(file => {
@@ -1659,7 +1659,7 @@ export const CloudDataStore = {
             localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(next));
           }
         }
-      } catch {}
+      } catch { }
 
       if (origCat === 'classeur' && (file as any).originalFolderId && updatedMap[(file as any).originalFolderId]) {
         const fId = (file as any).originalFolderId;
@@ -1687,10 +1687,10 @@ export const CloudDataStore = {
       downloads: newDls,
       folderFilesMap: updatedMap,
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
-    invalidateCloudQueries.secure().catch(() => {});
-    invalidateCloudQueries.all().catch(() => {});
+    invalidateCloudQueries.secure().catch(() => { });
+    invalidateCloudQueries.all().catch(() => { });
   },
 
   deleteSecureToTrash(items: FileItem | FileItem[]) {
@@ -1713,18 +1713,18 @@ export const CloudDataStore = {
       secure: newSecure,
       trash: newTrash,
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
-    invalidateCloudQueries.secure().catch(() => {});
-    invalidateCloudQueries.trash().catch(() => {});
-    invalidateCloudQueries.overview().catch(() => {});
+    invalidateCloudQueries.secure().catch(() => { });
+    invalidateCloudQueries.trash().catch(() => { });
+    invalidateCloudQueries.overview().catch(() => { });
   },
 
   removeFolder(folderId: string) {
     notifyFavoriteChange(folderId, false, 'classeur_folder');
     const childFiles = currentState.folderFilesMap[folderId] || [];
     childFiles.forEach(cf => notifyFavoriteChange(cf.id, false, cf.category));
-    deletionListeners.forEach(fn => { try { fn(folderId, 'classeur_folder'); } catch {} });
+    deletionListeners.forEach(fn => { try { fn(folderId, 'classeur_folder'); } catch { } });
     const updatedFolders = currentState.classeurFolders.filter(f => f.id !== folderId && f.parentId !== folderId);
     const updatedMap = { ...currentState.folderFilesMap };
     delete updatedMap[folderId];
@@ -1734,7 +1734,7 @@ export const CloudDataStore = {
       folderFilesMap: updatedMap,
       favorites: currentState.favorites.filter(f => f.id !== folderId && !childFiles.some(cf => cf.id === f.id)),
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
 
@@ -1744,7 +1744,7 @@ export const CloudDataStore = {
       ...currentState,
       classeurFolders: updatedFolders,
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
 
@@ -1759,7 +1759,7 @@ export const CloudDataStore = {
     for (const k of Object.keys(updatedMap)) {
       updatedMap[k] = updateFav(updatedMap[k]);
     }
-    const updatedFolders = (currentState.classeurFolders || []).map(f => 
+    const updatedFolders = (currentState.classeurFolders || []).map(f =>
       f.id === itemId ? { ...f, isFavorite: isFav } : f
     );
     const trashIds = new Set((currentState.trash || []).map(t => t.id));
@@ -1799,7 +1799,7 @@ export const CloudDataStore = {
       folderFilesMap: updatedMap,
       favorites: allFiles.filter(f => (favSet.has(f.id) || Boolean(f.isFavorite)) && !trashIds.has(f.id) && !isItemDeleted(f.id)),
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
 
@@ -1810,7 +1810,7 @@ export const CloudDataStore = {
 
     try {
       localStorage.setItem('studycloud_pinned_ids', JSON.stringify(Array.from(pinSet)));
-    } catch {}
+    } catch { }
 
     const updatePin = (list: FileItem[]) => list.map(f => f.id === itemId ? { ...f, isPinned } : f);
     const updatedMap = { ...currentState.folderFilesMap };
@@ -1826,7 +1826,7 @@ export const CloudDataStore = {
       audio: updatePin(currentState.audio),
       folderFilesMap: updatedMap,
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
   },
 
@@ -1835,14 +1835,14 @@ export const CloudDataStore = {
     dismissedRecentSet.add(fileId);
     try {
       localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(dismissedRecentSet)));
-    } catch {}
+    } catch { }
     currentState = {
       ...currentState,
       recentFiles: (currentState.recentFiles || []).filter(f => f.id !== fileId)
     };
-    persistToIndexedDB().catch(() => {});
+    persistToIndexedDB().catch(() => { });
     notify();
-    CloudStorageAPI.dismissRecent(fileId).catch(() => {});
+    CloudStorageAPI.dismissRecent(fileId).catch(() => { });
   },
 
   async resetAndSyncForUser(userId: string): Promise<void> {
@@ -1860,7 +1860,7 @@ export const CloudDataStore = {
         };
         notify();
       }
-    }).catch(() => {});
+    }).catch(() => { });
     await this.sync(true);
   },
 
@@ -1868,7 +1868,7 @@ export const CloudDataStore = {
     const key = getCacheKey();
     dismissedRecentSet.clear();
     currentState = { ...defaultState };
-    try { localStorage.removeItem(LS_FLAG_KEY); } catch {}
+    try { localStorage.removeItem(LS_FLAG_KEY); } catch { }
     const db = await openIDB();
     if (db) {
       await new Promise<void>((resolve) => {
@@ -1877,7 +1877,7 @@ export const CloudDataStore = {
         tx.objectStore(IDB_STORE_NAME).delete(IDB_CACHE_KEY);
         tx.objectStore(IDB_STORE_NAME).delete('guest_cache');
         tx.oncomplete = () => resolve();
-        tx.onerror    = () => resolve();
+        tx.onerror = () => resolve();
       });
     }
     notify();

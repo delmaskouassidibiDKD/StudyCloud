@@ -293,13 +293,24 @@ export function LeftMenu({
   };
 
   // Déterminer précisément si on est dans "Mes fichiers" ou dans une matière spécifique
-  const rawMatiere = (activeFolderDetail?.title && activeFolderDetail.title !== 'Mes fichiers')
+  // Un fichier importé pendant l'étude n'appartient à AUCUNE matière : il ne doit jamais définir la section du bas.
+  const STUDY_FOLDER_NAMES = ['Fichiers importés', 'Fichiers Importés', 'Espace détude', "Espace d'étude"];
+  const isActiveStudyItem = Boolean(activePreviewItem && (
+    (activePreviewItem as any).isStudyImport ||
+    (activePreviewItem as any).isLeftMenuImport ||
+    (activePreviewItem as any).category === 'study' ||
+    STUDY_FOLDER_NAMES.includes((activePreviewItem as any).folderName) ||
+    STUDY_FOLDER_NAMES.includes((activePreviewItem as any).matiere)
+  ));
+  const rawMatiere = (activeFolderDetail?.title && activeFolderDetail.title !== 'Mes fichiers' && !STUDY_FOLDER_NAMES.includes(activeFolderDetail.title))
     ? activeFolderDetail.title
-    : (activePreviewItem?.matiere && activePreviewItem.matiere !== 'Mes fichiers')
-      ? activePreviewItem.matiere
-      : (activePreviewItem?.folderName && activePreviewItem.folderName !== 'Mes fichiers' && !['Images', 'Vidéos', 'Musique', 'Documents'].includes(activePreviewItem.folderName))
-        ? activePreviewItem.folderName
-        : null;
+    : isActiveStudyItem
+      ? null
+      : (activePreviewItem?.matiere && activePreviewItem.matiere !== 'Mes fichiers' && !STUDY_FOLDER_NAMES.includes(activePreviewItem.matiere))
+        ? activePreviewItem.matiere
+        : (activePreviewItem?.folderName && activePreviewItem.folderName !== 'Mes fichiers' && !['Images', 'Vidéos', 'Musique', 'Documents', ...STUDY_FOLDER_NAMES].includes(activePreviewItem.folderName))
+          ? activePreviewItem.folderName
+          : null;
 
   const isMesFichiersMode = !rawMatiere || rawMatiere === 'Mes fichiers';
   const currentFolderName = isMesFichiersMode ? 'Mes fichiers' : rawMatiere;
