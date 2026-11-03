@@ -856,7 +856,7 @@ export function LeftMenu({
     } catch (err) {}
     
     if (activePreviewItem?.id === fileId && setActivePreviewItem) {
-      setActivePreviewItem(null);
+      handleDeselectActiveItem();
     }
     setOpenMenuId(null);
   };
@@ -911,8 +911,9 @@ export function LeftMenu({
     } catch (err) {}
     
     if (activePreviewItem && selectedIds.includes(activePreviewItem.id) && setActivePreviewItem) {
-      setActivePreviewItem(null);
+      handleDeselectActiveItem();
     }
+    setAttachedResources(prev => prev.filter(res => !selectedIds.includes(res.id)));
     
     setIsSelectionMode(false);
     setSelectedIds([]);
@@ -953,6 +954,19 @@ export function LeftMenu({
     setViewHistory(prev => [file.id, ...prev.filter(id => id !== file.id)]);
   };
 
+  // Désélection du fichier principal en orange :
+  // Si des fichiers sont joints en bleu, le plus ancien (le premier ajouté) prend immédiatement sa place et devient orange.
+  // Ce processus s'effectue de manière successive (FIFO). S'il n'y a plus de fichier joint, la sélection est vidée.
+  const handleDeselectActiveItem = () => {
+    if (!setActivePreviewItem) return;
+    if (attachedResources && attachedResources.length > 0) {
+      const nextPrimary = attachedResources[0];
+      handleOpenPreviewFile(nextPrimary, Boolean(!nextPrimary.matiere));
+    } else {
+      setActivePreviewItem(null);
+    }
+  };
+
   const renderFileGroup = (files: any[], isHorizontal: boolean = false, isImportedSection: boolean = false) => {
     const sortedFiles = [...files].sort((a, b) => {
       const aIsActive = activePreviewItem?.id === a.id;
@@ -965,6 +979,11 @@ export function LeftMenu({
       
       if (aIsAttached && !bIsAttached) return -1;
       if (!aIsAttached && bIsAttached) return 1;
+      if (aIsAttached && bIsAttached) {
+        const aIndex = attachedResources.findIndex(res => res.id === a.id);
+        const bIndex = attachedResources.findIndex(res => res.id === b.id);
+        return aIndex - bIndex;
+      }
       
       return 0;
     });
@@ -1003,11 +1022,10 @@ export function LeftMenu({
               return;
             }
 
-            // 1. Si le fichier est déjà sélectionné en orange (principal), un nouveau clic le désélectionne
+            // 1. Si le fichier est déjà sélectionné en orange (principal), un nouveau clic le désélectionne :
+            // Le premier fichier joint en bleu prend sa place comme principal orange (succession FIFO)
             if (isActive) {
-              if (setActivePreviewItem) {
-                setActivePreviewItem(null);
-              }
+              handleDeselectActiveItem();
               return;
             }
 
@@ -1847,7 +1865,7 @@ export function LeftMenu({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if (setActivePreviewItem) setActivePreviewItem(null);
+                handleDeselectActiveItem();
                 setOpenMenuId(null);
                 setMenuCoords(null);
               }}
