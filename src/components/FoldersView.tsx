@@ -206,16 +206,20 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   // Fond d'écran personnalisé du tableau de bord (Page 1 et Page 2)
   // Rendu instantané 0ms dès l'initialisation du composant sans délai ni clignotement
   const [dashboardWallpaper, setDashboardWallpaper] = useState<string>(() => {
-    const cached = localStorage.getItem('studycloud_dashboard_wallpaper');
-    // Ignorer les anciens blob: expirés pour éviter l'écran grisé
-    if (cached && !cached.startsWith('blob:')) return cached;
+    try {
+      const local = localStorage.getItem('studycloud_dashboard_wallpaper_local');
+      if (local && !local.startsWith('blob:')) return local;
+      const cached = localStorage.getItem('studycloud_dashboard_wallpaper');
+      // Ignorer les anciens blob: expirés pour éviter l'écran grisé
+      if (cached && !cached.startsWith('blob:')) return cached;
+    } catch {}
     return DEFAULT_WALLPAPER_URL;
   });
 
   // Récupération fiable au montage depuis IndexedDB si localStorage était vide ou révoqué
   useEffect(() => {
     getActiveWallpaperReliable().then((reliable) => {
-      if (reliable && reliable !== dashboardWallpaper) {
+      if (reliable && reliable !== dashboardWallpaper && !reliable.startsWith('blob:')) {
         setDashboardWallpaper(reliable);
       }
     });
@@ -224,26 +228,45 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   // Synchronisation transparente en arrière-plan : mise à jour immédiate 0ms
   useEffect(() => {
     if (cloudWallpaperData?.url) {
-      if (cloudWallpaperData.url !== dashboardWallpaper && !cloudWallpaperData.url.startsWith('blob:')) {
-        setDashboardWallpaper(cloudWallpaperData.url);
-        try {
-          localStorage.setItem('studycloud_dashboard_wallpaper', cloudWallpaperData.url);
-        } catch {}
+      const currentId = localStorage.getItem('studycloud_dashboard_wallpaper_id');
+      const localData = localStorage.getItem('studycloud_dashboard_wallpaper_local');
+      const isSameId = currentId && String(cloudWallpaperData.id) === String(currentId);
+      const hasLocalData = (localData && !localData.startsWith('blob:')) || dashboardWallpaper.startsWith('data:image');
+
+      // Si c'est déjà notre fond d'écran actif (même identifiant) avec version locale instantanée :
+      // NE PAS écraser la version locale instantanée (0ms) par l'URL cloud distante lente !
+      if (isSameId && hasLocalData) {
+        return;
       }
-    } else if (cloudWallpaperData === null && dashboardWallpaper !== DEFAULT_WALLPAPER_URL) {
-      // Cas où le fond d'écran a été réinitialisé depuis un autre appareil
-      setDashboardWallpaper(DEFAULT_WALLPAPER_URL);
-      try {
-        localStorage.setItem('studycloud_dashboard_wallpaper', DEFAULT_WALLPAPER_URL);
-      } catch {}
+
+      // Si c'est un nouveau fond d'écran configuré depuis un AUTRE appareil (ID différent) :
+      if (cloudWallpaperData.url !== dashboardWallpaper && !cloudWallpaperData.url.startsWith('blob:')) {
+        if (cloudWallpaperData.url.startsWith('/wallpapers/')) {
+          setDashboardWallpaper(cloudWallpaperData.url);
+          try {
+            localStorage.setItem('studycloud_dashboard_wallpaper', cloudWallpaperData.url);
+            localStorage.removeItem('studycloud_dashboard_wallpaper_local');
+            localStorage.setItem('studycloud_dashboard_wallpaper_id', String(cloudWallpaperData.id));
+          } catch {}
+        } else {
+          // Fond d'écran personnalisé distant : synchroniser et mettre en cache local
+          import('../utils/wallpaperHelper').then(m => {
+            m.syncAndCacheCloudWallpaper(cloudWallpaperData).then(localUrl => {
+              if (localUrl && !localUrl.startsWith('blob:')) {
+                setDashboardWallpaper(localUrl);
+              }
+            }).catch(() => {});
+          }).catch(() => {});
+        }
+      }
     }
-  }, [cloudWallpaperData?.url]);
+  }, [cloudWallpaperData?.id, cloudWallpaperData?.url]);
 
   useEffect(() => {
     const handleWallpaperChange = (e: any) => {
       const wp = e?.detail?.wallpaper !== undefined 
         ? e.detail.wallpaper 
-        : localStorage.getItem('studycloud_dashboard_wallpaper');
+        : (localStorage.getItem('studycloud_dashboard_wallpaper_local') || localStorage.getItem('studycloud_dashboard_wallpaper'));
       setDashboardWallpaper(wp || DEFAULT_WALLPAPER_URL);
     };
     window.addEventListener('studycloud_wallpaper_updated', handleWallpaperChange);
@@ -1137,13 +1160,18 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {/* Fond d'écran personnalisé du tableau de bord (Visible sur la Page 1 et la Page 2) */}
       {dashboardWallpaper && viewMode === 'home' && (
         <div 
-          className="fixed inset-0 w-screen h-screen z-0 pointer-events-none overflow-hidden select-none"
+          className="fixed inset-0 w-screen h-screen z-0 pointer-events-none overflow-hidden select-none bg-[#0a0e17]"
           style={{
             position: 'fixed',
             top: 0,
             left: 0,
             width: '100vw',
             height: '100vh',
+            backgroundColor: '#0a0e17',
+            backgroundImage: `url("${dashboardWallpaper}")`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
             transform: 'translate3d(0, 0, 0)',
             willChange: 'transform'
           }}

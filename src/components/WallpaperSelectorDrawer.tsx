@@ -24,6 +24,8 @@ export const WallpaperSelectorDrawer: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [currentWallpaper, setCurrentWallpaper] = useState<string>(() => {
     try {
+      const local = localStorage.getItem('studycloud_dashboard_wallpaper_local');
+      if (local && !local.startsWith('blob:')) return local;
       const saved = localStorage.getItem('studycloud_dashboard_wallpaper');
       if (saved && !saved.startsWith('blob:')) return saved;
     } catch {}
@@ -41,7 +43,9 @@ export const WallpaperSelectorDrawer: React.FC = () => {
       if (wp) {
         setCurrentWallpaper(wp);
       } else {
-        setCurrentWallpaper(DEFAULT_WALLPAPER_URL);
+        const local = localStorage.getItem('studycloud_dashboard_wallpaper_local');
+        const saved = local || localStorage.getItem('studycloud_dashboard_wallpaper');
+        setCurrentWallpaper(saved || DEFAULT_WALLPAPER_URL);
       }
     };
     const handleAutoRotationChanged = (e: any) => {

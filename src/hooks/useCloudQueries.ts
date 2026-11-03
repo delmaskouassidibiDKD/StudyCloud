@@ -148,8 +148,9 @@ export function useDashboardWallpaper() {
     // Rendu instantané 0ms dès l'ouverture du composant sans latence ni écran noir
     initialData: () => {
       if (typeof window === 'undefined') return undefined;
-      const cachedUrl = localStorage.getItem('studycloud_dashboard_wallpaper');
-      if (!cachedUrl) return undefined;
+      const local = localStorage.getItem('studycloud_dashboard_wallpaper_local');
+      const cachedUrl = local || localStorage.getItem('studycloud_dashboard_wallpaper');
+      if (!cachedUrl || cachedUrl.startsWith('blob:')) return undefined;
       let meta: any = null;
       try {
         const raw = localStorage.getItem('studycloud_dashboard_wallpaper_meta');
@@ -163,9 +164,9 @@ export function useDashboardWallpaper() {
         isActive: true,
       };
     },
-    initialDataUpdatedAt: 0, // Déclenche toujours une vérification légère en tâche de fond
-    staleTime: 1000 * 30, // 30s de rétention en mémoire pour détecter tout changement d'appareil
-    refetchOnWindowFocus: true,
+    initialDataUpdatedAt: 0,
+    staleTime: 1000 * 60 * 10, // 10 minutes de rétention en mémoire pour éviter les rechargements intempestifs sur mobile
+    refetchOnWindowFocus: false, // Évite de recharger l'image à chaque déverrouillage de téléphone ou changement d'onglet
   });
 }
 
@@ -463,7 +464,10 @@ export function useSetDashboardWallpaper() {
       if (data?.wallpaper) {
         queryClient.setQueryData(QUERY_KEYS.wallpaper, data.wallpaper);
         try {
-          localStorage.setItem('studycloud_dashboard_wallpaper', data.wallpaper.url);
+          if (data.wallpaper.url.startsWith('/wallpapers/')) {
+            localStorage.setItem('studycloud_dashboard_wallpaper', data.wallpaper.url);
+            localStorage.removeItem('studycloud_dashboard_wallpaper_local');
+          }
           localStorage.setItem('studycloud_dashboard_wallpaper_meta', JSON.stringify(data.wallpaper));
           localStorage.setItem('studycloud_dashboard_wallpaper_id', String(data.wallpaper.id));
         } catch {}
@@ -484,6 +488,7 @@ export function useResetDashboardWallpaper() {
       // 1. Réinitialisation optimiste locale immédiate (0ms)
       try {
         localStorage.removeItem('studycloud_dashboard_wallpaper');
+        localStorage.removeItem('studycloud_dashboard_wallpaper_local');
         localStorage.removeItem('studycloud_dashboard_wallpaper_meta');
         localStorage.removeItem('studycloud_dashboard_wallpaper_id');
         window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: null } }));

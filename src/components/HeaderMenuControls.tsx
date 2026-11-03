@@ -401,6 +401,7 @@ export function restoreDefaultWallpaperAndAvatar(): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.removeItem('studycloud_dashboard_wallpaper');
+    localStorage.removeItem('studycloud_dashboard_wallpaper_local');
     localStorage.removeItem('studycloud_dashboard_wallpaper_meta');
     localStorage.removeItem('studycloud_dashboard_wallpaper_id');
     localStorage.removeItem('unifolder_user_avatar');
