@@ -17,7 +17,7 @@ import { CreateShareLinkModal } from './components/CreateShareLinkModal';
 import { PublishFileView } from './components/PublishFileView';
 import { INITIAL_FOLDERS } from './data/initialData';
 import { SharedFolder, NavigationTab } from './types';
-import { X, FolderPlus, Upload, ArrowLeft, Download, Share2, ArrowLeftRight, Maximize, Minimize, Dna, Menu, Clock, Mic, Loader2, Smartphone, Folder, FileText, Sparkles } from 'lucide-react';
+import { X, FolderPlus, Upload, ArrowLeft, Download, Share2, ArrowLeftRight, Maximize, Minimize, Dna, Menu, Clock, Mic, Loader2, Smartphone, Folder, FileText, Sparkles, Pause, Play } from 'lucide-react';
 import { FileIconBadge } from './components/FileIconBadge';
 import { AssistantChat } from './components/AssistantChat';
 import { DnaLogo } from './components/DnaLogo';
