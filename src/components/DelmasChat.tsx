@@ -25,6 +25,40 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // Message d'accueil tapé en direct devant l'utilisateur (effet machine à écrire / streaming)
+  const [displayedWelcomeTitle, setDisplayedWelcomeTitle] = useState('');
+  const [isTypingWelcome, setIsTypingWelcome] = useState(true);
+  const welcomeAnimTimeoutRef = useRef<any[]>([]);
+
+  useEffect(() => {
+    welcomeAnimTimeoutRef.current.forEach(clearTimeout);
+    welcomeAnimTimeoutRef.current = [];
+
+    if (messages.length > 0) return;
+
+    setDisplayedWelcomeTitle('');
+    setIsTypingWelcome(true);
+
+    const hour = new Date().getHours();
+    const greeting = hour >= 5 && hour < 18 ? 'Bonjour' : 'Bonsoir';
+    const fullText = greeting + ' ! Je suis Delmas, votre assistant StudyCloud.';
+
+    for (let i = 1; i <= fullText.length; i++) {
+      const t = setTimeout(() => {
+        setDisplayedWelcomeTitle(fullText.slice(0, i));
+        if (i === fullText.length) {
+          setIsTypingWelcome(false);
+        }
+      }, i * 22);
+      welcomeAnimTimeoutRef.current.push(t);
+    }
+
+    return () => {
+      welcomeAnimTimeoutRef.current.forEach(clearTimeout);
+      welcomeAnimTimeoutRef.current = [];
+    };
+  }, [messages.length === 0]);
+
   // Gestion ultra-précise du clavier virtuel mobile (0ms de décalage avec le visualViewport)
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
@@ -299,7 +333,7 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
               </span>
             </div>
             <span className="text-[11px] text-zinc-400 font-medium">
-              Assistant StudyCloud • Causerie intelligente
+              Assistant StudyCloud
             </span>
           </div>
         </div>
@@ -337,10 +371,10 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
         }}
       >
         {messages.length === 0 ? (
-          /* ÉCRAN DE BIENVENUE AVEC ROBOT BLEU */
-          <div className="flex-1 flex flex-col items-center justify-center text-center my-auto py-6 sm:py-10 max-w-2xl mx-auto w-full animate-fadeIn">
+          /* ÉCRAN DE BIENVENUE AVEC ROBOT BLEU (Message tapé en direct devant l'utilisateur) */
+          <div className="flex-1 flex flex-col items-center justify-center text-center my-auto py-6 sm:py-10 max-w-xl mx-auto w-full animate-fadeIn select-none">
             {/* Robot Delmas Bleu imposant avec halo lumineux */}
-            <div className="relative mb-5 flex items-center justify-center">
+            <div className="relative mb-6 flex items-center justify-center">
               <div 
                 className="absolute w-28 h-28 rounded-full pointer-events-none transition-all duration-700"
                 style={{
@@ -353,25 +387,15 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
               </div>
             </div>
 
-            {/* Titre vibrant */}
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-black mb-2.5 tracking-tight">
-              <span className="bg-gradient-to-r from-blue-400 via-sky-300 to-indigo-300 bg-clip-text text-transparent">
-                Bonjour ! Je suis Delmas,
+            {/* Titre écrit en temps réel par Delmas devant l'utilisateur */}
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-black mb-2 tracking-tight min-h-[64px] flex items-center justify-center text-center px-4">
+              <span className="bg-gradient-to-r from-blue-400 via-sky-300 to-indigo-300 bg-clip-text text-transparent leading-snug">
+                {displayedWelcomeTitle || `${new Date().getHours() >= 5 && new Date().getHours() < 18 ? 'Bonjour' : 'Bonsoir'} ! Je suis Delmas, votre assistant StudyCloud.`}
               </span>
-              <br />
-              <span className="text-white text-lg sm:text-xl font-bold">
-                votre assistant StudyCloud.
-              </span>
+              {isTypingWelcome && (
+                <span className="inline-block w-0.5 sm:w-1 h-5 sm:h-7 bg-blue-400 ml-1.5 animate-pulse align-middle rounded-full shadow-[0_0_8px_rgba(96,165,250,0.8)]" />
+              )}
             </h1>
-
-            {/* Question d'accueil personnalisée */}
-            <p className="text-sm sm:text-base font-semibold text-blue-300/90 mb-2">
-              Comment puis-je vous aider aujourd'hui ?
-            </p>
-
-            <p className="text-xs text-zinc-400 max-w-md leading-relaxed">
-              Posez toutes vos questions sur vos cours, devoirs et méthodologies. Vos échanges sont directs et disparaissent dès que vous fermez ce menu.
-            </p>
           </div>
         ) : (
           /* LISTE DES MESSAGES DU CHAT DIRECT */
