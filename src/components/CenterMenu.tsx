@@ -886,7 +886,7 @@ export function CenterMenu({
   };
 
   return (
-    <div className={`w-full h-full ${isCenterFullscreen ? '' : 'border-r border-stone-300 dark:border-[#1e293b]'} flex flex-col animate-fadeIn relative pointer-events-auto overflow-hidden bg-white dark:bg-[#0b0f19] pt-[44px] ${isRightFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
+    <div className={`w-full h-full md:min-w-[420px] ${isCenterFullscreen ? '' : 'border-r border-stone-300 dark:border-[#1e293b]'} flex flex-col animate-fadeIn relative pointer-events-auto overflow-hidden bg-white dark:bg-[#0b0f19] pt-[44px] ${isRightFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
 
       {/* Sleek Document Action Bar: Present for ALL documents (PDF, Word, Excel, PPTX, Images, Code) */}
       {activePreviewItem && (

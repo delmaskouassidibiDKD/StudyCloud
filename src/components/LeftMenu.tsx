@@ -1532,7 +1532,7 @@ export function LeftMenu({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`w-full ${isAssistantOpen ? "w-full min-w-0 md:min-w-[495px]" : "w-full min-w-0 md:min-w-[320px]"} max-w-full h-full border-r-0 md:border-r-2 border-stone-800 relative pointer-events-auto ${
+      className={`w-full ${isAssistantOpen ? "w-full min-w-0 md:min-w-[550px]" : "w-full min-w-0 md:min-w-[320px]"} max-w-full h-full border-r-0 md:border-r-2 border-stone-800 relative pointer-events-auto ${
         isAssistantOpen ? 'bg-[#1e2024]' : 'bg-[#FDFBF7]'
       } ${
         isCenterFullscreen || isRightFullscreen ? 'hidden' : (mobilePreviewTab === 0 ? 'flex' : 'hidden md:flex')

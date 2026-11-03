@@ -6333,7 +6333,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
   );
 
   return (
-    <div className="flex flex-col h-full bg-[#1e2024] font-nunito relative z-50 overflow-hidden w-full max-w-full min-w-0 md:min-w-[495px] overscroll-contain">
+    <div className="flex flex-col h-full bg-[#1e2024] font-nunito relative z-50 overflow-hidden w-full max-w-full min-w-0 md:min-w-[550px] overscroll-contain">
 
       {/* EN-TÊTE SUPÉRIEUR (BOUTON HISTORIQUE, NOUVELLE CONVERSATION, PUISSANT/MOYEN, FERMER) */}
       <div className="flex items-center justify-between px-2 sm:px-4 py-1.5 sm:py-2.5 bg-[#23252a] border-b border-zinc-700/60 shrink-0 relative z-30 shadow-sm w-full max-w-full flex-nowrap gap-1 sm:gap-2">

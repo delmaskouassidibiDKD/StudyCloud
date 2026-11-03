@@ -997,9 +997,9 @@ export default function App() {
         localStorage.setItem('studycloud_preview_left_width_files', previewLeftWidth.toString());
       } catch (err) {}
 
-      // Calculer la largeur minimale requise pour le chat (495px pour empêcher tout chevauchement des boutons supérieurs)
+      // Calculer la largeur minimale requise pour le chat (550px pour empêcher tout chevauchement des boutons supérieurs - Image 2)
       const containerWidth = previewContainerRef.current?.getBoundingClientRect().width || window.innerWidth;
-      const minChatPx = 495;
+      const minChatPx = 550;
       const minChatPct = (minChatPx / Math.max(1, containerWidth)) * 100;
 
       // Largeur cible : soit la largeur chat précédemment enregistrée, soit au moins 36% / minChatPct (dimensions Image 1)
@@ -1239,9 +1239,9 @@ export default function App() {
 
       // Si le chat est ouvert, le panneau est bloqué à un minimum strict de 495px (dimensions de l'Image 1)
       // pour que les boutons supérieurs (Historique, +, Modèle IA, Langue, Fermer) ne se chevauchent jamais.
-      const minLeftPx = isAssistantOpen ? 495 : 320;
+      const minLeftPx = isAssistantOpen ? 550 : 320;
       const minLeft = (minLeftPx / rect.width) * 100;
-      const minCenter = Math.max(20, (300 / rect.width) * 100);
+      const minCenter = Math.max(28, (420 / rect.width) * 100);
       const maxLeft = Math.max(minLeft, 100 - previewRightWidth - minCenter);
       const newWidth = Math.min(Math.max(minLeft, percentage), maxLeft);
       setPreviewLeftWidth(newWidth);
@@ -1290,7 +1290,7 @@ export default function App() {
       const percentage = (distanceFromRight / rect.width) * 100;
 
       const minRight = Math.max(25, (300 / rect.width) * 100);
-      const minCenter = Math.max(28, (320 / rect.width) * 100);
+      const minCenter = Math.max(28, (420 / rect.width) * 100);
       const maxRight = Math.max(minRight, 100 - previewLeftWidth - minCenter);
       const newWidth = Math.min(Math.max(minRight, percentage), maxRight);
       setPreviewRightWidth(newWidth);
@@ -2533,7 +2533,7 @@ export default function App() {
               style={{
                 gridTemplateColumns: isCenterFullscreen || isRightFullscreen 
                   ? '100%' 
-                  : (isMobileScreen ? '100%' : `minmax(${isAssistantOpen ? "495px" : "320px"}, ${previewLeftWidth}%) 1fr ${previewRightWidth}%`),
+                  : (isMobileScreen ? '100%' : `minmax(${isAssistantOpen ? "550px" : "320px"}, ${previewLeftWidth}%) minmax(420px, 1fr) ${previewRightWidth}%`),
               }}
             >
                 {/* Column 1: Left Area */}
