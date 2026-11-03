@@ -96,6 +96,19 @@ const computeDuplicateName = (originalName: string, existingNames: string[]): st
 
 const isExcludedFromAudio = (d: any): boolean => {
   if (!d) return true;
+  // Exclusion stricte des fichiers importés pendant l'étude
+  if (d.category === 'study' || d.isStudyImport || d.is_study_import || d.isLeftMenuImport) return true;
+  if (d.uploadSource === 'left-menu-study' || (typeof d.uploadSource === 'string' && d.uploadSource.includes('study'))) return true;
+  if (d.folderName === 'Fichiers importés' || d.source === 'Espace détude' || d.source === "Espace d'étude") return true;
+  if (d.r2Key && d.r2Key.includes('/study/')) return true;
+  if (typeof d.id === 'string') {
+    try {
+      const studyRaw = localStorage.getItem('unifolder_study_imported_files');
+      if (studyRaw && studyRaw.includes(d.id)) return true;
+      const lmRaw = localStorage.getItem('unifolder_left_menu_general_imports');
+      if (lmRaw && lmRaw.includes(d.id)) return true;
+    } catch (e) {}
+  }
   if (d.category === 'classeur' || d.category === 'classeur_folder' || d.category === 'mes-fichiers' || d.category === 'trash' || d.category === 'secure') return true;
   const fId = d.folderId || d.folder_id || d.originalFolderId;
   if (fId && !['audio', 'root', 'default-folder', 'menu-audio'].includes(fId)) return true;

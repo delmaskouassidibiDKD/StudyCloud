@@ -140,6 +140,19 @@ const getDocumentTheme = (ext: string = 'PDF') => {
 
 const isExcludedFromDocuments = (d: any): boolean => {
   if (!d) return true;
+  // Exclusion stricte des fichiers importés pendant l'étude : ils appartiennent uniquement à l'Espace d'étude
+  if (d.category === 'study' || d.isStudyImport || d.is_study_import || d.isLeftMenuImport) return true;
+  if (d.uploadSource === 'left-menu-study' || (typeof d.uploadSource === 'string' && d.uploadSource.includes('study'))) return true;
+  if (d.folderName === 'Fichiers importés' || d.source === 'Espace détude' || d.source === "Espace d'étude") return true;
+  if (d.r2Key && d.r2Key.includes('/study/')) return true;
+  if (typeof d.id === 'string') {
+    try {
+      const studyRaw = localStorage.getItem('unifolder_study_imported_files');
+      if (studyRaw && studyRaw.includes(d.id)) return true;
+      const lmRaw = localStorage.getItem('unifolder_left_menu_general_imports');
+      if (lmRaw && lmRaw.includes(d.id)) return true;
+    } catch (e) {}
+  }
   if (d.category === 'classeur' || d.category === 'classeur_folder' || d.category === 'mes-fichiers' || d.category === 'trash' || d.category === 'secure') return true;
   const fId = d.folderId || d.folder_id || d.originalFolderId;
   if (fId && !['documents', 'root', 'default-folder', 'menu-documents'].includes(fId)) return true;
@@ -378,6 +391,17 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     UploadQueue.retryTask(docId);
     showToast("Nouvelle tentative d'enregistrement...");
   };
+
+  // Nettoyage proactif de tout fichier d'étude qui aurait pu s'infiltrer dans les documents
+  useEffect(() => {
+    CloudDataStore.update(state => {
+      const filtered = (state.documents || []).filter(d => !isExcludedFromDocuments(d));
+      if (filtered.length !== (state.documents || []).length) {
+        return { ...state, documents: filtered };
+      }
+      return state;
+    });
+  }, []);
 
   // Synchronisation continue ultra-légère avec TanStack Query
   useEffect(() => {

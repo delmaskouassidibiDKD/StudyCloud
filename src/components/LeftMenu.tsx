@@ -746,41 +746,14 @@ export function LeftMenu({
       // L'utilisateur le sélectionne lui-même manuellement quand il le souhaite après enregistrement.
     }
 
-    // 4. UploadQueue.enqueueExisting — R2 en arrière-plan avec retry automatique et routage dynamique
+    // 4. UploadQueue.enqueueExisting — R2 en arrière-plan avec retry automatique et routage STRICTEMENT étude
+    // Un fichier importé pendant l'étude appartient EXCLUSIVEMENT aux Fichiers Importés de l'Espace d'étude.
+    // Il ne doit JAMAIS être envoyé vers Documents, Images, Vidéos, Mes fichiers ou Classeur.
     if (itemsWithFiles.length > 0) {
-      let resolvedCategory: any = 'study';
-      let resolvedFolderId: string | undefined = undefined;
-      let resolvedUploadSource = 'left-menu-study';
-
-      if (selectedSource?.type === 'classeur' && selectedSource.classeurFolderId) {
-        resolvedCategory = 'classeur';
-        resolvedFolderId = selectedSource.classeurFolderId;
-        resolvedUploadSource = 'classeur';
-      } else if (selectedSource?.type === 'matiere' && selectedSource.matiereName) {
-        resolvedCategory = 'mes-fichiers';
-        resolvedFolderId = selectedSource.matiereName;
-        resolvedUploadSource = 'mes-fichiers';
-      } else if (selectedSource?.type === 'images') {
-        resolvedCategory = 'images';
-        resolvedUploadSource = 'images';
-      } else if (selectedSource?.type === 'videos') {
-        resolvedCategory = 'videos';
-        resolvedUploadSource = 'videos';
-      } else if (selectedSource?.type === 'audio') {
-        resolvedCategory = 'audio';
-        resolvedUploadSource = 'audio';
-      } else if (selectedSource?.type === 'documents') {
-        resolvedCategory = 'documents';
-        resolvedUploadSource = 'documents';
-      } else {
-        resolvedCategory = 'study';
-        resolvedUploadSource = 'left-menu-study';
-      }
-
       UploadQueue.enqueueExisting(itemsWithFiles, {
-        category: resolvedCategory,
-        uploadSource: resolvedUploadSource,
-        folderId: resolvedFolderId
+        category: 'study',
+        uploadSource: 'left-menu-study',
+        folderId: undefined
       });
     }
   };

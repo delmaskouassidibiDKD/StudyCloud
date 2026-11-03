@@ -8450,7 +8450,7 @@ a:hover{transform:translateY(-2px)}
           env.DB.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM audio_files WHERE user_id = ?').bind(reqUserId).first<any>(),
           env.DB.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM image_files WHERE user_id = ?').bind(reqUserId).first<any>(),
           env.DB.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM video_files WHERE user_id = ?').bind(reqUserId).first<any>(),
-          env.DB.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM document_files WHERE user_id = ?').bind(reqUserId).first<any>(),
+          env.DB.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM document_files WHERE user_id = ? AND (r2_key NOT LIKE "%/study/%" OR r2_key IS NULL) AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?)').bind(reqUserId, reqUserId).first<any>(),
           env.DB.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM download_files WHERE user_id = ?').bind(reqUserId).first<any>(),
           env.DB.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM secure_files WHERE user_id = ?').bind(reqUserId).first<any>(),
           env.DB.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM trash_files WHERE user_id = ?').bind(reqUserId).first<any>(),
@@ -8479,7 +8479,7 @@ a:hover{transform:translateY(-2px)}
 
         // Récupérer les fichiers récents STRICTEMENT pour les 4 menus autorisés : images, vidéos, audio, documents (sans classeur, dossiers, notes ou téléchargements)
         const [recentDocs, recentImages, recentAudio, recentVideos] = await Promise.all([
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM document_files WHERE user_id = ? AND (name NOT LIKE "%.txt") AND (r2_key NOT LIKE "%/mes-fichiers/%" OR r2_key IS NULL) ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM document_files WHERE user_id = ? AND (name NOT LIKE "%.txt") AND (r2_key NOT LIKE "%/study/%" OR r2_key IS NULL) AND (r2_key NOT LIKE "%/mes-fichiers/%" OR r2_key IS NULL) AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?) ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId, reqUserId).all<any>(),
           env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, thumbnail_url as thumbnailUrl, "images" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM image_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all<any>(),
           env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, cover_url as coverUrl, cover_url as previewUrl, artist, "audio" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM audio_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all<any>(),
           env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, thumbnail_url as thumbnailUrl, thumbnail_url as previewUrl, "videos" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM video_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all<any>(),
@@ -9195,18 +9195,28 @@ a:hover{transform:translateY(-2px)}
 
         if (method === 'GET') {
           await env.DB.prepare(`
-            DELETE FROM audio_files WHERE user_id = ? AND (r2_key LIKE '%/classeur/%' OR id LIKE 'folder_%' OR id LIKE 'cf_folder_%' OR id LIKE 'cf-folder-%')
-          `).bind(reqUserId).run().catch(() => {});
+            DELETE FROM audio_files 
+            WHERE user_id = ? AND (
+              r2_key LIKE '%/study/%' 
+              OR r2_key LIKE '%/classeur/%' 
+              OR id LIKE 'folder_%' 
+              OR id LIKE 'cf_folder_%' 
+              OR id LIKE 'cf-folder-%'
+              OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
+            )
+          `).bind(reqUserId, reqUserId).run().catch(() => {});
 
           const { results: auds } = await env.DB.prepare(`
             SELECT * FROM audio_files 
             WHERE user_id = ? 
+              AND (r2_key NOT LIKE '%/study/%' OR r2_key IS NULL)
               AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
+              AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId).all<any>();
+          `).bind(reqUserId, reqUserId).all<any>();
 
           let extraAuds: any[] = [];
           try {
@@ -9488,18 +9498,28 @@ a:hover{transform:translateY(-2px)}
 
         if (method === 'GET') {
           await env.DB.prepare(`
-            DELETE FROM image_files WHERE user_id = ? AND (r2_key LIKE '%/classeur/%' OR id LIKE 'folder_%' OR id LIKE 'cf_folder_%' OR id LIKE 'cf-folder-%')
-          `).bind(reqUserId).run().catch(() => {});
+            DELETE FROM image_files 
+            WHERE user_id = ? AND (
+              r2_key LIKE '%/study/%' 
+              OR r2_key LIKE '%/classeur/%' 
+              OR id LIKE 'folder_%' 
+              OR id LIKE 'cf_folder_%' 
+              OR id LIKE 'cf-folder-%'
+              OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
+            )
+          `).bind(reqUserId, reqUserId).run().catch(() => {});
 
           const { results: imgs } = await env.DB.prepare(`
             SELECT * FROM image_files 
             WHERE user_id = ? 
+              AND (r2_key NOT LIKE '%/study/%' OR r2_key IS NULL)
               AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
+              AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId).all<any>();
+          `).bind(reqUserId, reqUserId).all<any>();
 
           let extraImgs: any[] = [];
           try {
@@ -9753,18 +9773,28 @@ a:hover{transform:translateY(-2px)}
 
         if (method === 'GET') {
           await env.DB.prepare(`
-            DELETE FROM video_files WHERE user_id = ? AND (r2_key LIKE '%/classeur/%' OR id LIKE 'folder_%' OR id LIKE 'cf_folder_%' OR id LIKE 'cf-folder-%')
-          `).bind(reqUserId).run().catch(() => {});
+            DELETE FROM video_files 
+            WHERE user_id = ? AND (
+              r2_key LIKE '%/study/%' 
+              OR r2_key LIKE '%/classeur/%' 
+              OR id LIKE 'folder_%' 
+              OR id LIKE 'cf_folder_%' 
+              OR id LIKE 'cf-folder-%'
+              OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
+            )
+          `).bind(reqUserId, reqUserId).run().catch(() => {});
 
           const { results: vids } = await env.DB.prepare(`
             SELECT * FROM video_files 
             WHERE user_id = ? 
+              AND (r2_key NOT LIKE '%/study/%' OR r2_key IS NULL)
               AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
+              AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId).all<any>();
+          `).bind(reqUserId, reqUserId).all<any>();
 
           let extraVids: any[] = [];
           try {
@@ -10011,22 +10041,40 @@ a:hover{transform:translateY(-2px)}
         if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
 
         if (method === 'GET') {
-          // Nettoyage proactif de tout fichier mes-fichiers ou classeur qui aurait pu être inséré par erreur
+          // Nettoyage proactif de tout fichier d'étude, mes-fichiers ou classeur qui aurait pu être inséré par erreur
           await env.DB.prepare(`
             DELETE FROM document_files 
-            WHERE user_id = ? AND (r2_key LIKE '%/mes-fichiers/%' OR r2_key LIKE '%/classeur/%' OR id LIKE 'folder_%' OR id LIKE 'cf_folder_%' OR id LIKE 'cf-folder-%')
-          `).bind(reqUserId).run().catch(() => {});
+            WHERE user_id = ? AND (
+              r2_key LIKE '%/study/%' 
+              OR r2_key LIKE '%/mes-fichiers/%' 
+              OR r2_key LIKE '%/classeur/%' 
+              OR id LIKE 'folder_%' 
+              OR id LIKE 'cf_folder_%' 
+              OR id LIKE 'cf-folder-%'
+              OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
+            )
+          `).bind(reqUserId, reqUserId).run().catch(() => {});
+
+          await env.DB.prepare(`
+            DELETE FROM trash_files 
+            WHERE user_id = ? AND (
+              r2_key LIKE '%/study/%' 
+              OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
+            )
+          `).bind(reqUserId, reqUserId).run().catch(() => {});
 
           const { results: docs } = await env.DB.prepare(`
             SELECT * FROM document_files 
             WHERE user_id = ? 
+              AND (r2_key NOT LIKE '%/study/%' OR r2_key IS NULL)
               AND (r2_key NOT LIKE '%/mes-fichiers/%' OR r2_key IS NULL)
               AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
+              AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId).all<any>();
+          `).bind(reqUserId, reqUserId).all<any>();
 
           // ISOLATION TOTALE : Le menu Documents ne contient JAMAIS les fichiers du menu Mes fichiers ni des matières ni du classeur
           let extraDocs: any[] = [];
@@ -10057,9 +10105,9 @@ a:hover{transform:translateY(-2px)}
             const id = d.id;
             if (trashedDocIdSet.has(id)) return;
             if (typeof id === 'string' && (id.startsWith('cf-') || id.startsWith('cf_'))) return;
-            if (d.r2_key && (d.r2_key.includes('/classeur/') || d.r2_key.includes('/mes-fichiers/'))) return;
+            if (d.r2_key && (d.r2_key.includes('/study/') || d.r2_key.includes('/classeur/') || d.r2_key.includes('/mes-fichiers/'))) return;
             if (d.folder_id && !['documents', 'root', 'default-folder'].includes(d.folder_id)) return;
-            if (d.category === 'classeur' || d.category === 'mes-fichiers') return;
+            if (d.category === 'study' || d.category === 'classeur' || d.category === 'mes-fichiers' || d.is_study_import || d.isStudyImport) return;
             const name = d.name || 'Document';
             const normKey = `${name.trim().toLowerCase()}_${d.size_bytes || d.size || 0}`;
             if (seen.has(id) || seenNames.has(normKey)) return;

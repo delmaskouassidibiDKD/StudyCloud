@@ -142,8 +142,26 @@ async function idbSet(key: string, value: any): Promise<void> {
   });
 }
 
+export const isStudyItem = (item: any): boolean => {
+  if (!item) return false;
+  if (item.category === 'study' || item.isStudyImport || item.is_study_import || item.isLeftMenuImport) return true;
+  if (item.uploadSource === 'left-menu-study' || (typeof item.uploadSource === 'string' && item.uploadSource.includes('study'))) return true;
+  if (item.folderName === 'Fichiers importés' || item.source === 'Espace détude' || item.source === "Espace d'étude") return true;
+  if (item.r2Key && item.r2Key.includes('/study/')) return true;
+  if (item.id && typeof item.id === 'string') {
+    try {
+      const studyRaw = localStorage.getItem('unifolder_study_imported_files');
+      if (studyRaw && studyRaw.includes(item.id)) return true;
+      const lmRaw = localStorage.getItem('unifolder_left_menu_general_imports');
+      if (lmRaw && lmRaw.includes(item.id)) return true;
+    } catch (e) {}
+  }
+  return false;
+};
+
 export const isRecentEligible = (file: any): boolean => {
   if (!file || !file.name) return false;
+  if (isStudyItem(file)) return false;
 
   // 1. Exclure formellement les dossiers (3D, classeur, etc.)
   if (file.isFolder || file.is_folder || file.isClasseurFolder) return false;
@@ -170,7 +188,7 @@ export const isRecentEligible = (file: any): boolean => {
 
   // 5. Filtrage strict par catégorie : SEULEMENT images, vidéos, audio, documents
   const cat = String(file.category || '').toLowerCase().trim();
-  const FORBIDDEN_CATS = ['classeur', 'folder', 'classeur_folder', 'dossier', 'notes', 'trash', 'corbeille', 'secure', 'apps', 'downloads', 'telechargements', 'mes-fichiers'];
+  const FORBIDDEN_CATS = ['classeur', 'folder', 'classeur_folder', 'dossier', 'notes', 'trash', 'corbeille', 'secure', 'apps', 'downloads', 'telechargements', 'mes-fichiers', 'study'];
   if (FORBIDDEN_CATS.includes(cat)) return false;
 
   const ALLOWED_CATS = new Set(['images', 'image', 'photos', 'videos', 'video', 'audio', 'musique', 'documents', 'document', 'docs']);
@@ -190,6 +208,7 @@ export const isRecentEligible = (file: any): boolean => {
 
 export const isFolderBoundItem = (item: any): boolean => {
   if (!item) return false;
+  if (isStudyItem(item)) return true;
   if (item.category === 'classeur' || item.category === 'classeur_folder') return true;
   const fId = item.folderId || item.folder_id || item.originalFolderId;
   if (fId && !['documents', 'images', 'videos', 'audio', 'default-folder', 'root'].includes(fId)) return true;
@@ -258,10 +277,10 @@ async function hydrateFromIndexedDB(): Promise<boolean> {
         overview:        parsed.overview || null,
         classeurFolders: Array.isArray(parsed.classeurFolders) ? parsed.classeurFolders : [],
         folderFilesMap:  parsed.folderFilesMap  || {},
-        documents:       Array.isArray(parsed.documents)       ? parsed.documents       : [],
-        images:          Array.isArray(parsed.images)          ? parsed.images          : [],
-        videos:          Array.isArray(parsed.videos)          ? parsed.videos          : [],
-        audio:           Array.isArray(parsed.audio)           ? parsed.audio           : [],
+        documents:       (Array.isArray(parsed.documents) ? parsed.documents : []).filter((d: any) => !isStudyItem(d) && !isFolderBoundItem(d)),
+        images:          (Array.isArray(parsed.images)    ? parsed.images    : []).filter((i: any) => !isStudyItem(i) && !isFolderBoundItem(i)),
+        videos:          (Array.isArray(parsed.videos)    ? parsed.videos    : []).filter((v: any) => !isStudyItem(v) && !isFolderBoundItem(v)),
+        audio:           (Array.isArray(parsed.audio)     ? parsed.audio     : []).filter((a: any) => !isStudyItem(a) && !isFolderBoundItem(a)),
         downloads:       Array.isArray(parsed.downloads)       ? parsed.downloads       : [],
         secure:          Array.isArray(parsed.secure)          ? parsed.secure          : [],
         trash:           Array.isArray(parsed.trash)           ? parsed.trash           : [],
@@ -886,33 +905,33 @@ export const CloudDataStore = {
   },
 
   setDocuments(docs: FileItem[]) {
-    const cleanDocs = docs.filter(d => !isFolderBoundItem(d));
+    const cleanDocs = docs.filter(d => !isFolderBoundItem(d) && !isStudyItem(d));
     const serverIds = new Set(cleanDocs.map(s => s.id));
-    const pending = (currentState.documents || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading) && !isFolderBoundItem(c));
+    const pending = (currentState.documents || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading) && !isFolderBoundItem(c) && !isStudyItem(c));
     currentState = { ...currentState, documents: [...pending, ...cleanDocs] };
     persistToIndexedDB().catch(() => {});
     notify();
   },
   setVideos(videos: FileItem[]) {
-    const cleanVideos = videos.filter(v => !isFolderBoundItem(v));
+    const cleanVideos = videos.filter(v => !isFolderBoundItem(v) && !isStudyItem(v));
     const serverIds = new Set(cleanVideos.map(s => s.id));
-    const pending = (currentState.videos || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading) && !isFolderBoundItem(c));
+    const pending = (currentState.videos || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading) && !isFolderBoundItem(c) && !isStudyItem(c));
     currentState = { ...currentState, videos: [...pending, ...cleanVideos] };
     persistToIndexedDB().catch(() => {});
     notify();
   },
   setImages(images: FileItem[]) {
-    const cleanImages = images.filter(i => !isFolderBoundItem(i));
+    const cleanImages = images.filter(i => !isFolderBoundItem(i) && !isStudyItem(i));
     const serverIds = new Set(cleanImages.map(s => s.id));
-    const pending = (currentState.images || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading) && !isFolderBoundItem(c));
+    const pending = (currentState.images || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading) && !isFolderBoundItem(c) && !isStudyItem(c));
     currentState = { ...currentState, images: [...pending, ...cleanImages] };
     persistToIndexedDB().catch(() => {});
     notify();
   },
   setAudio(audio: FileItem[]) {
-    const cleanAudio = audio.filter(a => !isFolderBoundItem(a));
+    const cleanAudio = audio.filter(a => !isFolderBoundItem(a) && !isStudyItem(a));
     const serverIds = new Set(cleanAudio.map(s => s.id));
-    const pending = (currentState.audio || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading) && !isFolderBoundItem(c));
+    const pending = (currentState.audio || []).filter(c => !serverIds.has(c.id) && Boolean(c.isUploading) && !isFolderBoundItem(c) && !isStudyItem(c));
     currentState = { ...currentState, audio: [...pending, ...cleanAudio] };
     persistToIndexedDB().catch(() => {});
     notify();
@@ -984,6 +1003,7 @@ export const CloudDataStore = {
   },
 
   addOptimisticFile(file: FileItem, folderId?: string) {
+    if (isStudyItem(file) || file.category === 'study') return;
     const targetFolder = folderId || file.folderId || (file as any).folder_id || (file as any).originalFolderId;
     const isFolder = Boolean(targetFolder && !['documents', 'images', 'videos', 'audio', 'default-folder', 'root'].includes(targetFolder));
     const cat = isFolder ? 'classeur' : (file.category || 'documents');
