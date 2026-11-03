@@ -501,6 +501,19 @@ hydrateFromIndexedDB().then(hasData => {
 export const CloudDataStore = {
   getState(): CloudDataState { return currentState; },
 
+  update(fn: (state: CloudDataState) => Partial<CloudDataState> | CloudDataState) {
+    try {
+      const res = fn(currentState);
+      if (res && typeof res === 'object') {
+        currentState = { ...currentState, ...res };
+        persistToIndexedDB().catch(() => { });
+        notify();
+      }
+    } catch (e) {
+      console.warn('[CloudDataStore] update error:', e);
+    }
+  },
+
   subscribe(listener: (state: CloudDataState) => void): () => void {
     listeners.add(listener);
     return () => { listeners.delete(listener); };
@@ -747,7 +760,9 @@ export const CloudDataStore = {
         tasks.push(
           CloudStorageAPI.getDocumentsList().then(docs => {
             if (docs !== null) {
-              currentState.documents = mergeOptimistic(flag(docs).filter(isNotLocallyDeleted), currentState.documents.filter(isNotLocallyDeleted));
+              const cleanDocs = flag(docs).filter(f => isNotLocallyDeleted(f) && !isStudyItem(f));
+              const currentClean = currentState.documents.filter(f => isNotLocallyDeleted(f) && !isStudyItem(f));
+              currentState.documents = mergeOptimistic(cleanDocs, currentClean);
               refreshDerived();
               currentState.isLoaded = true;
               notify();

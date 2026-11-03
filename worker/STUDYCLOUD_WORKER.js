@@ -2070,6 +2070,7 @@ async function getObjectFromAnyBucket(rawEnv, category, key, rangeOptions) {
   const mainBucket = rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
   if (mainBucket && !bucketsToTry.includes(mainBucket)) bucketsToTry.push(mainBucket);
   const candidates = [
+    rawEnv.BUCKET_STUDY,
     rawEnv.BUCKET_DOCUMENTS,
     rawEnv.MON_R2_DOCUMENTS,
     rawEnv["MON_R2-DOCUMENTS"],
@@ -2157,7 +2158,7 @@ async function getObjectFromAnyBucket(rawEnv, category, key, rangeOptions) {
       }
     }
   }
-  const fileIdCandidate = key.match(/(f_[a-zA-Z0-9_-]+)/)?.[1] || (key.includes("/") ? key.split("/").pop()?.split("_")[0] : "");
+  const fileIdCandidate = key.match(/(f_[a-zA-Z0-9_-]+|doc-[a-zA-Z0-9_-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)?.[1] || (key.includes("/") ? key.split("/").pop()?.split("_")[0] : "");
   const cleanFileName = key.split("/").pop() || "";
   if (rawEnv.DB && (fileIdCandidate || cleanFileName)) {
     try {
@@ -8099,8 +8100,9 @@ a:hover{transform:translateY(-2px)}
               OR id LIKE 'cf_folder_%' 
               OR id LIKE 'cf-folder-%'
               OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
+              OR name IN (SELECT name FROM study_imported_files WHERE user_id = ?)
             )
-          `).bind(reqUserId, reqUserId).run().catch(() => {
+          `).bind(reqUserId, reqUserId, reqUserId).run().catch(() => {
           });
           const { results: auds } = await env.DB.prepare(`
             SELECT * FROM audio_files 
@@ -8111,8 +8113,9 @@ a:hover{transform:translateY(-2px)}
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
               AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?)
+              AND name NOT IN (SELECT name FROM study_imported_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId, reqUserId).all();
+          `).bind(reqUserId, reqUserId, reqUserId).all();
           let extraAuds = [];
           try {
             const { results: extra } = await env.DB.prepare(`
@@ -8399,8 +8402,9 @@ a:hover{transform:translateY(-2px)}
               OR id LIKE 'cf_folder_%' 
               OR id LIKE 'cf-folder-%'
               OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
+              OR name IN (SELECT name FROM study_imported_files WHERE user_id = ?)
             )
-          `).bind(reqUserId, reqUserId).run().catch(() => {
+          `).bind(reqUserId, reqUserId, reqUserId).run().catch(() => {
           });
           const { results: imgs } = await env.DB.prepare(`
             SELECT * FROM image_files 
@@ -8962,6 +8966,15 @@ a:hover{transform:translateY(-2px)}
             trashedDocIdSet = new Set((trashList || []).map((t) => t.id));
           } catch (e) {
           }
+          let studyNames = /* @__PURE__ */ new Set();
+          try {
+            const { results: sList } = await env.DB.prepare(`SELECT name, id FROM study_imported_files WHERE user_id = ?`).bind(reqUserId).all();
+            (sList || []).forEach((s) => {
+              if (s.name) studyNames.add(s.name.trim().toLowerCase());
+              if (s.id) trashedDocIdSet.add(s.id);
+            });
+          } catch (e) {
+          }
           let favDocSet = /* @__PURE__ */ new Set();
           try {
             const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId).all();
@@ -8985,6 +8998,7 @@ a:hover{transform:translateY(-2px)}
             if (d.folder_id && !["documents", "root", "default-folder"].includes(d.folder_id)) return;
             if (d.category === "study" || d.category === "classeur" || d.category === "mes-fichiers" || d.is_study_import || d.isStudyImport) return;
             const name = d.name || "Document";
+            if (name && studyNames.has(name.trim().toLowerCase())) return;
             const normKey = `${name.trim().toLowerCase()}_${d.size_bytes || d.size || 0}`;
             if (seen.has(id) || seenNames.has(normKey)) return;
             seen.add(id);
@@ -9021,6 +9035,9 @@ a:hover{transform:translateY(-2px)}
         }
         if (method === "POST") {
           const body = await request.json().catch(() => ({}));
+          if (body.category === "study" || body.source === "Espace d\xE9tude" || body.source === "Espace d'\xE9tude" || body.r2Key?.includes("/study/") || body.isStudyImport) {
+            return jsonResponse({ success: true, message: "Ignor\xE9 (espace d'\xE9tude)" }, 200, origin);
+          }
           const id = body.id || "doc_" + crypto.randomUUID().substring(0, 10);
           const name = String(body.name || "Document").trim();
           const size = body.size || "0 o";

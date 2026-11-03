@@ -16,7 +16,7 @@
 
 import { getWorkerApiUrl } from './api';
 import { getCurrentUserId } from './userSync';
-import { CloudDataStore, FileItem, setTombstoneChecker, setTombstoneRemover, unmarkItemDeleted, setRestoreUpsertNotifier, setFavoriteSyncNotifier } from './cloudDataStore';
+import { CloudDataStore, FileItem, setTombstoneChecker, setTombstoneRemover, unmarkItemDeleted, setRestoreUpsertNotifier, setFavoriteSyncNotifier, isStudyItem } from './cloudDataStore';
 import { ClasseurCreatedFolder } from '../components/Folder3DModels';
 import { removeDownloadedFile } from './downloadsManager';
 import { deleteFileBlob } from './localFileStorage';
@@ -478,6 +478,9 @@ export const LocalSyncReplication = {
           }
 
           if (parsedContent && typeof parsedContent === 'object') {
+            if (doc.category === 'study' || parsedContent.category === 'study' || isStudyItem(parsedContent)) {
+              continue;
+            }
             const cat = doc.category || parsedContent.category || 'documents';
             const fileItem: FileItem = {
               ...parsedContent,

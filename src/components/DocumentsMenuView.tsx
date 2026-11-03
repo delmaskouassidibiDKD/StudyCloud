@@ -48,6 +48,7 @@ import { UploadQueue } from '../services/uploadQueue';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { PdfHorizontalViewer } from './PdfHorizontalViewer';
+import { getWorkerApiUrl } from '../services/api';
 import { generatePdfThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
 import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes, isItemPinned } from './HeaderMenuControls';
@@ -394,13 +395,11 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
 
   // Nettoyage proactif de tout fichier d'étude qui aurait pu s'infiltrer dans les documents
   useEffect(() => {
-    CloudDataStore.update(state => {
-      const filtered = (state.documents || []).filter(d => !isExcludedFromDocuments(d));
-      if (filtered.length !== (state.documents || []).length) {
-        return { ...state, documents: filtered };
-      }
-      return state;
-    });
+    const docs = CloudDataStore.getState().documents || [];
+    const clean = docs.filter(d => !isExcludedFromDocuments(d));
+    if (clean.length !== docs.length) {
+      CloudDataStore.setDocuments(clean);
+    }
   }, []);
 
   // Synchronisation continue ultra-légère avec TanStack Query
@@ -426,7 +425,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     }
   }, [serverDocuments]);
 
-  // Résolution du Blob URL quand un document est sélectionné
+  // Résolution robuste du Blob URL quand un document est sélectionné (accès 0ms ou stream)
   useEffect(() => {
     if (!selectedDoc) {
       setSplitResolvedPdfUrl('');
@@ -440,20 +439,60 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       (selectedDoc.url && selectedDoc.url.toLowerCase().includes('.pdf')) ||
       Boolean(selectedDoc.type?.includes('pdf'));
 
-    if (isPdf) {
-      if (selectedDoc.url && !selectedDoc.url.startsWith('data:image')) {
-        setSplitResolvedPdfUrl(selectedDoc.url);
-      }
-      if (selectedDoc.id) {
-        getFileBlobUrl(selectedDoc.id)
-          .then((blobUrl) => {
-            if (isMounted && blobUrl) {
-              setSplitResolvedPdfUrl(blobUrl);
-            }
-          })
-          .catch(() => {});
-      }
+    const rawUrl = selectedDoc.url || selectedDoc.previewUrl || '';
+    const isDeadBlob = rawUrl.startsWith('blob:');
+    const safeDirectUrl = isDeadBlob ? '' : rawUrl;
+    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+    const streamFallbackUrl = selectedDoc.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(selectedDoc.id)}` : '';
+
+    if (safeDirectUrl) {
+      setSplitResolvedPdfUrl(safeDirectUrl);
+    } else if (streamFallbackUrl) {
+      setSplitResolvedPdfUrl(streamFallbackUrl);
     }
+
+    const resolveDocumentBinary = async () => {
+      let blob: Blob | null = null;
+      if (selectedDoc.id) {
+        try {
+          blob = await getFileBlob(selectedDoc.id);
+        } catch {}
+      }
+
+      if (!blob && safeDirectUrl && !safeDirectUrl.startsWith('data:image')) {
+        try {
+          const resp = await fetch(safeDirectUrl);
+          if (resp.ok) {
+            blob = await resp.blob();
+          }
+        } catch {}
+      }
+
+      if (!blob && selectedDoc.id) {
+        try {
+          const resp = await fetch(`${baseUrl}/api/cloud/stream/${encodeURIComponent(selectedDoc.id)}`);
+          if (resp.ok) {
+            blob = await resp.blob();
+          }
+        } catch {}
+      }
+
+      if (!isMounted) return;
+
+      if (blob) {
+        try {
+          const freshBlobUrl = URL.createObjectURL(blob);
+          setSplitResolvedPdfUrl(freshBlobUrl);
+          if (selectedDoc.id) {
+            storeFileBlob(selectedDoc.id, blob).catch(() => {});
+          }
+        } catch {}
+      } else if (streamFallbackUrl && !safeDirectUrl) {
+        setSplitResolvedPdfUrl(streamFallbackUrl);
+      }
+    };
+
+    resolveDocumentBinary();
 
     return () => {
       isMounted = false;

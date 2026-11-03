@@ -16,7 +16,8 @@ import {
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
-import { getFileBlob } from '../services/localFileStorage';
+import { getFileBlob, storeFileBlob } from '../services/localFileStorage';
+import { getWorkerApiUrl } from '../services/api';
 
 // Configuration du worker PDF.js
 if (typeof window !== 'undefined' && !(pdfjsLib as any).GlobalWorkerOptions?.workerSrc) {
@@ -320,15 +321,30 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
         }
       }
 
-      // B. Si pas trouvé et URL valide distante
-      if (!foundBlob && directUrl && !directUrl.startsWith('data:image/')) {
+      // B. Si pas trouvé et URL valide distante (non blob)
+      if (!foundBlob && directUrl && !directUrl.startsWith('data:image/') && !directUrl.startsWith('blob:')) {
         try {
           const res = await fetch(directUrl);
           if (res.ok) {
             foundBlob = await res.blob();
+            if (fileId) storeFileBlob(fileId, foundBlob).catch(() => {});
           }
         } catch (err) {
           console.warn('[ModernDocumentViewer] Erreur fetch distant:', err);
+        }
+      }
+
+      // C. Fallback direct vers /api/cloud/stream/:fileId si disponible
+      if (!foundBlob && fileId) {
+        try {
+          const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+          const res = await fetch(`${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`);
+          if (res.ok) {
+            foundBlob = await res.blob();
+            storeFileBlob(fileId, foundBlob).catch(() => {});
+          }
+        } catch (err) {
+          console.warn('[ModernDocumentViewer] Erreur stream fallback:', err);
         }
       }
 

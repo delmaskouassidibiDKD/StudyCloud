@@ -141,7 +141,7 @@ class UploadQueueManager {
       const localBlobUrl = URL.createObjectURL(file);
 
       // 1. Stocker le binaire immédiatement dans IndexedDB (accès 0ms)
-      storeFileBlob(fileId, file).catch(() => {});
+      storeFileBlob(fileId, file).catch(() => { });
 
       const item: FileItem = {
         id: fileId,
@@ -224,7 +224,7 @@ class UploadQueueManager {
       }
 
       // 1. Sauvegarde binaire IndexedDB (accès 0ms)
-      storeFileBlob(item.id, file as any).catch(() => {});
+      storeFileBlob(item.id, file as any).catch(() => { });
       // 2. Ajout optimiste immédiat dans CloudDataStore (uniquement pour les fichiers généraux, JAMAIS pour les imports d'étude)
       if (effectiveCategory !== 'study' && options.uploadSource !== 'left-menu-study' && !item.isStudyImport && !item.isLeftMenuImport) {
         CloudDataStore.addOptimisticFile(item, effectiveFolderId);
@@ -345,7 +345,7 @@ class UploadQueueManager {
 
       if (category !== 'images' && previewDataUrl && previewDataUrl.startsWith('data:image')) {
         setCachedMediaThumbnail(id, previewDataUrl);
-        CloudStorageAPI.saveMediaThumbnail(id, category, previewDataUrl, fileName).catch(() => {});
+        CloudStorageAPI.saveMediaThumbnail(id, category, previewDataUrl, fileName).catch(() => { });
       }
 
 
@@ -359,7 +359,7 @@ class UploadQueueManager {
 
       const resolvedFolderId = folderId || task.folderId || (task.fileItem as any)?.folderId || (task.fileItem as any)?.folder_id;
       const isFolderUpload = Boolean(
-        category === 'classeur' || 
+        category === 'classeur' ||
         (resolvedFolderId && !['documents', 'images', 'videos', 'audio', 'default-folder', 'root'].includes(resolvedFolderId))
       );
 
@@ -454,28 +454,38 @@ class UploadQueueManager {
       task.completedAt = Date.now();
 
       if (serverFileId && serverFileId !== id) {
-        storeFileBlob(serverFileId, file).catch(() => {});
+        storeFileBlob(serverFileId, file).catch(() => { });
       }
 
-      CloudDataStore.updateFile(id, {
-        id: serverFileId || id,
-        url: uploadUrl || task.fileItem.url,
-        r2Key: r2Key || task.fileItem.r2Key,
-        previewUrl: category === 'images'
-          ? (uploadUrl || task.fileItem.url)
-          : (category === 'audio'
-              ? (previewDataUrl || task.fileItem?.coverUrl || undefined)
-              : (previewDataUrl || uploadUrl || task.fileItem.previewUrl)),
-        thumbnailUrl: category === 'images'
-          ? (uploadUrl || task.fileItem.url)
-          : (previewDataUrl || task.fileItem?.thumbnailUrl || undefined),
-        coverUrl: category === 'audio' ? (previewDataUrl || task.fileItem?.coverUrl) : undefined,
-        artist: task.fileItem?.artist || (category === 'audio' ? 'Artiste inconnu' : undefined),
-        videoUrl: category === 'videos' ? (uploadUrl || task.fileItem.videoUrl) : undefined,
-        audioUrl: category === 'audio' ? (uploadUrl || task.fileItem.audioUrl) : undefined,
-        isUploading: false,
-        uploadProgress: 100,
-      }, folderId);
+      // Identification stricte des imports d'étude et création (qui ne doivent JAMAIS polluer les menus généraux)
+      const isStudyOrCreationImport = task.uploadSource === 'left-menu-study' ||
+        category === 'study' ||
+        task.uploadSource === 'study' ||
+        Boolean((task.fileItem as any)?.isLeftMenuImport) ||
+        Boolean((task.fileItem as any)?.isStudyImport) ||
+        Boolean((task.fileItem as any)?.isStudySession);
+
+      if (!isStudyOrCreationImport && category !== 'study') {
+        CloudDataStore.updateFile(id, {
+          id: serverFileId || id,
+          url: uploadUrl || task.fileItem.url,
+          r2Key: r2Key || task.fileItem.r2Key,
+          previewUrl: category === 'images'
+            ? (uploadUrl || task.fileItem.url)
+            : (category === 'audio'
+                ? (previewDataUrl || task.fileItem?.coverUrl || undefined)
+                : (previewDataUrl || uploadUrl || task.fileItem.previewUrl)),
+          thumbnailUrl: category === 'images'
+            ? (uploadUrl || task.fileItem.url)
+            : (previewDataUrl || task.fileItem?.thumbnailUrl || undefined),
+          coverUrl: category === 'audio' ? (previewDataUrl || task.fileItem?.coverUrl) : undefined,
+          artist: task.fileItem?.artist || (category === 'audio' ? 'Artiste inconnu' : undefined),
+          videoUrl: category === 'videos' ? (uploadUrl || task.fileItem.videoUrl) : undefined,
+          audioUrl: category === 'audio' ? (uploadUrl || task.fileItem.audioUrl) : undefined,
+          isUploading: false,
+          uploadProgress: 100,
+        }, folderId);
+      }
 
       // Si audio, sauvegarder également la métadonnée complète (artiste, album, pochette réelle, etc.) dans D1
       if (category === 'audio') {
@@ -491,29 +501,22 @@ class UploadQueueManager {
           artist: task.fileItem?.artist || 'Artiste inconnu',
           isUploading: false,
         };
-        CloudStorageAPI.saveAudio(audioToSave as any).catch(() => {});
+        CloudStorageAPI.saveAudio(audioToSave as any).catch(() => { });
       }
 
       // Synchronisation directe et EXCLUSIVE dans la table files de D1 (pour Mes Fichiers et Matières)
-      const isStudyOrCreationImport = task.uploadSource === 'left-menu-study' ||
-        category === 'study' ||
-        task.uploadSource === 'study' ||
-        Boolean((task.fileItem as any)?.isLeftMenuImport) ||
-        Boolean((task.fileItem as any)?.isStudyImport) ||
-        Boolean((task.fileItem as any)?.isStudySession);
-
       const isMesFichiersUpload = !isStudyOrCreationImport && (
-        category === 'mes-fichiers' || 
-        task.uploadSource === 'mes-fichiers' || 
-        Boolean((task.fileItem as any)?.matiere) || 
+        category === 'mes-fichiers' ||
+        task.uploadSource === 'mes-fichiers' ||
+        Boolean((task.fileItem as any)?.matiere) ||
         (task.folderId && !['documents', 'images', 'videos', 'audio', 'default-folder', 'root'].includes(task.folderId))
       );
 
       if (uploadUrl && r2Key && isMesFichiersUpload) {
         const currentUserId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
         const extVal = (task.fileItem as any)?.extension || (fileName.includes('.') ? fileName.split('.').pop()?.toUpperCase() : 'FICHIER');
-        const resolvedMatiereId = (task.fileItem as any)?.matiereId || 
-          (task.folderId && task.folderId !== 'root' && task.folderId !== 'mes-fichiers' ? task.folderId : null) || 
+        const resolvedMatiereId = (task.fileItem as any)?.matiereId ||
+          (task.folderId && task.folderId !== 'root' && task.folderId !== 'mes-fichiers' ? task.folderId : null) ||
           ((task.fileItem as any)?.matiere && (task.fileItem as any).matiere !== 'Mes fichiers' ? (task.fileItem as any).matiere : null);
 
         StudyCloudAPI.registerFileMetadata({
@@ -555,7 +558,7 @@ class UploadQueueManager {
       if (serverFileId && serverFileId !== id) {
         getFileBlob(id).then(b => {
           if (b) storeFileBlob(serverFileId, b);
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       // Mettre à jour immédiatement le stockage local pour que les fichiers restent lisibles avec leur URL R2
@@ -595,11 +598,11 @@ class UploadQueueManager {
                 localStorage.setItem(k, JSON.stringify(updated));
               }
             }
-          } catch (e) {}
+          } catch (e) { }
         };
         ['unifolder_study_imported_files', 'unifolder_left_menu_general_imports', 'unifolder_files_menu_items'].forEach(updateLocalKey);
         window.dispatchEvent(new Event('unifolder_files_updated'));
-      } catch (err) {}
+      } catch (err) { }
 
       // Invalider immédiatement le cache TanStack Query ciblé pour préserver l'isolation
       try {
@@ -609,12 +612,12 @@ class UploadQueueManager {
         else if (category === 'documents') invalidateCloudQueries.documents();
         else if (category === 'classeur' || isFolderUpload) invalidateCloudQueries.classeurFiles(resolvedFolderId || folderId);
         else if (category === 'mes-fichiers') invalidateCloudQueries.filesMenu();
-        
+
         invalidateCloudQueries.overview();
         if (category !== 'mes-fichiers' && category !== 'documents' && category !== 'classeur' && !isFolderUpload) {
           invalidateCloudQueries.all();
         }
-      } catch {}
+      } catch { }
 
       // Déclencher un événement global pour tout listener de mise à jour
       if (typeof window !== 'undefined') {
@@ -625,9 +628,9 @@ class UploadQueueManager {
     } catch (err: any) {
       console.warn(`[UploadQueue] Échec sur "${fileName}":`, err);
 
-      const isQuotaExceeded = err?.isStorageLimitExceeded || 
-        err?.code === 'STORAGE_LIMIT_EXCEEDED' || 
-        err?.message?.includes('STORAGE_LIMIT_EXCEEDED') || 
+      const isQuotaExceeded = err?.isStorageLimitExceeded ||
+        err?.code === 'STORAGE_LIMIT_EXCEEDED' ||
+        err?.message?.includes('STORAGE_LIMIT_EXCEEDED') ||
         err?.message?.includes('insuffisant') ||
         (err?.message?.includes('413') && !err?.message?.includes('> 100 Mo'));
 
@@ -640,7 +643,7 @@ class UploadQueueManager {
         // Détruire / supprimer le fichier temporaire du store pour ne rien laisser consommer d'espace
         try {
           CloudDataStore.removeFile(id);
-        } catch(e) {}
+        } catch (e) { }
 
         this.notify();
 
@@ -668,10 +671,10 @@ class UploadQueueManager {
             ? 'Délai d\'envoi dépassé (connexion trop lente)'
             : (err?.message || 'Erreur réseau ou timeout');
         task.error = errorMsg;
-        CloudDataStore.updateFile(id, { 
-          isUploading: false, 
-          isSyncError: true, 
-          uploadError: errorMsg 
+        CloudDataStore.updateFile(id, {
+          isUploading: false,
+          isSyncError: true,
+          uploadError: errorMsg
         } as any, folderId);
         this.notify();
 
@@ -691,10 +694,10 @@ class UploadQueueManager {
       task.retries = 0;
       task.error = undefined;
       task.progress = 15;
-      CloudDataStore.updateFile(task.id, { 
-        isUploading: true, 
-        isSyncError: false, 
-        uploadError: undefined 
+      CloudDataStore.updateFile(task.id, {
+        isUploading: true,
+        isSyncError: false,
+        uploadError: undefined
       } as any, task.folderId);
       this.notify();
       this.processQueue();
@@ -708,10 +711,10 @@ class UploadQueueManager {
         task.retries = 0;
         task.error = undefined;
         task.progress = 15;
-        CloudDataStore.updateFile(task.id, { 
-          isUploading: true, 
-          isSyncError: false, 
-          uploadError: undefined 
+        CloudDataStore.updateFile(task.id, {
+          isUploading: true,
+          isSyncError: false,
+          uploadError: undefined
         } as any, task.folderId);
       }
     });
