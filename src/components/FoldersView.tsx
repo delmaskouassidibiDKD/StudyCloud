@@ -2055,7 +2055,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             >
               {/* PAGE 0 : Page 1 à gauche avec applications 3D (4 par ligne sur mobile, identique à Page 2) */}
               <div className="w-1/2 shrink-0 px-1 sm:px-4 py-1 sm:py-2 h-full flex flex-col justify-start">
-                <div className="grid grid-cols-4 md:flex md:flex-wrap md:items-start md:justify-start items-start justify-items-center w-full max-w-sm sm:max-w-md md:max-w-none mx-auto pt-1 gap-y-3.5 sm:gap-y-5 md:gap-12 gap-x-1.5 sm:gap-x-3">
+                <div className="grid grid-cols-4 md:flex md:flex-wrap md:items-start md:justify-start items-start justify-items-center w-full max-w-sm sm:max-w-md md:max-w-none mx-auto pt-1 gap-y-3.5 sm:gap-y-5 md:gap-4 lg:gap-6 gap-x-1.5 sm:gap-x-3 md:gap-4 lg:gap-6">
                   {/* Application Fichiers 3D Espace Cloud */}
                   <div 
                     onClick={(e) => {
@@ -2067,10 +2067,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                       setActivePageIndex(0);
                       setViewMode('page1-files-menu');
                     }}
-                    className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-150 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:max-w-none md:w-auto"
+                    className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-200 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:w-24 lg:w-26 md:shrink-0"
                   >
-                    {/* Dossier 3D Espace Cloud avec Nuage Orange au milieu - Même taille mobile que Page 2 */}
-                    <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-32 md:h-28 transition-all duration-300 filter drop-shadow-[0_8px_18px_rgba(0,0,0,0.18)] dark:drop-shadow-[0_12px_26px_rgba(0,0,0,0.5)] group-hover:drop-shadow-[0_16px_30px_rgba(249,115,22,0.35)] group-hover:scale-108 active:scale-95 flex items-center justify-center">
+                    {/* Dossier 3D Espace Cloud avec Nuage Orange au milieu - Même taille que Page 2 */}
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-24 md:h-24 lg:w-26 lg:h-26 transition-all duration-300 filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.18)] dark:drop-shadow-[0_10px_24px_rgba(0,0,0,0.55)] group-hover:drop-shadow-[0_14px_28px_rgba(249,115,22,0.35)] group-hover:scale-110 active:scale-95 flex items-center justify-center">
                       <svg className="w-full h-full" viewBox="0 0 100 90" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <defs>
                           {/* Dégradé Onglet arrière */}
@@ -2219,16 +2219,16 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                       setActivePageIndex(0);
                       setViewMode('red-robot-menu');
                     }}
-                    className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-150 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:max-w-none md:w-auto"
+                    className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-200 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:w-24 lg:w-26 md:shrink-0"
                     title="Ouvrir l'application"
                   >
-                    {/* Conteneur avec taille équivalente au dossier 3D Espace Cloud */}
-                    <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-32 md:h-28 flex items-center justify-center overflow-visible filter drop-shadow-[0_8px_18px_rgba(220,38,38,0.3)] dark:drop-shadow-[0_12px_26px_rgba(239,68,68,0.45)] group-hover:drop-shadow-[0_16px_30px_rgba(239,68,68,0.6)] group-hover:scale-108 active:scale-95 transition-all duration-300">
+                    {/* Conteneur avec taille équivalente à Page 2 */}
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-24 md:h-24 lg:w-26 lg:h-26 flex items-center justify-center overflow-visible filter drop-shadow-[0_8px_16px_rgba(220,38,38,0.3)] dark:drop-shadow-[0_10px_24px_rgba(239,68,68,0.45)] group-hover:drop-shadow-[0_14px_28px_rgba(239,68,68,0.6)] group-hover:scale-110 active:scale-95 transition-all duration-300">
                       <div className="flex md:hidden items-center justify-center">
                         <DelmasRobot size={54} variant="red" floating />
                       </div>
                       <div className="hidden md:flex items-center justify-center">
-                        <DelmasRobot size={96} variant="red" floating />
+                        <DelmasRobot size={68} variant="red" floating />
                       </div>
                     </div>
 
@@ -2251,11 +2251,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                       }
                       onOpenStudySpace?.();
                     }}
-                    className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-150 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:max-w-none md:w-auto"
+                    className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-200 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:w-24 lg:w-26 md:shrink-0"
                     title="Ouvrir le Menu de création"
                   >
-                    {/* Conteneur avec taille équivalente au dossier 3D Espace Cloud et Robot Rouge */}
-                    <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-32 md:h-28 flex items-center justify-center overflow-visible filter drop-shadow-[0_8px_18px_rgba(2,132,199,0.3)] dark:drop-shadow-[0_12px_26px_rgba(56,189,248,0.45)] group-hover:drop-shadow-[0_16px_30px_rgba(56,189,248,0.6)] group-hover:scale-108 active:scale-95 transition-all duration-300">
+                    {/* Conteneur avec taille équivalente à Page 2 */}
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-24 md:h-24 lg:w-26 lg:h-26 flex items-center justify-center overflow-visible filter drop-shadow-[0_8px_16px_rgba(2,132,199,0.3)] dark:drop-shadow-[0_10px_24px_rgba(56,189,248,0.45)] group-hover:drop-shadow-[0_14px_28px_rgba(56,189,248,0.6)] group-hover:scale-110 active:scale-95 transition-all duration-300">
                       <CreationMenuBookIcon className="w-full h-full" />
                     </div>
 
