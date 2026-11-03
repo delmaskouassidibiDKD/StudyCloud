@@ -25,10 +25,72 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // Gestion ultra-précise du clavier virtuel mobile (0ms de décalage avec le visualViewport)
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const typingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Détection en temps réel de l'ouverture et de la hauteur exacte du clavier sur smartphone
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleScrollLock = () => {
+      if (window.scrollY !== 0) window.scrollTo(0, 0);
+      if (document.body.scrollTop !== 0) document.body.scrollTop = 0;
+      if (document.documentElement.scrollTop !== 0) document.documentElement.scrollTop = 0;
+    };
+
+    const updateKeyboardMetrics = () => {
+      if (window.visualViewport) {
+        // En mode interactive-widget=overlays-content :
+        // window.innerHeight est la hauteur fixe du layout
+        // visualViewport.height rétrécit exactement de la hauteur du clavier virtuel
+        const layoutH = window.innerHeight;
+        const visualH = window.visualViewport.height;
+        const offsetTop = window.visualViewport.offsetTop || 0;
+        const diff = Math.max(0, Math.round(layoutH - visualH - offsetTop));
+
+        if (diff > 75) {
+          setKeyboardOffset(diff);
+          setIsKeyboardOpen(true);
+        } else {
+          setKeyboardOffset(0);
+          setIsKeyboardOpen(false);
+        }
+      }
+      handleScrollLock();
+    };
+
+    if ('virtualKeyboard' in navigator) {
+      try {
+        (navigator as any).virtualKeyboard.overlaysContent = true;
+        (navigator as any).virtualKeyboard.addEventListener('geometrychange', (e: any) => {
+          const h = e.target.boundingRect?.height || 0;
+          if (h > 75) {
+            setKeyboardOffset(Math.round(h));
+            setIsKeyboardOpen(true);
+          } else {
+            setKeyboardOffset(0);
+            setIsKeyboardOpen(false);
+          }
+        });
+      } catch {}
+    }
+
+    window.addEventListener('scroll', handleScrollLock, { passive: true });
+    window.visualViewport?.addEventListener('resize', updateKeyboardMetrics);
+    window.visualViewport?.addEventListener('scroll', updateKeyboardMetrics);
+
+    return () => {
+      window.removeEventListener('scroll', handleScrollLock);
+      window.visualViewport?.removeEventListener('resize', updateKeyboardMetrics);
+      window.visualViewport?.removeEventListener('scroll', updateKeyboardMetrics);
+    };
+  }, []);
 
   // Auto-scroll fluide vers le bas dès qu'un message ou caractère arrive
   useEffect(() => {
@@ -269,6 +331,10 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
       <div
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-5 flex flex-col relative z-10"
+        style={{
+          paddingBottom: keyboardOffset > 0 ? `${keyboardOffset + 24}px` : undefined,
+          transition: 'padding-bottom 0.18s ease-out',
+        }}
       >
         {messages.length === 0 ? (
           /* ÉCRAN DE BIENVENUE AVEC ROBOT BLEU */
@@ -406,8 +472,25 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
       </div>
 
       {/* ZONE DE SAISIE EN BAS AVEC BOUTON D'ENVOI / ARRÊT INTÉGRÉ */}
-      <div className="p-3 sm:p-4 border-t border-zinc-800/80 bg-[#181a20]/95 backdrop-blur-md shrink-0 relative z-20">
-        <div className="relative flex items-end gap-2 bg-[#20232c] border border-zinc-700/70 focus-within:border-blue-500/80 rounded-2xl p-2 sm:p-2.5 transition-all shadow-inner">
+      <div 
+        className={`px-3 sm:px-5 pt-1.5 shrink-0 relative z-30 transition-all duration-150 ${
+          isKeyboardOpen ? 'pb-1' : 'pb-3.5 sm:pb-5'
+        }`}
+        style={{
+          transform: keyboardOffset > 0 ? `translateY(-${keyboardOffset}px)` : undefined,
+          transition: 'transform 0.18s cubic-bezier(0.2, 0, 0, 1), padding-bottom 0.15s ease-out',
+        }}
+      >
+        <div className="relative mx-auto max-w-full rounded-2xl sm:rounded-3xl p-[1.5px] overflow-hidden bg-zinc-700/60 shadow-xl group">
+          {/* Liseré subtil bleu Delmas */}
+          <div
+            className="absolute -inset-[250%] pointer-events-none animate-rainbow-spin"
+            style={{
+              background: 'conic-gradient(from 0deg at 50% 50%, transparent 0deg, transparent 160deg, #3b82f6 210deg, #60a5fa 240deg, #93c5fd 270deg, #6366f1 300deg, #818cf8 330deg, transparent 360deg)',
+              animation: 'rainbowBorderSpin 5s linear infinite',
+            }}
+          />
+          <div className="relative flex items-end gap-2 bg-[#20232c] rounded-[20px] sm:rounded-[22.5px] p-2 sm:p-2.5 transition-all">
           <textarea
             ref={textareaRef}
             rows={1}
@@ -418,6 +501,23 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
               e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
             }}
             onKeyDown={handleKeyDown}
+            onFocus={() => {
+              setIsKeyboardOpen(true);
+              window.scrollTo(0, 0);
+              document.body.scrollTop = 0;
+              document.documentElement.scrollTop = 0;
+              setTimeout(() => {
+                window.scrollTo(0, 0);
+                document.body.scrollTop = 0;
+                document.documentElement.scrollTop = 0;
+                if (scrollContainerRef.current) {
+                  scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+                }
+              }, 80);
+            }}
+            onBlur={() => {
+              window.scrollTo(0, 0);
+            }}
             placeholder="Posez votre question à Delmas (ex: cours, formules, méthode)..."
             className="flex-1 bg-transparent resize-none text-[13px] sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none max-h-36 py-1 px-2 leading-relaxed"
           />
@@ -449,10 +549,14 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
           )}
         </div>
 
-        {/* Note de précaution sous le champ */}
-        <div className="flex items-center justify-center gap-1.5 mt-2 text-[11px] text-zinc-400 font-medium text-center">
-          <span>L'assistant Delmas peut se tromper.</span>
         </div>
+
+        {/* Note de précaution sous le champ */}
+        {!isKeyboardOpen && (
+          <div className="flex items-center justify-center gap-1.5 mt-2 text-[11px] text-zinc-400 font-medium text-center">
+            <span>L'assistant Delmas peut se tromper.</span>
+          </div>
+        )}
       </div>
     </div>
   );
