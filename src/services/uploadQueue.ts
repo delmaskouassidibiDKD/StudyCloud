@@ -10,7 +10,7 @@
 
 import { CloudDataStore, FileItem } from './cloudDataStore';
 import { CloudStorageAPI } from './cloudStorageService';
-import { storeFileBlob } from './localFileStorage';
+import { storeFileBlob, deleteFileBlob } from './localFileStorage';
 import { invalidateCloudQueries } from './queryClient';
 import { StudyCloudAPI } from './api';
 import { getCurrentUserId } from './userSync';
@@ -448,13 +448,26 @@ class UploadQueueManager {
         }
       }
 
-      // Étape C : Succès - mise à jour définitive du CloudDataStore et IndexedDB
+      // Étape C : Succès - mise à jour définitive du CloudDataStore et nettoyage du tampon local
       task.status = 'completed';
       task.progress = 100;
       task.completedAt = Date.now();
+      if (task.fileItem) {
+        task.fileItem.id = serverFileId || id;
+        if (uploadUrl) task.fileItem.url = uploadUrl;
+        if (r2Key) task.fileItem.r2Key = r2Key;
+        task.fileItem.isUploading = false;
+        task.fileItem.uploadProgress = 100;
+      }
 
-      if (serverFileId && serverFileId !== id) {
-        storeFileBlob(serverFileId, file).catch(() => { });
+      // Une fois le fichier sécurisé sur Cloudflare R2, purger le tampon IndexedDB après 60s pour ne jamais surcharger l'appareil
+      if (uploadUrl && !uploadUrl.startsWith('blob:')) {
+        setTimeout(() => {
+          deleteFileBlob(id).catch(() => { });
+          if (serverFileId && serverFileId !== id) {
+            deleteFileBlob(serverFileId).catch(() => { });
+          }
+        }, 60000);
       }
 
       // Identification stricte des imports d'étude et création (qui ne doivent JAMAIS polluer les menus généraux)
@@ -552,13 +565,6 @@ class UploadQueueManager {
           isFavorite: !!task.fileItem?.isFavorite,
           importedAt: Date.now()
         }).catch(err => console.warn('[UploadQueue] Erreur update registerStudyFile:', err));
-      }
-
-      // Synchroniser le blob sous serverFileId si différent de id
-      if (serverFileId && serverFileId !== id) {
-        getFileBlob(id).then(b => {
-          if (b) storeFileBlob(serverFileId, b);
-        }).catch(() => { });
       }
 
       // Mettre à jour immédiatement le stockage local pour que les fichiers restent lisibles avec leur URL R2

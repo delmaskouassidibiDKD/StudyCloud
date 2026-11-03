@@ -392,47 +392,61 @@ export function CenterMenu({
     const fileExt = (file.name?.split('.').pop() || file.extension || '').toLowerCase();
 
     const rawDirectUrl = file.url || file.audioUrl || file.previewUrl || (file as any).videoUrl || '';
-    const isDeadBlob = rawDirectUrl.startsWith('blob:');
+    const isDeadBlob = rawDirectUrl.startsWith('blob:') || rawDirectUrl.startsWith('data:image/');
     const directUrl = isDeadBlob ? '' : rawDirectUrl;
+    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+    const streamFallbackUrl = file.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}` : '';
+
     if (directUrl) {
       setResolvedUrl(directUrl);
+    } else if (streamFallbackUrl) {
+      setResolvedUrl(streamFallbackUrl);
     }
 
-    // 1. Resolve URL for media/PDF/audio
-    if (file.id) {
+    // 1. Utiliser le tampon local uniquement si le fichier est en cours d'envoi (isUploading), sinon streaming direct R2
+    if (file.id && ((file as any).isUploading || !directUrl)) {
       getFileBlobUrl(file.id).then(url => {
         if (!isMounted) return;
         if (url) {
           setResolvedUrl(url);
         } else if (directUrl) {
           setResolvedUrl(directUrl);
-        } else {
-          const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-          setResolvedUrl(`${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}`);
+        } else if (streamFallbackUrl) {
+          setResolvedUrl(streamFallbackUrl);
         }
       });
-    } else if (directUrl) {
-      setResolvedUrl(directUrl);
     }
 
-    // 2. Fetch binary blob for in-depth parsing (mammoth, xlsx, jszip, text)
+    const isText = ['txt', 'md', 'json', 'csv', 'js', 'ts', 'py', 'html', 'css', 'sql', 'xml', 'log', 'java', 'c', 'cpp', 'sh', 'env'].includes(fileExt) || Boolean(file.isNotepad);
+    const isWord = ['docx', 'doc'].includes(fileExt);
+    const isExcel = ['xlsx', 'xls', 'csv'].includes(fileExt);
+    const isPpt = ['pptx', 'ppt'].includes(fileExt);
+
+    // Pour les PDF, vidéos, audios et images : lecture en streaming pur depuis Cloudflare R2 sans télécharger en mémoire/IndexedDB
+    if (!isText && !isWord && !isExcel && !isPpt) {
+      setIsLoadingDocument(false);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    // 2. Téléchargement léger en mémoire uniquement pour le décodage des fichiers bureautiques (Word, Excel, PowerPoint, Texte)
     const loadBinaryData = async () => {
       let blob: Blob | null = null;
-      if (file.id) {
+      if (file.id && (file as any).isUploading) {
         blob = await getFileBlob(file.id);
       }
-      if (!blob && file.url && !file.url.startsWith('blob:')) {
+      if (!blob && directUrl) {
         try {
-          const resp = await fetch(file.url);
+          const resp = await fetch(directUrl);
           if (resp.ok) blob = await resp.blob();
         } catch (e) {
           console.warn('CenterMenu fetch fallback error:', e);
         }
       }
-      if (!blob && file.id) {
+      if (!blob && streamFallbackUrl) {
         try {
-          const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-          const resp = await fetch(`${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}`);
+          const resp = await fetch(streamFallbackUrl);
           if (resp.ok) {
             blob = await resp.blob();
           }
@@ -441,7 +455,6 @@ export function CenterMenu({
       const r2Key = file.r2Key || (file as any).r2_key;
       if (!blob && r2Key) {
         try {
-          const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
           const resp = await fetch(`${baseUrl}/api/storage/file/${encodeURIComponent(r2Key)}`);
           if (resp.ok) {
             blob = await resp.blob();
@@ -450,22 +463,6 @@ export function CenterMenu({
       }
 
       if (!isMounted) return;
-
-      // Injection d'une URL Blob locale fraîche pour affichage instantané sans erreur R2
-      if (blob) {
-        try {
-          const freshBlobUrl = URL.createObjectURL(blob);
-          setResolvedUrl(freshBlobUrl);
-          if (file.id) {
-            storeFileBlob(file.id, blob).catch(() => {});
-          }
-        } catch (e) {}
-      }
-
-      const isText = ['txt', 'md', 'json', 'csv', 'js', 'ts', 'py', 'html', 'css', 'sql', 'xml', 'log', 'java', 'c', 'cpp', 'sh', 'env'].includes(fileExt);
-      const isWord = ['docx', 'doc'].includes(fileExt);
-      const isExcel = ['xlsx', 'xls', 'csv'].includes(fileExt);
-      const isPpt = ['pptx', 'ppt'].includes(fileExt);
 
       if (isWord && blob) {
         try {
@@ -575,10 +572,10 @@ export function CenterMenu({
             const fMap = CloudDataStore.getState().folderFilesMap;
             for (const list of Object.values(fMap)) {
               if (Array.isArray(list)) {
-                const found = list.find((item: any) => item.id === file.id || item.name === file.name);
-                if (found && (found.content || found.noteTitle || found.textContent || (found as any).notepadContent)) {
-                  const t = found.noteTitle || (found as any).notepadTitle || '';
-                  const c = found.content || found.textContent || (found as any).notepadContent || '';
+                const found = list.find((item: any) => item.id === file.id || item.name === file.name) as any;
+                if (found && (found.content || found.noteTitle || found.textContent || found.notepadContent)) {
+                  const t = found.noteTitle || found.notepadTitle || '';
+                  const c = found.content || found.textContent || found.notepadContent || '';
                   loadedText = [t, c].filter(Boolean).join('\n\n');
                   break;
                 }

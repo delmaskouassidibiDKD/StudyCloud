@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { BookOpen, Search, FileText, Download, Folder, Eye, Sparkles, Building2, Menu, X, GraduationCap, Package, ChevronDown, ArrowLeft, Share2, Copy, ShoppingCart, RefreshCw, Globe, Hash, RotateCcw, Link2, CloudDownload, MonitorDown } from 'lucide-react';
+import { BookOpen, Search, FileText, Download, Folder, Eye, Sparkles, Building2, Menu, X, GraduationCap, Package, ChevronDown, ArrowLeft, Share2, Copy, Check, ShoppingCart, RefreshCw, Globe, Hash, RotateCcw, Link2, CloudDownload, MonitorDown } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { SharedFolder, SharedFile } from '../types';
 import { FileIconBadge } from './FileIconBadge';

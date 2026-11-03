@@ -408,14 +408,13 @@ export function LeftMenu({
             res.data
               .filter((row: any) => row && row.id && !mesFichiersIds.has(row.id))
               .map(async (row: any) => {
-                const localBlobUrl = await getFileBlobUrl(row.id);
                 return {
                   id: row.id,
                   name: row.name,
                   size: row.size || 0,
                   type: row.type || 'file',
                   extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
-                  url: localBlobUrl || row.file_url || '',
+                  url: row.file_url || '',
                   r2Key: row.r2_key,
                   isFavorite: !!row.is_favorite,
                   isLeftMenuImport: true,
@@ -464,14 +463,13 @@ export function LeftMenu({
           const nonStudyRows = res.data.filter((row: any) => !row.is_study_session && !row.isStudyImport && !row.is_study_import && !row.isLeftMenuImport);
           const filesWithUrls = await Promise.all(
             nonStudyRows.map(async (row: any) => {
-              const localBlobUrl = await getFileBlobUrl(row.id);
               return {
                 id: row.id,
                 name: row.name,
                 size: row.size || 0,
                 type: row.type || 'Fichier',
                 extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
-                url: localBlobUrl || row.file_url || '',
+                url: row.file_url || '',
                 r2Key: row.r2_key,
                 isFavorite: !!row.is_favorite,
                 matiere: row.matiere_id && row.matiere_id !== 'Mes fichiers' ? row.matiere_id : 'Mes fichiers',
@@ -500,7 +498,7 @@ export function LeftMenu({
           }
 
           const mergedMap = new Map<string, any>();
-          filesWithUrls.forEach(f => {
+          filesWithUrls.forEach((f: any) => {
             if (!studyIds.has(f.id) && !f.isStudyImport && !f.isLeftMenuImport) {
               mergedMap.set(f.id, f);
             }

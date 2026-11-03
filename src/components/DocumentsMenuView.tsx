@@ -279,6 +279,24 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
               clearInterval(savingIntervalsRef.current[task.id]);
               delete savingIntervalsRef.current[task.id];
             }
+            const r2Url = task.fileItem?.url;
+            const r2Key = task.fileItem?.r2Key;
+            if (r2Url && !r2Url.startsWith('blob:')) {
+              setDocumentsList(prev => prev.map(d => d.id === task.id ? {
+                ...d,
+                url: r2Url,
+                r2Key: r2Key || d.r2Key,
+                isUploading: false,
+                uploadProgress: 100,
+              } : d));
+              setSelectedDoc(prev => (prev && prev.id === task.id) ? {
+                ...prev,
+                url: r2Url,
+                r2Key: r2Key || prev.r2Key,
+                isUploading: false,
+                uploadProgress: 100,
+              } : prev);
+            }
           } else if (task.status === 'error') {
             activeErrs[task.id] = task.error || "Non enregistré sur le Cloud";
             if (savingIntervalsRef.current[task.id]) {
@@ -425,7 +443,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     }
   }, [serverDocuments]);
 
-  // Résolution robuste du Blob URL quand un document est sélectionné (accès 0ms ou stream)
+  // Résolution légère de l'URL de streaming Cloudflare R2 (sans copie locale IndexedDB)
   useEffect(() => {
     if (!selectedDoc) {
       setSplitResolvedPdfUrl('');
@@ -433,15 +451,9 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     }
 
     let isMounted = true;
-    const isPdf =
-      selectedDoc.extension === 'pdf' ||
-      selectedDoc.name.toLowerCase().endsWith('.pdf') ||
-      (selectedDoc.url && selectedDoc.url.toLowerCase().includes('.pdf')) ||
-      Boolean(selectedDoc.type?.includes('pdf'));
-
     const rawUrl = selectedDoc.url || selectedDoc.previewUrl || '';
-    const isDeadBlob = rawUrl.startsWith('blob:');
-    const safeDirectUrl = isDeadBlob ? '' : rawUrl;
+    const isDeadOrThumb = rawUrl.startsWith('blob:') || rawUrl.startsWith('data:image');
+    const safeDirectUrl = isDeadOrThumb ? '' : rawUrl;
     const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
     const streamFallbackUrl = selectedDoc.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(selectedDoc.id)}` : '';
 
@@ -451,53 +463,24 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       setSplitResolvedPdfUrl(streamFallbackUrl);
     }
 
-    const resolveDocumentBinary = async () => {
-      let blob: Blob | null = null;
-      if (selectedDoc.id) {
-        try {
-          blob = await getFileBlob(selectedDoc.id);
-        } catch {}
-      }
-
-      if (!blob && safeDirectUrl && !safeDirectUrl.startsWith('data:image')) {
-        try {
-          const resp = await fetch(safeDirectUrl);
-          if (resp.ok) {
-            blob = await resp.blob();
-          }
-        } catch {}
-      }
-
-      if (!blob && selectedDoc.id) {
-        try {
-          const resp = await fetch(`${baseUrl}/api/cloud/stream/${encodeURIComponent(selectedDoc.id)}`);
-          if (resp.ok) {
-            blob = await resp.blob();
-          }
-        } catch {}
-      }
-
-      if (!isMounted) return;
-
-      if (blob) {
-        try {
-          const freshBlobUrl = URL.createObjectURL(blob);
-          setSplitResolvedPdfUrl(freshBlobUrl);
-          if (selectedDoc.id) {
-            storeFileBlob(selectedDoc.id, blob).catch(() => {});
-          }
-        } catch {}
-      } else if (streamFallbackUrl && !safeDirectUrl) {
-        setSplitResolvedPdfUrl(streamFallbackUrl);
-      }
-    };
-
-    resolveDocumentBinary();
+    // Utiliser le tampon IndexedDB uniquement si le fichier est encore en cours d'envoi (isUploading)
+    if (selectedDoc.id && (selectedDoc.isUploading || !safeDirectUrl)) {
+      getFileBlobUrl(selectedDoc.id).then(localUrl => {
+        if (!isMounted) return;
+        if (localUrl) {
+          setSplitResolvedPdfUrl(localUrl);
+        } else if (safeDirectUrl) {
+          setSplitResolvedPdfUrl(safeDirectUrl);
+        } else if (streamFallbackUrl) {
+          setSplitResolvedPdfUrl(streamFallbackUrl);
+        }
+      }).catch(() => {});
+    }
 
     return () => {
       isMounted = false;
     };
-  }, [selectedDoc?.id, selectedDoc?.url]);
+  }, [selectedDoc?.id, selectedDoc?.url, selectedDoc?.isUploading]);
 
   // Navigation entre documents
   const handleNavigateDoc = (direction: 'prev' | 'next') => {

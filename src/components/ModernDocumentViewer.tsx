@@ -310,9 +310,34 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
 
     const loadData = async () => {
       let foundBlob: Blob | null = null;
-      const directUrl = (url && typeof url === 'string' && url.trim()) ? url : '';
+      const rawUrl = (url && typeof url === 'string' && url.trim()) ? url : '';
+      const isDeadOrThumb = rawUrl.startsWith('blob:') || rawUrl.startsWith('data:image/');
+      const directUrl = isDeadOrThumb ? '' : rawUrl;
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const streamUrl = fileId ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}` : '';
 
-      // A. Essayer depuis IndexedDB par fileId
+      // 1. Pour un PDF déjà sur le Cloud, streamer directement depuis R2 sans télécharger tout le fichier dans IndexedDB
+      if (isPdf && (directUrl || streamUrl)) {
+        if (fileId && !directUrl) {
+          try {
+            const localBlob = await getFileBlob(fileId);
+            if (localBlob && !isCancelled) {
+              const bUrl = URL.createObjectURL(localBlob);
+              objectUrlRef.current = bUrl;
+              setResolvedUrl(bUrl);
+              setIsLoading(false);
+              return;
+            }
+          } catch {}
+        }
+        if (!isCancelled) {
+          setResolvedUrl(directUrl || streamUrl);
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      // A. Essayer depuis IndexedDB par fileId (uniquement si en cours d'upload local)
       if (fileId) {
         try {
           foundBlob = await getFileBlob(fileId);
@@ -321,13 +346,12 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
         }
       }
 
-      // B. Si pas trouvé et URL valide distante (non blob)
-      if (!foundBlob && directUrl && !directUrl.startsWith('data:image/') && !directUrl.startsWith('blob:')) {
+      // B. Si pas trouvé et URL valide distante (non blob) - en mémoire uniquement, sans saturer IndexedDB
+      if (!foundBlob && directUrl) {
         try {
           const res = await fetch(directUrl);
           if (res.ok) {
             foundBlob = await res.blob();
-            if (fileId) storeFileBlob(fileId, foundBlob).catch(() => {});
           }
         } catch (err) {
           console.warn('[ModernDocumentViewer] Erreur fetch distant:', err);
@@ -335,13 +359,11 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
       }
 
       // C. Fallback direct vers /api/cloud/stream/:fileId si disponible
-      if (!foundBlob && fileId) {
+      if (!foundBlob && streamUrl) {
         try {
-          const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-          const res = await fetch(`${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`);
+          const res = await fetch(streamUrl);
           if (res.ok) {
             foundBlob = await res.blob();
-            storeFileBlob(fileId, foundBlob).catch(() => {});
           }
         } catch (err) {
           console.warn('[ModernDocumentViewer] Erreur stream fallback:', err);
