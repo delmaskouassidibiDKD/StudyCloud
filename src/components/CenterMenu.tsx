@@ -942,12 +942,6 @@ export function CenterMenu({
               <button
                 type="button"
                 onClick={() => {
-                  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-                    window.speechSynthesis.cancel();
-                  }
-                  setSpeechState('idle');
-                  setActiveSpeechLineIndex(-1);
-                  setSpokenWordCharIndex(-1);
                   setPreviewScrollMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical');
                 }}
                 className={`px-2 py-1 text-[10px] sm:text-xs rounded-lg border items-center gap-1 transition-all cursor-pointer flex shadow-sm font-bold ${previewScrollMode === 'horizontal'
@@ -1147,6 +1141,7 @@ export function CenterMenu({
                     url={currentUrl}
                     docZoom={docZoom}
                     onZoomChange={setDocZoom}
+                    layoutMode={previewScrollMode}
                     activeSpeechPage={activeSpeechPage}
                     activeSpeechLineIndex={activeSpeechLineIndex}
                     currentSpokenText={speechSegments[currentSegmentIdx]?.text}
