@@ -2137,7 +2137,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       {/* =========================================================================
           1. EN-TÊTE FIXE DU MENU ESPACE CLOUD (NE BOUGE PAS LORS DU DÉFILEMENT)
           ========================================================================= */}
-      <header className="shrink-0 sticky top-0 z-30 w-full bg-stone-100/95 backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-3 border-b border-stone-200 shadow-sm">
+      <header className={`shrink-0 sticky top-0 z-30 w-full bg-stone-100/95 backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-3 border-b border-stone-200 shadow-sm ${isViewerMaximized && viewerFile ? 'hidden' : ''}`}>
         <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* GAUCHE : Bouton Retour rond, Icône Nuage cyan et Titre Espace Cloud */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
@@ -2809,7 +2809,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         {viewerFile && (
           <div className={`flex flex-col bg-[#04060A] text-white animate-in fade-in duration-150 ${
             isViewerMaximized
-              ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)]'
+              ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
               : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
           }`}>
             {renderReader(viewerFile)}

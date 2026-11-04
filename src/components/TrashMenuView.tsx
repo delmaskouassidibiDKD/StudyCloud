@@ -1439,7 +1439,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
   return (
     <div ref={containerRef} className="w-full h-full flex flex-col bg-white text-stone-900 select-none overflow-hidden animate-in fade-in duration-200">
       {/* EN-TÊTE FIXE DU MENU CORBEILLE (TOUJOURS ANCRÉ EN HAUT, NE BOUGE PAS AU DÉFILEMENT) */}
-      <header className="shrink-0 z-30 w-full bg-stone-100/95 backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-3 border-b border-stone-200 shadow-sm">
+      <header className={`shrink-0 z-30 w-full bg-stone-100/95 backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-3 border-b border-stone-200 shadow-sm ${isViewerMaximized && selectedFile ? 'hidden' : ''}`}>
         <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* GAUCHE : Bouton Retour rond, Icône Corbeille rouge et Titre StudyCloud */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
@@ -1781,7 +1781,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
           <aside
             className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl ${
               isViewerMaximized
-                ? 'fixed inset-0 z-50 w-full h-full'
+                ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
                 : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-200 md:border-stone-800'
             }`}
           >

@@ -59,8 +59,8 @@ const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({ pdfDoc, pageNumber, scale
         const h = unscaled.height || 842;
         setPageDims({ width: w, height: h });
         setAspectRatio(w / h);
-      } catch {}
-    }).catch(() => {});
+      } catch { }
+    }).catch(() => { });
     return () => { isMounted = false; };
   }, [pdfDoc, pageNumber]);
 
@@ -127,12 +127,12 @@ const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({ pdfDoc, pageNumber, scale
             console.warn(`[PdfPageCanvas] Erreur rendu page ${pageNumber}:`, err);
           }
         });
-    }).catch(() => {});
+    }).catch(() => { });
 
     return () => {
       isMounted = false;
       if (renderTask && typeof renderTask.cancel === 'function') {
-        try { renderTask.cancel(); } catch {}
+        try { renderTask.cancel(); } catch { }
       }
     };
   }, [isVisible, pdfDoc, pageNumber, scale]);
@@ -273,7 +273,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
         objectUrlRef.current = null;
       }
       if (pdfDocRef.current) {
-        try { pdfDocRef.current.destroy(); } catch {}
+        try { pdfDocRef.current.destroy(); } catch { }
         pdfDocRef.current = null;
       }
     };
@@ -489,7 +489,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
                   const tc = await page.getTextContent();
                   const pt = (tc.items as any[]).map((it: any) => it.str).join(' ').trim();
                   if (pt) pagesText.push(pt);
-                } catch {}
+                } catch { }
               }
               if (pagesText.length > 0) {
                 onExtractedText(pagesText.join('\n'));
@@ -589,7 +589,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
                     if (fileId) {
                       await storeFileBlob(fileId, newBlob);
                       CloudDataStore.updateFile(fileId, { size: formatFileSize(newBlob.size), sizeBytes: newBlob.size, timestamp: Date.now() });
-                      CloudStorageAPI.uploadFile(newBlob, 'documents', fileName, undefined, undefined, undefined, newBlob.size, undefined, fileId).catch(() => {});
+                      CloudStorageAPI.uploadFile(newBlob, 'documents', fileName, undefined, undefined, undefined, newBlob.size, undefined, fileId).catch(() => { });
                     }
                     setInitialRawText(rawText);
                     setIsTextDirty(false);
@@ -618,11 +618,10 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
               <button
                 type="button"
                 onClick={() => setPdfViewMode((m: any) => m === 'native' ? 'continuous' : 'native')}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
-                  activePdfViewMode === 'native'
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${activePdfViewMode === 'native'
                     ? 'bg-blue-600/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
                     : 'bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-200'
-                }`}
+                  }`}
                 title={activePdfViewMode === 'native' ? "Passer au défilement vertical continu PDF.js" : "Passer au lecteur navigateur intégré"}
               >
                 <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -740,7 +739,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
 
         {/* A2. RENDU PDF SUR ORDINATEUR (2. Mode Défilement Continu Multi-Pages avec PDF.js) */}
         {isPdf && !isMobile && !errorMessage && (activePdfViewMode === 'continuous' || !nativePdfUrl) && (
-          <div 
+          <div
             className="w-full h-full flex-1 min-h-0 overflow-y-auto flex flex-col items-center gap-6 p-4 sm:p-6 bg-stone-100 dark:bg-zinc-900 select-text"
             style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
           >
@@ -804,7 +803,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
         {/* D. RENDU CODE & TEXTE BRUT ÉDITABLE avec défilement vertical complet et confinement */}
         {isTextOrCode && !errorMessage && (
           <div className="w-full h-full flex-1 flex flex-col font-mono text-xs overflow-hidden bg-[#1e1e1e] text-zinc-100 p-2 sm:p-4">
-            <div 
+            <div
               className="flex-1 overflow-y-auto overflow-x-auto p-4 leading-relaxed select-text rounded-xl bg-[#181818] border border-zinc-800 shadow-inner overscroll-contain flex flex-col"
               style={{ overscrollBehavior: 'contain', touchAction: 'pan-y' }}
             >

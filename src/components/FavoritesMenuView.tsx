@@ -1018,7 +1018,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
   return (
     <div className="flex-1 flex flex-col w-full min-h-screen bg-stone-100 dark:bg-[#070A13] text-stone-900 dark:text-slate-100 select-none animate-in fade-in duration-150">
       {/* EN-TÊTE FIXE DU MENU FAVORIS */}
-      <header className="sticky top-0 z-30 w-full bg-stone-100/95 dark:bg-[#070A13]/95 backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 dark:border-white/10 shadow-sm">
+      <header className={`sticky top-0 z-30 w-full bg-stone-100/95 dark:bg-[#070A13]/95 backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 dark:border-white/10 shadow-sm ${isViewerMaximized && selectedFile ? 'hidden' : ''}`}>
         <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* GAUCHE : Bouton Retour et Titre Favoris */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
@@ -1252,7 +1252,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           <aside
             className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 ${
               isViewerMaximized
-                ? 'fixed inset-0 z-50 w-full h-full'
+                ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
                 : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-200 dark:border-stone-800'
             }`}
           >

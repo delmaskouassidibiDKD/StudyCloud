@@ -1897,7 +1897,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       {renderTransferFolderModal()}
 
       {/* EN-TÊTE FIXE DU MENU VIDÉOS */}
-      <header className="sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-sm">
+      <header className={`sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-sm ${isViewerMaximized && selectedVideo ? 'hidden' : ''}`}>
         <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* GAUCHE : Retour et Titre */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
@@ -2114,7 +2114,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
         {selectedVideo && (
           <div className={`flex flex-col bg-[#04060A] animate-in fade-in duration-150 ${
             isViewerMaximized && selectedVideo
-              ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]'
+              ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
               : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
           }`}>
             {renderVideoPlayer(selectedVideo)}

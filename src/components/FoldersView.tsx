@@ -1147,12 +1147,16 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [newGradeValue, setNewGradeValue] = useState('');
   const [newGradeCoeff, setNewGradeCoeff] = useState('');
 
+  const isDedicatedView = viewMode === 'page1-files-menu' || viewMode.startsWith('matiere-') || viewMode === 'red-robot-menu';
+
   return (
-    <div className={`flex flex-col items-center justify-start ${
-      viewMode === 'home' 
-        ? 'h-full max-h-full overflow-hidden touch-pan-x select-none overscroll-none' 
-        : 'min-h-[75vh] overflow-y-auto'
-    } px-1 sm:px-4 text-center pt-[64px] md:pt-[68px] pb-16 md:pb-24 transition-colors duration-200 ${
+    <div className={`flex flex-col ${
+      isDedicatedView
+        ? 'w-full h-full min-h-0 flex-1 items-stretch text-left p-0 pt-[64px] md:pt-[68px] pb-0'
+        : viewMode === 'home' 
+          ? 'items-center justify-start h-full max-h-full overflow-hidden touch-pan-x select-none overscroll-none px-1 sm:px-4 text-center pt-[64px] md:pt-[68px] pb-16 md:pb-24' 
+          : 'items-center justify-start min-h-[75vh] overflow-y-auto px-1 sm:px-4 text-center pt-[64px] md:pt-[68px] pb-16 md:pb-24'
+    } transition-colors duration-200 ${
       dashboardWallpaper && viewMode === 'home'
         ? 'bg-transparent text-white'
         : 'bg-[#0a0e17] text-white'

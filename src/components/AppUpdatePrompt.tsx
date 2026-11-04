@@ -55,8 +55,10 @@ export const AppUpdatePrompt: React.FC = () => {
 
       // A. Forcer le Service Worker à vérifier si un nouveau build existe
       const activeReg = reg || registrationRef.current;
-      if (activeReg) {
-        activeReg.update().catch(() => {});
+      if (activeReg && typeof (activeReg as any).update === 'function') {
+        try {
+          (activeReg as any).update().catch(() => {});
+        } catch {}
       }
 
       // B. Vérification directe via /version.json (0 boucle périodique, déclenchée sur événement ou action)
@@ -107,8 +109,10 @@ export const AppUpdatePrompt: React.FC = () => {
         registrationRef.current = registration;
 
         // Si l'utilisateur est connecté, forcer une vérification dès que le Service Worker est prêt
-        if (isTargetAccountConnected()) {
-          registration.update().catch(() => {});
+        if (isTargetAccountConnected() && typeof (registration as any)?.update === 'function') {
+          try {
+            registration.update().catch(() => {});
+          } catch {}
         }
 
         // Si un worker attendait déjà
