@@ -1746,48 +1746,47 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
           {matiereName}
         </h1>
 
-        <div className="pointer-events-auto shrink-0 relative flex flex-col items-end gap-1 self-start">
-          <div className="flex items-center gap-1.5">
-            {/* Bouton œil pour basculer Mode compact (sans aperçu) / Mode aperçu */}
-            <button
-              type="button"
-              onClick={() => setIsPreviewMode(prev => !prev)}
-              className={`p-1.5 rounded-lg border-2 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center ${
-                isPreviewMode
-                  ? 'bg-amber-400 text-stone-900 border-amber-600'
-                  : 'bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white border-[#2D4A3E] dark:border-[#334155]'
-              }`}
-              title={isPreviewMode ? "Mode aperçu actif (cliquez pour passer en mode compact sans aperçu)" : "Mode compact sans aperçu (cliquez pour passer en mode aperçu)"}
-            >
-              {isPreviewMode ? (
-                <Eye className="w-3.5 h-3.5 stroke-[2.4]" />
-              ) : (
-                <EyeOff className="w-3.5 h-3.5 stroke-[2.2]" />
-              )}
-            </button>
-
-            <button
-              type="button"
-              id="matiere-header-menu-trigger"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsHeaderMenuOpen(!isHeaderMenuOpen);
-              }}
-              className="p-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center"
-              title="Options"
-            >
-              <MoreVertical className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-white" />
-            </button>
-          </div>
-
-          {/* Bouton Importer placé en bas à droite sous les boutons d'actions */}
+        <div className="pointer-events-auto shrink-0 relative flex items-center gap-1.5 self-start">
+          {/* Bouton Importer déplacé à gauche des boutons d'actions et en couleur blanche */}
           <button
+            type="button"
             onClick={handleButtonClick}
-            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-stone-100 text-stone-900 font-extrabold text-[11px] sm:text-xs rounded-lg border-2 border-stone-800 dark:border-stone-700 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
             title="Importer des fichiers"
           >
-            <Upload className="w-3 h-3 text-[#2D4A3E] dark:text-white" />
+            <Upload className="w-3.5 h-3.5 stroke-[2.5] text-stone-900" />
             <span>Importer</span>
+          </button>
+
+          {/* Bouton œil pour basculer Mode compact (sans aperçu) / Mode aperçu */}
+          <button
+            type="button"
+            onClick={() => setIsPreviewMode(prev => !prev)}
+            className={`p-1.5 rounded-lg border-2 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center ${
+              isPreviewMode
+                ? 'bg-amber-400 text-stone-900 border-amber-600'
+                : 'bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white border-[#2D4A3E] dark:border-[#334155]'
+            }`}
+            title={isPreviewMode ? "Mode aperçu actif (cliquez pour passer en mode compact sans aperçu)" : "Mode compact sans aperçu (cliquez pour passer en mode aperçu)"}
+          >
+            {isPreviewMode ? (
+              <Eye className="w-3.5 h-3.5 stroke-[2.4]" />
+            ) : (
+              <EyeOff className="w-3.5 h-3.5 stroke-[2.2]" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            id="matiere-header-menu-trigger"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsHeaderMenuOpen(!isHeaderMenuOpen);
+            }}
+            className="p-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center"
+            title="Options"
+          >
+            <MoreVertical className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-white" />
           </button>
 
           {isHeaderMenuOpen && (() => {
