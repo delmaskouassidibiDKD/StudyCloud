@@ -11,14 +11,21 @@ import {
   AlertCircle,
   RefreshCw,
   SlidersHorizontal,
-  RotateCw
+  RotateCw,
+  Save,
+  RotateCcw
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
-import { getFileBlob, storeFileBlob, resolveCleanDocumentBlob, ensureDecompressedArrayBuffer } from '../services/localFileStorage';
+import { getFileBlob, storeFileBlob, resolveCleanDocumentBlob, ensureDecompressedArrayBuffer, formatFileSize } from '../services/localFileStorage';
+import { CloudDataStore } from '../services/cloudDataStore';
+import { CloudStorageAPI } from '../services/cloudStorageService';
 import { getWorkerApiUrl } from '../services/api';
 import { MobilePdfViewer } from './MobilePdfViewer';
+import { AuthenticWordViewer } from './AuthenticWordViewer';
+import { AuthenticExcelViewer } from './AuthenticExcelViewer';
+import { AuthenticPowerPointViewer, PptxSlideData } from './AuthenticPowerPointViewer';
 
 // Configuration du worker PDF.js
 if (typeof window !== 'undefined' && !(pdfjsLib as any).GlobalWorkerOptions?.workerSrc) {
@@ -273,8 +280,10 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
   }, []);
 
   // États Word & PPTX
+  const [wordArrayBuffer, setWordArrayBuffer] = useState<ArrayBuffer | null>(null);
   const [wordHtml, setWordHtml] = useState<string>('');
-  const [pptxSlides, setPptxSlides] = useState<{ slideNumber: number; texts: string[] }[]>([]);
+  const [pptxArrayBuffer, setPptxArrayBuffer] = useState<ArrayBuffer | null>(null);
+  const [pptxSlides, setPptxSlides] = useState<PptxSlideData[]>([]);
 
   // États Excel
   const [workbook, setWorkbook] = useState<XLSX.WorkBook | null>(null);
@@ -283,6 +292,9 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
 
   // États Code / Texte
   const [rawText, setRawText] = useState<string>(textContent || '');
+  const [initialRawText, setInitialRawText] = useState<string>(textContent || '');
+  const [isTextDirty, setIsTextDirty] = useState<boolean>(false);
+  const [isSavingText, setIsSavingText] = useState<boolean>(false);
   const [isCopied, setIsCopied] = useState<boolean>(false);
 
   // URL résolue prête pour le lecteur natif avec barre d'outils et défilement vertical FitH
@@ -362,9 +374,8 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
         try {
           if (isWord) {
             const arrayBuffer = await ensureDecompressedArrayBuffer(await foundBlob.arrayBuffer());
-            const res = await mammoth.convertToHtml({ arrayBuffer });
             if (!isCancelled) {
-              setWordHtml(res.value || '<p>Document Word vide.</p>');
+              setWordArrayBuffer(arrayBuffer);
               setIsLoading(false);
             }
           } else if (isExcel) {
@@ -372,12 +383,6 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
             const wb = XLSX.read(arrayBuffer, { type: 'array' });
             if (!isCancelled) {
               setWorkbook(wb);
-              if (wb.SheetNames.length > 0) {
-                const firstSheet = wb.SheetNames[0];
-                setActiveSheetName(firstSheet);
-                const rawData = XLSX.utils.sheet_to_json(wb.Sheets[firstSheet], { header: 1 }) as any[][];
-                setSheetData(rawData);
-              }
               setIsLoading(false);
             }
           } else if (isPptx) {
@@ -391,10 +396,11 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
                 const nb = parseInt(b.match(/slide(\d+)\.xml$/)?.[1] || '0', 10);
                 return na - nb;
               });
-            const slides: { slideNumber: number; texts: string[] }[] = [];
+            const slides: PptxSlideData[] = [];
             const parser = new DOMParser();
             for (let i = 0; i < slideFiles.length; i++) {
-              const xmlStr = await zip.files[slideFiles[i]].async('string');
+              const fileNameKey = slideFiles[i];
+              const xmlStr = await zip.files[fileNameKey].async('string');
               const xmlDoc = parser.parseFromString(xmlStr, 'application/xml');
               const pNodes = Array.from(xmlDoc.getElementsByTagName('a:p'));
               const paragraphs: string[] = [];
@@ -403,9 +409,10 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
                 const line = tNodes.map(t => t.textContent || '').join('').trim();
                 if (line) paragraphs.push(line);
               }
-              slides.push({ slideNumber: i + 1, texts: paragraphs });
+              slides.push({ slideNumber: i + 1, slideFileName: fileNameKey, texts: paragraphs });
             }
             if (!isCancelled) {
+              setPptxArrayBuffer(arrayBuffer);
               setPptxSlides(slides);
               setIsLoading(false);
             }
@@ -413,6 +420,8 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
             const text = await foundBlob.text();
             if (!isCancelled) {
               setRawText(text);
+              setInitialRawText(text);
+              setIsTextDirty(false);
               setIsLoading(false);
             }
           }
@@ -425,6 +434,8 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
         }
       } else if (textContent) {
         setRawText(textContent);
+        setInitialRawText(textContent);
+        setIsTextDirty(false);
         setIsLoading(false);
       } else if (directUrl) {
         setIsLoading(false);
@@ -512,8 +523,8 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
 
   return (
     <div className={`w-full h-full min-h-0 flex flex-col bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 overflow-hidden ${className}`}>
-      {/* 1. EN-TÊTE DU DOCUMENT AVEC ACTIONS & CONTRÔLES (Masqué quand hideHeader={true}) */}
-      {!hideHeader && (
+      {/* 1. EN-TÊTE DU DOCUMENT AVEC ACTIONS & CONTRÔLES (Masqué quand hideHeader={true} ou pour Word/Excel/PPTX qui ont leur propre barre intégrée) */}
+      {!hideHeader && !isWord && !isExcel && !isPptx && (
         <div className="flex items-center justify-between px-3 sm:px-4 py-2 bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shrink-0 z-10 shadow-xs">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-500 shrink-0">
@@ -528,19 +539,80 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
               )}
             </div>
             <div className="min-w-0">
-              <h4 className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-white truncate max-w-[180px] sm:max-w-xs md:max-w-md" title={fileName}>
-                {fileName}
-              </h4>
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs sm:text-sm font-bold text-zinc-900 dark:text-white truncate max-w-[180px] sm:max-w-xs md:max-w-md" title={fileName}>
+                  {fileName}
+                </h4>
+                {isTextOrCode && isTextDirty && (
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 animate-pulse">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    <span>Modifié</span>
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-2 text-[10px] text-zinc-500 dark:text-zinc-400">
                 <span className="uppercase font-semibold">{ext || 'DOC'}</span>
                 {fileSize && <span>• {fileSize}</span>}
                 {isPdf && pdfTotalPages > 1 && <span>• {pdfTotalPages} pages (Défilement vertical)</span>}
+                {isTextOrCode && <span>• Éditble</span>}
               </div>
             </div>
           </div>
 
           {/* Barre d'outils droite */}
           <div className="flex items-center gap-1.5 shrink-0">
+            {/* Abandonner pour texte/code */}
+            {isTextOrCode && isTextDirty && (
+              <button
+                type="button"
+                onClick={() => {
+                  setRawText(initialRawText);
+                  setIsTextDirty(false);
+                }}
+                disabled={isSavingText}
+                className="px-2.5 py-1 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 dark:text-rose-400 border border-rose-300 dark:border-rose-800 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                title="Abandonner les modifications"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Abandonner</span>
+              </button>
+            )}
+
+            {/* Enregistrer pour texte/code */}
+            {isTextOrCode && isTextDirty && (
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsSavingText(true);
+                  try {
+                    const newBlob = new Blob([rawText], { type: 'text/plain;charset=utf-8' });
+                    if (fileId) {
+                      await storeFileBlob(fileId, newBlob);
+                      CloudDataStore.updateFile(fileId, { size: formatFileSize(newBlob.size), sizeBytes: newBlob.size, timestamp: Date.now() });
+                      CloudStorageAPI.uploadFile(newBlob, 'documents', fileName, undefined, undefined, undefined, newBlob.size, undefined, fileId).catch(() => {});
+                    }
+                    setInitialRawText(rawText);
+                    setIsTextDirty(false);
+                    setBlob(newBlob);
+                  } catch (e: any) {
+                    alert("Erreur de sauvegarde : " + (e.message || 'Inconnue'));
+                  } finally {
+                    setIsSavingText(false);
+                  }
+                }}
+                disabled={isSavingText}
+                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-md transition-colors"
+                title="Enregistrer les modifications"
+              >
+                {isSavingText ? (
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Save className="w-3.5 h-3.5" />
+                )}
+                <span>{isSavingText ? 'Enregistrement...' : 'Enregistrer'}</span>
+              </button>
+            )}
+
             {/* Bascule mode Lecteur Navigateur / Défilement continu pour PDF */}
             {isPdf && nativePdfUrl && (
               <button
@@ -694,120 +766,58 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
           </div>
         )}
 
-        {/* B. RENDU WORD (.docx via Mammoth avec défilement vertical et confinement) */}
-        {isWord && !errorMessage && (
-          <div 
-            className="w-full h-full flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center bg-stone-100 dark:bg-zinc-900 select-text overscroll-contain"
-            style={{ overscrollBehavior: 'contain', touchAction: 'pan-y' }}
-          >
-            <div className="w-full max-w-3xl bg-white text-zinc-900 p-8 sm:p-12 rounded-xl shadow-lg border border-zinc-200 my-auto prose prose-sm max-w-none">
-              <div dangerouslySetInnerHTML={{ __html: wordHtml }} />
-            </div>
-          </div>
+        {/* B. RENDU WORD AUTHENTIQUE (Page A4 blanche, ombres, bordures nettes de l'image 3, édition en direct & boutons Enregistrer / Abandonner) */}
+        {isWord && !errorMessage && wordArrayBuffer && (
+          <AuthenticWordViewer
+            fileId={fileId}
+            fileName={fileName}
+            fileSize={fileSize}
+            arrayBuffer={wordArrayBuffer}
+            blob={blob || undefined}
+            onSaved={(newBlob) => setBlob(newBlob)}
+          />
         )}
 
-        {/* B2. RENDU POWERPOINT (.pptx via JSZip) */}
-        {isPptx && !errorMessage && (
-          <div
-            className="w-full h-full flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col items-center gap-6 bg-stone-100 dark:bg-zinc-900 select-text overscroll-contain"
-            style={{ overscrollBehavior: 'contain', touchAction: 'pan-y' }}
-          >
-            {pptxSlides.length > 0 ? (
-              pptxSlides.map((s) => (
-                <div
-                  key={s.slideNumber}
-                  className="w-full max-w-3xl bg-white text-zinc-900 p-6 sm:p-10 rounded-2xl shadow-lg border border-orange-200"
-                >
-                  <div className="flex items-center justify-between border-b border-stone-200 pb-3 mb-4">
-                    <span className="text-xs font-extrabold uppercase tracking-wider text-orange-600 bg-orange-50 px-3 py-1 rounded-full">
-                      Diapositive {s.slideNumber} / {pptxSlides.length}
-                    </span>
-                  </div>
-                  {s.texts.length > 0 ? (
-                    <div className="space-y-2.5">
-                      {s.texts.map((t, idx) => (
-                        <p key={idx} className={idx === 0 ? 'text-lg font-bold text-stone-900' : 'text-sm text-stone-700 leading-relaxed'}>
-                          {t}
-                        </p>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs italic text-stone-400">Diapositive visuelle sans texte extractible.</p>
-                  )}
-                </div>
-              ))
-            ) : (
-              <div className="m-auto text-xs text-zinc-500">Aucune diapositive trouvée.</div>
-            )}
-          </div>
+        {/* B2. RENDU POWERPOINT AUTHENTIQUE (.pptx avec diapositives 16:9 éditables & boutons Enregistrer / Abandonner) */}
+        {isPptx && !errorMessage && pptxArrayBuffer && (
+          <AuthenticPowerPointViewer
+            fileId={fileId}
+            fileName={fileName}
+            fileSize={fileSize}
+            arrayBuffer={pptxArrayBuffer}
+            initialSlides={pptxSlides}
+            onSaved={(newBlob) => setBlob(newBlob)}
+          />
         )}
 
-        {/* C. RENDU EXCEL (.xlsx, .xls, .csv via XLSX avec défilement) */}
-        {isExcel && !errorMessage && (
-          <div className="w-full h-full flex-1 flex flex-col p-3 sm:p-4 bg-stone-50 dark:bg-zinc-950 overflow-hidden">
-            {/* Onglets des feuilles Excel */}
-            {workbook && workbook.SheetNames.length > 1 && (
-              <div className="flex items-center gap-1.5 mb-2.5 overflow-x-auto pb-1 shrink-0">
-                {workbook.SheetNames.map((sName) => (
-                  <button
-                    key={sName}
-                    type="button"
-                    onClick={() => selectExcelSheet(sName)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer transition-colors whitespace-nowrap ${
-                      activeSheetName === sName
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-300'
-                    }`}
-                  >
-                    {sName}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Tableau de données interactif avec défilement fluide et confinement */}
-            <div 
-              className="w-full flex-1 overflow-auto rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm overscroll-contain"
-              style={{ overscrollBehavior: 'contain', touchAction: 'pan-y' }}
-            >
-              <table className="w-full border-collapse text-xs text-left">
-                <tbody>
-                  {sheetData.slice(0, 150).map((row, rIdx) => (
-                    <tr
-                      key={rIdx}
-                      className={rIdx === 0 ? 'bg-zinc-100 dark:bg-zinc-800/90 font-bold border-b border-zinc-300 dark:border-zinc-700' : 'border-b border-zinc-100 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800/40'}
-                    >
-                      <td className="px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-800/40 text-[10px] text-zinc-400 font-mono select-none border-r border-zinc-200 dark:border-zinc-800">
-                        {rIdx + 1}
-                      </td>
-                      {Array.isArray(row) && row.map((cell, cIdx) => (
-                        <td key={cIdx} className="px-3 py-1.5 whitespace-nowrap text-zinc-800 dark:text-zinc-200 border-r border-zinc-100 dark:border-zinc-800/40 last:border-r-0">
-                          {cell !== undefined && cell !== null ? String(cell) : ''}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {sheetData.length > 150 && (
-                <div className="p-2 text-center text-xs text-zinc-400 bg-zinc-50 dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
-                  Affichage des 150 premières lignes sur {sheetData.length}.
-                </div>
-              )}
-            </div>
-          </div>
+        {/* C. RENDU EXCEL AUTHENTIQUE (.xlsx, .xls, .csv avec grille complète, édition de cellules, formules & Enregistrer / Abandonner) */}
+        {isExcel && !errorMessage && workbook && (
+          <AuthenticExcelViewer
+            fileId={fileId}
+            fileName={fileName}
+            fileSize={fileSize}
+            initialWorkbook={workbook}
+            onSaved={(newBlob) => setBlob(newBlob)}
+          />
         )}
 
-        {/* D. RENDU CODE & TEXTE BRUT avec défilement vertical complet et confinement */}
+        {/* D. RENDU CODE & TEXTE BRUT ÉDITABLE avec défilement vertical complet et confinement */}
         {isTextOrCode && !errorMessage && (
           <div className="w-full h-full flex-1 flex flex-col font-mono text-xs overflow-hidden bg-[#1e1e1e] text-zinc-100 p-2 sm:p-4">
             <div 
-              className="flex-1 overflow-y-auto overflow-x-auto p-4 leading-relaxed select-text rounded-xl bg-[#181818] border border-zinc-800 shadow-inner overscroll-contain"
+              className="flex-1 overflow-y-auto overflow-x-auto p-4 leading-relaxed select-text rounded-xl bg-[#181818] border border-zinc-800 shadow-inner overscroll-contain flex flex-col"
               style={{ overscrollBehavior: 'contain', touchAction: 'pan-y' }}
             >
-              <pre className="whitespace-pre-wrap font-mono">
-                {rawText || 'Fichier texte vide.'}
-              </pre>
+              <textarea
+                spellCheck={false}
+                value={rawText}
+                onChange={(e) => {
+                  setRawText(e.target.value);
+                  setIsTextDirty(true);
+                }}
+                placeholder="Fichier texte vide..."
+                className="w-full h-full flex-1 bg-transparent text-zinc-100 font-mono text-xs leading-relaxed resize-none focus:outline-none focus:ring-0 border-0 p-0 selection:bg-orange-500/30"
+              />
             </div>
           </div>
         )}

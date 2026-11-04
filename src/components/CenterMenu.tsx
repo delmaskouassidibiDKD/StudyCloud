@@ -18,6 +18,9 @@ import { ModernImageViewer } from './ModernImageViewer';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { MobilePdfViewer } from './MobilePdfViewer';
+import { AuthenticWordViewer } from './AuthenticWordViewer';
+import { AuthenticExcelViewer } from './AuthenticExcelViewer';
+import { AuthenticPowerPointViewer, PptxSlideData } from './AuthenticPowerPointViewer';
 import { useStudyLanguage } from '../utils/studyTranslations';
 import { getWorkerApiUrl } from '../services/api';
 import { getCurrentUserId } from '../services/userSync';
@@ -266,6 +269,10 @@ export function CenterMenu({
   } | null>(null);
   const [pptxSlides, setPptxSlides] = useState<PptxSlide[]>([]);
   const [activeSlideIdx, setActiveSlideIdx] = useState<number>(0);
+  const [wordArrayBuffer, setWordArrayBuffer] = useState<ArrayBuffer | null>(null);
+  const [pptxArrayBuffer, setPptxArrayBuffer] = useState<ArrayBuffer | null>(null);
+  const [rawWorkbook, setRawWorkbook] = useState<XLSX.WorkBook | null>(null);
+  const [currentBlob, setCurrentBlob] = useState<Blob | null>(null);
 
   const [copiedText, setCopiedText] = useState<boolean>(false);
   const [pdfViewerMode, setPdfViewerMode] = useState<'native' | 'interactive'>('native');
@@ -384,6 +391,10 @@ export function CenterMenu({
     setIsLoadingDocument(true);
     setFileTextContent('');
     setDocxHtml('');
+    setWordArrayBuffer(null);
+    setPptxArrayBuffer(null);
+    setRawWorkbook(null);
+    setCurrentBlob(null);
     setExcelWorkbook(null);
     setPptxSlides([]);
     setActiveSlideIdx(0);
@@ -475,10 +486,16 @@ export function CenterMenu({
       });
 
       if (!isMounted) return;
+      if (blob) {
+        setCurrentBlob(blob);
+      }
 
       if (isWord && blob) {
         try {
           const arrayBuffer = await ensureDecompressedArrayBuffer(await blob.arrayBuffer());
+          if (isMounted) {
+            setWordArrayBuffer(arrayBuffer);
+          }
           const conv = await mammoth.convertToHtml({ arrayBuffer });
           const raw = await mammoth.extractRawText({ arrayBuffer });
           const rawHtml = conv.value || '<p>Document Word vide.</p>';
@@ -498,6 +515,9 @@ export function CenterMenu({
         try {
           const arrayBuffer = await ensureDecompressedArrayBuffer(await blob.arrayBuffer());
           const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+          if (isMounted) {
+            setRawWorkbook(workbook);
+          }
           const sheetNames = workbook.SheetNames || [];
           const activeSheet = sheetNames[0] || 'Feuille 1';
           const worksheet = workbook.Sheets[activeSheet];
@@ -519,6 +539,9 @@ export function CenterMenu({
       } else if (isPpt && blob) {
         try {
           const arrayBuffer = await ensureDecompressedArrayBuffer(await blob.arrayBuffer());
+          if (isMounted) {
+            setPptxArrayBuffer(arrayBuffer);
+          }
           const zip = await JSZip.loadAsync(arrayBuffer);
           const slideFiles = Object.keys(zip.files).filter(k => /^ppt\/slides\/slide\d+\.xml$/.test(k));
 
@@ -1251,337 +1274,78 @@ export function CenterMenu({
             );
           }
 
-          // 2. WORD (.docx / .doc)
+          // 2. WORD (.docx / .doc) AUTHENTIQUE AVEC ÉDITION & SAUVEGARDE
           if (isWord) {
             return (
               <div className="w-full h-full flex flex-col overflow-hidden bg-white dark:bg-stone-950">
-                <div className="flex items-center justify-between px-4 py-2 border-b border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-900 text-stone-800 dark:text-stone-200 text-xs shrink-0">
-                  <div className="flex items-center gap-2 font-bold truncate">
-                    <FileText className="w-4 h-4 text-blue-600 shrink-0" />
-                    <span className="truncate">{activePreviewItem.name}</span>
+                {wordArrayBuffer ? (
+                  <AuthenticWordViewer
+                    fileId={activePreviewItem?.id}
+                    fileName={activePreviewItem?.name || 'Document.docx'}
+                    fileSize={activePreviewItem?.size ? formatFileSize(activePreviewItem.size) : undefined}
+                    arrayBuffer={wordArrayBuffer}
+                    blob={currentBlob || undefined}
+                    onSaved={(newBlob) => {
+                      setCurrentBlob(newBlob);
+                    }}
+                  />
+                ) : (
+                  <div className="text-center py-16 text-stone-400">
+                    <FileText className="w-12 h-12 mx-auto mb-3 opacity-40 text-blue-500 animate-pulse" />
+                    <p className="font-semibold text-stone-700 dark:text-stone-300">Formatage du document Word authentique...</p>
+                    <p className="text-xs mt-1 text-stone-400">Rendu A4 haute définition avec modification et enregistrement.</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleCopyText(extractedDocText || docxHtml.replace(/<[^>]+>/g, ''))}
-                      className="px-2.5 py-1 bg-white hover:bg-stone-100 dark:bg-stone-800 dark:hover:bg-stone-700 rounded border border-stone-200 dark:border-stone-700 text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      {copiedText ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedText ? 'Copié !' : 'Copier texte'}</span>
-                    </button>
-                    {currentUrl && (
-                      <a
-                        href={currentUrl}
-                        download={activePreviewItem.name}
-                        className="p-1 hover:bg-stone-200 dark:hover:bg-stone-800 rounded text-stone-600 dark:text-stone-300 transition-colors"
-                        title="Télécharger"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                <div
-                  className={`flex-1 w-full h-full select-text leading-relaxed font-serif text-stone-900 dark:text-stone-100 ${!isMobile && previewScrollMode === 'horizontal'
-                    ? 'overflow-x-auto overflow-y-hidden px-8 sm:px-12 py-8'
-                    : 'overflow-y-auto px-4 sm:px-10 md:px-20 py-6 sm:py-8'
-                    }`}
-                  style={{
-                    zoom: isMobile ? '100%' : `${effectiveZoom}%`,
-                    ...(!isMobile && previewScrollMode === 'horizontal' ? { columnWidth: '500px', columnGap: '40px', height: '100%' } : {})
-                  }}
-                >
-                  {/* Dynamic CSS highlighting for active Word speech segment */}
-                  <style>{`
-                    ${(speechState === 'playing' || speechState === 'paused') ? `
-                      #word-speech-seg-${currentSegmentIdx} {
-                        background-color: rgba(255, 235, 59, 0.75) !important;
-                        border-bottom: 3.5px solid #FF3B30 !important;
-                        border-radius: 4px !important;
-                        box-shadow: 0 2px 10px rgba(255, 59, 48, 0.45) !important;
-                        padding: 2px 6px !important;
-                        color: inherit !important;
-                        transition: background-color 0.15s ease, box-shadow 0.15s ease !important;
-                      }
-                      p#word-speech-seg-${currentSegmentIdx},
-                      h1#word-speech-seg-${currentSegmentIdx},
-                      h2#word-speech-seg-${currentSegmentIdx},
-                      h3#word-speech-seg-${currentSegmentIdx},
-                      h4#word-speech-seg-${currentSegmentIdx},
-                      h5#word-speech-seg-${currentSegmentIdx},
-                      h6#word-speech-seg-${currentSegmentIdx},
-                      li#word-speech-seg-${currentSegmentIdx},
-                      blockquote#word-speech-seg-${currentSegmentIdx},
-                      td#word-speech-seg-${currentSegmentIdx} {
-                        display: block !important;
-                      }
-                    ` : ''}
-                  `}</style>
-
-                  {docxHtml ? (
-                    <div
-                      className="prose dark:prose-invert max-w-none text-sm sm:text-base space-y-4"
-                      dangerouslySetInnerHTML={{ __html: docxHtml }}
-                      onClick={(e) => {
-                        const target = (e.target as HTMLElement)?.closest('.word-speech-seg');
-                        if (target) {
-                          const id = target.getAttribute('id');
-                          const match = id?.match(/word-speech-seg-(\d+)/);
-                          if (match) {
-                            const segIdx = parseInt(match[1], 10);
-                            if (!isNaN(segIdx) && segIdx >= 0 && segIdx < speechSegments.length) {
-                              documentSpeechService.seekToSentence(segIdx);
-                            }
-                          }
-                        }
-                      }}
-                    />
-                  ) : (
-                    <div className="text-center py-16 text-stone-400">
-                      <FileText className="w-12 h-12 mx-auto mb-3 opacity-40 text-blue-500" />
-                      <p className="font-semibold text-stone-700 dark:text-stone-300">Formatage du document Word...</p>
-                      <p className="text-xs mt-1">Vous pouvez également échanger avec Delmas IA dans le panneau droit.</p>
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
             );
           }
 
-          // 3. EXCEL / SPREADSHEETS (.xlsx / .xls / .csv)
+          // 3. EXCEL / SPREADSHEETS (.xlsx / .xls / .csv) AUTHENTIQUE
           if (isExcel) {
-            const filteredRows = excelWorkbook?.rows ? (
-              excelWorkbook.searchQuery.trim()
-                ? excelWorkbook.rows.filter(r => r.some(c => String(c || '').toLowerCase().includes(excelWorkbook.searchQuery.toLowerCase())))
-                : excelWorkbook.rows
-            ) : [];
-
             return (
               <div className="w-full h-full flex flex-col overflow-hidden bg-white dark:bg-stone-900">
-                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-stone-200 dark:border-stone-800 bg-[#F4F9F4] dark:bg-emerald-950/20 text-xs shrink-0">
-                  <div className="flex items-center gap-2">
-                    <Table className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span className="font-extrabold text-stone-900 dark:text-emerald-300 truncate max-w-[180px] sm:max-w-xs">{activePreviewItem.name}</span>
+                {rawWorkbook ? (
+                  <AuthenticExcelViewer
+                    fileId={activePreviewItem?.id}
+                    fileName={activePreviewItem?.name || 'Classeur.xlsx'}
+                    fileSize={activePreviewItem?.size ? formatFileSize(activePreviewItem.size) : undefined}
+                    initialWorkbook={rawWorkbook}
+                    onSaved={(newBlob) => setCurrentBlob(newBlob)}
+                  />
+                ) : (
+                  <div className="text-center py-16 text-stone-400">
+                    <Table className="w-12 h-12 mx-auto mb-3 opacity-40 text-emerald-500 animate-pulse" />
+                    <p className="font-semibold text-stone-700 dark:text-stone-300">Chargement du classeur Excel authentique...</p>
                   </div>
-
-                  {excelWorkbook && excelWorkbook.sheetNames.length > 1 && (
-                    <div className="flex items-center gap-1 overflow-x-auto max-w-xs py-0.5">
-                      {excelWorkbook.sheetNames.map((sheet) => (
-                        <button
-                          key={sheet}
-                          onClick={() => handleSwitchExcelSheet(sheet)}
-                          className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition-all cursor-pointer whitespace-nowrap ${excelWorkbook.activeSheet === sheet
-                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
-                            : 'bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-700 hover:bg-stone-100'
-                            }`}
-                        >
-                          {sheet}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-2">
-                    <div className="relative">
-                      <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-stone-400" />
-                      <input
-                        type="text"
-                        placeholder="Filtrer cellules..."
-                        value={excelWorkbook?.searchQuery || ''}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setExcelWorkbook(prev => prev ? { ...prev, searchQuery: val } : null);
-                        }}
-                        className="pl-6 pr-2 py-1 text-[11px] bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg text-stone-900 dark:text-white w-28 sm:w-36 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                      />
-                    </div>
-                    {currentUrl && (
-                      <a
-                        href={currentUrl}
-                        download={activePreviewItem.name}
-                        className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 rounded text-stone-600 dark:text-stone-300"
-                        title="Télécharger le classeur"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                <div
-                  className="flex-1 w-full h-full overflow-auto p-0"
-                  style={{ zoom: `${docZoom}%` }}
-                >
-                  {filteredRows.length > 0 ? (
-                    <table className="w-full border-collapse text-xs font-mono">
-                      <thead>
-                        <tr className="bg-stone-100 dark:bg-stone-800 sticky top-0 z-10 border-b border-stone-300 dark:border-stone-700">
-                          <th className="p-2 border-r border-stone-200 dark:border-stone-700 text-stone-500 w-12 text-center font-bold">#</th>
-                          {filteredRows[0]?.map((_, colIdx: number) => {
-                            const colLetter = String.fromCharCode(65 + (colIdx % 26));
-                            return (
-                              <th key={colIdx} className="p-2 border-r border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 font-bold text-left min-w-[110px]">
-                                {colLetter}
-                              </th>
-                            );
-                          })}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredRows.map((row: any[], displayIdx: number) => {
-                          const originalRowIdx = excelWorkbook?.rows ? excelWorkbook.rows.indexOf(row) : displayIdx;
-                          const activeSeg = speechSegments[currentSegmentIdx];
-                          const isRowSpeaking = (speechState === 'playing' || speechState === 'paused') && activeSeg?.rowIdx === originalRowIdx;
-                          return (
-                            <tr
-                              key={displayIdx}
-                              id={isRowSpeaking ? 'active-excel-speech-target' : undefined}
-                              className={`transition-colors border-b border-stone-100 dark:border-stone-800 ${isRowSpeaking
-                                ? 'bg-yellow-200/90 dark:bg-yellow-950/80 font-bold'
-                                : 'hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20'
-                                }`}
-                              style={isRowSpeaking ? {
-                                outline: '3.5px solid #FF3B30',
-                                outlineOffset: '-2px',
-                                boxShadow: '0 2px 10px rgba(255, 59, 48, 0.4)',
-                              } : undefined}
-                            >
-                              <td className="p-2 border-r border-stone-200 dark:border-stone-800 text-stone-400 bg-stone-50 dark:bg-stone-900 text-center select-none font-bold text-[10px]">
-                                {originalRowIdx + 1}
-                              </td>
-                              {row.map((cell: any, cellIdx: number) => (
-                                <td key={cellIdx} className="p-2 border-r border-stone-100 dark:border-stone-800/60 text-stone-800 dark:text-stone-200 whitespace-pre truncate max-w-sm select-text">
-                                  {cell !== undefined && cell !== null ? String(cell) : ''}
-                                </td>
-                              ))}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-stone-400 p-8">
-                      <Table className="w-10 h-10 mb-2 opacity-30 text-emerald-600" />
-                      <p className="font-semibold text-xs">Aucune donnée disponible dans cette feuille.</p>
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
             );
           }
 
-          // 4. POWERPOINT (.pptx / .ppt)
+          // 4. POWERPOINT (.pptx / .ppt) AUTHENTIQUE
           if (isPpt) {
-            const totalSlides = pptxSlides.length || 1;
-            const currentSlide = pptxSlides[activeSlideIdx] || {
-              slideNumber: 1,
-              title: activePreviewItem.name,
-              bullets: ['Présentation PowerPoint prête pour révision.']
-            };
-
+            const pptxSlidesData: PptxSlideData[] = pptxSlides.map((s, idx) => ({
+              slideNumber: s.slideNumber || idx + 1,
+              slideFileName: `ppt/slides/slide${s.slideNumber || idx + 1}.xml`,
+              texts: [s.title, ...(s.bullets || [])].filter(Boolean)
+            }));
             return (
-              <div className="w-full h-full flex flex-col overflow-hidden bg-stone-950 text-white">
-                <div className="flex items-center justify-between px-4 py-2 bg-stone-900 text-white text-xs border-b border-stone-800 shrink-0">
-                  <div className="flex items-center gap-2 font-bold truncate">
-                    <Presentation className="w-4 h-4 text-orange-500 shrink-0" />
-                    <span className="truncate">{activePreviewItem.name}</span>
+              <div className="w-full h-full flex flex-col overflow-hidden bg-white dark:bg-stone-900">
+                {pptxArrayBuffer ? (
+                  <AuthenticPowerPointViewer
+                    fileId={activePreviewItem?.id}
+                    fileName={activePreviewItem?.name || 'Présentation.pptx'}
+                    fileSize={activePreviewItem?.size ? formatFileSize(activePreviewItem.size) : undefined}
+                    arrayBuffer={pptxArrayBuffer}
+                    initialSlides={pptxSlidesData}
+                    onSaved={(newBlob) => setCurrentBlob(newBlob)}
+                  />
+                ) : (
+                  <div className="text-center py-16 text-stone-400">
+                    <Presentation className="w-12 h-12 mx-auto mb-3 opacity-40 text-orange-500 animate-pulse" />
+                    <p className="font-semibold text-stone-700 dark:text-stone-300">Chargement de la présentation PowerPoint...</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-mono text-stone-400">
-                      Diapositive {activeSlideIdx + 1} / {totalSlides}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => setActiveSlideIdx(prev => Math.max(0, prev - 1))}
-                        disabled={activeSlideIdx === 0}
-                        className="p-1 bg-stone-800 hover:bg-stone-700 disabled:opacity-40 rounded cursor-pointer"
-                        title="Diapositive précédente"
-                      >
-                        <ChevronLeft className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setActiveSlideIdx(prev => Math.min(totalSlides - 1, prev + 1))}
-                        disabled={activeSlideIdx >= totalSlides - 1}
-                        className="p-1 bg-stone-800 hover:bg-stone-700 disabled:opacity-40 rounded cursor-pointer"
-                        title="Diapositive suivante"
-                      >
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div
-                  className="flex-1 w-full h-full flex items-center justify-center p-4 sm:p-8 overflow-auto"
-                  style={{ zoom: `${effectiveZoom}%` }}
-                >
-                  <div className="w-full h-full max-w-5xl max-h-[85vh] aspect-[16/9] bg-[#FDFBF7] text-stone-900 rounded-xl border border-stone-700 p-8 md:p-12 flex flex-col justify-between select-text relative overflow-hidden">
-                    <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-orange-500 via-amber-400 to-red-500" />
-
-                    <div>
-                      <div className="flex items-center justify-between mb-4">
-                        <span className="text-[10px] font-extrabold uppercase tracking-widest text-orange-600 bg-orange-100 px-2.5 py-1 rounded-md">
-                          Diapositive {currentSlide.slideNumber}
-                        </span>
-                      </div>
-                      <h2 className="text-xl md:text-3xl font-black text-stone-950 mb-6 leading-snug">
-                        {(() => {
-                          const activeSeg = speechSegments[currentSegmentIdx];
-                          const isSpeaking = speechState === 'playing' || speechState === 'paused';
-                          const isTitleActive = isSpeaking && activeSeg?.slide === currentSlide.slideNumber && activeSeg?.isTitle;
-                          return isTitleActive ? (
-                            <span
-                              id="active-pptx-speech-target"
-                              style={{
-                                backgroundColor: 'rgba(255, 235, 59, 0.75)',
-                                borderBottom: '3.5px solid #FF3B30',
-                                borderRadius: '4px',
-                                padding: '2px 6px',
-                                boxShadow: '0 2px 10px rgba(255, 59, 48, 0.45)',
-                              }}
-                            >
-                              {currentSlide.title}
-                            </span>
-                          ) : currentSlide.title;
-                        })()}
-                      </h2>
-                      <ul className="space-y-4">
-                        {currentSlide.bullets.map((bullet, idx) => {
-                          const activeSeg = speechSegments[currentSegmentIdx];
-                          const isSpeaking = speechState === 'playing' || speechState === 'paused';
-                          const isBulletActive = isSpeaking && activeSeg?.slide === currentSlide.slideNumber && activeSeg?.bulletIdx === idx;
-                          return (
-                            <li key={idx} className="flex items-start gap-3 text-sm sm:text-base font-medium text-stone-700 leading-relaxed">
-                              <span className="w-2 h-2 rounded-full bg-orange-500 mt-2 shrink-0" />
-                              {isBulletActive ? (
-                                <span
-                                  id="active-pptx-speech-target"
-                                  className="text-stone-950 font-bold"
-                                  style={{
-                                    backgroundColor: 'rgba(255, 235, 59, 0.75)',
-                                    borderBottom: '3.5px solid #FF3B30',
-                                    borderRadius: '3px',
-                                    padding: '2px 6px',
-                                    boxShadow: '0 2px 10px rgba(255, 59, 48, 0.45)',
-                                  }}
-                                >
-                                  {bullet}
-                                </span>
-                              ) : (
-                                <span>{bullet}</span>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-4 border-t border-stone-200 text-[11px] font-bold text-stone-400">
-                      <span>StudyCloud Presentation Viewer</span>
-                      <span>{activeSlideIdx + 1} sur {totalSlides}</span>
-                    </div>
-                  </div>
-                </div>
+                )}
               </div>
             );
           }
