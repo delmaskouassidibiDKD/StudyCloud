@@ -1279,201 +1279,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   // CARTE FICHIER DANS UN DOSSIER CLASSEUR (REFLET À L'IDENTIQUE DU CLASSEUR)
   // =========================================================================
   const renderClasseurCard = (doc: FileItem, _index: number) => {
-    const isMenuOpen = activeMenuFileId === doc.id;
-    const isSelected = viewerFile?.id === doc.id;
-    const isTxtNote = Boolean(
-      doc.isNotepad ||
-      doc.category === 'notes' ||
-      doc.extension?.toLowerCase() === 'txt' ||
-      doc.name.toLowerCase().endsWith('.txt') ||
-      doc.type === 'text/plain'
-    );
-
-    if (isTxtNote) {
-      return (
-        <div
-          key={doc.id}
-          onClick={() => setViewerFile(doc)}
-          className={`group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col justify-between select-none cursor-pointer ${
-            isSelected
-              ? 'border-cyan-400 ring-2 ring-cyan-400/40 bg-[#14233C]'
-              : 'border-white/10 hover:border-cyan-400/50 hover:-translate-y-1'
-          } ${isMenuOpen ? 'overflow-visible z-50 ring-2 ring-cyan-400/50' : 'overflow-hidden z-10'}`}
-        >
-          {/* Haut de carte : Badge TXT, Épinglé, Favori et Bouton 3 traits */}
-          <div className="flex items-center justify-between w-full mb-1 z-20 relative">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                TXT
-              </span>
-              {doc.isPinned && (
-                <span className="p-0.5 rounded bg-black/60 text-blue-300 border border-blue-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
-                  <Pin className="w-3 h-3 rotate-45" />
-                </span>
-              )}
-              {doc.isFavorite && (
-                <span className="p-0.5 rounded bg-black/60 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
-                  <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                </span>
-              )}
-            </div>
-
-            <div 
-              className="relative studycloud-menu-trigger"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                type="button"
-                id={`cloud-doc-trigger-${doc.id}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveMenuFileId(isMenuOpen ? null : doc.id);
-                }}
-                className={`p-1 sm:p-1.5 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm ${
-                  isMenuOpen
-                    ? 'border-cyan-400 ring-2 ring-cyan-400/50 opacity-100 bg-black'
-                    : 'border-white/30 opacity-90 group-hover:opacity-100'
-                }`}
-                title="Options de la note (3 traits)"
-              >
-                <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
-              </button>
-              {renderOptionsMenu(doc, document.getElementById(`cloud-doc-trigger-${doc.id}`))}
-            </div>
-          </div>
-
-          {/* Illustration TXT Conforme strictement au Classeur (TxtDocumentSVG) */}
-          <div className="w-full flex-1 flex items-center justify-center py-2 min-h-[110px]">
-            <div className="w-24 sm:w-28 aspect-[160/215] drop-shadow-md group-hover:scale-105 transition-transform duration-200">
-              <TxtDocumentSVG />
-            </div>
-          </div>
-
-          {/* Bas de carte : Titre et détails */}
-          <div className="p-1.5 flex flex-col justify-between bg-black/30 rounded-xl mt-1.5">
-            <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-cyan-300 transition-colors" title={doc.name}>
-              {doc.name}
-            </p>
-            <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
-              <span className="truncate">{doc.size || '0 o'}</span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDownloadFile(doc);
-                }}
-                className="p-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded transition-all cursor-pointer active:scale-95"
-                title="Télécharger"
-              >
-                <Download className="w-2.5 h-2.5" />
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // Fichiers multimédias ou documents importés dans le dossier
-    return (
-      <div
-        key={doc.id}
-        onClick={() => setViewerFile(doc)}
-        className={`group relative bg-[#0E1526]/85 hover:bg-[#141E34] border rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col select-none cursor-pointer ${
-          isSelected
-            ? 'border-orange-400 ring-2 ring-orange-400/40 bg-[#192238]'
-            : 'border-white/10 hover:border-orange-500/50 hover:-translate-y-1'
-        } ${isMenuOpen ? 'overflow-visible z-50 ring-2 ring-orange-400/50' : 'overflow-hidden z-10'}`}
-      >
-        <div className="w-full h-24 sm:h-28 bg-slate-900/90 relative rounded-t-2xl flex items-center justify-center overflow-hidden">
-          {/* Badges Épinglé et Favori */}
-          {(doc.isPinned || doc.isFavorite) && (
-            <div className="absolute top-1.5 left-1.5 z-20 flex items-center gap-1 pointer-events-none">
-              {doc.isPinned && (
-                <span className="p-1 rounded-md bg-black/75 text-blue-400 border border-blue-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
-                  <Pin className="w-3 h-3 rotate-45" />
-                </span>
-              )}
-              {doc.isFavorite && (
-                <span className="p-1 rounded-md bg-black/75 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
-                  <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                </span>
-              )}
-            </div>
-          )}
-
-          {doc.category === 'images' || doc.isImage ? (
-            <img 
-              src={doc.previewUrl || doc.url} 
-              alt={doc.name}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              loading="lazy"
-            />
-          ) : (doc.category === 'videos' || Boolean(doc.videoUrl) || doc.isVideo) ? (
-            <VideoCardPreview vid={doc} />
-          ) : (doc.category === 'documents' || doc.isPdf) ? (
-            <DocumentCardPreview doc={doc} />
-          ) : ((doc.category as string) === 'audio' || Boolean(doc.audioUrl) || doc.isAudio) ? (
-            <AudioCardPreview track={doc} />
-          ) : doc.previewUrl ? (
-            <img 
-              src={doc.previewUrl} 
-              alt={doc.name}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              loading="lazy"
-            />
-          ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-3">
-              <FileText className="w-8 h-8 sm:w-10 sm:h-10 text-orange-400/85 stroke-[1.8]" />
-            </div>
-          )}
-        </div>
-
-        {/* Bouton 3 traits positionné au-dessus de la carte sans être coupé */}
-        <div 
-          className="absolute top-1.5 right-1.5 z-30 studycloud-menu-trigger"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            id={`cloud-doc2-trigger-${doc.id}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              setActiveMenuFileId(isMenuOpen ? null : doc.id);
-            }}
-            className={`p-1 sm:p-1.5 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm ${
-              isMenuOpen
-                ? 'border-orange-400 ring-2 ring-orange-400/50 opacity-100 bg-black'
-                : 'border-white/30 opacity-90 group-hover:opacity-100'
-            }`}
-            title="Options du fichier (3 traits)"
-          >
-            <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
-          </button>
-
-          {renderOptionsMenu(doc, document.getElementById(`cloud-doc2-trigger-${doc.id}`))}
-        </div>
-
-        <div className="p-2 sm:p-2.5 flex flex-col justify-between bg-black/30 rounded-b-2xl">
-          <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-orange-400 transition-colors" title={doc.name}>
-            {doc.name}
-          </p>
-          <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
-            <span className="truncate max-w-[85px] uppercase">{doc.extension || doc.category || 'DOC'}</span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDownloadFile(doc);
-              }}
-              className="p-1 bg-orange-600 hover:bg-orange-500 text-white rounded transition-all cursor-pointer active:scale-95"
-              title="Télécharger"
-            >
-              <Download className="w-2.5 h-2.5" />
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    return renderDocumentCard(doc, _index);
   };
 
   // =========================================================================
@@ -1558,29 +1364,34 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   const renderImageCard = (img: FileItem, index: number) => {
     const isMenuOpen = activeMenuFileId === img.id;
     const isSelected = viewerFile?.id === img.id;
-    const alignRight = (index + 1) % 2 === 0 || (index + 1) % 4 === 0;
 
     return (
       <div
         key={img.id}
         onClick={() => setViewerFile(img)}
-        className={`aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative group select-none cursor-pointer ${
-          isMenuOpen
-            ? 'overflow-visible z-[100] ring-2 ring-emerald-400 border-emerald-400'
-            : isSelected
-            ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02] overflow-hidden'
-            : 'border-white/10 hover:border-emerald-400/60 overflow-hidden z-10'
-        }`}
+        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none cursor-pointer ${
+          isSelected
+            ? 'border-emerald-500 ring-4 ring-emerald-500/50 shadow-2xl scale-[1.02]'
+            : isMenuOpen
+            ? 'border-emerald-400 ring-2 ring-emerald-400/40 shadow-2xl'
+            : 'border-white/10 hover:border-emerald-400/50 shadow-md'
+        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
       >
-        {/* Miniature réelle de l'image */}
-        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden rounded-2xl">
-          <ImageCardPreview img={img} />
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-black/60 pointer-events-none" />
+        <div className="absolute inset-0 rounded-xl sm:rounded-2xl overflow-hidden pointer-events-none">
+          <ImageCardPreview img={img} className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-black/20 group-hover:bg-black/5 transition-colors" />
+
+          {/* Titre en bas avec fond gradient sombre */}
+          <div className="absolute inset-x-0 bottom-0 p-1 sm:p-2 bg-gradient-to-t from-black/95 via-black/50 to-transparent">
+            <p className="text-[8.5px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">
+              {img.name}
+            </p>
+          </div>
         </div>
 
-        {/* Barre supérieure : 3 traits & taille */}
-        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
-          <div className={`relative studycloud-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
+        {/* Barre supérieure : 3 traits */}
+        <div className="absolute top-1 sm:top-2 left-1 sm:left-2 z-20 flex items-center gap-1 sm:gap-1.5">
+          <div className="relative studycloud-menu-trigger">
             <button
               type="button"
               id={`cloud-img-trigger-${img.id}`}
@@ -1588,66 +1399,66 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                 e.stopPropagation();
                 setActiveMenuFileId(prev => (prev === img.id ? null : img.id));
               }}
-              className="p-1.5 rounded-lg bg-black/60 hover:bg-black text-white border border-white/20 transition-all cursor-pointer active:scale-90"
+              className="p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm cursor-pointer active:scale-90 hover:bg-black"
               title="Options de l'image (3 traits)"
             >
-              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+              <Menu className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.2]" />
             </button>
             {renderOptionsMenu(img, document.getElementById(`cloud-img-trigger-${img.id}`))}
           </div>
-
-          <span className="text-[9px] font-bold bg-black/70 text-white px-2 py-0.5 rounded border border-white/20 shadow-sm">
-            {img.size || 'Image'}
-          </span>
         </div>
 
-        {/* Pied de carte : Nom de l'image (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
-        <div className="relative z-10 p-2.5 bg-black/80 backdrop-blur-md border-t border-white/10">
-          <p className="text-[10px] sm:text-xs font-black text-white truncate group-hover:text-emerald-300 transition-colors" title={img.name}>
-            {img.name}
-          </p>
-          <p className="text-[9px] text-slate-400 truncate mt-0.5">
-            {img.date || 'Image'}
-          </p>
+        {/* Haut droit : taille */}
+        <div className="absolute top-1 sm:top-2 right-1 sm:right-2 z-10">
+          <span className="text-[8px] sm:text-xs font-black text-white bg-black/60 px-1 sm:px-1.5 py-0.5 rounded border border-white/20 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
+            {img.size || 'HD'}
+          </span>
         </div>
       </div>
     );
   };
 
   // =========================================================================
-  // CARTE VIDÉO
+  // CARTE VIDÉO IDENTIQUE (AVEC BOUTON PLAY BLANC ET TITRE EN DÉGRADÉ)
   // =========================================================================
   const renderVideoCard = (vid: FileItem, index: number) => {
     const isMenuOpen = activeMenuFileId === vid.id;
     const isSelected = viewerFile?.id === vid.id;
-    const alignRight = (index + 1) % 2 === 0 || (index + 1) % 4 === 0;
 
     return (
       <div
         key={vid.id}
         onClick={() => setViewerFile(vid)}
-        className={`aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative group select-none cursor-pointer ${
-          isMenuOpen
-            ? 'overflow-visible z-[100] ring-2 ring-purple-400 border-purple-400'
-            : isSelected
-            ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02] overflow-hidden'
-            : 'border-white/10 hover:border-purple-400/60 overflow-hidden z-10'
-        }`}
+        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none cursor-pointer ${
+          isSelected
+            ? 'border-purple-500 ring-4 ring-purple-500/50 shadow-2xl scale-[1.02]'
+            : isMenuOpen
+            ? 'border-purple-400 ring-2 ring-purple-400/40 shadow-2xl'
+            : 'border-white/10 hover:border-purple-400/50 shadow-md'
+        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
       >
-        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden rounded-2xl">
-          <VideoCardPreview vid={vid} />
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-black/60 pointer-events-none" />
-        </div>
+        <div className="absolute inset-0 rounded-xl sm:rounded-2xl overflow-hidden pointer-events-none">
+          <VideoCardPreview vid={vid} className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-black/30 group-hover:bg-black/15 transition-colors" />
 
-        {/* Bouton lecture central */}
-        <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-          <div className="w-12 h-12 rounded-full bg-purple-600/80 hover:bg-purple-600 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-            <Play className="w-5 h-5 fill-current ml-0.5" />
+          {/* Bouton play blanc circulaire avec triangle noir au centre */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-7 h-7 sm:w-11 sm:h-11 rounded-full bg-white/95 text-stone-950 flex items-center justify-center shadow-2xl group-hover:scale-115 transition-transform duration-200">
+              <Play className="w-3.5 h-3.5 sm:w-5 sm:h-5 fill-stone-950 translate-x-0.5" />
+            </div>
+          </div>
+
+          {/* Titre en bas avec fond gradient sombre */}
+          <div className="absolute inset-x-0 bottom-0 p-1 sm:p-2 bg-gradient-to-t from-black/95 via-black/50 to-transparent">
+            <p className="text-[8.5px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">
+              {vid.name}
+            </p>
           </div>
         </div>
 
-        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
-          <div className={`relative studycloud-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
+        {/* Barre supérieure : 3 traits */}
+        <div className="absolute top-1 sm:top-2 left-1 sm:left-2 z-20 flex items-center gap-1 sm:gap-1.5">
+          <div className="relative studycloud-menu-trigger">
             <button
               type="button"
               id={`cloud-vid-trigger-${vid.id}`}
@@ -1655,27 +1466,20 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                 e.stopPropagation();
                 setActiveMenuFileId(prev => (prev === vid.id ? null : vid.id));
               }}
-              className="p-1.5 rounded-lg bg-black/60 hover:bg-black text-white border border-white/20 transition-all cursor-pointer active:scale-90"
+              className="p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm cursor-pointer active:scale-90 hover:bg-black"
               title="Options de la vidéo (3 traits)"
             >
-              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+              <Menu className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.2]" />
             </button>
             {renderOptionsMenu(vid, document.getElementById(`cloud-vid-trigger-${vid.id}`))}
           </div>
-
-          <span className="text-[9px] font-bold bg-black/70 text-white px-2 py-0.5 rounded border border-white/20 shadow-sm">
-            {vid.size || 'Vidéo'}
-          </span>
         </div>
 
-        {/* Pied de carte : Nom de la vidéo (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
-        <div className="relative z-10 p-2.5 bg-black/80 backdrop-blur-md border-t border-white/10">
-          <p className="text-[10px] sm:text-xs font-black text-white truncate group-hover:text-purple-300 transition-colors" title={vid.name}>
-            {vid.name}
-          </p>
-          <p className="text-[9px] text-slate-400 truncate mt-0.5">
-            {vid.date || 'Vidéo'}
-          </p>
+        {/* Haut droit : taille */}
+        <div className="absolute top-1 sm:top-2 right-1 sm:right-2 z-10">
+          <span className="text-[8px] sm:text-xs font-black text-white bg-black/60 px-1 sm:px-1.5 py-0.5 rounded border border-white/20 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
+            {vid.size || 'HD'}
+          </span>
         </div>
       </div>
     );

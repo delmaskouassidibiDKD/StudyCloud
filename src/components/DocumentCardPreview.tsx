@@ -1,21 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, FileSpreadsheet, Presentation, FileCode, AlignLeft } from 'lucide-react';
-import { generatePdfThumbnail, getCachedMediaThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
+import { generatePdfThumbnail, getCachedMediaThumbnail, getAsyncMediaThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { CloudStorageAPI } from '../services/cloudStorageService';
-import { getFileBlob } from '../services/localFileStorage';
+import { getFileBlob, resolveCleanDocumentBlob } from '../services/localFileStorage';
 import { FileItem } from './Page1FilesMenuView';
 
 interface DocumentCardPreviewProps {
   doc: FileItem;
 }
 
+function isImageThumbnailUrl(url?: string | null): boolean {
+  if (!url) return false;
+  if (url.startsWith('data:image/') || url.startsWith('blob:')) return true;
+  if (url.includes('/api/storage/thumbnail/') || url.includes('/thumbnails/') || url.includes('media_thumbnails') || url.includes('/thumbnail?')) return true;
+  const path = url.split('?')[0].split('#')[0].toLowerCase();
+  return /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(path);
+}
+
 export const DocumentCardPreview: React.FC<DocumentCardPreviewProps> = ({ doc }) => {
   const [thumbUrl, setThumbUrl] = useState<string | null>(() => {
-    if (doc.previewUrl && (doc.previewUrl.startsWith('data:image') || doc.previewUrl.startsWith('http') || doc.previewUrl.startsWith('/'))) {
-      // Si ce n'est pas une URL de PDF direct
-      if (!doc.previewUrl.toLowerCase().endsWith('.pdf')) {
-        return doc.previewUrl;
-      }
+    if (isImageThumbnailUrl(doc.thumbnailUrl)) {
+      return doc.thumbnailUrl!;
+    }
+    if (isImageThumbnailUrl(doc.previewUrl)) {
+      return doc.previewUrl!;
     }
     const cached = getCachedMediaThumbnail(doc.id || doc.url || '');
     return cached;
@@ -23,21 +31,21 @@ export const DocumentCardPreview: React.FC<DocumentCardPreviewProps> = ({ doc })
 
   // Mise à jour réactive dès qu'un nouvel aperçu est synchronisé depuis un autre ordinateur
   useEffect(() => {
-    if (doc.previewUrl && (doc.previewUrl.startsWith('data:image') || doc.previewUrl.startsWith('http') || doc.previewUrl.startsWith('/'))) {
-      if (!doc.previewUrl.toLowerCase().endsWith('.pdf')) {
-        setThumbUrl(doc.previewUrl);
-        return;
-      }
+    if (isImageThumbnailUrl(doc.thumbnailUrl)) {
+      setThumbUrl(doc.thumbnailUrl!);
+      return;
     }
-    if (doc.thumbnailUrl && (doc.thumbnailUrl.startsWith('data:image') || doc.thumbnailUrl.startsWith('http') || doc.thumbnailUrl.startsWith('/'))) {
-      if (!doc.thumbnailUrl.toLowerCase().endsWith('.pdf')) {
-        setThumbUrl(doc.thumbnailUrl);
-        return;
-      }
+    if (isImageThumbnailUrl(doc.previewUrl)) {
+      setThumbUrl(doc.previewUrl!);
+      return;
     }
     const cached = getCachedMediaThumbnail(doc.id || doc.url || '');
     if (cached) {
       setThumbUrl(cached);
+    } else {
+      getAsyncMediaThumbnail(doc.id || doc.url || '').then(res => {
+        if (res && isImageThumbnailUrl(res)) setThumbUrl(res);
+      });
     }
   }, [doc.id, doc.url, doc.previewUrl, doc.thumbnailUrl]);
 
@@ -51,58 +59,42 @@ export const DocumentCardPreview: React.FC<DocumentCardPreviewProps> = ({ doc })
     let isMounted = true;
 
     // Si on a déjà une image valide
-    if (thumbUrl && !thumbUrl.toLowerCase().endsWith('.pdf')) return;
+    if (isImageThumbnailUrl(thumbUrl)) return;
 
-    // Si c'est un PDF, vérifier d'abord dans IndexedDB (binaire local disponible immédiatement)
-    if (isPdf && doc.id) {
-      getFileBlob(doc.id).then(blob => {
+    if (isPdf) {
+      // 1. Chercher d'abord dans le cache asynchrone (IndexedDB)
+      getAsyncMediaThumbnail(doc.id || doc.url || '').then(cached => {
         if (!isMounted) return;
-        if (blob) {
-          generatePdfThumbnail(blob, doc.id).then(url => {
-            if (isMounted && url) {
-              setThumbUrl(url);
-              setCachedMediaThumbnail(doc.id, url);
-              const targetCategory = ((doc as any).category === 'mes-fichiers' || (doc as any).uploadSource === 'mes-fichiers' || (doc as any).source === 'Mes fichiers' || (doc as any).folderName === 'Mes fichiers') ? 'mes-fichiers' : ((doc as any).category || 'documents');
-              if (doc.id && !doc.id.startsWith('blob:')) {
-                CloudStorageAPI.saveMediaThumbnail(doc.id, targetCategory, url, doc.name).catch(() => {});
-              }
-            }
-          });
+        if (cached && isImageThumbnailUrl(cached)) {
+          setThumbUrl(cached);
           return;
         }
-        const targetUrl = doc.url || (doc.previewUrl && doc.previewUrl.toLowerCase().endsWith('.pdf') ? doc.previewUrl : null);
-        if (targetUrl) {
-          generatePdfThumbnail(targetUrl, doc.id || targetUrl).then(url => {
+
+        // 2. Résoudre le blob réel du PDF via resolveCleanDocumentBlob
+        resolveCleanDocumentBlob({
+          fileId: doc.id,
+          url: doc.url || doc.previewUrl || undefined,
+          mimeType: 'application/pdf',
+        }).then(blob => {
+          if (!isMounted || !blob) return;
+          generatePdfThumbnail(blob, doc.id || doc.url).then(url => {
             if (isMounted && url) {
               setThumbUrl(url);
-              setCachedMediaThumbnail(doc.id, url);
+              setCachedMediaThumbnail(doc.id || doc.url || '', url);
               const targetCategory = ((doc as any).category === 'mes-fichiers' || (doc as any).uploadSource === 'mes-fichiers' || (doc as any).source === 'Mes fichiers' || (doc as any).folderName === 'Mes fichiers') ? 'mes-fichiers' : ((doc as any).category || 'documents');
               if (doc.id && !doc.id.startsWith('blob:')) {
                 CloudStorageAPI.saveMediaThumbnail(doc.id, targetCategory, url, doc.name).catch(() => {});
               }
             }
           });
-        }
-      });
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    // Fallback URL distante si pas d'ID
-    const targetUrl = doc.url || (doc.previewUrl && doc.previewUrl.toLowerCase().endsWith('.pdf') ? doc.previewUrl : null);
-    if (isPdf && targetUrl) {
-      generatePdfThumbnail(targetUrl, doc.id || targetUrl).then(url => {
-        if (isMounted && url) {
-          setThumbUrl(url);
-        }
+        }).catch(() => {});
       });
     }
 
     return () => {
       isMounted = false;
     };
-  }, [doc.id, doc.url, doc.previewUrl, isPdf]);
+  }, [doc.id, doc.url, doc.previewUrl, isPdf, thumbUrl]);
 
   // Si on a une miniature réelle (générée ou image R2)
   if (thumbUrl) {

@@ -39,6 +39,7 @@ import { invalidateCloudQueries } from '../services/queryClient';
 import { getFileBlobUrl, deleteFileBlob, formatFileSize } from '../services/localFileStorage';
 import { AudioCardPreview } from './AudioCardPreview';
 import { DocumentCardPreview } from './DocumentCardPreview';
+import { ImageCardPreview } from './ImageCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
 import { Classeur3DFolderCard, TxtDocumentSVG } from './Folder3DModels';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
@@ -268,9 +269,9 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
 
     // Mettre à jour dans CloudDataStore
     CloudDataStore.toggleFavorite(file.id, false);
-    await CloudStorageAPI.removeFavorite(file.id).catch(() => {});
-    invalidateCloudQueries.favorites().catch(() => {});
-    invalidateCloudQueries.overview().catch(() => {});
+    await CloudStorageAPI.removeFavorite(file.id).catch(() => { });
+    invalidateCloudQueries.favorites().catch(() => { });
+    invalidateCloudQueries.overview().catch(() => { });
     showToast(`« ${file.name} » retiré des favoris`);
   };
 
@@ -440,19 +441,17 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
       <div
         key={file.id}
         onClick={() => setSelectedFile(file)}
-        className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
-          isMenuOpen
-            ? 'z-[100] relative overflow-visible'
-            : isSelected
+        className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${isMenuOpen
+          ? 'z-[100] relative overflow-visible'
+          : isSelected
             ? 'z-20 relative overflow-hidden'
             : 'z-10 relative overflow-hidden'
-        } ${
-          isSelected
+          } ${isSelected
             ? 'border-amber-400 ring-2 ring-amber-400/90 shadow-2xl scale-[1.02]'
             : isMenuOpen
-            ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-2xl'
-            : 'border-stone-800/80 hover:border-amber-500/50 hover:scale-[1.01]'
-        }`}
+              ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-2xl'
+              : 'border-stone-800/80 hover:border-amber-500/50 hover:scale-[1.01]'
+          }`}
       >
         {/* Arrière-plan : aperçu audio haute fidélité */}
         <div className="absolute inset-0 z-0 overflow-hidden rounded-2xl pointer-events-none">
@@ -477,9 +476,8 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                 e.stopPropagation();
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
               }}
-              className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
-                isMenuOpen ? 'border-amber-400 ring-2 ring-amber-400/50 bg-black' : 'border-white/20'
-              }`}
+              className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${isMenuOpen ? 'border-amber-400 ring-2 ring-amber-400/50 bg-black' : 'border-white/20'
+                }`}
               title="Options"
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
@@ -540,19 +538,17 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
       <div
         key={file.id}
         onClick={() => setSelectedFile(file)}
-        className={`group aspect-[3/4] rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
-          isMenuOpen
-            ? 'z-[100] relative overflow-visible'
-            : isSelected
+        className={`group aspect-[3/4] rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${isMenuOpen
+          ? 'z-[100] relative overflow-visible'
+          : isSelected
             ? 'z-20 relative overflow-hidden'
             : 'z-10 relative overflow-hidden'
-        } ${
-          isSelected
+          } ${isSelected
             ? 'border-orange-400 ring-2 ring-orange-400/90 shadow-2xl scale-[1.02]'
             : isMenuOpen
-            ? 'border-orange-400 ring-2 ring-orange-400/40 shadow-2xl'
-            : 'border-white/10 hover:border-orange-400/50 hover:scale-[1.01]'
-        }`}
+              ? 'border-orange-400 ring-2 ring-orange-400/40 shadow-2xl'
+              : 'border-white/10 hover:border-orange-400/50 hover:scale-[1.01]'
+          }`}
       >
         {/* Badges Épinglé & Favori */}
         <div className="absolute top-2 left-2 flex items-center gap-1 z-20 pointer-events-none">
@@ -613,13 +609,12 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         key={file.id}
         style={{ background: theme.bg }}
         onClick={() => setSelectedFile(file)}
-        className={`group aspect-[3/4] ${theme.border} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative select-none cursor-pointer ${
-          isSelected
-            ? 'ring-4 ring-white/90 shadow-2xl scale-[1.02] z-20'
-            : isMenuOpen
+        className={`group aspect-[3/4] ${theme.border} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative select-none cursor-pointer ${isSelected
+          ? 'ring-4 ring-white/90 shadow-2xl scale-[1.02] z-20'
+          : isMenuOpen
             ? 'ring-4 ring-amber-400/80 shadow-2xl z-[100] relative overflow-visible'
             : 'hover:scale-[1.01] shadow-md active:scale-98 z-10 overflow-hidden'
-        }`}
+          }`}
       >
         {/* Barre supérieure : Bouton 3 traits & Étoile Favori */}
         <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} flex items-center justify-between gap-1`}>
@@ -631,9 +626,8 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                 e.stopPropagation();
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
               }}
-              className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
-                isMenuOpen ? 'border-amber-400 ring-2 ring-amber-400/50 bg-black' : 'border-white/20'
-              }`}
+              className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${isMenuOpen ? 'border-amber-400 ring-2 ring-amber-400/50 bg-black' : 'border-white/20'
+                }`}
               title="Options"
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
@@ -690,35 +684,35 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
   const renderImageCard = (file: FileItem, index: number) => {
     const isMenuOpen = activeMenuFileId === file.id;
     const isSelected = selectedFile?.id === file.id;
-    const imgUrl = file.previewUrl || file.thumbnailUrl || (file as any).imageUrl || file.url || '';
 
     return (
       <div
         key={file.id}
         onClick={() => setSelectedFile(file)}
-        className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
-          isMenuOpen ? 'z-[100] relative overflow-visible' : isSelected ? 'z-20 relative overflow-hidden' : 'z-10 relative overflow-hidden'
-        } ${
+        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none cursor-pointer ${
           isSelected
-            ? 'border-emerald-400 ring-2 ring-emerald-400/90 shadow-2xl scale-[1.02]'
+            ? 'border-emerald-500 ring-4 ring-emerald-500/50 shadow-2xl scale-[1.02]'
             : isMenuOpen
-            ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-2xl'
-            : 'border-stone-800/80 hover:border-emerald-500/50 hover:scale-[1.01]'
-        }`}
+            ? 'border-amber-400 ring-4 ring-amber-400/40 shadow-2xl'
+            : 'border-white/10 hover:border-emerald-400/50 shadow-md'
+        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
       >
-        {/* Arrière-plan vignette */}
-        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden rounded-2xl pointer-events-none">
-          {imgUrl ? (
-            <img src={imgUrl} alt={file.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-          ) : (
-            <ImageIcon className="w-10 h-10 text-emerald-400/40" />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-black/60 pointer-events-none" />
+        {/* Conteneur média interne : arrondit l'image sans couper le menu déroulant */}
+        <div className="absolute inset-0 rounded-xl sm:rounded-2xl overflow-hidden pointer-events-none">
+          <ImageCardPreview img={file as any} className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-black/20 group-hover:bg-black/5 transition-colors" />
+
+          {/* Titre en bas avec fond gradient sombre identique à ImagesMenuView */}
+          <div className="absolute inset-x-0 bottom-0 p-1 sm:p-2 bg-gradient-to-t from-black/95 via-black/50 to-transparent">
+            <p className="text-[8.5px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">
+              {file.name}
+            </p>
+          </div>
         </div>
 
-        {/* Barre supérieure : Bouton 3 traits & Étoile Favori */}
-        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
-          <div className={`relative studycloud-fav-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
+        {/* Haut gauche : Bouton 3 traits */}
+        <div className="absolute top-1 sm:top-2 left-1 sm:left-2 z-20 flex items-center gap-1 sm:gap-1.5">
+          <div className="relative studycloud-fav-menu-trigger">
             <button
               type="button"
               id={`fav-menu-trigger-${file.id}`}
@@ -726,44 +720,33 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                 e.stopPropagation();
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
               }}
-              className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
-                isMenuOpen ? 'border-amber-400 ring-2 ring-amber-400/50 bg-black' : 'border-white/20'
+              className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm cursor-pointer active:scale-90 hover:bg-black ${
+                isMenuOpen ? 'border-amber-400 ring-2 ring-amber-400/50 bg-black' : ''
               }`}
-              title="Options"
+              title="Options (3 traits)"
             >
-              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+              <Menu className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.2]" />
             </button>
             {isMenuOpen && renderOptionsMenu(file, document.getElementById(`fav-menu-trigger-${file.id}`))}
           </div>
-
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleRemoveFavorite(file);
-              }}
-              className="p-1 rounded-md text-amber-400 hover:text-amber-300 hover:bg-black/60 transition-colors"
-              title="Retirer des favoris"
-            >
-              <Star className="w-4 h-4 fill-amber-400" />
-            </button>
-            <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
-              {file.size || '0 o'}
-            </span>
-          </div>
         </div>
 
-        {/* Barre inférieure : Nom & Date (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
-        <div className="relative z-10 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-black text-white truncate group-hover:text-emerald-300 transition-colors" title={file.name}>
-              {file.name}
-            </p>
-            <p className="text-[10px] text-slate-400 truncate">
-              {file.date || 'Image'}
-            </p>
-          </div>
+        {/* Haut droit : Étoile Favori & Badge Taille */}
+        <div className="absolute top-1 sm:top-2 right-1 sm:right-2 z-10 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRemoveFavorite(file);
+            }}
+            className="p-0.5 sm:p-1 rounded-md bg-black/70 text-amber-400 hover:text-amber-300 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm transition-transform active:scale-90 cursor-pointer"
+            title="Retirer des favoris"
+          >
+            <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 fill-amber-400 text-amber-400" />
+          </button>
+          <span className="text-[8px] sm:text-xs font-black text-white bg-black/60 px-1 sm:px-1.5 py-0.5 rounded border border-white/20 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
+            {file.size || 'HD'}
+          </span>
         </div>
       </div>
     );
@@ -775,44 +758,42 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
   const renderVideoCard = (file: FileItem, index: number) => {
     const isMenuOpen = activeMenuFileId === file.id;
     const isSelected = selectedFile?.id === file.id;
-    const vidUrl = file.previewUrl || file.thumbnailUrl || (file as any).videoUrl || file.url || '';
 
     return (
       <div
         key={file.id}
         onClick={() => setSelectedFile(file)}
-        className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
-          isMenuOpen ? 'z-[100] relative overflow-visible' : isSelected ? 'z-20 relative overflow-hidden' : 'z-10 relative overflow-hidden'
-        } ${
+        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none cursor-pointer ${
           isSelected
-            ? 'border-purple-400 ring-2 ring-purple-400/90 shadow-2xl scale-[1.02]'
+            ? 'border-purple-500 ring-4 ring-purple-500/50 shadow-2xl scale-[1.02]'
             : isMenuOpen
-            ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-2xl'
-            : 'border-stone-800/80 hover:border-purple-500/50 hover:scale-[1.01]'
-        }`}
+            ? 'border-amber-400 ring-4 ring-amber-400/40 shadow-2xl'
+            : 'border-white/10 hover:border-purple-400/50 shadow-md'
+        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
       >
-        {/* Arrière-plan vignette vidéo */}
-        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden rounded-2xl pointer-events-none">
-          {vidUrl && !vidUrl.toLowerCase().endsWith('.mp4') ? (
-            <img src={vidUrl} alt={file.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-          ) : (
-            <div className="flex flex-col items-center justify-center gap-1.5">
-              <Film className="w-10 h-10 text-purple-400/60" />
-            </div>
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/60 pointer-events-none" />
-        </div>
+        {/* Conteneur média interne : arrondit la vignette sans couper le menu déroulant */}
+        <div className="absolute inset-0 rounded-xl sm:rounded-2xl overflow-hidden pointer-events-none">
+          <VideoCardPreview vid={file as any} className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-black/30 group-hover:bg-black/15 transition-colors" />
 
-        {/* Bouton play stylisé au centre */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-          <div className="w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm border border-purple-400/40 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-            <Play className="w-4 h-4 fill-purple-400 text-purple-400 ml-0.5" />
+          {/* Centre : Bouton Play blanc circulaire avec triangle noir identique à VideosMenuView */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-7 h-7 sm:w-11 sm:h-11 rounded-full bg-white/95 text-stone-950 flex items-center justify-center shadow-2xl group-hover:scale-115 transition-transform duration-200">
+              <Play className="w-3.5 h-3.5 sm:w-5 sm:h-5 fill-stone-950 translate-x-0.5" />
+            </div>
+          </div>
+
+          {/* Titre en bas avec fond gradient sombre */}
+          <div className="absolute inset-x-0 bottom-0 p-1 sm:p-2 bg-gradient-to-t from-black/95 via-black/50 to-transparent">
+            <p className="text-[8.5px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">
+              {file.name}
+            </p>
           </div>
         </div>
 
-        {/* Barre supérieure : Bouton 3 traits & Étoile Favori */}
-        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
-          <div className={`relative studycloud-fav-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
+        {/* Haut gauche : Bouton 3 traits */}
+        <div className="absolute top-1 sm:top-2 left-1 sm:left-2 z-20 flex items-center gap-1 sm:gap-1.5">
+          <div className="relative studycloud-fav-menu-trigger">
             <button
               type="button"
               id={`fav-menu-trigger-${file.id}`}
@@ -820,44 +801,33 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                 e.stopPropagation();
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
               }}
-              className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
-                isMenuOpen ? 'border-amber-400 ring-2 ring-amber-400/50 bg-black' : 'border-white/20'
+              className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm cursor-pointer active:scale-90 hover:bg-black ${
+                isMenuOpen ? 'border-amber-400 ring-2 ring-amber-400/50 bg-black' : ''
               }`}
-              title="Options"
+              title="Options (3 traits)"
             >
-              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+              <Menu className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.2]" />
             </button>
             {isMenuOpen && renderOptionsMenu(file, document.getElementById(`fav-menu-trigger-${file.id}`))}
           </div>
-
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleRemoveFavorite(file);
-              }}
-              className="p-1 rounded-md text-amber-400 hover:text-amber-300 hover:bg-black/60 transition-colors"
-              title="Retirer des favoris"
-            >
-              <Star className="w-4 h-4 fill-amber-400" />
-            </button>
-            <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
-              {file.size || '0 o'}
-            </span>
-          </div>
         </div>
 
-        {/* Barre inférieure : Nom & Date (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
-        <div className="relative z-10 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-black text-white truncate group-hover:text-purple-300 transition-colors" title={file.name}>
-              {file.name}
-            </p>
-            <p className="text-[10px] text-slate-400 truncate">
-              {file.date || 'Vidéo'}
-            </p>
-          </div>
+        {/* Haut droit : Étoile Favori & Badge Taille */}
+        <div className="absolute top-1 sm:top-2 right-1 sm:right-2 z-10 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRemoveFavorite(file);
+            }}
+            className="p-0.5 sm:p-1 rounded-md bg-black/70 text-amber-400 hover:text-amber-300 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm transition-transform active:scale-90 cursor-pointer"
+            title="Retirer des favoris"
+          >
+            <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 fill-amber-400 text-amber-400" />
+          </button>
+          <span className="text-[8px] sm:text-xs font-black text-white bg-black/60 px-1 sm:px-1.5 py-0.5 rounded border border-white/20 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
+            {file.size || 'HD'}
+          </span>
         </div>
       </div>
     );
@@ -936,9 +906,8 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                   }
                 }
               }}
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
-                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
-              }`}
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${(isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+                }`}
               title={(isViewerMaximized || viewerExpandLevel >= 2) ? 'Réduire la vue' : 'Plein écran'}
             >
               {(isViewerMaximized || viewerExpandLevel >= 2) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
@@ -1138,11 +1107,10 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
               key={tab.id}
               type="button"
               onClick={() => setActiveFilter(tab.id as any)}
-              className={`px-3 py-1 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                activeFilter === tab.id
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
-                  : 'bg-[#182032] text-slate-200 hover:text-white hover:bg-[#222c44] border border-stone-700/50'
-              }`}
+              className={`px-3 py-1 rounded-full text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${activeFilter === tab.id
+                ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
+                : 'bg-[#182032] text-slate-200 hover:text-white hover:bg-[#222c44] border border-stone-700/50'
+                }`}
             >
               {tab.label}
             </button>
@@ -1154,13 +1122,12 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE DES FAVORIS */}
         <main
-          className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-            (isViewerMaximized && selectedFile)
-              ? 'hidden'
-              : selectedFile
+          className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${(isViewerMaximized && selectedFile)
+            ? 'hidden'
+            : selectedFile
               ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
               : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
-          }`}
+            }`}
         >
           {loading ? (
             <div className="py-20 flex flex-col items-center justify-center gap-3">
@@ -1209,11 +1176,10 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                     <Music className="w-4 h-4" />
                     <span>Fichiers Audio ({categorized.audios.length})</span>
                   </div>
-                  <div className={`grid gap-2 sm:gap-4 ${
-                    selectedFile
-                      ? 'grid-cols-3 lg:grid-cols-3'
-                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                  }`}>
+                  <div className={`grid gap-2 sm:gap-4 ${selectedFile
+                    ? 'grid-cols-3 lg:grid-cols-3'
+                    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
                     {categorized.audios.map((file, idx) => renderAudioCard(file, idx))}
                   </div>
                 </section>
@@ -1226,11 +1192,10 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                     <FolderArchive className="w-4 h-4" />
                     <span>Classeur & Dossiers 3D ({categorized.classeur.length})</span>
                   </div>
-                  <div className={`grid gap-2 sm:gap-4 ${
-                    selectedFile
-                      ? 'grid-cols-3 lg:grid-cols-3'
-                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                  }`}>
+                  <div className={`grid gap-2 sm:gap-4 ${selectedFile
+                    ? 'grid-cols-3 lg:grid-cols-3'
+                    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
                     {categorized.classeur.map((file, idx) => renderClasseurCard(file, idx))}
                   </div>
                 </section>
@@ -1243,11 +1208,10 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                     <FileText className="w-4 h-4" />
                     <span>Documents ({categorized.documents.length})</span>
                   </div>
-                  <div className={`grid gap-2 sm:gap-4 ${
-                    selectedFile
-                      ? 'grid-cols-3 lg:grid-cols-3'
-                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                  }`}>
+                  <div className={`grid gap-2 sm:gap-4 ${selectedFile
+                    ? 'grid-cols-3 lg:grid-cols-3'
+                    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
                     {categorized.documents.map((file, idx) => renderDocumentCard(file, idx))}
                   </div>
                 </section>
@@ -1260,11 +1224,10 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                     <ImageIcon className="w-4 h-4" />
                     <span>Images ({categorized.images.length})</span>
                   </div>
-                  <div className={`grid gap-2 sm:gap-4 ${
-                    selectedFile
-                      ? 'grid-cols-3 lg:grid-cols-3'
-                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                  }`}>
+                  <div className={`grid gap-2 sm:gap-4 ${selectedFile
+                    ? 'grid-cols-3 lg:grid-cols-3'
+                    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
                     {categorized.images.map((file, idx) => renderImageCard(file, idx))}
                   </div>
                 </section>
@@ -1277,11 +1240,10 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                     <Film className="w-4 h-4" />
                     <span>Vidéos ({categorized.videos.length})</span>
                   </div>
-                  <div className={`grid gap-2 sm:gap-4 ${
-                    selectedFile
-                      ? 'grid-cols-3 lg:grid-cols-3'
-                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
-                  }`}>
+                  <div className={`grid gap-2 sm:gap-4 ${selectedFile
+                    ? 'grid-cols-3 lg:grid-cols-3'
+                    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
+                    }`}>
                     {categorized.videos.map((file, idx) => renderVideoCard(file, idx))}
                   </div>
                 </section>
@@ -1293,11 +1255,10 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         {/* PANNEAU DE DROITE : LECTEUR / APERÇU DÉDIÉ PAR TYPE DE FICHIER (COMME DANS LE MENU CORBEILLE) */}
         {selectedFile && (
           <aside
-            className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 ${
-              (isViewerMaximized || selectedFile)
-                ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-200 dark:border-stone-800'
-            } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
+            className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 ${(isViewerMaximized || selectedFile)
+              ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
+              : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-200 dark:border-stone-800'
+              } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
           >
             {renderDedicatedReader(selectedFile)}
           </aside>

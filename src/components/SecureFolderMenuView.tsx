@@ -45,6 +45,7 @@ import { FileItem } from './Page1FilesMenuView';
 import { UploadQueue } from '../services/uploadQueue';
 import { AudioCardPreview } from './AudioCardPreview';
 import { DocumentCardPreview } from './DocumentCardPreview';
+import { ImageCardPreview } from './ImageCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
 import { Classeur3DFolderCard } from './Folder3DModels';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
@@ -1217,110 +1218,91 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
   // =========================================================================
   // CARTE IMAGE AUTHENTIQUE (aspect-[3/4] comme les documents, vignette réelle, bouton 3 traits)
   // =========================================================================
+  // CARTE IMAGE SÉCURISÉE (aspect-[4/5], ImageCardPreview & Titre en dégradé)
+  // =========================================================================
   const renderImageCard = (file: FileItem, index?: number) => {
     const isMenuOpen = activeMenuFileId === file.id;
     const isChecked = selectedIds.has(file.id);
     const isCurrentViewer = selectedFile?.id === file.id;
-    const imgUrl = file.previewUrl || file.thumbnailUrl || (file as any).imageUrl || file.url || '';
 
     return (
       <div
         key={file.id}
         onClick={() => setSelectedFile(file)}
-        className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
-          isMenuOpen
-            ? 'z-[100] relative overflow-visible'
-            : isChecked
-            ? 'z-20 relative overflow-hidden'
-            : 'z-10 relative overflow-hidden'
-        } ${
+        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none cursor-pointer ${
           isChecked
             ? 'border-emerald-400 ring-4 ring-emerald-400/90 shadow-2xl scale-[1.02]'
             : isCurrentViewer
             ? 'border-blue-500 ring-4 ring-blue-500/80 shadow-2xl scale-[1.02]'
             : isMenuOpen
             ? 'border-blue-400 ring-2 ring-blue-400/40 shadow-2xl'
-            : 'border-stone-800/80 hover:border-emerald-500/50 hover:scale-[1.01]'
-        }`}
+            : 'border-white/10 hover:border-emerald-500/50 shadow-md'
+        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
       >
-        {/* Arrière-plan vignette */}
-        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden rounded-2xl pointer-events-none">
-          {imgUrl ? (
-            <img src={imgUrl} alt={file.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-          ) : (
-            <ImageIcon className="w-10 h-10 text-emerald-400/40" />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-black/60 pointer-events-none" />
-        </div>
+        {/* Conteneur média interne : arrondit l'image sans couper le menu déroulant */}
+        <div className="absolute inset-0 rounded-xl sm:rounded-2xl overflow-hidden pointer-events-none">
+          <ImageCardPreview img={file as any} className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-black/20 group-hover:bg-black/5 transition-colors" />
 
-        {/* Barre supérieure : Bouton 3 traits, Checkbox & Badge Sécurisé / Taille */}
-        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
-          <div className="flex items-center gap-1.5">
-            <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
-              <button
-                type="button"
-                id={`sec-menu-trigger-${file.id}`}
-                disabled={selectedIds.size > 0}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (selectedIds.size > 0) return;
-                  setActiveMenuFileId(prev => prev === file.id ? null : file.id);
-                }}
-                className={`p-1.5 rounded-lg bg-black/80 text-white border transition-all shadow-md ${
-                  selectedIds.size > 0
-                    ? 'opacity-20 cursor-not-allowed pointer-events-none'
-                    : 'hover:bg-black cursor-pointer active:scale-90'
-                } ${
-                  isMenuOpen ? 'border-blue-400 ring-2 ring-blue-400/50 bg-black' : 'border-white/20'
-                }`}
-                title={selectedIds.size > 0 ? "Menu désactivé en mode sélection" : "Options"}
-              >
-                <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
-              </button>
-              {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, document.getElementById(`sec-menu-trigger-${file.id}`))}
-            </div>
-
-            <button
-              type="button"
-              onClick={(e) => toggleSelect(file.id, e)}
-              className="p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
-              title={isChecked ? "Désélectionner" : "Sélectionner"}
-            >
-              {isChecked ? (
-                <CheckSquare className="w-4 h-4 fill-emerald-400 text-stone-950" />
-              ) : (
-                <Square className="w-4 h-4 text-white" />
-              )}
-            </button>
-          </div>
-
-          <div className="flex items-center gap-1">
-            <span className="p-1 rounded-md bg-black/75 text-emerald-400 border border-emerald-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Protégé">
-              <Lock className="w-3 h-3 text-blue-400" />
-            </span>
-            <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
-              {file.size || '0 o'}
-            </span>
-          </div>
-        </div>
-
-        {/* Barre inférieure : Nom & Date (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
-        <div className="relative z-10 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-black text-white truncate group-hover:text-emerald-300 transition-colors" title={file.name}>
+          {/* Titre en bas avec fond gradient sombre */}
+          <div className="absolute inset-x-0 bottom-0 p-1 sm:p-2 bg-gradient-to-t from-black/95 via-black/50 to-transparent">
+            <p className="text-[8.5px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">
               {file.name}
             </p>
-            <p className="text-[10px] text-slate-400 truncate">
-              {file.date || 'Image sécurisée'}
-            </p>
           </div>
+        </div>
+
+        {/* Barre supérieure : Bouton 3 traits, Checkbox */}
+        <div className="absolute top-1 sm:top-2 left-1 sm:left-2 z-20 flex items-center gap-1 sm:gap-1.5">
+          <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
+            <button
+              type="button"
+              id={`sec-menu-trigger-${file.id}`}
+              disabled={selectedIds.size > 0}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (selectedIds.size > 0) return;
+                setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+              }}
+              className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm cursor-pointer active:scale-90 hover:bg-black ${
+                isMenuOpen ? 'border-blue-400 ring-2 ring-blue-400/50 bg-black' : ''
+              }`}
+              title="Options (3 traits)"
+            >
+              <Menu className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.2]" />
+            </button>
+            {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, document.getElementById(`sec-menu-trigger-${file.id}`))}
+          </div>
+
+          <button
+            type="button"
+            onClick={(e) => toggleSelect(file.id, e)}
+            className="p-0.5 sm:p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
+            title={isChecked ? "Désélectionner" : "Sélectionner"}
+          >
+            {isChecked ? (
+              <CheckSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-emerald-400 text-stone-950" />
+            ) : (
+              <Square className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+            )}
+          </button>
+        </div>
+
+        {/* Haut droit : Badge Sécurisé / Taille */}
+        <div className="absolute top-1 sm:top-2 right-1 sm:right-2 z-10 flex items-center gap-1">
+          <span className="p-0.5 sm:p-1 rounded-md bg-black/75 text-emerald-400 border border-emerald-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Protégé">
+            <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-blue-400" />
+          </span>
+          <span className="text-[8px] sm:text-xs font-black text-white bg-black/60 px-1 sm:px-1.5 py-0.5 rounded border border-white/20 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
+            {file.size || 'HD'}
+          </span>
         </div>
       </div>
     );
   };
 
   // =========================================================================
-  // CARTE VIDÉO AUTHENTIQUE (aspect-[3/4] comme les documents, VideoCardPreview, bouton play central)
+  // CARTE VIDÉO AUTHENTIQUE (aspect-[4/5], VideoCardPreview, bouton play central)
   // =========================================================================
   const renderVideoCard = (file: FileItem, index?: number) => {
     const isMenuOpen = activeMenuFileId === file.id;
@@ -1331,96 +1313,80 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
       <div
         key={file.id}
         onClick={() => setSelectedFile(file)}
-        className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
-          isMenuOpen
-            ? 'z-[100] relative overflow-visible'
-            : isChecked
-            ? 'z-20 relative overflow-hidden'
-            : 'z-10 relative overflow-hidden'
-        } ${
+        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none cursor-pointer ${
           isChecked
             ? 'border-purple-400 ring-4 ring-purple-400/90 shadow-2xl scale-[1.02]'
             : isCurrentViewer
             ? 'border-blue-500 ring-4 ring-blue-500/80 shadow-2xl scale-[1.02]'
             : isMenuOpen
             ? 'border-blue-400 ring-2 ring-blue-400/40 shadow-2xl'
-            : 'border-stone-800/80 hover:border-purple-500/50 hover:scale-[1.01]'
-        }`}
+            : 'border-white/10 hover:border-purple-500/50 shadow-md'
+        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
       >
-        {/* Arrière-plan vignette vidéo */}
-        <div className="absolute inset-0 z-0 bg-black flex items-center justify-center overflow-hidden rounded-2xl pointer-events-none">
-          <VideoCardPreview vid={file} />
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-black/60 pointer-events-none" />
-        </div>
+        {/* Conteneur média interne : arrondit la vignette sans couper le menu déroulant */}
+        <div className="absolute inset-0 rounded-xl sm:rounded-2xl overflow-hidden pointer-events-none">
+          <VideoCardPreview vid={file} className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-black/30 group-hover:bg-black/15 transition-colors" />
 
-        {/* Bouton play stylisé au centre */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-          <div className="w-10 h-10 rounded-full bg-white/95 text-stone-950 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-            <Play className="w-4 h-4 fill-stone-950 ml-0.5" />
-          </div>
-        </div>
-
-        {/* Barre supérieure : Bouton 3 traits, Checkbox & Badge Sécurisé / Taille */}
-        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
-          <div className="flex items-center gap-1.5">
-            <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
-              <button
-                type="button"
-                id={`sec-menu-trigger-${file.id}`}
-                disabled={selectedIds.size > 0}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (selectedIds.size > 0) return;
-                  setActiveMenuFileId(prev => prev === file.id ? null : file.id);
-                }}
-                className={`p-1.5 rounded-lg bg-black/80 text-white border transition-all shadow-md ${
-                  selectedIds.size > 0
-                    ? 'opacity-20 cursor-not-allowed pointer-events-none'
-                    : 'hover:bg-black cursor-pointer active:scale-90'
-                } ${
-                  isMenuOpen ? 'border-blue-400 ring-2 ring-blue-400/50 bg-black' : 'border-white/20'
-                }`}
-                title={selectedIds.size > 0 ? "Menu désactivé en mode sélection" : "Options"}
-              >
-                <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
-              </button>
-              {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, document.getElementById(`sec-menu-trigger-${file.id}`))}
+          {/* Bouton play blanc circulaire avec triangle noir au centre */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-7 h-7 sm:w-11 sm:h-11 rounded-full bg-white/95 text-stone-950 flex items-center justify-center shadow-2xl group-hover:scale-115 transition-transform duration-200">
+              <Play className="w-3.5 h-3.5 sm:w-5 sm:h-5 fill-stone-950 translate-x-0.5" />
             </div>
-
-            <button
-              type="button"
-              onClick={(e) => toggleSelect(file.id, e)}
-              className="p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
-              title={isChecked ? "Désélectionner" : "Sélectionner"}
-            >
-              {isChecked ? (
-                <CheckSquare className="w-4 h-4 fill-purple-400 text-stone-950" />
-              ) : (
-                <Square className="w-4 h-4 text-white" />
-              )}
-            </button>
           </div>
 
-          <div className="flex items-center gap-1">
-            <span className="p-1 rounded-md bg-black/75 text-emerald-400 border border-emerald-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Protégé">
-              <Lock className="w-3 h-3 text-blue-400" />
-            </span>
-            <span className="text-[9px] font-black bg-black/80 text-white px-2 py-0.5 rounded-md border border-white/15 shadow-sm">
-              {file.size || '0 o'}
-            </span>
-          </div>
-        </div>
-
-        {/* Barre inférieure : Nom & Date (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
-        <div className="relative z-10 p-2.5 bg-black/75 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-2 rounded-b-2xl">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-black text-white truncate group-hover:text-purple-300 transition-colors" title={file.name}>
+          {/* Titre en bas avec fond gradient sombre */}
+          <div className="absolute inset-x-0 bottom-0 p-1 sm:p-2 bg-gradient-to-t from-black/95 via-black/50 to-transparent">
+            <p className="text-[8.5px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">
               {file.name}
             </p>
-            <p className="text-[10px] text-slate-400 truncate">
-              {file.date || 'Vidéo sécurisée'}
-            </p>
           </div>
+        </div>
+
+        {/* Barre supérieure : Bouton 3 traits, Checkbox */}
+        <div className="absolute top-1 sm:top-2 left-1 sm:left-2 z-20 flex items-center gap-1 sm:gap-1.5">
+          <div className={`relative studycloud-sec-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
+            <button
+              type="button"
+              id={`sec-menu-trigger-${file.id}`}
+              disabled={selectedIds.size > 0}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (selectedIds.size > 0) return;
+                setActiveMenuFileId(prev => prev === file.id ? null : file.id);
+              }}
+              className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm cursor-pointer active:scale-90 hover:bg-black ${
+                isMenuOpen ? 'border-blue-400 ring-2 ring-blue-400/50 bg-black' : ''
+              }`}
+              title="Options (3 traits)"
+            >
+              <Menu className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.2]" />
+            </button>
+            {isMenuOpen && selectedIds.size === 0 && renderOptionsMenu(file, document.getElementById(`sec-menu-trigger-${file.id}`))}
+          </div>
+
+          <button
+            type="button"
+            onClick={(e) => toggleSelect(file.id, e)}
+            className="p-0.5 sm:p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
+            title={isChecked ? "Désélectionner" : "Sélectionner"}
+          >
+            {isChecked ? (
+              <CheckSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-purple-400 text-stone-950" />
+            ) : (
+              <Square className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+            )}
+          </button>
+        </div>
+
+        {/* Haut droit : Badge Sécurisé / Taille */}
+        <div className="absolute top-1 sm:top-2 right-1 sm:right-2 z-10 flex items-center gap-1">
+          <span className="p-0.5 sm:p-1 rounded-md bg-black/75 text-emerald-400 border border-emerald-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Protégé">
+            <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-blue-400" />
+          </span>
+          <span className="text-[8px] sm:text-xs font-black text-white bg-black/60 px-1 sm:px-1.5 py-0.5 rounded border border-white/20 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
+            {file.size || 'HD'}
+          </span>
         </div>
       </div>
     );
