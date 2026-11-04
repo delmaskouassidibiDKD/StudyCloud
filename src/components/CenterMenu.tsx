@@ -12,7 +12,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
-import { getFileBlob, getFileBlobUrl, formatFileSize } from '../services/localFileStorage';
+import { getFileBlob, getFileBlobUrl, formatFileSize, resolveCleanPdfBlobUrl, resolveCleanDocumentBlob, ensureDecompressedArrayBuffer } from '../services/localFileStorage';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
@@ -392,19 +392,59 @@ export function CenterMenu({
     const fileExt = (file.name?.split('.').pop() || file.extension || '').toLowerCase();
 
     const rawDirectUrl = file.url || file.audioUrl || file.previewUrl || (file as any).videoUrl || '';
-    const isDeadBlob = rawDirectUrl.startsWith('blob:') || rawDirectUrl.startsWith('data:image/');
+    const isDeadBlob = rawDirectUrl.startsWith('data:image/');
     const directUrl = isDeadBlob ? '' : rawDirectUrl;
     const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
     const streamFallbackUrl = file.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}` : '';
 
-    if (directUrl) {
+    const isText = ['txt', 'md', 'json', 'csv', 'js', 'ts', 'py', 'html', 'css', 'sql', 'xml', 'log', 'java', 'c', 'cpp', 'sh', 'env'].includes(fileExt) || Boolean(file.isNotepad);
+    const isWord = ['docx', 'doc'].includes(fileExt);
+    const isExcel = ['xlsx', 'xls', 'csv'].includes(fileExt);
+    const isPpt = ['pptx', 'ppt'].includes(fileExt);
+    const isPdfFile = fileExt === 'pdf' || file.type?.includes('pdf') || file.name?.toLowerCase()?.endsWith('.pdf');
+
+    let createdPdfBlobUrl: string | null = null;
+
+    if (isPdfFile) {
+      setResolvedUrl('');
+      resolveCleanPdfBlobUrl({
+        fileId: file.id,
+        url: directUrl,
+        r2Key: file.r2Key || (file as any).r2_key,
+        baseUrl,
+      }).then((cleanUrl) => {
+        if (!isMounted) {
+          if (cleanUrl && cleanUrl.startsWith('blob:')) URL.revokeObjectURL(cleanUrl);
+          return;
+        }
+        if (cleanUrl) {
+          createdPdfBlobUrl = cleanUrl;
+          setResolvedUrl(cleanUrl);
+        } else if (directUrl && !directUrl.startsWith('blob:')) {
+          setResolvedUrl(directUrl);
+        } else if (streamFallbackUrl) {
+          setResolvedUrl(streamFallbackUrl);
+        }
+        setIsLoadingDocument(false);
+      }).catch(() => {
+        if (isMounted) setIsLoadingDocument(false);
+      });
+      return () => {
+        isMounted = false;
+        if (createdPdfBlobUrl && createdPdfBlobUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(createdPdfBlobUrl);
+        }
+      };
+    }
+
+    if (directUrl && !directUrl.startsWith('blob:')) {
       setResolvedUrl(directUrl);
     } else if (streamFallbackUrl) {
       setResolvedUrl(streamFallbackUrl);
     }
 
     // 1. Utiliser le tampon local uniquement si le fichier est en cours d'envoi (isUploading), sinon streaming direct R2
-    if (file.id && ((file as any).isUploading || !directUrl)) {
+    if (file.id && ((file as any).isUploading || !directUrl || directUrl.startsWith('blob:'))) {
       getFileBlobUrl(file.id).then(url => {
         if (!isMounted) return;
         if (url) {
@@ -417,12 +457,7 @@ export function CenterMenu({
       });
     }
 
-    const isText = ['txt', 'md', 'json', 'csv', 'js', 'ts', 'py', 'html', 'css', 'sql', 'xml', 'log', 'java', 'c', 'cpp', 'sh', 'env'].includes(fileExt) || Boolean(file.isNotepad);
-    const isWord = ['docx', 'doc'].includes(fileExt);
-    const isExcel = ['xlsx', 'xls', 'csv'].includes(fileExt);
-    const isPpt = ['pptx', 'ppt'].includes(fileExt);
-
-    // Pour les PDF, vidéos, audios et images : lecture en streaming pur depuis Cloudflare R2 sans télécharger en mémoire/IndexedDB
+    // Pour les vidéos, audios et images : lecture en streaming pur depuis Cloudflare R2 sans télécharger en mémoire/IndexedDB
     if (!isText && !isWord && !isExcel && !isPpt) {
       setIsLoadingDocument(false);
       return () => {
@@ -432,41 +467,18 @@ export function CenterMenu({
 
     // 2. Téléchargement léger en mémoire uniquement pour le décodage des fichiers bureautiques (Word, Excel, PowerPoint, Texte)
     const loadBinaryData = async () => {
-      let blob: Blob | null = null;
-      if (file.id && (file as any).isUploading) {
-        blob = await getFileBlob(file.id);
-      }
-      if (!blob && directUrl) {
-        try {
-          const resp = await fetch(directUrl);
-          if (resp.ok) blob = await resp.blob();
-        } catch (e) {
-          console.warn('CenterMenu fetch fallback error:', e);
-        }
-      }
-      if (!blob && streamFallbackUrl) {
-        try {
-          const resp = await fetch(streamFallbackUrl);
-          if (resp.ok) {
-            blob = await resp.blob();
-          }
-        } catch (e) { }
-      }
-      const r2Key = file.r2Key || (file as any).r2_key;
-      if (!blob && r2Key) {
-        try {
-          const resp = await fetch(`${baseUrl}/api/storage/file/${encodeURIComponent(r2Key)}`);
-          if (resp.ok) {
-            blob = await resp.blob();
-          }
-        } catch (e) { }
-      }
+      const blob = await resolveCleanDocumentBlob({
+        fileId: file.id,
+        url: directUrl,
+        r2Key: file.r2Key || (file as any).r2_key,
+        baseUrl,
+      });
 
       if (!isMounted) return;
 
       if (isWord && blob) {
         try {
-          const arrayBuffer = await blob.arrayBuffer();
+          const arrayBuffer = await ensureDecompressedArrayBuffer(await blob.arrayBuffer());
           const conv = await mammoth.convertToHtml({ arrayBuffer });
           const raw = await mammoth.extractRawText({ arrayBuffer });
           const rawHtml = conv.value || '<p>Document Word vide.</p>';
@@ -484,7 +496,7 @@ export function CenterMenu({
         }
       } else if (isExcel && blob) {
         try {
-          const arrayBuffer = await blob.arrayBuffer();
+          const arrayBuffer = await ensureDecompressedArrayBuffer(await blob.arrayBuffer());
           const workbook = XLSX.read(arrayBuffer, { type: 'array' });
           const sheetNames = workbook.SheetNames || [];
           const activeSheet = sheetNames[0] || 'Feuille 1';
@@ -506,7 +518,7 @@ export function CenterMenu({
         }
       } else if (isPpt && blob) {
         try {
-          const arrayBuffer = await blob.arrayBuffer();
+          const arrayBuffer = await ensureDecompressedArrayBuffer(await blob.arrayBuffer());
           const zip = await JSZip.loadAsync(arrayBuffer);
           const slideFiles = Object.keys(zip.files).filter(k => /^ppt\/slides\/slide\d+\.xml$/.test(k));
 
@@ -1207,12 +1219,12 @@ export function CenterMenu({
 
             // Native Vertical PDF Viewer with "le truc noir" (black PDF toolbar #toolbar=1)
             // L'URL et les clés restent stables pour ne jamais détruire/recharger l'iframe lors du zoom
-            const cleanPdfBase = (currentUrl || '').split('#')[0];
-            const nativePdfUrl = `${cleanPdfBase}#toolbar=1&navpanes=0&view=FitH`;
+            const cleanPdfBase = (resolvedUrl || '').split('#')[0];
+            const nativePdfUrl = cleanPdfBase ? `${cleanPdfBase}#toolbar=1&navpanes=0&view=FitH` : '';
 
             return (
               <div className="w-full h-full flex flex-col items-center overflow-auto bg-stone-100 dark:bg-stone-900">
-                {currentUrl ? (
+                {nativePdfUrl ? (
                   <div
                     className="flex-1 w-full h-full flex flex-col"
                     style={{
@@ -1220,21 +1232,13 @@ export function CenterMenu({
                       height: '100%'
                     }}
                   >
-                    <object
-                      key={`pdf-native-${activePreviewItem?.id || activePreviewItem?.url || 'default'}`}
-                      data={nativePdfUrl}
-                      type="application/pdf"
-                      className="w-full h-full border-0 block flex-1"
+                    <iframe
+                      key={`iframe-pdf-native-${activePreviewItem?.id || cleanPdfBase || 'default'}`}
+                      src={nativePdfUrl}
+                      title={activePreviewItem?.name || 'Document PDF'}
+                      className="w-full h-full border-0 block flex-1 bg-white"
                       style={{ width: '100%', height: '100%' }}
-                    >
-                      <iframe
-                        key={`iframe-pdf-native-${activePreviewItem?.id || activePreviewItem?.url || 'default'}`}
-                        src={nativePdfUrl}
-                        title={activePreviewItem?.name || 'Document PDF'}
-                        className="w-full h-full border-0 block flex-1"
-                        style={{ width: '100%', height: '100%' }}
-                      />
-                    </object>
+                    />
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full gap-3 p-6 text-center">

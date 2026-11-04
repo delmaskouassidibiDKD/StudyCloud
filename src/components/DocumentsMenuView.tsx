@@ -152,7 +152,7 @@ const isExcludedFromDocuments = (d: any): boolean => {
       if (studyRaw && studyRaw.includes(d.id)) return true;
       const lmRaw = localStorage.getItem('unifolder_left_menu_general_imports');
       if (lmRaw && lmRaw.includes(d.id)) return true;
-    } catch (e) {}
+    } catch (e) { }
   }
   if (d.category === 'classeur' || d.category === 'classeur_folder' || d.category === 'mes-fichiers' || d.category === 'trash' || d.category === 'secure') return true;
   const fId = d.folderId || d.folder_id || d.originalFolderId;
@@ -391,7 +391,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     });
     setDocumentsList(prev => prev.filter(d => d.id !== docId));
     CloudDataStore.removeFile(docId);
-    deleteFileBlob(docId).catch(() => {});
+    deleteFileBlob(docId).catch(() => { });
     if (selectedDoc?.id === docId) {
       setSelectedDoc(null);
       setIsViewerMaximized(false);
@@ -474,7 +474,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
         } else if (streamFallbackUrl) {
           setSplitResolvedPdfUrl(streamFallbackUrl);
         }
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     return () => {
@@ -546,7 +546,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       const localBlobUrl = URL.createObjectURL(f);
 
       // Sauvegarde immédiate du blob dans IndexedDB (0ms)
-      storeFileBlob(fileId, f).catch(() => {});
+      storeFileBlob(fileId, f).catch(() => { });
 
       let docCat: FileItem['documentCategory'] = "PAS D'INF...";
       const lowerName = f.name.toLowerCase();
@@ -593,9 +593,9 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             setCachedMediaThumbnail(id, thumbUrl);
             setDocumentsList(prev => prev.map(d => d.id === id ? { ...d, previewUrl: thumbUrl, thumbnailUrl: thumbUrl } : d));
             CloudDataStore.updateFile(id, { previewUrl: thumbUrl, thumbnailUrl: thumbUrl });
-            CloudStorageAPI.saveMediaThumbnail(id, 'documents', thumbUrl, file.name).catch(() => {});
+            CloudStorageAPI.saveMediaThumbnail(id, 'documents', thumbUrl, file.name).catch(() => { });
           }
-        }).catch(() => {});
+        }).catch(() => { });
       }
     });
 
@@ -621,7 +621,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             origBytes = comp.originalSizeBytes;
             origFormatted = comp.originalSizeFormatted;
             if (comp.file !== file) {
-              await storeFileBlob(id, comp.file as any).catch(() => {});
+              await storeFileBlob(id, comp.file as any).catch(() => { });
             }
           } catch (err) {
             console.warn('[DocumentsMenuView] Compression doc échouée, utilisation brute:', err);
@@ -665,9 +665,9 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     }
     CloudDataStore.toggleFavorite(doc.id, nextState);
     if (nextState) {
-      await CloudStorageAPI.addFavorite(doc.id, 'documents').catch(() => {});
+      await CloudStorageAPI.addFavorite(doc.id, 'documents').catch(() => { });
     } else {
-      await CloudStorageAPI.removeFavorite(doc.id).catch(() => {});
+      await CloudStorageAPI.removeFavorite(doc.id).catch(() => { });
     }
     showToast(nextState ? 'Ajouté aux favoris ⭐' : 'Retiré des favoris');
     setActiveMenuDocId(null);
@@ -689,9 +689,9 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       setSelectedDoc(prev => (prev ? { ...prev, name: finalName } : null));
     }
     CloudDataStore.updateFile(doc.id, { name: finalName });
-    await CloudStorageAPI.renameItem(doc.id, finalName, 'documents').catch(() => {});
-    invalidateCloudQueries.documents().catch(() => {});
-    invalidateCloudQueries.overview().catch(() => {});
+    await CloudStorageAPI.renameItem(doc.id, finalName, 'documents').catch(() => { });
+    invalidateCloudQueries.documents().catch(() => { });
+    invalidateCloudQueries.overview().catch(() => { });
     showToast(`Document renommé en "${finalName}" !`);
     setActiveMenuDocId(null);
   };
@@ -719,10 +719,10 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
 
     CloudDataStore.moveToTrash(fileWithSource);
     LocalSyncReplication.recordLocalDeletion(doc.id, 'documents');
-    await CloudStorageAPI.deleteDocument(doc.id, doc.name).catch(() => {});
-    invalidateCloudQueries.documents().catch(() => {});
-    invalidateCloudQueries.trash().catch(() => {});
-    invalidateCloudQueries.overview().catch(() => {});
+    await CloudStorageAPI.deleteDocument(doc.id, doc.name).catch(() => { });
+    invalidateCloudQueries.documents().catch(() => { });
+    invalidateCloudQueries.trash().catch(() => { });
+    invalidateCloudQueries.overview().catch(() => { });
     showToast(`"${doc.name}" déplacé dans la corbeille 🗑️`);
     setActiveMenuDocId(null);
   };
@@ -876,8 +876,8 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
 
         // Cloner le blob IndexedDB de manière indépendante pour éviter toute suppression partagée
         getFileBlob(doc.id).then(blob => {
-          if (blob) storeFileBlob(newDocId, blob).catch(() => {});
-        }).catch(() => {});
+          if (blob) storeFileBlob(newDocId, blob).catch(() => { });
+        }).catch(() => { });
 
         CloudStorageAPI.duplicateItem(doc.id, 'documents', undefined, newName, newDocId).then((serverData) => {
           if (serverData && serverData.id && serverData.id !== newDocId) {
@@ -887,14 +887,14 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             setDocumentsList(prev => prev.map(d => d.id === newDocId ? { ...d, id: realId } : d));
             getFileBlob(newDocId).then(b => {
               if (b) {
-                storeFileBlob(realId, b).catch(() => {});
-                deleteFileBlob(newDocId).catch(() => {});
+                storeFileBlob(realId, b).catch(() => { });
+                deleteFileBlob(newDocId).catch(() => { });
               }
-            }).catch(() => {});
+            }).catch(() => { });
             LocalSyncReplication.recordLocalUpsert(realId, 'documents', { ...newDoc, id: realId });
           }
-          invalidateCloudQueries.documents().catch(() => {});
-          invalidateCloudQueries.overview().catch(() => {});
+          invalidateCloudQueries.documents().catch(() => { });
+          invalidateCloudQueries.overview().catch(() => { });
         }).catch(console.error);
         showToast(`Document dupliqué : "${newName}" !`);
         break;
@@ -921,7 +921,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             pinnedIds = pinnedIds.filter(id => id !== doc.id);
           }
           localStorage.setItem('studycloud_pinned_ids', JSON.stringify(pinnedIds));
-        } catch {}
+        } catch { }
 
         // 2. Mise à jour de l'état local
         setDocumentsList(prev => {
@@ -999,16 +999,16 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     if (!isTransferPromptOpen) return null;
 
     const count = itemsToTransfer.length;
-    const titleText = count === 1 
+    const titleText = count === 1
       ? `Que souhaitez-vous faire avec "${itemsToTransfer[0]?.name}" ?`
       : `Que souhaitez-vous faire avec ces ${count} documents ?`;
 
     const content = (
-      <div 
+      <div
         className="fixed inset-0 z-[2700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150 pointer-events-auto select-none"
         onClick={() => setIsTransferPromptOpen(false)}
       >
-        <div 
+        <div
           className="relative w-full max-w-[420px] bg-[#0A0F1D] border-2 border-amber-500/40 rounded-3xl p-5 sm:p-6 shadow-[0_25px_60px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.1)] text-white animate-in zoom-in-95 duration-150 flex flex-col gap-4"
           onClick={(e) => e.stopPropagation()}
         >
@@ -1043,7 +1043,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                 setIsTransferModalOpen(true);
                 CloudStorageAPI.getClasseurFolders().then(folders => {
                   if (folders && Array.isArray(folders)) setClasseur3DFolders(folders);
-                }).catch(() => {});
+                }).catch(() => { });
               }}
               className="group p-4 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-400/60 transition-all text-left flex items-start gap-3.5 cursor-pointer shadow-md active:scale-98"
             >
@@ -1071,7 +1071,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                 setIsTransferModalOpen(true);
                 CloudStorageAPI.getClasseurFolders().then(folders => {
                   if (folders && Array.isArray(folders)) setClasseur3DFolders(folders);
-                }).catch(() => {});
+                }).catch(() => { });
               }}
               className="group p-4 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 hover:border-emerald-400/60 transition-all text-left flex items-start gap-3.5 cursor-pointer shadow-md active:scale-98"
             >
@@ -1126,7 +1126,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     const parentNavFolder = currentNavFolder?.parentId ? classeur3DFolders.find(f => f.id === currentNavFolder.parentId) : null;
 
     const toggleFolderCheck = (folderId: string) => {
-      setTransferSelectedFolderIds(prev => 
+      setTransferSelectedFolderIds(prev =>
         prev.includes(folderId) ? prev.filter(id => id !== folderId) : [...prev, folderId]
       );
     };
@@ -1134,7 +1134,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     const isSelectionActive = transferSelectedFolderIds.length > 0;
 
     const content = (
-      <div 
+      <div
         className="fixed inset-0 z-[2700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200 pointer-events-auto select-none"
         onClick={() => {
           setIsTransferModalOpen(false);
@@ -1142,7 +1142,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
           setTransferSearchQuery('');
         }}
       >
-        <div 
+        <div
           className="relative w-full max-w-[440px] max-h-[82vh] bg-[#0A0F1D] border-2 border-amber-500/40 rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.1)] flex flex-col overflow-hidden text-white animate-in zoom-in-95 duration-200"
           onClick={(e) => e.stopPropagation()}
         >
@@ -1213,7 +1213,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                     <span className="text-[11px] font-bold">Retour</span>
                   </button>
                 )}
-                
+
                 <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
                   {parentNavFolder ? (
                     <>
@@ -1281,11 +1281,10 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                         setTransferNavFolderId(folder.id);
                       }
                     }}
-                    className={`group flex items-center justify-between gap-2.5 p-2.5 rounded-2xl transition-all border cursor-pointer ${
-                      isChecked
-                        ? 'bg-amber-500/15 border-amber-500/40 shadow-sm'
-                        : 'bg-slate-900/60 hover:bg-slate-800/80 border-white/5 hover:border-white/15'
-                    }`}
+                    className={`group flex items-center justify-between gap-2.5 p-2.5 rounded-2xl transition-all border cursor-pointer ${isChecked
+                      ? 'bg-amber-500/15 border-amber-500/40 shadow-sm'
+                      : 'bg-slate-900/60 hover:bg-slate-800/80 border-white/5 hover:border-white/15'
+                      }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <button
@@ -1359,13 +1358,12 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
               type="button"
               disabled={!isSelectionActive || isTransferring}
               onClick={handleExecuteTransfer}
-              className={`px-4 sm:px-5 py-2.5 rounded-xl font-black text-xs sm:text-sm flex items-center gap-2 transition-all shadow-lg ${
-                isSelectionActive && !isTransferring
-                  ? transferMode === 'move'
-                    ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer shadow-amber-500/20 active:scale-95'
-                    : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 cursor-pointer shadow-emerald-500/20 active:scale-95'
-                  : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5'
-              }`}
+              className={`px-4 sm:px-5 py-2.5 rounded-xl font-black text-xs sm:text-sm flex items-center gap-2 transition-all shadow-lg ${isSelectionActive && !isTransferring
+                ? transferMode === 'move'
+                  ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer shadow-amber-500/20 active:scale-95'
+                  : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 cursor-pointer shadow-emerald-500/20 active:scale-95'
+                : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5'
+                }`}
             >
               {isTransferring ? (
                 <>
@@ -1450,7 +1448,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     const smartStyle = computeSmartMenuStyle(rect, 420);
 
     return createPortal(
-      <div 
+      <div
         className="studycloud-file-menu-panel bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.25)] text-slate-200 rounded-xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
         style={smartStyle.style}
         onClick={(e) => e.stopPropagation()}
@@ -1590,7 +1588,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
           </div>
         </div>
       </div>
-    , document.body);
+      , document.body);
   };
 
   // =========================================================================
@@ -1632,22 +1630,21 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             setSelectedDoc(doc);
           }
         }}
-        className={`aspect-[3/4] ${theme.border} rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none ${
-          hasFailed
-            ? 'border-rose-500 ring-4 ring-rose-500/50 shadow-2xl bg-rose-950/40 cursor-default'
-            : isSaving
-              ? 'border-emerald-500/40 cursor-wait'
-              : isChecked
-                ? 'ring-4 ring-amber-400 shadow-2xl scale-[1.02] cursor-pointer'
-                : isSelected
-                  ? 'ring-4 ring-white shadow-2xl scale-[1.02] cursor-pointer'
-                  : 'hover:scale-[1.01] shadow-md cursor-pointer active:scale-98'
-        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
+        className={`aspect-[3/4] ${theme.border} rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none ${hasFailed
+          ? 'border-rose-500 ring-4 ring-rose-500/50 shadow-2xl bg-rose-950/40 cursor-default'
+          : isSaving
+            ? 'border-emerald-500/40 cursor-wait'
+            : isChecked
+              ? 'ring-4 ring-amber-400 shadow-2xl scale-[1.02] cursor-pointer'
+              : isSelected
+                ? 'ring-4 ring-white shadow-2xl scale-[1.02] cursor-pointer'
+                : 'hover:scale-[1.01] shadow-md cursor-pointer active:scale-98'
+          } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
       >
         {/* 1. Trait en haut collé au document qui se remplit pendant l'enregistrement */}
         {isSaving && !hasFailed && (
           <div className="absolute top-0 inset-x-0 h-1.5 bg-black/40 z-35 overflow-hidden pointer-events-none rounded-t-xl sm:rounded-t-2xl">
-            <div 
+            <div
               className="h-full bg-emerald-400 transition-all duration-300 ease-out shadow-[0_0_8px_#34d399]"
               style={{ width: `${progressVal}%` }}
             />
@@ -1748,11 +1745,10 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                   if (isSelectionMode || selectedItemIds.length > 0) return;
                   setActiveMenuDocId(isMenuOpen ? null : doc.id);
                 }}
-                className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/40 text-white border border-white/20 transition-all flex items-center justify-center shadow-sm ${
-                  isSelectionMode || selectedItemIds.length > 0
-                    ? 'opacity-20 cursor-not-allowed pointer-events-none'
-                    : 'hover:bg-black/70 cursor-pointer active:scale-90'
-                }`}
+                className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/40 text-white border border-white/20 transition-all flex items-center justify-center shadow-sm ${isSelectionMode || selectedItemIds.length > 0
+                  ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                  : 'hover:bg-black/70 cursor-pointer active:scale-90'
+                  }`}
                 title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options du fichier (3 traits)"}
               >
                 <Menu className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.2]" />
@@ -1882,11 +1878,10 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setDocLayoutMode(m => m === 'vertical' ? 'horizontal' : 'vertical')}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full border transition-all cursor-pointer shadow-sm active:scale-95 ${
-                    docLayoutMode === 'vertical'
-                      ? 'bg-blue-600/30 text-blue-300 border-blue-400/50 hover:bg-blue-600/40'
-                      : 'bg-amber-500/20 text-amber-300 border-amber-400/50 hover:bg-amber-500/30'
-                  }`}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full border transition-all cursor-pointer shadow-sm active:scale-95 ${docLayoutMode === 'vertical'
+                    ? 'bg-blue-600/30 text-blue-300 border-blue-400/50 hover:bg-blue-600/40'
+                    : 'bg-amber-500/20 text-amber-300 border-amber-400/50 hover:bg-amber-500/30'
+                    }`}
                   title={docLayoutMode === 'vertical' ? "Défilement vertical actif (Cliquer pour passer en horizontal)" : "Mode horizontal actif (Cliquer pour passer en défilement vertical)"}
                 >
                   <SlidersHorizontal className={`w-3.5 h-3.5 ${docLayoutMode === 'vertical' ? 'rotate-90 text-blue-400' : 'text-amber-400'}`} />
@@ -1931,9 +1926,8 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             <button
               type="button"
               onClick={() => handleToggleFavorite(file)}
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
-                file.isFavorite ? 'bg-amber-500/20 text-amber-400 border-amber-400/40' : 'bg-black/60 hover:bg-slate-800 text-white border-white/10'
-              }`}
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${file.isFavorite ? 'bg-amber-500/20 text-amber-400 border-amber-400/40' : 'bg-black/60 hover:bg-slate-800 text-white border-white/10'
+                }`}
               title={file.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
             >
               <Star className={`w-3.5 h-3.5 ${file.isFavorite ? 'fill-amber-400' : ''}`} />
@@ -1971,9 +1965,8 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             <button
               type="button"
               onClick={() => setIsViewerMaximized(!isViewerMaximized)}
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
-                isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
-              }`}
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+                }`}
               title={isViewerMaximized ? 'Réduire la vue' : "Agrandir dans l'espace"}
             >
               {isViewerMaximized ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
@@ -2168,13 +2161,12 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       {/* DISPOSITION SPLIT (IMAGE 3) */}
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE DES DOCUMENTS */}
-        <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-          isViewerMaximized && selectedDoc
-            ? 'hidden'
-            : selectedDoc
-              ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
-              : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
-        }`}>
+        <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${isViewerMaximized && selectedDoc
+          ? 'hidden'
+          : selectedDoc
+            ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+            : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
+          }`}>
           <div className="space-y-3 sm:space-y-4">
             {/* Ligne d'en-tête de la liste */}
             <div className="flex items-center justify-between">
@@ -2201,23 +2193,22 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                   {sortOption === 'pinned'
                     ? 'Aucun document épinglé'
                     : sortOption === 'duplicates'
-                    ? 'Aucun résultat pour les doublons'
-                    : 'Aucun document disponible'}
+                      ? 'Aucun résultat pour les doublons'
+                      : 'Aucun document disponible'}
                 </p>
                 <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
                   {sortOption === 'pinned'
                     ? 'Vous n\'avez pas encore de documents épinglés. Utilisez l\'option "Épinglez" dans le menu à 3 traits pour en épingler.'
                     : sortOption === 'duplicates'
-                    ? 'Tous vos documents sont uniques dans la base de données. Aucun doublon détecté.'
-                    : 'Ce dossier ne contient aucun document pour le moment.'}
+                      ? 'Tous vos documents sont uniques dans la base de données. Aucun doublon détecté.'
+                      : 'Ce dossier ne contient aucun document pour le moment.'}
                 </p>
                 {(sortOption === 'duplicates' || sortOption === 'pinned') && (
                   <button
                     type="button"
                     onClick={() => setSortOption('recent')}
-                    className={`mt-3 px-4 py-1.5 rounded-full text-white text-xs font-bold transition-all shadow-sm cursor-pointer ${
-                      sortOption === 'pinned' ? 'bg-amber-600 hover:bg-amber-500' : 'bg-blue-600 hover:bg-blue-500'
-                    }`}
+                    className={`mt-3 px-4 py-1.5 rounded-full text-white text-xs font-bold transition-all shadow-sm cursor-pointer ${sortOption === 'pinned' ? 'bg-amber-600 hover:bg-amber-500' : 'bg-blue-600 hover:bg-blue-500'
+                      }`}
                   >
                     Afficher tous les documents
                   </button>
@@ -2226,11 +2217,10 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             ) : (
               <>
                 {/* GRILLE DES CARTES DE DOCUMENTS (IMAGE 1) */}
-                <div className={`grid gap-2 sm:gap-3.5 ${
-                  selectedDoc
-                    ? 'grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3'
-                    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                }`}>
+                <div className={`grid gap-2 sm:gap-3.5 ${selectedDoc
+                  ? 'grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3'
+                  : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                  }`}>
                   {filteredDocuments.slice(0, visibleCount).map((doc, idx) => renderDocumentCard(doc, idx))}
                 </div>
 
@@ -2252,11 +2242,10 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
 
         {/* PANNEAU DE DROITE : LECTEUR DOCUMENT DÉDIÉ (IMAGE 3) */}
         {selectedDoc && (
-          <div className={`flex flex-col bg-[#04060A] animate-in fade-in duration-150 ${
-            isViewerMaximized && selectedDoc
-              ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]'
-              : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-          }`}>
+          <div className={`flex flex-col bg-[#04060A] animate-in fade-in duration-150 ${isViewerMaximized && selectedDoc
+            ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]'
+            : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+            }`}>
             {renderDocumentReader(selectedDoc)}
           </div>
         )}
@@ -2341,7 +2330,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                 markItemDeleted(d.id);
                 CloudDataStore.dismissRecent(d.id);
                 LocalSyncReplication.recordLocalDeletion(d.id, 'documents');
-                CloudStorageAPI.deleteDocument(d.id, d.name).catch(() => {});
+                CloudStorageAPI.deleteDocument(d.id, d.name).catch(() => { });
               });
               setDocumentsList(prev => prev.filter(d => !selectedItemIds.includes(d.id)));
               if (selectedDoc && selectedItemIds.includes(selectedDoc.id)) {
@@ -2351,9 +2340,9 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
               setSelectedItemIds([]);
               setIsSelectionMode(false);
               CloudDataStore.moveToTrash(trashedItems);
-              invalidateCloudQueries.documents().catch(() => {});
-              invalidateCloudQueries.trash().catch(() => {});
-              invalidateCloudQueries.overview().catch(() => {});
+              invalidateCloudQueries.documents().catch(() => { });
+              invalidateCloudQueries.trash().catch(() => { });
+              invalidateCloudQueries.overview().catch(() => { });
               showToast(`${toDelete.length} document(s) déplacé(s) dans la corbeille 🗑️`);
             }}
             className="flex items-center gap-1.5 hover:text-rose-400 font-semibold cursor-pointer transition-colors"
@@ -2381,9 +2370,9 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       {renderTransferFolderModal()}
 
       {/* MODAL FORMAT NON COMPATIBLE AU MILIEU DE L'ÉCRAN */}
-      <IncompatibleFormatModal 
-        info={incompatibleAlertInfo} 
-        onClose={() => setIncompatibleAlertInfo(null)} 
+      <IncompatibleFormatModal
+        info={incompatibleAlertInfo}
+        onClose={() => setIncompatibleAlertInfo(null)}
       />
     </div>
   );

@@ -14,6 +14,7 @@ import { ImageCardPreview } from './ImageCardPreview';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { PdfHorizontalViewer, extractPageLines } from './PdfHorizontalViewer';
+import { MobilePdfViewer } from './MobilePdfViewer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { handleNativeShare } from '../utils/nativeShare';
@@ -919,7 +920,28 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
 
           {fileType === 'document' && (
             <div className="w-full h-full min-h-0 flex-1 flex flex-col bg-[#070B14] select-text">
-              {isPdf && readerPdfViewMode === 'continuous' ? (
+              {isPdf && (typeof window !== 'undefined' && window.innerWidth < 768) ? (
+                <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
+                  <MobilePdfViewer
+                    fileId={file.id}
+                    file={file}
+                    url={file.url}
+                    docZoom={Math.round(readerPdfScale * 100)}
+                    onZoomChange={(z) => setReaderPdfScale(z / 100)}
+                    activeSpeechPage={activeSpeechPage}
+                    activeSpeechLineIndex={activeSpeechLineIndex}
+                    currentSpokenText={speechSegmentsRef.current[currentSentenceIdx]?.text}
+                    autoScrollEnabled={autoScrollEnabled}
+                    isSpeaking={speechState === 'playing'}
+                    onSegmentsExtracted={(segs) => {
+                      if (speechSegmentsRef.current.length === 0) {
+                        speechSegmentsRef.current = segs;
+                      }
+                    }}
+                    isFullscreen={isViewerMaximized}
+                  />
+                </div>
+              ) : isPdf && readerPdfViewMode === 'continuous' ? (
                 <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
                   <PdfHorizontalViewer
                     fileId={file.id}
@@ -938,16 +960,6 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                       }
                     }}
                     isFullscreen={isViewerMaximized}
-                  />
-                </div>
-              ) : isPdf && readerPdfViewMode === 'native' ? (
-                <div className="w-full h-full flex-1 flex flex-col items-center overflow-hidden bg-stone-100 dark:bg-stone-900">
-                  <iframe
-                    key={`pdf-native-${file.id || 'direct'}`}
-                    src={`${(file.url || '').split('#')[0]}#toolbar=1&navpanes=0&view=FitH`}
-                    title={file.name || 'Document PDF'}
-                    className="w-full h-full border-0 block flex-1 bg-white"
-                    style={{ width: '100%', height: '100%', minHeight: '100%' }}
                   />
                 </div>
               ) : (

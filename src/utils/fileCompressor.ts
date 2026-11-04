@@ -373,57 +373,9 @@ export async function compressDocument(file: File): Promise<CompressedResult> {
   const originalSize = file.size;
   const originalFormatted = formatBytes(originalSize);
 
-  // Si l'API native CompressionStream n'est pas disponible ou fichier trop petit (< 1 Ko)
-  if (typeof CompressionStream === 'undefined' || originalSize < 1024) {
-    return {
-      file,
-      originalFile: file,
-      fileName: file.name,
-      originalSizeBytes: originalSize,
-      originalSizeFormatted: originalFormatted,
-      compressedSizeBytes: originalSize,
-      compressedSizeFormatted: originalFormatted,
-      savedBytes: 0,
-      compressionRatio: 0,
-      isCompressed: false,
-      mimeType: file.type || 'application/octet-stream',
-    };
-  }
-
-  try {
-    const stream = file.stream().pipeThrough(new CompressionStream('gzip'));
-    const response = new Response(stream);
-    const blob = await response.blob();
-
-    // On n'active la compression que si elle génère au moins 10% d'économie
-    if (blob.size < originalSize * 0.9) {
-      const compressedSize = blob.size;
-      const saved = originalSize - compressedSize;
-      const ratio = Math.round((saved / originalSize) * 1000) / 10;
-
-      const compressedFile = new File([blob], file.name, {
-        type: file.type || 'application/octet-stream',
-        lastModified: file.lastModified,
-      });
-
-      return {
-        file: compressedFile,
-        originalFile: file,
-        fileName: file.name,
-        originalSizeBytes: originalSize,
-        originalSizeFormatted: originalFormatted,
-        compressedSizeBytes: compressedSize,
-        compressedSizeFormatted: formatBytes(compressedSize),
-        savedBytes: saved,
-        compressionRatio: ratio,
-        isCompressed: true,
-        mimeType: file.type || 'application/octet-stream',
-      };
-    }
-  } catch (err) {
-    console.warn('[FileCompressor] Document conservé brut:', err);
-  }
-
+  // IMPORTANT : Les PDF, DOCX, XLSX, PPTX et documents bureautiques sont déjà compressés en interne
+  // (FlateDecode / ZIP) et doivent conserver leur signature binaire intacte (%PDF-1.x, PK\x03\x04)
+  // pour être lus directement par le lecteur PDF natif du navigateur et par PDF.js / Mammoth / XLSX.
   return {
     file,
     originalFile: file,

@@ -59,15 +59,61 @@ function getDB(): Promise<IDBDatabase> {
 }
 
 /**
+ * Décompresse automatiquement un ArrayBuffer s'il est au format GZIP (magic bytes 0x1f 0x8b)
+ */
+export async function ensureDecompressedArrayBuffer(buffer: ArrayBuffer): Promise<ArrayBuffer> {
+  if (!buffer || buffer.byteLength < 2) return buffer;
+  const u8 = new Uint8Array(buffer);
+  if (u8[0] === 0x1f && u8[1] === 0x8b && typeof DecompressionStream !== 'undefined') {
+    try {
+      const ds = new DecompressionStream('gzip');
+      const stream = new Blob([buffer]).stream().pipeThrough(ds);
+      return await new Response(stream).arrayBuffer();
+    } catch (err) {
+      console.warn('[LocalFileStorage] Échec décompression GZIP ArrayBuffer:', err);
+      return buffer;
+    }
+  }
+  return buffer;
+}
+
+/**
+ * Décompresse automatiquement un Blob s'il est au format GZIP (magic bytes 0x1f 0x8b)
+ * et force le type MIME si demandé (ex: 'application/pdf').
+ */
+export async function ensureDecompressedBlob(blob: Blob, forceMimeType?: string): Promise<Blob> {
+  if (!blob || blob.size < 2) {
+    return forceMimeType && blob.type !== forceMimeType ? new Blob([blob], { type: forceMimeType }) : blob;
+  }
+  try {
+    const headerBuf = await blob.slice(0, 2).arrayBuffer();
+    const u8 = new Uint8Array(headerBuf);
+    if (u8[0] === 0x1f && u8[1] === 0x8b && typeof DecompressionStream !== 'undefined') {
+      const ds = new DecompressionStream('gzip');
+      const stream = blob.stream().pipeThrough(ds);
+      const decompressedBuf = await new Response(stream).arrayBuffer();
+      return new Blob([decompressedBuf], { type: forceMimeType || blob.type || 'application/octet-stream' });
+    }
+  } catch (err) {
+    console.warn('[LocalFileStorage] Échec vérification/décompression GZIP Blob:', err);
+  }
+  if (forceMimeType && blob.type !== forceMimeType) {
+    return new Blob([blob], { type: forceMimeType });
+  }
+  return blob;
+}
+
+/**
  * Stocke un Blob ou File complet dans IndexedDB
  */
 export async function storeFileBlob(id: string, blob: Blob | File): Promise<void> {
   try {
+    const cleanBlob = await ensureDecompressedBlob(blob);
     const db = await getDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
-      const req = store.put({ id, blob, updatedAt: Date.now() });
+      const req = store.put({ id, blob: cleanBlob, updatedAt: Date.now() });
 
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
@@ -78,12 +124,13 @@ export async function storeFileBlob(id: string, blob: Blob | File): Promise<void
 }
 
 /**
- * Récupère le Blob d'un fichier par son ID
+ * Récupère le Blob d'un fichier par son ID (et le décompresse automatiquement s'il avait été stocké en GZIP)
  */
 export async function getFileBlob(id: string): Promise<Blob | null> {
+  if (!id) return null;
   try {
     const db = await getDB();
-    return new Promise((resolve, reject) => {
+    const rawBlob = await new Promise<Blob | null>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readonly');
       const store = tx.objectStore(STORE_NAME);
       const req = store.get(id);
@@ -98,6 +145,18 @@ export async function getFileBlob(id: string): Promise<Blob | null> {
       };
       req.onerror = () => reject(req.error);
     });
+
+    if (!rawBlob) return null;
+
+    if (rawBlob.size >= 2) {
+      const header = new Uint8Array(await rawBlob.slice(0, 2).arrayBuffer());
+      if (header[0] === 0x1f && header[1] === 0x8b) {
+        const cleanBlob = await ensureDecompressedBlob(rawBlob);
+        storeFileBlob(id, cleanBlob).catch(() => {});
+        return cleanBlob;
+      }
+    }
+    return rawBlob;
   } catch (err) {
     console.warn('[LocalFileStorage] Erreur lecture binaire IndexedDB:', err);
     return null;
@@ -107,12 +166,127 @@ export async function getFileBlob(id: string): Promise<Blob | null> {
 /**
  * Récupère une URL objet (`blob:...`) utilisable par iframe / img / video / audio
  */
-export async function getFileBlobUrl(id: string): Promise<string | null> {
+export async function getFileBlobUrl(id: string, forceMimeType?: string): Promise<string | null> {
   const blob = await getFileBlob(id);
   if (!blob) return null;
   try {
-    return URL.createObjectURL(blob);
+    const finalBlob = forceMimeType ? await ensureDecompressedBlob(blob, forceMimeType) : blob;
+    return URL.createObjectURL(finalBlob);
   } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Résout un fichier PDF ou Document en Blob propre (décompressé si GZIP, avec MIME type exact)
+ * depuis IndexedDB, une URL blob/data/http, ou le serveur R2 (/api/cloud/stream ou /api/storage/file).
+ */
+export async function resolveCleanDocumentBlob(options: {
+  fileId?: string;
+  url?: string;
+  r2Key?: string;
+  baseUrl?: string;
+  mimeType?: string;
+}): Promise<Blob | null> {
+  const { fileId, url, r2Key, mimeType } = options;
+  const baseUrl = options.baseUrl ?? (import.meta.env.VITE_API_URL || '');
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('studycloud_token') : null;
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const isValidDocBlob = async (b: Blob | null): Promise<Blob | null> => {
+    if (!b || b.size === 0) return null;
+    if (b.type.includes('application/json') || b.type.includes('text/html')) {
+      if (b.size < 2048) {
+        try {
+          const txt = await b.slice(0, 512).text();
+          if (txt.trim().startsWith('{') && (txt.includes('"error"') || txt.includes('"success":false'))) {
+            return null;
+          }
+          if (txt.trim().toLowerCase().startsWith('<!doctype html') || txt.trim().toLowerCase().startsWith('<html')) {
+            return null;
+          }
+        } catch {}
+      }
+    }
+    return await ensureDecompressedBlob(b, mimeType);
+  };
+
+  // 1. IndexedDB local en priorité (0ms)
+  if (fileId) {
+    const localBlob = await getFileBlob(fileId);
+    const validLocal = await isValidDocBlob(localBlob);
+    if (validLocal) return validLocal;
+  }
+
+  // 2. Si URL est déjà un blob: ou data:
+  if (url && (url.startsWith('blob:') || url.startsWith('data:'))) {
+    try {
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const b = await resp.blob();
+        const valid = await isValidDocBlob(b);
+        if (valid) {
+          if (fileId) storeFileBlob(fileId, valid).catch(() => {});
+          return valid;
+        }
+      }
+    } catch {}
+  }
+
+  // 3. Construire la liste des URLs candidates à tester
+  const candidates: string[] = [];
+  if (url && !url.startsWith('blob:') && !url.startsWith('data:')) {
+    const fullUrl = url.startsWith('http') ? url : `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+    candidates.push(fullUrl);
+  }
+  if (fileId && !String(fileId).startsWith('local-')) {
+    const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
+    const fileUrl = `${baseUrl}/api/cloud/file/${encodeURIComponent(fileId)}`;
+    if (!candidates.includes(streamUrl)) candidates.push(streamUrl);
+    if (!candidates.includes(fileUrl)) candidates.push(fileUrl);
+  }
+  if (r2Key) {
+    const storageUrl = `${baseUrl}/api/storage/file/${r2Key}`;
+    if (!candidates.includes(storageUrl)) candidates.push(storageUrl);
+  }
+
+  for (const candidateUrl of candidates) {
+    try {
+      const isInternal = candidateUrl.includes('/api/');
+      const resp = await fetch(candidateUrl, isInternal ? { headers } : undefined);
+      if (resp.ok) {
+        const b = await resp.blob();
+        const valid = await isValidDocBlob(b);
+        if (valid) {
+          if (fileId) storeFileBlob(fileId, valid).catch(() => {});
+          return valid;
+        }
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
+/**
+ * Résout un PDF en URL `blob:...` propre avec `type: 'application/pdf'` garanti non-compressé,
+ * afin que le lecteur PDF natif de Chrome/Edge (`#toolbar=1`) s'ouvre toujours sans erreur.
+ */
+export async function resolveCleanPdfBlobUrl(options: {
+  fileId?: string;
+  url?: string;
+  r2Key?: string;
+  baseUrl?: string;
+}): Promise<string | null> {
+  const cleanBlob = await resolveCleanDocumentBlob({
+    ...options,
+    mimeType: 'application/pdf',
+  });
+  if (!cleanBlob) return null;
+  try {
+    return URL.createObjectURL(cleanBlob);
+  } catch {
     return null;
   }
 }

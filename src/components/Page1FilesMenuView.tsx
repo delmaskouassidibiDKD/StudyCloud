@@ -104,12 +104,13 @@ import { DocumentCardPreview } from './DocumentCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
 import { AudioCardPreview } from './AudioCardPreview';
 import { generatePdfThumbnail, generateVideoThumbnail, extractAudioCover, generateAudioCreatorCover, extractAudioMetadataWithTags, getCachedMediaThumbnail, setCachedMediaThumbnail, isRealEmbeddedArtwork } from '../services/mediaPreviewService';
-import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
+import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob, storeThumbnailData, resolveCleanPdfBlobUrl } from '../services/localFileStorage';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { PdfHorizontalViewer } from './PdfHorizontalViewer';
+import { MobilePdfViewer } from './MobilePdfViewer';
 import { CloudDataStore, isRecentEligible, isItemDeleted, unmarkItemDeleted } from '../services/cloudDataStore';
 import { LocalSyncReplication } from '../services/localSyncReplication';
 import { UploadQueue } from '../services/uploadQueue';
@@ -385,6 +386,59 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
   const [viewerZoom, setViewerZoom] = useState(1);
   const [viewerRotation, setViewerRotation] = useState(0);
+
+  const activeDocReaderTarget = selectedDocFile || selectedClasseurFile || selectedCollectionFile || (selectedDownloadFile as FileItem | null);
+  useEffect(() => {
+    if (!activeDocReaderTarget) {
+      setSplitResolvedPdfUrl('');
+      return;
+    }
+    const isPdfTarget =
+      activeDocReaderTarget.extension === 'pdf' ||
+      (activeDocReaderTarget.name && activeDocReaderTarget.name.toLowerCase().endsWith('.pdf')) ||
+      (activeDocReaderTarget.url && activeDocReaderTarget.url.toLowerCase().includes('.pdf')) ||
+      Boolean(activeDocReaderTarget.type?.includes('pdf'));
+    if (!isPdfTarget) {
+      setSplitResolvedPdfUrl('');
+      return;
+    }
+
+    let isMounted = true;
+    let createdBlobUrl: string | null = null;
+    setSplitResolvedPdfUrl('');
+
+    const rawUrl = activeDocReaderTarget.url || activeDocReaderTarget.previewUrl || '';
+    const isThumb = rawUrl.startsWith('data:image');
+    const safeDirectUrl = isThumb ? '' : rawUrl;
+    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+
+    resolveCleanPdfBlobUrl({
+      fileId: activeDocReaderTarget.id,
+      url: safeDirectUrl,
+      r2Key: activeDocReaderTarget.r2Key || (activeDocReaderTarget as any).r2_key,
+      baseUrl,
+    }).then((cleanUrl) => {
+      if (!isMounted) {
+        if (cleanUrl && cleanUrl.startsWith('blob:')) URL.revokeObjectURL(cleanUrl);
+        return;
+      }
+      if (cleanUrl) {
+        createdBlobUrl = cleanUrl;
+        setSplitResolvedPdfUrl(cleanUrl);
+      } else if (safeDirectUrl && !safeDirectUrl.startsWith('blob:')) {
+        setSplitResolvedPdfUrl(safeDirectUrl);
+      } else if (activeDocReaderTarget.id) {
+        setSplitResolvedPdfUrl(`${baseUrl}/api/cloud/stream/${encodeURIComponent(activeDocReaderTarget.id)}`);
+      }
+    }).catch(() => {});
+
+    return () => {
+      isMounted = false;
+      if (createdBlobUrl && createdBlobUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(createdBlobUrl);
+      }
+    };
+  }, [activeDocReaderTarget?.id, activeDocReaderTarget?.url, (activeDocReaderTarget as any)?.isUploading]);
 
   // Lecteur Audio
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
@@ -10981,8 +11035,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (isNotepad) return renderNoteWriterPage(file);
 
     const isPdf = file.extension === 'pdf' || file.name.toLowerCase().endsWith('.pdf') || (file.url && file.url.toLowerCase().includes('.pdf')) || Boolean(file.type?.includes('pdf'));
-    const pdfUrl = splitResolvedPdfUrl || file.url || '';
-    const cleanPdfBase = pdfUrl.split('#')[0];
+    const isMobileScreen = typeof window !== 'undefined' && window.innerWidth < 768;
+    const pdfUrl = splitResolvedPdfUrl;
+    const cleanPdfBase = pdfUrl ? pdfUrl.split('#')[0] : '';
     const nativePdfUrl = cleanPdfBase ? cleanPdfBase + '#toolbar=1&navpanes=0&view=FitH' : '';
 
     return (
@@ -11114,10 +11169,22 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           </div>
         </div>
 
-        {/* Corps du Document (Image 1) */}
+        {/* Corps du Document (Image 2 & 3 sur Ordinateur, Image 4 sur Téléphone) */}
         <div className="flex-1 w-full h-full flex flex-col overflow-hidden bg-stone-100 dark:bg-stone-900 select-text">
           {isPdf ? (
-            docLayoutMode === 'horizontal' ? (
+            isMobileScreen ? (
+              <MobilePdfViewer
+                fileId={file.id}
+                file={file}
+                url={splitResolvedPdfUrl || file.url}
+                docZoom={Math.round(viewerZoom * 100)}
+                onZoomChange={(z) => setViewerZoom(z / 100)}
+                layoutMode={docLayoutMode}
+                currentPage={docCurrentPage}
+                onPageChange={setDocCurrentPage}
+                isFullscreen={isViewerMaximized}
+              />
+            ) : docLayoutMode === 'horizontal' ? (
               <PdfHorizontalViewer
                 fileId={file.id}
                 file={file}
@@ -11128,37 +11195,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 onPageChange={setDocCurrentPage}
                 isFullscreen={isViewerMaximized}
               />
-            ) : (
-              nativePdfUrl ? (
-                <div className="w-full h-full flex-1 flex flex-col items-center overflow-hidden bg-stone-100 dark:bg-stone-900">
-                  <object
-                    key={'pdf-native-' + (file.id || cleanPdfBase)}
-                    data={nativePdfUrl}
-                    type="application/pdf"
-                    className="w-full h-full border-0 block flex-1"
-                    style={{ width: '100%', height: '100%' }}
-                  >
-                    <iframe
-                      key={'iframe-pdf-native-' + (file.id || cleanPdfBase)}
-                      src={nativePdfUrl}
-                      title={file.name || 'Document PDF'}
-                      className="w-full h-full border-0 block flex-1"
-                      style={{ width: '100%', height: '100%' }}
-                    />
-                  </object>
-                </div>
-              ) : (
-                <PdfHorizontalViewer
-                  fileId={file.id}
-                  file={file}
-                  url={file.url}
-                  docZoom={Math.round(viewerZoom * 100)}
-                  layoutMode="vertical"
-                  currentPage={docCurrentPage}
-                  onPageChange={setDocCurrentPage}
-                  isFullscreen={isViewerMaximized}
+            ) : nativePdfUrl ? (
+              <div className="w-full h-full flex-1 flex flex-col items-center overflow-hidden bg-stone-100 dark:bg-stone-900">
+                <iframe
+                  key={'iframe-pdf-native-' + (file.id || cleanPdfBase)}
+                  src={nativePdfUrl}
+                  title={file.name || 'Document PDF'}
+                  className="w-full h-full border-0 block flex-1 bg-white"
+                  style={{ width: '100%', height: '100%' }}
                 />
-              )
+              </div>
+            ) : (
+              <div className="w-full h-full flex-1 flex flex-col items-center justify-center gap-3 bg-stone-100 dark:bg-stone-900">
+                <div className="w-9 h-9 rounded-full border-3 border-orange-500/20 border-t-orange-500 animate-spin" />
+                <p className="text-xs font-semibold text-stone-500">Chargement du PDF...</p>
+              </div>
             )
           ) : (
             <ModernDocumentViewer

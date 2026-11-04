@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, AlertCircle, Volume2 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
-import { getFileBlob } from '../services/localFileStorage';
+import { getFileBlob, ensureDecompressedArrayBuffer } from '../services/localFileStorage';
 import { getWorkerApiUrl } from '../services/api';
 
 // Configure local worker
@@ -425,7 +425,8 @@ export function PdfHorizontalViewer({
 
         let loadingTask: any;
         if (arrayBuffer) {
-          const typedarray = new Uint8Array(arrayBuffer);
+          const cleanBuf = await ensureDecompressedArrayBuffer(arrayBuffer);
+          const typedarray = new Uint8Array(cleanBuf);
           loadingTask = pdfjsLib.getDocument({
             data: typedarray,
             cMapPacked: true,

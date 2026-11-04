@@ -13,7 +13,7 @@ import {
   SlidersHorizontal
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
-import { getFileBlob } from '../services/localFileStorage';
+import { getFileBlob, ensureDecompressedArrayBuffer } from '../services/localFileStorage';
 import { getWorkerApiUrl } from '../services/api';
 import { extractPageLines, PageLine } from './PdfHorizontalViewer';
 
@@ -253,7 +253,7 @@ export const MobilePdfViewer: React.FC<MobilePdfViewerProps> = ({
   url,
   docZoom = 100,
   onZoomChange,
-  layoutMode = 'vertical',
+  layoutMode: externalLayoutMode,
   activeSpeechPage,
   activeSpeechLineIndex,
   currentSpokenText,
@@ -264,6 +264,8 @@ export const MobilePdfViewer: React.FC<MobilePdfViewerProps> = ({
   onPageChange,
   isFullscreen = false
 }) => {
+  const [internalLayoutMode, setInternalLayoutMode] = useState<'vertical' | 'horizontal'>(externalLayoutMode || 'horizontal');
+  const layoutMode = externalLayoutMode !== undefined ? externalLayoutMode : internalLayoutMode;
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [numPages, setNumPages] = useState<number>(1);
   const [internalPage, setInternalPage] = useState<number>(externalPage || 1);
@@ -435,7 +437,8 @@ export const MobilePdfViewer: React.FC<MobilePdfViewerProps> = ({
 
       let loadingTask: any;
       if (arrayBuffer && arrayBuffer.byteLength > 0) {
-        const typedArray = new Uint8Array(arrayBuffer);
+        const cleanBuffer = await ensureDecompressedArrayBuffer(arrayBuffer);
+        const typedArray = new Uint8Array(cleanBuffer);
         loadingTask = pdfjsLib.getDocument({
           data: typedArray,
           cMapPacked: true,

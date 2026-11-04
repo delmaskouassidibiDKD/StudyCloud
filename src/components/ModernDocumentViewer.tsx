@@ -16,8 +16,9 @@ import {
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
-import { getFileBlob, storeFileBlob } from '../services/localFileStorage';
+import { getFileBlob, storeFileBlob, resolveCleanDocumentBlob, ensureDecompressedArrayBuffer } from '../services/localFileStorage';
 import { getWorkerApiUrl } from '../services/api';
+import { MobilePdfViewer } from './MobilePdfViewer';
 
 // Configuration du worker PDF.js
 if (typeof window !== 'undefined' && !(pdfjsLib as any).GlobalWorkerOptions?.workerSrc) {
@@ -205,13 +206,21 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
     (url && url.startsWith('data:application/pdf'));
   const isWord = ['docx', 'doc'].includes(ext);
   const isExcel = ['xlsx', 'xls', 'csv'].includes(ext);
+  const isPptx = ['pptx', 'ppt'].includes(ext);
   const isTextOrCode =
     ['txt', 'md', 'json', 'js', 'jsx', 'ts', 'tsx', 'py', 'html', 'css', 'sql', 'cpp', 'c', 'java', 'xml', 'yaml', 'yml'].includes(ext) ||
-    (!isPdf && !isWord && !isExcel);
+    (!isPdf && !isWord && !isExcel && !isPptx);
+
+  const [isMobile, setIsMobile] = useState<boolean>(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // États généraux
   const [blob, setBlob] = useState<Blob | null>(null);
-  const [resolvedUrl, setResolvedUrl] = useState<string>(url || '');
+  const [resolvedUrl, setResolvedUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const objectUrlRef = useRef<string | null>(null);
@@ -263,8 +272,9 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
     };
   }, []);
 
-  // États Word
+  // États Word & PPTX
   const [wordHtml, setWordHtml] = useState<string>('');
+  const [pptxSlides, setPptxSlides] = useState<{ slideNumber: number; texts: string[] }[]>([]);
 
   // États Excel
   const [workbook, setWorkbook] = useState<XLSX.WorkBook | null>(null);
@@ -276,7 +286,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
   const [isCopied, setIsCopied] = useState<boolean>(false);
 
   // URL résolue prête pour le lecteur natif avec barre d'outils et défilement vertical FitH
-  const effectivePdfUrl = resolvedUrl || url || '';
+  const effectivePdfUrl = resolvedUrl;
   const cleanPdfBase = effectivePdfUrl ? effectivePdfUrl.split('#')[0] : '';
   const nativePdfUrl = cleanPdfBase ? `${cleanPdfBase}#toolbar=1&navpanes=0&view=FitH` : '';
 
@@ -297,6 +307,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
 
     setIsLoading(true);
     setErrorMessage('');
+    setResolvedUrl('');
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current);
       objectUrlRef.current = null;
@@ -304,71 +315,23 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
     setBlob(null);
     setPdfDoc(null);
     setWordHtml('');
+    setPptxSlides([]);
     setWorkbook(null);
     setSheetData([]);
     if (textContent) setRawText(textContent);
 
     const loadData = async () => {
-      let foundBlob: Blob | null = null;
       const rawUrl = (url && typeof url === 'string' && url.trim()) ? url : '';
-      const isDeadOrThumb = rawUrl.startsWith('blob:') || rawUrl.startsWith('data:image/');
-      const directUrl = isDeadOrThumb ? '' : rawUrl;
+      const isThumb = rawUrl.startsWith('data:image/');
+      const directUrl = isThumb ? '' : rawUrl;
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const streamUrl = fileId ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}` : '';
 
-      // 1. Pour un PDF déjà sur le Cloud, streamer directement depuis R2 sans télécharger tout le fichier dans IndexedDB
-      if (isPdf && (directUrl || streamUrl)) {
-        if (fileId && !directUrl) {
-          try {
-            const localBlob = await getFileBlob(fileId);
-            if (localBlob && !isCancelled) {
-              const bUrl = URL.createObjectURL(localBlob);
-              objectUrlRef.current = bUrl;
-              setResolvedUrl(bUrl);
-              setIsLoading(false);
-              return;
-            }
-          } catch {}
-        }
-        if (!isCancelled) {
-          setResolvedUrl(directUrl || streamUrl);
-          setIsLoading(false);
-        }
-        return;
-      }
-
-      // A. Essayer depuis IndexedDB par fileId (uniquement si en cours d'upload local)
-      if (fileId) {
-        try {
-          foundBlob = await getFileBlob(fileId);
-        } catch (e) {
-          console.warn('[ModernDocumentViewer] Erreur IndexedDB:', e);
-        }
-      }
-
-      // B. Si pas trouvé et URL valide distante (non blob) - en mémoire uniquement, sans saturer IndexedDB
-      if (!foundBlob && directUrl) {
-        try {
-          const res = await fetch(directUrl);
-          if (res.ok) {
-            foundBlob = await res.blob();
-          }
-        } catch (err) {
-          console.warn('[ModernDocumentViewer] Erreur fetch distant:', err);
-        }
-      }
-
-      // C. Fallback direct vers /api/cloud/stream/:fileId si disponible
-      if (!foundBlob && streamUrl) {
-        try {
-          const res = await fetch(streamUrl);
-          if (res.ok) {
-            foundBlob = await res.blob();
-          }
-        } catch (err) {
-          console.warn('[ModernDocumentViewer] Erreur stream fallback:', err);
-        }
-      }
+      const foundBlob = await resolveCleanDocumentBlob({
+        fileId,
+        url: directUrl,
+        baseUrl,
+        mimeType: isPdf ? 'application/pdf' : undefined,
+      });
 
       if (isCancelled) return;
 
@@ -398,14 +361,14 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
       if (foundBlob) {
         try {
           if (isWord) {
-            const arrayBuffer = await foundBlob.arrayBuffer();
+            const arrayBuffer = await ensureDecompressedArrayBuffer(await foundBlob.arrayBuffer());
             const res = await mammoth.convertToHtml({ arrayBuffer });
             if (!isCancelled) {
               setWordHtml(res.value || '<p>Document Word vide.</p>');
               setIsLoading(false);
             }
           } else if (isExcel) {
-            const arrayBuffer = await foundBlob.arrayBuffer();
+            const arrayBuffer = await ensureDecompressedArrayBuffer(await foundBlob.arrayBuffer());
             const wb = XLSX.read(arrayBuffer, { type: 'array' });
             if (!isCancelled) {
               setWorkbook(wb);
@@ -415,6 +378,35 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
                 const rawData = XLSX.utils.sheet_to_json(wb.Sheets[firstSheet], { header: 1 }) as any[][];
                 setSheetData(rawData);
               }
+              setIsLoading(false);
+            }
+          } else if (isPptx) {
+            const arrayBuffer = await ensureDecompressedArrayBuffer(await foundBlob.arrayBuffer());
+            const JSZip = (await import('jszip')).default;
+            const zip = await JSZip.loadAsync(arrayBuffer);
+            const slideFiles = Object.keys(zip.files)
+              .filter(k => /^ppt\/slides\/slide\d+\.xml$/.test(k))
+              .sort((a, b) => {
+                const na = parseInt(a.match(/slide(\d+)\.xml$/)?.[1] || '0', 10);
+                const nb = parseInt(b.match(/slide(\d+)\.xml$/)?.[1] || '0', 10);
+                return na - nb;
+              });
+            const slides: { slideNumber: number; texts: string[] }[] = [];
+            const parser = new DOMParser();
+            for (let i = 0; i < slideFiles.length; i++) {
+              const xmlStr = await zip.files[slideFiles[i]].async('string');
+              const xmlDoc = parser.parseFromString(xmlStr, 'application/xml');
+              const pNodes = Array.from(xmlDoc.getElementsByTagName('a:p'));
+              const paragraphs: string[] = [];
+              for (const p of pNodes) {
+                const tNodes = Array.from(p.getElementsByTagName('a:t'));
+                const line = tNodes.map(t => t.textContent || '').join('').trim();
+                if (line) paragraphs.push(line);
+              }
+              slides.push({ slideNumber: i + 1, texts: paragraphs });
+            }
+            if (!isCancelled) {
+              setPptxSlides(slides);
               setIsLoading(false);
             }
           } else {
@@ -447,7 +439,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [fileId, url, isPdf, isWord, isExcel, textContent, reloadTrigger]);
+  }, [fileId, url, isPdf, isWord, isExcel, isPptx, textContent, reloadTrigger]);
 
   // Charger PDF.js à la demande uniquement si l'utilisateur bascule en mode continu
   useEffect(() => {
@@ -456,21 +448,19 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
       setIsLoading(true);
       const loadPdfContinuous = async () => {
         let b = blob;
-        if (!b && fileId) {
-          try { b = await getFileBlob(fileId); } catch {}
-        }
-        if (!b && (resolvedUrl || url)) {
-          try {
-            const res = await fetch(resolvedUrl || url!);
-            if (res.ok) b = await res.blob();
-          } catch {}
+        if (!b) {
+          b = await resolveCleanDocumentBlob({
+            fileId,
+            url: resolvedUrl || url,
+            mimeType: 'application/pdf',
+          });
         }
         if (isCancelled || !b) {
           setIsLoading(false);
           return;
         }
         try {
-          const arrayBuffer = await b.arrayBuffer();
+          const arrayBuffer = await ensureDecompressedArrayBuffer(await b.arrayBuffer());
           const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
           const doc = await loadingTask.promise;
           if (!isCancelled) {
@@ -650,8 +640,21 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
           </div>
         )}
 
-        {/* A. RENDU PDF (1. Mode Lecteur Navigateur Natif avec défilement vertical et barre d'outils complète) */}
-        {isPdf && !errorMessage && activePdfViewMode === 'native' && nativePdfUrl && (
+        {/* A0. RENDU PDF SUR TÉLÉPHONE (MobilePdfViewer identique au menu de création sur mobile) */}
+        {isPdf && isMobile && !errorMessage && (
+          <div className="w-full h-full flex-1 min-h-0 flex flex-col overflow-hidden">
+            <MobilePdfViewer
+              fileId={fileId}
+              url={resolvedUrl || url}
+              file={{ id: fileId, name: fileName, url: resolvedUrl || url }}
+              activeSpeechPage={activeSpeechPage}
+              autoScrollEnabled={autoScrollEnabled}
+            />
+          </div>
+        )}
+
+        {/* A1. RENDU PDF SUR ORDINATEUR (1. Mode Lecteur Navigateur Natif avec barre d'outils complète #toolbar=1) */}
+        {isPdf && !isMobile && !errorMessage && activePdfViewMode === 'native' && nativePdfUrl && (
           <div className="w-full h-full flex-1 min-h-0 flex flex-col items-center overflow-hidden bg-stone-100 dark:bg-stone-900">
             <iframe
               key={`pdf-native-${fileId || 'direct'}`}
@@ -663,8 +666,8 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
           </div>
         )}
 
-        {/* A. RENDU PDF (2. Mode Défilement Continu Multi-Pages avec PDF.js et confinement strict du défilement) */}
-        {isPdf && !errorMessage && (activePdfViewMode === 'continuous' || !nativePdfUrl) && (
+        {/* A2. RENDU PDF SUR ORDINATEUR (2. Mode Défilement Continu Multi-Pages avec PDF.js) */}
+        {isPdf && !isMobile && !errorMessage && (activePdfViewMode === 'continuous' || !nativePdfUrl) && (
           <div 
             className="w-full h-full flex-1 min-h-0 overflow-y-auto flex flex-col items-center gap-6 p-4 sm:p-6 bg-stone-100 dark:bg-zinc-900 select-text"
             style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
@@ -700,6 +703,42 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
             <div className="w-full max-w-3xl bg-white text-zinc-900 p-8 sm:p-12 rounded-xl shadow-lg border border-zinc-200 my-auto prose prose-sm max-w-none">
               <div dangerouslySetInnerHTML={{ __html: wordHtml }} />
             </div>
+          </div>
+        )}
+
+        {/* B2. RENDU POWERPOINT (.pptx via JSZip) */}
+        {isPptx && !errorMessage && (
+          <div
+            className="w-full h-full flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col items-center gap-6 bg-stone-100 dark:bg-zinc-900 select-text overscroll-contain"
+            style={{ overscrollBehavior: 'contain', touchAction: 'pan-y' }}
+          >
+            {pptxSlides.length > 0 ? (
+              pptxSlides.map((s) => (
+                <div
+                  key={s.slideNumber}
+                  className="w-full max-w-3xl bg-white text-zinc-900 p-6 sm:p-10 rounded-2xl shadow-lg border border-orange-200"
+                >
+                  <div className="flex items-center justify-between border-b border-stone-200 pb-3 mb-4">
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-orange-600 bg-orange-50 px-3 py-1 rounded-full">
+                      Diapositive {s.slideNumber} / {pptxSlides.length}
+                    </span>
+                  </div>
+                  {s.texts.length > 0 ? (
+                    <div className="space-y-2.5">
+                      {s.texts.map((t, idx) => (
+                        <p key={idx} className={idx === 0 ? 'text-lg font-bold text-stone-900' : 'text-sm text-stone-700 leading-relaxed'}>
+                          {t}
+                        </p>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs italic text-stone-400">Diapositive visuelle sans texte extractible.</p>
+                  )}
+                </div>
+              ))
+            ) : (
+              <div className="m-auto text-xs text-zinc-500">Aucune diapositive trouvée.</div>
+            )}
           </div>
         )}
 

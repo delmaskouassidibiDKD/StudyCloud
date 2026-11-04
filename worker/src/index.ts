@@ -7209,8 +7209,10 @@ a:hover{transform:translateY(-2px)}
           }
         }
 
+        const docExt = (key.split('.').pop() || '').toLowerCase();
+        const isDocCategory = category === 'documents' || category === 'study' || category === 'classeur' || ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'md', 'json', 'rtf', 'odt', 'ods', 'odp'].includes(docExt);
         const rangeHeader = request.headers.get('Range');
-        const rangeOptions = rangeHeader ? { range: request.headers } : undefined;
+        const rangeOptions = (rangeHeader && !isDocCategory) ? { range: request.headers } : undefined;
         let found = await getObjectFromAnyBucket(rawEnv, category, key, rangeOptions);
         if (!found || !found.object) {
           found = await getObjectFromAnyBucket(rawEnv, category, rawKey, rangeOptions);
@@ -7234,7 +7236,7 @@ a:hover{transform:translateY(-2px)}
           headers.set('Content-Disposition', `attachment; filename="${encodeURIComponent(downloadName)}"`);
         }
 
-        // Correction automatique du type MIME pour garantir la lecture par le lecteur vidéo HTML5
+        // Correction automatique du type MIME pour garantir la lecture par le lecteur vidéo HTML5 et PDF
         let mime = headers.get('Content-Type');
         if (!mime || mime.includes('octet-stream')) {
           const ext = key.split('.').pop()?.toLowerCase();
@@ -7245,6 +7247,25 @@ a:hover{transform:translateY(-2px)}
             svg: 'image/svg+xml', gif: 'image/gif'
           };
           if (ext && mimeMap[ext]) headers.set('Content-Type', mimeMap[ext]);
+        }
+
+        if (isDocCategory) {
+          const rawBuf = await object.arrayBuffer();
+          const u8 = new Uint8Array(rawBuf);
+          if (u8.length >= 2 && u8[0] === 0x1f && u8[1] === 0x8b && typeof DecompressionStream !== 'undefined') {
+            try {
+              const ds = new DecompressionStream('gzip');
+              const decompressedStream = new Blob([rawBuf]).stream().pipeThrough(ds);
+              const decompressedBuf = await new Response(decompressedStream).arrayBuffer();
+              if (found.bucket) {
+                ctx.waitUntil(found.bucket.put(key, decompressedBuf, { httpMetadata: { contentType: headers.get('Content-Type') || 'application/pdf' } }).catch(() => {}));
+              }
+              headers.set('Content-Length', String(decompressedBuf.byteLength));
+              return new Response(decompressedBuf, { status: 200, headers });
+            } catch {}
+          }
+          headers.set('Content-Length', String(rawBuf.byteLength));
+          return new Response(rawBuf, { status: 200, headers });
         }
 
         // Support complet RFC 7233 pour la vidéo (Content-Range et Content-Length obligatoires en 206)
@@ -7303,8 +7324,10 @@ a:hover{transform:translateY(-2px)}
           return errorResponse('Fichier introuvable dans la base de données', 404, origin);
         }
 
+        const ext = (foundRecord.extension || foundRecord.name.split('.').pop() || '').toLowerCase();
+        const isDocStream = foundRecord.category === 'documents' || foundRecord.category === 'study' || foundRecord.category === 'classeur' || ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'md', 'json', 'rtf', 'odt', 'ods', 'odp'].includes(ext);
         const rangeHeader = request.headers.get('Range');
-        const rangeOptions = rangeHeader ? { range: request.headers } : undefined;
+        const rangeOptions = (rangeHeader && !isDocStream) ? { range: request.headers } : undefined;
         let found = await getObjectFromAnyBucket(rawEnv, foundRecord.category || 'documents', foundRecord.r2_key, rangeOptions);
 
         if (!found || !found.object) {
@@ -7320,7 +7343,6 @@ a:hover{transform:translateY(-2px)}
         headers.set('Access-Control-Allow-Origin', origin);
 
         let mime = headers.get('Content-Type');
-        const ext = (foundRecord.extension || foundRecord.name.split('.').pop() || '').toLowerCase();
         const isAudio = foundRecord.category === 'audio' || (foundRecord.name && foundRecord.name.toLowerCase().startsWith('whatsapp audio'));
         const mimeMap: Record<string, string> = {
           mp4: isAudio ? 'audio/mp4' : 'video/mp4',
@@ -7332,6 +7354,25 @@ a:hover{transform:translateY(-2px)}
         };
         if (!mime || mime.includes('octet-stream') || (isAudio && mime.startsWith('video/'))) {
           if (ext && mimeMap[ext]) headers.set('Content-Type', mimeMap[ext]);
+        }
+
+        if (isDocStream) {
+          const rawBuf = await object.arrayBuffer();
+          const u8 = new Uint8Array(rawBuf);
+          if (u8.length >= 2 && u8[0] === 0x1f && u8[1] === 0x8b && typeof DecompressionStream !== 'undefined') {
+            try {
+              const ds = new DecompressionStream('gzip');
+              const decompressedStream = new Blob([rawBuf]).stream().pipeThrough(ds);
+              const decompressedBuf = await new Response(decompressedStream).arrayBuffer();
+              if (found.bucket) {
+                ctx.waitUntil(found.bucket.put(foundRecord.r2_key, decompressedBuf, { httpMetadata: { contentType: headers.get('Content-Type') || 'application/pdf' } }).catch(() => {}));
+              }
+              headers.set('Content-Length', String(decompressedBuf.byteLength));
+              return new Response(decompressedBuf, { status: 200, headers });
+            } catch {}
+          }
+          headers.set('Content-Length', String(rawBuf.byteLength));
+          return new Response(rawBuf, { status: 200, headers });
         }
 
         if (rangeHeader && object.range) {
