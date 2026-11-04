@@ -489,23 +489,23 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const folderGridGap = Math.round(12 + ((folderZoomLevel - 1) / 9) * 12);
 
   const getFolderCardPadding = (zoom: number) => {
-    if (zoom <= 3) return 'p-2 rounded-2xl';
-    if (zoom <= 6) return 'p-2.5 sm:p-3 rounded-2xl';
-    return 'p-3 sm:p-4 rounded-3xl';
+    if (zoom <= 3) return 'p-1.5 sm:p-2 rounded-xl sm:rounded-2xl';
+    if (zoom <= 6) return 'p-1.5 sm:p-3 rounded-xl sm:rounded-2xl';
+    return 'p-1.5 sm:p-4 rounded-xl sm:rounded-3xl';
   };
 
   // Maintient le dossier 3D glissé vers le bas sur le fond noir pour que le bouton 3 traits
   // reste toujours sur l'espace noir supérieur sans jamais chevaucher la date ou l'onglet
   const getFolderTopSpacing = (zoom: number) => {
-    if (zoom <= 3) return 'pt-7 pb-1';
-    if (zoom <= 6) return 'pt-7 sm:pt-7.5 pb-1';
-    return 'pt-7 sm:pt-8 pb-1';
+    if (zoom <= 3) return 'pt-6 sm:pt-7 pb-0.5 sm:pb-1';
+    if (zoom <= 6) return 'pt-6 sm:pt-7.5 pb-0.5 sm:pb-1';
+    return 'pt-6 sm:pt-8 pb-0.5 sm:pb-1';
   };
 
   const getFolderMenuBtnClass = (zoom: number) => {
-    if (zoom <= 3) return 'absolute top-1.5 right-1.5 z-30 studycloud-menu-trigger scale-80 origin-top-right';
-    if (zoom <= 6) return 'absolute top-2 right-2 z-30 studycloud-menu-trigger scale-90 origin-top-right';
-    return 'absolute top-2.5 right-2.5 z-30 studycloud-menu-trigger';
+    if (zoom <= 3) return 'absolute top-1 sm:top-1.5 right-1 sm:right-1.5 z-30 studycloud-menu-trigger scale-75 sm:scale-80 origin-top-right';
+    if (zoom <= 6) return 'absolute top-1 sm:top-2 right-1 sm:right-2 z-30 studycloud-menu-trigger scale-75 sm:scale-90 origin-top-right';
+    return 'absolute top-1 sm:top-2.5 right-1 sm:right-2.5 z-30 studycloud-menu-trigger scale-75 sm:scale-100 origin-top-right';
   };
 
   // Dossier 3D du Classeur actuellement ouvert pour afficher son menu dédié et ses fichiers
@@ -13230,8 +13230,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           </span>
                         </div>
 
-                        {/* Zone droite : Indication & Contrôle de taille (Zoom - / + de 0 à 10, défaut 10) */}
-                        <div className="flex items-center gap-2.5 sm:gap-3">
+                        {/* Zone droite : Indication & Contrôle de taille (Zoom - / + de 0 à 10, défaut 10) — Masqué sur téléphone */}
+                        <div className="hidden sm:flex items-center gap-2.5 sm:gap-3">
                           <div className="text-[11px] text-stone-400 font-medium hidden md:flex items-center gap-1.5">
                             <span>Cliquez 2 fois de manière continue pour soulever et déplacer</span>
                           </div>
@@ -13382,11 +13382,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
                         return (
                           <div 
-                            className="grid max-sm:!grid-cols-3 max-sm:!gap-2 transition-all duration-300 w-full"
+                            className="grid grid-cols-3 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(var(--folder-min-w),1fr))] sm:gap-[var(--folder-gap)] transition-all duration-300 w-full"
                             style={{
-                              gridTemplateColumns: `repeat(auto-fill, minmax(${folderCardMinWidth}px, 1fr))`,
-                              gap: `${folderGridGap}px`
-                            }}
+                              '--folder-min-w': `${folderCardMinWidth}px`,
+                              '--folder-gap': `${folderGridGap}px`,
+                            } as React.CSSProperties}
                           >
                             {list.map((folder) => {
                             const isBeingDragged = folderDragState?.folder.id === folder.id;
